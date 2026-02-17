@@ -2,37 +2,164 @@ version: "3"
 
 vars:
   GO_MODULE: github.com/restmail/restmail
-  BINARY_NAME: restmail-api
-  GATEWAY_BINARY: restmail-gateway
 
 tasks:
   # ── Build ──────────────────────────────────────────────
   build:
     desc: Build all Go binaries
-    deps: [build:api]
+    deps: [build:api, build:smtp-gateway, build:imap-gateway, build:pop3-gateway, build:tui, build:certgen, build:migrate, build:seed]
 
   build:api:
     desc: Build the REST API server
     cmds:
-      - go build -o bin/{{.BINARY_NAME}} ./cmd/api
+      - go build -o build/api/api ./cmd/api
     sources:
       - cmd/api/**/*.go
       - internal/**/*.go
+      - go.mod
+      - go.sum
     generates:
-      - bin/{{.BINARY_NAME}}
+      - build/api/api
+
+  build:gateways:
+    desc: Build all three protocol gateways
+    deps: [build:smtp-gateway, build:imap-gateway, build:pop3-gateway]
+
+  build:smtp-gateway:
+    desc: Build the SMTP protocol gateway
+    cmds:
+      - go build -o build/gateways/smtp-gateway ./cmd/smtp-gateway
+    sources:
+      - cmd/smtp-gateway/**/*.go
+      - internal/gateway/smtp/**/*.go
+      - internal/gateway/apiclient/**/*.go
+      - internal/gateway/queue/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/gateways/smtp-gateway
+
+  build:imap-gateway:
+    desc: Build the IMAP protocol gateway
+    cmds:
+      - go build -o build/gateways/imap-gateway ./cmd/imap-gateway
+    sources:
+      - cmd/imap-gateway/**/*.go
+      - internal/gateway/imap/**/*.go
+      - internal/gateway/apiclient/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/gateways/imap-gateway
+
+  build:pop3-gateway:
+    desc: Build the POP3 protocol gateway
+    cmds:
+      - go build -o build/gateways/pop3-gateway ./cmd/pop3-gateway
+    sources:
+      - cmd/pop3-gateway/**/*.go
+      - internal/gateway/pop3/**/*.go
+      - internal/gateway/apiclient/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/gateways/pop3-gateway
+
+  build:tui:
+    desc: Build the TUI admin tool
+    cmds:
+      - go build -o build/tui/tui ./cmd/tui
+    sources:
+      - cmd/tui/**/*.go
+      - internal/tui/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tui/tui
+
+  build:tui:darwin-arm64:
+    desc: Cross-compile TUI for macOS Apple Silicon
+    env:
+      GOOS: darwin
+      GOARCH: arm64
+    cmds:
+      - go build -o build/tui/tui-darwin-arm64 ./cmd/tui
+
+  build:tui:darwin-amd64:
+    desc: Cross-compile TUI for macOS Intel
+    env:
+      GOOS: darwin
+      GOARCH: amd64
+    cmds:
+      - go build -o build/tui/tui-darwin-amd64 ./cmd/tui
+
+  build:tui:linux-arm64:
+    desc: Cross-compile TUI for Linux arm64
+    env:
+      GOOS: linux
+      GOARCH: arm64
+    cmds:
+      - go build -o build/tui/tui-linux-arm64 ./cmd/tui
+
+  build:certgen:
+    desc: Build the certificate generator
+    cmds:
+      - go build -o build/tools/certgen ./cmd/certgen
+    sources:
+      - cmd/certgen/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/certgen
+
+  build:migrate:
+    desc: Build the migration runner
+    cmds:
+      - go build -o build/tools/migrate ./cmd/migrate
+    sources:
+      - cmd/migrate/**/*.go
+      - internal/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/migrate
+
+  build:seed:
+    desc: Build the test data seeder
+    cmds:
+      - go build -o build/tools/seed ./cmd/seed
+    sources:
+      - cmd/seed/**/*.go
+      - internal/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/seed
 
   # ── Test ───────────────────────────────────────────────
   test:
-    desc: Run all tests
+    desc: Run unit tests
     cmds:
       - go test -race -count=1 ./internal/...
 
-  test:integration:
-    desc: Run integration tests (requires running containers)
-    deps: [up]
+  test:verbose:
+    desc: Run unit tests with verbose output
     cmds:
-      - go test -race -count=1 -tags=integration ./tests/...
+      - go test -race -count=1 -v ./internal/...
 
+  test:coverage:
+    desc: Run unit tests with coverage report
+    cmds:
+      - go test -race -count=1 -coverprofile=coverage.out ./internal/...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report written to coverage.html"
+
+  test:e2e:
+    desc: Run e2e tests (requires running containers)
+    cmds:
+      - go test -race -count=1 -v -timeout 5m ./tests/e2e/...
+
+  # ── Lint ──────────────────────────────────────────────
   lint:
     desc: Run linters
     cmds:
@@ -44,6 +171,11 @@ tasks:
     cmds:
       - docker compose up -d --build
 
+  up:no-build:
+    desc: Start all containers without rebuilding
+    cmds:
+      - docker compose up -d
+
   down:
     desc: Stop all containers
     cmds:
@@ -54,6 +186,16 @@ tasks:
     cmds:
       - docker compose down -v
 
+  restart:
+    desc: Restart all containers
+    cmds:
+      - docker compose restart
+
+  rebuild:
+    desc: Rebuild and restart a specific service
+    cmds:
+      - docker compose up -d --build {{.CLI_ARGS}}
+
   logs:
     desc: Tail logs from all containers
     cmds:
@@ -63,6 +205,31 @@ tasks:
     desc: Tail logs from the API container
     cmds:
       - docker compose logs -f --tail=100 api
+
+  logs:smtp-gateway:
+    desc: Tail logs from the SMTP gateway
+    cmds:
+      - docker compose logs -f --tail=100 smtp-gateway
+
+  logs:imap-gateway:
+    desc: Tail logs from the IMAP gateway
+    cmds:
+      - docker compose logs -f --tail=100 imap-gateway
+
+  logs:pop3-gateway:
+    desc: Tail logs from the POP3 gateway
+    cmds:
+      - docker compose logs -f --tail=100 pop3-gateway
+
+  logs:gateways:
+    desc: Tail logs from all protocol gateways
+    cmds:
+      - docker compose logs -f --tail=100 smtp-gateway imap-gateway pop3-gateway
+
+  logs:mail:
+    desc: Tail logs from mail containers
+    cmds:
+      - docker compose logs -f --tail=100 postfix-mail1 dovecot-mail1 postfix-mail2 dovecot-mail2
 
   ps:
     desc: Show running containers
@@ -105,3 +272,42 @@ tasks:
       - echo "Waiting for services to be healthy..."
       - sleep 5
       - echo "Dev environment ready. API at http://localhost:8080"
+
+  dev:api:
+    desc: Run the API server locally (requires DB)
+    cmds:
+      - go run ./cmd/api
+
+  dev:smtp-gateway:
+    desc: Run the SMTP gateway locally (requires API + DB)
+    cmds:
+      - go run ./cmd/smtp-gateway
+
+  dev:imap-gateway:
+    desc: Run the IMAP gateway locally (requires API + DB)
+    cmds:
+      - go run ./cmd/imap-gateway
+
+  dev:pop3-gateway:
+    desc: Run the POP3 gateway locally (requires API + DB)
+    cmds:
+      - go run ./cmd/pop3-gateway
+
+  # ── Setup ──────────────────────────────────────────────
+  setup:
+    desc: Install dependencies and verify toolchain
+    cmds:
+      - echo "Checking Go..."
+      - go version
+      - echo "Downloading Go modules..."
+      - go mod download
+      - echo "Verifying build..."
+      - go build ./...
+      - echo "Setup complete."
+
+  # ── Clean ──────────────────────────────────────────────
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf build/
+      - rm -f coverage.out coverage.html

@@ -107,12 +107,12 @@ services:
       mailnet:
         ipv4_address: 172.20.0.21
 
-  # ─── Protocol Gateway (mail3.test) ─────────────────────────────────
-  gateway:
+  # ─── SMTP Gateway (mail3.test) ──────────────────────────────────────
+  smtp-gateway:
     build:
       context: .
-      dockerfile: Dockerfile.gateway
-    container_name: gateway
+      dockerfile: docker/smtp-gateway/Dockerfile
+    container_name: smtp-gateway
     restart: unless-stopped
     hostname: mail3.test
     environment:
@@ -128,10 +128,6 @@ services:
       SMTP_PORT_INBOUND: "25"
       SMTP_PORT_SUBMISSION: "587"
       SMTP_PORT_SUBMISSION_TLS: "465"
-      IMAP_PORT: "143"
-      IMAP_TLS_PORT: "993"
-      POP3_PORT: "110"
-      POP3_TLS_PORT: "995"
       QUEUE_WORKERS: "4"
       LOG_LEVEL: debug
       ENVIRONMENT: development
@@ -151,6 +147,66 @@ services:
     networks:
       mailnet:
         ipv4_address: 172.20.0.13
+
+  # ─── IMAP Gateway (mail3.test) ──────────────────────────────────────
+  imap-gateway:
+    build:
+      context: .
+      dockerfile: docker/imap-gateway/Dockerfile
+    container_name: imap-gateway
+    restart: unless-stopped
+    hostname: mail3.test
+    environment:
+      GATEWAY_HOSTNAME: mail3.test
+      API_BASE_URL: http://api:8080
+      TLS_CERT_PATH: /certs/mail3.test.crt
+      TLS_KEY_PATH: /certs/mail3.test.key
+      IMAP_PORT: "143"
+      IMAP_TLS_PORT: "993"
+      LOG_LEVEL: debug
+      ENVIRONMENT: development
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      api:
+        condition: service_started
+      certgen:
+        condition: service_completed_successfully
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.15
+
+  # ─── POP3 Gateway (mail3.test) ──────────────────────────────────────
+  pop3-gateway:
+    build:
+      context: .
+      dockerfile: docker/pop3-gateway/Dockerfile
+    container_name: pop3-gateway
+    restart: unless-stopped
+    hostname: mail3.test
+    environment:
+      GATEWAY_HOSTNAME: mail3.test
+      API_BASE_URL: http://api:8080
+      TLS_CERT_PATH: /certs/mail3.test.crt
+      TLS_KEY_PATH: /certs/mail3.test.key
+      POP3_PORT: "110"
+      POP3_TLS_PORT: "995"
+      LOG_LEVEL: debug
+      ENVIRONMENT: development
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      api:
+        condition: service_started
+      certgen:
+        condition: service_completed_successfully
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.16
 
   # ─── Postfix mail1.test ─────────────────────────────────────────────
   postfix-mail1:
@@ -268,4 +324,4 @@ services:
       - 172.20.0.3
     networks:
       mailnet:
-        ipv4_address: 172.20.0.15
+        ipv4_address: 172.20.0.17

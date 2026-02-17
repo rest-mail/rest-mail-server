@@ -5369,7 +5369,56 @@ Write a comprehensive README.md at the project root that serves as the entry poi
 
 ---
 
-## Phase 13: (Future - awaiting further input)
+## Phase 13: Project Website
+
+Build a static marketing/landing website for Rest Mail. The site explains the project, its architecture, and lets visitors try the webmail.
+
+### Concept & Aesthetic Direction
+
+- **Tagline:** "Because the mail server protocol needs to take a break..."
+- **Theme:** Grey/white palette with soft gradients, evoking a heavenly/ethereal vibe. The visual metaphor: traditional mail server protocols (SMTP, IMAP, POP3) are being sent to heaven — ascending into the clouds, replaced by something better, easier, and modern.
+- **Typography:** Elegant serif display font for headings (gravitas, memorial quality) paired with a clean sans-serif body font.
+- **Backgrounds:** Cloud-like radial gradients, warm golden/amber light accents (sunbeams breaking through), generous whitespace.
+- **Motion:** Gentle floating animations, subtle parallax, ascending visual elements.
+
+### Pages & Sections
+
+1. **Landing / Hero** — Project name, tagline, call-to-action buttons (Try Webmail, View on GitHub)
+2. **What is Rest Mail?** — Brief explanation of the problem with traditional mail servers and how Rest Mail replaces them with a REST API while remaining fully compatible with the outside world
+3. **How It Works** — Architecture overview: protocol gateway translates SMTP/IMAP/POP3 into REST API calls. Diagram showing the three mail domains (traditional ↔ rest-mail interop)
+4. **The RESTMAIL Protocol** — How two Rest Mail servers discover each other via EHLO and upgrade from SMTP to native REST delivery
+5. **Features** — Key features: full protocol compatibility, pipeline/filter engine, Sieve support, webmail, TUI admin, real-time SSE, attachment dedup, quota management, etc.
+6. **Architecture** — Tech stack breakdown: Go backend, PostgreSQL, chi router, React webmail, Bubble Tea TUI, Docker Compose orchestration
+7. **About** — Information about the creator/maintainer
+8. **Footer** — GitHub repo link, webmail login link, license
+
+### Links
+
+- **GitHub:** Link to the project repository (placeholder until public)
+- **Webmail:** Link to the hosted webmail instance so visitors can try it out (also serves as an integration test for the full system)
+
+### Implementation
+
+- Static HTML/CSS/JS site (no framework needed — it's a marketing page)
+- Lives in `website/` directory at project root
+- Dockerfile + nginx for serving in Docker Compose
+- Added as a service in `docker-compose.yml`
+
+### TODO
+
+- [ ] Design and build the landing page (hero, tagline, CTA)
+- [ ] Build the "What is Rest Mail?" and "How It Works" sections
+- [ ] Build the RESTMAIL Protocol explanation section with diagrams
+- [ ] Build the Features section
+- [ ] Build the Architecture section
+- [ ] Build the About page
+- [ ] Create Dockerfile and nginx config for the website
+- [ ] Add website service to docker-compose.yml
+- [ ] Add Taskfile entries for building/serving the website
+
+---
+
+## Phase 14: (Future — awaiting further input)
 
 _Additional requirements will be added here as they are provided._
 
