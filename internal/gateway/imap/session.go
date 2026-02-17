@@ -144,6 +144,8 @@ func (s *Session) Handle() {
 			s.handleGetQuotaRoot(tag, args)
 		case "IDLE":
 			s.handleIdle(tag)
+		case "UID":
+			s.handleUID(tag, args)
 		case "LOGOUT":
 			s.send("* BYE IMAP4rev1 Server logging out")
 			s.tagged(tag, "OK", "LOGOUT completed")
@@ -155,7 +157,7 @@ func (s *Session) Handle() {
 }
 
 func (s *Session) handleCapability(tag string) {
-	caps := "IMAP4rev1 QUOTA MOVE"
+	caps := "IMAP4rev1 UIDPLUS IDLE MOVE QUOTA"
 	if !s.tls_ && s.tlsConfig != nil {
 		caps += " STARTTLS"
 	}
@@ -1120,6 +1122,318 @@ func (s *Session) handleIdle(tag string) {
 	}
 
 	s.tagged(tag, "OK", "IDLE terminated")
+}
+
+// ── UID command ───────────────────────────────────────────────────────
+
+func (s *Session) handleUID(tag, args string) {
+	if !s.auth.authenticated {
+		s.tagged(tag, "NO", "Not authenticated")
+		return
+	}
+	if s.selected == nil {
+		s.tagged(tag, "NO", "No mailbox selected")
+		return
+	}
+
+	// Parse "UID FETCH 1:* (FLAGS)" → subCmd="FETCH", subArgs="1:* (FLAGS)"
+	parts := strings.SplitN(args, " ", 2)
+	if len(parts) < 1 {
+		s.tagged(tag, "BAD", "UID requires a command")
+		return
+	}
+	subCmd := strings.ToUpper(parts[0])
+	subArgs := ""
+	if len(parts) > 1 {
+		subArgs = parts[1]
+	}
+
+	// Convert UID sequence set to message sequence numbers
+	switch subCmd {
+	case "FETCH":
+		s.handleUIDFetch(tag, subArgs)
+	case "STORE":
+		s.handleUIDStore(tag, subArgs)
+	case "COPY":
+		s.handleUIDCopy(tag, subArgs)
+	case "MOVE":
+		s.handleUIDMove(tag, subArgs)
+	case "SEARCH":
+		s.handleUIDSearch(tag, subArgs)
+	default:
+		s.tagged(tag, "BAD", "Unknown UID command")
+	}
+}
+
+// uidToSeq converts a UID to a sequence number (1-based) in the current message list.
+func (s *Session) uidToSeq(uid uint) int {
+	for i, msg := range s.messages {
+		if msg.ID == uid {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// parseUIDSet parses a UID set like "1,3:5,*" and returns matching sequence numbers.
+func (s *Session) parseUIDSet(uidSetStr string) []int {
+	var seqNums []int
+	for _, part := range strings.Split(uidSetStr, ",") {
+		part = strings.TrimSpace(part)
+		if strings.Contains(part, ":") {
+			rangeParts := strings.SplitN(part, ":", 2)
+			var startUID, endUID uint
+			if rangeParts[0] == "*" {
+				if len(s.messages) > 0 {
+					startUID = s.messages[len(s.messages)-1].ID
+				}
+			} else {
+				v, _ := strconv.ParseUint(rangeParts[0], 10, 32)
+				startUID = uint(v)
+			}
+			if rangeParts[1] == "*" {
+				if len(s.messages) > 0 {
+					endUID = s.messages[len(s.messages)-1].ID
+				}
+			} else {
+				v, _ := strconv.ParseUint(rangeParts[1], 10, 32)
+				endUID = uint(v)
+			}
+			if startUID > endUID {
+				startUID, endUID = endUID, startUID
+			}
+			for i, msg := range s.messages {
+				if msg.ID >= startUID && msg.ID <= endUID {
+					seqNums = append(seqNums, i+1)
+				}
+			}
+		} else if part == "*" {
+			if len(s.messages) > 0 {
+				seqNums = append(seqNums, len(s.messages))
+			}
+		} else {
+			uid, _ := strconv.ParseUint(part, 10, 32)
+			seq := s.uidToSeq(uint(uid))
+			if seq > 0 {
+				seqNums = append(seqNums, seq)
+			}
+		}
+	}
+	return seqNums
+}
+
+func (s *Session) handleUIDFetch(tag, args string) {
+	parts := strings.SplitN(args, " ", 2)
+	if len(parts) < 2 {
+		s.tagged(tag, "BAD", "UID FETCH requires uid set and data items")
+		return
+	}
+
+	uidSetStr := parts[0]
+	dataItems := strings.ToUpper(parts[1])
+
+	seqNums := s.parseUIDSet(uidSetStr)
+
+	for _, seq := range seqNums {
+		if seq < 1 || seq > len(s.messages) {
+			continue
+		}
+		msg := s.messages[seq-1]
+
+		if strings.Contains(dataItems, "BODY[]") || strings.Contains(dataItems, "BODY.PEEK[]") || strings.Contains(dataItems, "RFC822") {
+			detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+			if err != nil {
+				continue
+			}
+			raw := buildRawMessage(detail.Data)
+			flags := buildFlags(msg)
+			s.send("* %d FETCH (UID %d FLAGS (%s) RFC822.SIZE %d BODY[] {%d}", seq, msg.ID, flags, len(raw), len(raw))
+			fmt.Fprintf(s.writer, "%s)\r\n", raw)
+			s.writer.Flush()
+
+			if !msg.IsRead && !strings.Contains(dataItems, "BODY.PEEK") {
+				s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
+				s.messages[seq-1].IsRead = true
+			}
+		} else if strings.Contains(dataItems, "BODY[HEADER]") {
+			detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+			if err != nil {
+				continue
+			}
+			raw := buildRawMessage(detail.Data)
+			// Extract headers only (up to first blank line)
+			headerEnd := strings.Index(raw, "\r\n\r\n")
+			headers := raw
+			if headerEnd >= 0 {
+				headers = raw[:headerEnd+4] // include trailing CRLF CRLF
+			}
+			flags := buildFlags(msg)
+			s.send("* %d FETCH (UID %d FLAGS (%s) BODY[HEADER] {%d}", seq, msg.ID, flags, len(headers))
+			fmt.Fprintf(s.writer, "%s)\r\n", headers)
+			s.writer.Flush()
+		} else if strings.Contains(dataItems, "BODY[TEXT]") {
+			detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+			if err != nil {
+				continue
+			}
+			raw := buildRawMessage(detail.Data)
+			headerEnd := strings.Index(raw, "\r\n\r\n")
+			body := ""
+			if headerEnd >= 0 && headerEnd+4 < len(raw) {
+				body = raw[headerEnd+4:]
+			}
+			flags := buildFlags(msg)
+			s.send("* %d FETCH (UID %d FLAGS (%s) BODY[TEXT] {%d}", seq, msg.ID, flags, len(body))
+			fmt.Fprintf(s.writer, "%s)\r\n", body)
+			s.writer.Flush()
+		} else if strings.Contains(dataItems, "FLAGS") || strings.Contains(dataItems, "ENVELOPE") || strings.Contains(dataItems, "INTERNALDATE") {
+			flags := buildFlags(msg)
+			date := msg.ReceivedAt.Format("02-Jan-2006 15:04:05 -0700")
+			envelope := buildEnvelope(msg)
+			s.send("* %d FETCH (UID %d FLAGS (%s) INTERNALDATE \"%s\" RFC822.SIZE %d ENVELOPE %s)",
+				seq, msg.ID, flags, date, msg.SizeBytes, envelope)
+		} else {
+			flags := buildFlags(msg)
+			s.send("* %d FETCH (UID %d FLAGS (%s))", seq, msg.ID, flags)
+		}
+	}
+
+	s.tagged(tag, "OK", "UID FETCH completed")
+}
+
+func (s *Session) handleUIDStore(tag, args string) {
+	parts := strings.SplitN(args, " ", 2)
+	if len(parts) < 2 {
+		s.tagged(tag, "BAD", "UID STORE requires uid set and flags")
+		return
+	}
+
+	uidSetStr := parts[0]
+	flagArgs := parts[1]
+
+	seqNums := s.parseUIDSet(uidSetStr)
+
+	// Rewrite args to use sequence numbers and delegate to handleStore
+	for _, seq := range seqNums {
+		if seq < 1 || seq > len(s.messages) {
+			continue
+		}
+		msg := s.messages[seq-1]
+
+		// Parse flags action
+		flagParts := strings.SplitN(flagArgs, " ", 2)
+		if len(flagParts) < 2 {
+			continue
+		}
+		action := flagParts[0]
+		flagStr := strings.Trim(flagParts[1], "()")
+		flags := strings.Fields(flagStr)
+
+		updates := map[string]interface{}{}
+		for _, flag := range flags {
+			switch flag {
+			case `\Seen`:
+				val := strings.HasPrefix(action, "+")
+				updates["is_read"] = val
+				s.messages[seq-1].IsRead = val
+			case `\Flagged`:
+				val := strings.HasPrefix(action, "+")
+				updates["is_flagged"] = val
+				s.messages[seq-1].IsFlagged = val
+			case `\Deleted`:
+				if strings.HasPrefix(action, "+") {
+					if s.deleted == nil {
+						s.deleted = make(map[uint]bool)
+					}
+					s.deleted[msg.ID] = true
+				} else {
+					delete(s.deleted, msg.ID)
+				}
+			}
+		}
+
+		if len(updates) > 0 {
+			s.api.UpdateMessage(s.auth.token, msg.ID, updates)
+		}
+
+		newFlags := buildFlags(s.messages[seq-1])
+		s.send("* %d FETCH (UID %d FLAGS (%s))", seq, msg.ID, newFlags)
+	}
+
+	s.tagged(tag, "OK", "UID STORE completed")
+}
+
+func (s *Session) handleUIDCopy(tag, args string) {
+	parts := strings.SplitN(args, " ", 2)
+	if len(parts) < 2 {
+		s.tagged(tag, "BAD", "UID COPY requires uid set and destination")
+		return
+	}
+
+	uidSetStr := parts[0]
+	dest := unquote(strings.TrimSpace(parts[1]))
+
+	seqNums := s.parseUIDSet(uidSetStr)
+	for _, seq := range seqNums {
+		if seq < 1 || seq > len(s.messages) {
+			continue
+		}
+		msg := s.messages[seq-1]
+		s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": dest})
+	}
+
+	s.tagged(tag, "OK", "UID COPY completed")
+}
+
+func (s *Session) handleUIDMove(tag, args string) {
+	parts := strings.SplitN(args, " ", 2)
+	if len(parts) < 2 {
+		s.tagged(tag, "BAD", "UID MOVE requires uid set and destination")
+		return
+	}
+
+	uidSetStr := parts[0]
+	dest := unquote(strings.TrimSpace(parts[1]))
+
+	seqNums := s.parseUIDSet(uidSetStr)
+
+	for i := len(seqNums) - 1; i >= 0; i-- {
+		seq := seqNums[i]
+		if seq < 1 || seq > len(s.messages) {
+			continue
+		}
+		msg := s.messages[seq-1]
+		if err := s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": dest}); err != nil {
+			continue
+		}
+		s.send("* %d EXPUNGE", seq)
+		s.messages = append(s.messages[:seq-1], s.messages[seq:]...)
+	}
+
+	if s.selected != nil {
+		s.selected.total = int64(len(s.messages))
+	}
+	s.tagged(tag, "OK", "UID MOVE completed")
+}
+
+func (s *Session) handleUIDSearch(tag, args string) {
+	// UID SEARCH returns UIDs instead of sequence numbers
+	// Parse the criteria the same way as SEARCH
+	criteria := s.parseSearchCriteria(args)
+
+	var uids []string
+	for _, msg := range s.messages {
+		if s.matchesCriteria(msg, criteria) {
+			uids = append(uids, strconv.FormatUint(uint64(msg.ID), 10))
+		}
+	}
+
+	if len(uids) > 0 {
+		s.send("* SEARCH %s", strings.Join(uids, " "))
+	} else {
+		s.send("* SEARCH")
+	}
+	s.tagged(tag, "OK", "UID SEARCH completed")
 }
 
 // ── Output helpers ────────────────────────────────────────────────────

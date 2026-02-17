@@ -47,7 +47,7 @@ func (j *JSONB) UnmarshalJSON(data []byte) error {
 
 type Message struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`
-	MailboxID      uint      `gorm:"not null;index:idx_messages_mailbox_folder" json:"mailbox_id"`
+	MailboxID      uint      `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`
 	Folder         string    `gorm:"size:255;not null;default:INBOX;index:idx_messages_mailbox_folder" json:"folder"`
 	MessageID      string    `gorm:"size:995;index" json:"message_id"`
 	InReplyTo      string    `gorm:"size:995" json:"in_reply_to"`
@@ -68,8 +68,8 @@ type Message struct {
 	IsFlagged      bool      `gorm:"default:false" json:"is_flagged"`
 	IsStarred      bool      `gorm:"default:false" json:"is_starred"`
 	IsDraft        bool      `gorm:"default:false" json:"is_draft"`
-	IsDeleted      bool      `gorm:"default:false" json:"is_deleted"`
-	ReceivedAt     time.Time `gorm:"default:now()" json:"received_at"`
+	IsDeleted      bool      `gorm:"default:false;index:idx_messages_mailbox_deleted" json:"is_deleted"`
+	ReceivedAt     time.Time `gorm:"default:now();index" json:"received_at"`
 	DateHeader     *time.Time `json:"date_header"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`

@@ -124,6 +124,11 @@ func (h *MessageHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.verifyMessageOwnership(w, r, &msg) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	respond.Data(w, http.StatusOK, msg)
 }
 
@@ -144,6 +149,11 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	var msg models.Message
 	if err := h.db.First(&msg, id).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
+		return
+	}
+
+	if !h.verifyMessageOwnership(w, r, &msg) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -211,6 +221,11 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	var msg models.Message
 	if err := h.db.First(&msg, id).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
+		return
+	}
+
+	if !h.verifyMessageOwnership(w, r, &msg) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -1265,6 +1280,11 @@ func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.verifyMessageOwnership(w, r, &msg) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	if msg.RawMessage == "" {
 		respond.Error(w, http.StatusNotFound, "not_found", "Raw message not available")
 		return
@@ -1293,6 +1313,11 @@ func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) 
 	var original models.Message
 	if err := h.db.First(&original, id).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
+		return
+	}
+
+	if !h.verifyMessageOwnership(w, r, &original) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -1336,6 +1361,34 @@ func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) 
 	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
 
 	h.SendMessage(w, newReq)
+}
+
+// verifyMessageOwnership checks that the authenticated user owns the message.
+// Returns true if the message belongs to one of the user's mailboxes, or if the user is an admin.
+func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.Request, msg *models.Message) bool {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return false
+	}
+	if claims.IsAdmin {
+		return true
+	}
+	// Check primary mailbox
+	var account models.WebmailAccount
+	if err := h.db.First(&account, claims.WebmailAccountID).Error; err == nil {
+		if msg.MailboxID == account.PrimaryMailboxID {
+			return true
+		}
+	}
+	// Check linked accounts
+	var linked []models.LinkedAccount
+	h.db.Where("webmail_account_id = ?", claims.WebmailAccountID).Find(&linked)
+	for _, la := range linked {
+		if msg.MailboxID == la.MailboxID {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
