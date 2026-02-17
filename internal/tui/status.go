@@ -18,12 +18,14 @@ type domainStatus struct {
 // StatusModel tracks server status for the bottom bar.
 type StatusModel struct {
 	api      *apiclient.Client
+	token    string
 	statuses map[string]domainStatus
 }
 
-func NewStatusModel(api *apiclient.Client) StatusModel {
+func NewStatusModel(api *apiclient.Client, token string) StatusModel {
 	return StatusModel{
-		api: api,
+		api:   api,
+		token: token,
 		statuses: map[string]domainStatus{
 			"mail1.test": {healthy: true},
 			"mail2.test": {healthy: true},
@@ -41,9 +43,17 @@ func (m StatusModel) Init() tea.Cmd {
 func (m StatusModel) Update(msg tea.Msg) (StatusModel, tea.Cmd) {
 	switch msg.(type) {
 	case statusTickMsg:
-		// Poll API for health/stats
-		// In a real implementation, this would call health endpoints
-		// For now, keep the default healthy status
+		// Fetch live domain data
+		if m.token != "" {
+			resp, err := m.api.ListDomains(m.token)
+			if err == nil {
+				newStatuses := make(map[string]domainStatus)
+				for _, d := range resp.Data {
+					newStatuses[d.Name] = domainStatus{healthy: d.Active, users: 0, messages: 0}
+				}
+				m.statuses = newStatuses
+			}
+		}
 		return m, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 			return statusTickMsg(t)
 		})

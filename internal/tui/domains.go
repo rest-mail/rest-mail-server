@@ -11,6 +11,7 @@ import (
 )
 
 type domainItem struct {
+	id         uint
 	name       string
 	serverType string
 	active     bool
@@ -32,6 +33,7 @@ type domainCreatedMsg struct {
 // DomainsModel handles the domains management view.
 type DomainsModel struct {
 	api     *apiclient.Client
+	token   string
 	domains []domainItem
 	cursor  int
 	loading bool
@@ -44,7 +46,7 @@ type DomainsModel struct {
 	addFocus  int // 0=name, 1=type
 }
 
-func NewDomainsModel(api *apiclient.Client) DomainsModel {
+func NewDomainsModel(api *apiclient.Client, token string) DomainsModel {
 	ni := textinput.New()
 	ni.Placeholder = "example.com"
 	ni.CharLimit = 253
@@ -57,6 +59,7 @@ func NewDomainsModel(api *apiclient.Client) DomainsModel {
 
 	return DomainsModel{
 		api:       api,
+		token:     token,
 		nameInput: ni,
 		typeInput: ti,
 	}
@@ -67,15 +70,20 @@ func (m DomainsModel) Init() tea.Cmd {
 }
 
 func (m DomainsModel) loadDomains() tea.Msg {
-	// TODO: Call admin API to list domains
-	// For now, return hardcoded defaults
-	return domainsLoadedMsg{
-		domains: []domainItem{
-			{name: "mail1.test", serverType: "traditional", active: true},
-			{name: "mail2.test", serverType: "traditional", active: true},
-			{name: "mail3.test", serverType: "restmail", active: true},
-		},
+	resp, err := m.api.ListDomains(m.token)
+	if err != nil {
+		return domainsLoadedMsg{err: err}
 	}
+	var items []domainItem
+	for _, d := range resp.Data {
+		items = append(items, domainItem{
+			id:         d.ID,
+			name:       d.Name,
+			serverType: d.ServerType,
+			active:     d.Active,
+		})
+	}
+	return domainsLoadedMsg{domains: items}
 }
 
 func (m DomainsModel) Update(msg tea.Msg) (DomainsModel, tea.Cmd) {
@@ -121,8 +129,11 @@ func (m DomainsModel) Update(msg tea.Msg) (DomainsModel, tea.Cmd) {
 			return m, textinput.Blink
 		case "d", "delete":
 			if len(m.domains) > 0 {
-				// TODO: Call delete API
-				return m, nil
+				d := m.domains[m.cursor]
+				return m, func() tea.Msg {
+					err := m.api.DeleteDomain(m.token, d.id)
+					return domainDeletedMsg{err: err}
+				}
 			}
 		}
 	}
@@ -150,17 +161,17 @@ func (m DomainsModel) updateAdding(msg tea.KeyMsg) (DomainsModel, tea.Cmd) {
 		return m, textinput.Blink
 	case "enter":
 		if m.addFocus == 1 && m.nameInput.Value() != "" {
-			// TODO: Call create API
-			m.adding = false
 			name := m.nameInput.Value()
 			stype := m.typeInput.Value()
 			if stype == "" {
 				stype = "traditional"
 			}
-			m.domains = append(m.domains, domainItem{name: name, serverType: stype, active: true})
 			m.nameInput.Reset()
 			m.typeInput.Reset()
-			return m, nil
+			return m, func() tea.Msg {
+				err := m.api.CreateDomain(m.token, name, stype)
+				return domainCreatedMsg{err: err}
+			}
 		}
 		// Move to next field
 		m.addFocus = 1

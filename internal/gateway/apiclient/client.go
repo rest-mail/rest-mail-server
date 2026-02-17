@@ -234,6 +234,81 @@ func (c *Client) Search(token string, accountID uint, query string, folder strin
 	return &resp, nil
 }
 
+// ── Admin Domains ─────────────────────────────────────────────────────
+
+type DomainItem struct {
+	ID         uint   `json:"id"`
+	Name       string `json:"name"`
+	ServerType string `json:"server_type"`
+	Active     bool   `json:"active"`
+}
+
+type DomainListResponse struct {
+	Data []DomainItem `json:"data"`
+}
+
+// ListDomains returns all domains (admin only).
+func (c *Client) ListDomains(token string) (*DomainListResponse, error) {
+	var resp DomainListResponse
+	if err := c.getAuth("/api/v1/admin/domains", token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// CreateDomain creates a new domain (admin only).
+func (c *Client) CreateDomain(token string, name, serverType string) error {
+	body := map[string]interface{}{
+		"name":        name,
+		"server_type": serverType,
+	}
+	return c.postAuth("/api/v1/admin/domains", token, body, nil)
+}
+
+// DeleteDomain deletes a domain by ID (admin only).
+func (c *Client) DeleteDomain(token string, id uint) error {
+	return c.deleteAuth(fmt.Sprintf("/api/v1/admin/domains/%d", id), token)
+}
+
+// ── Admin Mailboxes ──────────────────────────────────────────────────
+
+type MailboxItem struct {
+	ID          uint   `json:"id"`
+	Address     string `json:"address"`
+	DisplayName string `json:"display_name"`
+	DomainID    uint   `json:"domain_id"`
+	Active      bool   `json:"active"`
+}
+
+type MailboxListResponse struct {
+	Data []MailboxItem `json:"data"`
+}
+
+// ListMailboxes returns all mailboxes (admin only).
+func (c *Client) ListMailboxes(token string) (*MailboxListResponse, error) {
+	var resp MailboxListResponse
+	if err := c.getAuth("/api/v1/admin/mailboxes", token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// CreateMailbox creates a new mailbox (admin only).
+func (c *Client) CreateMailbox(token string, address, displayName, password string, domainID uint) error {
+	body := map[string]interface{}{
+		"address":      address,
+		"display_name": displayName,
+		"password":     password,
+		"domain_id":    domainID,
+	}
+	return c.postAuth("/api/v1/admin/mailboxes", token, body, nil)
+}
+
+// DeleteMailbox deletes a mailbox by ID (admin only).
+func (c *Client) DeleteMailbox(token string, id uint) error {
+	return c.deleteAuth(fmt.Sprintf("/api/v1/admin/mailboxes/%d", id), token)
+}
+
 // ── HTTP helpers ──────────────────────────────────────────────────────
 
 func (c *Client) get(path string, out interface{}) error {
@@ -270,6 +345,28 @@ func (c *Client) post(path string, body interface{}, out interface{}) error {
 	}
 	defer resp.Body.Close()
 	return c.decodeResponse(resp, out)
+}
+
+func (c *Client) postAuth(path, token string, body interface{}, out interface{}) error {
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", c.baseURL+path, bytes.NewReader(jsonBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("POST %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if out != nil {
+		return c.decodeResponse(resp, out)
+	}
+	return c.checkStatus(resp)
 }
 
 func (c *Client) patchAuth(path, token string, body interface{}, out interface{}) error {

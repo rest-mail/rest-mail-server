@@ -15,7 +15,15 @@ func main() {
 	flag.Parse()
 
 	client := apiclient.New(*apiURL)
-	model := tui.NewModel(client)
+
+	// Login as admin to get a token for API calls
+	loginResp, err := client.Login("admin@mail3.test", "password123")
+	token := ""
+	if err == nil {
+		token = loginResp.Data.AccessToken
+	}
+
+	model := tui.NewModel(client, token)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

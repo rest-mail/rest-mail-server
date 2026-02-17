@@ -23,6 +23,7 @@ const (
 // Model is the top-level Bubble Tea model.
 type Model struct {
 	api    *apiclient.Client
+	token  string
 	width  int
 	height int
 
@@ -45,9 +46,10 @@ type Model struct {
 }
 
 // NewModel creates the root TUI model.
-func NewModel(api *apiclient.Client) Model {
+func NewModel(api *apiclient.Client, token string) Model {
 	return Model{
-		api: api,
+		api:   api,
+		token: token,
 		menuItems: []string{
 			"Domains     - Manage mail domains",
 			"Users       - Manage mailboxes and users",
@@ -55,11 +57,11 @@ func NewModel(api *apiclient.Client) Model {
 			"Compose     - Send mail as any user",
 		},
 		menuIdx: 0,
-		domains: NewDomainsModel(api),
-		users:   NewUsersModel(api),
+		domains: NewDomainsModel(api, token),
+		users:   NewUsersModel(api, token),
 		inbox:   NewInboxModel(api),
 		compose: NewComposeModel(api),
-		status:  NewStatusModel(api),
+		status:  NewStatusModel(api, token),
 	}
 }
 
@@ -240,17 +242,19 @@ func (m Model) renderStatusBar() string {
 		colWidth = 20
 	}
 
-	cols := make([]string, 3)
-	domains := []struct {
-		name   string
-		stype  string
-	}{
-		{"mail1.test", "traditional"},
-		{"mail2.test", "traditional"},
-		{"mail3.test", "rest-mail"},
+	domains := m.domains.domains
+	if len(domains) == 0 {
+		return statusBarStyle.Width(m.width).Render("  No domains loaded")
 	}
 
-	for i, d := range domains {
+	// Show up to 3 domains
+	maxCols := 3
+	if len(domains) < maxCols {
+		maxCols = len(domains)
+	}
+	cols := make([]string, maxCols)
+	for i := 0; i < maxCols; i++ {
+		d := domains[i]
 		st := m.status.GetDomainStatus(d.name)
 		dot := successDot
 		statusText := "ok"
@@ -258,9 +262,8 @@ func (m Model) renderStatusBar() string {
 			dot = dangerDot
 			statusText = "unreachable"
 		}
-
 		col := fmt.Sprintf(" %s (%s)\n %s %d users\n %s %d messages\n %s status: %s",
-			d.name, d.stype,
+			d.name, d.serverType,
 			dot, st.users,
 			dot, st.messages,
 			dot, statusText,

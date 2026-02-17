@@ -11,6 +11,7 @@ import (
 )
 
 type userItem struct {
+	id          uint
 	email       string
 	displayName string
 	domain      string
@@ -21,9 +22,18 @@ type usersLoadedMsg struct {
 	err   error
 }
 
+type userDeletedMsg struct {
+	err error
+}
+
+type userCreatedMsg struct {
+	err error
+}
+
 // UsersModel handles user/mailbox management.
 type UsersModel struct {
 	api    *apiclient.Client
+	token  string
 	users  []userItem
 	cursor int
 	loading bool
@@ -37,7 +47,7 @@ type UsersModel struct {
 	createFocus  int
 }
 
-func NewUsersModel(api *apiclient.Client) UsersModel {
+func NewUsersModel(api *apiclient.Client, token string) UsersModel {
 	ei := textinput.New()
 	ei.Placeholder = "user@domain.test"
 	ei.CharLimit = 255
@@ -56,6 +66,7 @@ func NewUsersModel(api *apiclient.Client) UsersModel {
 
 	return UsersModel{
 		api:        api,
+		token:      token,
 		emailInput: ei,
 		nameInput:  ni,
 		passInput:  pi,
@@ -67,17 +78,25 @@ func (m UsersModel) Init() tea.Cmd {
 }
 
 func (m UsersModel) loadUsers() tea.Msg {
-	// TODO: Call admin API to list mailboxes
-	return usersLoadedMsg{
-		users: []userItem{
-			{email: "alice@mail1.test", displayName: "Alice", domain: "mail1.test"},
-			{email: "bob@mail1.test", displayName: "Bob", domain: "mail1.test"},
-			{email: "charlie@mail2.test", displayName: "Charlie", domain: "mail2.test"},
-			{email: "diana@mail2.test", displayName: "Diana", domain: "mail2.test"},
-			{email: "eve@mail3.test", displayName: "Eve", domain: "mail3.test"},
-			{email: "frank@mail3.test", displayName: "Frank", domain: "mail3.test"},
-		},
+	resp, err := m.api.ListMailboxes(m.token)
+	if err != nil {
+		return usersLoadedMsg{err: err}
 	}
+	var items []userItem
+	for _, mb := range resp.Data {
+		parts := strings.SplitN(mb.Address, "@", 2)
+		domain := ""
+		if len(parts) > 1 {
+			domain = parts[1]
+		}
+		items = append(items, userItem{
+			id:          mb.ID,
+			email:       mb.Address,
+			displayName: mb.DisplayName,
+			domain:      domain,
+		})
+	}
+	return usersLoadedMsg{users: items}
 }
 
 func (m UsersModel) Update(msg tea.Msg) (UsersModel, tea.Cmd) {
@@ -89,6 +108,19 @@ func (m UsersModel) Update(msg tea.Msg) (UsersModel, tea.Cmd) {
 			m.users = msg.users
 		}
 		return m, nil
+
+	case userDeletedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		return m, m.loadUsers
+
+	case userCreatedMsg:
+		m.creating = false
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		return m, m.loadUsers
 
 	case tea.KeyMsg:
 		if m.creating {
@@ -110,11 +142,11 @@ func (m UsersModel) Update(msg tea.Msg) (UsersModel, tea.Cmd) {
 			m.emailInput.Focus()
 			return m, textinput.Blink
 		case "d", "delete":
-			// TODO: Delete user via API
 			if len(m.users) > 0 {
-				m.users = append(m.users[:m.cursor], m.users[m.cursor+1:]...)
-				if m.cursor >= len(m.users) && m.cursor > 0 {
-					m.cursor--
+				u := m.users[m.cursor]
+				return m, func() tea.Msg {
+					err := m.api.DeleteMailbox(m.token, u.id)
+					return userDeletedMsg{err: err}
 				}
 			}
 		case "r":
@@ -148,20 +180,17 @@ func (m UsersModel) updateCreating(msg tea.KeyMsg) (UsersModel, tea.Cmd) {
 		return m, textinput.Blink
 	case "enter":
 		if m.createFocus == 2 && m.emailInput.Value() != "" {
-			// TODO: Call create API
 			email := m.emailInput.Value()
 			name := m.nameInput.Value()
-			parts := strings.SplitN(email, "@", 2)
-			domain := ""
-			if len(parts) > 1 {
-				domain = parts[1]
-			}
-			m.users = append(m.users, userItem{email: email, displayName: name, domain: domain})
+			pass := m.passInput.Value()
 			m.creating = false
 			m.emailInput.Reset()
 			m.nameInput.Reset()
 			m.passInput.Reset()
-			return m, nil
+			return m, func() tea.Msg {
+				err := m.api.CreateMailbox(m.token, email, name, pass, 0)
+				return userCreatedMsg{err: err}
+			}
 		}
 		// Advance to next field
 		m.createFocus = (m.createFocus + 1) % 3
