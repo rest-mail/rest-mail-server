@@ -13,7 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
-	_ "github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters
+	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
 	"gorm.io/gorm"
 )
 
@@ -41,13 +41,22 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 	mailboxH := handlers.NewMailboxHandler(db)
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()
-	messageH := handlers.NewMessageHandler(db, broker)
 	eventH := handlers.NewEventHandler(db, broker, jwtService)
 	accountH := handlers.NewAccountHandler(db)
 	searchH := handlers.NewSearchHandler(db)
 	webmailH := handlers.NewWebmailAccountHandler(db)
 	restmailH := handlers.NewRestmailHandler(db)
+
+	// Register DB-backed filters that need a database connection.
+	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
+	pipeline.DefaultRegistry.Register("vacation", filters.NewVacation(db))
+	pipeline.DefaultRegistry.Register("domain_allowlist", filters.NewDomainAllowlist(db))
+	pipeline.DefaultRegistry.Register("contact_whitelist", filters.NewContactWhitelist(db))
+	pipeline.DefaultRegistry.Register("recipient_check", filters.NewRecipientCheck(db))
+	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
+
 	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
+	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine)
 	pipelineH := handlers.NewPipelineHandler(db, pipelineEngine)
 
 	// ═══════════════════════════════════════════════════════════════

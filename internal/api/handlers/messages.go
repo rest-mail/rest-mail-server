@@ -14,16 +14,18 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
 
 type MessageHandler struct {
 	db     *gorm.DB
 	broker *SSEBroker
+	engine *pipeline.Engine
 }
 
-func NewMessageHandler(db *gorm.DB, broker *SSEBroker) *MessageHandler {
-	return &MessageHandler{db: db, broker: broker}
+func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine) *MessageHandler {
+	return &MessageHandler{db: db, broker: broker, engine: engine}
 }
 
 // ListMessages returns messages in a folder with cursor-based pagination.
@@ -315,6 +317,49 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build raw RFC 2822 message for outbound queue entries.
+	var rawMessage string
+	{
+		var b strings.Builder
+		b.WriteString("From: ")
+		if senderMailbox.DisplayName != "" {
+			b.WriteString(fmt.Sprintf("%q <%s>", senderMailbox.DisplayName, req.From))
+		} else {
+			b.WriteString(req.From)
+		}
+		b.WriteString("\r\n")
+		b.WriteString("To: " + strings.Join(req.To, ", ") + "\r\n")
+		if len(req.Cc) > 0 {
+			b.WriteString("Cc: " + strings.Join(req.Cc, ", ") + "\r\n")
+		}
+		b.WriteString("Subject: " + req.Subject + "\r\n")
+		b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
+		b.WriteString("Message-ID: " + messageID + "\r\n")
+		b.WriteString("MIME-Version: 1.0\r\n")
+
+		if req.BodyText != "" && req.BodyHTML != "" {
+			boundary := fmt.Sprintf("=_restmail_%d", now.UnixNano())
+			b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
+			b.WriteString("\r\n")
+			b.WriteString("--" + boundary + "\r\n")
+			b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+			b.WriteString(req.BodyText + "\r\n")
+			b.WriteString("--" + boundary + "\r\n")
+			b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
+			b.WriteString(req.BodyHTML + "\r\n")
+			b.WriteString("--" + boundary + "--\r\n")
+		} else if req.BodyHTML != "" {
+			b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
+			b.WriteString("\r\n")
+			b.WriteString(req.BodyHTML + "\r\n")
+		} else {
+			b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+			b.WriteString("\r\n")
+			b.WriteString(req.BodyText + "\r\n")
+		}
+		rawMessage = b.String()
+	}
+
 	// Deliver to each recipient in to + cc + bcc
 	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
 	allRecipients = append(allRecipients, req.To...)
@@ -342,16 +387,19 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			h.db.Create(&inboxMsg)
 		} else {
-			// Remote delivery - queue it
+			// Remote delivery - queue it with raw message and message reference
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
 				recipientDomain = rcpt[idx+1:]
 			}
+			msgID := sentMsg.ID
 			queueEntry := models.OutboundQueue{
-				Sender:    req.From,
-				Recipient: rcpt,
-				Domain:    recipientDomain,
-				Status:    "pending",
+				MessageID:  &msgID,
+				Sender:     req.From,
+				Recipient:  rcpt,
+				Domain:     recipientDomain,
+				RawMessage: rawMessage,
+				Status:     "pending",
 			}
 			h.db.Create(&queueEntry)
 		}
@@ -398,6 +446,137 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		respond.Error(w, http.StatusBadRequest, "bad_request", "mailbox_id or address required")
 		return
 	}
+
+	// ── Pipeline execution ───────────────────────────────────────────
+	// Convert delivery request to pipeline.EmailJSON for filter processing.
+	var toAddrs []pipeline.Address
+	if req.RecipientsTo != nil {
+		var toStrings []string
+		if json.Unmarshal(req.RecipientsTo, &toStrings) == nil {
+			for _, addr := range toStrings {
+				toAddrs = append(toAddrs, pipeline.Address{Address: addr})
+			}
+		}
+	}
+	var ccAddrs []pipeline.Address
+	if req.RecipientsCc != nil {
+		var ccStrings []string
+		if json.Unmarshal(req.RecipientsCc, &ccStrings) == nil {
+			for _, addr := range ccStrings {
+				ccAddrs = append(ccAddrs, pipeline.Address{Address: addr})
+			}
+		}
+	}
+
+	emailJSON := &pipeline.EmailJSON{
+		Envelope: pipeline.Envelope{
+			MailFrom:  req.Sender,
+			RcptTo:    []string{mailbox.Address},
+			Direction: "inbound",
+		},
+		Headers: pipeline.Headers{
+			From:      []pipeline.Address{{Name: req.SenderName, Address: req.Sender}},
+			To:        toAddrs,
+			Cc:        ccAddrs,
+			Subject:   req.Subject,
+			MessageID: req.MessageID,
+			InReplyTo: req.InReplyTo,
+		},
+		Body: pipeline.Body{
+			ContentType: "text/plain",
+			Content:     req.BodyText,
+		},
+	}
+	// If there is both text and HTML, use multipart/alternative parts.
+	if req.BodyText != "" && req.BodyHTML != "" {
+		emailJSON.Body = pipeline.Body{
+			ContentType: "multipart/alternative",
+			Parts: []pipeline.Body{
+				{ContentType: "text/plain; charset=utf-8", Content: req.BodyText},
+				{ContentType: "text/html; charset=utf-8", Content: req.BodyHTML},
+			},
+		}
+	} else if req.BodyHTML != "" {
+		emailJSON.Body = pipeline.Body{
+			ContentType: "text/html",
+			Content:     req.BodyHTML,
+		}
+	}
+
+	// Look up the domain's inbound pipeline config from DB.
+	var pipelineCfg *pipeline.PipelineConfig
+	var dbPipeline models.Pipeline
+	if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", mailbox.DomainID, "inbound", true).
+		First(&dbPipeline).Error; err == nil {
+		// Found a DB-backed pipeline — parse its filter list.
+		var filterConfigs []pipeline.FilterConfig
+		if jsonErr := json.Unmarshal(dbPipeline.Filters, &filterConfigs); jsonErr == nil {
+			pipelineCfg = &pipeline.PipelineConfig{
+				ID:        dbPipeline.ID,
+				DomainID:  dbPipeline.DomainID,
+				Direction: dbPipeline.Direction,
+				Filters:   filterConfigs,
+				Active:    dbPipeline.Active,
+			}
+		}
+	}
+	// Fall back to the default inbound pipeline if none was found in the DB.
+	if pipelineCfg == nil {
+		pipelineCfg = pipeline.DefaultInboundPipeline(mailbox.DomainID)
+	}
+
+	// Run the pipeline.
+	if h.engine != nil {
+		pipelineResult, pipeErr := h.engine.Execute(r.Context(), pipelineCfg, emailJSON)
+		if pipeErr != nil {
+			respond.Error(w, http.StatusInternalServerError, "pipeline_error", "Pipeline execution failed")
+			return
+		}
+
+		switch pipelineResult.FinalAction {
+		case pipeline.ActionReject:
+			rejectMsg := pipelineResult.RejectMsg
+			if rejectMsg == "" {
+				rejectMsg = "Message rejected by policy"
+			}
+			respond.Error(w, 550, "rejected", rejectMsg)
+			return
+
+		case pipeline.ActionQuarantine:
+			// Insert into quarantine table instead of delivering.
+			preview := req.BodyText
+			if len(preview) > 200 {
+				preview = preview[:200]
+			}
+			qItem := models.Quarantine{
+				MailboxID:        mailbox.ID,
+				Sender:           req.Sender,
+				Subject:          req.Subject,
+				BodyPreview:      preview,
+				RawMessage:       req.RawMessage,
+				QuarantineReason: "pipeline",
+				ReceivedAt:       time.Now(),
+				ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
+			}
+			h.db.Create(&qItem)
+			respond.Data(w, http.StatusOK, map[string]string{"status": "quarantined"})
+			return
+
+		case pipeline.ActionDiscard:
+			respond.Data(w, http.StatusOK, map[string]string{"status": "discarded"})
+			return
+
+		case pipeline.ActionDefer:
+			respond.Error(w, 451, "deferred", "Try again later")
+			return
+
+		case pipeline.ActionContinue:
+			// Update emailJSON from pipeline result in case transforms modified it.
+			emailJSON = pipelineResult.FinalEmail
+		}
+	}
+
+	// ── Insert message (continue action) ────────────────────────────
 
 	sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
 
