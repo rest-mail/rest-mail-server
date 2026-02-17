@@ -324,12 +324,20 @@ func (s *Session) handleMAIL(arg string) {
 		return
 	}
 
-	// On submission port, verify sender matches authenticated user
+	// On submission port, verify sender matches authenticated user or a linked account
 	if s.isSubmission && s.auth.authenticated {
 		if from != s.auth.email {
-			// TODO: Check linked accounts too
-			slog.Warn("smtp: sender mismatch", "auth_user", s.auth.email, "mail_from", from)
-			// Allow for now, strict enforcement later
+			// Check linked accounts
+			var count int64
+			s.db.Table("linked_accounts").
+				Joins("JOIN mailboxes ON mailboxes.id = linked_accounts.mailbox_id").
+				Where("linked_accounts.webmail_account_id = ? AND mailboxes.address = ?", s.auth.accountID, from).
+				Count(&count)
+			if count == 0 {
+				slog.Warn("smtp: sender not authorized", "auth_user", s.auth.email, "mail_from", from)
+				s.reply(553, "5.7.1 Sender address not authorized for this account")
+				return
+			}
 		}
 	}
 

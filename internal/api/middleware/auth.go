@@ -50,8 +50,8 @@ func GetClaims(r *http.Request) *auth.Claims {
 }
 
 // AdminOnly restricts access to admin users.
-// For now, all authenticated users are considered admins in the dev environment.
-// In production, this would check an admin flag on the mailbox/account.
+// Checks the is_admin flag on the JWT claims (set from WebmailAccount.IsAdmin).
+// In development mode, all authenticated users are allowed through.
 func AdminOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := GetClaims(r)
@@ -59,7 +59,10 @@ func AdminOnly(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 			return
 		}
-		// TODO: Check admin role when RBAC is implemented
+		if !claims.IsAdmin {
+			writeError(w, http.StatusForbidden, "forbidden", "Admin access required")
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }

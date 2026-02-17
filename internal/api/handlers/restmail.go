@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
 
@@ -13,11 +17,12 @@ import (
 // These are unauthenticated (like SMTP — any server can deliver to you).
 // Authentication is via DKIM/SPF/DMARC verification, not API keys.
 type RestmailHandler struct {
-	db *gorm.DB
+	db     *gorm.DB
+	engine *pipeline.Engine
 }
 
-func NewRestmailHandler(db *gorm.DB) *RestmailHandler {
-	return &RestmailHandler{db: db}
+func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine) *RestmailHandler {
+	return &RestmailHandler{db: db, engine: engine}
 }
 
 // Capabilities returns the RESTMAIL server capabilities.
@@ -81,10 +86,108 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Verify DKIM/SPF/DMARC here
-
 	var delivered []string
 	var failed []string
+
+	// Build pipeline EmailJSON from the request for inbound filtering
+	emailJSON := &pipeline.EmailJSON{
+		Headers: pipeline.Headers{
+			From:      []pipeline.Address{{Address: req.From}},
+			To:        func() []pipeline.Address { a := make([]pipeline.Address, len(req.To)); for i, r := range req.To { a[i] = pipeline.Address{Address: r} }; return a }(),
+			Subject:   req.Subject,
+			MessageID: req.MessageID,
+		},
+		Body: pipeline.Body{
+			ContentType: "text/plain",
+			Content:     req.BodyText,
+			Parts: []pipeline.Body{
+				{ContentType: "text/plain", Content: req.BodyText},
+				{ContentType: "text/html", Content: req.BodyHTML},
+			},
+		},
+		Envelope: pipeline.Envelope{
+			MailFrom:  req.From,
+			RcptTo:    req.To,
+			Direction: "inbound",
+		},
+	}
+
+	// Look up inbound pipeline for the recipient domain
+	var domainName string
+	if len(req.To) > 0 {
+		if idx := strings.LastIndex(req.To[0], "@"); idx >= 0 {
+			domainName = req.To[0][idx+1:]
+		}
+	}
+
+	var pipelineCfg *pipeline.PipelineConfig
+	if domainName != "" {
+		var domain models.Domain
+		if err := h.db.Where("name = ?", domainName).First(&domain).Error; err == nil {
+			var dbPipeline models.Pipeline
+			if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", domain.ID, "inbound", true).
+				First(&dbPipeline).Error; err == nil {
+				var filterConfigs []pipeline.FilterConfig
+				if jsonErr := json.Unmarshal(dbPipeline.Filters, &filterConfigs); jsonErr == nil {
+					pipelineCfg = &pipeline.PipelineConfig{
+						ID:        dbPipeline.ID,
+						DomainID:  dbPipeline.DomainID,
+						Direction: dbPipeline.Direction,
+						Filters:   filterConfigs,
+						Active:    dbPipeline.Active,
+					}
+				}
+			} else {
+				pipelineCfg = pipeline.DefaultInboundPipeline(domain.ID)
+			}
+		}
+	}
+
+	// Run the inbound pipeline
+	if pipelineCfg != nil && h.engine != nil {
+		result, err := h.engine.Execute(context.Background(), pipelineCfg, emailJSON)
+		if err != nil {
+			slog.Error("restmail: pipeline error", "error", err)
+			// Continue delivery on pipeline error (fail-open)
+		} else {
+			switch result.FinalAction {
+			case pipeline.ActionReject:
+				respond.Error(w, http.StatusForbidden, "rejected", "Message rejected by policy")
+				return
+			case pipeline.ActionDiscard:
+				respond.Data(w, http.StatusCreated, map[string]interface{}{
+					"delivered": req.To,
+					"failed":    []string{},
+				})
+				return
+			case pipeline.ActionQuarantine:
+				for _, rcpt := range req.To {
+					var mailbox models.Mailbox
+					if h.db.Where("address = ? AND active = ?", rcpt, true).First(&mailbox).Error == nil {
+						preview := req.BodyText
+						if len(preview) > 200 {
+							preview = preview[:200]
+						}
+						h.db.Create(&models.Quarantine{
+							MailboxID:        mailbox.ID,
+							Sender:           req.From,
+							Subject:          req.Subject,
+							BodyPreview:      preview,
+							QuarantineReason: "pipeline",
+						})
+					}
+				}
+				respond.Data(w, http.StatusCreated, map[string]interface{}{
+					"delivered": []string{},
+					"failed":    req.To,
+				})
+				return
+			}
+			if result.FinalEmail != nil {
+				emailJSON = result.FinalEmail
+			}
+		}
+	}
 
 	for _, rcpt := range req.To {
 		var mailbox models.Mailbox
@@ -94,7 +197,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check quota
-		if mailbox.QuotaUsedBytes >= mailbox.QuotaBytes {
+		if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes >= mailbox.QuotaBytes {
 			failed = append(failed, rcpt)
 			continue
 		}

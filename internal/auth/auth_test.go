@@ -24,7 +24,7 @@ func newTestService() *JWTService {
 func TestGenerateTokenPair(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestGenerateTokenPair(t *testing.T) {
 func TestValidateToken(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestValidateToken_Expired(t *testing.T) {
 	// Use negative durations so the token is already expired at creation time.
 	svc := NewJWTService(testSecret, -1*time.Second, -1*time.Second)
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestValidateToken_Expired(t *testing.T) {
 func TestValidateToken_WrongSecret(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}

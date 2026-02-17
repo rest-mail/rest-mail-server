@@ -21,6 +21,7 @@ type Claims struct {
 	Email            string `json:"email"`
 	WebmailAccountID uint   `json:"webmail_account_id"`
 	MailboxID        uint   `json:"mailbox_id"`
+	IsAdmin          bool   `json:"is_admin,omitempty"`
 }
 
 // TokenPair contains both access and refresh tokens.
@@ -47,7 +48,7 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 }
 
 // GenerateTokenPair creates both access and refresh tokens for a user.
-func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAccountID uint) (*TokenPair, error) {
+func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAccountID uint, isAdmin bool) (*TokenPair, error) {
 	now := time.Now()
 
 	// Access token
@@ -61,6 +62,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		Email:            email,
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
+		IsAdmin:          isAdmin,
 	}
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -80,6 +82,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		Email:            email,
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
+		IsAdmin:          isAdmin,
 	}
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)

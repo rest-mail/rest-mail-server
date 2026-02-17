@@ -76,7 +76,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate tokens
-	tokens, err := h.jwtService.GenerateTokenPair(mailbox.ID, mailbox.Address, account.ID)
+	tokens, err := h.jwtService.GenerateTokenPair(mailbox.ID, mailbox.Address, account.ID, account.IsAdmin)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
@@ -133,7 +133,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID)
+	tokens, err := h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.IsAdmin)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return

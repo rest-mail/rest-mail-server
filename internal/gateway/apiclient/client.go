@@ -199,6 +199,26 @@ func (c *Client) DeleteMessage(token string, msgID uint) error {
 	return c.deleteAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token)
 }
 
+// ── Quota ─────────────────────────────────────────────────────────────
+
+type QuotaResponse struct {
+	Data struct {
+		QuotaBytes     int64   `json:"quota_bytes"`
+		QuotaUsedBytes int64   `json:"quota_used_bytes"`
+		MessageCount   int64   `json:"message_count"`
+		PercentUsed    float64 `json:"percent_used"`
+	} `json:"data"`
+}
+
+// GetQuota returns quota usage for an account.
+func (c *Client) GetQuota(token string, accountID uint) (*QuotaResponse, error) {
+	var resp QuotaResponse
+	if err := c.getAuth(fmt.Sprintf("/api/v1/accounts/%d/quota", accountID), token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // ── Search ────────────────────────────────────────────────────────────
 
 // Search performs full-text search across messages.

@@ -5,6 +5,7 @@ import "time"
 type WebmailAccount struct {
 	ID               uint      `gorm:"primaryKey" json:"id"`
 	PrimaryMailboxID uint      `gorm:"not null;uniqueIndex" json:"primary_mailbox_id"`
+	IsAdmin          bool      `gorm:"default:false" json:"is_admin"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 

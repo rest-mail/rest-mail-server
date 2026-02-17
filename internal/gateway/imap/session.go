@@ -130,6 +130,10 @@ func (s *Session) Handle() {
 			s.tagged(tag, "OK", "CLOSE completed")
 		case "EXPUNGE":
 			s.handleExpunge(tag)
+		case "GETQUOTA":
+			s.handleGetQuota(tag, args)
+		case "GETQUOTAROOT":
+			s.handleGetQuotaRoot(tag, args)
 		case "IDLE":
 			s.handleIdle(tag)
 		case "LOGOUT":
@@ -143,7 +147,7 @@ func (s *Session) Handle() {
 }
 
 func (s *Session) handleCapability(tag string) {
-	caps := "IMAP4rev1"
+	caps := "IMAP4rev1 QUOTA"
 	if !s.tls_ && s.tlsConfig != nil {
 		caps += " STARTTLS"
 	}
@@ -811,6 +815,52 @@ func (s *Session) handleCreate(tag, args string) {
 	// Folders are implicit — they exist once a message is moved into them.
 	// CREATE just validates and acknowledges.
 	s.tagged(tag, "OK", "CREATE completed")
+}
+
+// handleGetQuota returns quota for a named quota root (RFC 2087).
+func (s *Session) handleGetQuota(tag, args string) {
+	if !s.auth.authenticated {
+		s.tagged(tag, "NO", "Not authenticated")
+		return
+	}
+
+	quota, err := s.api.GetQuota(s.auth.token, s.auth.accountID)
+	if err != nil {
+		s.tagged(tag, "NO", "Failed to get quota")
+		return
+	}
+
+	// Report in KB (IMAP QUOTA uses 1024-byte units)
+	used := quota.Data.QuotaUsedBytes / 1024
+	limit := quota.Data.QuotaBytes / 1024
+	s.send("* QUOTA \"\" (STORAGE %d %d)", used, limit)
+	s.tagged(tag, "OK", "GETQUOTA completed")
+}
+
+// handleGetQuotaRoot returns the quota root for a mailbox (RFC 2087).
+func (s *Session) handleGetQuotaRoot(tag, args string) {
+	if !s.auth.authenticated {
+		s.tagged(tag, "NO", "Not authenticated")
+		return
+	}
+
+	mailbox := strings.Trim(args, "\" ")
+	if mailbox == "" {
+		s.tagged(tag, "BAD", "Missing mailbox name")
+		return
+	}
+
+	quota, err := s.api.GetQuota(s.auth.token, s.auth.accountID)
+	if err != nil {
+		s.tagged(tag, "NO", "Failed to get quota")
+		return
+	}
+
+	used := quota.Data.QuotaUsedBytes / 1024
+	limit := quota.Data.QuotaBytes / 1024
+	s.send("* QUOTAROOT %s \"\"", mailbox)
+	s.send("* QUOTA \"\" (STORAGE %d %d)", used, limit)
+	s.tagged(tag, "OK", "GETQUOTAROOT completed")
 }
 
 func (s *Session) handleIdle(tag string) {

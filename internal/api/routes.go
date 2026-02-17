@@ -45,7 +45,6 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 	accountH := handlers.NewAccountHandler(db)
 	searchH := handlers.NewSearchHandler(db)
 	webmailH := handlers.NewWebmailAccountHandler(db)
-	restmailH := handlers.NewRestmailHandler(db)
 	attachmentH := handlers.NewAttachmentHandler(db)
 	contactH := handlers.NewContactHandler(db)
 	vacationH := handlers.NewVacationHandler(db)
@@ -65,6 +64,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine)
 	pipelineH := handlers.NewPipelineHandler(db, pipelineEngine)
+	restmailH := handlers.NewRestmailHandler(db, pipelineEngine)
 
 	// ═══════════════════════════════════════════════════════════════
 	// Health (no auth)

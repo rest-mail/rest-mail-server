@@ -34,7 +34,7 @@ func parseErrorResponse(t *testing.T, rr *httptest.ResponseRecorder) ErrorRespon
 
 func TestJWTMiddleware_ValidToken(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7)
+	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7, false)
 	if err != nil {
 		t.Fatalf("failed to generate token pair: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestJWTMiddleware_InvalidToken(t *testing.T) {
 func TestJWTMiddleware_ExpiredToken(t *testing.T) {
 	// Create a JWTService with a negative access expiry so the token is immediately expired.
 	jwtSvc := newTestJWTService(-1 * time.Second)
-	pair, err := jwtSvc.GenerateTokenPair(1, "expired@example.com", 1)
+	pair, err := jwtSvc.GenerateTokenPair(1, "expired@example.com", 1, false)
 	if err != nil {
 		t.Fatalf("failed to generate token pair: %v", err)
 	}
@@ -185,6 +185,7 @@ func TestAdminOnly_Authenticated(t *testing.T) {
 		Email:            "admin@example.com",
 		WebmailAccountID: 1,
 		MailboxID:        10,
+		IsAdmin:          true,
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
