@@ -33,6 +33,8 @@ export function useSSE(
 
     es.addEventListener('new_message', handleEvent);
     es.addEventListener('folder_update', handleEvent);
+    es.addEventListener('message_updated', handleEvent);
+    es.addEventListener('message_deleted', handleEvent);
 
     es.onerror = () => {
       // EventSource auto-reconnects on error

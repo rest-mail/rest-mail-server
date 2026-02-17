@@ -70,6 +70,17 @@ func (f *spfCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 		authResult,
 	)
 
+	// Also write to Extra for DMARC filter consumption
+	if email.Headers.Extra == nil {
+		email.Headers.Extra = make(map[string]string)
+	}
+	existing := email.Headers.Extra["Authentication-Results"]
+	if existing != "" {
+		email.Headers.Extra["Authentication-Results"] = existing + "; " + authResult
+	} else {
+		email.Headers.Extra["Authentication-Results"] = authResult
+	}
+
 	// SPF alone doesn't reject (DMARC decides)
 	return &pipeline.FilterResult{
 		Type:   pipeline.FilterTypeAction,

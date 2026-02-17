@@ -263,6 +263,59 @@ func parseFlags(s string) []string {
 	return flags
 }
 
+// extractHeaderFieldNames extracts the header field names from BODY[HEADER.FIELDS (...)].
+func extractHeaderFieldNames(dataItems string) []string {
+	// Find the parenthesized list after HEADER.FIELDS
+	start := strings.Index(strings.ToUpper(dataItems), "HEADER.FIELDS")
+	if start < 0 {
+		return nil
+	}
+	rest := dataItems[start:]
+	parenStart := strings.Index(rest, "(")
+	parenEnd := strings.Index(rest, ")")
+	if parenStart < 0 || parenEnd < 0 {
+		return nil
+	}
+	fieldStr := rest[parenStart+1 : parenEnd]
+	var fields []string
+	for _, f := range strings.Fields(fieldStr) {
+		fields = append(fields, strings.TrimSpace(f))
+	}
+	return fields
+}
+
+// filterHeaders extracts only the requested headers from a raw RFC 2822 message.
+func filterHeaders(raw string, fields []string) string {
+	headerEnd := strings.Index(raw, "\r\n\r\n")
+	headerSection := raw
+	if headerEnd >= 0 {
+		headerSection = raw[:headerEnd]
+	}
+
+	// Build a set of requested field names (case-insensitive)
+	wanted := make(map[string]bool)
+	for _, f := range fields {
+		wanted[strings.ToLower(f)] = true
+	}
+
+	var result strings.Builder
+	for _, line := range strings.Split(headerSection, "\r\n") {
+		if line == "" {
+			continue
+		}
+		colonIdx := strings.Index(line, ":")
+		if colonIdx < 0 {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(line[:colonIdx]))
+		if wanted[name] {
+			result.WriteString(line + "\r\n")
+		}
+	}
+	result.WriteString("\r\n") // blank line to end headers
+	return result.String()
+}
+
 // matchIMAPPattern matches a folder name against an IMAP LIST pattern.
 // '*' matches any characters including hierarchy separator.
 // '%' matches any characters except hierarchy separator '/'.

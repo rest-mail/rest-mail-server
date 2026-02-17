@@ -122,6 +122,18 @@ export async function searchMessages(
   return request(path);
 }
 
+// Quota
+export interface QuotaData {
+  quota_bytes: number;
+  quota_used_bytes: number;
+  message_count: number;
+  percent_used: number;
+}
+
+export async function getAccountQuota(accountId: number): Promise<{ data: QuotaData }> {
+  return request(`${BASE}/accounts/${accountId}/quota`);
+}
+
 // Send
 export async function sendMessage(data: {
   from: string;

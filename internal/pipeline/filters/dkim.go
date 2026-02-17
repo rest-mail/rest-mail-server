@@ -66,6 +66,14 @@ func (f *dkimVerifyFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 	}
 	modified.Headers.Extra["Authentication-Results"] = "restmail; dkim=" + result
 
+	if modified.Headers.Raw == nil {
+		modified.Headers.Raw = make(map[string][]string)
+	}
+	modified.Headers.Raw["Authentication-Results"] = append(
+		modified.Headers.Raw["Authentication-Results"],
+		"restmail; dkim="+result,
+	)
+
 	return &pipeline.FilterResult{
 		Type:    pipeline.FilterTypeTransform,
 		Action:  pipeline.ActionContinue,

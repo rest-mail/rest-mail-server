@@ -69,10 +69,19 @@ func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 	// Parse DMARC policy
 	policy := parseDMARCPolicy(dmarcRecord)
 
-	// Check Authentication-Results for SPF and DKIM outcomes
+	// Check Authentication-Results from both Extra and Raw maps
 	authResults := ""
 	if email.Headers.Extra != nil {
 		authResults = email.Headers.Extra["Authentication-Results"]
+	}
+	// Also check Raw headers for results added by SPF/DKIM filters
+	if email.Headers.Raw != nil {
+		for _, ar := range email.Headers.Raw["Authentication-Results"] {
+			if authResults != "" {
+				authResults += "; "
+			}
+			authResults += ar
+		}
 	}
 
 	spfPass := strings.Contains(authResults, "spf=pass")

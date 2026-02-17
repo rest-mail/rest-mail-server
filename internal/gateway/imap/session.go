@@ -482,6 +482,23 @@ func (s *Session) handleFetch(tag, args string) {
 			s.send("* %d FETCH (FLAGS (%s) BODY[TEXT] {%d}", seq, flags, len(body))
 			fmt.Fprintf(s.writer, "%s)\r\n", body)
 			s.writer.Flush()
+		} else if strings.Contains(dataItems, "BODY[HEADER.FIELDS") || strings.Contains(dataItems, "BODY.PEEK[HEADER.FIELDS") {
+			detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+			if err != nil {
+				continue
+			}
+			raw := buildRawMessage(detail.Data)
+			// Extract requested header fields
+			requested := extractHeaderFieldNames(dataItems)
+			headers := filterHeaders(raw, requested)
+			flags := buildFlags(msg)
+			fetchItem := "BODY[HEADER.FIELDS (" + strings.Join(requested, " ") + ")]"
+			if strings.Contains(dataItems, "BODY.PEEK") {
+				fetchItem = "BODY.PEEK[HEADER.FIELDS (" + strings.Join(requested, " ") + ")]"
+			}
+			s.send("* %d FETCH (FLAGS (%s) %s {%d}", seq, flags, fetchItem, len(headers))
+			fmt.Fprintf(s.writer, "%s)\r\n", headers)
+			s.writer.Flush()
 		} else if strings.Contains(dataItems, "FLAGS") || strings.Contains(dataItems, "ENVELOPE") || strings.Contains(dataItems, "INTERNALDATE") {
 			flags := buildFlags(msg)
 			date := msg.ReceivedAt.Format("02-Jan-2006 15:04:05 -0700")
@@ -1042,6 +1059,17 @@ func (s *Session) handleAppend(tag, args string) {
 		}
 	}
 
+	// Parse optional flags: (\Seen \Draft) between folder and {size}
+	var appendFlags []string
+	if flagStart := strings.Index(args, "("); flagStart >= 0 {
+		if flagEnd := strings.Index(args[flagStart:], ")"); flagEnd >= 0 {
+			flagStr := args[flagStart+1 : flagStart+flagEnd]
+			for _, f := range strings.Fields(flagStr) {
+				appendFlags = append(appendFlags, f)
+			}
+		}
+	}
+
 	// Find literal size {N}
 	braceStart := strings.LastIndex(args, "{")
 	braceEnd := strings.LastIndex(args, "}")
@@ -1099,6 +1127,24 @@ func (s *Session) handleAppend(tag, args string) {
 	// Move to the target folder if not INBOX
 	if folder != "INBOX" && resp != nil {
 		s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": folder})
+	}
+
+	// Apply parsed flags to the delivered message
+	if resp != nil && len(appendFlags) > 0 {
+		updates := map[string]interface{}{}
+		for _, flag := range appendFlags {
+			switch flag {
+			case `\Seen`:
+				updates["is_read"] = true
+			case `\Flagged`:
+				updates["is_flagged"] = true
+			case `\Draft`:
+				updates["is_draft"] = true
+			}
+		}
+		if len(updates) > 0 {
+			s.api.UpdateMessage(s.auth.token, resp.Data.ID, updates)
+		}
 	}
 
 	s.tagged(tag, "OK", "APPEND completed")
@@ -1190,14 +1236,43 @@ func (s *Session) handleIdle(tag string) {
 		s.tagged(tag, "NO", "Not authenticated")
 		return
 	}
+	if s.selected == nil {
+		s.tagged(tag, "NO", "No mailbox selected")
+		return
+	}
 
 	s.send("+ idling")
 
-	// Wait for DONE or timeout
-	s.conn.SetDeadline(time.Now().Add(29 * time.Minute)) // RFC recommends <30 min
+	// Start polling goroutine for new messages
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				resp, err := s.api.ListMessages(s.auth.token, s.auth.accountID, s.selected.name)
+				if err != nil {
+					continue
+				}
+				newTotal := int64(len(resp.Data))
+				if newTotal > s.selected.total {
+					s.send("* %d EXISTS", newTotal)
+					s.selected.total = newTotal
+					s.messages = resp.Data
+				}
+			}
+		}
+	}()
+
+	// Wait for DONE from client
+	s.conn.SetDeadline(time.Now().Add(29 * time.Minute))
 	for {
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
+			close(done)
 			return
 		}
 		line = strings.TrimRight(line, "\r\n")
@@ -1206,6 +1281,7 @@ func (s *Session) handleIdle(tag string) {
 		}
 	}
 
+	close(done)
 	s.tagged(tag, "OK", "IDLE terminated")
 }
 
@@ -1370,6 +1446,22 @@ func (s *Session) handleUIDFetch(tag, args string) {
 			flags := buildFlags(msg)
 			s.send("* %d FETCH (UID %d FLAGS (%s) BODY[TEXT] {%d}", seq, msg.ID, flags, len(body))
 			fmt.Fprintf(s.writer, "%s)\r\n", body)
+			s.writer.Flush()
+		} else if strings.Contains(dataItems, "BODY[HEADER.FIELDS") || strings.Contains(dataItems, "BODY.PEEK[HEADER.FIELDS") {
+			detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+			if err != nil {
+				continue
+			}
+			raw := buildRawMessage(detail.Data)
+			requested := extractHeaderFieldNames(dataItems)
+			headers := filterHeaders(raw, requested)
+			flags := buildFlags(msg)
+			fetchItem := "BODY[HEADER.FIELDS (" + strings.Join(requested, " ") + ")]"
+			if strings.Contains(dataItems, "BODY.PEEK") {
+				fetchItem = "BODY.PEEK[HEADER.FIELDS (" + strings.Join(requested, " ") + ")]"
+			}
+			s.send("* %d FETCH (UID %d FLAGS (%s) %s {%d}", seq, msg.ID, flags, fetchItem, len(headers))
+			fmt.Fprintf(s.writer, "%s)\r\n", headers)
 			s.writer.Flush()
 		} else if strings.Contains(dataItems, "FLAGS") || strings.Contains(dataItems, "ENVELOPE") || strings.Contains(dataItems, "INTERNALDATE") {
 			flags := buildFlags(msg)

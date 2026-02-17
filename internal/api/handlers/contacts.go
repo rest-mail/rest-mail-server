@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -19,6 +21,33 @@ func NewContactHandler(db *gorm.DB) *ContactHandler {
 	return &ContactHandler{db: db}
 }
 
+// resolveMailboxID converts a URL account ID to the actual mailbox ID using JWT claims.
+func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint) (uint, error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return 0, fmt.Errorf("not authenticated")
+	}
+
+	// Check if accountID is the user's own account
+	var account models.WebmailAccount
+	if err := h.db.First(&account, accountID).Error; err == nil {
+		if account.ID == claims.WebmailAccountID {
+			return account.PrimaryMailboxID, nil
+		}
+	}
+
+	// Check linked accounts
+	var targetAccount models.WebmailAccount
+	if err := h.db.First(&targetAccount, accountID).Error; err == nil {
+		var linked models.LinkedAccount
+		if err := h.db.Where("webmail_account_id = ? AND mailbox_id = ?", claims.WebmailAccountID, targetAccount.PrimaryMailboxID).First(&linked).Error; err == nil {
+			return linked.MailboxID, nil
+		}
+	}
+
+	return 0, fmt.Errorf("access denied")
+}
+
 // ListContacts returns contacts for a mailbox with optional filtering.
 // GET /api/v1/accounts/{id}/contacts
 func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +57,13 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := h.db.Where("mailbox_id = ?", accountID)
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	query := h.db.Where("mailbox_id = ?", mailboxID)
 
 	if trustLevel := r.URL.Query().Get("trust_level"); trustLevel != "" {
 		query = query.Where("trust_level = ?", trustLevel)
@@ -62,6 +97,12 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	var req createContactRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -83,7 +124,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contact := models.Contact{
-		MailboxID:  uint(accountID),
+		MailboxID:  mailboxID,
 		Email:      req.Email,
 		Name:       req.Name,
 		TrustLevel: trustLevel,
@@ -112,6 +153,12 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	contactID, err := strconv.ParseUint(chi.URLParam(r, "cid"), 10, 32)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid contact ID")
@@ -119,7 +166,7 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var contact models.Contact
-	if err := h.db.Where("id = ? AND mailbox_id = ?", contactID, accountID).First(&contact).Error; err != nil {
+	if err := h.db.Where("id = ? AND mailbox_id = ?", contactID, mailboxID).First(&contact).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Contact not found")
 		return
 	}
@@ -145,7 +192,7 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.db.Where("id = ? AND mailbox_id = ?", contactID, accountID).First(&contact)
+	h.db.Where("id = ? AND mailbox_id = ?", contactID, mailboxID).First(&contact)
 	respond.Data(w, http.StatusOK, contact)
 }
 
@@ -158,6 +205,12 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	contactID, err := strconv.ParseUint(chi.URLParam(r, "cid"), 10, 32)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid contact ID")
@@ -165,7 +218,7 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var contact models.Contact
-	if err := h.db.Where("id = ? AND mailbox_id = ?", contactID, accountID).First(&contact).Error; err != nil {
+	if err := h.db.Where("id = ? AND mailbox_id = ?", contactID, mailboxID).First(&contact).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Contact not found")
 		return
 	}
@@ -191,6 +244,12 @@ func (h *ContactHandler) BlockSender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	var req blockSenderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -203,7 +262,7 @@ func (h *ContactHandler) BlockSender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var contact models.Contact
-	result := h.db.Where("mailbox_id = ? AND email = ?", accountID, req.Email).First(&contact)
+	result := h.db.Where("mailbox_id = ? AND email = ?", mailboxID, req.Email).First(&contact)
 
 	if result.Error == nil {
 		// Contact exists, update to blocked
@@ -218,7 +277,7 @@ func (h *ContactHandler) BlockSender(w http.ResponseWriter, r *http.Request) {
 
 	// Contact does not exist, create as blocked
 	contact = models.Contact{
-		MailboxID:  uint(accountID),
+		MailboxID:  mailboxID,
 		Email:      req.Email,
 		TrustLevel: "blocked",
 		Source:     "manual",
@@ -241,6 +300,12 @@ func (h *ContactHandler) SuggestContacts(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	q := r.URL.Query().Get("q")
 	if q == "" {
 		respond.List(w, []models.Contact{}, nil)
@@ -249,7 +314,7 @@ func (h *ContactHandler) SuggestContacts(w http.ResponseWriter, r *http.Request)
 
 	var contacts []models.Contact
 	h.db.Where("mailbox_id = ? AND (email LIKE ? OR name LIKE ?) AND trust_level != ?",
-		accountID, "%"+q+"%", "%"+q+"%", "blocked").
+		mailboxID, "%"+q+"%", "%"+q+"%", "blocked").
 		Order("name ASC, email ASC").
 		Limit(10).
 		Find(&contacts)
@@ -275,6 +340,12 @@ func (h *ContactHandler) ImportContacts(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	var req importContactsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -293,7 +364,7 @@ func (h *ContactHandler) ImportContacts(w http.ResponseWriter, r *http.Request) 
 		}
 
 		contact := models.Contact{
-			MailboxID:  uint(accountID),
+			MailboxID:  mailboxID,
 			Email:      entry.Email,
 			Name:       entry.Name,
 			TrustLevel: "auto",

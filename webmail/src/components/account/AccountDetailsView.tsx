@@ -1,14 +1,36 @@
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
+import { getAccountQuota, type QuotaData } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+
+function formatBytes(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1024) {
+    return `${(mb / 1024).toFixed(1)} GB`;
+  }
+  return `${mb.toFixed(1)} MB`;
+}
 
 export function AccountDetailsView() {
   const { user } = useAuthStore();
   const { accounts } = useMailStore();
   const { setView } = useUIStore();
+  const [quota, setQuota] = useState<QuotaData | null>(null);
+
+  useEffect(() => {
+    const primaryAccount = accounts.find(a => a.is_primary) ?? accounts[0];
+    if (!primaryAccount) return;
+
+    getAccountQuota(primaryAccount.id)
+      .then(res => setQuota(res.data))
+      .catch(() => {
+        // quota fetch failed; leave as null
+      });
+  }, [accounts]);
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -54,9 +76,16 @@ export function AccountDetailsView() {
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Storage</h3>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-              <div className="h-full bg-primary rounded-full" style={{ width: '25%' }} />
+              <div
+                className="h-full bg-primary rounded-full"
+                style={{ width: `${quota ? Math.min(quota.percent_used, 100) : 0}%` }}
+              />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Usage information not yet available</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {quota
+                ? `${formatBytes(quota.quota_used_bytes)} of ${formatBytes(quota.quota_bytes)} used`
+                : 'Loading usage information\u2026'}
+            </p>
           </div>
         </CardContent>
       </Card>
