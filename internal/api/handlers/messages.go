@@ -365,6 +365,8 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		h.logPipelineExecution(outPipelineCfg.ID, nil, "outbound", outResult)
+
 		switch outResult.FinalAction {
 		case pipeline.ActionReject:
 			rejectMsg := outResult.RejectMsg

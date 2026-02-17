@@ -419,6 +419,13 @@ func (s *Session) handleDATA() {
 		}
 
 		data = append(data, line...)
+
+		// Enforce SIZE limit (10MB as advertised in EHLO)
+		if len(data) > 10*1024*1024 {
+			slog.Warn("smtp: message exceeds size limit", "remote", s.remoteAddr, "size", len(data))
+			s.reply(552, "Message exceeds maximum size")
+			return
+		}
 	}
 
 	s.data = data

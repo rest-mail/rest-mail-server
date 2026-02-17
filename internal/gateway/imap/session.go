@@ -121,6 +121,12 @@ func (s *Session) Handle() {
 			s.handleMove(tag, args)
 		case "CREATE":
 			s.handleCreate(tag, args)
+		case "DELETE":
+			s.handleDelete(tag, args)
+		case "RENAME":
+			s.handleRename(tag, args)
+		case "APPEND":
+			s.handleAppend(tag, args)
 		case "NOOP":
 			s.tagged(tag, "OK", "NOOP completed")
 		case "CHECK":
@@ -859,6 +865,191 @@ func (s *Session) handleCreate(tag, args string) {
 	// Folders are implicit — they exist once a message is moved into them.
 	// CREATE just validates and acknowledges.
 	s.tagged(tag, "OK", "CREATE completed")
+}
+
+func (s *Session) handleDelete(tag, args string) {
+	if !s.auth.authenticated {
+		s.tagged(tag, "NO", "Not authenticated")
+		return
+	}
+
+	folder := unquote(strings.TrimSpace(args))
+	if folder == "" {
+		s.tagged(tag, "NO", "Missing folder name")
+		return
+	}
+
+	// Prevent deleting standard folders
+	standard := map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
+	if standard[folder] {
+		s.tagged(tag, "NO", "Cannot delete standard folder")
+		return
+	}
+
+	// Move all messages in the folder to Trash via API
+	resp, err := s.api.ListMessages(s.auth.token, s.auth.accountID, folder)
+	if err == nil {
+		for _, msg := range resp.Data {
+			s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": "Trash"})
+		}
+	}
+
+	s.tagged(tag, "OK", "DELETE completed")
+}
+
+func (s *Session) handleRename(tag, args string) {
+	if !s.auth.authenticated {
+		s.tagged(tag, "NO", "Not authenticated")
+		return
+	}
+
+	parts := strings.SplitN(args, " ", 2)
+	if len(parts) < 2 {
+		s.tagged(tag, "BAD", "RENAME requires old and new name")
+		return
+	}
+
+	oldName := unquote(strings.TrimSpace(parts[0]))
+	newName := unquote(strings.TrimSpace(parts[1]))
+
+	if oldName == "" || newName == "" {
+		s.tagged(tag, "BAD", "RENAME requires old and new name")
+		return
+	}
+
+	standard := map[string]bool{"INBOX": true, "Sent": true, "Drafts": true, "Trash": true}
+	if standard[oldName] {
+		s.tagged(tag, "NO", "Cannot rename standard folder")
+		return
+	}
+
+	// Move all messages from old folder to new folder via API
+	resp, err := s.api.ListMessages(s.auth.token, s.auth.accountID, oldName)
+	if err == nil {
+		for _, msg := range resp.Data {
+			s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": newName})
+		}
+	}
+
+	s.tagged(tag, "OK", "RENAME completed")
+}
+
+func (s *Session) handleAppend(tag, args string) {
+	if !s.auth.authenticated {
+		s.tagged(tag, "NO", "Not authenticated")
+		return
+	}
+
+	// Parse: APPEND "folder" (\flags) {size}
+	// Minimal parse — extract folder and literal size
+	folder := "INBOX"
+	if idx := strings.Index(args, "\""); idx >= 0 {
+		end := strings.Index(args[idx+1:], "\"")
+		if end >= 0 {
+			folder = args[idx+1 : idx+1+end]
+		}
+	}
+
+	// Find literal size {N}
+	braceStart := strings.LastIndex(args, "{")
+	braceEnd := strings.LastIndex(args, "}")
+	if braceStart < 0 || braceEnd <= braceStart {
+		s.tagged(tag, "BAD", "Missing literal size")
+		return
+	}
+	sizeStr := args[braceStart+1 : braceEnd]
+	size, err := strconv.Atoi(sizeStr)
+	if err != nil || size < 0 {
+		s.tagged(tag, "BAD", "Invalid literal size")
+		return
+	}
+	if size > 10*1024*1024 {
+		s.tagged(tag, "NO", "Message too large")
+		return
+	}
+
+	// Send continuation
+	s.send("+ Ready for literal data")
+
+	// Read exactly size bytes
+	data := make([]byte, size)
+	n, err := s.reader.Read(data)
+	for n < size && err == nil {
+		var nn int
+		nn, err = s.reader.Read(data[n:])
+		n += nn
+	}
+	if n < size {
+		s.tagged(tag, "NO", "Failed to read message data")
+		return
+	}
+
+	// Read trailing CRLF
+	s.reader.ReadString('\n')
+
+	// Parse basic headers from raw message for delivery
+	subject, bodyText, bodyHTML, messageID, senderName := parseBasicHeaders(data)
+
+	// Deliver via API
+	deliverReq := &apiclient.DeliverRequest{
+		Address:    s.auth.email,
+		Sender:     s.auth.email,
+		SenderName: senderName,
+		Subject:    subject,
+		BodyText:   bodyText,
+		BodyHTML:   bodyHTML,
+		MessageID:  messageID,
+		RawMessage: string(data),
+	}
+
+	resp, deliverErr := s.api.DeliverMessage(deliverReq)
+	if deliverErr != nil {
+		slog.Warn("imap: append deliver failed", "error", deliverErr)
+		s.tagged(tag, "NO", "APPEND failed")
+		return
+	}
+
+	// Move to the target folder if not INBOX
+	if folder != "INBOX" && resp != nil {
+		s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": folder})
+	}
+
+	s.tagged(tag, "OK", "APPEND completed")
+}
+
+// parseBasicHeaders extracts basic message fields from raw RFC 2822 data.
+func parseBasicHeaders(data []byte) (subject, bodyText, bodyHTML, messageID, senderName string) {
+	raw := string(data)
+	headerEnd := strings.Index(raw, "\r\n\r\n")
+	if headerEnd < 0 {
+		headerEnd = strings.Index(raw, "\n\n")
+	}
+	if headerEnd < 0 {
+		return "", raw, "", "", ""
+	}
+
+	headers := raw[:headerEnd]
+	body := raw[headerEnd:]
+	body = strings.TrimLeft(body, "\r\n")
+
+	for _, line := range strings.Split(headers, "\n") {
+		line = strings.TrimRight(line, "\r")
+		lower := strings.ToLower(line)
+		if strings.HasPrefix(lower, "subject: ") {
+			subject = strings.TrimSpace(line[9:])
+		} else if strings.HasPrefix(lower, "message-id: ") {
+			messageID = strings.TrimSpace(line[12:])
+		} else if strings.HasPrefix(lower, "from: ") {
+			fromVal := strings.TrimSpace(line[6:])
+			if idx := strings.Index(fromVal, "<"); idx > 0 {
+				senderName = strings.TrimSpace(fromVal[:idx])
+				senderName = strings.Trim(senderName, "\"")
+			}
+		}
+	}
+
+	bodyText = body
+	return
 }
 
 // handleGetQuota returns quota for a named quota root (RFC 2087).
