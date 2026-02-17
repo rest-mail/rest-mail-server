@@ -67,7 +67,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig)
+	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, database)
 	if err := smtpServer.ListenAndServe(smtpgw.SMTPPorts{
 		Inbound:       cfg.SMTPPortInbound,
 		Submission:    cfg.SMTPPortSubmission,

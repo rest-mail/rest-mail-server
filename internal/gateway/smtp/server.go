@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"gorm.io/gorm"
 )
 
 // Server listens for SMTP connections and spawns session handlers.
@@ -15,17 +16,19 @@ type Server struct {
 	hostname   string
 	api        *apiclient.Client
 	tlsConfig  *tls.Config
+	db         *gorm.DB
 	listeners  []net.Listener
 	wg         sync.WaitGroup
 	shutdown   chan struct{}
 }
 
 // NewServer creates a new SMTP server.
-func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config) *Server {
+func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config, db *gorm.DB) *Server {
 	return &Server{
 		hostname:  hostname,
 		api:       api,
 		tlsConfig: tlsConfig,
+		db:        db,
 		shutdown:  make(chan struct{}),
 	}
 }
@@ -104,7 +107,7 @@ func (s *Server) acceptLoop(listener net.Listener, isSubmission, implicitTLS boo
 		}
 
 		go func() {
-			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, isSubmission)
+			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.db, isSubmission)
 			if implicitTLS {
 				session.tls_ = true
 			}

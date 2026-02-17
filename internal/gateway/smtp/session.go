@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"gorm.io/gorm"
 )
 
 // Session represents a single SMTP conversation with a client.
@@ -21,6 +23,7 @@ type Session struct {
 	hostname   string
 	remoteAddr string
 	tlsConfig  *tls.Config
+	db         *gorm.DB
 
 	// Session state
 	heloName   string
@@ -40,7 +43,7 @@ type authState struct {
 }
 
 // NewSession creates a new SMTP session.
-func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, isSubmission bool) *Session {
+func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, db *gorm.DB, isSubmission bool) *Session {
 	return &Session{
 		conn:         conn,
 		reader:       bufio.NewReader(conn),
@@ -49,6 +52,7 @@ func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig
 		hostname:     hostname,
 		remoteAddr:   conn.RemoteAddr().String(),
 		tlsConfig:    tlsConfig,
+		db:           db,
 		isSubmission: isSubmission,
 		auth:         &authState{},
 	}
@@ -418,9 +422,24 @@ func (s *Session) handleDATA() {
 		// Check if this is a local recipient
 		check, err := s.api.CheckMailbox(rcpt)
 		if err != nil || !check.Data.Exists {
-			// Non-local: would need outbound queue (handled by queue worker)
-			slog.Info("smtp: queuing for outbound delivery", "from", s.mailFrom, "to", rcpt)
-			// TODO: Insert into outbound_queue
+			// Non-local: insert into outbound queue for the queue worker to deliver
+			recipientDomain := rcpt
+			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
+				recipientDomain = rcpt[idx+1:]
+			}
+			queueEntry := models.OutboundQueue{
+				Sender:     s.mailFrom,
+				Recipient:  rcpt,
+				Domain:     recipientDomain,
+				RawMessage: string(data),
+				Status:     "pending",
+			}
+			if err := s.db.Create(&queueEntry).Error; err != nil {
+				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
+				s.reply(451, "Temporary delivery failure")
+				return
+			}
+			slog.Info("smtp: queued for outbound delivery", "from", s.mailFrom, "to", rcpt, "queue_id", queueEntry.ID)
 			continue
 		}
 
