@@ -262,3 +262,63 @@ func parseFlags(s string) []string {
 	}
 	return flags
 }
+
+// matchIMAPPattern matches a folder name against an IMAP LIST pattern.
+// '*' matches any characters including hierarchy separator.
+// '%' matches any characters except hierarchy separator '/'.
+func matchIMAPPattern(pattern, name string) bool {
+	// Simple cases
+	if pattern == "*" {
+		return true
+	}
+	if pattern == "%" {
+		return !strings.Contains(name, "/")
+	}
+
+	// Case-insensitive match for INBOX
+	pLower := strings.ToLower(pattern)
+	nLower := strings.ToLower(name)
+
+	return matchPatternRecursive(pLower, nLower)
+}
+
+func matchPatternRecursive(pattern, name string) bool {
+	for len(pattern) > 0 {
+		switch pattern[0] {
+		case '*':
+			// '*' matches everything — try matching rest of pattern at every position
+			pattern = pattern[1:]
+			if len(pattern) == 0 {
+				return true
+			}
+			for i := 0; i <= len(name); i++ {
+				if matchPatternRecursive(pattern, name[i:]) {
+					return true
+				}
+			}
+			return false
+		case '%':
+			// '%' matches everything except '/'
+			pattern = pattern[1:]
+			if len(pattern) == 0 {
+				return !strings.Contains(name, "/")
+			}
+			for i := 0; i <= len(name); i++ {
+				if i > 0 && name[i-1] == '/' {
+					break
+				}
+				if matchPatternRecursive(pattern, name[i:]) {
+					return true
+				}
+			}
+			return false
+		default:
+			if len(name) == 0 || pattern[0] != name[0] {
+				return false
+			}
+			pattern = pattern[1:]
+			name = name[1:]
+		}
+	}
+	return len(name) == 0
+}

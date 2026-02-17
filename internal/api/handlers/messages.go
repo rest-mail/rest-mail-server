@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -455,13 +456,8 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	var rawMessage string
 	{
 		var b strings.Builder
-		b.WriteString("From: ")
-		if senderMailbox.DisplayName != "" {
-			b.WriteString(fmt.Sprintf("%q <%s>", senderMailbox.DisplayName, req.From))
-		} else {
-			b.WriteString(req.From)
-		}
-		b.WriteString("\r\n")
+		fromAddr := &mail.Address{Name: senderMailbox.DisplayName, Address: req.From}
+		b.WriteString("From: " + fromAddr.String() + "\r\n")
 		b.WriteString("To: " + strings.Join(req.To, ", ") + "\r\n")
 		if len(req.Cc) > 0 {
 			b.WriteString("Cc: " + strings.Join(req.Cc, ", ") + "\r\n")
@@ -800,8 +796,8 @@ func (h *MessageHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 
 	var folders []folderInfo
 	h.db.Model(&models.Message{}).
-		Select("folder, COUNT(*) as total, COUNT(CASE WHEN is_read = false THEN 1 END) as unread").
-		Where("mailbox_id = ? AND is_deleted = ?", mailboxID, false).
+		Select("folder, COUNT(CASE WHEN is_deleted = false THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false THEN 1 END) as unread").
+		Where("mailbox_id = ?", mailboxID).
 		Group("folder").
 		Order("folder ASC").
 		Scan(&folders)

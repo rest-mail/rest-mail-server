@@ -32,10 +32,25 @@ func buildRawMessage(msg apiclient.MessageDetail) string {
 		b.WriteString(fmt.Sprintf("In-Reply-To: <%s>\r\n", msg.InReplyTo))
 	}
 	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	b.WriteString("\r\n")
 
-	if msg.BodyText != "" {
+	if msg.BodyText != "" && msg.BodyHTML != "" {
+		boundary := fmt.Sprintf("=_restmail_%d", msg.ReceivedAt.UnixNano())
+		b.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", boundary))
+		b.WriteString("\r\n")
+		b.WriteString("--" + boundary + "\r\n")
+		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+		b.WriteString(msg.BodyText + "\r\n")
+		b.WriteString("--" + boundary + "\r\n")
+		b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
+		b.WriteString(msg.BodyHTML + "\r\n")
+		b.WriteString("--" + boundary + "--\r\n")
+	} else if msg.BodyHTML != "" {
+		b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
+		b.WriteString("\r\n")
+		b.WriteString(msg.BodyHTML)
+	} else {
+		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+		b.WriteString("\r\n")
 		b.WriteString(msg.BodyText)
 	}
 

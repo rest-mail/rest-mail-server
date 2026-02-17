@@ -34,6 +34,7 @@ tasks:
       - internal/gateway/smtp/**/*.go
       - internal/gateway/apiclient/**/*.go
       - internal/gateway/queue/**/*.go
+      - internal/db/**/*.go
       - go.mod
       - go.sum
     generates:

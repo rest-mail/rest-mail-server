@@ -86,6 +86,10 @@ func main() {
 	}
 
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
+	if cfg.Environment == "development" || os.Getenv("QUEUE_TLS_INSECURE") == "true" {
+		queueWorker.SetTLSInsecure(true)
+		slog.Info("queue worker TLS verification disabled", "environment", cfg.Environment)
+	}
 	queueWorker.Start()
 
 	slog.Info("SMTP gateway started",

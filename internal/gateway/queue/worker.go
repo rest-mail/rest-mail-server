@@ -43,6 +43,11 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 	}
 }
 
+// SetTLSInsecure sets whether to skip TLS certificate verification for outbound delivery.
+func (w *Worker) SetTLSInsecure(insecure bool) {
+	w.tlsInsecure = insecure
+}
+
 // Start begins processing the outbound queue.
 func (w *Worker) Start() {
 	slog.Info("queue: starting workers", "count", w.numWorkers, "poll_interval", w.pollInterval)

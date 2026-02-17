@@ -282,6 +282,22 @@ func (s *Session) handleList(tag, args string) {
 		return
 	}
 
+	// Parse reference and mailbox pattern
+	parts := parseIMAPArgs(args)
+	pattern := "*"
+	if len(parts) >= 2 {
+		pattern = unquote(parts[1])
+	} else if len(parts) == 1 {
+		pattern = unquote(parts[0])
+	}
+
+	// Empty pattern = return hierarchy delimiter only
+	if pattern == "" {
+		s.send(`* LIST (\Noselect) "/" ""`)
+		s.tagged(tag, "OK", "LIST completed")
+		return
+	}
+
 	resp, err := s.api.ListFolders(s.auth.token, s.auth.accountID)
 	if err != nil {
 		s.tagged(tag, "NO", "Failed to list folders")
@@ -289,6 +305,9 @@ func (s *Session) handleList(tag, args string) {
 	}
 
 	for _, f := range resp.Data {
+		if !matchIMAPPattern(pattern, f.Name) {
+			continue
+		}
 		attrs := ""
 		switch f.Name {
 		case "INBOX":
@@ -328,12 +347,10 @@ func (s *Session) handleSelect(tag, args string) {
 	s.messages = msgResp.Data
 	total := int64(len(s.messages))
 	var unread int64
-	var recent int64
 	for _, m := range s.messages {
 		if !m.IsRead {
 			unread++
 		}
-		recent++ // simplified: all messages are "recent"
 	}
 
 	s.selected = &selectedMailbox{
@@ -343,7 +360,7 @@ func (s *Session) handleSelect(tag, args string) {
 	}
 
 	s.send("* %d EXISTS", total)
-	s.send("* %d RECENT", recent)
+	s.send("* %d RECENT", unread)
 	s.send("* OK [UNSEEN %d]", unread)
 	s.send("* OK [UIDVALIDITY 1]")
 	if total > 0 {
@@ -385,7 +402,7 @@ func (s *Session) handleStatus(tag, args string) {
 		}
 	}
 
-	s.send(`* STATUS "%s" (MESSAGES %d RECENT %d UNSEEN %d)`, folder, total, total, unseen)
+	s.send(`* STATUS "%s" (MESSAGES %d RECENT %d UNSEEN %d)`, folder, total, unseen, unseen)
 	s.tagged(tag, "OK", "STATUS completed")
 }
 
