@@ -453,6 +453,8 @@ func (s *Session) handleDATA() {
 			BodyHTML:   bodyHTML,
 			MessageID:  messageID,
 			RawMessage: string(data),
+			ClientIP:   extractIP(s.remoteAddr),
+			HeloName:   s.heloName,
 		}
 
 		_, err = s.api.DeliverMessage(deliverReq)

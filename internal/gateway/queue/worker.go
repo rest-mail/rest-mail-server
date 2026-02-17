@@ -1,12 +1,16 @@
 package queue
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net"
+	"net/http"
 	"net/smtp"
 	"strings"
 	"sync"
@@ -139,7 +143,7 @@ func (w *Worker) processOne(workerID int) {
 			"last_error": deliveryErr.Error(),
 		})
 		slog.Warn("queue: message bounced (max retries)", "id", item.ID, "recipient", item.Recipient)
-		// TODO: Generate bounce notification (DSN) to sender
+		w.generateBounce(item)
 		return
 	}
 
@@ -157,6 +161,8 @@ func (w *Worker) processOne(workerID int) {
 }
 
 // deliver attempts to send a message via SMTP to the destination MX.
+// It first checks if the primary MX supports the RESTMAIL protocol for
+// direct HTTPS delivery, falling back to standard SMTP if not.
 func (w *Worker) deliver(item models.OutboundQueue) error {
 	// Look up MX records
 	mxRecords, err := net.LookupMX(item.Domain)
@@ -169,7 +175,18 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		mxRecords = []*net.MX{{Host: item.Domain, Pref: 0}}
 	}
 
-	// Try each MX in priority order
+	// Try RESTMAIL protocol upgrade on the first MX host
+	firstHost := strings.TrimSuffix(mxRecords[0].Host, ".")
+	upgraded, err := w.tryRESTMAIL(firstHost, item)
+	if upgraded && err == nil {
+		return nil // RESTMAIL delivery succeeded
+	}
+	if upgraded && err != nil {
+		slog.Warn("queue: RESTMAIL delivery failed, falling back to SMTP",
+			"host", firstHost, "error", err)
+	}
+
+	// Fall back to SMTP delivery
 	var lastErr error
 	for _, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
@@ -181,6 +198,128 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	}
 
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
+}
+
+// tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found,
+// it delivers the message via HTTPS POST instead of SMTP.
+// Returns (true, nil) on successful RESTMAIL delivery,
+// (true, err) if RESTMAIL was detected but delivery failed,
+// (false, nil) if the host does not support RESTMAIL.
+func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded bool, err error) {
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	conn, err := dialer.Dial("tcp", host+":25")
+	if err != nil {
+		return false, nil // Can't connect, let SMTP path handle it
+	}
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		conn.Close()
+		return false, nil
+	}
+
+	if err := client.Hello(w.hostname); err != nil {
+		client.Close()
+		return false, nil
+	}
+
+	ok, restmailURL := client.Extension("RESTMAIL")
+	client.Quit()
+	client.Close()
+
+	if !ok || restmailURL == "" {
+		return false, nil // No RESTMAIL support
+	}
+
+	slog.Info("queue: RESTMAIL capability detected", "host", host, "url", restmailURL)
+
+	// Build the delivery payload
+	payload := map[string]interface{}{
+		"sender":      item.Sender,
+		"recipients":  []string{item.Recipient},
+		"raw_message": item.RawMessage,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	messagesURL := restmailURL + "/messages"
+	if !strings.HasPrefix(messagesURL, "http") {
+		messagesURL = "https://" + messagesURL
+	}
+
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // TODO: proper cert validation
+		},
+	}
+	resp, err := httpClient.Post(messagesURL, "application/json", bytes.NewReader(payloadBytes))
+	if err != nil {
+		return true, fmt.Errorf("RESTMAIL POST to %s: %w", messagesURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		slog.Info("queue: RESTMAIL delivery succeeded", "host", host, "recipient", item.Recipient)
+		return true, nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return true, fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
+}
+
+// generateBounce creates a DSN (Delivery Status Notification) and delivers
+// it to the original sender's mailbox if the sender is a local user.
+func (w *Worker) generateBounce(item models.OutboundQueue) {
+	bounceSubject := fmt.Sprintf("Undelivered Mail Returned to Sender <%s>", item.Recipient)
+	bounceBody := fmt.Sprintf(
+		"This is the mail delivery system at %s.\n\n"+
+			"I'm sorry to inform you that your message could not be delivered to one or more\n"+
+			"recipients. The delivery has been attempted %d times over the message lifetime.\n\n"+
+			"For further assistance, please contact your mail administrator.\n\n"+
+			"--- Delivery report ---\n"+
+			"Reporting-MTA: dns; %s\n"+
+			"Final-Recipient: rfc822; %s\n"+
+			"Action: failed\n"+
+			"Status: 5.0.0\n"+
+			"Diagnostic-Code: smtp; %s\n",
+		w.hostname, item.Attempts, w.hostname, item.Recipient, item.LastError,
+	)
+
+	// Check if the sender has a local mailbox
+	var senderMailbox struct {
+		ID     uint
+		Active bool
+	}
+	result := w.db.Raw("SELECT id, active FROM mailboxes WHERE address = ? AND active = true LIMIT 1", item.Sender).Scan(&senderMailbox)
+	if result.Error != nil || result.RowsAffected == 0 {
+		slog.Debug("queue: bounce sender not local, discarding DSN", "sender", item.Sender)
+		return
+	}
+
+	// Insert bounce message directly into the sender's INBOX
+	now := time.Now()
+	bounceMsg := map[string]interface{}{
+		"mailbox_id":    senderMailbox.ID,
+		"folder":        "INBOX",
+		"sender":        "mailer-daemon@" + w.hostname,
+		"sender_name":   "Mail Delivery System",
+		"recipients_to": fmt.Sprintf(`["%s"]`, item.Sender),
+		"recipients_cc": "[]",
+		"subject":       bounceSubject,
+		"body_text":     bounceBody,
+		"is_read":       false,
+		"size_bytes":    len(bounceSubject) + len(bounceBody),
+		"received_at":   now,
+		"created_at":    now,
+		"updated_at":    now,
+	}
+
+	if err := w.db.Table("messages").Create(bounceMsg).Error; err != nil {
+		slog.Error("queue: failed to insert bounce DSN", "sender", item.Sender, "error", err)
+		return
+	}
+
+	slog.Info("queue: bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
 }
 
 // deliverToHost attempts SMTP delivery to a specific host.

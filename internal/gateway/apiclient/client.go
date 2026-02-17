@@ -85,6 +85,8 @@ type DeliverRequest struct {
 	InReplyTo    string          `json:"in_reply_to,omitempty"`
 	References   string          `json:"references,omitempty"`
 	RawMessage   string          `json:"raw_message,omitempty"`
+	ClientIP     string          `json:"client_ip,omitempty"`
+	HeloName     string          `json:"helo_name,omitempty"`
 }
 
 type DeliverResponse struct {

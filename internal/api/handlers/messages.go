@@ -293,6 +293,100 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ── Outbound pipeline execution ────────────────────────────────
+	if h.engine != nil {
+		var outToAddrs []pipeline.Address
+		for _, addr := range req.To {
+			outToAddrs = append(outToAddrs, pipeline.Address{Address: addr})
+		}
+		var outCcAddrs []pipeline.Address
+		for _, addr := range req.Cc {
+			outCcAddrs = append(outCcAddrs, pipeline.Address{Address: addr})
+		}
+		allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
+		allRecipients = append(allRecipients, req.To...)
+		allRecipients = append(allRecipients, req.Cc...)
+		allRecipients = append(allRecipients, req.Bcc...)
+
+		outEmailJSON := &pipeline.EmailJSON{
+			Envelope: pipeline.Envelope{
+				MailFrom:  req.From,
+				RcptTo:    allRecipients,
+				Direction: "outbound",
+			},
+			Headers: pipeline.Headers{
+				From:    []pipeline.Address{{Name: senderMailbox.DisplayName, Address: req.From}},
+				To:      outToAddrs,
+				Cc:      outCcAddrs,
+				Subject: req.Subject,
+			},
+			Body: pipeline.Body{
+				ContentType: "text/plain",
+				Content:     req.BodyText,
+			},
+		}
+		if req.BodyText != "" && req.BodyHTML != "" {
+			outEmailJSON.Body = pipeline.Body{
+				ContentType: "multipart/alternative",
+				Parts: []pipeline.Body{
+					{ContentType: "text/plain; charset=utf-8", Content: req.BodyText},
+					{ContentType: "text/html; charset=utf-8", Content: req.BodyHTML},
+				},
+			}
+		} else if req.BodyHTML != "" {
+			outEmailJSON.Body = pipeline.Body{
+				ContentType: "text/html",
+				Content:     req.BodyHTML,
+			}
+		}
+
+		var outPipelineCfg *pipeline.PipelineConfig
+		var dbOutPipeline models.Pipeline
+		if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", senderMailbox.DomainID, "outbound", true).
+			First(&dbOutPipeline).Error; err == nil {
+			var filterConfigs []pipeline.FilterConfig
+			if jsonErr := json.Unmarshal(dbOutPipeline.Filters, &filterConfigs); jsonErr == nil {
+				outPipelineCfg = &pipeline.PipelineConfig{
+					ID:        dbOutPipeline.ID,
+					DomainID:  dbOutPipeline.DomainID,
+					Direction: dbOutPipeline.Direction,
+					Filters:   filterConfigs,
+					Active:    dbOutPipeline.Active,
+				}
+			}
+		}
+		if outPipelineCfg == nil {
+			outPipelineCfg = pipeline.DefaultOutboundPipeline(senderMailbox.DomainID)
+		}
+
+		outResult, outErr := h.engine.Execute(r.Context(), outPipelineCfg, outEmailJSON)
+		if outErr != nil {
+			respond.Error(w, http.StatusInternalServerError, "pipeline_error", "Outbound pipeline execution failed")
+			return
+		}
+
+		switch outResult.FinalAction {
+		case pipeline.ActionReject:
+			rejectMsg := outResult.RejectMsg
+			if rejectMsg == "" {
+				rejectMsg = "Message rejected by outbound policy"
+			}
+			respond.Error(w, http.StatusForbidden, "rejected", rejectMsg)
+			return
+		case pipeline.ActionQuarantine:
+			respond.Error(w, http.StatusForbidden, "quarantined", "Message held for review by outbound policy")
+			return
+		case pipeline.ActionDiscard:
+			respond.Data(w, http.StatusOK, map[string]string{"status": "discarded"})
+			return
+		case pipeline.ActionDefer:
+			respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
+			return
+		case pipeline.ActionContinue:
+			// Pipeline passed, continue with sending
+		}
+	}
+
 	// Generate Message-ID
 	uuidBytes := make([]byte, 16)
 	if _, err := rand.Read(uuidBytes); err != nil {
@@ -447,6 +541,8 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		InReplyTo    string          `json:"in_reply_to"`
 		References   string          `json:"references"`
 		RawMessage   string          `json:"raw_message"`
+		ClientIP     string          `json:"client_ip"`
+		HeloName     string          `json:"helo_name"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -495,6 +591,8 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		Envelope: pipeline.Envelope{
 			MailFrom:  req.Sender,
 			RcptTo:    []string{mailbox.Address},
+			ClientIP:  req.ClientIP,
+			Helo:      req.HeloName,
 			Direction: "inbound",
 		},
 		Headers: pipeline.Headers{
