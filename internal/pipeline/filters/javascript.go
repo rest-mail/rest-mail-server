@@ -1,24 +1,30 @@
 package filters
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 
-	"github.com/dop251/goja"
 	"github.com/restmail/restmail/internal/pipeline"
 )
+
+const defaultSidecarURL = "http://js-filter:3100"
 
 type jsFilterConfig struct {
 	Script    string `json:"script"`
 	TimeoutMS int    `json:"timeout_ms"`
-	MaxMemMB  int    `json:"max_mem_mb"`
+	URL       string `json:"url"`
 }
 
 type jsFilter struct {
-	script  string
-	timeout time.Duration
+	script     string
+	timeout    time.Duration
+	sidecarURL string
 }
 
 func init() {
@@ -28,7 +34,7 @@ func init() {
 func NewJavaScript(config []byte) (pipeline.Filter, error) {
 	cfg := jsFilterConfig{
 		TimeoutMS: 500,
-		MaxMemMB:  64,
+		URL:       defaultSidecarURL,
 	}
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -38,44 +44,57 @@ func NewJavaScript(config []byte) (pipeline.Filter, error) {
 	if cfg.Script == "" {
 		return nil, fmt.Errorf("javascript filter requires a script")
 	}
+	if cfg.URL == "" {
+		cfg.URL = defaultSidecarURL
+	}
 
 	return &jsFilter{
-		script:  cfg.Script,
-		timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
+		script:     cfg.Script,
+		timeout:    time.Duration(cfg.TimeoutMS) * time.Millisecond,
+		sidecarURL: cfg.URL,
 	}, nil
 }
 
 func (f *jsFilter) Name() string             { return "javascript" }
 func (f *jsFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
+// sidecarRequest is the JSON payload sent to the Node.js sidecar.
+type sidecarRequest struct {
+	Script    string             `json:"script"`
+	Email     *pipeline.EmailJSON `json:"email"`
+	TimeoutMS int                `json:"timeout_ms"`
+}
+
+// sidecarResponse is the JSON response from the Node.js sidecar.
+type sidecarResponse struct {
+	Result json.RawMessage `json:"result"`
+	Error  string          `json:"error,omitempty"`
+}
+
 func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
-	vm := goja.New()
-
-	// Set up timeout
-	timer := time.AfterFunc(f.timeout, func() {
-		vm.Interrupt("execution timeout")
-	})
-	defer timer.Stop()
-
-	// Convert email to JS object
-	emailJSON, err := json.Marshal(email)
-	if err != nil {
-		return nil, fmt.Errorf("marshal email: %w", err)
+	reqBody := sidecarRequest{
+		Script:    f.script,
+		Email:     email,
+		TimeoutMS: int(f.timeout.Milliseconds()),
 	}
 
-	var emailObj interface{}
-	json.Unmarshal(emailJSON, &emailObj)
-	vm.Set("__email__", emailObj)
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal sidecar request: %w", err)
+	}
 
-	// Run the script with the filter function wrapper
-	script := fmt.Sprintf(`
-		var email = __email__;
-		%s
-		var __result__ = filter(email);
-		__result__;
-	`, f.script)
+	// Build HTTP request with context for cancellation
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, f.sidecarURL+"/execute", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("create sidecar request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
 
-	val, err := vm.RunString(script)
+	client := &http.Client{
+		Timeout: f.timeout + 5*time.Second, // extra headroom beyond script timeout
+	}
+
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
@@ -83,14 +102,13 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 			Log: pipeline.FilterLog{
 				Filter: "javascript",
 				Result: "error",
-				Detail: fmt.Sprintf("script error: %v", err),
+				Detail: fmt.Sprintf("sidecar request failed: %v", err),
 			},
 		}, nil
 	}
+	defer resp.Body.Close()
 
-	// Parse the result
-	resultObj := val.Export()
-	resultJSON, err := json.Marshal(resultObj)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
@@ -98,11 +116,58 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 			Log: pipeline.FilterLog{
 				Filter: "javascript",
 				Result: "error",
-				Detail: fmt.Sprintf("cannot marshal result: %v", err),
+				Detail: fmt.Sprintf("read sidecar response: %v", err),
 			},
 		}, nil
 	}
 
+	// Handle timeout response
+	if resp.StatusCode == http.StatusRequestTimeout {
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeAction,
+			Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{
+				Filter: "javascript",
+				Result: "timeout",
+				Detail: "script execution timed out",
+			},
+		}, nil
+	}
+
+	// Handle other error responses
+	if resp.StatusCode != http.StatusOK {
+		var errResp sidecarResponse
+		json.Unmarshal(respBody, &errResp)
+		detail := errResp.Error
+		if detail == "" {
+			detail = fmt.Sprintf("sidecar returned status %d", resp.StatusCode)
+		}
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeAction,
+			Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{
+				Filter: "javascript",
+				Result: "error",
+				Detail: fmt.Sprintf("script error: %s", detail),
+			},
+		}, nil
+	}
+
+	// Parse the successful response
+	var sidecarResp sidecarResponse
+	if err := json.Unmarshal(respBody, &sidecarResp); err != nil {
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeAction,
+			Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{
+				Filter: "javascript",
+				Result: "error",
+				Detail: fmt.Sprintf("cannot parse sidecar response: %v", err),
+			},
+		}, nil
+	}
+
+	// Parse the result from the sidecar into the expected format
 	var jsResult struct {
 		Type    string          `json:"type"`
 		Action  string          `json:"action"`
@@ -111,7 +176,7 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 			Detail string `json:"detail"`
 		} `json:"log"`
 	}
-	if err := json.Unmarshal(resultJSON, &jsResult); err != nil {
+	if err := json.Unmarshal(sidecarResp.Result, &jsResult); err != nil {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
 			Action: pipeline.ActionContinue,
@@ -145,16 +210,10 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 }
 
 // ValidateScript checks if a JavaScript filter script is syntactically valid.
+// This performs a basic check that the script contains a filter function definition.
 func ValidateScript(script string) error {
-	vm := goja.New()
-	_, err := vm.RunString(fmt.Sprintf(`
-		%s
-		if (typeof filter !== 'function') {
-			throw new Error('script must define a filter(email) function');
-		}
-	`, script))
-	if err != nil {
-		return fmt.Errorf("syntax error: %w", err)
+	if !strings.Contains(script, "function filter") {
+		return fmt.Errorf("script must define a filter(email) function")
 	}
 	return nil
 }

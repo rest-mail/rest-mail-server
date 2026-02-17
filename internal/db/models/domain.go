@@ -8,6 +8,8 @@ type Domain struct {
 	ServerType        string    `gorm:"size:20;not null;default:traditional" json:"server_type"` // 'traditional' or 'restmail'
 	Active            bool      `gorm:"default:true" json:"active"`
 	DefaultQuotaBytes int64     `gorm:"default:1073741824" json:"default_quota_bytes"` // 1GB
+	DKIMSelector      string    `gorm:"size:63" json:"dkim_selector"`
+	DKIMPrivateKey    string    `gorm:"type:text" json:"-"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 

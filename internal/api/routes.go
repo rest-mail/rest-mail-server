@@ -56,6 +56,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 	pipeline.DefaultRegistry.Register("contact_whitelist", filters.NewContactWhitelist(db))
 	pipeline.DefaultRegistry.Register("recipient_check", filters.NewRecipientCheck(db))
 	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
+	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db))
 
 	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine)

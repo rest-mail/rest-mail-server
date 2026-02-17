@@ -1,0 +1,10 @@
+{
+  "name": "restmail-js-filter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sandboxed JavaScript filter execution for restmail pipeline",
+  "main": "server.js",
+  "dependencies": {
+    "vm2": "^3.9.19"
+  }
+}

@@ -60,6 +60,18 @@ services:
       mailnet:
         ipv4_address: 172.20.0.2
 
+  # ─── JS Filter Sidecar ─────────────────────────────────────────────
+  js-filter:
+    build:
+      context: ./docker/js-filter-sidecar
+    container_name: restmail-js-filter
+    restart: unless-stopped
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.22
+    expose:
+      - "3100"
+
   # ─── Go REST API ────────────────────────────────────────────────────
   api:
     build:

@@ -2,8 +2,20 @@ package filters
 
 import (
 	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
+	"fmt"
+	"strings"
+	"time"
 
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
+	"gorm.io/gorm"
 )
 
 // dkimVerifyFilter verifies DKIM signatures on inbound messages.
@@ -12,7 +24,7 @@ type dkimVerifyFilter struct{}
 
 func init() {
 	pipeline.DefaultRegistry.Register("dkim_verify", NewDKIMVerify)
-	pipeline.DefaultRegistry.Register("dkim_sign", NewDKIMSign)
+	// dkim_sign is registered in routes.go with DB access
 }
 
 func NewDKIMVerify(_ []byte) (pipeline.Filter, error) {
@@ -67,10 +79,16 @@ func (f *dkimVerifyFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 }
 
 // dkimSignFilter signs outbound messages with the domain's DKIM key.
-type dkimSignFilter struct{}
+type dkimSignFilter struct {
+	db *gorm.DB
+}
 
-func NewDKIMSign(_ []byte) (pipeline.Filter, error) {
-	return &dkimSignFilter{}, nil
+// NewDKIMSign returns a FilterFactory that creates dkimSignFilter instances
+// backed by the given database connection (for domain key lookups).
+func NewDKIMSign(db *gorm.DB) pipeline.FilterFactory {
+	return func(config []byte) (pipeline.Filter, error) {
+		return &dkimSignFilter{db: db}, nil
+	}
 }
 
 func (f *dkimSignFilter) Name() string             { return "dkim_sign" }
@@ -79,14 +97,103 @@ func (f *dkimSignFilter) Type() pipeline.FilterType { return pipeline.FilterType
 func (f *dkimSignFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
 
-	// In production, this would:
-	// 1. Look up the domain's DKIM private key from the database
-	// 2. Canonicalize headers and body (relaxed/relaxed)
-	// 3. Compute body hash (SHA-256)
-	// 4. Sign the selected headers + body hash
-	// 5. Add the DKIM-Signature header
-	//
-	// For now, we pass through without signing.
+	// Extract sender domain
+	senderDomain := ""
+	if from := email.Envelope.MailFrom; from != "" {
+		if idx := strings.LastIndex(from, "@"); idx >= 0 {
+			senderDomain = from[idx+1:]
+		}
+	}
+
+	if senderDomain == "" {
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeTransform,
+			Action: pipeline.ActionContinue,
+			Message: &modified,
+			Log: pipeline.FilterLog{
+				Filter: "dkim_sign",
+				Result: "skipped",
+				Detail: "no sender domain",
+			},
+		}, nil
+	}
+
+	// Look up domain DKIM config
+	var domain models.Domain
+	if err := f.db.Where("name = ?", senderDomain).First(&domain).Error; err != nil || domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeTransform,
+			Action: pipeline.ActionContinue,
+			Message: &modified,
+			Log: pipeline.FilterLog{
+				Filter: "dkim_sign",
+				Result: "skipped",
+				Detail: "no DKIM key configured for domain " + senderDomain,
+			},
+		}, nil
+	}
+
+	// Parse private key
+	block, _ := pem.Decode([]byte(domain.DKIMPrivateKey))
+	if block == nil {
+		return skipResult("failed to decode DKIM private key PEM"), nil
+	}
+
+	privKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		// Try PKCS8
+		key, err2 := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err2 != nil {
+			return skipResult("failed to parse DKIM private key: " + err.Error()), nil
+		}
+		var ok bool
+		privKey, ok = key.(*rsa.PrivateKey)
+		if !ok {
+			return skipResult("DKIM key is not RSA"), nil
+		}
+	}
+
+	// Build canonical body (relaxed)
+	bodyContent := email.Body.Content
+	if bodyContent == "" && len(email.Body.Parts) > 0 {
+		bodyContent = email.Body.Parts[0].Content
+	}
+	canonBody := relaxedBody(bodyContent)
+	bodyHash := sha256.Sum256([]byte(canonBody))
+	bh := base64.StdEncoding.EncodeToString(bodyHash[:])
+
+	// Build signed headers
+	signedHeaders := "from:to:subject:date:message-id"
+	headerValues := buildCanonicalHeaders(email, signedHeaders)
+
+	// Build DKIM-Signature without b= value
+	now := time.Now()
+	dkimHeader := fmt.Sprintf(
+		"v=1; a=rsa-sha256; c=relaxed/relaxed; d=%s; s=%s; t=%d; h=%s; bh=%s; b=",
+		senderDomain, domain.DKIMSelector, now.Unix(), signedHeaders, bh,
+	)
+
+	// Add DKIM-Signature to the headers to sign
+	signData := headerValues + "dkim-signature:" + relaxedHeaderValue(dkimHeader)
+
+	// Sign
+	hashed := sha256.Sum256([]byte(signData))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, hashed[:])
+	if err != nil {
+		return skipResult("DKIM signing failed: " + err.Error()), nil
+	}
+
+	dkimSig := "v=1; a=rsa-sha256; c=relaxed/relaxed; d=" + senderDomain +
+		"; s=" + domain.DKIMSelector +
+		"; t=" + fmt.Sprintf("%d", now.Unix()) +
+		"; h=" + signedHeaders +
+		"; bh=" + bh +
+		"; b=" + base64.StdEncoding.EncodeToString(signature)
+
+	if modified.Headers.Extra == nil {
+		modified.Headers.Extra = make(map[string]string)
+	}
+	modified.Headers.Extra["DKIM-Signature"] = dkimSig
 
 	return &pipeline.FilterResult{
 		Type:    pipeline.FilterTypeTransform,
@@ -94,8 +201,85 @@ func (f *dkimSignFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (
 		Message: &modified,
 		Log: pipeline.FilterLog{
 			Filter: "dkim_sign",
-			Result: "skipped",
-			Detail: "DKIM signing pending key management implementation",
+			Result: "signed",
+			Detail: fmt.Sprintf("d=%s s=%s", senderDomain, domain.DKIMSelector),
 		},
 	}, nil
+}
+
+func skipResult(detail string) *pipeline.FilterResult {
+	return &pipeline.FilterResult{
+		Type:   pipeline.FilterTypeTransform,
+		Action: pipeline.ActionContinue,
+		Log: pipeline.FilterLog{
+			Filter: "dkim_sign",
+			Result: "skipped",
+			Detail: detail,
+		},
+	}
+}
+
+// relaxedBody implements DKIM relaxed body canonicalization.
+func relaxedBody(body string) string {
+	lines := strings.Split(body, "\n")
+	var result []string
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r")
+		// Reduce sequences of WSP to single SP
+		line = strings.Join(strings.Fields(line), " ")
+		line = strings.TrimRight(line, " ")
+		result = append(result, line)
+	}
+	// Remove trailing empty lines
+	for len(result) > 0 && result[len(result)-1] == "" {
+		result = result[:len(result)-1]
+	}
+	canonical := strings.Join(result, "\r\n")
+	if canonical != "" {
+		canonical += "\r\n"
+	}
+	return canonical
+}
+
+// relaxedHeaderValue implements relaxed header value canonicalization.
+func relaxedHeaderValue(value string) string {
+	// Unfold (remove CRLF followed by WSP)
+	value = strings.ReplaceAll(value, "\r\n ", " ")
+	value = strings.ReplaceAll(value, "\r\n\t", " ")
+	// Reduce WSP sequences to single SP
+	value = strings.Join(strings.Fields(value), " ")
+	return strings.TrimSpace(value)
+}
+
+// buildCanonicalHeaders builds the canonicalized header string for DKIM signing.
+func buildCanonicalHeaders(email *pipeline.EmailJSON, headerList string) string {
+	// Map header names to values from the email
+	headerMap := map[string]string{}
+	if len(email.Headers.From) > 0 {
+		from := email.Headers.From[0]
+		if from.Name != "" {
+			headerMap["from"] = fmt.Sprintf("%s <%s>", from.Name, from.Address)
+		} else {
+			headerMap["from"] = from.Address
+		}
+	}
+	if len(email.Headers.To) > 0 {
+		var addrs []string
+		for _, a := range email.Headers.To {
+			addrs = append(addrs, a.Address)
+		}
+		headerMap["to"] = strings.Join(addrs, ", ")
+	}
+	headerMap["subject"] = email.Headers.Subject
+	headerMap["date"] = email.Headers.Date
+	headerMap["message-id"] = email.Headers.MessageID
+
+	var result string
+	for _, name := range strings.Split(headerList, ":") {
+		name = strings.TrimSpace(name)
+		if val, ok := headerMap[name]; ok {
+			result += strings.ToLower(name) + ":" + relaxedHeaderValue(val) + "\r\n"
+		}
+	}
+	return result
 }

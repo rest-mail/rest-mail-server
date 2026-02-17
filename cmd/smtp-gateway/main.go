@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/queue"
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
+	"github.com/restmail/restmail/internal/gateway/tlsutil"
 )
 
 func main() {
@@ -52,7 +53,14 @@ func main() {
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		}
-		slog.Info("TLS configured", "cert", cfg.TLSCertPath)
+		// Enable SNI-based cert selection if a cert directory is configured
+		if cfg.TLSCertDir != "" {
+			loader := tlsutil.NewSNICertLoader(cfg.TLSCertDir, &cert)
+			tlsConfig.GetCertificate = loader.GetCertificate
+			slog.Info("TLS configured with SNI", "cert", cfg.TLSCertPath, "cert_dir", cfg.TLSCertDir)
+		} else {
+			slog.Info("TLS configured", "cert", cfg.TLSCertPath)
+		}
 	} else {
 		slog.Warn("no TLS certificate configured — running without TLS")
 	}

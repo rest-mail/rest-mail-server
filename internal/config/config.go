@@ -26,6 +26,7 @@ type Config struct {
 	// TLS
 	TLSCertPath string
 	TLSKeyPath  string
+	TLSCertDir  string // directory containing per-domain cert/key pairs for SNI
 
 	// JWT
 	JWTSecret            string
@@ -72,6 +73,7 @@ func Load() (*Config, error) {
 
 		TLSCertPath: getEnv("TLS_CERT_PATH", ""),
 		TLSKeyPath:  getEnv("TLS_KEY_PATH", ""),
+		TLSCertDir:  getEnv("TLS_CERT_DIR", ""),
 
 		JWTSecret:        getEnv("JWT_SECRET", "dev-secret-change-in-production"),
 		JWTAccessExpiry:  getEnvDuration("JWT_ACCESS_EXPIRY", 15*time.Minute),
