@@ -46,6 +46,8 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 	searchH := handlers.NewSearchHandler(db)
 	webmailH := handlers.NewWebmailAccountHandler(db)
 	restmailH := handlers.NewRestmailHandler(db)
+	attachmentH := handlers.NewAttachmentHandler(db)
+	contactH := handlers.NewContactHandler(db)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -111,6 +113,26 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 		r.Patch("/api/v1/messages/{id}", messageH.UpdateMessage)
 		r.Delete("/api/v1/messages/{id}", messageH.DeleteMessage)
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
+
+		// Drafts
+		r.Post("/api/v1/messages/draft", messageH.SaveDraft)
+		r.Put("/api/v1/messages/draft/{id}", messageH.UpdateDraft)
+		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
+
+		// Threads
+		r.Get("/api/v1/accounts/{id}/threads/{threadID}", messageH.GetThread)
+
+		// Attachments
+		r.Get("/api/v1/attachments/{id}", attachmentH.GetAttachment)
+		r.Get("/api/v1/messages/{id}/attachments", attachmentH.ListAttachments)
+
+		// Contacts
+		r.Get("/api/v1/accounts/{id}/contacts", contactH.ListContacts)
+		r.Post("/api/v1/accounts/{id}/contacts", contactH.CreateContact)
+		r.Patch("/api/v1/accounts/{id}/contacts/{cid}", contactH.UpdateContact)
+		r.Delete("/api/v1/accounts/{id}/contacts/{cid}", contactH.DeleteContact)
+		r.Post("/api/v1/accounts/{id}/contacts/block", contactH.BlockSender)
+		r.Post("/api/v1/accounts/{id}/contacts/import", contactH.ImportContacts)
 
 		// Search
 		r.Get("/api/v1/accounts/{id}/search", searchH.Search)

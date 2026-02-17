@@ -177,6 +177,20 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.db.First(&msg, id)
+
+	if h.broker != nil {
+		h.broker.Publish(msg.MailboxID, SSEEvent{
+			Type: "message_updated",
+			Data: map[string]interface{}{
+				"message_id": msg.ID,
+				"folder":     msg.Folder,
+				"is_read":    msg.IsRead,
+				"is_flagged": msg.IsFlagged,
+				"is_starred": msg.IsStarred,
+			},
+		})
+	}
+
 	respond.Data(w, http.StatusOK, msg)
 }
 
@@ -206,6 +220,15 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		h.db.Model(&msg).Updates(map[string]interface{}{
 			"folder":     "Trash",
 			"is_deleted": true,
+		})
+	}
+
+	if h.broker != nil {
+		h.broker.Publish(msg.MailboxID, SSEEvent{
+			Type: "message_deleted",
+			Data: map[string]interface{}{
+				"message_id": msg.ID,
+			},
 		})
 	}
 
@@ -678,6 +701,244 @@ func (h *MessageHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond.List(w, folders, nil)
+}
+
+// resolveSenderMailbox verifies the given from address belongs to the
+// authenticated user (via primary or linked mailbox) and returns the mailbox.
+func (h *MessageHandler) resolveSenderMailbox(from string, webmailAccountID uint) (*models.Mailbox, error) {
+	var account models.WebmailAccount
+	if err := h.db.Preload("PrimaryMailbox").First(&account, webmailAccountID).Error; err == nil {
+		if account.PrimaryMailbox.Address == from {
+			return &account.PrimaryMailbox, nil
+		}
+	}
+	var linked models.LinkedAccount
+	if err := h.db.Joins("Mailbox").Where("linked_accounts.webmail_account_id = ? AND \"Mailbox\".address = ?", webmailAccountID, from).First(&linked).Error; err == nil {
+		return &linked.Mailbox, nil
+	}
+	return nil, fmt.Errorf("sender not authorized")
+}
+
+// SaveDraft creates a new draft message.
+// POST /api/v1/messages/draft
+func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	var req struct {
+		From     string   `json:"from"`
+		To       []string `json:"to"`
+		Cc       []string `json:"cc"`
+		Subject  string   `json:"subject"`
+		BodyText string   `json:"body_text"`
+		BodyHTML string   `json:"body_html"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+
+	var mailboxID uint
+	if req.From != "" {
+		mb, err := h.resolveSenderMailbox(req.From, claims.WebmailAccountID)
+		if err != nil {
+			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
+			return
+		}
+		mailboxID = mb.ID
+	} else {
+		var account models.WebmailAccount
+		if err := h.db.First(&account, claims.WebmailAccountID).Error; err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to resolve account")
+			return
+		}
+		mailboxID = account.PrimaryMailboxID
+	}
+
+	toJSON, _ := json.Marshal(req.To)
+	if req.To == nil {
+		toJSON = []byte("[]")
+	}
+	ccJSON, _ := json.Marshal(req.Cc)
+	if req.Cc == nil {
+		ccJSON = []byte("[]")
+	}
+
+	draft := models.Message{
+		MailboxID:    mailboxID,
+		Folder:       "Drafts",
+		Sender:       req.From,
+		RecipientsTo: models.JSONB(toJSON),
+		RecipientsCc: models.JSONB(ccJSON),
+		Subject:      req.Subject,
+		BodyText:     req.BodyText,
+		BodyHTML:     req.BodyHTML,
+		IsDraft:      true,
+		IsRead:       true,
+		SizeBytes:    len(req.Subject) + len(req.BodyText) + len(req.BodyHTML),
+		ReceivedAt:   time.Now(),
+	}
+
+	if err := h.db.Create(&draft).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save draft")
+		return
+	}
+
+	respond.Data(w, http.StatusCreated, draft)
+}
+
+// UpdateDraft updates an existing draft message.
+// PUT /api/v1/messages/draft/{id}
+func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
+		return
+	}
+
+	var draft models.Message
+	if err := h.db.Where("id = ? AND is_draft = ?", id, true).First(&draft).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Draft not found")
+		return
+	}
+
+	var req struct {
+		From     *string  `json:"from"`
+		To       []string `json:"to"`
+		Cc       []string `json:"cc"`
+		Subject  *string  `json:"subject"`
+		BodyText *string  `json:"body_text"`
+		BodyHTML *string  `json:"body_html"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+
+	updates := map[string]interface{}{}
+	if req.From != nil {
+		updates["sender"] = *req.From
+	}
+	if req.To != nil {
+		toJSON, _ := json.Marshal(req.To)
+		updates["recipients_to"] = models.JSONB(toJSON)
+	}
+	if req.Cc != nil {
+		ccJSON, _ := json.Marshal(req.Cc)
+		updates["recipients_cc"] = models.JSONB(ccJSON)
+	}
+	if req.Subject != nil {
+		updates["subject"] = *req.Subject
+	}
+	if req.BodyText != nil {
+		updates["body_text"] = *req.BodyText
+	}
+	if req.BodyHTML != nil {
+		updates["body_html"] = *req.BodyHTML
+	}
+
+	if len(updates) > 0 {
+		h.db.Model(&draft).Updates(updates)
+	}
+
+	h.db.First(&draft, id)
+	respond.Data(w, http.StatusOK, draft)
+}
+
+// SendDraft converts a draft to a sent message by deleting it and delegating to SendMessage.
+// POST /api/v1/messages/draft/{id}/send
+func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
+		return
+	}
+
+	var draft models.Message
+	if err := h.db.Where("id = ? AND is_draft = ?", id, true).First(&draft).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Draft not found")
+		return
+	}
+
+	var toList []string
+	json.Unmarshal(draft.RecipientsTo, &toList)
+	if len(toList) == 0 {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Draft has no recipients")
+		return
+	}
+
+	var ccList []string
+	json.Unmarshal(draft.RecipientsCc, &ccList)
+
+	sendBody := map[string]interface{}{
+		"from":      draft.Sender,
+		"to":        toList,
+		"cc":        ccList,
+		"subject":   draft.Subject,
+		"body_text": draft.BodyText,
+		"body_html": draft.BodyHTML,
+	}
+	bodyBytes, _ := json.Marshal(sendBody)
+
+	h.db.Delete(&draft)
+
+	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
+	newReq.Header.Set("Content-Type", "application/json")
+
+	h.SendMessage(w, newReq)
+}
+
+// GetThread returns all messages sharing the same thread_id.
+// GET /api/v1/accounts/{id}/threads/{threadID}
+func (h *MessageHandler) GetThread(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return
+	}
+
+	threadID := chi.URLParam(r, "threadID")
+	if threadID == "" {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Thread ID required")
+		return
+	}
+
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	var messages []models.Message
+	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ?", mailboxID, threadID, false).
+		Order("received_at ASC").
+		Find(&messages).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to retrieve thread")
+		return
+	}
+
+	respond.List(w, messages, nil)
 }
 
 func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
