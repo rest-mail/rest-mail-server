@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"strconv"
@@ -132,6 +133,15 @@ func (s *Session) Handle() {
 		case "CHECK":
 			s.tagged(tag, "OK", "CHECK completed")
 		case "CLOSE":
+			// Implicitly expunge \Deleted messages (RFC 3501 §6.4.2)
+			// Unlike EXPUNGE, CLOSE does not send untagged EXPUNGE responses
+			if s.selected != nil {
+				for _, msg := range s.messages {
+					if s.deleted[msg.ID] {
+						s.api.DeleteMessage(s.auth.token, msg.ID)
+					}
+				}
+			}
 			s.selected = nil
 			s.messages = nil
 			s.deleted = make(map[uint]bool)
@@ -425,6 +435,36 @@ func (s *Session) handleFetch(tag, args string) {
 				s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
 				s.messages[seq-1].IsRead = true
 			}
+		} else if strings.Contains(dataItems, "BODY[HEADER]") {
+			detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+			if err != nil {
+				continue
+			}
+			raw := buildRawMessage(detail.Data)
+			headerEnd := strings.Index(raw, "\r\n\r\n")
+			headers := raw
+			if headerEnd >= 0 {
+				headers = raw[:headerEnd+4]
+			}
+			flags := buildFlags(msg)
+			s.send("* %d FETCH (FLAGS (%s) BODY[HEADER] {%d}", seq, flags, len(headers))
+			fmt.Fprintf(s.writer, "%s)\r\n", headers)
+			s.writer.Flush()
+		} else if strings.Contains(dataItems, "BODY[TEXT]") {
+			detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+			if err != nil {
+				continue
+			}
+			raw := buildRawMessage(detail.Data)
+			headerEnd := strings.Index(raw, "\r\n\r\n")
+			body := ""
+			if headerEnd >= 0 && headerEnd+4 < len(raw) {
+				body = raw[headerEnd+4:]
+			}
+			flags := buildFlags(msg)
+			s.send("* %d FETCH (FLAGS (%s) BODY[TEXT] {%d}", seq, flags, len(body))
+			fmt.Fprintf(s.writer, "%s)\r\n", body)
+			s.writer.Flush()
 		} else if strings.Contains(dataItems, "FLAGS") || strings.Contains(dataItems, "ENVELOPE") || strings.Contains(dataItems, "INTERNALDATE") {
 			flags := buildFlags(msg)
 			date := msg.ReceivedAt.Format("02-Jan-2006 15:04:05 -0700")
@@ -762,7 +802,40 @@ func (s *Session) handleCopy(tag, args string) {
 			continue
 		}
 		msg := s.messages[seq-1]
-		s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": dest})
+
+		// Fetch full message detail to duplicate it
+		detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+		if err != nil {
+			slog.Warn("imap: copy fetch failed", "msg_id", msg.ID, "error", err)
+			continue
+		}
+
+		// Build a DeliverRequest to create a duplicate
+		deliverReq := &apiclient.DeliverRequest{
+			Address:      s.auth.email,
+			MailboxID:    detail.Data.MailboxID,
+			Sender:       detail.Data.Sender,
+			SenderName:   detail.Data.SenderName,
+			RecipientsTo: detail.Data.RecipientsTo,
+			Subject:      detail.Data.Subject,
+			BodyText:     detail.Data.BodyText,
+			BodyHTML:     detail.Data.BodyHTML,
+			MessageID:    detail.Data.MessageID,
+			InReplyTo:    detail.Data.InReplyTo,
+			References:   detail.Data.References,
+			RawMessage:   buildRawMessage(detail.Data),
+		}
+
+		resp, deliverErr := s.api.DeliverMessage(deliverReq)
+		if deliverErr != nil {
+			slog.Warn("imap: copy deliver failed", "msg_id", msg.ID, "error", deliverErr)
+			continue
+		}
+
+		// Move the new message to the destination folder if not INBOX
+		if dest != "INBOX" && resp != nil {
+			s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": dest})
+		}
 	}
 
 	s.tagged(tag, "OK", "COPY completed")
@@ -975,13 +1048,8 @@ func (s *Session) handleAppend(tag, args string) {
 
 	// Read exactly size bytes
 	data := make([]byte, size)
-	n, err := s.reader.Read(data)
-	for n < size && err == nil {
-		var nn int
-		nn, err = s.reader.Read(data[n:])
-		n += nn
-	}
-	if n < size {
+	_, err = io.ReadFull(s.reader, data)
+	if err != nil {
 		s.tagged(tag, "NO", "Failed to read message data")
 		return
 	}
@@ -1379,7 +1447,40 @@ func (s *Session) handleUIDCopy(tag, args string) {
 			continue
 		}
 		msg := s.messages[seq-1]
-		s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": dest})
+
+		// Fetch full message detail to duplicate it
+		detail, err := s.api.GetMessage(s.auth.token, msg.ID)
+		if err != nil {
+			slog.Warn("imap: uid copy fetch failed", "msg_id", msg.ID, "error", err)
+			continue
+		}
+
+		// Build a DeliverRequest to create a duplicate
+		deliverReq := &apiclient.DeliverRequest{
+			Address:      s.auth.email,
+			MailboxID:    detail.Data.MailboxID,
+			Sender:       detail.Data.Sender,
+			SenderName:   detail.Data.SenderName,
+			RecipientsTo: detail.Data.RecipientsTo,
+			Subject:      detail.Data.Subject,
+			BodyText:     detail.Data.BodyText,
+			BodyHTML:     detail.Data.BodyHTML,
+			MessageID:    detail.Data.MessageID,
+			InReplyTo:    detail.Data.InReplyTo,
+			References:   detail.Data.References,
+			RawMessage:   buildRawMessage(detail.Data),
+		}
+
+		resp, deliverErr := s.api.DeliverMessage(deliverReq)
+		if deliverErr != nil {
+			slog.Warn("imap: uid copy deliver failed", "msg_id", msg.ID, "error", deliverErr)
+			continue
+		}
+
+		// Move the new message to the destination folder if not INBOX
+		if dest != "INBOX" && resp != nil {
+			s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": dest})
+		}
 	}
 
 	s.tagged(tag, "OK", "UID COPY completed")

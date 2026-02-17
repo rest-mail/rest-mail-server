@@ -127,6 +127,10 @@ services:
     container_name: smtp-gateway
     restart: unless-stopped
     hostname: mail3.test
+    ports:
+      - "25:25"
+      - "587:587"
+      - "465:465"
     environment:
       GATEWAY_HOSTNAME: mail3.test
       API_BASE_URL: http://api:8080
@@ -156,6 +160,11 @@ services:
         condition: service_completed_successfully
     dns:
       - 172.20.0.3
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 25 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       mailnet:
         ipv4_address: 172.20.0.13
@@ -168,6 +177,9 @@ services:
     container_name: imap-gateway
     restart: unless-stopped
     hostname: mail3.test
+    ports:
+      - "143:143"
+      - "993:993"
     environment:
       GATEWAY_HOSTNAME: mail3.test
       API_BASE_URL: http://api:8080
@@ -186,6 +198,11 @@ services:
         condition: service_completed_successfully
     dns:
       - 172.20.0.3
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 143 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       mailnet:
         ipv4_address: 172.20.0.15
@@ -198,6 +215,9 @@ services:
     container_name: pop3-gateway
     restart: unless-stopped
     hostname: mail3.test
+    ports:
+      - "110:110"
+      - "995:995"
     environment:
       GATEWAY_HOSTNAME: mail3.test
       API_BASE_URL: http://api:8080
@@ -216,6 +236,11 @@ services:
         condition: service_completed_successfully
     dns:
       - 172.20.0.3
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 110 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       mailnet:
         ipv4_address: 172.20.0.16

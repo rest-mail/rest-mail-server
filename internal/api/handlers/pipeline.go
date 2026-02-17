@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -312,12 +313,24 @@ func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Reque
 
 	// Deliver the quarantined message to the user's INBOX directly,
 	// bypassing spam filters (the user explicitly released it).
+	// Extract body from raw message
+	bodyText := item.BodyPreview // fallback
+	bodyHTML := ""
+	if item.RawMessage != "" {
+		if headerEnd := strings.Index(item.RawMessage, "\r\n\r\n"); headerEnd >= 0 {
+			bodyText = item.RawMessage[headerEnd+4:]
+		} else if headerEnd := strings.Index(item.RawMessage, "\n\n"); headerEnd >= 0 {
+			bodyText = item.RawMessage[headerEnd+2:]
+		}
+	}
+
 	msg := models.Message{
 		MailboxID:  item.MailboxID,
 		Folder:     "INBOX",
 		Sender:     item.Sender,
 		Subject:    item.Subject,
-		BodyText:   item.BodyPreview,
+		BodyText:   bodyText,
+		BodyHTML:   bodyHTML,
 		RawMessage: item.RawMessage,
 		SizeBytes:  len(item.RawMessage),
 	}

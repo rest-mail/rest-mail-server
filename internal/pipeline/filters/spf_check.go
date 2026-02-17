@@ -59,18 +59,18 @@ func (f *spfCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 	// Look up SPF record
 	result, detail := checkSPF(ctx, clientIP, domain)
 
-	if result == "fail" {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeAction,
-			Action: pipeline.ActionContinue, // SPF alone doesn't reject (DMARC decides)
-			Log: pipeline.FilterLog{
-				Filter: "spf_check",
-				Result: result,
-				Detail: detail,
-			},
-		}, nil
+	// Write Authentication-Results header for downstream filters (DMARC)
+	authResult := fmt.Sprintf("spf=%s (%s) smtp.mailfrom=%s", result, detail, sender)
+	if email.Headers.Raw == nil {
+		email.Headers.Raw = make(map[string][]string)
 	}
+	// Append to existing Authentication-Results rather than overwriting
+	email.Headers.Raw["Authentication-Results"] = append(
+		email.Headers.Raw["Authentication-Results"],
+		authResult,
+	)
 
+	// SPF alone doesn't reject (DMARC decides)
 	return &pipeline.FilterResult{
 		Type:   pipeline.FilterTypeAction,
 		Action: pipeline.ActionContinue,

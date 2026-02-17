@@ -1204,6 +1204,7 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 
 	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
 	newReq.Header.Set("Content-Type", "application/json")
+	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
 
 	h.SendMessage(w, newReq)
 }
@@ -1399,9 +1400,13 @@ func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint)
 		}
 	}
 
-	var linked models.LinkedAccount
-	if err := h.db.Where("webmail_account_id = ? AND id = ?", webmailAccountID, accountID).First(&linked).Error; err == nil {
-		return linked.MailboxID, nil
+	// Check if user has a linked account whose mailbox matches the target account
+	var targetAccount models.WebmailAccount
+	if err := h.db.First(&targetAccount, accountID).Error; err == nil {
+		var linked models.LinkedAccount
+		if err := h.db.Where("webmail_account_id = ? AND mailbox_id = ?", webmailAccountID, targetAccount.PrimaryMailboxID).First(&linked).Error; err == nil {
+			return linked.MailboxID, nil
+		}
 	}
 
 	return 0, fmt.Errorf("account not found or access denied")
