@@ -26,6 +26,7 @@ type Worker struct {
 	hostname      string
 	numWorkers    int
 	pollInterval  time.Duration
+	tlsInsecure   bool
 	shutdown      chan struct{}
 	wg            sync.WaitGroup
 }
@@ -37,6 +38,7 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 		hostname:     hostname,
 		numWorkers:   numWorkers,
 		pollInterval: pollInterval,
+		tlsInsecure:  false,
 		shutdown:     make(chan struct{}),
 	}
 }
@@ -249,7 +251,7 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 	httpClient := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // TODO: proper cert validation
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: w.tlsInsecure},
 		},
 	}
 	resp, err := httpClient.Post(messagesURL, "application/json", bytes.NewReader(payloadBytes))
@@ -352,7 +354,7 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue) error {
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		tlsConfig := &tls.Config{
 			ServerName:         host,
-			InsecureSkipVerify: true, // TODO: Proper cert validation in production
+			InsecureSkipVerify: w.tlsInsecure,
 		}
 		if err := client.StartTLS(tlsConfig); err != nil {
 			slog.Debug("queue: STARTTLS failed, continuing without TLS", "host", host, "error", err)

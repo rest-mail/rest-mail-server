@@ -59,7 +59,7 @@ func NewModel(api *apiclient.Client, token string) Model {
 		menuIdx: 0,
 		domains: NewDomainsModel(api, token),
 		users:   NewUsersModel(api, token),
-		inbox:   NewInboxModel(api),
+		inbox:   NewInboxModel(api, token),
 		compose: NewComposeModel(api),
 		status:  NewStatusModel(api, token),
 	}

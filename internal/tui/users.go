@@ -150,7 +150,13 @@ func (m UsersModel) Update(msg tea.Msg) (UsersModel, tea.Cmd) {
 				}
 			}
 		case "r":
-			// TODO: Reset password via API
+			if len(m.users) > 0 {
+				u := m.users[m.cursor]
+				return m, func() tea.Msg {
+					err := m.api.ResetPassword(m.token, u.id, "changeme123")
+					return userDeletedMsg{err: err} // reuse msg type to trigger reload
+				}
+			}
 		}
 	}
 	return m, nil

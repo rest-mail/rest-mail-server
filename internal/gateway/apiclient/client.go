@@ -309,6 +309,12 @@ func (c *Client) DeleteMailbox(token string, id uint) error {
 	return c.deleteAuth(fmt.Sprintf("/api/v1/admin/mailboxes/%d", id), token)
 }
 
+// ResetPassword resets a mailbox password (admin only).
+func (c *Client) ResetPassword(token string, id uint, newPassword string) error {
+	body := map[string]interface{}{"password": newPassword}
+	return c.patchAuth(fmt.Sprintf("/api/v1/admin/mailboxes/%d", id), token, body, nil)
+}
+
 // ── HTTP helpers ──────────────────────────────────────────────────────
 
 func (c *Client) get(path string, out interface{}) error {

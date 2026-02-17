@@ -22,7 +22,8 @@ type inboxMessageDetailMsg struct {
 
 // InboxModel handles browsing a user's inbox.
 type InboxModel struct {
-	api    *apiclient.Client
+	api        *apiclient.Client
+	adminToken string // admin token for browsing any mailbox
 
 	// User selection
 	selectingUser bool
@@ -43,7 +44,7 @@ type InboxModel struct {
 	scrollOffset   int
 }
 
-func NewInboxModel(api *apiclient.Client) InboxModel {
+func NewInboxModel(api *apiclient.Client, adminToken string) InboxModel {
 	ui := textinput.New()
 	ui.Placeholder = "user@domain.test"
 	ui.CharLimit = 255
@@ -51,6 +52,7 @@ func NewInboxModel(api *apiclient.Client) InboxModel {
 
 	return InboxModel{
 		api:           api,
+		adminToken:    adminToken,
 		selectingUser: true,
 		userInput:     ui,
 	}
@@ -152,13 +154,30 @@ func (m InboxModel) updateReading(msg tea.KeyMsg) (InboxModel, tea.Cmd) {
 
 func (m InboxModel) fetchMessages(email string) tea.Cmd {
 	return func() tea.Msg {
-		// Login as user to get token
-		resp, err := m.api.Login(email, "password123") // dev default
-		if err != nil {
-			return inboxMessagesMsg{err: fmt.Errorf("login as %s: %w", email, err)}
+		// Use the admin token to browse any user's mailbox.
+		// Look up the mailbox by address to find its account ID.
+		token := m.adminToken
+		if token == "" {
+			return inboxMessagesMsg{err: fmt.Errorf("no admin token available")}
 		}
 
-		msgResp, err := m.api.ListMessages(resp.Data.AccessToken, resp.Data.User.ID, "INBOX")
+		// Find the mailbox for this email via the admin mailbox list
+		mbResp, err := m.api.ListMailboxes(token)
+		if err != nil {
+			return inboxMessagesMsg{err: fmt.Errorf("list mailboxes: %w", err)}
+		}
+		var accountID uint
+		for _, mb := range mbResp.Data {
+			if mb.Address == email {
+				accountID = mb.ID
+				break
+			}
+		}
+		if accountID == 0 {
+			return inboxMessagesMsg{err: fmt.Errorf("mailbox not found: %s", email)}
+		}
+
+		msgResp, err := m.api.ListMessages(token, accountID, "INBOX")
 		if err != nil {
 			return inboxMessagesMsg{err: err}
 		}
@@ -169,16 +188,12 @@ func (m InboxModel) fetchMessages(email string) tea.Cmd {
 
 func (m InboxModel) fetchMessageDetail(msgID uint) tea.Cmd {
 	return func() tea.Msg {
-		if m.token == "" {
-			// Re-login
-			resp, err := m.api.Login(m.selectedUser, "password123")
-			if err != nil {
-				return inboxMessageDetailMsg{err: err}
-			}
-			m.token = resp.Data.AccessToken
+		token := m.adminToken
+		if token == "" {
+			return inboxMessageDetailMsg{err: fmt.Errorf("no admin token available")}
 		}
 
-		detail, err := m.api.GetMessage(m.token, msgID)
+		detail, err := m.api.GetMessage(token, msgID)
 		if err != nil {
 			return inboxMessageDetailMsg{err: err}
 		}
