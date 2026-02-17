@@ -1779,39 +1779,78 @@ The rich text editor uses **[TipTap](https://tiptap.dev/)** (`@tiptap/react`), a
 
 ---
 
-## Phase 8: Protocol Gateway (mail3.test)
+## Phase 8: Protocol Gateways (mail3.test)
 
-This is the core of the project. The **protocol gateway** is a Go application that listens on all standard mail ports and translates SMTP/IMAP/POP3 wire protocol into REST API calls against the shared Go backend. There is no Postfix or Dovecot involved in mail3.test -- it's pure Go.
+This is the core of the project. The **protocol gateways** are separate Go services — one per protocol — that listen on standard mail ports and translate SMTP/IMAP/POP3 wire protocol into REST API calls against the shared Go backend. There is no Postfix or Dovecot involved in mail3.test -- it's pure Go.
 
-The gateway is a **protocol translator**, not a proxy. It parses incoming protocol commands, makes the equivalent REST API call, and constructs the correct protocol response.
+Each gateway is a **protocol translator**, not a proxy. It parses incoming protocol commands, makes the equivalent REST API call, and constructs the correct protocol response.
 
-### Gateway Architecture
+### Gateway Architecture — Separate Per-Protocol Services
+
+Instead of a single monolithic gateway binary, each protocol runs as its own service/container:
+
+| Service            | Binary              | Ports          | Responsibility                                        |
+|--------------------|----------------------|----------------|-------------------------------------------------------|
+| **smtp-gateway**   | `cmd/smtp-gateway/`  | 25, 465, 587   | Inbound MTA, submission with AUTH, outbound queue      |
+| **imap-gateway**   | `cmd/imap-gateway/`  | 143, 993       | IMAP4rev1 with IDLE, STARTTLS, implicit TLS           |
+| **pop3-gateway**   | `cmd/pop3-gateway/`  | 110, 995       | POP3 with STARTTLS, implicit TLS                      |
+
+**Benefits of separate services:**
+- **Independent scaling**: IMAP connections are long-lived (IDLE); SMTP is bursty. Scale each independently.
+- **Isolated failure domains**: A bug or crash in the POP3 handler doesn't take down SMTP delivery.
+- **Smaller targeted codebases**: Each binary is focused on one protocol, easier to test and maintain.
+- **Flexible deployment**: Run all three on one host, or spread across machines. Each targets the shared REST API pool.
+
+All three services share a common internal library (`internal/gateway/`) for REST API client, TLS config, and connection throttling.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                  Protocol Gateway (Go)                    │
-│                                                          │
-│  ┌──────────────────────┐    Each handler:               │
-│  │ SMTP Handler         │    1. Accepts TCP connection    │
-│  │ :25  (inbound MTA)   │    2. TLS via STARTTLS or      │
-│  │ :465 (implicit TLS)  │       implicit (SNI-based)     │
-│  │ :587 (submission+AUTH│    3. Parses protocol commands  │
-│  ├──────────────────────┤    4. Translates to REST calls  │
-│  │ IMAP Handler         │    5. Returns protocol response │
-│  │ :143 (STARTTLS)      │                                │
-│  │ :993 (implicit TLS)  │         │                       │
-│  ├──────────────────────┤         │  HTTP/REST             │
-│  │ POP3 Handler         │         │                       │
-│  │ :110 (STARTTLS)      │         ▼                       │
-│  │ :995 (implicit TLS)  │    Go REST API                  │
-│  └──────────────────────┘    (shared backend)             │
-│                                                          │
-│  ┌──────────────────────┐                                │
-│  │ Outbound Queue       │    Background workers:          │
-│  │ + Retry Scheduler    │    • Poll queue for pending     │
-│  │ + Bounce Generator   │    • Retry on 4xx (backoff)     │
-│  └──────────────────────┘    • Bounce on permanent fail   │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  smtp-gateway   │  │  imap-gateway   │  │  pop3-gateway   │
+│  :25 :465 :587  │  │  :143 :993      │  │  :110 :995      │
+│                 │  │                 │  │                 │
+│  SMTP inbound   │  │  IMAP4rev1      │  │  POP3           │
+│  SMTP AUTH      │  │  IDLE → SSE     │  │  STAT/LIST/RETR │
+│  Outbound queue │  │  GETQUOTA       │  │                 │
+│  + retry worker │  │                 │  │                 │
+└────────┬────────┘  └────────┬────────┘  └────────┬────────┘
+         │                    │                    │
+         │        HTTP/REST (shared API pool)      │
+         └──────────────┬─┬───────────────────────┘
+                        │ │
+                        ▼ ▼
+              ┌──────────────────┐
+              │  Go REST API     │
+              │  (api container) │
+              │  → Postgres      │
+              └──────────────────┘
+```
+
+**docker-compose.yml** runs each as a separate container:
+
+```yaml
+smtp-gateway:
+  build: { context: ., dockerfile: docker/smtp-gateway/Dockerfile }
+  ports: ["25:25", "465:465", "587:587"]
+  environment:
+    API_BASE_URL: http://api:8080
+  networks:
+    restmail: { ipv4_address: 172.20.0.14 }
+
+imap-gateway:
+  build: { context: ., dockerfile: docker/imap-gateway/Dockerfile }
+  ports: ["143:143", "993:993"]
+  environment:
+    API_BASE_URL: http://api:8080
+  networks:
+    restmail: { ipv4_address: 172.20.0.15 }
+
+pop3-gateway:
+  build: { context: ., dockerfile: docker/pop3-gateway/Dockerfile }
+  ports: ["110:110", "995:995"]
+  environment:
+    API_BASE_URL: http://api:8080
+  networks:
+    restmail: { ipv4_address: 172.20.0.16 }
 ```
 
 ### Protocol Translation Examples
@@ -2115,40 +2154,41 @@ DELETE /api/v1/admin/bans/:ip         - Unban an IP
 ```
 
 ### Key Considerations
-- The gateway is a single Go binary with multiple listeners (one per protocol, including TLS variants)
+- Each protocol gateway is a **separate Go binary** (`cmd/smtp-gateway/`, `cmd/imap-gateway/`, `cmd/pop3-gateway/`) running in its own container
+- All three share `internal/gateway/` for the REST API client, TLS config, and connection throttling logic
 - All TLS listeners use SNI-based certificate selection from Phase 6
 - Each protocol handler is stateful per-connection (SMTP session state, IMAP selected mailbox, etc.) but translates everything into stateless REST calls
 - Port 587/465 requires **SMTP AUTH** before accepting mail for relay -- authenticated sender must match a valid mailbox
 - Outbound delivery goes through the **queue**, not direct relay -- this ensures retry logic and bounce generation
-- The queue worker runs as a goroutine pool within the gateway process
+- The queue worker runs as a goroutine pool within the smtp-gateway process (it owns outbound delivery)
 - Bounce messages conform to RFC 3464 (Delivery Status Notifications)
-- **RESTMAIL capability advertisement**: the SMTP inbound handler includes `RESTMAIL https://mail3.test/restmail` in its 250 EHLO response
-- **RESTMAIL capability detection**: when the SMTP outbound relay connects to a remote server, it checks the EHLO response for a `RESTMAIL` capability. If found, it drops the TCP connection and delivers via HTTPS to the advertised endpoint instead
+- **RESTMAIL capability advertisement**: the smtp-gateway inbound handler includes `RESTMAIL https://mail3.test/restmail` in its 250 EHLO response
+- **RESTMAIL capability detection**: when the smtp-gateway outbound relay connects to a remote server, it checks the EHLO response for a `RESTMAIL` capability. If found, it drops the TCP connection and delivers via HTTPS to the advertised endpoint instead
 - dnsmasq must have A, MX, and **PTR** records for mail3.test
-- The gateway must implement enough of each protocol to satisfy real-world clients and servers (not necessarily the full RFC, but enough for interop)
+- Each gateway must implement enough of its protocol to satisfy real-world clients and servers (not necessarily the full RFC, but enough for interop)
 - Go-level connection limits are the first line of in-process defence; fail2ban provides persistent IP banning at the kernel level
 
 ### TODO
-- [x] Design the gateway Go project structure (cmd/gateway/, internal/gateway/smtp, internal/gateway/imap, internal/gateway/pop3)
+- [x] Design the gateway Go project structure (cmd/smtp-gateway/, cmd/imap-gateway/, cmd/pop3-gateway/, internal/gateway/)
 - [x] Implement SMTP inbound handler (receive mail from external servers, translate to REST API calls)
 - [x] Implement SMTP AUTH on submission ports (587/465) -- AUTH PLAIN, AUTH LOGIN
 - [x] Implement STARTTLS for ports 25/587/143/110
 - [x] Implement implicit TLS for ports 465/993/995
 - [x] Advertise `RESTMAIL <endpoint>` in SMTP EHLO 250 capabilities response
-- [x] Implement outbound mail queue (database table + worker goroutines)
+- [x] Implement outbound mail queue (database table + worker goroutines in smtp-gateway)
 - [x] Implement retry scheduler with exponential backoff
 - [ ] Implement bounce message generation (RFC 3464 DSN)
 - [ ] Implement queue management API endpoints
-- [x] Implement SMTP outbound relay (gateway acts as SMTP client to deliver queued messages)
+- [x] Implement SMTP outbound relay (smtp-gateway acts as SMTP client to deliver queued messages)
 - [ ] Implement RESTMAIL capability detection in outbound relay: check EHLO response, upgrade to HTTPS if present
 - [x] Implement RESTMAIL delivery endpoint (`/restmail/messages`) for server-to-server REST delivery
 - [x] Implement IMAP handler (authenticate, list folders, fetch messages -- all via REST API)
 - [x] Implement IMAP IDLE (push notification for new mail)
 - [ ] Implement IMAP GETQUOTA / GETQUOTAROOT commands (RFC 2087 — return quota info via REST API)
 - [x] Implement POP3 handler (authenticate, list/retrieve messages -- all via REST API)
-- [x] Create REST API client package shared by all gateway handlers
+- [x] Create REST API client package shared by all gateway services
 - [x] Add mail3.test to dnsmasq config (A + MX + PTR records)
-- [x] Add gateway container to docker-compose.yml
+- [ ] Split single gateway container into three per-protocol containers in docker-compose.yml
 - [x] Create database migration for `outbound_queue` table
 - [ ] Verify mail delivery: mail1.test → mail3.test (SMTP inbound, no upgrade)
 - [ ] Verify mail delivery: mail3.test → mail1.test (SMTP outbound via queue, no upgrade -- fallback)
