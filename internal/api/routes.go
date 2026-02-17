@@ -51,6 +51,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 	sieveH := handlers.NewSieveHandler(db)
 	senderRuleH := handlers.NewSenderRuleHandler(db)
 	queueH := handlers.NewQueueHandler(db)
+	dkimH := handlers.NewDKIMHandler(db)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -124,6 +125,8 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 		r.Patch("/api/v1/messages/{id}", messageH.UpdateMessage)
 		r.Delete("/api/v1/messages/{id}", messageH.DeleteMessage)
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
+		r.Get("/api/v1/messages/{id}/raw", messageH.GetRawMessage)
+		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
 
 		// Drafts
 		r.Post("/api/v1/messages/draft", messageH.SaveDraft)
@@ -209,6 +212,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 		r.Delete("/api/v1/admin/pipelines/{id}", pipelineH.DeletePipeline)
 		r.Post("/api/v1/admin/pipelines/test", pipelineH.TestPipeline)
 		r.Post("/api/v1/admin/pipelines/test-filter", pipelineH.TestFilter)
+		r.Get("/api/v1/admin/pipelines/logs", pipelineH.ListPipelineLogs)
 
 		// Custom filters
 		r.Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
@@ -230,6 +234,11 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 		r.Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
 		r.Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
 		r.Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
+
+		// DKIM key management
+		r.Get("/api/v1/admin/dkim", dkimH.ListKeys)
+		r.Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
+		r.Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
 	})
 
 	// ═══════════════════════════════════════════════════════════════

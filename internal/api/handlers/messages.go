@@ -654,6 +654,8 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
+		h.logPipelineExecution(pipelineCfg.ID, nil, "inbound", pipelineResult)
+
 		switch pipelineResult.FinalAction {
 		case pipeline.ActionReject:
 			rejectMsg := pipelineResult.RejectMsg
@@ -1225,6 +1227,113 @@ func (h *MessageHandler) GetThread(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond.List(w, messages, nil)
+}
+
+// logPipelineExecution persists a pipeline execution result to the pipeline_logs table.
+func (h *MessageHandler) logPipelineExecution(pipelineID uint, messageID *uint, direction string, result *pipeline.ExecutionResult) {
+	stepsJSON, _ := json.Marshal(result.Steps)
+	h.db.Create(&models.PipelineLog{
+		PipelineID: pipelineID,
+		MessageID:  messageID,
+		Direction:  direction,
+		Action:     string(result.FinalAction),
+		Steps:      stepsJSON,
+		DurationMS: result.Duration.Milliseconds(),
+	})
+}
+
+// GetRawMessage returns the raw RFC 2822 message content.
+// GET /api/v1/messages/{id}/raw
+func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
+		return
+	}
+
+	var msg models.Message
+	if err := h.db.First(&msg, id).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
+		return
+	}
+
+	if msg.RawMessage == "" {
+		respond.Error(w, http.StatusNotFound, "not_found", "Raw message not available")
+		return
+	}
+
+	w.Header().Set("Content-Type", "message/rfc822")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(msg.RawMessage))
+}
+
+// ForwardMessage forwards an existing message to new recipients.
+// POST /api/v1/messages/{id}/forward
+func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
+		return
+	}
+
+	var original models.Message
+	if err := h.db.First(&original, id).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
+		return
+	}
+
+	var req struct {
+		From     string   `json:"from"`
+		To       []string `json:"to"`
+		BodyText string   `json:"body_text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+
+	if req.From == "" || len(req.To) == 0 {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "from and to are required")
+		return
+	}
+
+	// Build forwarded body
+	fwdBody := req.BodyText
+	if fwdBody != "" {
+		fwdBody += "\n\n"
+	}
+	fwdBody += "---------- Forwarded message ----------\n"
+	fwdBody += fmt.Sprintf("From: %s\n", original.Sender)
+	fwdBody += fmt.Sprintf("Subject: %s\n\n", original.Subject)
+	fwdBody += original.BodyText
+
+	// Build the send request body and delegate to SendMessage
+	sendBody := map[string]interface{}{
+		"from":      req.From,
+		"to":        req.To,
+		"subject":   "Fwd: " + original.Subject,
+		"body_text": fwdBody,
+		"body_html": original.BodyHTML,
+	}
+	bodyBytes, _ := json.Marshal(sendBody)
+
+	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
+	newReq.Header.Set("Content-Type", "application/json")
+	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
+
+	h.SendMessage(w, newReq)
 }
 
 func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {

@@ -117,6 +117,8 @@ func (s *Session) Handle() {
 			s.handleStore(tag, args)
 		case "COPY":
 			s.handleCopy(tag, args)
+		case "MOVE":
+			s.handleMove(tag, args)
 		case "CREATE":
 			s.handleCreate(tag, args)
 		case "NOOP":
@@ -147,7 +149,7 @@ func (s *Session) Handle() {
 }
 
 func (s *Session) handleCapability(tag string) {
-	caps := "IMAP4rev1 QUOTA"
+	caps := "IMAP4rev1 QUOTA MOVE"
 	if !s.tls_ && s.tlsConfig != nil {
 		caps += " STARTTLS"
 	}
@@ -756,6 +758,48 @@ func (s *Session) handleCopy(tag, args string) {
 	}
 
 	s.tagged(tag, "OK", "COPY completed")
+}
+
+func (s *Session) handleMove(tag, args string) {
+	if s.selected == nil {
+		s.tagged(tag, "NO", "No mailbox selected")
+		return
+	}
+
+	parts := strings.SplitN(args, " ", 2)
+	if len(parts) < 2 {
+		s.tagged(tag, "BAD", "MOVE requires sequence and destination")
+		return
+	}
+
+	seqStr := parts[0]
+	dest := unquote(strings.TrimSpace(parts[1]))
+
+	seqNums := parseSequenceSet(seqStr, len(s.messages))
+
+	// Move = update folder + expunge from current view (in reverse for stable seq nums)
+	for i := len(seqNums) - 1; i >= 0; i-- {
+		seq := seqNums[i]
+		if seq < 1 || seq > len(s.messages) {
+			continue
+		}
+		msg := s.messages[seq-1]
+		// Update folder via API
+		if err := s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": dest}); err != nil {
+			slog.Warn("imap: move failed", "msg_id", msg.ID, "error", err)
+			continue
+		}
+		// Send EXPUNGE for this sequence number
+		s.send("* %d EXPUNGE", seq)
+		// Remove from local message list
+		s.messages = append(s.messages[:seq-1], s.messages[seq:]...)
+	}
+
+	if s.selected != nil {
+		s.selected.total = int64(len(s.messages))
+	}
+
+	s.tagged(tag, "OK", "MOVE completed")
 }
 
 func (s *Session) handleExpunge(tag string) {

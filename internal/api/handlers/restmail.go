@@ -150,6 +150,16 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			slog.Error("restmail: pipeline error", "error", err)
 			// Continue delivery on pipeline error (fail-open)
 		} else {
+			// Persist pipeline execution log
+			stepsJSON, _ := json.Marshal(result.Steps)
+			h.db.Create(&models.PipelineLog{
+				PipelineID: pipelineCfg.ID,
+				Direction:  "inbound",
+				Action:     string(result.FinalAction),
+				Steps:      stepsJSON,
+				DurationMS: result.Duration.Milliseconds(),
+			})
+
 			switch result.FinalAction {
 			case pipeline.ActionReject:
 				respond.Error(w, http.StatusForbidden, "rejected", "Message rejected by policy")

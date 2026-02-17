@@ -38,6 +38,21 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	respond.List(w, pipelines, nil)
 }
 
+// ListPipelineLogs returns recent pipeline execution logs, optionally filtered by pipeline_id.
+func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
+	pipelineID := r.URL.Query().Get("pipeline_id")
+	query := h.db.Order("created_at DESC").Limit(100)
+	if pipelineID != "" {
+		query = query.Where("pipeline_id = ?", pipelineID)
+	}
+	var logs []models.PipelineLog
+	if err := query.Find(&logs).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list pipeline logs")
+		return
+	}
+	respond.List(w, logs, nil)
+}
+
 // CreatePipeline creates a new pipeline.
 func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request) {
 	var req struct {
