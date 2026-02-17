@@ -1,0 +1,32 @@
+# Multi-stage build for the protocol gateway
+
+# Stage 1: Build
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+
+# Copy go.mod and go.sum first for better layer caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the gateway binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/restmail-gateway ./cmd/gateway
+
+# Stage 2: Runtime
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates
+
+COPY --from=builder /bin/restmail-gateway /usr/local/bin/restmail-gateway
+
+# SMTP
+EXPOSE 25 587 465
+# IMAP
+EXPOSE 143 993
+# POP3
+EXPOSE 110 995
+
+CMD ["restmail-gateway"]

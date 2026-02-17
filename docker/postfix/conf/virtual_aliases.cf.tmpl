@@ -1,0 +1,5 @@
+user = ${DB_USER}
+password = ${DB_PASS}
+hosts = ${DB_HOST}
+dbname = ${DB_NAME}
+query = SELECT destination_address FROM aliases WHERE source_address='%s' AND active=true

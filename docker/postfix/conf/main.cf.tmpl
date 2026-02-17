@@ -1,0 +1,71 @@
+# Postfix main configuration for ${MAIL_DOMAIN}
+# Generated from template by entrypoint.sh
+
+# Basic settings
+smtpd_banner = ${MAIL_HOSTNAME} ESMTP
+biff = no
+append_dot_mydomain = no
+readme_directory = no
+compatibility_level = 3.6
+
+# Hostname and domain
+myhostname = ${MAIL_HOSTNAME}
+mydomain = ${MAIL_DOMAIN}
+myorigin = ${MAIL_DOMAIN}
+mydestination =
+mynetworks = 127.0.0.0/8 172.20.0.0/16
+
+# Virtual domain configuration (database-driven)
+virtual_mailbox_domains = pgsql:/etc/postfix/sql/virtual_domains.cf
+virtual_mailbox_maps = pgsql:/etc/postfix/sql/virtual_mailboxes.cf
+virtual_alias_maps = pgsql:/etc/postfix/sql/virtual_aliases.cf
+
+# Mail delivery via LMTP to Dovecot
+virtual_transport = lmtp:inet:${DOVECOT_HOST}:24
+
+# Virtual mailbox settings
+virtual_mailbox_base = /var/mail/vhosts
+virtual_minimum_uid = 5000
+virtual_uid_maps = static:5000
+virtual_gid_maps = static:5000
+
+# TLS settings
+smtpd_tls_cert_file = ${TLS_CERT_PATH}
+smtpd_tls_key_file = ${TLS_KEY_PATH}
+smtpd_tls_CAfile = /certs/ca.crt
+smtpd_tls_security_level = may
+smtpd_tls_auth_only = yes
+smtpd_tls_loglevel = 1
+smtpd_tls_received_header = yes
+
+smtp_tls_security_level = may
+smtp_tls_CAfile = /certs/ca.crt
+smtp_tls_loglevel = 1
+
+# SASL authentication (via Dovecot)
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = inet:${DOVECOT_HOST}:12345
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_local_domain = ${MAIL_DOMAIN}
+
+# Restrictions
+smtpd_recipient_restrictions =
+    permit_sasl_authenticated,
+    permit_mynetworks,
+    reject_unauth_destination
+
+smtpd_relay_restrictions =
+    permit_sasl_authenticated,
+    permit_mynetworks,
+    reject_unauth_destination
+
+# Message size limit (10MB)
+message_size_limit = 10240000
+
+# Queue settings
+maximal_queue_lifetime = 5d
+bounce_queue_lifetime = 5d
+
+# Logging
+maillog_file = /dev/stdout

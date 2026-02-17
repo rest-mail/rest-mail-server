@@ -1,0 +1,114 @@
+# Dovecot configuration for ${MAIL_DOMAIN}
+
+# Protocols
+protocols = imap pop3 lmtp
+
+# Logging
+log_path = /dev/stderr
+info_log_path = /dev/stdout
+debug_log_path = /dev/stdout
+
+# Listen on all interfaces
+listen = *
+
+# SSL/TLS
+ssl = yes
+ssl_cert = <${TLS_CERT_PATH}
+ssl_key = <${TLS_KEY_PATH}
+ssl_ca = </certs/ca.crt
+ssl_min_protocol = TLSv1.2
+
+# Authentication
+auth_mechanisms = plain login
+disable_plaintext_auth = no
+
+# Passdb: authenticate against PostgreSQL
+passdb {
+  driver = sql
+  args = /etc/dovecot/dovecot-sql.conf.ext
+}
+
+# Userdb: look up user info from PostgreSQL
+userdb {
+  driver = sql
+  args = /etc/dovecot/dovecot-sql.conf.ext
+}
+
+# Mail location: Maildir format
+mail_location = maildir:/var/mail/vhosts/%d/%n
+mail_uid = 5000
+mail_gid = 5000
+mail_privileged_group = vmail
+first_valid_uid = 5000
+last_valid_uid = 5000
+
+# Namespace
+namespace inbox {
+  inbox = yes
+  separator = /
+
+  mailbox Drafts {
+    auto = subscribe
+    special_use = \Drafts
+  }
+  mailbox Sent {
+    auto = subscribe
+    special_use = \Sent
+  }
+  mailbox Trash {
+    auto = subscribe
+    special_use = \Trash
+  }
+  mailbox Junk {
+    auto = subscribe
+    special_use = \Junk
+  }
+}
+
+# LMTP service (for receiving from Postfix)
+service lmtp {
+  inet_listener lmtp {
+    address = 0.0.0.0
+    port = 24
+  }
+}
+
+# Auth service for Postfix SASL
+service auth {
+  inet_listener {
+    address = 0.0.0.0
+    port = 12345
+  }
+}
+
+# IMAP service
+service imap-login {
+  inet_listener imap {
+    port = 143
+  }
+  inet_listener imaps {
+    port = 993
+    ssl = yes
+  }
+}
+
+# POP3 service
+service pop3-login {
+  inet_listener pop3 {
+    port = 110
+  }
+  inet_listener pop3s {
+    port = 995
+    ssl = yes
+  }
+}
+
+# Protocol-specific settings
+protocol lmtp {
+  mail_plugins = $mail_plugins
+  postmaster_address = postmaster@${MAIL_DOMAIN}
+}
+
+protocol imap {
+  mail_max_userip_connections = 20
+}

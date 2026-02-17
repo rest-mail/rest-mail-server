@@ -1,0 +1,39 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test binary
+*.test
+
+# Go coverage
+*.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Docker volumes (local dev)
+postgres-data/
+
+# Node modules (webmail)
+webmail/node_modules/
+webmail/dist/
+
+# Generated certs (local)
+certs/
+
+# OS files
+.DS_Store
+Thumbs.db

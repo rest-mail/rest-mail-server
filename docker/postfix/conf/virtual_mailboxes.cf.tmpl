@@ -1,0 +1,5 @@
+user = ${DB_USER}
+password = ${DB_PASS}
+hosts = ${DB_HOST}
+dbname = ${DB_NAME}
+query = SELECT CONCAT(d.name, '/', m.local_part, '/') FROM mailboxes m JOIN domains d ON m.domain_id = d.id WHERE m.address='%s' AND m.active=true

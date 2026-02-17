@@ -1,0 +1,271 @@
+version: "3.8"
+
+networks:
+  mailnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  postgres-data:
+  mail1-maildir:
+  mail2-maildir:
+  mail3-attachments:
+  certs:
+
+services:
+  # ─── Certificate Generator (init container) ──────────────────────────
+  certgen:
+    image: alpine:3.20
+    command: /certs/generate-certs.sh
+    volumes:
+      - certs:/certs
+      - ./docker/certs/generate-certs.sh:/certs/generate-certs.sh:ro
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.99
+
+  # ─── DNS Server ──────────────────────────────────────────────────────
+  dnsmasq:
+    build: ./docker/dnsmasq
+    container_name: dnsmasq
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.3
+    depends_on:
+      certgen:
+        condition: service_completed_successfully
+
+  # ─── PostgreSQL ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: restmail
+      POSTGRES_USER: restmail
+      POSTGRES_PASSWORD: restmail
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U restmail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.2
+
+  # ─── Go REST API ────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
+      API_PORT: "8080"
+      JWT_SECRET: dev-secret-change-in-production
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+    ports:
+      - "8080:8080"
+    volumes:
+      - certs:/certs:ro
+      - mail3-attachments:/attachments
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_started
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.20
+
+  # ─── React Webmail Frontend ────────────────────────────────────────
+  webmail:
+    build: ./webmail
+    container_name: webmail
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.21
+
+  # ─── Protocol Gateway (mail3.test) ─────────────────────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: gateway
+    restart: unless-stopped
+    hostname: mail3.test
+    environment:
+      GATEWAY_HOSTNAME: mail3.test
+      API_BASE_URL: http://api:8080
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
+      TLS_CERT_PATH: /certs/mail3.test.crt
+      TLS_KEY_PATH: /certs/mail3.test.key
+      SMTP_PORT_INBOUND: "25"
+      SMTP_PORT_SUBMISSION: "587"
+      SMTP_PORT_SUBMISSION_TLS: "465"
+      IMAP_PORT: "143"
+      IMAP_TLS_PORT: "993"
+      POP3_PORT: "110"
+      POP3_TLS_PORT: "995"
+      QUEUE_WORKERS: "4"
+      LOG_LEVEL: debug
+      ENVIRONMENT: development
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      api:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_started
+      certgen:
+        condition: service_completed_successfully
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.13
+
+  # ─── Postfix mail1.test ─────────────────────────────────────────────
+  postfix-mail1:
+    build: ./docker/postfix
+    container_name: postfix-mail1
+    restart: unless-stopped
+    hostname: mail1.test
+    environment:
+      MAIL_DOMAIN: mail1.test
+      MAIL_HOSTNAME: mail1.test
+      DB_HOST: postgres
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
+      DOVECOT_HOST: dovecot-mail1
+      TLS_CERT_PATH: /certs/mail1.test.crt
+      TLS_KEY_PATH: /certs/mail1.test.key
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_started
+      certgen:
+        condition: service_completed_successfully
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.11
+
+  # ─── Dovecot mail1.test ─────────────────────────────────────────────
+  dovecot-mail1:
+    build: ./docker/dovecot
+    container_name: dovecot-mail1
+    restart: unless-stopped
+    hostname: mail1.test
+    environment:
+      MAIL_DOMAIN: mail1.test
+      DB_HOST: postgres
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
+      TLS_CERT_PATH: /certs/mail1.test.crt
+      TLS_KEY_PATH: /certs/mail1.test.key
+    volumes:
+      - certs:/certs:ro
+      - mail1-maildir:/var/mail/vhosts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      certgen:
+        condition: service_completed_successfully
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.14
+
+  # ─── Postfix mail2.test ─────────────────────────────────────────────
+  postfix-mail2:
+    build: ./docker/postfix
+    container_name: postfix-mail2
+    restart: unless-stopped
+    hostname: mail2.test
+    environment:
+      MAIL_DOMAIN: mail2.test
+      MAIL_HOSTNAME: mail2.test
+      DB_HOST: postgres
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
+      DOVECOT_HOST: dovecot-mail2
+      TLS_CERT_PATH: /certs/mail2.test.crt
+      TLS_KEY_PATH: /certs/mail2.test.key
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dnsmasq:
+        condition: service_started
+      certgen:
+        condition: service_completed_successfully
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.12
+
+  # ─── Dovecot mail2.test ─────────────────────────────────────────────
+  dovecot-mail2:
+    build: ./docker/dovecot
+    container_name: dovecot-mail2
+    restart: unless-stopped
+    hostname: mail2.test
+    environment:
+      MAIL_DOMAIN: mail2.test
+      DB_HOST: postgres
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
+      TLS_CERT_PATH: /certs/mail2.test.crt
+      TLS_KEY_PATH: /certs/mail2.test.key
+    volumes:
+      - certs:/certs:ro
+      - mail2-maildir:/var/mail/vhosts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      certgen:
+        condition: service_completed_successfully
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.15

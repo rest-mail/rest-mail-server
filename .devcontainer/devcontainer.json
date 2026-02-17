@@ -1,0 +1,21 @@
+{
+  "name": "rest-mail",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "runArgs": [
+    "-v", "/var/run/docker.sock:/var/run/docker.sock"
+  ],
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.23"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind"
+  ],
+  "postCreateCommand": "go version && docker --version",
+  "remoteUser": "vscode"
+}

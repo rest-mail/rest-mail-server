@@ -1,0 +1,107 @@
+version: "3"
+
+vars:
+  GO_MODULE: github.com/restmail/restmail
+  BINARY_NAME: restmail-api
+  GATEWAY_BINARY: restmail-gateway
+
+tasks:
+  # ── Build ──────────────────────────────────────────────
+  build:
+    desc: Build all Go binaries
+    deps: [build:api]
+
+  build:api:
+    desc: Build the REST API server
+    cmds:
+      - go build -o bin/{{.BINARY_NAME}} ./cmd/api
+    sources:
+      - cmd/api/**/*.go
+      - internal/**/*.go
+    generates:
+      - bin/{{.BINARY_NAME}}
+
+  # ── Test ───────────────────────────────────────────────
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -race -count=1 ./internal/...
+
+  test:integration:
+    desc: Run integration tests (requires running containers)
+    deps: [up]
+    cmds:
+      - go test -race -count=1 -tags=integration ./tests/...
+
+  lint:
+    desc: Run linters
+    cmds:
+      - golangci-lint run ./...
+
+  # ── Docker Compose ─────────────────────────────────────
+  up:
+    desc: Start all containers
+    cmds:
+      - docker compose up -d --build
+
+  down:
+    desc: Stop all containers
+    cmds:
+      - docker compose down
+
+  down:clean:
+    desc: Stop containers and remove volumes (destructive)
+    cmds:
+      - docker compose down -v
+
+  logs:
+    desc: Tail logs from all containers
+    cmds:
+      - docker compose logs -f --tail=100
+
+  logs:api:
+    desc: Tail logs from the API container
+    cmds:
+      - docker compose logs -f --tail=100 api
+
+  ps:
+    desc: Show running containers
+    cmds:
+      - docker compose ps
+
+  # ── Database ───────────────────────────────────────────
+  db:migrate:
+    desc: Run database migrations
+    cmds:
+      - go run ./cmd/migrate
+
+  db:seed:
+    desc: Seed database with test data
+    cmds:
+      - go run ./cmd/seed
+
+  db:reset:
+    desc: Reset database (migrate + seed)
+    cmds:
+      - task: db:migrate
+      - task: db:seed
+
+  db:psql:
+    desc: Open psql shell to the database
+    cmds:
+      - docker compose exec postgres psql -U restmail -d restmail
+
+  # ── Certificates ───────────────────────────────────────
+  certs:generate:
+    desc: Generate self-signed CA and dev certificates
+    cmds:
+      - bash docker/certs/generate-certs.sh
+
+  # ── Development Workflow ───────────────────────────────
+  dev:
+    desc: Start full dev environment (containers + API)
+    cmds:
+      - task: up
+      - echo "Waiting for services to be healthy..."
+      - sleep 5
+      - echo "Dev environment ready. API at http://localhost:8080"
