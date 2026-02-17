@@ -48,6 +48,10 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 	restmailH := handlers.NewRestmailHandler(db)
 	attachmentH := handlers.NewAttachmentHandler(db)
 	contactH := handlers.NewContactHandler(db)
+	vacationH := handlers.NewVacationHandler(db)
+	sieveH := handlers.NewSieveHandler(db)
+	senderRuleH := handlers.NewSenderRuleHandler(db)
+	queueH := handlers.NewQueueHandler(db)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -107,6 +111,12 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 
 		// Folders
 		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
+		r.Post("/api/v1/accounts/{id}/folders", messageH.CreateFolder)
+		r.Patch("/api/v1/accounts/{id}/folders/{folder}", messageH.RenameFolder)
+		r.Delete("/api/v1/accounts/{id}/folders/{folder}", messageH.DeleteFolder)
+
+		// Quota
+		r.Get("/api/v1/accounts/{id}/quota", messageH.GetQuota)
 
 		// Messages
 		r.Get("/api/v1/accounts/{id}/folders/{folder}/messages", messageH.ListMessages)
@@ -134,6 +144,20 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 		r.Delete("/api/v1/accounts/{id}/contacts/{cid}", contactH.DeleteContact)
 		r.Post("/api/v1/accounts/{id}/contacts/block", contactH.BlockSender)
 		r.Post("/api/v1/accounts/{id}/contacts/import", contactH.ImportContacts)
+
+		// Vacation
+		r.Get("/api/v1/accounts/{id}/vacation", vacationH.GetVacation)
+		r.Put("/api/v1/accounts/{id}/vacation", vacationH.SetVacation)
+		r.Delete("/api/v1/accounts/{id}/vacation", vacationH.DisableVacation)
+
+		// Sieve scripts
+		r.Get("/api/v1/accounts/{id}/sieve", sieveH.GetScript)
+		r.Put("/api/v1/accounts/{id}/sieve", sieveH.PutScript)
+		r.Delete("/api/v1/accounts/{id}/sieve", sieveH.DeleteScript)
+		r.Post("/api/v1/accounts/{id}/sieve/validate", sieveH.ValidateScript)
+
+		// Contacts suggest (autocomplete)
+		r.Get("/api/v1/accounts/{id}/contacts/suggest", contactH.SuggestContacts)
 
 		// Search
 		r.Get("/api/v1/accounts/{id}/search", searchH.Search)
@@ -190,6 +214,22 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService) http.Handler {
 		r.Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
 		r.Post("/api/v1/admin/custom-filters", pipelineH.CreateCustomFilter)
 		r.Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
+
+		// Queue management
+		r.Get("/api/v1/admin/queue", queueH.ListQueue)
+		r.Get("/api/v1/admin/queue/stats", queueH.QueueStats)
+		r.Get("/api/v1/admin/queue/{id}", queueH.GetQueueEntry)
+		r.Post("/api/v1/admin/queue/{id}/retry", queueH.RetryQueueEntry)
+		r.Post("/api/v1/admin/queue/{id}/bounce", queueH.BounceQueueEntry)
+		r.Delete("/api/v1/admin/queue/{id}", queueH.DeleteQueueEntry)
+
+		// Sender allowlist/blocklist
+		r.Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
+		r.Post("/api/v1/admin/domains/{id}/allowlist", senderRuleH.AddToAllowlist)
+		r.Delete("/api/v1/admin/domains/{id}/allowlist/{eid}", senderRuleH.RemoveFromAllowlist)
+		r.Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
+		r.Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
+		r.Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
 	})
 
 	// ═══════════════════════════════════════════════════════════════

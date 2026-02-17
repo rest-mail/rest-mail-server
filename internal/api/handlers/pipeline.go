@@ -295,9 +295,27 @@ func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Reque
 	item.Released = true
 	h.db.Save(&item)
 
-	// TODO: Re-inject raw_message into pipeline with skip for spam filters
+	// Deliver the quarantined message to the user's INBOX directly,
+	// bypassing spam filters (the user explicitly released it).
+	msg := models.Message{
+		MailboxID:  item.MailboxID,
+		Folder:     "INBOX",
+		Sender:     item.Sender,
+		Subject:    item.Subject,
+		BodyText:   item.BodyPreview,
+		RawMessage: item.RawMessage,
+		SizeBytes:  len(item.RawMessage),
+	}
+	if err := h.db.Create(&msg).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to deliver released message")
+		return
+	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "released"})
+	// Update quota
+	h.db.Model(&models.Mailbox{}).Where("id = ?", item.MailboxID).
+		Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", msg.SizeBytes))
+
+	respond.Data(w, http.StatusOK, map[string]string{"status": "released", "message_id": strconv.FormatUint(uint64(msg.ID), 10)})
 }
 
 // DeleteQuarantine permanently deletes a quarantined message.

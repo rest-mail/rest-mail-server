@@ -232,6 +232,31 @@ func (h *ContactHandler) BlockSender(w http.ResponseWriter, r *http.Request) {
 	respond.Data(w, http.StatusCreated, contact)
 }
 
+// SuggestContacts returns autocomplete suggestions for the compose "To" field.
+// GET /api/v1/accounts/{id}/contacts/suggest?q=...
+func (h *ContactHandler) SuggestContacts(w http.ResponseWriter, r *http.Request) {
+	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		respond.List(w, []models.Contact{}, nil)
+		return
+	}
+
+	var contacts []models.Contact
+	h.db.Where("mailbox_id = ? AND (email LIKE ? OR name LIKE ?) AND trust_level != ?",
+		accountID, "%"+q+"%", "%"+q+"%", "blocked").
+		Order("name ASC, email ASC").
+		Limit(10).
+		Find(&contacts)
+
+	respond.List(w, contacts, nil)
+}
+
 type importContactsRequest struct {
 	Contacts []importContactEntry `json:"contacts"`
 }

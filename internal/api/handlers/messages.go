@@ -801,6 +801,194 @@ func (h *MessageHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	respond.List(w, folders, nil)
 }
 
+// CreateFolder creates a new mailbox folder.
+// POST /api/v1/accounts/{id}/folders
+func (h *MessageHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return
+	}
+
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		respond.ValidationError(w, map[string]string{"name": "required"})
+		return
+	}
+
+	// Check if folder already has messages (i.e. exists)
+	var count int64
+	h.db.Model(&models.Message{}).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, req.Name).
+		Count(&count)
+	if count > 0 {
+		respond.Error(w, http.StatusConflict, "already_exists", "Folder already exists")
+		return
+	}
+
+	// Create a placeholder so the folder shows up in ListFolders (store as a message-less folder marker)
+	// We use a zero-content message with is_deleted=true as a folder marker
+	marker := models.Message{
+		MailboxID: mailboxID,
+		Folder:    req.Name,
+		Sender:    "system",
+		Subject:   "",
+		IsDeleted: true,
+		SizeBytes: 0,
+	}
+	h.db.Create(&marker)
+
+	respond.Data(w, http.StatusCreated, map[string]string{"name": req.Name})
+}
+
+// RenameFolder renames a mailbox folder.
+// PATCH /api/v1/accounts/{id}/folders/{folder}
+func (h *MessageHandler) RenameFolder(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return
+	}
+
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	oldName := chi.URLParam(r, "folder")
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		respond.ValidationError(w, map[string]string{"name": "required"})
+		return
+	}
+
+	result := h.db.Model(&models.Message{}).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, oldName).
+		Update("folder", req.Name)
+	if result.RowsAffected == 0 {
+		respond.Error(w, http.StatusNotFound, "not_found", "Folder not found or empty")
+		return
+	}
+
+	respond.Data(w, http.StatusOK, map[string]string{"name": req.Name})
+}
+
+// DeleteFolder deletes a mailbox folder and all its messages.
+// DELETE /api/v1/accounts/{id}/folders/{folder}
+func (h *MessageHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return
+	}
+
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	folderName := chi.URLParam(r, "folder")
+
+	// Prevent deletion of standard folders
+	standardFolders := []string{"INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"}
+	for _, sf := range standardFolders {
+		if folderName == sf {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
+			return
+		}
+	}
+
+	// Sum message sizes for quota adjustment
+	var totalSize int64
+	h.db.Model(&models.Message{}).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
+		Select("COALESCE(SUM(size_bytes), 0)").
+		Scan(&totalSize)
+
+	result := h.db.Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
+		Delete(&models.Message{})
+	if result.RowsAffected == 0 {
+		respond.Error(w, http.StatusNotFound, "not_found", "Folder not found")
+		return
+	}
+
+	// Update quota
+	if totalSize > 0 {
+		h.db.Model(&models.Mailbox{}).Where("id = ?", mailboxID).
+			Update("quota_used_bytes", gorm.Expr("GREATEST(quota_used_bytes - ?, 0)", totalSize))
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// GetQuota returns quota usage for a mailbox.
+// GET /api/v1/accounts/{id}/quota
+func (h *MessageHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return
+	}
+
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	var mailbox models.Mailbox
+	if err := h.db.First(&mailbox, mailboxID).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Mailbox not found")
+		return
+	}
+
+	var messageCount int64
+	h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount)
+
+	respond.Data(w, http.StatusOK, map[string]interface{}{
+		"quota_bytes":      mailbox.QuotaBytes,
+		"quota_used_bytes": mailbox.QuotaUsedBytes,
+		"message_count":    messageCount,
+		"percent_used":     float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100,
+	})
+}
+
 // resolveSenderMailbox verifies the given from address belongs to the
 // authenticated user (via primary or linked mailbox) and returns the mailbox.
 func (h *MessageHandler) resolveSenderMailbox(from string, webmailAccountID uint) (*models.Mailbox, error) {
