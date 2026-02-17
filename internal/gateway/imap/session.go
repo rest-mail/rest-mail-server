@@ -27,6 +27,7 @@ type Session struct {
 	auth       *authState
 	selected   *selectedMailbox
 	messages   []apiclient.MessageSummary // cached message list for current selection
+	deleted    map[uint]bool              // message IDs flagged \Deleted in this session
 }
 
 type authState struct {
@@ -52,6 +53,7 @@ func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig
 		hostname:  hostname,
 		tlsConfig: tlsConfig,
 		auth:      &authState{},
+		deleted:   make(map[uint]bool),
 	}
 }
 
@@ -124,9 +126,10 @@ func (s *Session) Handle() {
 		case "CLOSE":
 			s.selected = nil
 			s.messages = nil
+			s.deleted = make(map[uint]bool)
 			s.tagged(tag, "OK", "CLOSE completed")
 		case "EXPUNGE":
-			s.tagged(tag, "OK", "EXPUNGE completed")
+			s.handleExpunge(tag)
 		case "IDLE":
 			s.handleIdle(tag)
 		case "LOGOUT":
@@ -423,17 +426,29 @@ func (s *Session) handleFetch(tag, args string) {
 	s.tagged(tag, "OK", "FETCH completed")
 }
 
+// ── SEARCH ────────────────────────────────────────────────────────────
+
+type searchCriterion struct {
+	kind  string          // "all", "seen", "unseen", "flagged", "unflagged", "deleted", "undeleted",
+	                      // "from", "to", "subject", "since", "before", "on", "uid", "not", "or"
+	value string          // for string/date/uid criteria
+	date  time.Time       // parsed date for since/before/on
+	sub   []searchCriterion // for NOT (1 element) or OR (2 elements)
+}
+
 func (s *Session) handleSearch(tag, args string) {
 	if s.selected == nil {
 		s.tagged(tag, "NO", "No mailbox selected")
 		return
 	}
 
-	// Simplified search — return all sequence numbers
-	// TODO: Implement proper IMAP SEARCH criteria parsing
+	criteria := s.parseSearchCriteria(strings.TrimSpace(args))
+
 	var seqNums []string
-	for i := range s.messages {
-		seqNums = append(seqNums, strconv.Itoa(i+1))
+	for i, msg := range s.messages {
+		if s.matchesCriteria(msg, criteria) {
+			seqNums = append(seqNums, strconv.Itoa(i+1))
+		}
 	}
 
 	if len(seqNums) > 0 {
@@ -442,6 +457,212 @@ func (s *Session) handleSearch(tag, args string) {
 		s.send("* SEARCH")
 	}
 	s.tagged(tag, "OK", "SEARCH completed")
+}
+
+// parseSearchCriteria tokenizes the IMAP SEARCH arguments and builds criteria.
+func (s *Session) parseSearchCriteria(args string) []searchCriterion {
+	tokens := tokenizeSearch(args)
+	var criteria []searchCriterion
+	idx := 0
+	for idx < len(tokens) {
+		c, newIdx := parseSingleCriterion(tokens, idx)
+		criteria = append(criteria, c)
+		idx = newIdx
+	}
+	return criteria
+}
+
+// tokenizeSearch splits the search arguments into tokens, respecting quoted strings.
+func tokenizeSearch(args string) []string {
+	var tokens []string
+	i := 0
+	for i < len(args) {
+		// Skip whitespace
+		for i < len(args) && args[i] == ' ' {
+			i++
+		}
+		if i >= len(args) {
+			break
+		}
+		if args[i] == '"' {
+			// Quoted string — find closing quote
+			j := i + 1
+			for j < len(args) && args[j] != '"' {
+				j++
+			}
+			if j < len(args) {
+				j++ // include closing quote
+			}
+			tokens = append(tokens, args[i:j])
+			i = j
+		} else {
+			// Unquoted token
+			j := i
+			for j < len(args) && args[j] != ' ' {
+				j++
+			}
+			tokens = append(tokens, args[i:j])
+			i = j
+		}
+	}
+	return tokens
+}
+
+// parseSingleCriterion parses one criterion from the token list starting at idx.
+func parseSingleCriterion(tokens []string, idx int) (searchCriterion, int) {
+	if idx >= len(tokens) {
+		return searchCriterion{kind: "all"}, idx + 1
+	}
+
+	keyword := strings.ToUpper(tokens[idx])
+
+	switch keyword {
+	case "ALL":
+		return searchCriterion{kind: "all"}, idx + 1
+	case "SEEN":
+		return searchCriterion{kind: "seen"}, idx + 1
+	case "UNSEEN":
+		return searchCriterion{kind: "unseen"}, idx + 1
+	case "FLAGGED":
+		return searchCriterion{kind: "flagged"}, idx + 1
+	case "UNFLAGGED":
+		return searchCriterion{kind: "unflagged"}, idx + 1
+	case "DELETED":
+		return searchCriterion{kind: "deleted"}, idx + 1
+	case "UNDELETED":
+		return searchCriterion{kind: "undeleted"}, idx + 1
+	case "FROM":
+		if idx+1 < len(tokens) {
+			return searchCriterion{kind: "from", value: unquote(tokens[idx+1])}, idx + 2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "TO":
+		if idx+1 < len(tokens) {
+			return searchCriterion{kind: "to", value: unquote(tokens[idx+1])}, idx + 2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "SUBJECT":
+		if idx+1 < len(tokens) {
+			return searchCriterion{kind: "subject", value: unquote(tokens[idx+1])}, idx + 2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "SINCE":
+		if idx+1 < len(tokens) {
+			d := parseSearchDate(unquote(tokens[idx+1]))
+			return searchCriterion{kind: "since", value: tokens[idx+1], date: d}, idx + 2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "BEFORE":
+		if idx+1 < len(tokens) {
+			d := parseSearchDate(unquote(tokens[idx+1]))
+			return searchCriterion{kind: "before", value: tokens[idx+1], date: d}, idx + 2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "ON":
+		if idx+1 < len(tokens) {
+			d := parseSearchDate(unquote(tokens[idx+1]))
+			return searchCriterion{kind: "on", value: tokens[idx+1], date: d}, idx + 2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "UID":
+		if idx+1 < len(tokens) {
+			return searchCriterion{kind: "uid", value: tokens[idx+1]}, idx + 2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "NOT":
+		if idx+1 < len(tokens) {
+			sub, newIdx := parseSingleCriterion(tokens, idx+1)
+			return searchCriterion{kind: "not", sub: []searchCriterion{sub}}, newIdx
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	case "OR":
+		if idx+2 < len(tokens) {
+			sub1, newIdx1 := parseSingleCriterion(tokens, idx+1)
+			sub2, newIdx2 := parseSingleCriterion(tokens, newIdx1)
+			return searchCriterion{kind: "or", sub: []searchCriterion{sub1, sub2}}, newIdx2
+		}
+		return searchCriterion{kind: "all"}, idx + 1
+	default:
+		// Unknown token — treat as ALL (ignore)
+		return searchCriterion{kind: "all"}, idx + 1
+	}
+}
+
+// parseSearchDate parses IMAP date formats: "1-Jan-2006" or "01-Jan-2006".
+func parseSearchDate(s string) time.Time {
+	s = strings.TrimSpace(s)
+	// Try both single-digit and double-digit day formats
+	for _, layout := range []string{"2-Jan-2006", "02-Jan-2006"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+func (s *Session) matchesCriteria(msg apiclient.MessageSummary, criteria []searchCriterion) bool {
+	for _, c := range criteria {
+		if !s.matchOne(msg, c) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Session) matchOne(msg apiclient.MessageSummary, c searchCriterion) bool {
+	switch c.kind {
+	case "all":
+		return true
+	case "seen":
+		return msg.IsRead
+	case "unseen":
+		return !msg.IsRead
+	case "flagged":
+		return msg.IsFlagged
+	case "unflagged":
+		return !msg.IsFlagged
+	case "deleted":
+		return s.deleted[msg.ID]
+	case "undeleted":
+		return !s.deleted[msg.ID]
+	case "from":
+		return strings.Contains(strings.ToLower(msg.Sender), strings.ToLower(c.value))
+	case "to":
+		// Check RecipientsTo (JSON array of strings)
+		return strings.Contains(strings.ToLower(string(msg.RecipientsTo)), strings.ToLower(c.value))
+	case "subject":
+		return strings.Contains(strings.ToLower(msg.Subject), strings.ToLower(c.value))
+	case "since":
+		return !msg.ReceivedAt.Before(c.date)
+	case "before":
+		return msg.ReceivedAt.Before(c.date)
+	case "on":
+		y1, m1, d1 := msg.ReceivedAt.Date()
+		y2, m2, d2 := c.date.Date()
+		return y1 == y2 && m1 == m2 && d1 == d2
+	case "uid":
+		// Parse UID set and check if msg.ID is in it
+		// We need a max UID — use a large number since UIDs are DB IDs
+		uidSet := parseSequenceSet(c.value, int(msg.ID)+1000000)
+		for _, uid := range uidSet {
+			if uint(uid) == msg.ID {
+				return true
+			}
+		}
+		return false
+	case "not":
+		if len(c.sub) > 0 {
+			return !s.matchOne(msg, c.sub[0])
+		}
+		return true
+	case "or":
+		if len(c.sub) >= 2 {
+			return s.matchOne(msg, c.sub[0]) || s.matchOne(msg, c.sub[1])
+		}
+		return true
+	default:
+		return true // unknown criteria: don't filter
+	}
 }
 
 func (s *Session) handleStore(tag, args string) {
@@ -484,7 +705,12 @@ func (s *Session) handleStore(tag, args string) {
 				msg.IsFlagged = val
 			case `\Deleted`:
 				if strings.HasPrefix(action, "+") {
-					updates["is_read"] = true // mark deleted as read
+					if s.deleted == nil {
+						s.deleted = make(map[uint]bool)
+					}
+					s.deleted[msg.ID] = true
+				} else {
+					delete(s.deleted, msg.ID)
 				}
 			}
 		}
@@ -528,14 +754,62 @@ func (s *Session) handleCopy(tag, args string) {
 	s.tagged(tag, "OK", "COPY completed")
 }
 
+func (s *Session) handleExpunge(tag string) {
+	if s.selected == nil {
+		s.tagged(tag, "NO", "No mailbox selected")
+		return
+	}
+
+	// Process in reverse order so sequence numbers stay valid
+	for i := len(s.messages) - 1; i >= 0; i-- {
+		msg := s.messages[i]
+		if !s.deleted[msg.ID] {
+			continue
+		}
+		seq := i + 1
+		// Delete via API
+		if err := s.api.DeleteMessage(s.auth.token, msg.ID); err != nil {
+			slog.Warn("imap: expunge failed", "msg_id", msg.ID, "error", err)
+			continue
+		}
+		// Send untagged EXPUNGE response
+		s.send("* %d EXPUNGE", seq)
+		// Remove from messages slice
+		s.messages = append(s.messages[:i], s.messages[i+1:]...)
+	}
+
+	// Update selected mailbox count
+	if s.selected != nil {
+		s.selected.total = int64(len(s.messages))
+	}
+
+	s.deleted = make(map[uint]bool)
+	s.tagged(tag, "OK", "EXPUNGE completed")
+}
+
 func (s *Session) handleCreate(tag, args string) {
 	if !s.auth.authenticated {
 		s.tagged(tag, "NO", "Not authenticated")
 		return
 	}
 
-	// folder := unquote(strings.TrimSpace(args))
-	// TODO: Create folder via API (POST /api/v1/accounts/:id/folders)
+	folder := unquote(strings.TrimSpace(args))
+	if folder == "" {
+		s.tagged(tag, "NO", "Missing folder name")
+		return
+	}
+	// Reject folder names that are too long or contain path separators
+	if len(folder) > 200 {
+		s.tagged(tag, "NO", "Folder name too long")
+		return
+	}
+	if strings.ContainsAny(folder, "\x00\r\n") {
+		s.tagged(tag, "NO", "Invalid folder name")
+		return
+	}
+
+	// Folders are implicit — they exist once a message is moved into them.
+	// CREATE just validates and acknowledges.
 	s.tagged(tag, "OK", "CREATE completed")
 }
 
