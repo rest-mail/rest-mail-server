@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { RichTextEditor } from './RichTextEditor';
 import { AutocompleteInput } from './AutocompleteInput';
 import * as api from '@/api/client';
-import { X, Code, Type, Trash2, Save, Send } from 'lucide-react';
+import { X, Code, Type, Trash2, Save, Send, CalendarPlus, CalendarX } from 'lucide-react';
 
 function parseRecipients(raw: string): string[] {
   return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -30,6 +30,12 @@ export function ComposeView() {
   const [sending, setSending] = useState(false);
   const [draftId, setDraftId] = useState<number | null>(composeState?.draftId || null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calSummary, setCalSummary] = useState('');
+  const [calLocation, setCalLocation] = useState('');
+  const [calStart, setCalStart] = useState('');
+  const [calEnd, setCalEnd] = useState('');
+  const [calAllDay, setCalAllDay] = useState(false);
 
   // Auto-save timer
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,7 +95,7 @@ export function ComposeView() {
         await api.updateDraft(draftId, getDraftData());
         await api.sendDraft(draftId);
       } else {
-        await api.sendMessage({
+        const sendData: Parameters<typeof api.sendMessage>[0] = {
           from,
           to,
           cc: cc.length > 0 ? cc : undefined,
@@ -98,7 +104,19 @@ export function ComposeView() {
           body_text: isHtml ? stripHtml(htmlContent) : plainText,
           body_html: isHtml ? htmlContent : undefined,
           in_reply_to: composeState?.inReplyTo,
-        });
+        };
+        if (showCalendar && calSummary && calStart && calEnd) {
+          sendData.calendar_event = {
+            method: 'REQUEST',
+            summary: calSummary,
+            location: calLocation || undefined,
+            dtstart: new Date(calStart).toISOString(),
+            dtend: new Date(calEnd).toISOString(),
+            all_day: calAllDay,
+            attendees: to.map(addr => ({ address: addr, rsvp: true })),
+          };
+        }
+        await api.sendMessage(sendData);
       }
       toast.success('Message sent');
       closeCompose();
@@ -164,7 +182,7 @@ export function ComposeView() {
       </div>
       <Separator />
 
-      {/* Editor toggle */}
+      {/* Editor toggle + calendar */}
       <div className="px-4 py-1 flex items-center gap-2">
         <Button
           variant={isHtml ? 'default' : 'ghost'}
@@ -184,7 +202,58 @@ export function ComposeView() {
           <Type className="w-3.5 h-3.5 mr-1" />
           Plain Text
         </Button>
+        <div className="flex-1" />
+        <Button
+          variant={showCalendar ? 'default' : 'ghost'}
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => setShowCalendar(!showCalendar)}
+        >
+          {showCalendar ? <CalendarX className="w-3.5 h-3.5 mr-1" /> : <CalendarPlus className="w-3.5 h-3.5 mr-1" />}
+          {showCalendar ? 'Remove Invite' : 'Calendar Invite'}
+        </Button>
       </div>
+
+      {showCalendar && (
+        <div className="px-4 py-2 space-y-2 bg-muted/30 border-y">
+          <div className="flex items-center gap-2">
+            <Label className="w-16 text-right text-sm text-muted-foreground">Event</Label>
+            <Input value={calSummary} onChange={e => setCalSummary(e.target.value)} placeholder="Meeting title" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="w-16 text-right text-sm text-muted-foreground">Location</Label>
+            <Input value={calLocation} onChange={e => setCalLocation(e.target.value)} placeholder="Room or URL" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="w-16 text-right text-sm text-muted-foreground">Start</Label>
+            <Input
+              type={calAllDay ? 'date' : 'datetime-local'}
+              value={calStart}
+              onChange={e => setCalStart(e.target.value)}
+              className="flex-1"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label className="w-16 text-right text-sm text-muted-foreground">End</Label>
+            <Input
+              type={calAllDay ? 'date' : 'datetime-local'}
+              value={calEnd}
+              onChange={e => setCalEnd(e.target.value)}
+              className="flex-1"
+            />
+          </div>
+          <div className="flex items-center gap-2 pl-[4.5rem]">
+            <input
+              type="checkbox"
+              id="cal-allday"
+              checked={calAllDay}
+              onChange={e => setCalAllDay(e.target.checked)}
+              className="rounded border-input"
+            />
+            <label htmlFor="cal-allday" className="text-sm text-muted-foreground">All-day event</label>
+          </div>
+        </div>
+      )}
 
       {/* Editor */}
       <div className="flex-1 overflow-hidden">

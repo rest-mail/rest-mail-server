@@ -81,6 +81,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.MTASTSPolicy{},
 		// TLS-RPT (RFC 8460) reports
 		&models.TLSReport{},
+		// Calendar event lifecycle tracking
+		&models.CalendarEventVersion{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

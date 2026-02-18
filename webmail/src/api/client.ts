@@ -173,6 +173,18 @@ export async function sendMessage(data: {
   body_text: string;
   body_html?: string;
   in_reply_to?: string;
+  calendar_event?: {
+    method?: string;
+    uid?: string;
+    summary: string;
+    description?: string;
+    location?: string;
+    dtstart: string;
+    dtend: string;
+    all_day?: boolean;
+    attendees?: { name?: string; address: string; role?: string; rsvp?: boolean }[];
+    sequence?: number;
+  };
 }): Promise<void> {
   await request(`${BASE}/messages/send`, {
     method: 'POST',
@@ -217,6 +229,19 @@ export async function respondToCalendar(messageId: number, data: {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export async function getCalendarEvents(accountId: number): Promise<{ data: {
+  uid: string;
+  method: string;
+  status: string;
+  summary: string;
+  sequence: number;
+  is_cancelled: boolean;
+  message_id?: number;
+  versions: number;
+}[] }> {
+  return request(`${BASE}/accounts/${accountId}/calendar-events`);
 }
 
 // Threads

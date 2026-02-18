@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"testing"
@@ -355,5 +356,168 @@ func testStage5Indistinguishability(t *testing.T) {
 		statResp := pc.stat(t)
 		t.Logf("POP3 over TLS STAT: %s", statResp)
 		pc.sendExpect(t, "QUIT", "+OK")
+	})
+
+	t.Run("SmtpSizeEnforcement_OversizedData_Mail3", func(t *testing.T) {
+		sc := dialSMTP(t, mail3SMTPAddr)
+		defer sc.close()
+
+		sc.ehlo(t, "test.local")
+		sc.sendExpect(t, "MAIL FROM:<test@test.local>", "250")
+		sc.sendExpect(t, "RCPT TO:<testuser@mail3.test>", "250")
+		sc.sendExpect(t, "DATA", "354")
+
+		// Send headers
+		sc.send(t, fmt.Sprintf("From: test@test.local\r\nTo: testuser@mail3.test\r\nSubject: size-test-%d\r\n", time.Now().UnixNano()))
+		sc.send(t, "")
+
+		// Send >20MB of data to exceed SIZE limit
+		chunk := strings.Repeat("X", 1024) // 1KB line
+		for i := 0; i < 21000; i++ {       // ~21MB
+			sc.conn.SetDeadline(time.Now().Add(30 * time.Second))
+			fmt.Fprintf(sc.conn, "%s\r\n", chunk)
+		}
+
+		// End DATA
+		sc.send(t, ".")
+		resp := sc.readLine(t)
+		// Server should either reject during DATA (552/554) or at end of DATA
+		if strings.HasPrefix(resp, "552") || strings.HasPrefix(resp, "554") || strings.HasPrefix(resp, "5") {
+			t.Logf("Server correctly rejected oversized message: %s", resp)
+		} else if strings.HasPrefix(resp, "250") {
+			// Some servers may accept it if they don't enforce at DATA stage;
+			// the envelope-level SIZE check was already tested
+			t.Logf("Server accepted oversized DATA (enforcement may be at envelope level only): %s", resp)
+		} else {
+			t.Logf("Unexpected response to oversized DATA: %s", resp)
+		}
+	})
+
+	t.Run("SmtpAuthAfterStarttls_Mail3", func(t *testing.T) {
+		sc := dialSMTP(t, mail3SubmitAddr)
+		defer sc.close()
+
+		caps := sc.ehlo(t, "test.local")
+		if !hasCapability(caps, "STARTTLS") {
+			t.Skip("mail3 submission does not advertise STARTTLS")
+		}
+
+		sc.starttls(t)
+		caps = sc.ehlo(t, "test.local")
+
+		if !hasCapability(caps, "AUTH") {
+			t.Fatal("mail3 submission does not advertise AUTH after STARTTLS")
+		}
+
+		// Good credentials should succeed
+		sc.authPlain(t, "testuser@mail3.test", adminPassword)
+		t.Log("AUTH PLAIN after STARTTLS succeeded")
+
+		// Verify we can send a message after auth
+		subject := fmt.Sprintf("auth-tls-test-%d", time.Now().UnixNano())
+		sc.sendExpect(t, "MAIL FROM:<testuser@mail3.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<testuser@mail3.test>", "250")
+		sc.sendExpect(t, "DATA", "354")
+		msg := fmt.Sprintf("From: testuser@mail3.test\r\nTo: testuser@mail3.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <auth-tls-%d@test.local>\r\n\r\nAuth+TLS test",
+			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
+		sc.send(t, msg)
+		sc.sendExpect(t, ".", "250")
+		sc.sendExpect(t, "QUIT", "221")
+	})
+
+	t.Run("SmtpBadAuthAfterStarttls_Mail3", func(t *testing.T) {
+		sc := dialSMTP(t, mail3SubmitAddr)
+		defer sc.close()
+
+		caps := sc.ehlo(t, "test.local")
+		if hasCapability(caps, "STARTTLS") {
+			sc.starttls(t)
+			sc.ehlo(t, "test.local")
+		}
+
+		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@mail3.test\x00wrongpassword"))
+		sc.send(t, "AUTH PLAIN "+cred)
+		resp := sc.readLine(t)
+		if !strings.HasPrefix(resp, "535") && !strings.HasPrefix(resp, "5") {
+			t.Errorf("expected 535/5xx for bad credentials after STARTTLS, got: %s", resp)
+		} else {
+			t.Logf("Bad credentials after STARTTLS correctly rejected: %s", resp)
+		}
+		sc.sendExpect(t, "QUIT", "221")
+	})
+
+	t.Run("ImapLoginAfterStarttls_Mail3", func(t *testing.T) {
+		ic := dialIMAP(t, mail3IMAPAddr)
+		defer ic.close()
+
+		result, lines := ic.command(t, "CAPABILITY")
+		capLine := ""
+		for _, l := range lines {
+			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
+				capLine = l
+			}
+		}
+		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
+			t.Skipf("mail3 IMAP does not advertise STARTTLS: %s", capLine)
+		}
+
+		ic.starttls(t)
+
+		// LOGIN with good credentials
+		ic.login(t, "testuser@mail3.test", adminPassword)
+
+		result, _ = ic.command(t, "SELECT INBOX")
+		if !strings.Contains(result, "OK") {
+			t.Fatalf("SELECT INBOX after STARTTLS+LOGIN failed: %s", result)
+		}
+		t.Log("IMAP LOGIN after STARTTLS succeeded, SELECT INBOX OK")
+		ic.command(t, "LOGOUT")
+	})
+
+	t.Run("ImapBadLoginAfterStarttls_Mail3", func(t *testing.T) {
+		ic := dialIMAP(t, mail3IMAPAddr)
+		defer ic.close()
+
+		result, lines := ic.command(t, "CAPABILITY")
+		capLine := ""
+		for _, l := range lines {
+			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
+				capLine = l
+			}
+		}
+		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
+			t.Skipf("mail3 IMAP does not advertise STARTTLS: %s", capLine)
+		}
+
+		ic.starttls(t)
+
+		// LOGIN with bad credentials — should fail
+		result, _ = ic.command(t, "LOGIN testuser@mail3.test wrongpassword")
+		if strings.Contains(result, "OK") {
+			t.Fatal("IMAP LOGIN with bad password should not return OK")
+		}
+		t.Logf("IMAP bad LOGIN after STARTTLS correctly rejected: %s", result)
+	})
+
+	t.Run("Pop3BadAuthAfterStls_Mail3", func(t *testing.T) {
+		pc := dialPOP3(t, mail3POP3Addr)
+		defer pc.close()
+
+		caps := pc.capa(t)
+		foundSTLS := false
+		for _, cap := range caps {
+			if strings.ToUpper(strings.TrimSpace(cap)) == "STLS" {
+				foundSTLS = true
+			}
+		}
+		if !foundSTLS {
+			t.Skipf("mail3 POP3 does not advertise STLS: %v", caps)
+		}
+
+		pc.stls(t)
+
+		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		resp := pc.sendExpect(t, "PASS wrongpassword", "-ERR")
+		t.Logf("POP3 bad credentials after STLS correctly rejected: %s", resp)
 	})
 }

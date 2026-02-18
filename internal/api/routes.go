@@ -175,6 +175,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, acm
 		r.Get("/api/v1/messages/{id}/raw", messageH.GetRawMessage)
 		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
 		r.Post("/api/v1/messages/{id}/calendar-reply", messageH.RespondToCalendar)
+		r.Get("/api/v1/accounts/{id}/calendar-events", messageH.ListCalendarEvents)
 
 		// Drafts
 		r.Post("/api/v1/messages/draft", messageH.SaveDraft)

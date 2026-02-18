@@ -380,4 +380,122 @@ func testStage3GatewayInbound(t *testing.T) {
 			t.Logf("Attachment download verified: %d bytes match original", len(dlBody))
 		}
 	})
+
+	t.Run("Mail3_ImapFetchSections", func(t *testing.T) {
+		ic := dialIMAP(t, mail3IMAPAddr)
+		defer ic.close()
+
+		ic.login(t, "testuser@mail3.test", adminPassword)
+
+		result, lines := ic.command(t, "SELECT INBOX")
+		if !strings.Contains(result, "OK") {
+			t.Fatalf("SELECT INBOX failed: %s", result)
+		}
+
+		exists := 0
+		for _, line := range lines {
+			if strings.Contains(line, "EXISTS") {
+				fmt.Sscanf(line, "* %d EXISTS", &exists)
+			}
+		}
+		if exists == 0 {
+			t.Skip("no messages in INBOX")
+		}
+
+		// FETCH BODY[HEADER] — should return only headers
+		_, headerLines := ic.command(t, fmt.Sprintf("FETCH %d (BODY[HEADER])", exists))
+		headerContent := strings.Join(headerLines[:len(headerLines)-1], "\n")
+		if !strings.Contains(headerContent, "From:") && !strings.Contains(headerContent, "Subject:") {
+			t.Errorf("FETCH BODY[HEADER] missing expected headers: %.300s", headerContent)
+		}
+		t.Logf("IMAP FETCH BODY[HEADER] returned %d bytes", len(headerContent))
+
+		// FETCH BODY[TEXT] — should return only message body
+		_, textLines := ic.command(t, fmt.Sprintf("FETCH %d (BODY[TEXT])", exists))
+		textContent := strings.Join(textLines[:len(textLines)-1], "\n")
+		if len(textContent) == 0 {
+			t.Error("FETCH BODY[TEXT] returned empty")
+		}
+		t.Logf("IMAP FETCH BODY[TEXT] returned %d bytes", len(textContent))
+
+		ic.command(t, "LOGOUT")
+	})
+
+	t.Run("Mail3_Pop3Operations", func(t *testing.T) {
+		pc := dialPOP3(t, mail3POP3Addr)
+		defer pc.close()
+
+		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
+
+		// STAT — should return message count and total size
+		statResp := pc.stat(t)
+		if !strings.HasPrefix(statResp, "+OK") {
+			t.Fatalf("STAT failed: %s", statResp)
+		}
+		t.Logf("POP3 STAT: %s", statResp)
+
+		// LIST — should return message listing
+		listResp := pc.sendExpect(t, "LIST", "+OK")
+		t.Logf("POP3 LIST response: %s", listResp)
+		listCount := 0
+		for {
+			line := pc.readLine(t)
+			if line == "." {
+				break
+			}
+			listCount++
+		}
+		if listCount == 0 {
+			t.Skip("no messages in mailbox for LIST")
+		}
+		t.Logf("POP3 LIST returned %d messages", listCount)
+
+		// UIDL — should return unique IDs
+		uidlResp := pc.sendExpect(t, "UIDL", "+OK")
+		t.Logf("POP3 UIDL response: %s", uidlResp)
+		uidlCount := 0
+		for {
+			line := pc.readLine(t)
+			if line == "." {
+				break
+			}
+			uidlCount++
+		}
+		if uidlCount != listCount {
+			t.Errorf("UIDL count (%d) != LIST count (%d)", uidlCount, listCount)
+		}
+		t.Logf("POP3 UIDL returned %d entries", uidlCount)
+
+		// LIST for a specific message
+		pc.sendExpect(t, "LIST 1", "+OK")
+
+		// UIDL for a specific message
+		pc.sendExpect(t, "UIDL 1", "+OK")
+
+		pc.sendExpect(t, "QUIT", "+OK")
+	})
+
+	t.Run("Mail3_SmtpSubmissionBadCredentials", func(t *testing.T) {
+		sc := dialSMTP(t, mail3SubmitAddr)
+		defer sc.close()
+
+		caps := sc.ehlo(t, "test.local")
+
+		if hasCapability(caps, "STARTTLS") {
+			sc.starttls(t)
+			sc.ehlo(t, "test.local")
+		}
+
+		// AUTH PLAIN with wrong password
+		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@mail3.test\x00wrongpassword"))
+		sc.send(t, "AUTH PLAIN "+cred)
+		resp := sc.readLine(t)
+		if !strings.HasPrefix(resp, "535") && !strings.HasPrefix(resp, "5") {
+			t.Errorf("expected 535/5xx for bad credentials, got: %s", resp)
+		} else {
+			t.Logf("Bad credentials correctly rejected: %s", resp)
+		}
+		sc.sendExpect(t, "QUIT", "221")
+	})
 }

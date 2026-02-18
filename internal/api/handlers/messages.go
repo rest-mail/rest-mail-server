@@ -289,14 +289,15 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		From      string   `json:"from"`
-		To        []string `json:"to"`
-		Cc        []string `json:"cc"`
-		Bcc       []string `json:"bcc"`
-		Subject   string   `json:"subject"`
-		BodyText  string   `json:"body_text"`
-		BodyHTML  string   `json:"body_html"`
-		InReplyTo string   `json:"in_reply_to"`
+		From           string                 `json:"from"`
+		To             []string               `json:"to"`
+		Cc             []string               `json:"cc"`
+		Bcc            []string               `json:"bcc"`
+		Subject        string                 `json:"subject"`
+		BodyText       string                 `json:"body_text"`
+		BodyHTML       string                 `json:"body_html"`
+		InReplyTo      string                 `json:"in_reply_to"`
+		CalendarEvent  *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -460,6 +461,28 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Generate ICS data if a calendar event is being composed
+	var icsData []byte
+	if req.CalendarEvent != nil {
+		evt := req.CalendarEvent
+		// Fill in defaults
+		if evt.Organizer.Address == "" {
+			evt.Organizer = pipeline.CalendarAddress{Name: senderMailbox.DisplayName, Address: req.From}
+		}
+		if evt.DTStamp.IsZero() {
+			evt.DTStamp = time.Now()
+		}
+		if evt.UID == "" {
+			evt.UID = rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
+		}
+		var icsErr error
+		icsData, icsErr = rmime.GenerateICS(*evt)
+		if icsErr != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid calendar event: "+icsErr.Error())
+			return
+		}
+	}
+
 	// Generate Message-ID
 	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
 
@@ -499,6 +522,10 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		SizeBytes:    sizeBytes,
 		ReceivedAt:   now,
 	}
+	if req.CalendarEvent != nil {
+		calJSON, _ := json.Marshal([]pipeline.CalendarEvent{*req.CalendarEvent})
+		sentMsg.CalendarEventsRaw = models.JSONB(calJSON)
+	}
 
 	if err := h.db.Create(&sentMsg).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save sent message")
@@ -528,7 +555,53 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			b.WriteString(name + ": " + value + "\r\n")
 		}
 
-		if req.BodyText != "" && req.BodyHTML != "" {
+		if icsData != nil {
+			// Calendar invite: multipart/mixed with text body + text/calendar attachment
+			mixedBoundary := fmt.Sprintf("=_restmail_mixed_%d", now.UnixNano())
+			b.WriteString("Content-Type: multipart/mixed; boundary=\"" + mixedBoundary + "\"\r\n")
+			b.WriteString("\r\n")
+
+			// Text body part
+			b.WriteString("--" + mixedBoundary + "\r\n")
+			if req.BodyText != "" && req.BodyHTML != "" {
+				altBoundary := fmt.Sprintf("=_restmail_alt_%d", now.UnixNano())
+				b.WriteString("Content-Type: multipart/alternative; boundary=\"" + altBoundary + "\"\r\n")
+				b.WriteString("\r\n")
+				b.WriteString("--" + altBoundary + "\r\n")
+				b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+				b.WriteString(req.BodyText + "\r\n")
+				b.WriteString("--" + altBoundary + "\r\n")
+				b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
+				b.WriteString(req.BodyHTML + "\r\n")
+				b.WriteString("--" + altBoundary + "--\r\n")
+			} else if req.BodyHTML != "" {
+				b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
+				b.WriteString(req.BodyHTML + "\r\n")
+			} else {
+				b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+				b.WriteString(req.BodyText + "\r\n")
+			}
+
+			// Calendar part
+			method := strings.ToUpper(req.CalendarEvent.Method)
+			if method == "" {
+				method = "REQUEST"
+			}
+			b.WriteString("--" + mixedBoundary + "\r\n")
+			b.WriteString("Content-Type: text/calendar; charset=utf-8; method=" + method + "\r\n")
+			b.WriteString("Content-Disposition: attachment; filename=\"invite.ics\"\r\n")
+			b.WriteString("Content-Transfer-Encoding: base64\r\n")
+			b.WriteString("\r\n")
+			encoded := base64.StdEncoding.EncodeToString(icsData)
+			for i := 0; i < len(encoded); i += 76 {
+				end := i + 76
+				if end > len(encoded) {
+					end = len(encoded)
+				}
+				b.WriteString(encoded[i:end] + "\r\n")
+			}
+			b.WriteString("--" + mixedBoundary + "--\r\n")
+		} else if req.BodyText != "" && req.BodyHTML != "" {
 			boundary := fmt.Sprintf("=_restmail_%d", now.UnixNano())
 			b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
 			b.WriteString("\r\n")
@@ -1780,6 +1853,36 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				h.db.Model(&msg).Update("calendar_events", models.JSONB(calJSON))
 				msg.CalendarEventsRaw = models.JSONB(calJSON)
 			}
+
+			// Track calendar event versions for update/cancel detection
+			for _, evt := range parsed.CalendarEvents {
+				if evt.UID == "" {
+					continue
+				}
+				msgID := msg.ID
+				var dtStart, dtEnd *time.Time
+				if !evt.DTStart.IsZero() {
+					t := evt.DTStart
+					dtStart = &t
+				}
+				if !evt.DTEnd.IsZero() {
+					t := evt.DTEnd
+					dtEnd = &t
+				}
+				ver := models.CalendarEventVersion{
+					MailboxID: mailbox.ID,
+					UID:       evt.UID,
+					Sequence:  evt.Sequence,
+					Method:    evt.Method,
+					Status:    evt.Status,
+					Summary:   evt.Summary,
+					DTStart:   dtStart,
+					DTEnd:     dtEnd,
+					Organizer: evt.Organizer.Address,
+					MessageID: &msgID,
+				}
+				h.db.Create(&ver)
+			}
 		}
 	}
 
@@ -1827,4 +1930,71 @@ func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint)
 	}
 
 	return 0, fmt.Errorf("account not found or access denied")
+}
+
+// ListCalendarEvents returns calendar event versions for a mailbox,
+// grouped by UID with the latest sequence number, enabling the frontend
+// to detect superseded or cancelled events.
+func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return
+	}
+
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	var versions []models.CalendarEventVersion
+	h.db.Where("mailbox_id = ?", mailboxID).
+		Order("uid, sequence DESC").
+		Find(&versions)
+
+	// Group by UID: for each UID, mark which is the latest version
+	type calEventSummary struct {
+		UID         string `json:"uid"`
+		Method      string `json:"method"`
+		Status      string `json:"status"`
+		Summary     string `json:"summary"`
+		Sequence    int    `json:"sequence"`
+		IsCancelled bool   `json:"is_cancelled"`
+		MessageID   *uint  `json:"message_id,omitempty"`
+		Versions    int    `json:"versions"`
+	}
+
+	seen := map[string]*calEventSummary{}
+	var result []calEventSummary
+	for _, v := range versions {
+		if existing, ok := seen[v.UID]; ok {
+			existing.Versions++
+			// Check if any version is a CANCEL
+			if v.Method == "CANCEL" {
+				existing.IsCancelled = true
+			}
+			continue
+		}
+		s := &calEventSummary{
+			UID:         v.UID,
+			Method:      v.Method,
+			Status:      v.Status,
+			Summary:     v.Summary,
+			Sequence:    v.Sequence,
+			IsCancelled: v.Method == "CANCEL" || v.Status == "CANCELLED",
+			MessageID:   v.MessageID,
+			Versions:    1,
+		}
+		seen[v.UID] = s
+		result = append(result, *s)
+	}
+
+	respond.Data(w, http.StatusOK, result)
 }
