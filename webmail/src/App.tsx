@@ -17,14 +17,17 @@ import { QuarantineView } from '@/components/settings/QuarantineView';
 import { TLSReportsView } from '@/components/admin/TLSReportsView';
 import { PipelineTesterView } from '@/components/admin/PipelineTesterView';
 import { PipelineConfigView } from '@/components/admin/PipelineConfigView';
-import { Separator } from '@/components/ui/separator';
+import { SettingsView } from '@/components/settings/SettingsView';
+import { AccountSettingsView } from '@/components/account/AccountSettingsView';
 import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useSettingsStore, type ReadingPane, type Density } from '@/stores/settingsStore';
 
 function App() {
   const { isAuthenticated, logout } = useAuthStore();
   const { view, startCompose } = useUIStore();
   const { accounts, refresh, loadFolders } = useMailStore();
+  const { readingPane, density } = useSettingsStore();
 
   // Wire up 401 handler to auto-logout
   useEffect(() => {
@@ -105,7 +108,7 @@ function App() {
 
           {/* Content area */}
           <div className="flex-1 overflow-hidden">
-            {view === 'mail' && <div className="h-full animate-fade-in"><MailView /></div>}
+            {view === 'mail' && <div className="h-full animate-fade-in"><MailView readingPane={readingPane} density={density} /></div>}
             {view === 'compose' && <div className="h-full animate-fade-in"><ComposeView /></div>}
             {view === 'addAccount' && <div className="h-full animate-fade-in"><AddAccountView /></div>}
             {view === 'accountDetails' && <div className="h-full animate-fade-in"><AccountDetailsView /></div>}
@@ -114,6 +117,8 @@ function App() {
             {view === 'tlsReports' && <div className="h-full animate-fade-in"><TLSReportsView /></div>}
             {view === 'pipelineTester' && <div className="h-full animate-fade-in"><PipelineTesterView /></div>}
             {view === 'pipelineConfig' && <div className="h-full animate-fade-in"><PipelineConfigView /></div>}
+            {view === 'settings'        && <div className="h-full"><SettingsView /></div>}
+            {view === 'accountSettings' && <div className="h-full"><AccountSettingsView /></div>}
           </div>
         </div>
       </div>
@@ -122,16 +127,37 @@ function App() {
   );
 }
 
-function MailView() {
-  return (
-    <div className="h-full flex flex-col">
-      {/* Message list - top half */}
-      <div className="flex-1 min-h-0 border-b border-border">
+function MailView({ readingPane, density: _density }: { readingPane: ReadingPane; density: Density }) {
+  // _density is consumed by MessageList directly from settingsStore — no prop drilling needed
+  // readingPane controls layout here
+  if (readingPane === 'right') {
+    return (
+      <div className="h-full flex flex-row">
+        <div className="w-2/5 min-w-0 border-r border-border overflow-hidden">
+          <MessageList />
+        </div>
+        <div className="flex-1 min-w-0 overflow-hidden">
+          <MessageViewer />
+        </div>
+      </div>
+    );
+  }
+
+  if (readingPane === 'off') {
+    return (
+      <div className="h-full flex flex-col">
         <MessageList />
       </div>
-      <Separator />
-      {/* Mail viewer - bottom half */}
-      <div className="flex-1 min-h-0">
+    );
+  }
+
+  // Default: bottom
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0 border-b border-border overflow-hidden">
+        <MessageList />
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
         <MessageViewer />
       </div>
     </div>
