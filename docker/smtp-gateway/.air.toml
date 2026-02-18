@@ -1,0 +1,15 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/smtp-gateway ./cmd/smtp-gateway"
+  bin = "tmp/smtp-gateway"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor", "webmail", "website", "node_modules"]
+  delay = 1000
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

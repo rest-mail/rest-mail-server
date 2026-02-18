@@ -1,37 +1,58 @@
-# Development overrides - hot reload for API and webmail
-# This file is automatically loaded by docker compose alongside docker-compose.yml
+# Development overrides — hot reload for all services.
+# Automatically merged with docker-compose.yml by docker compose.
 version: "3.8"
 
 services:
+  # ─── API: air hot reload ─────────────────────────────────────────────
   api:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
+      target: dev
     volumes:
       - .:/app
       - /app/tmp
-      - certs:/certs:ro
-      - mail3-attachments:/attachments
-    environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: restmail
-      DB_USER: restmail
-      DB_PASS: restmail
-      API_PORT: "8080"
-      JWT_SECRET: dev-secret-change-in-production
-      MASTER_KEY: dev-master-key-change-in-production
-      ENVIRONMENT: development
-      LOG_LEVEL: debug
 
+  # ─── Webmail: Vite HMR ───────────────────────────────────────────────
   webmail:
     build:
       context: ./webmail
-      dockerfile: Dockerfile.dev
+      target: dev
+    ports:
+      - "3000:3000"
     volumes:
       - ./webmail:/app
       - /app/node_modules
-    ports:
-      - "3000:3000"
     environment:
-      VITE_API_URL: http://api:8080
+      # Tells vite.config.ts which host to proxy /api requests to
+      VITE_PROXY_TARGET: http://api:8080
+
+  # ─── SMTP Gateway: air hot reload ────────────────────────────────────
+  smtp-gateway:
+    build:
+      context: .
+      dockerfile: docker/smtp-gateway/Dockerfile
+      target: dev
+    volumes:
+      - .:/app
+      - /app/tmp
+
+  # ─── IMAP Gateway: air hot reload ────────────────────────────────────
+  imap-gateway:
+    build:
+      context: .
+      dockerfile: docker/imap-gateway/Dockerfile
+      target: dev
+    volumes:
+      - .:/app
+      - /app/tmp
+
+  # ─── POP3 Gateway: air hot reload ────────────────────────────────────
+  pop3-gateway:
+    build:
+      context: .
+      dockerfile: docker/pop3-gateway/Dockerfile
+      target: dev
+    volumes:
+      - .:/app
+      - /app/tmp

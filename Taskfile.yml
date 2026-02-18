@@ -379,6 +379,31 @@ tasks:
         echo "  task down          stop everything"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+  dev:api:
+    desc: Rebuild and restart the API container (air hot reload)
+    cmds:
+      - docker compose up -d --build api
+
+  dev:webmail:
+    desc: Rebuild and restart the webmail container (Vite HMR)
+    cmds:
+      - docker compose up -d --build webmail
+
+  dev:smtp-gateway:
+    desc: Rebuild and restart the SMTP gateway container (air hot reload)
+    cmds:
+      - docker compose up -d --build smtp-gateway
+
+  dev:imap-gateway:
+    desc: Rebuild and restart the IMAP gateway container (air hot reload)
+    cmds:
+      - docker compose up -d --build imap-gateway
+
+  dev:pop3-gateway:
+    desc: Rebuild and restart the POP3 gateway container (air hot reload)
+    cmds:
+      - docker compose up -d --build pop3-gateway
+
   dev:restart:
     desc: Rebuild and restart a single service, e.g. task dev:restart -- api
     cmds:

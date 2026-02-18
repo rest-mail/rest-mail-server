@@ -1,25 +1,24 @@
-# Multi-stage build for the React webmail frontend
-
-# Stage 1: Build
-FROM node:20-alpine AS builder
-
+# ── Stage 1: node module cache (shared by later stages) ──────────────
+FROM node:20-alpine AS deps
 WORKDIR /app
-
 COPY package.json package-lock.json ./
 RUN npm ci
 
+# ── Stage 2: builder ─────────────────────────────────────────────────
+FROM deps AS builder
 COPY . .
 RUN npm run build
 
-# Stage 2: Serve with nginx
-FROM nginx:alpine
+# ── Stage 3: dev (hot reload via Vite HMR) ───────────────────────────
+# Source code is volume-mounted at /app by docker-compose.override.yml.
+# node_modules is preserved via anonymous volume in the override.
+FROM deps AS dev
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
 
-# Copy custom nginx config
+# ── Stage 4: prod (nginx serving built assets) ────────────────────────
+FROM nginx:alpine AS prod
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy built assets
 COPY --from=builder /app/dist /usr/share/nginx/html
-
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]

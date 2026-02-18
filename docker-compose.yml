@@ -83,6 +83,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: prod
     container_name: api
     restart: unless-stopped
     environment:
@@ -116,7 +117,9 @@ services:
 
   # ─── React Webmail Frontend ────────────────────────────────────────
   webmail:
-    build: ./webmail
+    build:
+      context: ./webmail
+      target: prod
     container_name: webmail
     restart: unless-stopped
     ports:
@@ -133,6 +136,7 @@ services:
     build:
       context: .
       dockerfile: docker/smtp-gateway/Dockerfile
+      target: prod
     container_name: smtp-gateway
     restart: unless-stopped
     hostname: mail3.test
@@ -183,6 +187,7 @@ services:
     build:
       context: .
       dockerfile: docker/imap-gateway/Dockerfile
+      target: prod
     container_name: imap-gateway
     restart: unless-stopped
     hostname: mail3.test
@@ -221,6 +226,7 @@ services:
     build:
       context: .
       dockerfile: docker/pop3-gateway/Dockerfile
+      target: prod
     container_name: pop3-gateway
     restart: unless-stopped
     hostname: mail3.test
