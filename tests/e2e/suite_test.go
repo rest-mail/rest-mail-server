@@ -400,4 +400,7 @@ func TestStages(t *testing.T) {
 	t.Run("Stage8_TUIFlows", testStage8TUIFlows)
 	t.Run("Stage9_DatabaseConsistency", testStage9DatabaseConsistency)
 	t.Run("Stage10_Verification", testStage10Verification)
+	t.Run("Stage11_QueueRetry", testStage11QueueRetry)
+	t.Run("Stage12_BounceDSN", testStage12BounceDSN)
+	t.Run("Stage13_ImapIdle", testStage13ImapIdle)
 }

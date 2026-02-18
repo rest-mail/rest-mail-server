@@ -397,11 +397,26 @@ tasks:
         exit 1
 
   # ── Website ────────────────────────────────────────────
-  website:
-    desc: Run the RESTMAIL landing page dev server
-    aliases: [website:dev]
+  website:go:
+    desc: Run the RESTMAIL landing page via Go dev server
     cmds:
       - go run ./cmd/website -addr :8090 -root website
+
+  website:dev:
+    desc: Start the website container (nginx)
+    cmds:
+      - docker compose up -d website
+      - echo "Website running at http://localhost:8090"
+
+  website:stop:
+    desc: Stop the website container
+    cmds:
+      - docker compose stop website
+
+  website:logs:
+    desc: View website container logs
+    cmds:
+      - docker compose logs -f --tail=100 website
 
   # ── Clean ──────────────────────────────────────────────
   clean:

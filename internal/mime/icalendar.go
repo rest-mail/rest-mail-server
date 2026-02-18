@@ -1,6 +1,7 @@
 package mime
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -414,4 +415,109 @@ func intToStr(n int) string {
 		return "-" + string(digits)
 	}
 	return string(digits)
+}
+
+// GenerateICS creates a valid iCalendar (.ics) file from a CalendarEvent struct.
+// It produces a complete VCALENDAR with a single VEVENT, supporting METHOD values
+// of REQUEST, CANCEL, and REPLY. The returned bytes use CRLF line endings per RFC 5545.
+func GenerateICS(event pipeline.CalendarEvent) ([]byte, error) {
+	method := strings.ToUpper(event.Method)
+	if method == "" {
+		method = "REQUEST"
+	}
+	if method != "REQUEST" && method != "CANCEL" && method != "REPLY" {
+		return nil, fmt.Errorf("unsupported METHOD: %s (must be REQUEST, CANCEL, or REPLY)", method)
+	}
+
+	if event.UID == "" {
+		return nil, fmt.Errorf("UID is required")
+	}
+
+	var b strings.Builder
+	b.WriteString("BEGIN:VCALENDAR\r\n")
+	b.WriteString("VERSION:2.0\r\n")
+	b.WriteString("PRODID:-//RESTmail//Calendar//EN\r\n")
+	b.WriteString("METHOD:" + method + "\r\n")
+	b.WriteString("BEGIN:VEVENT\r\n")
+	b.WriteString("UID:" + event.UID + "\r\n")
+
+	// DTSTAMP: required per RFC 5545; use the event's stamp or current time
+	if !event.DTStamp.IsZero() {
+		b.WriteString("DTSTAMP:" + event.DTStamp.UTC().Format("20060102T150405Z") + "\r\n")
+	} else {
+		b.WriteString("DTSTAMP:" + time.Now().UTC().Format("20060102T150405Z") + "\r\n")
+	}
+
+	// DTSTART / DTEND
+	if !event.DTStart.IsZero() {
+		if event.AllDay {
+			b.WriteString("DTSTART;VALUE=DATE:" + event.DTStart.Format("20060102") + "\r\n")
+		} else {
+			b.WriteString("DTSTART:" + event.DTStart.UTC().Format("20060102T150405Z") + "\r\n")
+		}
+	}
+	if !event.DTEnd.IsZero() {
+		if event.AllDay {
+			b.WriteString("DTEND;VALUE=DATE:" + event.DTEnd.Format("20060102") + "\r\n")
+		} else {
+			b.WriteString("DTEND:" + event.DTEnd.UTC().Format("20060102T150405Z") + "\r\n")
+		}
+	}
+
+	// SUMMARY
+	if event.Summary != "" {
+		b.WriteString("SUMMARY:" + escapeValue(event.Summary) + "\r\n")
+	}
+
+	// DESCRIPTION
+	if event.Description != "" {
+		b.WriteString("DESCRIPTION:" + escapeValue(event.Description) + "\r\n")
+	}
+
+	// LOCATION
+	if event.Location != "" {
+		b.WriteString("LOCATION:" + escapeValue(event.Location) + "\r\n")
+	}
+
+	// STATUS
+	if event.Status != "" {
+		b.WriteString("STATUS:" + event.Status + "\r\n")
+	}
+
+	// ORGANIZER
+	if event.Organizer.Address != "" {
+		orgLine := "ORGANIZER"
+		if event.Organizer.Name != "" {
+			orgLine += ";CN=" + event.Organizer.Name
+		}
+		orgLine += ":mailto:" + event.Organizer.Address
+		b.WriteString(orgLine + "\r\n")
+	}
+
+	// ATTENDEES
+	for _, att := range event.Attendees {
+		attLine := "ATTENDEE"
+		if att.Name != "" {
+			attLine += ";CN=" + att.Name
+		}
+		if att.Role != "" {
+			attLine += ";ROLE=" + att.Role
+		}
+		if att.PartStat != "" {
+			attLine += ";PARTSTAT=" + att.PartStat
+		}
+		if att.RSVP {
+			attLine += ";RSVP=TRUE"
+		}
+		attLine += ":mailto:" + att.Address
+		b.WriteString(attLine + "\r\n")
+	}
+
+	// SEQUENCE
+	b.WriteString("SEQUENCE:" + intToStr(event.Sequence) + "\r\n")
+
+	b.WriteString("END:VEVENT\r\n")
+	b.WriteString("END:VCALENDAR\r\n")
+
+	return []byte(b.String()), nil
 }

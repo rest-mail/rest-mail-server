@@ -376,6 +376,19 @@ services:
       mailnet:
         ipv4_address: 172.20.0.17
 
+  # ─── Project Website ───────────────────────────────────────────────
+  website:
+    image: nginx:alpine
+    container_name: website
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - ./website:/usr/share/nginx/html:ro
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.26
+
   # ─── rspamd (spam scanning) ─────────────────────────────────────────
   rspamd:
     image: rspamd/rspamd:latest

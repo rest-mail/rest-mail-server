@@ -435,3 +435,213 @@ END:VCALENDAR`
 		t.Errorf("Attendee PartStat = %q, want %q", events[0].Attendees[0].PartStat, "ACCEPTED")
 	}
 }
+
+// --- GenerateICS tests ---
+
+func TestGenerateICS_BasicRequest(t *testing.T) {
+	start := time.Date(2024, 7, 15, 14, 0, 0, 0, time.UTC)
+	end := time.Date(2024, 7, 15, 15, 0, 0, 0, time.UTC)
+	stamp := time.Date(2024, 7, 10, 12, 0, 0, 0, time.UTC)
+
+	event := pipeline.CalendarEvent{
+		UID:         "gen-test-1@example.com",
+		Method:      "REQUEST",
+		Summary:     "Team Standup",
+		Description: "Daily sync",
+		Location:    "Room 42",
+		DTStart:     start,
+		DTEnd:       end,
+		DTStamp:     stamp,
+		Sequence:    0,
+		Organizer:   pipeline.CalendarAddress{Name: "Alice", Address: "alice@example.com"},
+		Attendees: []pipeline.CalendarAddress{
+			{Name: "Bob", Address: "bob@example.com", Role: "REQ-PARTICIPANT", PartStat: "NEEDS-ACTION", RSVP: true},
+		},
+	}
+
+	data, err := GenerateICS(event)
+	if err != nil {
+		t.Fatalf("GenerateICS returned error: %v", err)
+	}
+	ics := string(data)
+
+	checks := []string{
+		"BEGIN:VCALENDAR",
+		"VERSION:2.0",
+		"PRODID:-//RESTmail//Calendar//EN",
+		"METHOD:REQUEST",
+		"BEGIN:VEVENT",
+		"UID:gen-test-1@example.com",
+		"DTSTAMP:20240710T120000Z",
+		"DTSTART:20240715T140000Z",
+		"DTEND:20240715T150000Z",
+		"SUMMARY:Team Standup",
+		"DESCRIPTION:Daily sync",
+		"LOCATION:Room 42",
+		"ORGANIZER;CN=Alice:mailto:alice@example.com",
+		"ATTENDEE;CN=Bob;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:bob@example.com",
+		"SEQUENCE:0",
+		"END:VEVENT",
+		"END:VCALENDAR",
+	}
+	for _, s := range checks {
+		if !strings.Contains(ics, s) {
+			t.Errorf("expected ICS to contain %q", s)
+		}
+	}
+}
+
+func TestGenerateICS_CancelMethod(t *testing.T) {
+	event := pipeline.CalendarEvent{
+		UID:      "cancel-1@example.com",
+		Method:   "CANCEL",
+		Summary:  "Cancelled Meeting",
+		Status:   "CANCELLED",
+		DTStamp:  time.Date(2024, 7, 10, 12, 0, 0, 0, time.UTC),
+		Sequence: 2,
+	}
+
+	data, err := GenerateICS(event)
+	if err != nil {
+		t.Fatalf("GenerateICS returned error: %v", err)
+	}
+	ics := string(data)
+
+	if !strings.Contains(ics, "METHOD:CANCEL") {
+		t.Error("expected METHOD:CANCEL")
+	}
+	if !strings.Contains(ics, "STATUS:CANCELLED") {
+		t.Error("expected STATUS:CANCELLED")
+	}
+	if !strings.Contains(ics, "SEQUENCE:2") {
+		t.Error("expected SEQUENCE:2")
+	}
+}
+
+func TestGenerateICS_DefaultMethod(t *testing.T) {
+	event := pipeline.CalendarEvent{
+		UID:     "default-method@example.com",
+		DTStamp: time.Date(2024, 7, 10, 12, 0, 0, 0, time.UTC),
+	}
+
+	data, err := GenerateICS(event)
+	if err != nil {
+		t.Fatalf("GenerateICS returned error: %v", err)
+	}
+	if !strings.Contains(string(data), "METHOD:REQUEST") {
+		t.Error("expected default METHOD:REQUEST when method is empty")
+	}
+}
+
+func TestGenerateICS_InvalidMethod(t *testing.T) {
+	event := pipeline.CalendarEvent{
+		UID:    "bad-method@example.com",
+		Method: "PUBLISH",
+	}
+
+	_, err := GenerateICS(event)
+	if err == nil {
+		t.Fatal("expected error for unsupported method")
+	}
+	if !strings.Contains(err.Error(), "unsupported METHOD") {
+		t.Errorf("expected 'unsupported METHOD' in error, got: %v", err)
+	}
+}
+
+func TestGenerateICS_MissingUID(t *testing.T) {
+	event := pipeline.CalendarEvent{
+		Method: "REQUEST",
+	}
+
+	_, err := GenerateICS(event)
+	if err == nil {
+		t.Fatal("expected error for missing UID")
+	}
+	if !strings.Contains(err.Error(), "UID is required") {
+		t.Errorf("expected 'UID is required' in error, got: %v", err)
+	}
+}
+
+func TestGenerateICS_AllDayEvent(t *testing.T) {
+	event := pipeline.CalendarEvent{
+		UID:     "allday-1@example.com",
+		Method:  "REQUEST",
+		Summary: "Holiday",
+		DTStart: time.Date(2024, 12, 25, 0, 0, 0, 0, time.UTC),
+		DTEnd:   time.Date(2024, 12, 26, 0, 0, 0, 0, time.UTC),
+		DTStamp: time.Date(2024, 12, 1, 0, 0, 0, 0, time.UTC),
+		AllDay:  true,
+	}
+
+	data, err := GenerateICS(event)
+	if err != nil {
+		t.Fatalf("GenerateICS returned error: %v", err)
+	}
+	ics := string(data)
+
+	if !strings.Contains(ics, "DTSTART;VALUE=DATE:20241225") {
+		t.Error("expected DATE-only DTSTART for all-day event")
+	}
+	if !strings.Contains(ics, "DTEND;VALUE=DATE:20241226") {
+		t.Error("expected DATE-only DTEND for all-day event")
+	}
+}
+
+func TestGenerateICS_RoundTrip(t *testing.T) {
+	start := time.Date(2024, 8, 1, 9, 30, 0, 0, time.UTC)
+	end := time.Date(2024, 8, 1, 10, 30, 0, 0, time.UTC)
+	stamp := time.Date(2024, 7, 28, 8, 0, 0, 0, time.UTC)
+
+	original := pipeline.CalendarEvent{
+		UID:         "roundtrip-1@example.com",
+		Method:      "REQUEST",
+		Summary:     "Planning Session",
+		Description: "Q3 planning",
+		Location:    "Conference Room A",
+		DTStart:     start,
+		DTEnd:       end,
+		DTStamp:     stamp,
+		Sequence:    1,
+		Organizer:   pipeline.CalendarAddress{Name: "Org", Address: "org@example.com"},
+		Attendees: []pipeline.CalendarAddress{
+			{Name: "A1", Address: "a1@example.com", PartStat: "ACCEPTED"},
+		},
+	}
+
+	data, err := GenerateICS(original)
+	if err != nil {
+		t.Fatalf("GenerateICS returned error: %v", err)
+	}
+
+	// Parse it back
+	events, err := ParseCalendar(string(data))
+	if err != nil {
+		t.Fatalf("ParseCalendar returned error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	parsed := events[0]
+
+	if parsed.UID != original.UID {
+		t.Errorf("UID = %q, want %q", parsed.UID, original.UID)
+	}
+	if parsed.Method != original.Method {
+		t.Errorf("Method = %q, want %q", parsed.Method, original.Method)
+	}
+	if parsed.Summary != original.Summary {
+		t.Errorf("Summary = %q, want %q", parsed.Summary, original.Summary)
+	}
+	if parsed.Location != original.Location {
+		t.Errorf("Location = %q, want %q", parsed.Location, original.Location)
+	}
+	if parsed.Sequence != original.Sequence {
+		t.Errorf("Sequence = %d, want %d", parsed.Sequence, original.Sequence)
+	}
+	if !parsed.DTStart.Equal(original.DTStart) {
+		t.Errorf("DTStart = %v, want %v", parsed.DTStart, original.DTStart)
+	}
+	if !parsed.DTEnd.Equal(original.DTEnd) {
+		t.Errorf("DTEnd = %v, want %v", parsed.DTEnd, original.DTEnd)
+	}
+}
