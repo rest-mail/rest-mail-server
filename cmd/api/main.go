@@ -61,7 +61,7 @@ func main() {
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry)
 
 	// Create router
-	router := api.NewRouter(database, jwtService)
+	router := api.NewRouter(database, jwtService, cfg)
 
 	// Create HTTP server
 	srv := &http.Server{

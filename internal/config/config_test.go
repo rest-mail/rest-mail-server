@@ -195,11 +195,25 @@ func TestLoad_ProductionNoSecret(t *testing.T) {
 	}
 }
 
+func TestLoad_ProductionNoMasterKey(t *testing.T) {
+	clearEnv(t)
+
+	t.Setenv("ENVIRONMENT", "production")
+	t.Setenv("JWT_SECRET", "my-strong-production-secret")
+	// MASTER_KEY is not set.
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should return an error when ENVIRONMENT=production and MASTER_KEY is empty")
+	}
+}
+
 func TestLoad_ProductionWithSecret(t *testing.T) {
 	clearEnv(t)
 
 	t.Setenv("ENVIRONMENT", "production")
 	t.Setenv("JWT_SECRET", "my-strong-production-secret")
+	t.Setenv("MASTER_KEY", "my-strong-master-key")
 
 	cfg, err := Load()
 	if err != nil {
@@ -211,6 +225,9 @@ func TestLoad_ProductionWithSecret(t *testing.T) {
 	}
 	if cfg.Environment != "production" {
 		t.Errorf("Environment = %q, want %q", cfg.Environment, "production")
+	}
+	if cfg.MasterKey != "my-strong-master-key" {
+		t.Errorf("MasterKey = %q, want %q", cfg.MasterKey, "my-strong-master-key")
 	}
 }
 

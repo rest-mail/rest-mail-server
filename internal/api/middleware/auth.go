@@ -28,7 +28,7 @@ func JWTMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Handler 
 				return
 			}
 
-			claims, err := jwtService.ValidateToken(parts[1])
+			claims, err := jwtService.ValidateAccessToken(parts[1])
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
 				return

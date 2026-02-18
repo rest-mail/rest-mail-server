@@ -140,6 +140,32 @@ func TestJWTMiddleware_InvalidToken(t *testing.T) {
 	}
 }
 
+func TestJWTMiddleware_RefreshTokenRejected(t *testing.T) {
+	jwtSvc := newTestJWTService(5 * time.Minute)
+	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7, false)
+	if err != nil {
+		t.Fatalf("failed to generate token pair: %v", err)
+	}
+
+	// Using a refresh token as a Bearer token should be rejected by the middleware.
+	handler := JWTMiddleware(jwtSvc)(okHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+pair.RefreshToken)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d", rr.Code)
+	}
+
+	errResp := parseErrorResponse(t, rr)
+	if errResp.Error.Code != "unauthorized" {
+		t.Errorf("expected error code %q, got %q", "unauthorized", errResp.Error.Code)
+	}
+}
+
 func TestJWTMiddleware_ExpiredToken(t *testing.T) {
 	// Create a JWTService with a negative access expiry so the token is immediately expired.
 	jwtSvc := newTestJWTService(-1 * time.Second)

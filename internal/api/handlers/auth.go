@@ -127,7 +127,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := h.jwtService.ValidateToken(cookie.Value)
+	claims, err := h.jwtService.ValidateRefreshToken(cookie.Value)
 	if err != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 		return

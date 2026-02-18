@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -1117,6 +1118,11 @@ func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.verifyMessageOwnership(w, r, &draft) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	var req struct {
 		From     *string  `json:"from"`
 		To       []string `json:"to"`
@@ -1181,6 +1187,11 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !h.verifyMessageOwnership(w, r, &draft) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	var toList []string
 	json.Unmarshal(draft.RecipientsTo, &toList)
 	if len(toList) == 0 {
@@ -1201,13 +1212,26 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 	}
 	bodyBytes, _ := json.Marshal(sendBody)
 
-	h.db.Delete(&draft)
-
+	// Use a recorder to capture the send response so we only delete the
+	// draft if the send actually succeeds.
 	newReq, _ := http.NewRequestWithContext(r.Context(), "POST", "/api/v1/messages/send", strings.NewReader(string(bodyBytes)))
 	newReq.Header.Set("Content-Type", "application/json")
 	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
 
-	h.SendMessage(w, newReq)
+	rec := httptest.NewRecorder()
+	h.SendMessage(rec, newReq)
+
+	// Only delete the draft if send succeeded
+	if rec.Code >= 200 && rec.Code < 300 {
+		h.db.Delete(&draft)
+	}
+
+	// Copy recorded response to the actual ResponseWriter
+	for k, v := range rec.Header() {
+		w.Header()[k] = v
+	}
+	w.WriteHeader(rec.Code)
+	w.Write(rec.Body.Bytes())
 }
 
 // GetThread returns all messages sharing the same thread_id.

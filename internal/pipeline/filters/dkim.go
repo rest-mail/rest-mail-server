@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
@@ -88,14 +89,15 @@ func (f *dkimVerifyFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 
 // dkimSignFilter signs outbound messages with the domain's DKIM key.
 type dkimSignFilter struct {
-	db *gorm.DB
+	db        *gorm.DB
+	masterKey string
 }
 
 // NewDKIMSign returns a FilterFactory that creates dkimSignFilter instances
 // backed by the given database connection (for domain key lookups).
-func NewDKIMSign(db *gorm.DB) pipeline.FilterFactory {
+func NewDKIMSign(db *gorm.DB, masterKey string) pipeline.FilterFactory {
 	return func(config []byte) (pipeline.Filter, error) {
-		return &dkimSignFilter{db: db}, nil
+		return &dkimSignFilter{db: db, masterKey: masterKey}, nil
 	}
 }
 
@@ -141,8 +143,19 @@ func (f *dkimSignFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (
 		}, nil
 	}
 
+	// Decrypt private key if master key is configured
+	privateKeyPEM := domain.DKIMPrivateKey
+	if f.masterKey != "" {
+		decrypted, err := restcrypto.Decrypt(privateKeyPEM, f.masterKey)
+		if err != nil {
+			// Fall back to plaintext in case key was stored before encryption was enabled
+			decrypted = privateKeyPEM
+		}
+		privateKeyPEM = decrypted
+	}
+
 	// Parse private key
-	block, _ := pem.Decode([]byte(domain.DKIMPrivateKey))
+	block, _ := pem.Decode([]byte(privateKeyPEM))
 	if block == nil {
 		return skipResult("failed to decode DKIM private key PEM"), nil
 	}

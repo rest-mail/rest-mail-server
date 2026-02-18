@@ -63,6 +63,18 @@ func TestGenerateTokenPair(t *testing.T) {
 	if claims.Subject != wantSubject {
 		t.Errorf("Subject = %q; want %q", claims.Subject, wantSubject)
 	}
+	if claims.TokenType != "access" {
+		t.Errorf("TokenType = %q; want %q", claims.TokenType, "access")
+	}
+
+	// Validate the refresh token has correct type.
+	refreshClaims, err := svc.ValidateToken(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("ValidateToken(refresh) unexpected error: %v", err)
+	}
+	if refreshClaims.TokenType != "refresh" {
+		t.Errorf("RefreshToken TokenType = %q; want %q", refreshClaims.TokenType, "refresh")
+	}
 }
 
 func TestValidateToken(t *testing.T) {
@@ -96,6 +108,52 @@ func TestValidateToken(t *testing.T) {
 				t.Errorf("WebmailAccountID = %d; want %d", claims.WebmailAccountID, testAccountID)
 			}
 		})
+	}
+}
+
+func TestValidateAccessToken(t *testing.T) {
+	svc := newTestService()
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	if err != nil {
+		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+	}
+
+	// Access token should pass ValidateAccessToken.
+	claims, err := svc.ValidateAccessToken(pair.AccessToken)
+	if err != nil {
+		t.Fatalf("ValidateAccessToken(access) unexpected error: %v", err)
+	}
+	if claims.TokenType != "access" {
+		t.Errorf("TokenType = %q; want %q", claims.TokenType, "access")
+	}
+
+	// Refresh token should be rejected by ValidateAccessToken.
+	_, err = svc.ValidateAccessToken(pair.RefreshToken)
+	if !errors.Is(err, ErrWrongTokenType) {
+		t.Errorf("ValidateAccessToken(refresh) error = %v; want %v", err, ErrWrongTokenType)
+	}
+}
+
+func TestValidateRefreshToken(t *testing.T) {
+	svc := newTestService()
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	if err != nil {
+		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+	}
+
+	// Refresh token should pass ValidateRefreshToken.
+	claims, err := svc.ValidateRefreshToken(pair.RefreshToken)
+	if err != nil {
+		t.Fatalf("ValidateRefreshToken(refresh) unexpected error: %v", err)
+	}
+	if claims.TokenType != "refresh" {
+		t.Errorf("TokenType = %q; want %q", claims.TokenType, "refresh")
+	}
+
+	// Access token should be rejected by ValidateRefreshToken.
+	_, err = svc.ValidateRefreshToken(pair.AccessToken)
+	if !errors.Is(err, ErrWrongTokenType) {
+		t.Errorf("ValidateRefreshToken(access) error = %v; want %v", err, ErrWrongTokenType)
 	}
 }
 

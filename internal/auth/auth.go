@@ -13,6 +13,7 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrTokenExpired       = errors.New("token expired")
 	ErrInvalidToken       = errors.New("invalid token")
+	ErrWrongTokenType     = errors.New("wrong token type")
 )
 
 // Claims represents the JWT claims for access and refresh tokens.
@@ -22,6 +23,7 @@ type Claims struct {
 	WebmailAccountID uint   `json:"webmail_account_id"`
 	MailboxID        uint   `json:"mailbox_id"`
 	IsAdmin          bool   `json:"is_admin,omitempty"`
+	TokenType        string `json:"token_type"`
 }
 
 // TokenPair contains both access and refresh tokens.
@@ -63,6 +65,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
 		IsAdmin:          isAdmin,
+		TokenType:        "access",
 	}
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -83,6 +86,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
 		IsAdmin:          isAdmin,
+		TokenType:        "refresh",
 	}
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
@@ -118,6 +122,30 @@ func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 		return nil, ErrInvalidToken
 	}
 
+	return claims, nil
+}
+
+// ValidateAccessToken parses a JWT and verifies it is an access token.
+func (s *JWTService) ValidateAccessToken(tokenStr string) (*Claims, error) {
+	claims, err := s.ValidateToken(tokenStr)
+	if err != nil {
+		return nil, err
+	}
+	if claims.TokenType != "access" {
+		return nil, ErrWrongTokenType
+	}
+	return claims, nil
+}
+
+// ValidateRefreshToken parses a JWT and verifies it is a refresh token.
+func (s *JWTService) ValidateRefreshToken(tokenStr string) (*Claims, error) {
+	claims, err := s.ValidateToken(tokenStr)
+	if err != nil {
+		return nil, err
+	}
+	if claims.TokenType != "refresh" {
+		return nil, ErrWrongTokenType
+	}
 	return claims, nil
 }
 

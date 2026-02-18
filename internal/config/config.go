@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -52,6 +53,9 @@ type Config struct {
 	QueueWorkers    int
 	QueuePollInterval time.Duration
 
+	// CORS
+	CORSAllowedOrigins []string
+
 	// Environment
 	Environment string // "development", "production", "test"
 }
@@ -95,11 +99,17 @@ func Load() (*Config, error) {
 		QueueWorkers:          getEnvInt("QUEUE_WORKERS", 4),
 		QueuePollInterval:     getEnvDuration("QUEUE_POLL_INTERVAL", 5*time.Second),
 
+		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
+
 		Environment: getEnv("ENVIRONMENT", "development"),
 	}
 
 	if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.Environment == "production" {
 		return nil, fmt.Errorf("JWT_SECRET must be set in production")
+	}
+
+	if cfg.MasterKey == "" && cfg.Environment == "production" {
+		return nil, fmt.Errorf("MASTER_KEY must be set in production")
 	}
 
 	return cfg, nil
@@ -127,6 +137,22 @@ func getEnvInt(key string, fallback int) int {
 	if val, ok := os.LookupEnv(key); ok {
 		if i, err := strconv.Atoi(val); err == nil {
 			return i
+		}
+	}
+	return fallback
+}
+
+func getEnvSlice(key string, fallback []string) []string {
+	if val, ok := os.LookupEnv(key); ok {
+		var result []string
+		for _, s := range strings.Split(val, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				result = append(result, s)
+			}
+		}
+		if len(result) > 0 {
+			return result
 		}
 	}
 	return fallback

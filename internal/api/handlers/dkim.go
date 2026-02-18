@@ -2,21 +2,24 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
 
 type DKIMHandler struct {
-	db *gorm.DB
+	db        *gorm.DB
+	masterKey string
 }
 
-func NewDKIMHandler(db *gorm.DB) *DKIMHandler {
-	return &DKIMHandler{db: db}
+func NewDKIMHandler(db *gorm.DB, masterKey string) *DKIMHandler {
+	return &DKIMHandler{db: db, masterKey: masterKey}
 }
 
 // ListKeys returns DKIM configuration for all domains (keys are redacted).
@@ -75,9 +78,21 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	keyToStore := req.PrivateKey
+	if h.masterKey != "" {
+		encrypted, err := crypto.Encrypt(req.PrivateKey, h.masterKey)
+		if err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to encrypt private key")
+			return
+		}
+		keyToStore = encrypted
+	} else {
+		slog.Warn("DKIM private key stored in plaintext: MASTER_KEY not configured")
+	}
+
 	h.db.Model(&domain).Updates(map[string]interface{}{
 		"dkim_selector":    req.Selector,
-		"dkim_private_key": req.PrivateKey,
+		"dkim_private_key": keyToStore,
 	})
 
 	respond.Data(w, http.StatusOK, map[string]interface{}{
