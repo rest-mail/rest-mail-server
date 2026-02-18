@@ -50,6 +50,8 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	sieveH := handlers.NewSieveHandler(db)
 	senderRuleH := handlers.NewSenderRuleHandler(db)
 	queueH := handlers.NewQueueHandler(db)
+	banH := handlers.NewBanHandler(db)
+	logH := handlers.NewLogHandler(db)
 	dkimH := handlers.NewDKIMHandler(db, cfg.MasterKey)
 	certH := handlers.NewCertificateHandler(db, cfg.MasterKey)
 
@@ -66,6 +68,12 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine)
 	pipelineH := handlers.NewPipelineHandler(db, pipelineEngine)
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine)
+
+	// ═══════════════════════════════════════════════════════════════
+	// API Documentation (no auth)
+	// ═══════════════════════════════════════════════════════════════
+	r.Get("/api/docs", SwaggerUIHandler())
+	r.Get("/api/docs/openapi.yaml", OpenAPISpecHandler())
 
 	// ═══════════════════════════════════════════════════════════════
 	// Health (no auth)
@@ -256,6 +264,16 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		r.Get("/api/v1/admin/certificates/{id}", certH.GetCertificate)
 		r.Post("/api/v1/admin/certificates", certH.CreateCertificate)
 		r.Delete("/api/v1/admin/certificates/{id}", certH.DeleteCertificate)
+
+		// Ban management
+		r.Get("/api/v1/admin/bans", banH.ListBans)
+		r.Post("/api/v1/admin/bans", banH.CreateBan)
+		r.Delete("/api/v1/admin/bans/{id}", banH.DeleteBan)
+		r.Delete("/api/v1/admin/bans/ip/{ip}", banH.UnbanIP)
+
+		// Logs
+		r.Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
+		r.Get("/api/v1/admin/logs/activity", logH.ActivityLog)
 	})
 
 	return r

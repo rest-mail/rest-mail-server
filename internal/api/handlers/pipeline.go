@@ -41,17 +41,35 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 
 // ListPipelineLogs returns recent pipeline execution logs, optionally filtered by pipeline_id.
 func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
-	pipelineID := r.URL.Query().Get("pipeline_id")
-	query := h.db.Order("created_at DESC").Limit(100)
-	if pipelineID != "" {
+	limit := 50
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
+		limit = l
+	}
+	offset := 0
+	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && o >= 0 {
+		offset = o
+	}
+
+	query := h.db.Model(&models.PipelineLog{})
+	if pipelineID := r.URL.Query().Get("pipeline_id"); pipelineID != "" {
 		query = query.Where("pipeline_id = ?", pipelineID)
 	}
+	if direction := r.URL.Query().Get("direction"); direction != "" {
+		query = query.Where("direction = ?", direction)
+	}
+	if action := r.URL.Query().Get("action"); action != "" {
+		query = query.Where("action = ?", action)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var logs []models.PipelineLog
-	if err := query.Find(&logs).Error; err != nil {
+	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&logs).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list pipeline logs")
 		return
 	}
-	respond.List(w, logs, nil)
+	respond.List(w, logs, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 // CreatePipeline creates a new pipeline.

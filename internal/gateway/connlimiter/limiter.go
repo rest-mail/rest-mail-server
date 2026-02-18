@@ -40,12 +40,18 @@ type failRecord struct {
 	bannedAt time.Time
 }
 
+// BanChecker is an optional function that checks persistent (DB-backed) bans.
+// It receives the IP and protocol (e.g. "smtp") and returns true if banned.
+type BanChecker func(ip, protocol string) bool
+
 // Limiter tracks per-IP connection counts and auth failures.
 type Limiter struct {
-	cfg       Config
-	global    atomic.Int32
-	perIP     sync.Map // string → *atomic.Int32
-	authFails sync.Map // string → *failRecord
+	cfg          Config
+	global       atomic.Int32
+	perIP        sync.Map // string → *atomic.Int32
+	authFails    sync.Map // string → *failRecord
+	banChecker   BanChecker
+	protocol     string
 }
 
 // New creates a Limiter with the given config (defaults applied for zero values).
@@ -53,9 +59,19 @@ func New(cfg Config) *Limiter {
 	return &Limiter{cfg: cfg.withDefaults()}
 }
 
+// SetBanChecker sets an optional function to check persistent bans (e.g. from DB).
+func (l *Limiter) SetBanChecker(checker BanChecker, protocol string) {
+	l.banChecker = checker
+	l.protocol = protocol
+}
+
 // Accept checks whether a new connection from ip is allowed.
 // Returns true and increments counters if allowed.
 func (l *Limiter) Accept(ip string) bool {
+	// Check persistent bans first
+	if l.banChecker != nil && l.banChecker(ip, l.protocol) {
+		return false
+	}
 	if int(l.global.Load()) >= l.cfg.MaxGlobal {
 		return false
 	}
@@ -103,8 +119,13 @@ func (l *Limiter) RecordAuthFail(ip string) {
 	}
 }
 
-// IsBanned returns true if the IP is currently temporarily banned.
+// IsBanned returns true if the IP is currently banned (in-memory or persistent).
 func (l *Limiter) IsBanned(ip string) bool {
+	// Check persistent bans
+	if l.banChecker != nil && l.banChecker(ip, l.protocol) {
+		return true
+	}
+
 	val, ok := l.authFails.Load(ip)
 	if !ok {
 		return false

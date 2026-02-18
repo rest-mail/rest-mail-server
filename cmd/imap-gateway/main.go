@@ -11,6 +11,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/bancheck"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/gateway/imap"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
@@ -96,6 +97,7 @@ func main() {
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
+	bancheck.Wire(limiter, database, "imap")
 	imapServer := imap.NewServer(cfg.GatewayHostname, api, tlsConfig, limiter)
 	if err := imapServer.ListenAndServe(imap.IMAPPorts{
 		IMAP:    cfg.IMAPPort,

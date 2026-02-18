@@ -1,0 +1,4148 @@
+openapi: 3.1.0
+info:
+  title: RestMail API
+  version: 1.0.0
+  description: >
+    RestMail is a modern email platform with REST API access, supporting traditional
+    SMTP/IMAP/POP3 gateways and the RESTMAIL server-to-server protocol. This spec
+    covers all user-facing, admin, internal gateway, and RESTMAIL endpoints.
+  license:
+    name: MIT
+
+servers:
+  - url: /
+    description: Default server
+
+tags:
+  - name: Health
+    description: Health check (no auth)
+  - name: Auth
+    description: Authentication (no auth)
+  - name: Accounts
+    description: Linked mailbox accounts (JWT)
+  - name: Folders
+    description: Mailbox folders (JWT)
+  - name: Messages
+    description: Email messages (JWT)
+  - name: Drafts
+    description: Draft messages (JWT)
+  - name: Threads
+    description: Message threads (JWT)
+  - name: Quota
+    description: Mailbox quota (JWT)
+  - name: Search
+    description: Message search (JWT)
+  - name: Attachments
+    description: Message attachments (JWT)
+  - name: Contacts
+    description: Contact management (JWT)
+  - name: Vacation
+    description: Vacation auto-reply (JWT)
+  - name: Sieve
+    description: Sieve filter scripts (JWT)
+  - name: Quarantine
+    description: Quarantined messages (JWT)
+  - name: SSE
+    description: Server-Sent Events (query param auth)
+  - name: Inbound
+    description: Internal gateway delivery
+  - name: RESTMAIL
+    description: RESTMAIL server-to-server protocol (unauthenticated)
+  - name: "Admin: Domains"
+    description: Domain management (JWT + admin)
+  - name: "Admin: Mailboxes"
+    description: Mailbox management (JWT + admin)
+  - name: "Admin: Aliases"
+    description: Alias management (JWT + admin)
+  - name: "Admin: Webmail Accounts"
+    description: Webmail account management (JWT + admin)
+  - name: "Admin: Pipelines"
+    description: Pipeline management (JWT + admin)
+  - name: "Admin: Custom Filters"
+    description: Custom filter management (JWT + admin)
+  - name: "Admin: Queue"
+    description: Outbound queue management (JWT + admin)
+  - name: "Admin: Sender Rules"
+    description: Domain allow/block lists (JWT + admin)
+  - name: "Admin: DKIM"
+    description: DKIM key management (JWT + admin)
+  - name: "Admin: Certificates"
+    description: TLS certificate management (JWT + admin)
+  - name: "Admin: Bans"
+    description: IP ban management (JWT + admin)
+  - name: "Admin: Logs"
+    description: Delivery and activity logs (JWT + admin)
+
+security:
+  - BearerAuth: []
+
+paths:
+  # ═══════════════════════════════════════════════════════════════
+  # Health
+  # ═══════════════════════════════════════════════════════════════
+  /api/health:
+    get:
+      operationId: getHealth
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/HealthStatus"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Auth
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      tags: [Auth]
+      summary: Authenticate with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      tags: [Auth]
+      summary: Log out and clear refresh token cookie
+      security: []
+      responses:
+        "204":
+          description: Logged out
+
+  /api/v1/auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [Auth]
+      summary: Refresh access token using HTTP-only cookie
+      security: []
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RefreshResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Accounts
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts:
+    get:
+      operationId: listAccounts
+      tags: [Accounts]
+      summary: List linked mailbox accounts
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: linkAccount
+      tags: [Accounts]
+      summary: Link an additional mailbox account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkAccountRequest"
+      responses:
+        "201":
+          description: Account linked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Account"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/accounts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getAccount
+      tags: [Accounts]
+      summary: Get a specific linked account
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Account"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: unlinkAccount
+      tags: [Accounts]
+      summary: Unlink a secondary mailbox account
+      responses:
+        "204":
+          description: Account unlinked
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/accounts/test-connection:
+    post:
+      operationId: testConnection
+      tags: [Accounts]
+      summary: Test mailbox credentials
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestConnectionRequest"
+      responses:
+        "200":
+          description: Credentials valid
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TestConnectionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Folders
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/folders:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listFolders
+      tags: [Folders]
+      summary: List folders for an account
+      responses:
+        "200":
+          description: List of folders
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Folder"
+    post:
+      operationId: createFolder
+      tags: [Folders]
+      summary: Create a new folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFolderRequest"
+      responses:
+        "201":
+          description: Folder created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FolderName"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/accounts/{id}/folders/{folder}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - $ref: "#/components/parameters/FolderName"
+    patch:
+      operationId: renameFolder
+      tags: [Folders]
+      summary: Rename a folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameFolderRequest"
+      responses:
+        "200":
+          description: Folder renamed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FolderName"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteFolder
+      tags: [Folders]
+      summary: Delete a folder
+      responses:
+        "204":
+          description: Folder deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Messages
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/folders/{folder}/messages:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - $ref: "#/components/parameters/FolderName"
+    get:
+      operationId: listMessages
+      tags: [Messages]
+      summary: List messages in a folder with cursor pagination
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated list of messages
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+
+  /api/v1/messages/{id}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    get:
+      operationId: getMessage
+      tags: [Messages]
+      summary: Get a single message by ID
+      responses:
+        "200":
+          description: Message details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateMessage
+      tags: [Messages]
+      summary: Update message flags or move to another folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMessageRequest"
+      responses:
+        "200":
+          description: Message updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteMessage
+      tags: [Messages]
+      summary: Delete a message
+      responses:
+        "204":
+          description: Message deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/messages/send:
+    post:
+      operationId: sendMessage
+      tags: [Messages]
+      summary: Compose and send a new message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/messages/{id}/raw:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    get:
+      operationId: getRawMessage
+      tags: [Messages]
+      summary: Get the raw RFC 2822 message source
+      responses:
+        "200":
+          description: Raw message
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/messages/{id}/forward:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    post:
+      operationId: forwardMessage
+      tags: [Messages]
+      summary: Forward a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForwardMessageRequest"
+      responses:
+        "201":
+          description: Message forwarded
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Drafts
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/messages/draft:
+    post:
+      operationId: saveDraft
+      tags: [Drafts]
+      summary: Save a new draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftRequest"
+      responses:
+        "201":
+          description: Draft saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+
+  /api/v1/messages/draft/{id}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    put:
+      operationId: updateDraft
+      tags: [Drafts]
+      summary: Update an existing draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDraftRequest"
+      responses:
+        "200":
+          description: Draft updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/messages/draft/{id}/send:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    post:
+      operationId: sendDraft
+      tags: [Drafts]
+      summary: Send a saved draft
+      responses:
+        "201":
+          description: Draft sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Threads
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/threads/{threadID}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - name: threadID
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Thread identifier
+    get:
+      operationId: getThread
+      tags: [Threads]
+      summary: Get all messages in a thread
+      responses:
+        "200":
+          description: Thread messages
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Quota
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/quota:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getQuota
+      tags: [Quota]
+      summary: Get mailbox quota usage
+      responses:
+        "200":
+          description: Quota information
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/QuotaInfo"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Search
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/search:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: searchMessages
+      tags: [Search]
+      summary: Search messages with filters
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Free text search query
+        - name: folder
+          in: query
+          schema:
+            type: string
+          description: Restrict to a specific folder
+        - name: from
+          in: query
+          schema:
+            type: string
+          description: Filter by sender address
+        - name: after
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Messages after this date
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Messages before this date
+        - name: "has:attachment"
+          in: query
+          schema:
+            type: boolean
+          description: Only messages with attachments
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Message"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Attachments
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/attachments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Attachment ID
+    get:
+      operationId: getAttachment
+      tags: [Attachments]
+      summary: Download an attachment
+      responses:
+        "200":
+          description: Attachment binary
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/messages/{id}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    get:
+      operationId: listAttachments
+      tags: [Attachments]
+      summary: List attachments for a message
+      responses:
+        "200":
+          description: Attachment list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Attachment"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Contacts
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/contacts:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listContacts
+      tags: [Contacts]
+      summary: List contacts for an account
+      parameters:
+        - name: trust_level
+          in: query
+          schema:
+            type: string
+            enum: [auto, trusted, blocked]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contact list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Contact"
+    post:
+      operationId: createContact
+      tags: [Contacts]
+      summary: Create a new contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactRequest"
+      responses:
+        "201":
+          description: Contact created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/accounts/{id}/contacts/{cid}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - name: cid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Contact ID
+    patch:
+      operationId: updateContact
+      tags: [Contacts]
+      summary: Update a contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateContactRequest"
+      responses:
+        "200":
+          description: Contact updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteContact
+      tags: [Contacts]
+      summary: Delete a contact
+      responses:
+        "204":
+          description: Contact deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/accounts/{id}/contacts/block:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      operationId: blockSender
+      tags: [Contacts]
+      summary: Block a sender
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Sender blocked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
+
+  /api/v1/accounts/{id}/contacts/import:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      operationId: importContacts
+      tags: [Contacts]
+      summary: Bulk import contacts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportContactsRequest"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [imported]
+                    properties:
+                      imported:
+                        type: integer
+
+  /api/v1/accounts/{id}/contacts/suggest:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: suggestContacts
+      tags: [Contacts]
+      summary: Autocomplete contacts by query
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Contact suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Contact"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Vacation
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/vacation:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getVacation
+      tags: [Vacation]
+      summary: Get vacation auto-reply settings
+      responses:
+        "200":
+          description: Vacation config
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/VacationConfig"
+    put:
+      operationId: setVacation
+      tags: [Vacation]
+      summary: Set vacation auto-reply settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VacationConfig"
+      responses:
+        "200":
+          description: Vacation config updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/VacationConfig"
+    delete:
+      operationId: disableVacation
+      tags: [Vacation]
+      summary: Disable vacation auto-reply
+      responses:
+        "204":
+          description: Vacation disabled
+
+  # ═══════════════════════════════════════════════════════════════
+  # Sieve
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/sieve:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: getSieveScript
+      tags: [Sieve]
+      summary: Get the Sieve filter script
+      responses:
+        "200":
+          description: Sieve script
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SieveScript"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putSieveScript
+      tags: [Sieve]
+      summary: Create or replace the Sieve filter script
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutSieveRequest"
+      responses:
+        "200":
+          description: Sieve script saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SieveScript"
+    delete:
+      operationId: deleteSieveScript
+      tags: [Sieve]
+      summary: Delete the Sieve filter script
+      responses:
+        "200":
+          description: Script deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        example: deleted
+
+  /api/v1/accounts/{id}/sieve/validate:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      operationId: validateSieveScript
+      tags: [Sieve]
+      summary: Validate a Sieve script without saving
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [script]
+              properties:
+                script:
+                  type: string
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [valid]
+                    properties:
+                      valid:
+                        type: boolean
+                      message:
+                        type: string
+
+  # ═══════════════════════════════════════════════════════════════
+  # Quarantine
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/quarantine:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listQuarantine
+      tags: [Quarantine]
+      summary: List quarantined messages
+      responses:
+        "200":
+          description: Quarantined messages
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Quarantine"
+
+  /api/v1/accounts/{id}/quarantine/{mid}/release:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - name: mid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Quarantine entry ID
+    post:
+      operationId: releaseQuarantine
+      tags: [Quarantine]
+      summary: Release a quarantined message to inbox
+      responses:
+        "200":
+          description: Message released
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status, message_id]
+                    properties:
+                      status:
+                        type: string
+                        example: released
+                      message_id:
+                        type: integer
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/accounts/{id}/quarantine/{mid}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - name: mid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Quarantine entry ID
+    delete:
+      operationId: deleteQuarantine
+      tags: [Quarantine]
+      summary: Permanently delete a quarantined message
+      responses:
+        "200":
+          description: Message deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        example: deleted
+
+  # ═══════════════════════════════════════════════════════════════
+  # SSE
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/events:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: accountEvents
+      tags: [SSE]
+      summary: Server-Sent Events stream for real-time updates
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: JWT access token for authentication
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE formatted event stream
+
+  # ═══════════════════════════════════════════════════════════════
+  # Inbound (Internal / Gateway)
+  # ═══════════════════════════════════════════════════════════════
+  /api/mailboxes:
+    get:
+      operationId: checkMailboxAddress
+      tags: [Inbound]
+      summary: Check if a mailbox address exists (used by SMTP gateway)
+      security: []
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: Mailbox lookup result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MailboxCheck"
+
+  /api/v1/messages/deliver:
+    post:
+      operationId: deliverMessage
+      tags: [Inbound]
+      summary: Deliver a message from the SMTP gateway
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliverMessageRequest"
+      responses:
+        "201":
+          description: Message delivered
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Message"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ═══════════════════════════════════════════════════════════════
+  # RESTMAIL Protocol
+  # ═══════════════════════════════════════════════════════════════
+  /restmail/capabilities:
+    get:
+      operationId: restmailCapabilities
+      tags: [RESTMAIL]
+      summary: Get RESTMAIL server capabilities
+      security: []
+      responses:
+        "200":
+          description: Server capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RestmailCapabilities"
+
+  /restmail/mailboxes:
+    get:
+      operationId: restmailCheckMailbox
+      tags: [RESTMAIL]
+      summary: Check if a recipient mailbox exists
+      security: []
+      parameters:
+        - name: address
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: Mailbox check result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RestmailMailboxCheck"
+
+  /restmail/messages:
+    post:
+      operationId: restmailDeliver
+      tags: [RESTMAIL]
+      summary: Deliver a message via RESTMAIL protocol
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestmailDeliverRequest"
+      responses:
+        "201":
+          description: Delivery result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/RestmailDeliverResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Domains
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/domains:
+    get:
+      operationId: listDomains
+      tags: ["Admin: Domains"]
+      summary: List all domains
+      responses:
+        "200":
+          description: Domain list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Domain"
+    post:
+      operationId: createDomain
+      tags: ["Admin: Domains"]
+      summary: Create a new domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDomainRequest"
+      responses:
+        "201":
+          description: Domain created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Domain"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/domains/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getDomain
+      tags: ["Admin: Domains"]
+      summary: Get a domain by ID
+      responses:
+        "200":
+          description: Domain details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Domain"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateDomain
+      tags: ["Admin: Domains"]
+      summary: Update a domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDomainRequest"
+      responses:
+        "200":
+          description: Domain updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Domain"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteDomain
+      tags: ["Admin: Domains"]
+      summary: Delete a domain
+      responses:
+        "204":
+          description: Domain deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Mailboxes
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/mailboxes:
+    get:
+      operationId: listMailboxes
+      tags: ["Admin: Mailboxes"]
+      summary: List mailboxes, optionally filtered by domain
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Mailbox list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Mailbox"
+    post:
+      operationId: createMailbox
+      tags: ["Admin: Mailboxes"]
+      summary: Create a new mailbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMailboxRequest"
+      responses:
+        "201":
+          description: Mailbox created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Mailbox"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/mailboxes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getMailbox
+      tags: ["Admin: Mailboxes"]
+      summary: Get a mailbox by ID
+      responses:
+        "200":
+          description: Mailbox details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Mailbox"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateMailbox
+      tags: ["Admin: Mailboxes"]
+      summary: Update a mailbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMailboxRequest"
+      responses:
+        "200":
+          description: Mailbox updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Mailbox"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteMailbox
+      tags: ["Admin: Mailboxes"]
+      summary: Delete a mailbox
+      responses:
+        "204":
+          description: Mailbox deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Aliases
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/aliases:
+    get:
+      operationId: listAliases
+      tags: ["Admin: Aliases"]
+      summary: List aliases, optionally filtered by domain
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Alias list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Alias"
+    post:
+      operationId: createAlias
+      tags: ["Admin: Aliases"]
+      summary: Create a new alias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAliasRequest"
+      responses:
+        "201":
+          description: Alias created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Alias"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/aliases/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getAlias
+      tags: ["Admin: Aliases"]
+      summary: Get an alias by ID
+      responses:
+        "200":
+          description: Alias details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Alias"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateAlias
+      tags: ["Admin: Aliases"]
+      summary: Update an alias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAliasRequest"
+      responses:
+        "200":
+          description: Alias updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Alias"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteAlias
+      tags: ["Admin: Aliases"]
+      summary: Delete an alias
+      responses:
+        "204":
+          description: Alias deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Webmail Accounts
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/webmail-accounts:
+    get:
+      operationId: listWebmailAccounts
+      tags: ["Admin: Webmail Accounts"]
+      summary: List webmail accounts
+      responses:
+        "200":
+          description: Webmail account list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebmailAccount"
+    post:
+      operationId: createWebmailAccount
+      tags: ["Admin: Webmail Accounts"]
+      summary: Create a webmail account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [primary_mailbox_id]
+              properties:
+                primary_mailbox_id:
+                  type: integer
+      responses:
+        "201":
+          description: Webmail account created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/WebmailAccount"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/admin/webmail-accounts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getWebmailAccount
+      tags: ["Admin: Webmail Accounts"]
+      summary: Get a webmail account by ID
+      responses:
+        "200":
+          description: Webmail account details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/WebmailAccount"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteWebmailAccount
+      tags: ["Admin: Webmail Accounts"]
+      summary: Delete a webmail account
+      responses:
+        "204":
+          description: Webmail account deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Pipelines
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/pipelines:
+    get:
+      operationId: listPipelines
+      tags: ["Admin: Pipelines"]
+      summary: List pipelines, optionally filtered by domain
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pipeline list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Pipeline"
+    post:
+      operationId: createPipeline
+      tags: ["Admin: Pipelines"]
+      summary: Create a new pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePipelineRequest"
+      responses:
+        "201":
+          description: Pipeline created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Pipeline"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/pipelines/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    patch:
+      operationId: updatePipeline
+      tags: ["Admin: Pipelines"]
+      summary: Update a pipeline
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePipelineRequest"
+      responses:
+        "200":
+          description: Pipeline updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Pipeline"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deletePipeline
+      tags: ["Admin: Pipelines"]
+      summary: Delete a pipeline
+      responses:
+        "200":
+          description: Pipeline deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        example: deleted
+
+  /api/v1/admin/pipelines/test:
+    post:
+      operationId: testPipeline
+      tags: ["Admin: Pipelines"]
+      summary: Test a pipeline against a sample email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestPipelineRequest"
+      responses:
+        "200":
+          description: Pipeline execution result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ExecutionResult"
+
+  /api/v1/admin/pipelines/test-filter:
+    post:
+      operationId: testFilter
+      tags: ["Admin: Pipelines"]
+      summary: Test a single filter against a sample email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TestFilterRequest"
+      responses:
+        "200":
+          description: Filter execution result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/FilterResult"
+
+  /api/v1/admin/pipelines/logs:
+    get:
+      operationId: listPipelineLogs
+      tags: ["Admin: Pipelines"]
+      summary: List pipeline execution logs
+      parameters:
+        - name: pipeline_id
+          in: query
+          schema:
+            type: integer
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [inbound, outbound]
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [continue, reject, quarantine, discard]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Pipeline logs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PipelineLog"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Custom Filters
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/custom-filters:
+    get:
+      operationId: listCustomFilters
+      tags: ["Admin: Custom Filters"]
+      summary: List custom filters, optionally filtered by domain
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Custom filter list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CustomFilter"
+    post:
+      operationId: createCustomFilter
+      tags: ["Admin: Custom Filters"]
+      summary: Create a custom filter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomFilterRequest"
+      responses:
+        "201":
+          description: Custom filter created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFilter"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/custom-filters/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    delete:
+      operationId: deleteCustomFilter
+      tags: ["Admin: Custom Filters"]
+      summary: Delete a custom filter
+      responses:
+        "200":
+          description: Custom filter deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        example: deleted
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Queue
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/queue:
+    get:
+      operationId: listQueue
+      tags: ["Admin: Queue"]
+      summary: List outbound queue entries
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, delivering, deferred, delivered, bounced, expired]
+        - name: domain
+          in: query
+          schema:
+            type: string
+        - name: sender
+          in: query
+          schema:
+            type: string
+        - name: recipient
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Queue entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, limit, offset]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OutboundQueue"
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+
+  /api/v1/admin/queue/stats:
+    get:
+      operationId: getQueueStats
+      tags: ["Admin: Queue"]
+      summary: Get queue status counts
+      responses:
+        "200":
+          description: Queue statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/QueueStats"
+
+  /api/v1/admin/queue/bulk-retry:
+    post:
+      operationId: bulkRetryQueue
+      tags: ["Admin: Queue"]
+      summary: Retry multiple queue entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkQueueRequest"
+      responses:
+        "200":
+          description: Bulk retry result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/BulkQueueResponse"
+
+  /api/v1/admin/queue/bulk-bounce:
+    post:
+      operationId: bulkBounceQueue
+      tags: ["Admin: Queue"]
+      summary: Bounce multiple queue entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkQueueRequest"
+      responses:
+        "200":
+          description: Bulk bounce result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/BulkQueueResponse"
+
+  /api/v1/admin/queue/bulk-delete:
+    delete:
+      operationId: bulkDeleteQueue
+      tags: ["Admin: Queue"]
+      summary: Delete multiple queue entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkQueueRequest"
+      responses:
+        "200":
+          description: Bulk delete result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/BulkQueueResponse"
+
+  /api/v1/admin/queue/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getQueueEntry
+      tags: ["Admin: Queue"]
+      summary: Get a single queue entry
+      responses:
+        "200":
+          description: Queue entry details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/OutboundQueue"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteQueueEntry
+      tags: ["Admin: Queue"]
+      summary: Delete a queue entry
+      responses:
+        "204":
+          description: Queue entry deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/queue/{id}/retry:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: retryQueueEntry
+      tags: ["Admin: Queue"]
+      summary: Retry a single queue entry
+      responses:
+        "200":
+          description: Retry scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        example: retrying
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/queue/{id}/bounce:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: bounceQueueEntry
+      tags: ["Admin: Queue"]
+      summary: Bounce a single queue entry
+      responses:
+        "200":
+          description: Entry bounced
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        example: bounced
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Sender Rules (Allowlist / Blocklist)
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/domains/{id}/allowlist:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: listAllowlist
+      tags: ["Admin: Sender Rules"]
+      summary: List allowlist entries for a domain
+      responses:
+        "200":
+          description: Allowlist entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DomainSenderRule"
+    post:
+      operationId: addToAllowlist
+      tags: ["Admin: Sender Rules"]
+      summary: Add an allowlist entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSenderRuleRequest"
+      responses:
+        "201":
+          description: Entry added
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DomainSenderRule"
+
+  /api/v1/admin/domains/{id}/allowlist/{eid}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - name: eid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Sender rule entry ID
+    delete:
+      operationId: removeFromAllowlist
+      tags: ["Admin: Sender Rules"]
+      summary: Remove an allowlist entry
+      responses:
+        "204":
+          description: Entry removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/domains/{id}/blocklist:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: listBlocklist
+      tags: ["Admin: Sender Rules"]
+      summary: List blocklist entries for a domain
+      responses:
+        "200":
+          description: Blocklist entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DomainSenderRule"
+    post:
+      operationId: addToBlocklist
+      tags: ["Admin: Sender Rules"]
+      summary: Add a blocklist entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSenderRuleRequest"
+      responses:
+        "201":
+          description: Entry added
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DomainSenderRule"
+
+  /api/v1/admin/domains/{id}/blocklist/{eid}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - name: eid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Sender rule entry ID
+    delete:
+      operationId: removeFromBlocklist
+      tags: ["Admin: Sender Rules"]
+      summary: Remove a blocklist entry
+      responses:
+        "204":
+          description: Entry removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: DKIM
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/dkim:
+    get:
+      operationId: listDKIMKeys
+      tags: ["Admin: DKIM"]
+      summary: List DKIM key entries for all domains
+      responses:
+        "200":
+          description: DKIM key list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DKIMEntry"
+
+  /api/v1/admin/dkim/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    put:
+      operationId: setDKIMKey
+      tags: ["Admin: DKIM"]
+      summary: Set or replace DKIM key for a domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetDKIMKeyRequest"
+      responses:
+        "200":
+          description: DKIM key set
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DKIMEntry"
+    delete:
+      operationId: deleteDKIMKey
+      tags: ["Admin: DKIM"]
+      summary: Delete DKIM key for a domain
+      responses:
+        "204":
+          description: DKIM key deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Certificates
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/certificates:
+    get:
+      operationId: listCertificates
+      tags: ["Admin: Certificates"]
+      summary: List TLS certificates
+      responses:
+        "200":
+          description: Certificate list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Certificate"
+    post:
+      operationId: createCertificate
+      tags: ["Admin: Certificates"]
+      summary: Upload a new TLS certificate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCertificateRequest"
+      responses:
+        "201":
+          description: Certificate created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Certificate"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/certificates/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getCertificate
+      tags: ["Admin: Certificates"]
+      summary: Get certificate details (includes cert_pem)
+      responses:
+        "200":
+          description: Certificate details with PEM data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CertificateDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteCertificate
+      tags: ["Admin: Certificates"]
+      summary: Delete a certificate
+      responses:
+        "204":
+          description: Certificate deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Bans
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/bans:
+    get:
+      operationId: listBans
+      tags: ["Admin: Bans"]
+      summary: List IP bans
+      parameters:
+        - name: protocol
+          in: query
+          schema:
+            type: string
+            enum: [smtp, imap, pop3, all]
+        - name: ip
+          in: query
+          schema:
+            type: string
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Ban list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Ban"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+    post:
+      operationId: createBan
+      tags: ["Admin: Bans"]
+      summary: Create an IP ban
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBanRequest"
+      responses:
+        "201":
+          description: Ban created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ban"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/bans/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    delete:
+      operationId: deleteBan
+      tags: ["Admin: Bans"]
+      summary: Delete a ban by ID
+      responses:
+        "204":
+          description: Ban deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/bans/ip/{ip}:
+    parameters:
+      - name: ip
+        in: path
+        required: true
+        schema:
+          type: string
+        description: IP address to unban
+    delete:
+      operationId: unbanIP
+      tags: ["Admin: Bans"]
+      summary: Remove all bans for a specific IP
+      responses:
+        "204":
+          description: IP unbanned
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Logs
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/logs/delivery:
+    get:
+      operationId: getDeliveryLogs
+      tags: ["Admin: Logs"]
+      summary: Query delivery log (outbound queue history)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, delivering, deferred, delivered, bounced, expired]
+        - name: sender
+          in: query
+          schema:
+            type: string
+        - name: recipient
+          in: query
+          schema:
+            type: string
+        - name: domain
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Delivery log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OutboundQueue"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+
+  /api/v1/admin/logs/activity:
+    get:
+      operationId: getActivityLogs
+      tags: ["Admin: Logs"]
+      summary: Query activity audit log
+      parameters:
+        - name: actor
+          in: query
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: resource_type
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Activity log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ActivityLog"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from /api/v1/auth/login
+
+  parameters:
+    AccountId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Account ID
+    MessageId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Message ID
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: Resource ID
+    FolderName:
+      name: folder
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Folder name (e.g. INBOX, Sent, Drafts, Trash)
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
+
+  schemas:
+    # ─────────────────────────────────────────────────────────────
+    # Common / Wrapper schemas
+    # ─────────────────────────────────────────────────────────────
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: not_found
+            message:
+              type: string
+              example: Resource not found
+            details:
+              type: object
+
+    ValidationErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: validation_failed
+            message:
+              type: string
+              example: Request body failed validation
+            details:
+              type: object
+              properties:
+                fields:
+                  type: object
+                  additionalProperties:
+                    type: string
+
+    Pagination:
+      type: object
+      properties:
+        cursor:
+          type: string
+          description: Opaque cursor for the next page
+        has_more:
+          type: boolean
+        total:
+          type: integer
+          format: int64
+
+    # ─────────────────────────────────────────────────────────────
+    # Health
+    # ─────────────────────────────────────────────────────────────
+    HealthStatus:
+      type: object
+      required: [status, db]
+      properties:
+        status:
+          type: string
+          example: healthy
+        db:
+          type: string
+          example: connected
+
+    # ─────────────────────────────────────────────────────────────
+    # Auth
+    # ─────────────────────────────────────────────────────────────
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      required: [access_token, expires_in, user]
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+          description: Token lifetime in seconds
+        user:
+          type: object
+          required: [id, email, display_name]
+          properties:
+            id:
+              type: integer
+            email:
+              type: string
+              format: email
+            display_name:
+              type: string
+
+    RefreshResponse:
+      type: object
+      required: [access_token, expires_in]
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+
+    # ─────────────────────────────────────────────────────────────
+    # Account
+    # ─────────────────────────────────────────────────────────────
+    Account:
+      type: object
+      required: [id, mailbox_id, address, display_name, is_primary]
+      properties:
+        id:
+          type: integer
+        mailbox_id:
+          type: integer
+        address:
+          type: string
+          format: email
+        display_name:
+          type: string
+        is_primary:
+          type: boolean
+
+    LinkAccountRequest:
+      type: object
+      required: [address, password]
+      properties:
+        address:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        display_name:
+          type: string
+
+    TestConnectionRequest:
+      type: object
+      required: [address, password]
+      properties:
+        address:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    TestConnectionResponse:
+      type: object
+      required: [status, address, display_name]
+      properties:
+        status:
+          type: string
+          example: ok
+        address:
+          type: string
+          format: email
+        display_name:
+          type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # Folder
+    # ─────────────────────────────────────────────────────────────
+    Folder:
+      type: object
+      required: [name, total, unread]
+      properties:
+        name:
+          type: string
+        total:
+          type: integer
+        unread:
+          type: integer
+
+    FolderName:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    CreateFolderRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    RenameFolderRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # Message
+    # ─────────────────────────────────────────────────────────────
+    Message:
+      type: object
+      required: [id, mailbox_id, folder, sender, subject, is_read, is_flagged, is_starred, is_draft, is_deleted, received_at, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        mailbox_id:
+          type: integer
+        folder:
+          type: string
+        message_id:
+          type: string
+          description: RFC 2822 Message-ID header
+        in_reply_to:
+          type: string
+        references:
+          type: string
+        thread_id:
+          type: string
+        sender:
+          type: string
+        sender_name:
+          type: string
+        recipients_to:
+          description: JSON array of recipient objects
+          oneOf:
+            - type: array
+              items:
+                type: object
+                properties:
+                  address:
+                    type: string
+                  name:
+                    type: string
+            - type: "null"
+        recipients_cc:
+          description: JSON array of CC recipient objects
+          oneOf:
+            - type: array
+              items:
+                type: object
+                properties:
+                  address:
+                    type: string
+                  name:
+                    type: string
+            - type: "null"
+        subject:
+          type: string
+        body_text:
+          type: string
+        body_html:
+          type: string
+        headers:
+          description: Raw email headers as JSON
+          oneOf:
+            - type: object
+            - type: "null"
+        size_bytes:
+          type: integer
+        has_attachments:
+          type: boolean
+        is_read:
+          type: boolean
+        is_flagged:
+          type: boolean
+        is_starred:
+          type: boolean
+        is_draft:
+          type: boolean
+        is_deleted:
+          type: boolean
+        received_at:
+          type: string
+          format: date-time
+        date_header:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateMessageRequest:
+      type: object
+      properties:
+        is_read:
+          type: boolean
+        is_flagged:
+          type: boolean
+        is_starred:
+          type: boolean
+        folder:
+          type: string
+
+    SendMessageRequest:
+      type: object
+      required: [from, to, subject]
+      properties:
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        bcc:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        body_text:
+          type: string
+        body_html:
+          type: string
+        in_reply_to:
+          type: string
+
+    ForwardMessageRequest:
+      type: object
+      required: [from, to]
+      properties:
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        body_text:
+          type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # Draft
+    # ─────────────────────────────────────────────────────────────
+    DraftRequest:
+      type: object
+      required: [from]
+      properties:
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        body_text:
+          type: string
+        body_html:
+          type: string
+        in_reply_to:
+          type: string
+        references:
+          type: string
+
+    UpdateDraftRequest:
+      type: object
+      properties:
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        cc:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        body_text:
+          type: string
+        body_html:
+          type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # Quota
+    # ─────────────────────────────────────────────────────────────
+    QuotaInfo:
+      type: object
+      required: [quota_bytes, quota_used_bytes, message_count, percent_used]
+      properties:
+        quota_bytes:
+          type: integer
+          format: int64
+        quota_used_bytes:
+          type: integer
+          format: int64
+        message_count:
+          type: integer
+        percent_used:
+          type: number
+          format: float
+
+    # ─────────────────────────────────────────────────────────────
+    # Attachment
+    # ─────────────────────────────────────────────────────────────
+    Attachment:
+      type: object
+      required: [id, message_id, filename, content_type, size_bytes, storage_type, storage_ref, checksum, created_at]
+      properties:
+        id:
+          type: integer
+        message_id:
+          type: integer
+        filename:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        storage_type:
+          type: string
+          enum: [filesystem, s3]
+        storage_ref:
+          type: string
+        checksum:
+          type: string
+          description: SHA-256 hex digest
+        created_at:
+          type: string
+          format: date-time
+
+    # ─────────────────────────────────────────────────────────────
+    # Contact
+    # ─────────────────────────────────────────────────────────────
+    Contact:
+      type: object
+      required: [id, mailbox_id, email, name, trust_level, source, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        mailbox_id:
+          type: integer
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        trust_level:
+          type: string
+          enum: [auto, trusted, blocked]
+        source:
+          type: string
+          enum: [sent, manual, import]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateContactRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        trust_level:
+          type: string
+          enum: [auto, trusted, blocked]
+
+    UpdateContactRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        trust_level:
+          type: string
+          enum: [auto, trusted, blocked]
+
+    ImportContactsRequest:
+      type: object
+      required: [contacts]
+      properties:
+        contacts:
+          type: array
+          items:
+            type: object
+            required: [email]
+            properties:
+              email:
+                type: string
+                format: email
+              name:
+                type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # Vacation
+    # ─────────────────────────────────────────────────────────────
+    VacationConfig:
+      type: object
+      required: [enabled, subject, body]
+      properties:
+        enabled:
+          type: boolean
+        subject:
+          type: string
+        body:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+
+    # ─────────────────────────────────────────────────────────────
+    # Sieve
+    # ─────────────────────────────────────────────────────────────
+    SieveScript:
+      type: object
+      required: [id, mailbox_id, script, active, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        mailbox_id:
+          type: integer
+        script:
+          type: string
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PutSieveRequest:
+      type: object
+      required: [script]
+      properties:
+        script:
+          type: string
+        active:
+          type: boolean
+
+    # ─────────────────────────────────────────────────────────────
+    # Quarantine
+    # ─────────────────────────────────────────────────────────────
+    Quarantine:
+      type: object
+      required: [id, mailbox_id, sender, subject, body_preview, quarantine_reason, received_at, expires_at, released]
+      properties:
+        id:
+          type: integer
+        mailbox_id:
+          type: integer
+        sender:
+          type: string
+        subject:
+          type: string
+        body_preview:
+          type: string
+        spam_score:
+          type: number
+          format: float
+          nullable: true
+        quarantine_reason:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        released:
+          type: boolean
+
+    # ─────────────────────────────────────────────────────────────
+    # Inbound / Gateway
+    # ─────────────────────────────────────────────────────────────
+    MailboxCheck:
+      type: object
+      required: [exists]
+      properties:
+        exists:
+          type: boolean
+        mailbox_id:
+          type: integer
+        address:
+          type: string
+          format: email
+
+    DeliverMessageRequest:
+      type: object
+      required: [address, sender]
+      properties:
+        address:
+          type: string
+          format: email
+          description: Recipient address
+        sender:
+          type: string
+          format: email
+        sender_name:
+          type: string
+        recipients_to:
+          type: array
+          items:
+            type: string
+            format: email
+        recipients_cc:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        body_text:
+          type: string
+        body_html:
+          type: string
+        message_id:
+          type: string
+        in_reply_to:
+          type: string
+        references:
+          type: string
+        raw_message:
+          type: string
+          description: Full RFC 2822 raw message
+        client_ip:
+          type: string
+        helo_name:
+          type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # RESTMAIL Protocol
+    # ─────────────────────────────────────────────────────────────
+    RestmailCapabilities:
+      type: object
+      required: [protocol, version, features]
+      properties:
+        protocol:
+          type: string
+          example: RESTMAIL
+        version:
+          type: string
+          example: "1.0"
+        features:
+          type: array
+          items:
+            type: string
+
+    RestmailMailboxCheck:
+      type: object
+      required: [exists]
+      properties:
+        exists:
+          type: boolean
+        address:
+          type: string
+          format: email
+
+    RestmailDeliverRequest:
+      type: object
+      required: [to]
+      properties:
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        body_text:
+          type: string
+        body_html:
+          type: string
+        message_id:
+          type: string
+        in_reply_to:
+          type: string
+        references:
+          type: string
+        headers:
+          type: object
+          description: Raw headers as JSON
+        raw_message:
+          type: string
+          description: Full RFC 2822 raw message
+        sender:
+          type: string
+          format: email
+          description: Alias for 'from'
+        recipients:
+          type: array
+          items:
+            type: string
+            format: email
+          description: Alias for 'to'
+
+    RestmailDeliverResponse:
+      type: object
+      required: [delivered, failed]
+      properties:
+        delivered:
+          type: array
+          items:
+            type: string
+            format: email
+        failed:
+          type: array
+          items:
+            type: string
+            format: email
+
+    # ─────────────────────────────────────────────────────────────
+    # Domain
+    # ─────────────────────────────────────────────────────────────
+    Domain:
+      type: object
+      required: [id, name, server_type, active, default_quota_bytes, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        server_type:
+          type: string
+          enum: [traditional, restmail]
+        active:
+          type: boolean
+        default_quota_bytes:
+          type: integer
+          format: int64
+        dkim_selector:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateDomainRequest:
+      type: object
+      required: [name, server_type]
+      properties:
+        name:
+          type: string
+        server_type:
+          type: string
+          enum: [traditional, restmail]
+        default_quota_bytes:
+          type: integer
+          format: int64
+
+    UpdateDomainRequest:
+      type: object
+      properties:
+        active:
+          type: boolean
+        default_quota_bytes:
+          type: integer
+          format: int64
+
+    # ─────────────────────────────────────────────────────────────
+    # Mailbox
+    # ─────────────────────────────────────────────────────────────
+    Mailbox:
+      type: object
+      required: [id, domain_id, local_part, address, display_name, quota_bytes, quota_used_bytes, active, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        local_part:
+          type: string
+        address:
+          type: string
+          format: email
+        display_name:
+          type: string
+        quota_bytes:
+          type: integer
+          format: int64
+        quota_used_bytes:
+          type: integer
+          format: int64
+        active:
+          type: boolean
+        last_login_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateMailboxRequest:
+      type: object
+      required: [address, password]
+      properties:
+        address:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        display_name:
+          type: string
+        quota_bytes:
+          type: integer
+          format: int64
+
+    UpdateMailboxRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          format: password
+        display_name:
+          type: string
+        quota_bytes:
+          type: integer
+          format: int64
+        active:
+          type: boolean
+
+    # ─────────────────────────────────────────────────────────────
+    # Alias
+    # ─────────────────────────────────────────────────────────────
+    Alias:
+      type: object
+      required: [id, domain_id, source_address, destination_address, active, created_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        source_address:
+          type: string
+          format: email
+        destination_address:
+          type: string
+          format: email
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CreateAliasRequest:
+      type: object
+      required: [source_address, destination_address]
+      properties:
+        source_address:
+          type: string
+          format: email
+        destination_address:
+          type: string
+          format: email
+
+    UpdateAliasRequest:
+      type: object
+      properties:
+        destination_address:
+          type: string
+          format: email
+        active:
+          type: boolean
+
+    # ─────────────────────────────────────────────────────────────
+    # WebmailAccount
+    # ─────────────────────────────────────────────────────────────
+    WebmailAccount:
+      type: object
+      required: [id, primary_mailbox_id, is_admin, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        primary_mailbox_id:
+          type: integer
+        is_admin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # ─────────────────────────────────────────────────────────────
+    # Pipeline
+    # ─────────────────────────────────────────────────────────────
+    Pipeline:
+      type: object
+      required: [id, domain_id, direction, filters, active, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        filters:
+          description: Ordered array of filter configurations
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              config:
+                type: object
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreatePipelineRequest:
+      type: object
+      required: [domain_id, direction, filters]
+      properties:
+        domain_id:
+          type: integer
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        filters:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              config:
+                type: object
+        active:
+          type: boolean
+          default: true
+
+    UpdatePipelineRequest:
+      type: object
+      properties:
+        filters:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              config:
+                type: object
+        active:
+          type: boolean
+
+    PipelineLog:
+      type: object
+      required: [id, pipeline_id, direction, action, steps, duration_ms, created_at]
+      properties:
+        id:
+          type: integer
+        pipeline_id:
+          type: integer
+        message_id:
+          type: integer
+          nullable: true
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        action:
+          type: string
+          enum: [continue, reject, quarantine, discard]
+        steps:
+          type: array
+          items:
+            type: object
+            description: Individual filter execution step
+        duration_ms:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+
+    TestPipelineRequest:
+      type: object
+      required: [pipeline_id, email]
+      properties:
+        pipeline_id:
+          type: integer
+        email:
+          type: object
+          description: Sample email JSON for testing
+
+    TestFilterRequest:
+      type: object
+      required: [filter_name, config, email]
+      properties:
+        filter_name:
+          type: string
+        config:
+          type: object
+        email:
+          type: object
+          description: Sample email JSON for testing
+
+    ExecutionResult:
+      type: object
+      required: [final_action, steps, duration_ms]
+      properties:
+        final_action:
+          type: string
+          enum: [continue, reject, quarantine, discard]
+        steps:
+          type: array
+          items:
+            type: object
+        duration_ms:
+          type: integer
+          format: int64
+        final_email:
+          type: object
+          description: The email after all transformations
+
+    FilterResult:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [continue, reject, quarantine, discard]
+        email:
+          type: object
+          description: The email after filter transformation
+        metadata:
+          type: object
+
+    # ─────────────────────────────────────────────────────────────
+    # Custom Filter
+    # ─────────────────────────────────────────────────────────────
+    CustomFilter:
+      type: object
+      required: [id, domain_id, name, filter_type, direction, config, enabled, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        filter_type:
+          type: string
+          enum: [action, transform]
+        direction:
+          type: string
+          enum: [inbound, outbound, both]
+        config:
+          type: object
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateCustomFilterRequest:
+      type: object
+      required: [domain_id, name, filter_type, direction, config]
+      properties:
+        domain_id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        filter_type:
+          type: string
+          enum: [action, transform]
+        direction:
+          type: string
+          enum: [inbound, outbound, both]
+        config:
+          type: object
+        enabled:
+          type: boolean
+          default: true
+
+    # ─────────────────────────────────────────────────────────────
+    # Outbound Queue
+    # ─────────────────────────────────────────────────────────────
+    OutboundQueue:
+      type: object
+      required: [id, sender, recipient, domain, status, attempts, next_attempt, max_retries, created_at, expires_at]
+      properties:
+        id:
+          type: integer
+        message_id:
+          type: integer
+          nullable: true
+        sender:
+          type: string
+        recipient:
+          type: string
+        domain:
+          type: string
+        status:
+          type: string
+          enum: [pending, delivering, deferred, delivered, bounced, expired]
+        attempts:
+          type: integer
+        last_attempt:
+          type: string
+          format: date-time
+          nullable: true
+        next_attempt:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        last_error_code:
+          type: integer
+        max_retries:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    QueueStats:
+      type: object
+      required: [pending, deferred, delivered, bounced, total]
+      properties:
+        pending:
+          type: integer
+        deferred:
+          type: integer
+        delivered:
+          type: integer
+        bounced:
+          type: integer
+        total:
+          type: integer
+
+    BulkQueueRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+        filter:
+          type: object
+          description: Filter criteria to select entries (alternative to ids)
+          properties:
+            status:
+              type: string
+            domain:
+              type: string
+            sender:
+              type: string
+            recipient:
+              type: string
+
+    BulkQueueResponse:
+      type: object
+      required: [affected]
+      properties:
+        affected:
+          type: integer
+
+    # ─────────────────────────────────────────────────────────────
+    # Sender Rules
+    # ─────────────────────────────────────────────────────────────
+    DomainSenderRule:
+      type: object
+      required: [id, domain_id, pattern, list_type, created_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        pattern:
+          type: string
+          description: Email address or @domain pattern
+        list_type:
+          type: string
+          enum: [allow, block]
+        reason:
+          type: string
+        created_by:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateSenderRuleRequest:
+      type: object
+      required: [pattern]
+      properties:
+        pattern:
+          type: string
+          description: "Email address (spam@evil.com) or domain pattern (@evil.com)"
+        reason:
+          type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # DKIM
+    # ─────────────────────────────────────────────────────────────
+    DKIMEntry:
+      type: object
+      required: [domain_id, domain, selector, has_key]
+      properties:
+        domain_id:
+          type: integer
+        domain:
+          type: string
+        selector:
+          type: string
+        has_key:
+          type: boolean
+
+    SetDKIMKeyRequest:
+      type: object
+      required: [selector, private_key]
+      properties:
+        selector:
+          type: string
+        private_key:
+          type: string
+          description: PEM-encoded RSA private key
+
+    # ─────────────────────────────────────────────────────────────
+    # Certificate
+    # ─────────────────────────────────────────────────────────────
+    Certificate:
+      type: object
+      required: [id, domain_id, issuer, not_before, not_after, auto_renew, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        issuer:
+          type: string
+        not_before:
+          type: string
+          format: date-time
+        not_after:
+          type: string
+          format: date-time
+        auto_renew:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CertificateDetail:
+      allOf:
+        - $ref: "#/components/schemas/Certificate"
+        - type: object
+          required: [cert_pem]
+          properties:
+            cert_pem:
+              type: string
+              description: PEM-encoded certificate
+
+    CreateCertificateRequest:
+      type: object
+      required: [domain_id, cert_pem, key_pem]
+      properties:
+        domain_id:
+          type: integer
+        cert_pem:
+          type: string
+          description: PEM-encoded certificate
+        key_pem:
+          type: string
+          description: PEM-encoded private key
+        auto_renew:
+          type: boolean
+
+    # ─────────────────────────────────────────────────────────────
+    # Ban
+    # ─────────────────────────────────────────────────────────────
+    Ban:
+      type: object
+      required: [id, ip, reason, protocol, created_by, created_at]
+      properties:
+        id:
+          type: integer
+        ip:
+          type: string
+        reason:
+          type: string
+        protocol:
+          type: string
+          enum: [smtp, imap, pop3, all]
+        created_by:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateBanRequest:
+      type: object
+      required: [ip, protocol, created_by]
+      properties:
+        ip:
+          type: string
+        reason:
+          type: string
+        protocol:
+          type: string
+          enum: [smtp, imap, pop3, all]
+        duration:
+          type: string
+          description: Duration string (e.g. "24h", "7d"), omit for permanent
+        created_by:
+          type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # Activity Log
+    # ─────────────────────────────────────────────────────────────
+    ActivityLog:
+      type: object
+      required: [id, actor, action, resource_type, created_at]
+      properties:
+        id:
+          type: integer
+        actor:
+          type: string
+        action:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: integer
+          nullable: true
+        detail:
+          type: string
+        metadata:
+          type: object
+          nullable: true
+        ip:
+          type: string
+        created_at:
+          type: string
+          format: date-time

@@ -11,6 +11,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/bancheck"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/gateway/queue"
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
@@ -99,6 +100,7 @@ func main() {
 	}
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
+	bancheck.Wire(limiter, database, "smtp")
 	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, database, limiter)
 	if err := smtpServer.ListenAndServe(smtpgw.SMTPPorts{
 		Inbound:       cfg.SMTPPortInbound,
