@@ -7,17 +7,21 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	acmeclient "github.com/restmail/restmail/internal/acme"
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
+	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
 	"gorm.io/gorm"
 )
 
 // NewRouter creates and configures the chi router with all API routes.
-func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) http.Handler {
+// The acmeClient parameter is optional; pass nil when ACME is disabled.
+func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, acmeClient ...*acmeclient.Client) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -32,6 +36,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+	r.Use(metrics.HTTPMetrics)
 
 	// Initialize handlers
 	healthH := handlers.NewHealthHandler(db)
@@ -85,6 +90,11 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	r.Get("/api/health", healthH.Health)
 
 	// ═══════════════════════════════════════════════════════════════
+	// Prometheus metrics (no auth)
+	// ═══════════════════════════════════════════════════════════════
+	r.Handle("/metrics", promhttp.Handler())
+
+	// ═══════════════════════════════════════════════════════════════
 	// Email client auto-configuration (no auth)
 	// ═══════════════════════════════════════════════════════════════
 	autoconfigH := handlers.NewAutoconfigHandler(db)
@@ -101,6 +111,13 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	// TLS-RPT report ingestion (no auth — receives reports from external MTAs per RFC 8460)
 	// ═══════════════════════════════════════════════════════════════
 	r.Post("/.well-known/smtp-tlsrpt", tlsrptH.ReceiveReport)
+
+	// ═══════════════════════════════════════════════════════════════
+	// ACME HTTP-01 challenge (no auth — served to ACME CA for domain validation)
+	// ═══════════════════════════════════════════════════════════════
+	if len(acmeClient) > 0 && acmeClient[0] != nil {
+		r.Handle("/.well-known/acme-challenge/*", acmeClient[0].ChallengeHandler())
+	}
 
 	// ═══════════════════════════════════════════════════════════════
 	// Auth (no auth)
@@ -157,6 +174,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
 		r.Get("/api/v1/messages/{id}/raw", messageH.GetRawMessage)
 		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
+		r.Post("/api/v1/messages/{id}/calendar-reply", messageH.RespondToCalendar)
 
 		// Drafts
 		r.Post("/api/v1/messages/draft", messageH.SaveDraft)
@@ -214,6 +232,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		r.Get("/api/v1/admin/domains/{id}", domainH.Get)
 		r.Patch("/api/v1/admin/domains/{id}", domainH.Update)
 		r.Delete("/api/v1/admin/domains/{id}", domainH.Delete)
+		r.Get("/api/v1/admin/domains/{id}/dns", domainH.DNSCheck)
 
 		// Mailboxes
 		r.Get("/api/v1/admin/mailboxes", mailboxH.List)

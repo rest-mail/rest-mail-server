@@ -14,6 +14,8 @@ volumes:
   mail3-attachments:
   certs:
   gateway-logs:
+  prometheus-data:
+  grafana-data:
 
 services:
   # ─── Certificate Generator (init container) ──────────────────────────
@@ -444,3 +446,66 @@ services:
     volumes:
       - gateway-logs:/var/log/restmail:ro
     restart: unless-stopped
+
+  # ─── Prometheus ────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    depends_on:
+      api:
+        condition: service_started
+    dns:
+      - 172.20.0.3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.30
+
+  # ─── Grafana ───────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.1
+    container_name: grafana
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: restmail
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.31
+
+  # ─── PostgreSQL Exporter ───────────────────────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres-exporter
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://restmail:restmail@postgres:5432/restmail?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.32

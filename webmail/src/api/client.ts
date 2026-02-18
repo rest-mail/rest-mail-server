@@ -208,6 +208,17 @@ export async function sendDraft(draftId: number): Promise<void> {
   });
 }
 
+// Calendar
+export async function respondToCalendar(messageId: number, data: {
+  response: string;
+  from: string;
+}): Promise<{ data: { status: string; response: string } }> {
+  return request(`${BASE}/messages/${messageId}/calendar-reply`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
 // Threads
 export async function getThread(accountId: number, threadId: string): Promise<{ data: MessageSummary[] }> {
   return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}`);
@@ -272,6 +283,102 @@ export async function releaseQuarantine(accountId: number, messageId: number): P
 
 export async function deleteQuarantine(accountId: number, messageId: number): Promise<void> {
   await request(`${BASE}/accounts/${accountId}/quarantine/${messageId}`, { method: 'DELETE' });
+}
+
+// ── Admin: TLS Reports ──
+
+export interface TLSReport {
+  id: number;
+  domain_id: number;
+  reporting_org: string;
+  start_date: string;
+  end_date: string;
+  policy_type: string;
+  policy_domain: string;
+  total_successful: number;
+  total_failure: number;
+  failure_details?: unknown;
+  received_at: string;
+}
+
+export async function listTLSReports(params?: {
+  domain_id?: number;
+  limit?: number;
+  offset?: number;
+}): Promise<{ data: TLSReport[]; pagination: Pagination }> {
+  const qs = new URLSearchParams();
+  if (params?.domain_id) qs.set('domain_id', String(params.domain_id));
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  return request(`${BASE}/admin/tls-reports?${qs}`);
+}
+
+// ── Admin: Pipelines ──
+
+export interface PipelineData {
+  id: number;
+  domain_id: number;
+  direction: string;
+  filters: FilterConfig[];
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FilterConfig {
+  name: string;
+  enabled: boolean;
+  config?: Record<string, unknown>;
+}
+
+export interface PipelineTestResult {
+  action: string;
+  logs: { filter: string; action: string; message: string; duration_ms: number }[];
+  email?: unknown;
+}
+
+export async function listPipelines(): Promise<{ data: PipelineData[] }> {
+  return request(`${BASE}/admin/pipelines`);
+}
+
+export async function createPipeline(data: {
+  domain_id: number;
+  direction: string;
+  filters: FilterConfig[];
+  active: boolean;
+}): Promise<{ data: PipelineData }> {
+  return request(`${BASE}/admin/pipelines`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updatePipeline(id: number, data: Partial<{
+  filters: FilterConfig[];
+  active: boolean;
+}>): Promise<{ data: PipelineData }> {
+  return request(`${BASE}/admin/pipelines/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deletePipeline(id: number): Promise<void> {
+  await request(`${BASE}/admin/pipelines/${id}`, { method: 'DELETE' });
+}
+
+export async function testPipeline(pipelineId: number, email: Record<string, unknown>): Promise<{ data: PipelineTestResult }> {
+  return request(`${BASE}/admin/pipelines/test`, {
+    method: 'POST',
+    body: JSON.stringify({ pipeline_id: pipelineId, email }),
+  });
+}
+
+export async function testFilter(filterName: string, config: Record<string, unknown>, email: Record<string, unknown>): Promise<{ data: PipelineTestResult }> {
+  return request(`${BASE}/admin/pipelines/test-filter`, {
+    method: 'POST',
+    body: JSON.stringify({ filter_name: filterName, config, email }),
+  });
 }
 
 // Folder management

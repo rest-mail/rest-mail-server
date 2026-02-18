@@ -16,6 +16,7 @@ import { Mail, Paperclip, FolderOpen, MessageSquare, Reply, ReplyAll, Forward, T
 import { toast } from 'sonner';
 import DOMPurify from 'dompurify';
 import type { Attachment, MessageSummary } from '@/types';
+import { CalendarInvite } from './CalendarInvite';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -360,6 +361,11 @@ export function MessageViewer() {
               )}
               <Separator className="mt-4" />
             </div>
+          )}
+
+          {/* Calendar Invite */}
+          {msg.calendar_events && msg.calendar_events.length > 0 && (
+            <CalendarInvite events={msg.calendar_events} messageId={msg.id} />
           )}
 
           {/* Body */}

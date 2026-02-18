@@ -1,0 +1,81 @@
+groups:
+  - name: restmail-alerts
+    rules:
+      # Queue backlog is too large
+      - alert: QueueBacklogHigh
+        expr: restmail_queue_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue backlog exceeds 1000 messages"
+          description: "The outbound queue has {{ $value }} messages pending for more than 5 minutes."
+
+      # Certificate approaching expiry
+      - alert: CertificateExpiringSoon
+        expr: restmail_cert_expiry_days < 7
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Certificate for {{ $labels.domain }} expires in {{ $value }} days"
+          description: "The TLS certificate for domain {{ $labels.domain }} will expire in less than 7 days. Renew immediately."
+
+      # High authentication failure rate
+      - alert: AuthFailureRateHigh
+        expr: rate(restmail_auth_failures_total[5m]) * 300 > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High authentication failure rate on {{ $labels.protocol }}"
+          description: "More than 100 authentication failures in the last 5 minutes on protocol {{ $labels.protocol }}. Possible brute-force attempt."
+
+      # HTTP error rate above 5%
+      - alert: HTTPErrorRateHigh
+        expr: >
+          sum(rate(restmail_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(restmail_http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 5xx error rate exceeds 5%"
+          description: "The API server is returning server errors at a rate of {{ $value | humanizePercentage }}."
+
+      # API response time too slow (p95 > 2s)
+      - alert: APIResponseTimeSlow
+        expr: >
+          histogram_quantile(0.95, sum(rate(restmail_http_request_duration_seconds_bucket[5m])) by (le))
+          > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 response time exceeds 2 seconds"
+          description: "The 95th percentile API response time is {{ $value }}s, which is above the 2s threshold."
+
+      # Queue error rate spike
+      - alert: QueueErrorRateHigh
+        expr: rate(restmail_queue_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Queue processing error rate is elevated"
+          description: "Queue errors are occurring at {{ $value }} per second."
+
+      # No messages processed (possible queue worker failure)
+      - alert: QueueWorkerStalled
+        expr: >
+          rate(restmail_queue_processed_total[15m]) == 0
+          and
+          restmail_queue_size > 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Queue workers appear stalled"
+          description: "No messages have been processed in the last 15 minutes despite {{ $value }} messages in the queue."

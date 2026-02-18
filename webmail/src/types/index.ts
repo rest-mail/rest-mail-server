@@ -43,6 +43,31 @@ export interface MessageDetail extends MessageSummary {
   in_reply_to: string;
   references: string;
   thread_id: string;
+  calendar_events?: CalendarEvent[] | null;
+}
+
+export interface CalendarAddress {
+  address: string;
+  name?: string;
+  role?: string;
+  partstat?: string;
+  rsvp?: boolean;
+}
+
+export interface CalendarEvent {
+  method: string;
+  uid: string;
+  summary: string;
+  description?: string;
+  location?: string;
+  dtstart: string;
+  dtend: string;
+  all_day: boolean;
+  organizer: CalendarAddress;
+  attendees?: CalendarAddress[];
+  status?: string;
+  sequence: number;
+  dtstamp?: string;
 }
 
 export interface Account {

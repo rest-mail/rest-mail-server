@@ -59,6 +59,12 @@ type Config struct {
 	// CORS
 	CORSAllowedOrigins []string
 
+	// ACME (Let's Encrypt)
+	ACMEEnabled   bool
+	ACMEEmail     string
+	ACMEDirectory string // ACME directory URL; defaults to Let's Encrypt production
+	ACMEStaging   bool   // use Let's Encrypt staging directory
+
 	// Environment
 	Environment string // "development", "production", "test"
 }
@@ -105,6 +111,11 @@ func Load() (*Config, error) {
 		ProxyProtocolTrustedCIDRs: getEnvSlice("PROXY_PROTOCOL_TRUSTED_CIDRS", nil),
 
 		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
+
+		ACMEEnabled:   getEnvBool("ACME_ENABLED", false),
+		ACMEEmail:     getEnv("ACME_EMAIL", ""),
+		ACMEDirectory: getEnv("ACME_DIRECTORY", "https://acme-v02.api.letsencrypt.org/directory"),
+		ACMEStaging:   getEnvBool("ACME_STAGING", false),
 
 		Environment: getEnv("ENVIRONMENT", "development"),
 	}
@@ -158,6 +169,18 @@ func getEnvSlice(key string, fallback []string) []string {
 		}
 		if len(result) > 0 {
 			return result
+		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if val, ok := os.LookupEnv(key); ok {
+		switch strings.ToLower(val) {
+		case "true", "1", "yes":
+			return true
+		case "false", "0", "no":
+			return false
 		}
 	}
 	return fallback

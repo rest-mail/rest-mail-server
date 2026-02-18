@@ -1,0 +1,96 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      tag:
+        description: "Image tag to deploy (e.g. v1.0.0 or sha-abc1234)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/restmail
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: deploy-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate tag exists
+        run: |
+          echo "Deploying tag: ${{ inputs.tag }} to ${{ inputs.environment }}"
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Deploy via Docker Compose
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          IMAGE_TAG: ${{ inputs.tag }}
+          DEPLOY_ENV: ${{ inputs.environment }}
+        run: |
+          ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} << 'DEPLOY_SCRIPT'
+            set -euo pipefail
+
+            cd /opt/restmail
+
+            # Pull the latest compose file
+            git fetch origin main
+            git checkout origin/main -- docker-compose.yml docker-compose.${DEPLOY_ENV}.yml
+
+            # Set the image tag
+            export IMAGE_TAG="${IMAGE_TAG}"
+            export IMAGE_PREFIX="${IMAGE_PREFIX}"
+
+            # Pull new images
+            docker compose -f docker-compose.yml -f docker-compose.${DEPLOY_ENV}.yml pull
+
+            # Rolling restart services
+            docker compose -f docker-compose.yml -f docker-compose.${DEPLOY_ENV}.yml up -d --remove-orphans
+
+            # Wait for health checks
+            echo "Waiting for services to become healthy..."
+            sleep 10
+
+            # Verify API health
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
+                echo "Deployment successful - API is healthy."
+                exit 0
+              fi
+              echo "  attempt $i/30 - waiting..."
+              sleep 2
+            done
+
+            echo "ERROR: API did not become healthy after deployment."
+            exit 1
+          DEPLOY_SCRIPT
+
+      - name: Post-deploy verification
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} \
+            "docker compose -f /opt/restmail/docker-compose.yml ps --format 'table {{.Name}}\t{{.Status}}'"

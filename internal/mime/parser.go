@@ -33,7 +33,7 @@ func Parse(raw []byte) (*pipeline.EmailJSON, error) {
 		contentType = "text/plain"
 	}
 
-	body, attachments, inline, err := parseBody(msg.Body, contentType)
+	body, attachments, inline, calendarEvents, err := parseBody(msg.Body, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("parse body: %w", err)
 	}
@@ -41,6 +41,7 @@ func Parse(raw []byte) (*pipeline.EmailJSON, error) {
 	email.Body = body
 	email.Attachments = attachments
 	email.Inline = inline
+	email.CalendarEvents = calendarEvents
 
 	return email, nil
 }
@@ -99,7 +100,7 @@ func parseHeaders(h mail.Header) pipeline.Headers {
 	return headers
 }
 
-func parseBody(reader io.Reader, contentType string) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, error) {
+func parseBody(reader io.Reader, contentType string) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		// Fallback: treat as plain text
@@ -107,7 +108,7 @@ func parseBody(reader io.Reader, contentType string) (pipeline.Body, []pipeline.
 		return pipeline.Body{
 			ContentType: "text/plain",
 			Content:     string(bodyBytes),
-		}, nil, nil, nil
+		}, nil, nil, nil, nil
 	}
 
 	// Handle multipart
@@ -118,7 +119,7 @@ func parseBody(reader io.Reader, contentType string) (pipeline.Body, []pipeline.
 			return pipeline.Body{
 				ContentType: mediaType,
 				Content:     string(bodyBytes),
-			}, nil, nil, nil
+			}, nil, nil, nil, nil
 		}
 		return parseMultipart(reader, mediaType, boundary)
 	}
@@ -126,21 +127,30 @@ func parseBody(reader io.Reader, contentType string) (pipeline.Body, []pipeline.
 	// Single-part body
 	bodyBytes, err := io.ReadAll(reader)
 	if err != nil {
-		return pipeline.Body{}, nil, nil, err
+		return pipeline.Body{}, nil, nil, nil, err
+	}
+
+	// Check if this single-part message is a calendar invite
+	var calEvents []pipeline.CalendarEvent
+	if mediaType == "text/calendar" {
+		if events, parseErr := ParseCalendar(string(bodyBytes)); parseErr == nil && len(events) > 0 {
+			calEvents = events
+		}
 	}
 
 	return pipeline.Body{
 		ContentType: mediaType,
 		Content:     string(bodyBytes),
-	}, nil, nil, nil
+	}, nil, nil, calEvents, nil
 }
 
-func parseMultipart(reader io.Reader, mediaType, boundary string) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, error) {
+func parseMultipart(reader io.Reader, mediaType, boundary string) (pipeline.Body, []pipeline.Attachment, []pipeline.Attachment, []pipeline.CalendarEvent, error) {
 	mr := multipart.NewReader(reader, boundary)
 	body := pipeline.Body{
 		ContentType: mediaType,
 	}
 	var attachments, inline []pipeline.Attachment
+	var calendarEvents []pipeline.CalendarEvent
 
 	for {
 		part, err := mr.NextPart()
@@ -148,7 +158,7 @@ func parseMultipart(reader io.Reader, mediaType, boundary string) (pipeline.Body
 			break
 		}
 		if err != nil {
-			return body, attachments, inline, fmt.Errorf("read part: %w", err)
+			return body, attachments, inline, calendarEvents, fmt.Errorf("read part: %w", err)
 		}
 
 		partCT := part.Header.Get("Content-Type")
@@ -167,19 +177,33 @@ func parseMultipart(reader io.Reader, mediaType, boundary string) (pipeline.Body
 		if strings.HasPrefix(partMediaType, "multipart/") {
 			subBoundary := partParams["boundary"]
 			if subBoundary != "" {
-				subBody, subAtt, subInl, err := parseMultipart(partReader, partMediaType, subBoundary)
+				subBody, subAtt, subInl, subCal, err := parseMultipart(partReader, partMediaType, subBoundary)
 				if err != nil {
 					continue
 				}
 				body.Parts = append(body.Parts, subBody)
 				attachments = append(attachments, subAtt...)
 				inline = append(inline, subInl...)
+				calendarEvents = append(calendarEvents, subCal...)
 				continue
 			}
 		}
 
 		content, err := io.ReadAll(partReader)
 		if err != nil {
+			continue
+		}
+
+		// Is this a calendar invite? Parse it regardless of disposition.
+		if partMediaType == "text/calendar" {
+			if events, parseErr := ParseCalendar(string(content)); parseErr == nil && len(events) > 0 {
+				calendarEvents = append(calendarEvents, events...)
+			}
+			// Also store as a body part so the raw .ics content is available
+			body.Parts = append(body.Parts, pipeline.Body{
+				ContentType: partMediaType,
+				Content:     string(content),
+			})
 			continue
 		}
 
@@ -218,7 +242,7 @@ func parseMultipart(reader io.Reader, mediaType, boundary string) (pipeline.Body
 		})
 	}
 
-	return body, attachments, inline, nil
+	return body, attachments, inline, calendarEvents, nil
 }
 
 func decodeTransferEncoding(reader io.Reader, encoding string) io.Reader {

@@ -18,6 +18,7 @@ import (
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
+	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -1322,6 +1323,196 @@ func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) 
 	h.SendMessage(w, newReq)
 }
 
+// RespondToCalendar handles Accept/Decline/Tentative responses to calendar invites.
+// POST /api/v1/messages/{id}/calendar-reply
+func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
+		return
+	}
+
+	var msg models.Message
+	if err := h.db.First(&msg, id).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
+		return
+	}
+
+	if !h.verifyMessageOwnership(w, r, &msg) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
+	var req struct {
+		Response string `json:"response"` // "ACCEPTED", "DECLINED", or "TENTATIVE"
+		From     string `json:"from"`     // Sender address for the reply
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+
+	// Validate response
+	response := strings.ToUpper(req.Response)
+	if response != "ACCEPTED" && response != "DECLINED" && response != "TENTATIVE" {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "response must be ACCEPTED, DECLINED, or TENTATIVE")
+		return
+	}
+
+	// Parse calendar events from the message
+	var calEvents []pipeline.CalendarEvent
+	if len(msg.CalendarEventsRaw) > 0 {
+		json.Unmarshal(msg.CalendarEventsRaw, &calEvents)
+	}
+
+	if len(calEvents) == 0 {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Message does not contain calendar events")
+		return
+	}
+
+	event := calEvents[0]
+
+	if req.From == "" {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "from is required")
+		return
+	}
+
+	// Verify sender belongs to authenticated user
+	senderMailbox, err := h.resolveSenderMailbox(req.From, claims.WebmailAccountID)
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
+		return
+	}
+
+	// Build the iCalendar REPLY body
+	icsReply := rmime.BuildCalendarReply(event, req.From, response)
+
+	// Build the MIME message with the calendar reply
+	organizer := event.Organizer.Address
+	if organizer == "" {
+		organizer = msg.Sender
+	}
+
+	subject := event.Summary
+	if subject == "" {
+		subject = msg.Subject
+	}
+	switch response {
+	case "ACCEPTED":
+		subject = "Accepted: " + subject
+	case "DECLINED":
+		subject = "Declined: " + subject
+	case "TENTATIVE":
+		subject = "Tentative: " + subject
+	}
+
+	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
+	now := time.Now()
+
+	// Build raw RFC 2822 message with calendar reply
+	var b strings.Builder
+	fromAddr := &mail.Address{Name: senderMailbox.DisplayName, Address: req.From}
+	b.WriteString("From: " + fromAddr.String() + "\r\n")
+	b.WriteString("To: " + organizer + "\r\n")
+	b.WriteString("Subject: " + subject + "\r\n")
+	b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
+	b.WriteString("Message-ID: " + messageID + "\r\n")
+	if msg.MsgID != "" {
+		b.WriteString("In-Reply-To: " + msg.MsgID + "\r\n")
+	}
+	b.WriteString("MIME-Version: 1.0\r\n")
+
+	boundary := fmt.Sprintf("=_restmail_cal_%d", now.UnixNano())
+	b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
+	b.WriteString("\r\n")
+
+	// Text part
+	b.WriteString("--" + boundary + "\r\n")
+	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+	b.WriteString(fmt.Sprintf("Calendar invite %s: %s\r\n", strings.ToLower(response), event.Summary))
+	b.WriteString("\r\n")
+
+	// Calendar reply part
+	b.WriteString("--" + boundary + "\r\n")
+	b.WriteString("Content-Type: text/calendar; charset=utf-8; method=REPLY\r\n\r\n")
+	b.WriteString(icsReply)
+	b.WriteString("\r\n")
+	b.WriteString("--" + boundary + "--\r\n")
+
+	rawMessage := b.String()
+
+	// Save the reply to Sent folder
+	toJSON, _ := json.Marshal([]string{organizer})
+	sentMsg := models.Message{
+		MailboxID:    senderMailbox.ID,
+		Folder:       "Sent",
+		MsgID:        messageID,
+		InReplyTo:    msg.MsgID,
+		ThreadID:     msg.ThreadID,
+		Sender:       req.From,
+		SenderName:   senderMailbox.DisplayName,
+		RecipientsTo: models.JSONB(toJSON),
+		RecipientsCc: models.JSONB([]byte("[]")),
+		Subject:      subject,
+		BodyText:     fmt.Sprintf("Calendar invite %s: %s", strings.ToLower(response), event.Summary),
+		IsRead:       true,
+		SizeBytes:    len(rawMessage),
+		ReceivedAt:   now,
+	}
+
+	if err := h.db.Create(&sentMsg).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save calendar reply")
+		return
+	}
+
+	// Deliver to organizer if local, else queue for remote delivery
+	var recipientMailbox models.Mailbox
+	if err := h.db.Where("address = ? AND active = ?", organizer, true).First(&recipientMailbox).Error; err == nil {
+		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
+			Mailbox:      recipientMailbox,
+			Sender:       req.From,
+			SenderName:   senderMailbox.DisplayName,
+			RecipientsTo: toJSON,
+			RecipientsCc: json.RawMessage("[]"),
+			Subject:      subject,
+			BodyText:     sentMsg.BodyText,
+			MessageID:    messageID,
+			InReplyTo:    msg.MsgID,
+			RawMessage:   rawMessage,
+		})
+		if deliverErr != nil {
+			slog.Warn("calendar reply local delivery failed", "recipient", organizer, "error", deliverErr)
+		}
+	} else {
+		// Remote delivery
+		recipientDomain := organizer
+		if idx := strings.LastIndex(organizer, "@"); idx >= 0 {
+			recipientDomain = organizer[idx+1:]
+		}
+		msgID := sentMsg.ID
+		queueEntry := models.OutboundQueue{
+			MessageID:  &msgID,
+			Sender:     req.From,
+			Recipient:  organizer,
+			Domain:     recipientDomain,
+			RawMessage: rawMessage,
+			Status:     "pending",
+		}
+		h.db.Create(&queueEntry)
+	}
+
+	respond.Data(w, http.StatusOK, map[string]string{
+		"status":   "sent",
+		"response": response,
+	})
+}
+
 // verifyMessageOwnership checks that the authenticated user owns the message.
 // Returns true if the message belongs to one of the user's mailboxes, or if the user is an admin.
 func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.Request, msg *models.Message) bool {
@@ -1578,6 +1769,16 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 					Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", totalAttBytes))
 				h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).
 					Update("attachment_bytes", gorm.Expr("attachment_bytes + ?", totalAttBytes))
+			}
+		}
+	}
+
+	// ── Extract calendar events ─────────────────────────────────────
+	if params.RawMessage != "" {
+		if parsed, parseErr := rmime.Parse([]byte(params.RawMessage)); parseErr == nil && len(parsed.CalendarEvents) > 0 {
+			if calJSON, jsonErr := json.Marshal(parsed.CalendarEvents); jsonErr == nil {
+				h.db.Model(&msg).Update("calendar_events", models.JSONB(calJSON))
+				msg.CalendarEventsRaw = models.JSONB(calJSON)
 			}
 		}
 	}

@@ -110,6 +110,10 @@ tasks:
     desc: Build TUI for all platforms
     deps: [build:tui:darwin-arm64, build:tui:darwin-amd64, build:tui:linux-arm64, build:tui]
 
+  build:tools:
+    desc: Build all tool binaries (certgen, migrate, seed, website)
+    deps: [build:certgen, build:migrate, build:seed, build:website]
+
   build:certgen:
     desc: Build the certificate generator
     cmds:
@@ -145,9 +149,25 @@ tasks:
     generates:
       - build/tools/seed
 
+  build:website:
+    desc: Build the website server binary
+    cmds:
+      - go build -o build/tools/website ./cmd/website
+    sources:
+      - cmd/website/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/website
+
   # ── Test ───────────────────────────────────────────────
   test:
     desc: Run unit tests
+    cmds:
+      - go test -race -count=1 ./internal/...
+
+  test:unit:
+    desc: Run unit tests (alias for test)
     cmds:
       - go test -race -count=1 ./internal/...
 
@@ -168,11 +188,33 @@ tasks:
     cmds:
       - go test -race -count=1 -v -timeout 5m ./tests/e2e/...
 
-  # ── Lint ──────────────────────────────────────────────
+  test:all:
+    desc: Run all tests (unit + e2e)
+    cmds:
+      - task: test:unit
+      - task: test:e2e
+
+  # ── Code Quality ──────────────────────────────────────
+  fmt:
+    desc: Format Go source code
+    cmds:
+      - gofmt -w -s .
+
+  vet:
+    desc: Run go vet on all packages
+    cmds:
+      - go vet ./...
+
   lint:
-    desc: Run linters
+    desc: Run golangci-lint
     cmds:
       - golangci-lint run ./...
+
+  tidy:
+    desc: Tidy and verify Go module dependencies
+    cmds:
+      - go mod tidy
+      - go mod verify
 
   # ── Docker Compose ─────────────────────────────────────
   up:
@@ -194,6 +236,21 @@ tasks:
     desc: Stop containers and remove volumes (destructive)
     cmds:
       - docker compose down -v
+
+  docker:up:
+    desc: Start all containers (alias)
+    cmds:
+      - docker compose up -d --build
+
+  docker:down:
+    desc: Stop all containers (alias)
+    cmds:
+      - docker compose down
+
+  docker:build:
+    desc: Build all Docker images without starting
+    cmds:
+      - docker compose build
 
   restart:
     desc: Restart all containers
@@ -283,9 +340,9 @@ tasks:
       - echo "Dev environment ready. API at http://localhost:8080"
 
   dev:api:
-    desc: Run the API server locally (requires DB)
+    desc: Run the API server locally with hot reload (requires DB)
     cmds:
-      - go run ./cmd/api
+      - air
 
   dev:smtp-gateway:
     desc: Run the SMTP gateway locally (requires API + DB)
@@ -302,17 +359,42 @@ tasks:
     cmds:
       - go run ./cmd/pop3-gateway
 
+  dev:webmail:
+    desc: Run the webmail frontend dev server
+    dir: webmail
+    cmds:
+      - npm run dev
+
   # ── Setup ──────────────────────────────────────────────
   setup:
-    desc: Install dependencies and verify toolchain
+    desc: Install dependencies, build all binaries, verify toolchain
     cmds:
       - echo "Checking Go..."
       - go version
       - echo "Downloading Go modules..."
       - go mod download
+      - echo "Installing webmail dependencies..."
+      - cd webmail && npm ci
       - echo "Verifying build..."
       - go build ./...
       - echo "Setup complete."
+
+  # ── Health Check ─────────────────────────────────────────
+  health:wait:
+    desc: Wait for the API health endpoint to respond (up to 60s)
+    cmds:
+      - |
+        echo "Waiting for API health endpoint..."
+        for i in $(seq 1 30); do
+          if curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
+            echo "API is healthy."
+            exit 0
+          fi
+          echo "  attempt $i/30 - not ready yet..."
+          sleep 2
+        done
+        echo "ERROR: API did not become healthy within 60 seconds."
+        exit 1
 
   # ── Website ────────────────────────────────────────────
   website:
@@ -320,17 +402,6 @@ tasks:
     aliases: [website:dev]
     cmds:
       - go run ./cmd/website -addr :8090 -root website
-
-  website:build:
-    desc: Build the website server binary
-    cmds:
-      - go build -o build/tools/website ./cmd/website
-    sources:
-      - cmd/website/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/website
 
   # ── Clean ──────────────────────────────────────────────
   clean:

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	acmeclient "github.com/restmail/restmail/internal/acme"
 	"github.com/restmail/restmail/internal/api"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
@@ -82,8 +83,35 @@ func main() {
 	// Create JWT service
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry)
 
+	// Create ACME client (if enabled)
+	var acmeManager *acmeclient.Manager
+	var acmeClientPtr *acmeclient.Client
+	if cfg.ACMEEnabled {
+		if cfg.ACMEEmail == "" {
+			slog.Error("ACME_EMAIL is required when ACME is enabled")
+			os.Exit(1)
+		}
+		acmeClientPtr = acmeclient.NewClient(acmeclient.ClientConfig{
+			DB:        database,
+			MasterKey: cfg.MasterKey,
+			Email:     cfg.ACMEEmail,
+			Directory: cfg.ACMEDirectory,
+			Staging:   cfg.ACMEStaging,
+		})
+		acmeManager = acmeclient.NewManager(acmeClientPtr, acmeclient.DefaultCheckInterval)
+		slog.Info("ACME certificate auto-provisioning enabled",
+			"email", cfg.ACMEEmail,
+			"staging", cfg.ACMEStaging,
+		)
+	}
+
 	// Create router
-	router := api.NewRouter(database, jwtService, cfg)
+	router := api.NewRouter(database, jwtService, cfg, acmeClientPtr)
+
+	// Start ACME renewal manager (if enabled)
+	if acmeManager != nil {
+		acmeManager.Start()
+	}
 
 	// Start quarantine digest worker
 	digestInterval := 24 * time.Hour
@@ -92,6 +120,10 @@ func main() {
 	}
 	digestWorker := digest.NewWorker(database, digestInterval)
 	digestWorker.Start()
+
+	// Start quota reconciler (runs every 6 hours)
+	quotaReconciler := digest.NewQuotaReconciler(database, 6*time.Hour)
+	quotaReconciler.Start()
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -117,6 +149,10 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down server...")
+	if acmeManager != nil {
+		acmeManager.Shutdown()
+	}
+	quotaReconciler.Shutdown()
 	digestWorker.Shutdown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

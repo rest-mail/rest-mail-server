@@ -61,9 +61,10 @@ type Message struct {
 	BodyText       string    `gorm:"type:text" json:"body_text,omitempty"`
 	BodyHTML       string    `gorm:"type:text" json:"body_html,omitempty"`
 	Headers        JSONB     `gorm:"type:jsonb" json:"headers,omitempty"`
-	RawMessage     string    `gorm:"type:text" json:"-"`
-	SizeBytes      int       `gorm:"not null;default:0" json:"size_bytes"`
-	HasAttachments bool      `gorm:"default:false" json:"has_attachments"`
+	RawMessage        string    `gorm:"type:text" json:"-"`
+	CalendarEventsRaw JSONB     `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`
+	SizeBytes         int       `gorm:"not null;default:0" json:"size_bytes"`
+	HasAttachments    bool      `gorm:"default:false" json:"has_attachments"`
 	IsRead         bool      `gorm:"default:false" json:"is_read"`
 	IsFlagged      bool      `gorm:"default:false" json:"is_flagged"`
 	IsStarred      bool      `gorm:"default:false" json:"is_starred"`

@@ -1,0 +1,37 @@
+# Development overrides - hot reload for API and webmail
+# This file is automatically loaded by docker compose alongside docker-compose.yml
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - /app/tmp
+      - certs:/certs:ro
+      - mail3-attachments:/attachments
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
+      API_PORT: "8080"
+      JWT_SECRET: dev-secret-change-in-production
+      MASTER_KEY: dev-master-key-change-in-production
+      ENVIRONMENT: development
+      LOG_LEVEL: debug
+
+  webmail:
+    build:
+      context: ./webmail
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./webmail:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://api:8080

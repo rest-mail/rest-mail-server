@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, MoreHorizontal, Inbox, Send, FileText, Trash2, AlertTriangle, Archive, Folder, ChevronDown, ChevronRight, Plus, UserPlus, Palmtree, ShieldAlert } from 'lucide-react';
+import { Menu, X, MoreHorizontal, Inbox, Send, FileText, Trash2, AlertTriangle, Archive, Folder, ChevronDown, ChevronRight, Plus, UserPlus, Palmtree, ShieldAlert, ShieldCheck, FlaskConical, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
@@ -284,6 +284,24 @@ export function Sidebar() {
           className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
         >
           <ShieldAlert className="w-4 h-4" /> Quarantine
+        </button>
+        <button
+          onClick={() => { setView('tlsReports'); setMobileOpen(false); }}
+          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <ShieldCheck className="w-4 h-4" /> TLS Reports
+        </button>
+        <button
+          onClick={() => { setView('pipelineTester'); setMobileOpen(false); }}
+          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <FlaskConical className="w-4 h-4" /> Pipeline Tester
+        </button>
+        <button
+          onClick={() => { setView('pipelineConfig'); setMobileOpen(false); }}
+          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <Settings2 className="w-4 h-4" /> Pipelines
         </button>
       </div>
 
