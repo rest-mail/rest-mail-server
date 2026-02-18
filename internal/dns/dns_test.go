@@ -603,3 +603,94 @@ func TestExternalDNSProvider_Roundtrip(t *testing.T) {
 		t.Fatal("YAML file should not exist after RemoveRecords")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// SRV record correctness tests
+// ---------------------------------------------------------------------------
+
+func TestFullRequiredRecords_SRVPortsAreCorrect(t *testing.T) {
+	records := FullRequiredRecords("mail.test", "10.0.0.1", "10.0.0.5")
+
+	expected := map[string]int{
+		"_submission._tcp.mail.test": 587,
+		"_imap._tcp.mail.test":       143,
+		"_imaps._tcp.mail.test":      993,
+		"_pop3._tcp.mail.test":       110,
+		"_pop3s._tcp.mail.test":      995,
+	}
+
+	seen := map[string]bool{}
+	for _, r := range records {
+		if r.Type != "SRV" {
+			continue
+		}
+		port, ok := expected[r.Name]
+		if !ok {
+			t.Errorf("unexpected SRV record: %s", r.Name)
+			continue
+		}
+		seen[r.Name] = true
+		if r.Port != port {
+			t.Errorf("SRV %s: expected Port=%d, got %d", r.Name, port, r.Port)
+		}
+		if r.Weight != 1 {
+			t.Errorf("SRV %s: expected Weight=1, got %d", r.Name, r.Weight)
+		}
+	}
+	for name := range expected {
+		if !seen[name] {
+			t.Errorf("missing SRV record: %s", name)
+		}
+	}
+}
+
+func TestDnsmasqProvider_WritesSRVRecord(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "srv.conf")
+	p := NewDnsmasqProvider(configPath)
+	ctx := context.Background()
+
+	records := []DNSRecord{
+		{Type: "SRV", Name: "_submission._tcp.mail.test", Value: "mail.test", TTL: 3600, Priority: 10, Weight: 1, Port: 587},
+	}
+
+	if err := p.EnsureRecords(ctx, "mail.test", records); err != nil {
+		t.Fatalf("EnsureRecords failed: %v", err)
+	}
+
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+
+	// dnsmasq SRV format: srv-host=_service._proto.domain,target,port,priority,weight
+	expected := "srv-host=_submission._tcp.mail.test,mail.test,587,10,1"
+	if !strings.Contains(string(content), expected) {
+		t.Errorf("expected config to contain %q\ngot:\n%s", expected, content)
+	}
+}
+
+func TestExternalDNSProvider_WritesSRVRecord(t *testing.T) {
+	tmpDir := t.TempDir()
+	p := NewExternalDNSProvider(tmpDir)
+	ctx := context.Background()
+
+	records := []DNSRecord{
+		{Type: "SRV", Name: "_submission._tcp.mail.test", Value: "mail.test", TTL: 3600, Priority: 10, Weight: 1, Port: 587},
+	}
+
+	if err := p.EnsureRecords(ctx, "mail.test", records); err != nil {
+		t.Fatalf("EnsureRecords failed: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(tmpDir, "restmail-mail-test.yaml"))
+	if err != nil {
+		t.Fatalf("failed to read YAML: %v", err)
+	}
+
+	// external-dns SRV target format: "priority weight port target"
+	expected := `"10 1 587 mail.test"`
+	if !strings.Contains(string(content), expected) {
+		t.Errorf("expected YAML to contain %q\ngot:\n%s", expected, content)
+	}
+}

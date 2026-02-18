@@ -38,6 +38,9 @@ func (p *DnsmasqProvider) EnsureRecords(ctx context.Context, domain string, reco
 			lines = append(lines, fmt.Sprintf("txt-record=%s,\"%s\"", r.Name, r.Value))
 		case "PTR":
 			lines = append(lines, fmt.Sprintf("ptr-record=%s,%s", r.Name, r.Value))
+		case "SRV":
+			// dnsmasq srv-host format: name,target,port,priority,weight
+			lines = append(lines, fmt.Sprintf("srv-host=%s,%s,%d,%d,%d", r.Name, r.Value, r.Port, r.Priority, r.Weight))
 		default:
 			slog.Warn("dnsmasq: unsupported record type", "type", r.Type)
 		}

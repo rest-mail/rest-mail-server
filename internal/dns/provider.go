@@ -4,11 +4,13 @@ import "context"
 
 // DNSRecord represents a DNS record to be created/updated.
 type DNSRecord struct {
-	Type     string `json:"type"`     // A, MX, TXT, PTR, CNAME
+	Type     string `json:"type"`     // A, MX, TXT, PTR, CNAME, SRV
 	Name     string `json:"name"`     // e.g. "mail1.test", "_dmarc.mail1.test"
-	Value    string `json:"value"`
+	Value    string `json:"value"`    // target hostname for MX/SRV; IP for A; text for TXT
 	TTL      int    `json:"ttl"`
-	Priority int    `json:"priority"` // for MX records
+	Priority int    `json:"priority"` // MX preference; SRV priority
+	Weight   int    `json:"weight"`   // SRV weight (0 = not applicable)
+	Port     int    `json:"port"`     // SRV port (0 = not applicable)
 }
 
 // VerifyResult represents the result of verifying a DNS record.
@@ -63,13 +65,14 @@ func FullRequiredRecords(domain, mailIP, apiIP string) []DNSRecord {
 		DNSRecord{Type: "A", Name: "autodiscover." + domain, Value: apiIP, TTL: 3600},
 	)
 
-	// SRV records for email client auto-discovery (RFC 6186)
+	// SRV records for email client auto-discovery (RFC 6186).
+	// Format per RFC 2782: priority weight port target.
 	records = append(records,
-		DNSRecord{Type: "SRV", Name: "_submission._tcp." + domain, Value: domain, TTL: 3600, Priority: 10},
-		DNSRecord{Type: "SRV", Name: "_imap._tcp." + domain, Value: domain, TTL: 3600, Priority: 10},
-		DNSRecord{Type: "SRV", Name: "_imaps._tcp." + domain, Value: domain, TTL: 3600, Priority: 10},
-		DNSRecord{Type: "SRV", Name: "_pop3._tcp." + domain, Value: domain, TTL: 3600, Priority: 10},
-		DNSRecord{Type: "SRV", Name: "_pop3s._tcp." + domain, Value: domain, TTL: 3600, Priority: 10},
+		DNSRecord{Type: "SRV", Name: "_submission._tcp." + domain, Value: domain, TTL: 3600, Priority: 10, Weight: 1, Port: 587},
+		DNSRecord{Type: "SRV", Name: "_imap._tcp." + domain, Value: domain, TTL: 3600, Priority: 10, Weight: 1, Port: 143},
+		DNSRecord{Type: "SRV", Name: "_imaps._tcp." + domain, Value: domain, TTL: 3600, Priority: 10, Weight: 1, Port: 993},
+		DNSRecord{Type: "SRV", Name: "_pop3._tcp." + domain, Value: domain, TTL: 3600, Priority: 10, Weight: 1, Port: 110},
+		DNSRecord{Type: "SRV", Name: "_pop3s._tcp." + domain, Value: domain, TTL: 3600, Priority: 10, Weight: 1, Port: 995},
 	)
 
 	// MTA-STS (RFC 8461) - policy announcement TXT + policy-serving CNAME

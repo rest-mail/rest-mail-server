@@ -63,9 +63,13 @@ func (p *ExternalDNSProvider) EnsureRecords(ctx context.Context, domain string, 
 		b.WriteString(fmt.Sprintf("      recordType: %s\n", r.Type))
 		b.WriteString("      targets:\n")
 
-		if r.Type == "MX" {
+		switch r.Type {
+		case "MX":
 			b.WriteString(fmt.Sprintf("        - \"%d %s\"\n", r.Priority, r.Value))
-		} else {
+		case "SRV":
+			// external-dns SRV target format: "priority weight port target"
+			b.WriteString(fmt.Sprintf("        - \"%d %d %d %s\"\n", r.Priority, r.Weight, r.Port, r.Value))
+		default:
 			b.WriteString(fmt.Sprintf("        - %q\n", r.Value))
 		}
 
