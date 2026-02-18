@@ -120,9 +120,8 @@ services:
       target: prod
     container_name: webmail
     restart: unless-stopped
-    # Ports defined per-environment: override adds 3000:3000 (Vite dev),
-    # a prod compose file should add 3000:80 (nginx). Keeping them out of
-    # this base file avoids Docker appending both and double-binding port 3000.
+    ports:
+      - "3000:80"
     depends_on:
       api:
         condition: service_started

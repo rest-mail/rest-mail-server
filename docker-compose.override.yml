@@ -18,7 +18,7 @@ services:
       context: ./webmail
       target: dev
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - ./webmail:/app
       - /app/node_modules
