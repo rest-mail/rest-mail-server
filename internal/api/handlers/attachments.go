@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -26,6 +27,12 @@ func NewAttachmentHandler(db *gorm.DB) *AttachmentHandler {
 // GetAttachment streams an attachment file from storage.
 // GET /api/v1/attachments/{id}
 func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid attachment ID")
@@ -33,7 +40,19 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 	}
 
 	var att models.Attachment
-	if err := h.db.First(&att, id).Error; err != nil {
+	query := h.db.Joins("JOIN messages ON messages.id = attachments.message_id").
+		Joins("JOIN mailboxes ON mailboxes.id = messages.mailbox_id")
+
+	if !claims.IsAdmin {
+		mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
+		if len(mailboxIDs) == 0 {
+			respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
+			return
+		}
+		query = query.Where("mailboxes.id IN ?", mailboxIDs)
+	}
+
+	if err := query.First(&att, id).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
 		return
 	}
@@ -73,14 +92,55 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 // ListAttachments returns attachment metadata for a message.
 // GET /api/v1/messages/{id}/attachments
 func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+
 	messageID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
 		return
 	}
 
+	var msg models.Message
+	if err := h.db.First(&msg, messageID).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
+		return
+	}
+	if !claims.IsAdmin {
+		mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
+		owned := false
+		for _, mid := range mailboxIDs {
+			if msg.MailboxID == mid {
+				owned = true
+				break
+			}
+		}
+		if !owned {
+			respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
+			return
+		}
+	}
+
 	var attachments []models.Attachment
 	h.db.Where("message_id = ?", messageID).Order("id ASC").Find(&attachments)
 
 	respond.List(w, attachments, nil)
+}
+
+// getUserMailboxIDs returns all mailbox IDs the user has access to (primary + linked).
+func (h *AttachmentHandler) getUserMailboxIDs(webmailAccountID uint) []uint {
+	var ids []uint
+	var account models.WebmailAccount
+	if err := h.db.First(&account, webmailAccountID).Error; err == nil {
+		ids = append(ids, account.PrimaryMailboxID)
+	}
+	var linked []models.LinkedAccount
+	h.db.Where("webmail_account_id = ?", webmailAccountID).Find(&linked)
+	for _, la := range linked {
+		ids = append(ids, la.MailboxID)
+	}
+	return ids
 }

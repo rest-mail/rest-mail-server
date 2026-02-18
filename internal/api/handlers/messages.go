@@ -251,6 +251,21 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Reclaim quota on permanent delete
+	if msg.Folder == "Trash" || msg.IsDeleted {
+		reclaimBytes := int64(msg.SizeBytes)
+		if msg.HasAttachments {
+			var attBytes int64
+			h.db.Model(&models.Attachment{}).Where("message_id = ?", msg.ID).
+				Select("COALESCE(SUM(size_bytes), 0)").Scan(&attBytes)
+			reclaimBytes += attBytes
+		}
+		if reclaimBytes > 0 {
+			h.db.Model(&models.Mailbox{}).Where("id = ?", msg.MailboxID).
+				Update("quota_used_bytes", gorm.Expr("GREATEST(quota_used_bytes - ?, 0)", reclaimBytes))
+		}
+	}
+
 	if h.broker != nil {
 		h.broker.Publish(msg.MailboxID, SSEEvent{
 			Type: "message_deleted",
@@ -389,7 +404,8 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			outPipelineCfg = pipeline.DefaultOutboundPipeline(senderMailbox.DomainID)
 		}
 
-		outResult, outErr := h.engine.Execute(r.Context(), outPipelineCfg, outEmailJSON)
+		outPipelineCtx := pipeline.WithDB(r.Context(), h.db)
+		outResult, outErr := h.engine.Execute(outPipelineCtx, outPipelineCfg, outEmailJSON)
 		if outErr != nil {
 			respond.Error(w, http.StatusInternalServerError, "pipeline_error", "Outbound pipeline execution failed")
 			return
@@ -726,7 +742,8 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 
 	// Run the pipeline.
 	if h.engine != nil {
-		pipelineResult, pipeErr := h.engine.Execute(r.Context(), pipelineCfg, emailJSON)
+		pipelineCtx := pipeline.WithDB(r.Context(), h.db)
+		pipelineResult, pipeErr := h.engine.Execute(pipelineCtx, pipelineCfg, emailJSON)
 		if pipeErr != nil {
 			respond.Error(w, http.StatusInternalServerError, "pipeline_error", "Pipeline execution failed")
 			return
@@ -793,6 +810,12 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		threadID = req.InReplyTo
 	}
 
+	// Quota check before delivery
+	if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes+int64(sizeBytes) > mailbox.QuotaBytes {
+		respond.Error(w, http.StatusUnprocessableEntity, "mailbox_full", "Recipient mailbox is over quota")
+		return
+	}
+
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
 		Folder:       "INBOX",
@@ -849,6 +872,19 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		}
 		if hasAttachments {
 			h.db.Model(&msg).Update("has_attachments", true)
+
+			var totalAttBytes int64
+			for _, att := range allAttachments {
+				if att.Ref != "" {
+					totalAttBytes += att.Size
+				}
+			}
+			if totalAttBytes > 0 {
+				h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
+					Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", totalAttBytes))
+				h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).
+					Update("attachment_bytes", gorm.Expr("attachment_bytes + ?", totalAttBytes))
+			}
 		}
 	}
 

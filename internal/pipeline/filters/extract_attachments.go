@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
+	"gorm.io/gorm"
 )
 
 type extractAttConfig struct {
@@ -41,15 +43,16 @@ func NewExtractAttachments(config []byte) (pipeline.Filter, error) {
 func (f *extractAttFilter) Name() string             { return "extract_attachments" }
 func (f *extractAttFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
-func (f *extractAttFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
 	extracted := 0
+	db := pipeline.DBFromContext(ctx)
 
 	// Process attachments
 	newAttachments := make([]pipeline.Attachment, len(email.Attachments))
 	for i, att := range email.Attachments {
 		if att.Content != "" && att.Storage == "" {
-			ref, checksum, err := f.store(att)
+			ref, checksum, err := f.store(att, db)
 			if err != nil {
 				// Keep original on error
 				newAttachments[i] = att
@@ -75,7 +78,7 @@ func (f *extractAttFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 	newInline := make([]pipeline.Attachment, len(email.Inline))
 	for i, att := range email.Inline {
 		if att.Content != "" && att.Storage == "" {
-			ref, checksum, err := f.store(att)
+			ref, checksum, err := f.store(att, db)
 			if err != nil {
 				newInline[i] = att
 				continue
@@ -109,7 +112,7 @@ func (f *extractAttFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 	}, nil
 }
 
-func (f *extractAttFilter) store(att pipeline.Attachment) (string, string, error) {
+func (f *extractAttFilter) store(att pipeline.Attachment, db *gorm.DB) (string, string, error) {
 	data, err := base64.StdEncoding.DecodeString(att.Content)
 	if err != nil {
 		return "", "", fmt.Errorf("decode base64: %w", err)
@@ -118,6 +121,15 @@ func (f *extractAttFilter) store(att pipeline.Attachment) (string, string, error
 	// Compute checksum
 	hash := sha256.Sum256(data)
 	checksum := hex.EncodeToString(hash[:])
+
+	// Check for existing attachment with the same checksum (dedup)
+	if db != nil {
+		var existing models.Attachment
+		if err := db.Where("checksum = ? AND storage_type = ?", checksum, f.cfg.StorageType).
+			First(&existing).Error; err == nil {
+			return existing.StorageRef, checksum, nil
+		}
+	}
 
 	// Generate storage path
 	now := time.Now()
