@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/mail"
@@ -201,6 +202,16 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 				"is_starred": msg.IsStarred,
 			},
 		})
+
+		// Emit folder_update if the message was moved
+		if req.Folder != nil {
+			h.broker.Publish(msg.MailboxID, SSEEvent{
+				Type: "folder_update",
+				Data: map[string]interface{}{
+					"folder": msg.Folder,
+				},
+			})
+		}
 	}
 
 	respond.Data(w, http.StatusOK, msg)
@@ -456,12 +467,19 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
 
+	// Compute thread ID for sent message
+	threadID := messageID
+	if req.InReplyTo != "" {
+		threadID = req.InReplyTo
+	}
+
 	// Create message in sender's Sent folder
 	sentMsg := models.Message{
 		MailboxID:    senderMailbox.ID,
 		Folder:       "Sent",
 		MsgID:        messageID,
 		InReplyTo:    req.InReplyTo,
+		ThreadID:     threadID,
 		Sender:       req.From,
 		SenderName:   senderMailbox.DisplayName,
 		RecipientsTo: models.JSONB(toJSON),
@@ -568,6 +586,18 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			h.db.Create(&queueEntry)
 		}
+	}
+
+	// Publish SSE event for sent message
+	if h.broker != nil {
+		h.broker.Publish(senderMailbox.ID, SSEEvent{
+			Type: "message_sent",
+			Data: map[string]interface{}{
+				"message_id": sentMsg.ID,
+				"folder":     "Sent",
+				"subject":    sentMsg.Subject,
+			},
+		})
 	}
 
 	respond.Data(w, http.StatusCreated, sentMsg)
@@ -751,8 +781,15 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 
 	sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
 
+	// Compute thread ID — use first message-id from References chain (thread root),
+	// fall back to In-Reply-To, fall back to this message's own ID.
 	threadID := req.MessageID
-	if req.InReplyTo != "" {
+	if req.References != "" {
+		refs := strings.Fields(req.References)
+		if len(refs) > 0 {
+			threadID = strings.Trim(refs[0], "<>")
+		}
+	} else if req.InReplyTo != "" {
 		threadID = req.InReplyTo
 	}
 
@@ -787,6 +824,34 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 	})
 	h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes))
 
+	// Persist attachments from pipeline extraction to DB
+	if emailJSON != nil {
+		var hasAttachments bool
+		allAttachments := append(emailJSON.Attachments, emailJSON.Inline...)
+		for _, att := range allAttachments {
+			if att.Ref == "" {
+				continue // Not yet extracted to storage
+			}
+			dbAtt := models.Attachment{
+				MessageID:   msg.ID,
+				Filename:    att.Filename,
+				ContentType: att.ContentType,
+				SizeBytes:   att.Size,
+				StorageType: att.Storage,
+				StorageRef:  att.Ref,
+				Checksum:    att.Checksum,
+			}
+			if err := h.db.Create(&dbAtt).Error; err != nil {
+				slog.Error("deliver: failed to persist attachment", "message_id", msg.ID, "filename", att.Filename, "error", err)
+				continue
+			}
+			hasAttachments = true
+		}
+		if hasAttachments {
+			h.db.Model(&msg).Update("has_attachments", true)
+		}
+	}
+
 	// Publish SSE event for real-time notification
 	if h.broker != nil {
 		h.broker.Publish(mailbox.ID, SSEEvent{
@@ -796,6 +861,18 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 				"folder":     msg.Folder,
 				"sender":     msg.Sender,
 				"subject":    msg.Subject,
+			},
+		})
+
+		// Also publish folder_update with unread count
+		var unreadCount int64
+		h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ?",
+			mailbox.ID, "INBOX", false, false).Count(&unreadCount)
+		h.broker.Publish(mailbox.ID, SSEEvent{
+			Type: "folder_update",
+			Data: map[string]interface{}{
+				"folder":       "INBOX",
+				"unread_count": unreadCount,
 			},
 		})
 	}
@@ -1065,12 +1142,14 @@ func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		From     string   `json:"from"`
-		To       []string `json:"to"`
-		Cc       []string `json:"cc"`
-		Subject  string   `json:"subject"`
-		BodyText string   `json:"body_text"`
-		BodyHTML string   `json:"body_html"`
+		From       string   `json:"from"`
+		To         []string `json:"to"`
+		Cc         []string `json:"cc"`
+		Subject    string   `json:"subject"`
+		BodyText   string   `json:"body_text"`
+		BodyHTML   string   `json:"body_html"`
+		InReplyTo  string   `json:"in_reply_to"`
+		References string   `json:"references"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -1112,6 +1191,8 @@ func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		Subject:      req.Subject,
 		BodyText:     req.BodyText,
 		BodyHTML:     req.BodyHTML,
+		InReplyTo:    req.InReplyTo,
+		References:   req.References,
 		IsDraft:      true,
 		IsRead:       true,
 		SizeBytes:    len(req.Subject) + len(req.BodyText) + len(req.BodyHTML),
@@ -1232,12 +1313,13 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(draft.RecipientsCc, &ccList)
 
 	sendBody := map[string]interface{}{
-		"from":      draft.Sender,
-		"to":        toList,
-		"cc":        ccList,
-		"subject":   draft.Subject,
-		"body_text": draft.BodyText,
-		"body_html": draft.BodyHTML,
+		"from":        draft.Sender,
+		"to":          toList,
+		"cc":          ccList,
+		"subject":     draft.Subject,
+		"body_text":   draft.BodyText,
+		"body_html":   draft.BodyHTML,
+		"in_reply_to": draft.InReplyTo,
 	}
 	bodyBytes, _ := json.Marshal(sendBody)
 
