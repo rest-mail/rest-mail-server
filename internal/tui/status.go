@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -49,8 +50,23 @@ func (m StatusModel) Update(msg tea.Msg) (StatusModel, tea.Cmd) {
 			if err == nil {
 				newStatuses := make(map[string]domainStatus)
 				for _, d := range resp.Data {
-					newStatuses[d.Name] = domainStatus{healthy: d.Active, users: 0, messages: 0}
+					newStatuses[d.Name] = domainStatus{healthy: d.Active}
 				}
+
+				// Count mailboxes per domain
+				mbResp, err := m.api.ListMailboxes(m.token)
+				if err == nil {
+					for _, mb := range mbResp.Data {
+						parts := strings.SplitN(mb.Address, "@", 2)
+						if len(parts) == 2 {
+							if st, ok := newStatuses[parts[1]]; ok {
+								st.users++
+								newStatuses[parts[1]] = st
+							}
+						}
+					}
+				}
+
 				m.statuses = newStatuses
 			}
 		}

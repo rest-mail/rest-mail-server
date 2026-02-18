@@ -26,6 +26,15 @@ type inboxMessageDetailMsg struct {
 	err     error
 }
 
+type inboxSearchMsg struct {
+	messages []apiclient.MessageSummary
+	err      error
+}
+
+type inboxActionMsg struct {
+	err error
+}
+
 // InboxModel handles browsing a user's inbox.
 type InboxModel struct {
 	api        *apiclient.Client
@@ -39,7 +48,8 @@ type InboxModel struct {
 	accountID     uint
 
 	// Folder navigation
-	folders        []string
+	folders        []apiclient.Folder
+	folderNames    []string
 	selectedFolder int
 
 	// Message list
@@ -52,6 +62,11 @@ type InboxModel struct {
 	readingMessage bool
 	messageDetail  *apiclient.MessageDetail
 	scrollOffset   int
+
+	// Search
+	searching   bool
+	searchInput textinput.Model
+	searchQuery string
 }
 
 func NewInboxModel(api *apiclient.Client, adminToken string) InboxModel {
@@ -60,11 +75,17 @@ func NewInboxModel(api *apiclient.Client, adminToken string) InboxModel {
 	ui.CharLimit = 255
 	ui.Width = 40
 
+	si := textinput.New()
+	si.Placeholder = "search messages..."
+	si.CharLimit = 255
+	si.Width = 40
+
 	return InboxModel{
 		api:           api,
 		adminToken:    adminToken,
 		selectingUser: true,
 		userInput:     ui,
+		searchInput:   si,
 	}
 }
 
@@ -79,7 +100,6 @@ func (m InboxModel) Update(msg tea.Msg) (InboxModel, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		m.messages = msg.messages
-		// On initial load (accountID set in msg), store it and fetch folders
 		if msg.accountID != 0 {
 			m.accountID = msg.accountID
 			return m, m.fetchFolders()
@@ -88,12 +108,12 @@ func (m InboxModel) Update(msg tea.Msg) (InboxModel, tea.Cmd) {
 
 	case inboxFoldersMsg:
 		if msg.err == nil && len(msg.folders) > 0 {
-			m.folders = make([]string, len(msg.folders))
+			m.folders = msg.folders
+			m.folderNames = make([]string, len(msg.folders))
 			for i, f := range msg.folders {
-				m.folders[i] = f.Name
+				m.folderNames[i] = f.Name
 			}
-			// Select INBOX by default if it exists
-			for i, name := range m.folders {
+			for i, name := range m.folderNames {
 				if name == "INBOX" {
 					m.selectedFolder = i
 					break
@@ -112,7 +132,24 @@ func (m InboxModel) Update(msg tea.Msg) (InboxModel, tea.Cmd) {
 		}
 		return m, nil
 
+	case inboxSearchMsg:
+		m.loading = false
+		m.err = msg.err
+		m.messages = msg.messages
+		return m, nil
+
+	case inboxActionMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		// Refresh after action
+		m.loading = true
+		return m, m.fetchFolderMessages()
+
 	case tea.KeyMsg:
+		if m.searching {
+			return m.updateSearch(msg)
+		}
 		if m.readingMessage {
 			return m.updateReading(msg)
 		}
@@ -153,16 +190,18 @@ func (m InboxModel) updateMessageList(msg tea.KeyMsg) (InboxModel, tea.Cmd) {
 			m.cursor++
 		}
 	case "left", "h":
-		if len(m.folders) > 0 && m.selectedFolder > 0 {
+		if len(m.folderNames) > 0 && m.selectedFolder > 0 {
 			m.selectedFolder--
 			m.cursor = 0
+			m.searchQuery = ""
 			m.loading = true
 			return m, m.fetchFolderMessages()
 		}
 	case "right", "l":
-		if len(m.folders) > 0 && m.selectedFolder < len(m.folders)-1 {
+		if len(m.folderNames) > 0 && m.selectedFolder < len(m.folderNames)-1 {
 			m.selectedFolder++
 			m.cursor = 0
+			m.searchQuery = ""
 			m.loading = true
 			return m, m.fetchFolderMessages()
 		}
@@ -176,8 +215,34 @@ func (m InboxModel) updateMessageList(msg tea.KeyMsg) (InboxModel, tea.Cmd) {
 		m.selectingUser = true
 		m.messages = nil
 		m.folders = nil
+		m.folderNames = nil
 		m.selectedFolder = 0
+		m.searchQuery = ""
 		m.userInput.Focus()
+		return m, textinput.Blink
+	case "d":
+		// Delete message
+		if len(m.messages) > 0 {
+			msgID := m.messages[m.cursor].ID
+			return m, m.deleteMessage(msgID)
+		}
+	case "r":
+		// Toggle read/unread
+		if len(m.messages) > 0 {
+			msg := m.messages[m.cursor]
+			return m, m.toggleRead(msg.ID, msg.IsRead)
+		}
+	case "s":
+		// Toggle star/flag
+		if len(m.messages) > 0 {
+			msg := m.messages[m.cursor]
+			return m, m.toggleStar(msg.ID, msg.IsStarred)
+		}
+	case "/":
+		// Enter search mode
+		m.searching = true
+		m.searchInput.Reset()
+		m.searchInput.Focus()
 		return m, textinput.Blink
 	}
 	return m, nil
@@ -195,20 +260,67 @@ func (m InboxModel) updateReading(msg tea.KeyMsg) (InboxModel, tea.Cmd) {
 		}
 	case "down", "j":
 		m.scrollOffset++
+	case "d":
+		// Delete current message
+		if m.messageDetail != nil {
+			msgID := m.messageDetail.ID
+			m.readingMessage = false
+			m.messageDetail = nil
+			return m, m.deleteMessage(msgID)
+		}
+	case "r":
+		// Toggle read
+		if m.messageDetail != nil {
+			return m, m.toggleRead(m.messageDetail.ID, m.messageDetail.IsRead)
+		}
+	case "s":
+		// Toggle star
+		if m.messageDetail != nil {
+			return m, m.toggleStar(m.messageDetail.ID, m.messageDetail.IsStarred)
+		}
 	}
 	return m, nil
 }
 
+func (m InboxModel) updateSearch(msg tea.KeyMsg) (InboxModel, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.searching = false
+		m.searchInput.Reset()
+		if m.searchQuery != "" {
+			// Clear search, reload folder
+			m.searchQuery = ""
+			m.loading = true
+			return m, m.fetchFolderMessages()
+		}
+		return m, nil
+	case "enter":
+		query := m.searchInput.Value()
+		if query == "" {
+			m.searching = false
+			return m, nil
+		}
+		m.searching = false
+		m.searchQuery = query
+		m.cursor = 0
+		m.loading = true
+		return m, m.searchMessages(query)
+	}
+
+	var cmd tea.Cmd
+	m.searchInput, cmd = m.searchInput.Update(msg)
+	return m, cmd
+}
+
+// ── API commands ─────────────────────────────────────────────────────
+
 func (m InboxModel) fetchMessages(email string) tea.Cmd {
 	return func() tea.Msg {
-		// Use the admin token to browse any user's mailbox.
-		// Look up the mailbox by address to find its account ID.
 		token := m.adminToken
 		if token == "" {
 			return inboxMessagesMsg{err: fmt.Errorf("no admin token available")}
 		}
 
-		// Find the mailbox for this email via the admin mailbox list
 		mbResp, err := m.api.ListMailboxes(token)
 		if err != nil {
 			return inboxMessagesMsg{err: fmt.Errorf("list mailboxes: %w", err)}
@@ -254,8 +366,8 @@ func (m InboxModel) fetchFolderMessages() tea.Cmd {
 			return inboxMessagesMsg{err: fmt.Errorf("no admin token available")}
 		}
 		folder := "INBOX"
-		if m.selectedFolder < len(m.folders) {
-			folder = m.folders[m.selectedFolder]
+		if m.selectedFolder < len(m.folderNames) {
+			folder = m.folderNames[m.selectedFolder]
 		}
 		msgResp, err := m.api.ListMessages(token, m.accountID, folder)
 		if err != nil {
@@ -281,6 +393,63 @@ func (m InboxModel) fetchMessageDetail(msgID uint) tea.Cmd {
 	}
 }
 
+func (m InboxModel) deleteMessage(msgID uint) tea.Cmd {
+	return func() tea.Msg {
+		token := m.adminToken
+		if token == "" {
+			return inboxActionMsg{err: fmt.Errorf("no admin token available")}
+		}
+		err := m.api.DeleteMessage(token, msgID)
+		return inboxActionMsg{err: err}
+	}
+}
+
+func (m InboxModel) toggleRead(msgID uint, currentlyRead bool) tea.Cmd {
+	return func() tea.Msg {
+		token := m.adminToken
+		if token == "" {
+			return inboxActionMsg{err: fmt.Errorf("no admin token available")}
+		}
+		err := m.api.UpdateMessage(token, msgID, map[string]any{
+			"is_read": !currentlyRead,
+		})
+		return inboxActionMsg{err: err}
+	}
+}
+
+func (m InboxModel) toggleStar(msgID uint, currentlyStarred bool) tea.Cmd {
+	return func() tea.Msg {
+		token := m.adminToken
+		if token == "" {
+			return inboxActionMsg{err: fmt.Errorf("no admin token available")}
+		}
+		err := m.api.UpdateMessage(token, msgID, map[string]any{
+			"is_starred": !currentlyStarred,
+		})
+		return inboxActionMsg{err: err}
+	}
+}
+
+func (m InboxModel) searchMessages(query string) tea.Cmd {
+	return func() tea.Msg {
+		token := m.adminToken
+		if token == "" {
+			return inboxSearchMsg{err: fmt.Errorf("no admin token available")}
+		}
+		folder := ""
+		if m.selectedFolder < len(m.folderNames) {
+			folder = m.folderNames[m.selectedFolder]
+		}
+		resp, err := m.api.Search(token, m.accountID, query, folder)
+		if err != nil {
+			return inboxSearchMsg{err: err}
+		}
+		return inboxSearchMsg{messages: resp.Data}
+	}
+}
+
+// ── View ─────────────────────────────────────────────────────────────
+
 func (m InboxModel) View(width, height int) string {
 	var b strings.Builder
 
@@ -291,14 +460,32 @@ func (m InboxModel) View(width, height int) string {
 		b.WriteString("  Enter user email to browse:\n\n")
 		b.WriteString(fmt.Sprintf("    %s\n", m.userInput.View()))
 		b.WriteString("\n" + helpStyle.Render("  enter: load inbox  esc: back"))
+	} else if m.searching {
+		b.WriteString(fmt.Sprintf("  Search in %s's mailbox:\n\n", m.selectedUser))
+		b.WriteString(fmt.Sprintf("    %s\n", m.searchInput.View()))
+		b.WriteString("\n" + helpStyle.Render("  enter: search  esc: cancel"))
 	} else if m.readingMessage && m.messageDetail != nil {
 		msg := m.messageDetail
+
+		// Status indicators
+		flags := ""
+		if msg.IsStarred {
+			flags += " ★"
+		}
+		if !msg.IsRead {
+			flags += " (unread)"
+		}
+
 		b.WriteString(lipgloss.NewStyle().Bold(true).PaddingLeft(2).
-			Render(fmt.Sprintf("  Subject: %s", msg.Subject)) + "\n")
+			Render(fmt.Sprintf("  Subject: %s%s", msg.Subject, flags)) + "\n")
 		b.WriteString(mutedStyle.PaddingLeft(2).
 			Render(fmt.Sprintf("  From: %s <%s>", msg.SenderName, msg.Sender)) + "\n")
 		b.WriteString(mutedStyle.PaddingLeft(2).
 			Render(fmt.Sprintf("  Date: %s", msg.ReceivedAt.Format("2006-01-02 15:04"))) + "\n")
+		if msg.ThreadID != "" {
+			b.WriteString(mutedStyle.PaddingLeft(2).
+				Render(fmt.Sprintf("  Thread: %s", msg.ThreadID)) + "\n")
+		}
 		b.WriteString(lipgloss.NewStyle().PaddingLeft(2).Foreground(borderColor).
 			Render(strings.Repeat("─", width-4)) + "\n")
 
@@ -307,10 +494,8 @@ func (m InboxModel) View(width, height int) string {
 			body = "(no body)"
 		}
 		lines := strings.Split(body, "\n")
-		maxLines := height - 10
-		if maxLines < 5 {
-			maxLines = 5
-		}
+		maxLines := height - 12
+		maxLines = max(maxLines, 5)
 		start := m.scrollOffset
 		if start >= len(lines) {
 			start = len(lines) - 1
@@ -318,31 +503,32 @@ func (m InboxModel) View(width, height int) string {
 		if start < 0 {
 			start = 0
 		}
-		end := start + maxLines
-		if end > len(lines) {
-			end = len(lines)
-		}
+		end := min(start+maxLines, len(lines))
 		for _, line := range lines[start:end] {
 			b.WriteString("  " + line + "\n")
 		}
 
-		b.WriteString("\n" + helpStyle.Render("  ↑/↓: scroll  esc: back to list"))
+		b.WriteString("\n" + helpStyle.Render("  ↑/↓: scroll  d: delete  r: toggle read  s: toggle star  esc: back"))
 	} else if m.loading {
 		b.WriteString(fmt.Sprintf("  Loading inbox for %s...\n", m.selectedUser))
 	} else if m.err != nil {
 		b.WriteString(fmt.Sprintf("  Error: %s\n", m.err))
 		b.WriteString("\n" + helpStyle.Render("  backspace: back to user select  esc: back"))
 	} else {
-		// Folder tabs
+		// Folder tabs with unread counts
 		if len(m.folders) > 0 {
 			var tabs strings.Builder
 			tabs.WriteString("  ")
-			for i, fname := range m.folders {
+			for i, f := range m.folders {
+				label := f.Name
+				if f.Unread > 0 {
+					label = fmt.Sprintf("%s(%d)", f.Name, f.Unread)
+				}
 				if i == m.selectedFolder {
 					tabs.WriteString(lipgloss.NewStyle().Bold(true).Foreground(highlightColor).
-						Render("["+fname+"]"))
+						Render("["+label+"]"))
 				} else {
-					tabs.WriteString(mutedStyle.Render(" "+fname+" "))
+					tabs.WriteString(mutedStyle.Render(" "+label+" "))
 				}
 				if i < len(m.folders)-1 {
 					tabs.WriteString(mutedStyle.Render(" | "))
@@ -352,13 +538,22 @@ func (m InboxModel) View(width, height int) string {
 		}
 
 		currentFolder := "INBOX"
-		if m.selectedFolder < len(m.folders) && len(m.folders) > 0 {
-			currentFolder = m.folders[m.selectedFolder]
+		if m.selectedFolder < len(m.folderNames) && len(m.folderNames) > 0 {
+			currentFolder = m.folderNames[m.selectedFolder]
 		}
-		b.WriteString(mutedStyle.PaddingLeft(2).Render(fmt.Sprintf("  %s: %s (%d messages)", currentFolder, m.selectedUser, len(m.messages))) + "\n\n")
+
+		headerInfo := fmt.Sprintf("  %s: %s (%d messages)", currentFolder, m.selectedUser, len(m.messages))
+		if m.searchQuery != "" {
+			headerInfo = fmt.Sprintf("  Search: \"%s\" in %s (%d results)", m.searchQuery, currentFolder, len(m.messages))
+		}
+		b.WriteString(mutedStyle.PaddingLeft(2).Render(headerInfo) + "\n\n")
 
 		if len(m.messages) == 0 {
-			b.WriteString("  (empty inbox)\n")
+			if m.searchQuery != "" {
+				b.WriteString("  (no results)\n")
+			} else {
+				b.WriteString("  (empty)\n")
+			}
 		} else {
 			hdr := lipgloss.NewStyle().Bold(true).PaddingLeft(2).
 				Render(fmt.Sprintf("  %-4s %-30s %-40s %s", "", "From", "Subject", "Date"))
@@ -371,9 +566,11 @@ func (m InboxModel) View(width, height int) string {
 					cursor = "▸ "
 					style = selectedStyle.PaddingLeft(2)
 				}
-				readMark := " "
-				if !msg.IsRead {
-					readMark = "●"
+				indicator := " "
+				if msg.IsStarred {
+					indicator = "★"
+				} else if !msg.IsRead {
+					indicator = "●"
 				}
 				date := msg.ReceivedAt.Format("Jan 02 15:04")
 				from := msg.SenderName
@@ -387,12 +584,12 @@ func (m InboxModel) View(width, height int) string {
 				if len(subj) > 38 {
 					subj = subj[:38] + ".."
 				}
-				row := fmt.Sprintf("%-4s %-30s %-40s %s", readMark, from, subj, date)
+				row := fmt.Sprintf("%-4s %-30s %-40s %s", indicator, from, subj, date)
 				b.WriteString(style.Render(cursor+row) + "\n")
 			}
 		}
 
-		b.WriteString("\n" + helpStyle.Render("  ←/→: switch folder  enter: read  backspace: change user  esc: back"))
+		b.WriteString("\n" + helpStyle.Render("  ←/→: folder  d: delete  r: read/unread  s: star  /: search  backspace: user  esc: back"))
 	}
 
 	s := b.String()

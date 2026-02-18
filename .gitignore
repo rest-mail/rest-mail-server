@@ -5,10 +5,10 @@ build/
 *.dll
 *.so
 *.dylib
-smtp-gateway
-imap-gateway
-pop3-gateway
-tui
+/smtp-gateway
+/imap-gateway
+/pop3-gateway
+/tui
 
 # Go test binary
 *.test
