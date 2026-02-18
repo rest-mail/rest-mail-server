@@ -16,7 +16,7 @@ const (
 )
 
 func newTestService() *JWTService {
-	return NewJWTService(testSecret, 1*time.Second, 10*time.Second)
+	return NewJWTService(testSecret, 5*time.Second, 10*time.Second)
 }
 
 // ---------- JWT token tests ----------
@@ -38,8 +38,8 @@ func TestGenerateTokenPair(t *testing.T) {
 	if pair.AccessToken == pair.RefreshToken {
 		t.Error("AccessToken and RefreshToken should differ (different expiries)")
 	}
-	if pair.ExpiresIn != 1 {
-		t.Errorf("ExpiresIn = %d; want 1", pair.ExpiresIn)
+	if pair.ExpiresIn != 5 {
+		t.Errorf("ExpiresIn = %d; want 5", pair.ExpiresIn)
 	}
 
 	// Validate the access token and check claims.
