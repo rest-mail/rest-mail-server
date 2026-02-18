@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
-import { Search, X, Loader2 } from 'lucide-react';
+import { Search, X, Loader2, Sun, Moon, Check, PenSquare, RefreshCw } from 'lucide-react';
 
 export function TopBar() {
   const { user, logout } = useAuthStore();
@@ -72,9 +72,11 @@ export function TopBar() {
         {/* Left: action buttons */}
         <div className="flex items-center gap-2 shrink-0">
           <Button size="sm" onClick={() => startCompose()}>
+            <PenSquare className="w-4 h-4 mr-1" />
             Compose
           </Button>
           <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => refresh()}>
+            <RefreshCw className="w-4 h-4 mr-1" />
             Get Mail
           </Button>
         </div>
@@ -122,10 +124,14 @@ export function TopBar() {
               <DropdownMenuSubTrigger>Theme</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 <DropdownMenuItem onClick={() => setTheme('light')}>
-                  {theme === 'light' ? '\u25CF ' : '\u25CB '}Light
+                  <Sun className="w-4 h-4 mr-2" />
+                  Light
+                  {theme === 'light' && <Check className="w-4 h-4 ml-auto" />}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTheme('dark')}>
-                  {theme === 'dark' ? '\u25CF ' : '\u25CB '}Dark
+                  <Moon className="w-4 h-4 mr-2" />
+                  Dark
+                  {theme === 'dark' && <Check className="w-4 h-4 ml-auto" />}
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>

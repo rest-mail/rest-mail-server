@@ -100,10 +100,10 @@ function App() {
 
           {/* Content area */}
           <div className="flex-1 overflow-hidden">
-            {view === 'mail' && <MailView />}
-            {view === 'compose' && <ComposeView />}
-            {view === 'addAccount' && <AddAccountView />}
-            {view === 'accountDetails' && <AccountDetailsView />}
+            {view === 'mail' && <div className="h-full animate-fade-in"><MailView /></div>}
+            {view === 'compose' && <div className="h-full animate-fade-in"><ComposeView /></div>}
+            {view === 'addAccount' && <div className="h-full animate-fade-in"><AddAccountView /></div>}
+            {view === 'accountDetails' && <div className="h-full animate-fade-in"><AccountDetailsView /></div>}
           </div>
         </div>
       </div>

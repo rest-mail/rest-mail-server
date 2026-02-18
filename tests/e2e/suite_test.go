@@ -399,4 +399,5 @@ func TestStages(t *testing.T) {
 	t.Run("Stage7_WebmailFlows", testStage7WebmailFlows)
 	t.Run("Stage8_TUIFlows", testStage8TUIFlows)
 	t.Run("Stage9_DatabaseConsistency", testStage9DatabaseConsistency)
+	t.Run("Stage10_Verification", testStage10Verification)
 }

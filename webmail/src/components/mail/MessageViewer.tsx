@@ -12,7 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Mail, Paperclip, FolderOpen, MessageSquare } from 'lucide-react';
+import { Mail, Paperclip, FolderOpen, MessageSquare, Reply, ReplyAll, Forward, Trash2, Eye, EyeOff, Flag, FlagOff, Image, FileText as FileTextIcon, File } from 'lucide-react';
 import { toast } from 'sonner';
 import DOMPurify from 'dompurify';
 import type { Attachment, MessageSummary } from '@/types';
@@ -21,6 +21,12 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function attachmentIcon(contentType: string) {
+  if (contentType.startsWith('image/')) return <Image className="w-3.5 h-3.5" />;
+  if (contentType === 'application/pdf') return <FileTextIcon className="w-3.5 h-3.5" />;
+  return <File className="w-3.5 h-3.5" />;
 }
 
 export function MessageViewer() {
@@ -223,9 +229,9 @@ export function MessageViewer() {
     <div className="h-full flex flex-col">
       {/* Action bar */}
       <div className="flex flex-wrap items-center gap-1 px-4 py-2">
-        <Button variant="ghost" size="sm" onClick={handleReply}>Reply</Button>
-        <Button variant="ghost" size="sm" onClick={handleReplyAll}>Reply All</Button>
-        <Button variant="ghost" size="sm" onClick={handleForward}>Forward</Button>
+        <Button variant="ghost" size="sm" onClick={handleReply}><Reply className="w-4 h-4 mr-1" />Reply</Button>
+        <Button variant="ghost" size="sm" onClick={handleReplyAll}><ReplyAll className="w-4 h-4 mr-1" />Reply All</Button>
+        <Button variant="ghost" size="sm" onClick={handleForward}><Forward className="w-4 h-4 mr-1" />Forward</Button>
         <Separator orientation="vertical" className="h-5 mx-1" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -247,12 +253,12 @@ export function MessageViewer() {
               ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="ghost" size="sm" onClick={() => deleteMsg(msg.id)}>Delete</Button>
+        <Button variant="ghost" size="sm" onClick={() => deleteMsg(msg.id)}><Trash2 className="w-4 h-4 mr-1" />Delete</Button>
         <Button variant="ghost" size="sm" onClick={() => markRead(msg.id, !msg.is_read)}>
-          {msg.is_read ? 'Mark Unread' : 'Mark Read'}
+          {msg.is_read ? <><EyeOff className="w-4 h-4 mr-1" />Mark Unread</> : <><Eye className="w-4 h-4 mr-1" />Mark Read</>}
         </Button>
         <Button variant="ghost" size="sm" onClick={() => markFlagged(msg.id, !msg.is_flagged)}>
-          {msg.is_flagged ? 'Unflag' : 'Flag'}
+          {msg.is_flagged ? <><FlagOff className="w-4 h-4 mr-1" />Unflag</> : <><Flag className="w-4 h-4 mr-1" />Flag</>}
         </Button>
       </div>
       <Separator />
@@ -262,21 +268,26 @@ export function MessageViewer() {
         <div className="px-6 py-4">
           {/* Headers */}
           <h2 className="text-lg font-semibold mb-2">{msg.subject || '(no subject)'}</h2>
-          <div className="text-sm space-y-0.5 text-muted-foreground">
-            <p>
-              <span className="font-medium text-foreground">From:</span>{' '}
-              {msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender}
-            </p>
-            <p>
-              <span className="font-medium text-foreground">Date:</span>{' '}
-              {formatDate(msg.received_at)}
-            </p>
-            {msg.recipients_to && (
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary shrink-0">
+              {(msg.sender_name || msg.sender).slice(0, 2).toUpperCase()}
+            </div>
+            <div className="text-sm space-y-0.5 text-muted-foreground flex-1">
               <p>
-                <span className="font-medium text-foreground">To:</span>{' '}
-                {typeof msg.recipients_to === 'string' ? msg.recipients_to : JSON.stringify(msg.recipients_to)}
+                <span className="font-medium text-foreground">From:</span>{' '}
+                {msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender}
               </p>
-            )}
+              <p>
+                <span className="font-medium text-foreground">Date:</span>{' '}
+                {formatDate(msg.received_at)}
+              </p>
+              {msg.recipients_to && (
+                <p>
+                  <span className="font-medium text-foreground">To:</span>{' '}
+                  {typeof msg.recipients_to === 'string' ? msg.recipients_to : JSON.stringify(msg.recipients_to)}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Thread indicator */}
@@ -293,11 +304,11 @@ export function MessageViewer() {
                 {loadingThread ? 'Loading...' : showThread ? 'Hide conversation' : 'Show conversation'}
               </Button>
               {showThread && threadMessages.length > 0 && (
-                <div className="mt-2 ml-1 border-l-2 border-muted pl-3 space-y-1">
+                <div className="mt-2 space-y-1">
                   {threadMessages.map(tm => (
                     <button
                       key={tm.id}
-                      className="block w-full text-left text-xs py-1 px-2 rounded hover:bg-muted transition-colors"
+                      className="block w-full text-left text-xs py-2 px-3 rounded-lg border bg-card hover:bg-accent transition-colors"
                       onClick={() => selectMessage(tm.id)}
                     >
                       <span className="font-medium">{tm.subject || '(no subject)'}</span>
@@ -340,7 +351,7 @@ export function MessageViewer() {
                       download={att.filename}
                       className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-muted hover:bg-muted/80 text-foreground transition-colors"
                     >
-                      <Paperclip className="w-3 h-3" />
+                      {attachmentIcon(att.content_type || '')}
                       {att.filename}
                       <span className="text-muted-foreground">({formatFileSize(att.size_bytes)})</span>
                     </a>

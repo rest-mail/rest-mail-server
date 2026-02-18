@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { RichTextEditor } from './RichTextEditor';
 import { AutocompleteInput } from './AutocompleteInput';
 import * as api from '@/api/client';
+import { X, Code, Type, Trash2, Save, Send } from 'lucide-react';
 
 function parseRecipients(raw: string): string[] {
   return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -125,7 +126,7 @@ export function ComposeView() {
       <div className="flex items-center justify-between px-4 py-2">
         <h2 className="font-semibold">{draftId ? 'Edit Draft' : 'Compose'}</h2>
         <Button variant="ghost" size="sm" onClick={handleDiscard}>
-          {"\u2715"}
+          <X className="w-4 h-4" />
         </Button>
       </div>
       <Separator />
@@ -171,7 +172,8 @@ export function ComposeView() {
           className="h-7 text-xs"
           onClick={() => setIsHtml(true)}
         >
-          HTML
+          <Code className="w-3.5 h-3.5 mr-1" />
+          Rich Text
         </Button>
         <Button
           variant={!isHtml ? 'default' : 'ghost'}
@@ -179,6 +181,7 @@ export function ComposeView() {
           className="h-7 text-xs"
           onClick={() => setIsHtml(false)}
         >
+          <Type className="w-3.5 h-3.5 mr-1" />
           Plain Text
         </Button>
       </div>
@@ -205,12 +208,15 @@ export function ComposeView() {
       {/* Footer */}
       <div className="flex items-center justify-end gap-2 px-4 py-2">
         <Button variant="outline" size="sm" onClick={handleDiscard}>
+          <Trash2 className="w-4 h-4 mr-1" />
           Discard
         </Button>
         <Button variant="outline" size="sm" onClick={() => handleSaveDraft(false)} disabled={savingDraft}>
+          <Save className="w-4 h-4 mr-1" />
           {savingDraft ? 'Saving...' : 'Save Draft'}
         </Button>
         <Button size="sm" onClick={handleSend} disabled={sending}>
+          <Send className="w-4 h-4 mr-1" />
           {sending ? 'Sending...' : 'Send'}
         </Button>
       </div>

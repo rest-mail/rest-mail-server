@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Loader2, Check, X as XIcon, Wifi } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
 import { useMailStore } from '@/stores/mailStore';
 import { Button } from '@/components/ui/button';
@@ -99,12 +100,13 @@ export function AddAccountView() {
                 {detectionTests.map(t => {
                   const done = progress.completedTests.includes(t.id);
                   const active = progress.currentTest === t.label && !done;
+                  const success = done && progress.result?.success && progress.result?.method === t.id;
                   return (
                     <span
                       key={t.id}
-                      className={`text-xs px-2 py-0.5 rounded-full ${
+                      className={`text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
                         done
-                          ? progress.result?.success && progress.result?.method === t.id
+                          ? success
                             ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                             : 'bg-muted text-muted-foreground line-through'
                           : active
@@ -112,6 +114,9 @@ export function AddAccountView() {
                             : 'bg-muted text-muted-foreground'
                       }`}
                     >
+                      {active && <Loader2 className="w-3 h-3 animate-spin" />}
+                      {done && success && <Check className="w-3 h-3" />}
+                      {done && !success && <XIcon className="w-3 h-3" />}
                       {t.label}
                     </span>
                   );
@@ -122,6 +127,7 @@ export function AddAccountView() {
 
           <div className="flex items-center gap-2 pt-2">
             <Button variant="outline" onClick={handleTest} disabled={testing}>
+              <Wifi className="w-4 h-4 mr-1" />
               {testing ? 'Testing...' : 'Test Connection'}
             </Button>
             <div className="flex-1" />

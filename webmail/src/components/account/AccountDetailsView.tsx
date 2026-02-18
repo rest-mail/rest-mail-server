@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -46,7 +47,7 @@ export function AccountDetailsView() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Account Details</CardTitle>
           <Button variant="ghost" size="sm" onClick={() => setView('mail')}>
-            {"\u2715"}
+            <X className="w-4 h-4" />
           </Button>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -96,15 +97,26 @@ export function AccountDetailsView() {
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Storage</h3>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
               <div
-                className="h-full bg-primary rounded-full"
+                className={`h-full rounded-full ${
+                  quota && quota.percent_used >= 95
+                    ? 'bg-destructive'
+                    : quota && quota.percent_used >= 80
+                      ? 'bg-yellow-500'
+                      : 'bg-primary'
+                }`}
                 style={{ width: `${quota ? Math.min(quota.percent_used, 100) : 0}%` }}
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {quota
                 ? `${formatBytes(quota.quota_used_bytes)} of ${formatBytes(quota.quota_bytes)} used`
-                : 'Loading usage information\u2026'}
+                : 'Loading usage information…'}
             </p>
+            {quota && quota.percent_used >= 80 && (
+              <p className={`text-xs mt-1 ${quota.percent_used >= 95 ? 'text-destructive font-medium' : 'text-yellow-600 dark:text-yellow-400'}`}>
+                {quota.percent_used >= 95 ? 'Storage almost full! Delete messages or contact your administrator.' : 'Storage usage is high. Consider cleaning up old messages.'}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

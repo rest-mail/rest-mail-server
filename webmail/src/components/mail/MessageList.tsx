@@ -1,9 +1,8 @@
 import { useEffect, useCallback } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Inbox, Mail, Search, X } from 'lucide-react';
+import { Inbox, Mail, Search, X, Star, Paperclip } from 'lucide-react';
 
 export function MessageList() {
   const {
@@ -119,13 +118,11 @@ export function MessageList() {
             onClick={() => selectMessage(msg.id)}
             className={cn(
               "w-full text-left px-4 py-2.5 flex items-start gap-3 transition-colors",
-              selectedMessageId === msg.id ? "bg-accent" : "hover:bg-muted",
+              selectedMessageId === msg.id ? "bg-accent" : "hover:bg-muted/50",
             )}
           >
             {/* Star indicator */}
-            <span className="mt-0.5 text-sm">
-              {msg.is_flagged ? '\u2605' : '\u2606'}
-            </span>
+            <Star className={cn("w-4 h-4 mt-0.5 shrink-0", msg.is_flagged ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground")} />
 
             {/* Content */}
             <div className="flex-1 min-w-0">
@@ -148,9 +145,7 @@ export function MessageList() {
                   {msg.subject || '(no subject)'}
                 </span>
                 {msg.has_attachments && (
-                  <Badge variant="secondary" className="text-xs px-1 py-0 h-4 shrink-0">
-                    {"\u{1F4CE}"}
-                  </Badge>
+                  <Paperclip className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 )}
               </div>
             </div>

@@ -765,10 +765,10 @@ This shared schema means: create a domain or mailbox via the API, and both Postf
 - [ ] Verify Postfix + Dovecot still deliver mail correctly with the database backend
 - [x] Create `quota_usage` table and add `quota_bytes` / `quota_used_bytes` columns to `mailboxes`
 - [x] Implement incremental quota tracking (adjust on message delivery and deletion)
-- [ ] Add quota check to `recipient_check` pipeline filter (reject 452 when over quota)
-- [ ] Add quota API endpoints (user: GET usage, admin: GET/SET per-mailbox and domain default)
-- [ ] Implement IMAP `GETQUOTA` / `GETQUOTAROOT` commands in gateway (RFC 2087)
-- [ ] Add quota bar to webmail UI (account sidebar)
+- [x] Add quota check to `recipient_check` pipeline filter (reject 452 when over quota)
+- [x] Add quota API endpoints (user: GET usage, admin: GET/SET per-mailbox and domain default)
+- [x] Implement IMAP `GETQUOTA` / `GETQUOTAROOT` commands in gateway (RFC 2087)
+- [x] Add quota bar to webmail UI (account sidebar)
 - [ ] Add periodic quota reconciliation task (fix any drift from crashes/bugs)
 
 ---
@@ -1304,19 +1304,19 @@ r.Post("/restmail/messages", handlers.RestmailDeliver)
 - [x] Implement folder CRUD (list, create, rename, delete)
 - [x] Implement message listing with cursor-based pagination
 - [x] Implement message retrieval (full message, raw source, attachments)
-- [ ] Implement attachment download (stream from storage ref)
-- [ ] Implement compose/send endpoint (route to gateway or Postfix depending on domain)
+- [x] Implement attachment download (stream from storage ref)
+- [x] Implement compose/send endpoint (route to gateway or Postfix depending on domain)
 - [x] Implement message actions (delete, mark read/unread, flag, star, move)
-- [ ] Implement draft endpoints (save, auto-save, discard, send)
+- [x] Implement draft endpoints (save, auto-save, discard, send)
 - [x] Implement search endpoint (Postgres full-text search, folder/date/sender filters)
-- [ ] Implement thread grouping (References/In-Reply-To based threading)
-- [ ] Implement contacts (auto-collect from sent mail, autocomplete suggestions)
-- [ ] Implement SSE endpoint for real-time events (new message, folder update, queue status)
+- [x] Implement thread grouping (References/In-Reply-To based threading)
+- [x] Implement contacts (auto-collect from sent mail, autocomplete suggestions)
+- [x] Implement SSE endpoint for real-time events (new message, folder update, queue status)
 - [x] Implement admin endpoints (domains, mailboxes, aliases, webmail accounts, DNS records)
-- [ ] Implement certificate management endpoints (list, upload, provision, renew)
-- [ ] Implement DKIM key management endpoints (generate, list, revoke, DNS record)
-- [ ] Implement queue management endpoints (list, retry, bounce, stats)
-- [ ] Implement pipeline/filter management endpoints (CRUD, test)
+- [x] Implement certificate management endpoints (list, upload, provision, renew)
+- [x] Implement DKIM key management endpoints (generate, list, revoke, DNS record)
+- [x] Implement queue management endpoints (list, retry, bounce, stats)
+- [x] Implement pipeline/filter management endpoints (CRUD, test)
 - [ ] Implement log query endpoints (structured logs, delivery log, pipeline log)
 - [x] Implement health/status endpoints (API health, per-server probe, cert expiry)
 - [ ] Implement test endpoints (send, verify, probe SMTP/IMAP/POP3/DNS, reset, seed, snapshot/restore)
@@ -1521,12 +1521,12 @@ TLS certificate private keys and DKIM signing private keys are stored in Postgre
 - [ ] Mount CA cert as trusted root in all containers
 - [x] Configure Postfix STARTTLS with generated certs (smtpd_tls_cert_file, smtpd_tls_key_file)
 - [x] Configure Dovecot TLS with generated certs (ssl_cert, ssl_key)
-- [ ] Implement SNI-based `tls.Config.GetCertificate` in the gateway
+- [x] Implement SNI-based `tls.Config.GetCertificate` in the gateway (with fsnotify hot-reload)
 - [x] Implement certificate storage in database (certificates table)
-- [ ] Implement certificate management API endpoints
+- [x] Implement certificate management API endpoints
 - [ ] Implement cert caching with invalidation (Postgres LISTEN/NOTIFY or polling)
 - [x] Implement DKIM key storage and management (dkim_keys table)
-- [ ] Add DKIM key management API endpoints
+- [x] Add DKIM key management API endpoints
 - [ ] Implement ACME client for Let's Encrypt (production mode)
 - [ ] Add cert expiry monitoring to health endpoints
 - [x] Create database migrations for `certificates` and `dkim_keys` tables
@@ -1759,7 +1759,7 @@ The rich text editor uses **[TipTap](https://tiptap.dev/)** (`@tiptap/react`), a
 - [x] Build mail viewer component (bottom half of right panel, message header + body rendering, HTML sanitization, plain text monospace)
 - [x] Build mail viewer action buttons (Reply, Reply All, Forward, Delete, Move, Mark read/unread, Star/unstar)
 - [x] Build Add Account view (replaces right panel: display name, email, IMAP/SMTP server/port/SSL fields, username, password)
-- [ ] Implement "Test Connection" button for Add Account (validates IMAP + SMTP credentials, shows per-protocol success/failure)
+- [x] Implement "Test Connection" button for Add Account (validates IMAP + SMTP credentials, shows per-protocol success/failure)
 - [x] Build compose view (replaces right panel: From dropdown, To/CC/BCC/Subject fields)
 - [x] Install TipTap (`@tiptap/react`, `@tiptap/starter-kit`, extensions for link, image, color, text-align, placeholder)
 - [x] Build rich text editor component with formatting toolbar (bold, italic, underline, headings, lists, links, images, color, alignment)
@@ -1768,14 +1768,14 @@ The rich text editor uses **[TipTap](https://tiptap.dev/)** (`@tiptap/react`), a
 - [x] Ensure compose sends both `text/plain` and `text/html` parts (multipart/alternative)
 - [x] Implement "Get Mail" button (queries server for new messages for active account)
 - [x] Implement View Account Details panel (profile info, linked accounts, quota usage)
-- [ ] Set up SSE connection to `/api/v1/accounts/:id/events` for real-time updates
-- [ ] Implement desktop notifications for new email (Browser Notification API, requires permission grant)
-- [ ] Implement in-app notification: sidebar unread count badge updates in real-time
-- [ ] Implement in-app notification: toast/snackbar for new messages ("1 new message from …")
+- [x] Set up SSE connection to `/api/v1/accounts/:id/events` for real-time updates (multi-account SSE with reconnect backoff)
+- [x] Implement desktop notifications for new email (Browser Notification API, requires permission grant)
+- [x] Implement in-app notification: sidebar unread count badge updates in real-time
+- [x] Implement in-app notification: toast/snackbar for new messages ("1 new message from …")
 - [x] Wire up API calls to Go backend
 - [x] Add Dockerfile (multi-stage: build with Node, serve with nginx)
 - [x] Add to docker-compose.yml
-- [ ] Style and polish the UI
+- [x] Style and polish the UI
 
 ---
 
@@ -2177,32 +2177,32 @@ DELETE /api/v1/admin/bans/:ip         - Unban an IP
 - [x] Advertise `RESTMAIL <endpoint>` in SMTP EHLO 250 capabilities response
 - [x] Implement outbound mail queue (database table + worker goroutines in smtp-gateway)
 - [x] Implement retry scheduler with exponential backoff
-- [ ] Implement bounce message generation (RFC 3464 DSN)
-- [ ] Implement queue management API endpoints
+- [x] Implement bounce message generation (RFC 3464 DSN)
+- [x] Implement queue management API endpoints (list, retry, bounce, delete, stats, bulk ops)
 - [x] Implement SMTP outbound relay (smtp-gateway acts as SMTP client to deliver queued messages)
-- [ ] Implement RESTMAIL capability detection in outbound relay: check EHLO response, upgrade to HTTPS if present
+- [x] Implement RESTMAIL capability detection in outbound relay: check EHLO response, upgrade to HTTPS if present (with capability caching)
 - [x] Implement RESTMAIL delivery endpoint (`/restmail/messages`) for server-to-server REST delivery
 - [x] Implement IMAP handler (authenticate, list folders, fetch messages -- all via REST API)
 - [x] Implement IMAP IDLE (push notification for new mail)
-- [ ] Implement IMAP GETQUOTA / GETQUOTAROOT commands (RFC 2087 — return quota info via REST API)
+- [x] Implement IMAP GETQUOTA / GETQUOTAROOT commands (RFC 2087 — return quota info via REST API)
 - [x] Implement POP3 handler (authenticate, list/retrieve messages -- all via REST API)
 - [x] Create REST API client package shared by all gateway services
 - [x] Add mail3.test to dnsmasq config (A + MX + PTR records)
-- [ ] Split single gateway container into three per-protocol containers in docker-compose.yml
+- [x] Split single gateway container into three per-protocol containers in docker-compose.yml
 - [x] Create database migration for `outbound_queue` table
-- [ ] Verify mail delivery: mail1.test → mail3.test (SMTP inbound, no upgrade)
-- [ ] Verify mail delivery: mail3.test → mail1.test (SMTP outbound via queue, no upgrade -- fallback)
-- [ ] Verify mail delivery: mail3.test → mail3.test (RESTMAIL upgrade path)
-- [ ] Verify SMTP AUTH on 587 (authenticate, send, verify relay)
-- [ ] Verify IMAPS on 993 (connect with implicit TLS, authenticate, read)
+- [x] Verify mail delivery: mail1.test → mail3.test (SMTP inbound, no upgrade)
+- [x] Verify mail delivery: mail3.test → mail1.test (SMTP outbound via queue, no upgrade -- fallback)
+- [x] Verify mail delivery: mail3.test → mail3.test (RESTMAIL upgrade path)
+- [x] Verify SMTP AUTH on 587 (authenticate, send, verify relay)
+- [x] Verify IMAPS on 993 (connect with implicit TLS, authenticate, read)
 - [ ] Verify queue retry: simulate 4xx response, confirm retry with backoff
 - [ ] Verify bounce: simulate 5xx response, confirm DSN delivered to sender
 - [ ] Verify IMAP IDLE: connect, IDLE, deliver message, confirm push notification
-- [ ] Implement Go-level connection limits (max concurrent, max per IP, rate per IP, auth failure tracking)
-- [ ] Emit structured JSON log events for fail2ban parsing (auth failures, rate exceeded, abuse patterns)
-- [ ] Write fail2ban jail configs for SMTP auth, IMAP auth, and SMTP abuse patterns
-- [ ] Write fail2ban filter configs (regex patterns matching gateway JSON log format)
-- [ ] Add fail2ban sidecar container to docker-compose.yml (profile: security)
+- [x] Implement Go-level connection limits (max concurrent, max per IP, rate per IP, auth failure tracking)
+- [x] Emit structured JSON log events for fail2ban parsing (auth failures, rate exceeded, abuse patterns)
+- [x] Write fail2ban jail configs for SMTP auth, IMAP auth, and SMTP abuse patterns
+- [x] Write fail2ban filter configs (regex patterns matching gateway JSON log format)
+- [x] Add fail2ban sidecar container to docker-compose.yml (profile: security)
 - [ ] Add ban management admin API endpoints (list bans, unban IP)
 - [ ] Document fail2ban setup and tuning for production deployments
 
@@ -3798,21 +3798,21 @@ Outbound flow (compose → pipeline → SMTP relay):
 - [ ] Implement the `duplicate` action (fork email to webhook/queue while continuing pipeline)
 - [x] Implement attachment storage backend: filesystem writer + S3-compatible writer
 - [x] Implement SHA-256 checksum computation in `extract_attachments` filter
-- [ ] Implement checksum-based attachment deduplication (reuse existing `storage_ref` if checksum matches)
-- [ ] Add `idx_attachments_checksum` index to `attachments` table
-- [ ] Implement reference-count safe deletion (only delete file when no other attachment rows reference the same `storage_ref`)
-- [ ] Implement attachment retrieval: API endpoint to stream attachment from storage ref
+- [x] Implement checksum-based attachment deduplication (reuse existing `storage_ref` if checksum matches)
+- [x] Add `idx_attachments_checksum` index to `attachments` table
+- [x] Implement reference-count safe deletion (only delete file when no other attachment rows reference the same `storage_ref`)
+- [x] Implement attachment retrieval: API endpoint to stream attachment from storage ref
 - [x] Implement custom filter interpreter (evaluate JSON condition matching + transforms at runtime)
 - [x] Implement Sieve filter: embed a Sieve interpreter (or write one) that operates on email JSON
 - [x] Support standard Sieve commands: `keep`, `fileinto`, `redirect`, `discard`, `reject`
 - [ ] Support Sieve extensions: `vacation`, `notify`, `body`, `regex`, `envelope`
-- [ ] Add Sieve script management API (per-mailbox CRUD, validation endpoint)
-- [ ] Implement vacation/auto-reply with RFC 3834 loop prevention (never reply to auto-replies, mailing lists, MAILER-DAEMON)
-- [ ] Create `vacation_responses` table for tracking sent auto-replies (dedup within time window)
-- [ ] Add vacation API endpoints (PUT/GET/DELETE `/api/v1/accounts/:id/vacation`)
+- [x] Add Sieve script management API (per-mailbox CRUD, validation endpoint)
+- [x] Implement vacation/auto-reply with RFC 3834 loop prevention (never reply to auto-replies, mailing lists, MAILER-DAEMON)
+- [x] Create `vacation_responses` table for tracking sent auto-replies (dedup within time window)
+- [x] Add vacation API endpoints (PUT/GET/DELETE `/api/v1/accounts/:id/vacation`)
 - [ ] Implement vacation toggle in webmail UI (simple on/off with subject, body, optional date range)
-- [ ] Ensure auto-reply messages include `Auto-Submitted: auto-replied` header
-- [x] Implement JavaScript filter: embed goja (pure-Go ES5.1+ runtime) for sandboxed script execution
+- [x] Ensure auto-reply messages include `Auto-Submitted: auto-replied` header
+- [x] Implement JavaScript filter: Node.js sidecar container with sandboxed vm module (replaced goja per architecture decision)
 - [x] Add JS filter security: execution timeout, memory limit, no filesystem/network access by default
 - [ ] Add JS script validation endpoint (syntax check + dry-run against sample email JSON)
 - [ ] Add JavaScript filter management API (CRUD, enable/disable, test)
@@ -3823,8 +3823,8 @@ Outbound flow (compose → pipeline → SMTP relay):
 - [x] Create `greylist_entries` database table and migrations
 - [x] Implement pipeline skip logic (`skip_filters` in action result, `unskippable` filter flag)
 - [x] Add contact trust levels (`auto`, `trusted`, `blocked`) to contacts table
-- [ ] Add contact management API: manual add, bulk import (vCard/CSV), block sender
-- [ ] Add domain allowlist/blocklist admin API endpoints
+- [x] Add contact management API: manual add, bulk import (vCard/CSV), block sender
+- [x] Add domain allowlist/blocklist admin API endpoints
 - [x] Implement quarantine system (hold borderline spam for user review)
 - [x] Add quarantine API endpoints (list, release, whitelist-and-release, delete, digest)
 - [ ] Add quarantine review panel to webmail UI
@@ -3833,8 +3833,8 @@ Outbound flow (compose → pipeline → SMTP relay):
 - [x] Add pipeline management API endpoints (CRUD for pipelines and custom filters)
 - [x] Add pipeline testing API endpoint (run sample email through pipeline, return step-by-step results with JSON state at each stage)
 - [x] Add single-filter testing API endpoint (test one filter in isolation)
-- [ ] Integrate pipeline into the gateway's inbound SMTP handler (between parse and storage)
-- [ ] Integrate pipeline into the API's outbound message sending (between compose and relay)
+- [x] Integrate pipeline into the gateway's inbound SMTP handler (between parse and storage)
+- [x] Integrate pipeline into the API's outbound message sending (between compose and relay)
 - [x] Create database migrations for `pipelines`, `custom_filters`, `attachments`, `pipeline_logs` tables
 - [ ] Build default pipeline templates (sensible inbound + outbound defaults per domain)
 - [ ] Build visual pipeline tester UI component in the React webmail admin panel
@@ -5507,13 +5507,13 @@ Build a static marketing/landing website for Rest Mail. The site explains the pr
 
 ### TODO
 
-- [ ] Design and build the landing page (hero, tagline, CTA)
-- [ ] Build the "What is Rest Mail?" and "How It Works" sections
-- [ ] Build the RESTMAIL Protocol explanation section with diagrams
-- [ ] Build the Features section
-- [ ] Build the Architecture section
-- [ ] Build the About page
-- [ ] Create Dockerfile and nginx config for the website
+- [x] Design and build the landing page (hero, tagline, CTA)
+- [x] Build the "What is Rest Mail?" and "How It Works" sections
+- [x] Build the RESTMAIL Protocol explanation section with diagrams
+- [x] Build the Features section
+- [x] Build the Architecture section
+- [x] Build the About page
+- [x] Create Go static file server for the website (`cmd/website/main.go`)
 - [ ] Add website service to docker-compose.yml
 - [ ] Add Taskfile entries for building/serving the website
 
@@ -5555,7 +5555,7 @@ These were previously open questions, now resolved:
 - **Hot reload (dev):** Go backend uses air for live rebuild/restart. React frontend uses Vite HMR. Source mounted as Docker volumes via `docker-compose.override.yml`. No container rebuilds during development.
 - **API rate limiting:** Handled at infrastructure layer (reverse proxy / ingress controller), not in the mail server. Email sending rate limits remain as a pipeline filter.
 - **Sieve support:** RFC 5228 Sieve scripts as pipeline transform filters. Per-mailbox scripts with standard commands and extensions.
-- **JavaScript filters:** Sandboxed JS scripts via goja (pure-Go ES5.1+ runtime). Execution timeout, memory limits, no filesystem access. Full programmatic control over email filtering.
+- **JavaScript filters:** Sandboxed JS scripts via Node.js sidecar container (replaced goja with containerized runtime per architecture decision). Execution timeout, memory limits, no filesystem/network access. Full programmatic control over email filtering.
 - **Import/export:** Not planned for initial release. May revisit later.
 - **Multi-recipient storage:** Each recipient gets their own copy of the message. Simple, correct, avoids reference-counting complexity and permission bugs.
 - **Greylisting:** Supported as a built-in `greylist` pipeline action filter. Temporarily rejects first delivery from unknown senders. Skipped for whitelisted contacts.

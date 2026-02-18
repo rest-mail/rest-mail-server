@@ -51,6 +51,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	senderRuleH := handlers.NewSenderRuleHandler(db)
 	queueH := handlers.NewQueueHandler(db)
 	dkimH := handlers.NewDKIMHandler(db, cfg.MasterKey)
+	certH := handlers.NewCertificateHandler(db, cfg.MasterKey)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -241,6 +242,12 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		r.Get("/api/v1/admin/dkim", dkimH.ListKeys)
 		r.Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
 		r.Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
+
+		// Certificate management
+		r.Get("/api/v1/admin/certificates", certH.ListCertificates)
+		r.Get("/api/v1/admin/certificates/{id}", certH.GetCertificate)
+		r.Post("/api/v1/admin/certificates", certH.CreateCertificate)
+		r.Delete("/api/v1/admin/certificates/{id}", certH.DeleteCertificate)
 	})
 
 	return r

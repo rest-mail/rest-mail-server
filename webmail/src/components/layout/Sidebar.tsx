@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, MoreHorizontal } from 'lucide-react';
+import { Menu, X, MoreHorizontal, Inbox, Send, FileText, Trash2, AlertTriangle, Archive, Folder, ChevronDown, ChevronRight, Plus, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
@@ -104,15 +104,15 @@ export function Sidebar() {
     }
   };
 
-  const folderIcon = (name: string) => {
+  const folderIcon = (name: string): React.ReactNode => {
     switch (name) {
-      case 'INBOX': return '\u{1F4E5}';
-      case 'Sent': return '\u{1F4E4}';
-      case 'Drafts': return '\u{1F4DD}';
-      case 'Trash': return '\u{1F5D1}';
-      case 'Junk': return '\u26A0';
-      case 'Archive': return '\u{1F4E6}';
-      default: return '\u{1F4C1}';
+      case 'INBOX': return <Inbox className="w-4 h-4" />;
+      case 'Sent': return <Send className="w-4 h-4" />;
+      case 'Drafts': return <FileText className="w-4 h-4" />;
+      case 'Trash': return <Trash2 className="w-4 h-4" />;
+      case 'Junk': return <AlertTriangle className="w-4 h-4" />;
+      case 'Archive': return <Archive className="w-4 h-4" />;
+      default: return <Folder className="w-4 h-4" />;
     }
   };
 
@@ -160,7 +160,7 @@ export function Sidebar() {
                   "hover:bg-sidebar-accent transition-colors text-sidebar-foreground"
                 )}
               >
-                <span className="text-xs">{isExpanded(account.id) ? '\u25BC' : '\u25B6'}</span>
+                {isExpanded(account.id) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                 <span className="truncate flex-1 font-medium">{account.address}</span>
                 {!isExpanded(account.id) && <InboxBadge />}
               </button>
@@ -199,7 +199,7 @@ export function Sidebar() {
                                   : "text-sidebar-foreground hover:bg-sidebar-accent"
                               )}
                             >
-                              <span className="text-xs">{folderIcon(f.name)}</span>
+                              {folderIcon(f.name)}
                               <span className="flex-1 truncate">{f.name}</span>
                               {f.unread > 0 && (
                                 <Badge variant="default" className="text-xs px-1.5 py-0 h-5">
@@ -258,7 +258,7 @@ export function Sidebar() {
                           onClick={() => setCreatingFolder(true)}
                           className="w-full text-left px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          + New folder
+                          <Plus className="w-3 h-3 mr-1 inline" /> New folder
                         </button>
                       )}
                     </>
@@ -279,7 +279,7 @@ export function Sidebar() {
           className="w-full"
           onClick={() => { setView('addAccount'); setMobileOpen(false); }}
         >
-          + Add Account
+          <UserPlus className="w-4 h-4 mr-1" /> Add Account
         </Button>
       </div>
     </>

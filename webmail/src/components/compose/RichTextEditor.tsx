@@ -6,6 +6,7 @@ import TextAlign from '@tiptap/extension-text-align';
 import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
+import { Bold, Italic, Underline as UnderlineIcon, Heading1, Heading2, List, ListOrdered, Quote, Minus, Link2, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
@@ -54,40 +55,40 @@ export function RichTextEditor({ content, onChange, placeholder }: Props) {
       {/* Toolbar */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border flex-wrap">
         <ToolBtn active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()}>
-          <strong>B</strong>
+          <Bold className="w-4 h-4" />
         </ToolBtn>
         <ToolBtn active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()}>
-          <em>I</em>
+          <Italic className="w-4 h-4" />
         </ToolBtn>
         <ToolBtn active={editor.isActive('underline')} onClick={() => editor.chain().focus().toggleUnderline().run()}>
-          <u>U</u>
+          <UnderlineIcon className="w-4 h-4" />
         </ToolBtn>
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
         <ToolBtn active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}>
-          H1
+          <Heading1 className="w-4 h-4" />
         </ToolBtn>
         <ToolBtn active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}>
-          H2
+          <Heading2 className="w-4 h-4" />
         </ToolBtn>
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
         <ToolBtn active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>
-          {"\u2022"}
+          <List className="w-4 h-4" />
         </ToolBtn>
         <ToolBtn active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
-          1.
+          <ListOrdered className="w-4 h-4" />
         </ToolBtn>
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
         <ToolBtn active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>
-          {"\u201C"}
+          <Quote className="w-4 h-4" />
         </ToolBtn>
         <ToolBtn onClick={() => editor.chain().focus().setHorizontalRule().run()}>
-          {"\u2014"}
+          <Minus className="w-4 h-4" />
         </ToolBtn>
 
         <Separator orientation="vertical" className="h-5 mx-1" />
@@ -98,7 +99,16 @@ export function RichTextEditor({ content, onChange, placeholder }: Props) {
             if (url) editor.chain().focus().setLink({ href: url }).run();
           }}
         >
-          {"\u{1F517}"}
+          <Link2 className="w-4 h-4" />
+        </ToolBtn>
+
+        <Separator orientation="vertical" className="h-5 mx-1" />
+
+        <ToolBtn onClick={() => editor.chain().focus().undo().run()}>
+          <Undo2 className="w-4 h-4" />
+        </ToolBtn>
+        <ToolBtn onClick={() => editor.chain().focus().redo().run()}>
+          <Redo2 className="w-4 h-4" />
         </ToolBtn>
       </div>
 

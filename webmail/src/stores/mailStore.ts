@@ -151,7 +151,8 @@ export const useMailStore = create<MailState>((set, get) => ({
   },
 
   markRead: async (msgId, read) => {
-    await api.updateMessage(msgId, { is_read: read });
+    // Optimistic update
+    const prev = get();
     set(state => ({
       messages: state.messages.map(m =>
         m.id === msgId ? { ...m, is_read: read } : m
@@ -160,15 +161,31 @@ export const useMailStore = create<MailState>((set, get) => ({
         ? { ...state.selectedMessage, is_read: read }
         : state.selectedMessage,
     }));
+    try {
+      await api.updateMessage(msgId, { is_read: read });
+    } catch {
+      // Rollback on error
+      set({
+        messages: prev.messages,
+        selectedMessage: prev.selectedMessage,
+      });
+    }
   },
 
   markFlagged: async (msgId, flagged) => {
-    await api.updateMessage(msgId, { is_flagged: flagged });
+    // Optimistic update
+    const prev = get();
     set(state => ({
       messages: state.messages.map(m =>
         m.id === msgId ? { ...m, is_flagged: flagged } : m
       ),
     }));
+    try {
+      await api.updateMessage(msgId, { is_flagged: flagged });
+    } catch {
+      // Rollback on error
+      set({ messages: prev.messages });
+    }
   },
 
   deleteMsg: async (msgId) => {
