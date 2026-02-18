@@ -1,13 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
+import * as api from '@/api/client';
 import { listAttachments, getAttachmentUrl } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Mail, Paperclip } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import { Mail, Paperclip, FolderOpen, MessageSquare } from 'lucide-react';
+import { toast } from 'sonner';
 import DOMPurify from 'dompurify';
-import type { Attachment } from '@/types';
+import type { Attachment, MessageSummary } from '@/types';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -16,10 +24,13 @@ function formatFileSize(bytes: number): string {
 }
 
 export function MessageViewer() {
-  const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg, accounts } = useMailStore();
+  const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg, accounts, refresh, folders, activeFolder, activeAccountId, selectMessage } = useMailStore();
   const { startCompose } = useUIStore();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
+  const [showThread, setShowThread] = useState(false);
+  const [threadMessages, setThreadMessages] = useState<MessageSummary[]>([]);
+  const [loadingThread, setLoadingThread] = useState(false);
 
   useEffect(() => {
     if (!selectedMessage?.has_attachments) {
@@ -40,6 +51,41 @@ export function MessageViewer() {
       });
     return () => { cancelled = true; };
   }, [selectedMessage?.id, selectedMessage?.has_attachments]);
+
+  // Reset thread state when message changes
+  useEffect(() => {
+    setShowThread(false);
+    setThreadMessages([]);
+  }, [selectedMessage?.id]);
+
+  const handleMove = async (folder: string) => {
+    if (!selectedMessage) return;
+    try {
+      await api.updateMessage(selectedMessage.id, { folder });
+      toast.success(`Moved to ${folder}`);
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to move message');
+    }
+  };
+
+  const handleToggleThread = async () => {
+    if (!selectedMessage || !activeAccountId) return;
+    if (showThread) {
+      setShowThread(false);
+      return;
+    }
+    setLoadingThread(true);
+    try {
+      const resp = await api.getThread(activeAccountId, selectedMessage.thread_id);
+      setThreadMessages(resp.data.filter(m => m.id !== selectedMessage.id));
+      setShowThread(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load thread');
+    } finally {
+      setLoadingThread(false);
+    }
+  };
 
   if (loadingMessage) {
     return (
@@ -177,6 +223,26 @@ export function MessageViewer() {
         <Button variant="ghost" size="sm" onClick={handleReplyAll}>Reply All</Button>
         <Button variant="ghost" size="sm" onClick={handleForward}>Forward</Button>
         <Separator orientation="vertical" className="h-5 mx-1" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm">
+              <FolderOpen className="w-4 h-4 mr-1" />
+              Move to
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk']
+              .filter(f => f !== activeFolder)
+              .map(f => (
+                <DropdownMenuItem key={f} onClick={() => handleMove(f)}>{f}</DropdownMenuItem>
+              ))}
+            {folders
+              .filter(f => !['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'].includes(f.name) && f.name !== activeFolder)
+              .map(f => (
+                <DropdownMenuItem key={f.name} onClick={() => handleMove(f.name)}>{f.name}</DropdownMenuItem>
+              ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button variant="ghost" size="sm" onClick={() => deleteMsg(msg.id)}>Delete</Button>
         <Button variant="ghost" size="sm" onClick={() => markRead(msg.id, !msg.is_read)}>
           {msg.is_read ? 'Mark Unread' : 'Mark Read'}
@@ -208,6 +274,43 @@ export function MessageViewer() {
               </p>
             )}
           </div>
+
+          {/* Thread indicator */}
+          {msg.thread_id && msg.thread_id.length > 0 && (
+            <div className="mt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground hover:text-foreground px-0"
+                onClick={handleToggleThread}
+                disabled={loadingThread}
+              >
+                <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                {loadingThread ? 'Loading...' : showThread ? 'Hide conversation' : 'Show conversation'}
+              </Button>
+              {showThread && threadMessages.length > 0 && (
+                <div className="mt-2 ml-1 border-l-2 border-muted pl-3 space-y-1">
+                  {threadMessages.map(tm => (
+                    <button
+                      key={tm.id}
+                      className="block w-full text-left text-xs py-1 px-2 rounded hover:bg-muted transition-colors"
+                      onClick={() => selectMessage(tm.id)}
+                    >
+                      <span className="font-medium">{tm.subject || '(no subject)'}</span>
+                      <span className="text-muted-foreground ml-2">
+                        {new Date(tm.received_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className="text-muted-foreground ml-1">- {tm.sender_name || tm.sender}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {showThread && threadMessages.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1 ml-1">No other messages in this conversation.</p>
+              )}
+            </div>
+          )}
+
           <Separator className="my-4" />
 
           {/* Attachments */}

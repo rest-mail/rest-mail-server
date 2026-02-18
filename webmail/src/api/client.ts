@@ -198,3 +198,8 @@ export async function sendDraft(draftId: number): Promise<void> {
     method: 'POST',
   });
 }
+
+// Threads
+export async function getThread(accountId: number, threadId: string): Promise<{ data: MessageSummary[] }> {
+  return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}`);
+}

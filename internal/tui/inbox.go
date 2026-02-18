@@ -11,8 +11,14 @@ import (
 )
 
 type inboxMessagesMsg struct {
-	messages []apiclient.MessageSummary
-	err      error
+	messages  []apiclient.MessageSummary
+	accountID uint // set on initial load so we can store it
+	err       error
+}
+
+type inboxFoldersMsg struct {
+	folders []apiclient.Folder
+	err     error
 }
 
 type inboxMessageDetailMsg struct {
@@ -31,6 +37,10 @@ type InboxModel struct {
 	selectedUser  string
 	token         string
 	accountID     uint
+
+	// Folder navigation
+	folders        []string
+	selectedFolder int
 
 	// Message list
 	messages []apiclient.MessageSummary
@@ -69,6 +79,27 @@ func (m InboxModel) Update(msg tea.Msg) (InboxModel, tea.Cmd) {
 		m.loading = false
 		m.err = msg.err
 		m.messages = msg.messages
+		// On initial load (accountID set in msg), store it and fetch folders
+		if msg.accountID != 0 {
+			m.accountID = msg.accountID
+			return m, m.fetchFolders()
+		}
+		return m, nil
+
+	case inboxFoldersMsg:
+		if msg.err == nil && len(msg.folders) > 0 {
+			m.folders = make([]string, len(msg.folders))
+			for i, f := range msg.folders {
+				m.folders[i] = f.Name
+			}
+			// Select INBOX by default if it exists
+			for i, name := range m.folders {
+				if name == "INBOX" {
+					m.selectedFolder = i
+					break
+				}
+			}
+		}
 		return m, nil
 
 	case inboxMessageDetailMsg:
@@ -121,6 +152,20 @@ func (m InboxModel) updateMessageList(msg tea.KeyMsg) (InboxModel, tea.Cmd) {
 		if m.cursor < len(m.messages)-1 {
 			m.cursor++
 		}
+	case "left", "h":
+		if len(m.folders) > 0 && m.selectedFolder > 0 {
+			m.selectedFolder--
+			m.cursor = 0
+			m.loading = true
+			return m, m.fetchFolderMessages()
+		}
+	case "right", "l":
+		if len(m.folders) > 0 && m.selectedFolder < len(m.folders)-1 {
+			m.selectedFolder++
+			m.cursor = 0
+			m.loading = true
+			return m, m.fetchFolderMessages()
+		}
 	case "enter":
 		if len(m.messages) > 0 {
 			msgID := m.messages[m.cursor].ID
@@ -130,6 +175,8 @@ func (m InboxModel) updateMessageList(msg tea.KeyMsg) (InboxModel, tea.Cmd) {
 	case "backspace":
 		m.selectingUser = true
 		m.messages = nil
+		m.folders = nil
+		m.selectedFolder = 0
 		m.userInput.Focus()
 		return m, textinput.Blink
 	}
@@ -182,6 +229,38 @@ func (m InboxModel) fetchMessages(email string) tea.Cmd {
 			return inboxMessagesMsg{err: err}
 		}
 
+		return inboxMessagesMsg{messages: msgResp.Data, accountID: accountID}
+	}
+}
+
+func (m InboxModel) fetchFolders() tea.Cmd {
+	return func() tea.Msg {
+		token := m.adminToken
+		if token == "" {
+			return inboxFoldersMsg{err: fmt.Errorf("no admin token available")}
+		}
+		resp, err := m.api.ListFolders(token, m.accountID)
+		if err != nil {
+			return inboxFoldersMsg{err: err}
+		}
+		return inboxFoldersMsg{folders: resp.Data}
+	}
+}
+
+func (m InboxModel) fetchFolderMessages() tea.Cmd {
+	return func() tea.Msg {
+		token := m.adminToken
+		if token == "" {
+			return inboxMessagesMsg{err: fmt.Errorf("no admin token available")}
+		}
+		folder := "INBOX"
+		if m.selectedFolder < len(m.folders) {
+			folder = m.folders[m.selectedFolder]
+		}
+		msgResp, err := m.api.ListMessages(token, m.accountID, folder)
+		if err != nil {
+			return inboxMessagesMsg{err: err}
+		}
 		return inboxMessagesMsg{messages: msgResp.Data}
 	}
 }
@@ -254,7 +333,29 @@ func (m InboxModel) View(width, height int) string {
 		b.WriteString(fmt.Sprintf("  Error: %s\n", m.err))
 		b.WriteString("\n" + helpStyle.Render("  backspace: back to user select  esc: back"))
 	} else {
-		b.WriteString(mutedStyle.PaddingLeft(2).Render(fmt.Sprintf("  Inbox: %s (%d messages)", m.selectedUser, len(m.messages))) + "\n\n")
+		// Folder tabs
+		if len(m.folders) > 0 {
+			var tabs strings.Builder
+			tabs.WriteString("  ")
+			for i, fname := range m.folders {
+				if i == m.selectedFolder {
+					tabs.WriteString(lipgloss.NewStyle().Bold(true).Foreground(highlightColor).
+						Render("["+fname+"]"))
+				} else {
+					tabs.WriteString(mutedStyle.Render(" "+fname+" "))
+				}
+				if i < len(m.folders)-1 {
+					tabs.WriteString(mutedStyle.Render(" | "))
+				}
+			}
+			b.WriteString(tabs.String() + "\n")
+		}
+
+		currentFolder := "INBOX"
+		if m.selectedFolder < len(m.folders) && len(m.folders) > 0 {
+			currentFolder = m.folders[m.selectedFolder]
+		}
+		b.WriteString(mutedStyle.PaddingLeft(2).Render(fmt.Sprintf("  %s: %s (%d messages)", currentFolder, m.selectedUser, len(m.messages))) + "\n\n")
 
 		if len(m.messages) == 0 {
 			b.WriteString("  (empty inbox)\n")
@@ -291,7 +392,7 @@ func (m InboxModel) View(width, height int) string {
 			}
 		}
 
-		b.WriteString("\n" + helpStyle.Render("  enter: read  backspace: change user  esc: back"))
+		b.WriteString("\n" + helpStyle.Render("  ←/→: switch folder  enter: read  backspace: change user  esc: back"))
 	}
 
 	s := b.String()

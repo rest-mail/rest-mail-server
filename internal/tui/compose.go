@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -21,7 +22,7 @@ type ComposeModel struct {
 	fromInput    textinput.Model
 	toInput      textinput.Model
 	subjectInput textinput.Model
-	bodyInput    textinput.Model
+	bodyArea     textarea.Model
 
 	focusIdx int // 0=from, 1=to, 2=subject, 3=body
 	sending  bool
@@ -45,17 +46,19 @@ func NewComposeModel(api *apiclient.Client) ComposeModel {
 	subj.CharLimit = 255
 	subj.Width = 50
 
-	body := textinput.New()
-	body.Placeholder = "Message body (single line for TUI)"
-	body.CharLimit = 2000
-	body.Width = 60
+	body := textarea.New()
+	body.Placeholder = "Compose your message here..."
+	body.CharLimit = 10000
+	body.SetWidth(60)
+	body.SetHeight(10)
+	body.ShowLineNumbers = false
 
 	return ComposeModel{
 		api:          api,
 		fromInput:    from,
 		toInput:      to,
 		subjectInput: subj,
-		bodyInput:    body,
+		bodyArea:     body,
 	}
 }
 
@@ -78,7 +81,20 @@ func (m ComposeModel) Update(msg tea.Msg) (ComposeModel, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.updateKey(msg)
 	}
-	return m, nil
+
+	// Pass non-key messages (e.g. blink) to the active input
+	var cmd tea.Cmd
+	switch m.focusIdx {
+	case 0:
+		m.fromInput, cmd = m.fromInput.Update(msg)
+	case 1:
+		m.toInput, cmd = m.toInput.Update(msg)
+	case 2:
+		m.subjectInput, cmd = m.subjectInput.Update(msg)
+	case 3:
+		m.bodyArea, cmd = m.bodyArea.Update(msg)
+	}
+	return m, cmd
 }
 
 func (m ComposeModel) updateKey(msg tea.KeyMsg) (ComposeModel, tea.Cmd) {
@@ -91,12 +107,14 @@ func (m ComposeModel) updateKey(msg tea.KeyMsg) (ComposeModel, tea.Cmd) {
 		return m, m.updateFocus()
 	case "enter":
 		if m.focusIdx < 3 {
-			// Advance to next field
+			// Advance to next field on enter for header fields
 			m.focusIdx++
 			return m, m.updateFocus()
 		}
-		// On body field, attempt send
-		return m.attemptSend()
+		// When focused on body textarea, let enter pass through for newlines
+		var cmd tea.Cmd
+		m.bodyArea, cmd = m.bodyArea.Update(msg)
+		return m, cmd
 	case "ctrl+s":
 		return m.attemptSend()
 	}
@@ -111,7 +129,7 @@ func (m ComposeModel) updateKey(msg tea.KeyMsg) (ComposeModel, tea.Cmd) {
 	case 2:
 		m.subjectInput, cmd = m.subjectInput.Update(msg)
 	case 3:
-		m.bodyInput, cmd = m.bodyInput.Update(msg)
+		m.bodyArea, cmd = m.bodyArea.Update(msg)
 	}
 	return m, cmd
 }
@@ -120,26 +138,30 @@ func (m ComposeModel) updateFocus() tea.Cmd {
 	m.fromInput.Blur()
 	m.toInput.Blur()
 	m.subjectInput.Blur()
-	m.bodyInput.Blur()
+	m.bodyArea.Blur()
 
 	switch m.focusIdx {
 	case 0:
 		m.fromInput.Focus()
+		return textinput.Blink
 	case 1:
 		m.toInput.Focus()
+		return textinput.Blink
 	case 2:
 		m.subjectInput.Focus()
+		return textinput.Blink
 	case 3:
-		m.bodyInput.Focus()
+		m.bodyArea.Focus()
+		return textarea.Blink
 	}
-	return textinput.Blink
+	return nil
 }
 
 func (m ComposeModel) attemptSend() (ComposeModel, tea.Cmd) {
 	from := m.fromInput.Value()
 	to := m.toInput.Value()
 	subj := m.subjectInput.Value()
-	body := m.bodyInput.Value()
+	body := m.bodyArea.Value()
 
 	if from == "" || to == "" {
 		m.err = fmt.Errorf("from and to are required")
@@ -182,8 +204,25 @@ func (m ComposeModel) View(width, height int) string {
 		b.WriteString(fmt.Sprintf("    Subject: %s\n", m.subjectInput.View()))
 		b.WriteString(lipgloss.NewStyle().PaddingLeft(2).Foreground(borderColor).
 			Render(strings.Repeat("─", width-4)) + "\n")
-		b.WriteString(fmt.Sprintf("    Body:    %s\n", m.bodyInput.View()))
-		b.WriteString("\n" + helpStyle.Render("  tab: next field  ctrl+s: send  esc: back"))
+
+		// Calculate remaining height for the textarea
+		// Header lines: title(2) + error(0-2) + from(1) + to(1) + subject(1) + separator(1) + label(1) + help(2) = ~9-11
+		usedLines := 11
+		if m.err != nil {
+			usedLines += 2
+		}
+		bodyHeight := height - usedLines
+		if bodyHeight < 3 {
+			bodyHeight = 3
+		}
+
+		// Resize the textarea to fill remaining space
+		m.bodyArea.SetWidth(width - 8)
+		m.bodyArea.SetHeight(bodyHeight)
+
+		b.WriteString("    Body:\n")
+		b.WriteString("    " + strings.ReplaceAll(m.bodyArea.View(), "\n", "\n    ") + "\n")
+		b.WriteString("\n" + helpStyle.Render("  tab: next field  enter: newline (in body)  ctrl+s: send  esc: back"))
 	}
 
 	s := b.String()
