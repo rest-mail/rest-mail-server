@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useMailStore } from '@/stores/mailStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Inbox, Mail, Search, X, Star, Paperclip } from 'lucide-react';
@@ -10,6 +11,7 @@ export function MessageList() {
     selectMessage, hasMore, loadMoreMessages,
     searchResults, searchQuery, isSearching, clearSearch,
   } = useMailStore();
+  const { density } = useSettingsStore();
 
   const isInSearch = searchResults !== null;
   const displayMessages = isInSearch ? searchResults : messages;
@@ -117,7 +119,8 @@ export function MessageList() {
             key={msg.id}
             onClick={() => selectMessage(msg.id)}
             className={cn(
-              "w-full text-left px-4 py-2.5 flex items-start gap-3 transition-colors",
+              "w-full text-left px-4 flex items-start gap-3 transition-colors",
+              density === 'compact' ? 'py-1' : 'py-2.5',
               selectedMessageId === msg.id ? "bg-accent" : "hover:bg-muted/50",
             )}
           >
