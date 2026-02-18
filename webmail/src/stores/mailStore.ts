@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import type { Folder, MessageSummary, MessageDetail, Account } from '../types';
 import * as api from '../api/client';
 
@@ -39,9 +40,14 @@ interface MailState {
   markRead: (msgId: number, read: boolean) => Promise<void>;
   markFlagged: (msgId: number, flagged: boolean) => Promise<void>;
   deleteMsg: (msgId: number) => Promise<void>;
+  removeAccount: (accountId: number) => Promise<void>;
   refresh: () => Promise<void>;
   searchMessages: (query: string) => Promise<void>;
   clearSearch: () => void;
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : 'An unexpected error occurred';
 }
 
 export const useMailStore = create<MailState>((set, get) => ({
@@ -73,8 +79,8 @@ export const useMailStore = create<MailState>((set, get) => ({
         const primary = resp.data.find(a => a.is_primary) || resp.data[0];
         set({ activeAccountId: primary.id });
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      toast.error(`Failed to load accounts: ${errMsg(err)}`);
     }
   },
 
@@ -85,8 +91,9 @@ export const useMailStore = create<MailState>((set, get) => ({
     try {
       const resp = await api.listFolders(activeAccountId);
       set({ folders: resp.data, loadingFolders: false });
-    } catch {
+    } catch (err) {
       set({ loadingFolders: false });
+      toast.error(`Failed to load folders: ${errMsg(err)}`);
     }
   },
 
@@ -107,8 +114,9 @@ export const useMailStore = create<MailState>((set, get) => ({
         cursor: resp.pagination?.cursor || null,
         loadingMessages: false,
       });
-    } catch {
+    } catch (err) {
       set({ loadingMessages: false });
+      toast.error(`Failed to load messages: ${errMsg(err)}`);
     }
   },
 
@@ -122,8 +130,8 @@ export const useMailStore = create<MailState>((set, get) => ({
         hasMore: resp.pagination?.has_more || false,
         cursor: resp.pagination?.cursor || null,
       });
-    } catch {
-      // ignore
+    } catch (err) {
+      toast.error(`Failed to load more messages: ${errMsg(err)}`);
     }
   },
 
@@ -136,8 +144,9 @@ export const useMailStore = create<MailState>((set, get) => ({
       if (!resp.data.is_read) {
         await get().markRead(msgId, true);
       }
-    } catch {
+    } catch (err) {
       set({ loadingMessage: false });
+      toast.error(`Failed to load message: ${errMsg(err)}`);
     }
   },
 
@@ -171,6 +180,32 @@ export const useMailStore = create<MailState>((set, get) => ({
     }));
   },
 
+  removeAccount: async (accountId) => {
+    try {
+      await api.deleteAccount(accountId);
+      const { accounts, activeAccountId } = get();
+      const remaining = accounts.filter(a => a.id !== accountId);
+      set({ accounts: remaining });
+      if (activeAccountId === accountId) {
+        const next = remaining[0] || null;
+        set({
+          activeAccountId: next?.id ?? null,
+          folders: [],
+          messages: [],
+          selectedMessageId: null,
+          selectedMessage: null,
+        });
+        if (next) {
+          await get().loadFolders();
+          await get().loadMessages();
+        }
+      }
+      toast.success('Account removed');
+    } catch (err) {
+      toast.error(`Failed to remove account: ${errMsg(err)}`);
+    }
+  },
+
   refresh: async () => {
     await get().loadFolders();
     await get().loadMessages();
@@ -189,8 +224,9 @@ export const useMailStore = create<MailState>((set, get) => ({
     try {
       const resp = await api.searchMessages(activeAccountId, query, activeFolder);
       set({ searchResults: resp.data, isSearching: false });
-    } catch {
+    } catch (err) {
       set({ isSearching: false });
+      toast.error(`Search failed: ${errMsg(err)}`);
     }
   },
 

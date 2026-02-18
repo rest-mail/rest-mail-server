@@ -3,6 +3,7 @@ import { toast, Toaster } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useMailStore } from '@/stores/mailStore';
+import { setOnUnauthorized } from '@/api/client';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -16,9 +17,17 @@ import { useSSE, type SSEEvent } from '@/hooks/useSSE';
 import { useNotifications } from '@/hooks/useNotifications';
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, logout } = useAuthStore();
   const { view, startCompose } = useUIStore();
   const { activeAccountId, refresh, loadFolders } = useMailStore();
+
+  // Wire up 401 handler to auto-logout
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      toast.error('Session expired. Please log in again.');
+      logout();
+    });
+  }, [logout]);
   const { requestPermission, showDesktopNotification } = useNotifications();
 
   // Request notification permission on first auth

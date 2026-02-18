@@ -17,9 +17,10 @@ function formatBytes(bytes: number): string {
 
 export function AccountDetailsView() {
   const { user } = useAuthStore();
-  const { accounts } = useMailStore();
+  const { accounts, removeAccount } = useMailStore();
   const { setView } = useUIStore();
   const [quota, setQuota] = useState<QuotaData | null>(null);
+  const [removingId, setRemovingId] = useState<number | null>(null);
 
   useEffect(() => {
     const primaryAccount = accounts.find(a => a.is_primary) ?? accounts[0];
@@ -31,6 +32,13 @@ export function AccountDetailsView() {
         // quota fetch failed; leave as null
       });
   }, [accounts]);
+
+  const handleRemove = async (accountId: number) => {
+    if (!confirm('Remove this linked account? Messages will not be deleted from the mail server.')) return;
+    setRemovingId(accountId);
+    await removeAccount(accountId);
+    setRemovingId(null);
+  };
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -65,6 +73,17 @@ export function AccountDetailsView() {
                       <span className="ml-2 text-xs text-primary">(primary)</span>
                     )}
                   </div>
+                  {!a.is_primary && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs text-destructive hover:text-destructive"
+                      onClick={() => handleRemove(a.id)}
+                      disabled={removingId === a.id}
+                    >
+                      {removingId === a.id ? 'Removing...' : 'Remove'}
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

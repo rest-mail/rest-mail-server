@@ -24,6 +24,12 @@ export class ApiError extends Error {
   }
 }
 
+let onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(handler: () => void) {
+  onUnauthorized = handler;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -34,6 +40,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   const res = await fetch(path, { ...options, headers });
   if (!res.ok) {
+    if (res.status === 401 && onUnauthorized) {
+      onUnauthorized();
+    }
     const body = await res.text();
     try {
       const parsed = JSON.parse(body);
@@ -202,4 +211,30 @@ export async function sendDraft(draftId: number): Promise<void> {
 // Threads
 export async function getThread(accountId: number, threadId: string): Promise<{ data: MessageSummary[] }> {
   return request(`${BASE}/accounts/${accountId}/threads/${encodeURIComponent(threadId)}`);
+}
+
+// Account management
+export async function deleteAccount(accountId: number): Promise<void> {
+  await request(`${BASE}/accounts/${accountId}`, { method: 'DELETE' });
+}
+
+// Folder management
+export async function createFolder(accountId: number, name: string): Promise<{ data: Folder }> {
+  return request(`${BASE}/accounts/${accountId}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function renameFolder(accountId: number, oldName: string, newName: string): Promise<void> {
+  await request(`${BASE}/accounts/${accountId}/folders/${encodeURIComponent(oldName)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: newName }),
+  });
+}
+
+export async function deleteFolder(accountId: number, folderName: string): Promise<void> {
+  await request(`${BASE}/accounts/${accountId}/folders/${encodeURIComponent(folderName)}`, {
+    method: 'DELETE',
+  });
 }

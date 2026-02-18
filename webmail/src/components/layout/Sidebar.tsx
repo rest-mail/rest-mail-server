@@ -1,19 +1,33 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
+import * as api from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { Menu, X } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import { Menu, X, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
 
 export function Sidebar() {
   const { user } = useAuthStore();
   const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, selectFolder } = useMailStore();
   const { sidebarCollapsed, toggleAccountCollapsed, setView } = useUIStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [renamingFolder, setRenamingFolder] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -28,6 +42,7 @@ export function Sidebar() {
   }, [activeAccountId, loadFolders]);
 
   const handleFolderClick = (folder: string) => {
+    if (renamingFolder) return;
     setView('mail');
     selectFolder(folder);
     setMobileOpen(false);
@@ -40,6 +55,52 @@ export function Sidebar() {
       setActiveAccount(accountId);
       loadFolders();
       selectFolder('INBOX');
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    if (!activeAccountId || !newFolderName.trim()) return;
+    try {
+      await api.createFolder(activeAccountId, newFolderName.trim());
+      setCreatingFolder(false);
+      setNewFolderName('');
+      await loadFolders();
+      toast.success(`Folder "${newFolderName.trim()}" created`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create folder');
+    }
+  };
+
+  const handleRenameFolder = async (oldName: string) => {
+    if (!activeAccountId || !renameValue.trim() || renameValue.trim() === oldName) {
+      setRenamingFolder(null);
+      return;
+    }
+    try {
+      await api.renameFolder(activeAccountId, oldName, renameValue.trim());
+      setRenamingFolder(null);
+      await loadFolders();
+      if (activeFolder === oldName) {
+        selectFolder(renameValue.trim());
+      }
+      toast.success(`Folder renamed to "${renameValue.trim()}"`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to rename folder');
+    }
+  };
+
+  const handleDeleteFolder = async (folderName: string) => {
+    if (!activeAccountId) return;
+    if (!confirm(`Delete folder "${folderName}"? Messages in this folder will be lost.`)) return;
+    try {
+      await api.deleteFolder(activeAccountId, folderName);
+      await loadFolders();
+      if (activeFolder === folderName) {
+        selectFolder('INBOX');
+      }
+      toast.success(`Folder "${folderName}" deleted`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete folder');
     }
   };
 
@@ -113,26 +174,94 @@ export function Sidebar() {
                       ))}
                     </div>
                   ) : (
-                    folders.map(f => (
-                      <button
-                        key={f.name}
-                        onClick={() => handleFolderClick(f.name)}
-                        className={cn(
-                          "w-full text-left px-3 py-1 text-sm flex items-center gap-2 rounded-md transition-colors",
-                          activeFolder === f.name
-                            ? "bg-sidebar-accent text-sidebar-primary font-medium"
-                            : "text-sidebar-foreground hover:bg-sidebar-accent"
-                        )}
-                      >
-                        <span className="text-xs">{folderIcon(f.name)}</span>
-                        <span className="flex-1 truncate">{f.name}</span>
-                        {f.unread > 0 && (
-                          <Badge variant="default" className="text-xs px-1.5 py-0 h-5">
-                            {f.unread}
-                          </Badge>
-                        )}
-                      </button>
-                    ))
+                    <>
+                      {folders.map(f => (
+                        <div key={f.name} className="group flex items-center">
+                          {renamingFolder === f.name ? (
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={e => setRenameValue(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleRenameFolder(f.name);
+                                if (e.key === 'Escape') setRenamingFolder(null);
+                              }}
+                              onBlur={() => handleRenameFolder(f.name)}
+                              className="flex-1 px-3 py-1 text-sm bg-transparent border border-input rounded-md outline-none"
+                            />
+                          ) : (
+                            <button
+                              onClick={() => handleFolderClick(f.name)}
+                              className={cn(
+                                "flex-1 text-left px-3 py-1 text-sm flex items-center gap-2 rounded-md transition-colors",
+                                activeFolder === f.name
+                                  ? "bg-sidebar-accent text-sidebar-primary font-medium"
+                                  : "text-sidebar-foreground hover:bg-sidebar-accent"
+                              )}
+                            >
+                              <span className="text-xs">{folderIcon(f.name)}</span>
+                              <span className="flex-1 truncate">{f.name}</span>
+                              {f.unread > 0 && (
+                                <Badge variant="default" className="text-xs px-1.5 py-0 h-5">
+                                  {f.unread}
+                                </Badge>
+                              )}
+                            </button>
+                          )}
+                          {!SYSTEM_FOLDERS.includes(f.name) && !renamingFolder && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button className="p-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground">
+                                  <MoreHorizontal className="w-3.5 h-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => {
+                                  setRenamingFolder(f.name);
+                                  setRenameValue(f.name);
+                                }}>
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() => handleDeleteFolder(f.name)}
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
+                      ))}
+
+                      {/* Create folder inline */}
+                      {creatingFolder ? (
+                        <div className="px-3 py-1">
+                          <input
+                            autoFocus
+                            value={newFolderName}
+                            onChange={e => setNewFolderName(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleCreateFolder();
+                              if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                            }}
+                            onBlur={() => {
+                              if (newFolderName.trim()) handleCreateFolder();
+                              else { setCreatingFolder(false); setNewFolderName(''); }
+                            }}
+                            placeholder="Folder name"
+                            className="w-full text-sm bg-transparent border border-input rounded-md px-2 py-0.5 outline-none"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setCreatingFolder(true)}
+                          className="w-full text-left px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          + New folder
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
