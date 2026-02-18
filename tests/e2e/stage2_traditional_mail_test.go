@@ -202,4 +202,78 @@ func testStage2TraditionalMail(t *testing.T) {
 		}
 		ic.command(t, "LOGOUT")
 	})
+
+	t.Run("Mail1_ImapFetchContent", func(t *testing.T) {
+		ic := dialIMAP(t, mail1IMAPAddr)
+		defer ic.close()
+
+		ic.login(t, "alice@mail1.test", adminPassword)
+
+		result, lines := ic.command(t, "SELECT INBOX")
+		if !strings.Contains(result, "OK") {
+			t.Fatalf("SELECT INBOX failed: %s", result)
+		}
+
+		// Extract EXISTS count to fetch the last message
+		exists := 0
+		for _, line := range lines {
+			if strings.Contains(line, "EXISTS") {
+				fmt.Sscanf(line, "* %d EXISTS", &exists)
+			}
+		}
+		if exists == 0 {
+			t.Skip("no messages in INBOX to fetch")
+		}
+
+		// FETCH the last message body
+		body := ic.fetchBody(t, exists)
+		if body == "" {
+			t.Fatal("FETCH BODY[] returned empty response")
+		}
+		// Verify it looks like an email (has headers)
+		if !strings.Contains(body, "From:") && !strings.Contains(body, "Subject:") {
+			t.Errorf("FETCH BODY[] does not contain expected email headers: %.200s", body)
+		}
+		t.Logf("IMAP FETCH BODY[] returned %d bytes", len(body))
+		ic.command(t, "LOGOUT")
+	})
+
+	t.Run("Mail1_Pop3Readback", func(t *testing.T) {
+		pc := dialPOP3(t, mail1POP3Addr)
+		defer pc.close()
+
+		pc.sendExpect(t, "USER alice@mail1.test", "+OK")
+		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
+
+		statResp := pc.stat(t)
+		t.Logf("POP3 STAT: %s", statResp)
+
+		// RETR first message
+		msg := pc.retr(t, 1)
+		if msg == "" {
+			t.Fatal("POP3 RETR 1 returned empty")
+		}
+		if !strings.Contains(msg, "From:") && !strings.Contains(msg, "Subject:") {
+			t.Errorf("POP3 RETR does not contain expected headers: %.200s", msg)
+		}
+		t.Logf("POP3 RETR 1 returned %d bytes", len(msg))
+		pc.sendExpect(t, "QUIT", "+OK")
+	})
+
+	t.Run("Mail1_SmtpSubmissionAuth", func(t *testing.T) {
+		subject := fmt.Sprintf("test-submission-%d", time.Now().UnixNano())
+
+		sendMailViaSubmission(t, mail1SubmitAddr,
+			"alice@mail1.test", "bob@mail2.test",
+			"alice@mail1.test", adminPassword,
+			subject, "Sent via authenticated SMTP submission!")
+
+		bobClient := newAPIClient()
+		if err := bobClient.login("bob@mail2.test", adminPassword); err != nil {
+			t.Fatalf("Cannot login as bob: %v", err)
+		}
+
+		msgID := waitForMessage(t, bobClient, bobID, "INBOX", subject, 30*time.Second)
+		t.Logf("Submission delivery verified: id=%d", msgID)
+	})
 }

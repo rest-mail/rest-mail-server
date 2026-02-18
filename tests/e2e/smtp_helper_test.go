@@ -3,6 +3,7 @@ package e2e
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"strings"
@@ -125,6 +126,55 @@ func sendMailViaSMTP(t *testing.T, smtpAddr, from, to, subject, body string) {
 	sc.sendExpect(t, "QUIT", "221")
 }
 
+// starttls upgrades the SMTP connection to TLS.
+func (sc *smtpConn) starttls(t *testing.T) {
+	t.Helper()
+	sc.sendExpect(t, "STARTTLS", "220")
+	tlsConn := tls.Client(sc.conn, &tls.Config{InsecureSkipVerify: true})
+	if err := tlsConn.Handshake(); err != nil {
+		t.Fatalf("SMTP TLS handshake failed: %v", err)
+	}
+	sc.conn = tlsConn
+	sc.reader = bufio.NewReader(tlsConn)
+}
+
+// authPlain sends AUTH PLAIN with base64-encoded credentials.
+func (sc *smtpConn) authPlain(t *testing.T, user, pass string) {
+	t.Helper()
+	cred := base64.StdEncoding.EncodeToString([]byte("\x00" + user + "\x00" + pass))
+	sc.sendExpect(t, "AUTH PLAIN "+cred, "235")
+}
+
+// sendMailViaSubmission sends an email via the submission port (587) with STARTTLS + AUTH PLAIN.
+func sendMailViaSubmission(t *testing.T, submitAddr, from, to, user, pass, subject, body string) {
+	t.Helper()
+	sc := dialSMTP(t, submitAddr)
+	defer sc.close()
+
+	caps := sc.ehlo(t, "test.local")
+	if !hasCapability(caps, "STARTTLS") {
+		t.Fatalf("submission port does not advertise STARTTLS")
+	}
+
+	sc.starttls(t)
+	caps = sc.ehlo(t, "test.local")
+	if !hasCapability(caps, "AUTH") {
+		t.Fatalf("submission port does not advertise AUTH after STARTTLS")
+	}
+
+	sc.authPlain(t, user, pass)
+	sc.sendExpect(t, "MAIL FROM:<"+from+">", "250")
+	sc.sendExpect(t, "RCPT TO:<"+to+">", "250")
+	sc.sendExpect(t, "DATA", "354")
+
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <submit-%d@test.local>\r\n\r\n%s",
+		from, to, subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano(), body)
+
+	sc.send(t, msg)
+	sc.sendExpect(t, ".", "250")
+	sc.sendExpect(t, "QUIT", "221")
+}
+
 // ── IMAP helper ──────────────────────────────────────────────────────
 
 type imapConn struct {
@@ -207,6 +257,34 @@ func (ic *imapConn) login(t *testing.T, user, pass string) {
 	}
 }
 
+// starttls upgrades the IMAP connection to TLS.
+func (ic *imapConn) starttls(t *testing.T) {
+	t.Helper()
+	result, _ := ic.command(t, "STARTTLS")
+	if !strings.Contains(result, "OK") {
+		t.Fatalf("IMAP STARTTLS failed: %s", result)
+	}
+	tlsConn := tls.Client(ic.conn, &tls.Config{InsecureSkipVerify: true})
+	if err := tlsConn.Handshake(); err != nil {
+		t.Fatalf("IMAP TLS handshake failed: %v", err)
+	}
+	ic.conn = tlsConn
+	ic.reader = bufio.NewReader(tlsConn)
+}
+
+// fetchBody sends FETCH n (BODY[]) and returns all response lines joined.
+func (ic *imapConn) fetchBody(t *testing.T, seqNum int) string {
+	t.Helper()
+	_, lines := ic.command(t, fmt.Sprintf("FETCH %d (BODY[])", seqNum))
+	// Join all untagged lines (everything except the final tag OK line)
+	var body strings.Builder
+	for _, line := range lines[:len(lines)-1] {
+		body.WriteString(line)
+		body.WriteString("\n")
+	}
+	return body.String()
+}
+
 // ── POP3 helper ──────────────────────────────────────────────────────
 
 type pop3Conn struct {
@@ -257,6 +335,59 @@ func (pc *pop3Conn) sendExpect(t *testing.T, cmd string, expectedPrefix string) 
 		t.Fatalf("POP3 %q: expected %s, got: %s", cmd, expectedPrefix, resp)
 	}
 	return resp
+}
+
+// stls upgrades the POP3 connection to TLS.
+func (pc *pop3Conn) stls(t *testing.T) {
+	t.Helper()
+	pc.sendExpect(t, "STLS", "+OK")
+	tlsConn := tls.Client(pc.conn, &tls.Config{InsecureSkipVerify: true})
+	if err := tlsConn.Handshake(); err != nil {
+		t.Fatalf("POP3 TLS handshake failed: %v", err)
+	}
+	pc.conn = tlsConn
+	pc.reader = bufio.NewReader(tlsConn)
+}
+
+// capa sends CAPA and returns the capability lines.
+func (pc *pop3Conn) capa(t *testing.T) []string {
+	t.Helper()
+	pc.sendExpect(t, "CAPA", "+OK")
+	var caps []string
+	for {
+		line := pc.readLine(t)
+		if line == "." {
+			break
+		}
+		caps = append(caps, line)
+	}
+	return caps
+}
+
+// retr retrieves a full message by number.
+func (pc *pop3Conn) retr(t *testing.T, msgNum int) string {
+	t.Helper()
+	pc.sendExpect(t, fmt.Sprintf("RETR %d", msgNum), "+OK")
+	var body strings.Builder
+	for {
+		line := pc.readLine(t)
+		if line == "." {
+			break
+		}
+		// Byte-unstuff (RFC 1939 §3)
+		if strings.HasPrefix(line, "..") {
+			line = line[1:]
+		}
+		body.WriteString(line)
+		body.WriteString("\n")
+	}
+	return body.String()
+}
+
+// stat sends STAT and returns the response.
+func (pc *pop3Conn) stat(t *testing.T) string {
+	t.Helper()
+	return pc.sendExpect(t, "STAT", "+OK")
 }
 
 // ── DNS helper ───────────────────────────────────────────────────────

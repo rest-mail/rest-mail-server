@@ -2351,6 +2351,25 @@ Test: Mail2_ImapReadback
   POST /api/test/imap-probe/mail2.test { user: bob@mail2.test, read_inbox: true }
   → same
 
+Test: Mail1_ImapFetchContent
+  IMAP LOGIN alice@mail1.test, SELECT INBOX, FETCH <n> (BODY[])
+  → verify the delivered message subject and body are readable through Dovecot IMAP
+  → compare content with what API returns for the same message
+
+Test: Mail2_Pop3Readback
+  POP3 USER bob@mail2.test, PASS, STAT, RETR 1
+  → verify a delivered message is readable through Dovecot POP3
+  → message body contains expected content
+
+Test: Mail1_SmtpSubmissionAuth
+  Connect to mail1 port 587 (submission)
+  EHLO → verify AUTH advertised
+  STARTTLS → upgrade to TLS
+  AUTH PLAIN (alice@mail1.test credentials)
+  MAIL FROM / RCPT TO / DATA → send message via authenticated submission
+  → verify delivery to bob@mail2.test via API readback
+  → proves Dovecot SASL auth works for SMTP submission
+
 Test: Mail1_Aliases
   POST /api/admin/aliases { source: info@mail1.test, destination: alice@mail1.test }
   POST /api/test/send { from: bob@mail2.test, to: info@mail1.test }
@@ -2394,6 +2413,31 @@ Test: Mail3_RejectsUnknownRecipient
 Test: Mail3_MessageIntegrity
   Send message with specific headers, body, attachments
   GET /api/messages/:id → verify all fields preserved through gateway translation
+
+Test: Mail3_SmtpSubmissionAuth
+  Connect to mail3 port 587 (gateway submission)
+  EHLO → verify AUTH advertised
+  AUTH PLAIN (testuser@mail3.test credentials) → 235 success
+  MAIL FROM / RCPT TO / DATA → send message via authenticated submission
+  → verify delivery via API readback
+  → proves Go SMTP gateway AUTH PLAIN works on submission port
+
+Test: Mail3_SmtpSubmissionRequiresAuth
+  Connect to mail3 port 587
+  EHLO, MAIL FROM (without AUTH) → 530 "Authentication required"
+  → proves submission port enforces authentication
+
+Test: Mail3_ImapFetchContent
+  IMAP LOGIN testuser@mail3.test on mail3 IMAP gateway
+  SELECT INBOX, FETCH <n> (BODY[])
+  → verify delivered message body is fully readable through IMAP gateway
+  → subject and body text match what was sent via SMTP
+
+Test: Mail3_Pop3RetrMessage
+  POP3 USER testuser@mail3.test, PASS on mail3 POP3 gateway
+  STAT → verify message count > 0
+  RETR 1 → retrieve full message
+  → verify message content is present and RFC 2822 formatted
 ```
 
 ### Stage 4: Gateway SMTP Outbound (mail3 → mail1)
@@ -2444,6 +2488,34 @@ Test: SmtpEdgeCases
   → VRFY returns appropriate response
   → Pipelining works correctly
   → Oversized message rejected appropriately
+
+Test: SmtpStarttls_Mail3
+  Connect to mail3 port 25
+  EHLO → verify STARTTLS advertised
+  STARTTLS → TLS handshake succeeds (with InsecureSkipVerify)
+  Re-EHLO over TLS → capabilities still present
+  MAIL FROM / RCPT TO / DATA → send message over TLS
+  → verify delivery via API readback
+
+Test: SmtpSizeEnforcement_Mail3
+  Connect to mail3 port 25
+  EHLO → verify SIZE 10240000 advertised
+  MAIL FROM, RCPT TO, DATA → send message exceeding 10MB
+  → gateway returns 552 "Message exceeds maximum size"
+
+Test: ImapStarttls_Mail3
+  Connect to mail3 IMAP port 143
+  → greeting includes STARTTLS in CAPABILITY
+  STARTTLS → TLS handshake succeeds
+  LOGIN over TLS → succeeds
+  SELECT INBOX → works normally over TLS
+
+Test: Pop3Stls_Mail3
+  Connect to mail3 POP3 port 110
+  CAPA → verify STLS advertised
+  STLS → TLS handshake succeeds
+  USER/PASS over TLS → succeeds
+  STAT → works normally over TLS
 
 Test: ImapBehaviour_MatchTraditional
   Compare IMAP session behaviour between mail1 and mail3:
@@ -2555,6 +2627,9 @@ Test: PostfixDovecotSeeApiData
 - [x] Write Stage 8 tests: TUI flows
 - [x] Write Stage 9 tests: database consistency
 - [x] Set up test runner that enforces stage ordering (stage 2 must pass before 3+)
+- [ ] Enhance Stage 2: SMTP AUTH submission (port 587 + STARTTLS + AUTH PLAIN), IMAP full message FETCH content readback, POP3 RETR message readback
+- [ ] Enhance Stage 3: gateway SMTP AUTH submission, submission-requires-auth check, IMAP FETCH BODY[] readback, POP3 RETR readback
+- [ ] Enhance Stage 5: SMTP STARTTLS send, SIZE enforcement (10MB limit), IMAP STARTTLS, POP3 STLS
 - [ ] Document the full setup and usage in a README
 
 ---

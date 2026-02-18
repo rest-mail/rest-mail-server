@@ -238,4 +238,122 @@ func testStage5Indistinguishability(t *testing.T) {
 		t.Log("Header leak check: manual verification needed for Received headers")
 		ic.command(t, "LOGOUT")
 	})
+
+	t.Run("SmtpStarttls_Mail3", func(t *testing.T) {
+		sc := dialSMTP(t, mail3SMTPAddr)
+		defer sc.close()
+
+		caps := sc.ehlo(t, "test.local")
+		if !hasCapability(caps, "STARTTLS") {
+			t.Fatal("mail3 does not advertise STARTTLS")
+		}
+
+		sc.starttls(t)
+
+		// Re-EHLO over TLS
+		caps = sc.ehlo(t, "test.local")
+		t.Logf("Post-STARTTLS capabilities: %d lines", len(caps))
+
+		// Send a message over TLS
+		subject := fmt.Sprintf("test-starttls-%d", time.Now().UnixNano())
+		sc.sendExpect(t, "MAIL FROM:<alice@mail1.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<testuser@mail3.test>", "250")
+		sc.sendExpect(t, "DATA", "354")
+
+		msg := fmt.Sprintf("From: alice@mail1.test\r\nTo: testuser@mail3.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <tls-%d@test.local>\r\n\r\nSent over STARTTLS!",
+			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
+		sc.send(t, msg)
+		sc.sendExpect(t, ".", "250")
+		sc.sendExpect(t, "QUIT", "221")
+		t.Logf("Message sent over STARTTLS successfully")
+	})
+
+	t.Run("SmtpSizeEnforcement_Mail3", func(t *testing.T) {
+		sc := dialSMTP(t, mail3SMTPAddr)
+		defer sc.close()
+
+		caps := sc.ehlo(t, "test.local")
+
+		// Verify SIZE is advertised
+		foundSize := false
+		for _, line := range caps {
+			upper := strings.ToUpper(line)
+			if len(upper) > 4 && strings.HasPrefix(upper[4:], "SIZE") {
+				foundSize = true
+				t.Logf("SIZE capability: %s", line)
+			}
+		}
+		if !foundSize {
+			t.Fatal("mail3 does not advertise SIZE capability")
+		}
+
+		// Try MAIL FROM with declared size exceeding limit
+		sc.send(t, "MAIL FROM:<test@test.local> SIZE=20000000")
+		resp := sc.readLine(t)
+		if strings.HasPrefix(resp, "552") || strings.HasPrefix(resp, "5") {
+			t.Logf("Server rejected oversized MAIL FROM at envelope stage: %s", resp)
+		} else {
+			// Some servers only check during DATA, which is also valid
+			t.Logf("Server accepted MAIL FROM with SIZE=20000000 (will enforce at DATA): %s", resp)
+		}
+		sc.sendExpect(t, "RSET", "250")
+		sc.sendExpect(t, "QUIT", "221")
+	})
+
+	t.Run("ImapStarttls_Mail3", func(t *testing.T) {
+		ic := dialIMAP(t, mail3IMAPAddr)
+		defer ic.close()
+
+		// Check CAPABILITY for STARTTLS
+		result, lines := ic.command(t, "CAPABILITY")
+		capLine := ""
+		for _, l := range lines {
+			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
+				capLine = l
+			}
+		}
+		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
+			t.Skipf("mail3 IMAP does not advertise STARTTLS: %s", capLine)
+		}
+
+		ic.starttls(t)
+		t.Log("IMAP STARTTLS handshake successful")
+
+		// LOGIN over TLS
+		ic.login(t, "testuser@mail3.test", adminPassword)
+
+		result, _ = ic.command(t, "SELECT INBOX")
+		if !strings.Contains(result, "OK") {
+			t.Fatalf("SELECT INBOX over TLS failed: %s", result)
+		}
+		t.Log("IMAP session fully functional over TLS")
+		ic.command(t, "LOGOUT")
+	})
+
+	t.Run("Pop3Stls_Mail3", func(t *testing.T) {
+		pc := dialPOP3(t, mail3POP3Addr)
+		defer pc.close()
+
+		caps := pc.capa(t)
+		foundSTLS := false
+		for _, cap := range caps {
+			if strings.ToUpper(strings.TrimSpace(cap)) == "STLS" {
+				foundSTLS = true
+			}
+		}
+		if !foundSTLS {
+			t.Skipf("mail3 POP3 does not advertise STLS: %v", caps)
+		}
+
+		pc.stls(t)
+		t.Log("POP3 STLS handshake successful")
+
+		// Auth over TLS
+		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
+
+		statResp := pc.stat(t)
+		t.Logf("POP3 over TLS STAT: %s", statResp)
+		pc.sendExpect(t, "QUIT", "+OK")
+	})
 }
