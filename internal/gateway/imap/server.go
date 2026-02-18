@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
 
 // Server listens for IMAP connections and spawns session handlers.
@@ -15,17 +16,19 @@ type Server struct {
 	hostname  string
 	api       *apiclient.Client
 	tlsConfig *tls.Config
+	limiter   *connlimiter.Limiter
 	listeners []net.Listener
 	wg        sync.WaitGroup
 	shutdown  chan struct{}
 }
 
 // NewServer creates a new IMAP server.
-func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config) *Server {
+func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config, limiter *connlimiter.Limiter) *Server {
 	return &Server{
 		hostname:  hostname,
 		api:       api,
 		tlsConfig: tlsConfig,
+		limiter:   limiter,
 		shutdown:  make(chan struct{}),
 	}
 }
@@ -94,8 +97,16 @@ func (s *Server) acceptLoop(listener net.Listener, implicitTLS bool) {
 			}
 		}
 
+		ip := extractIP(conn.RemoteAddr().String())
+		if !s.limiter.Accept(ip) {
+			slog.Warn("imap: connection rejected by limiter", "ip", ip)
+			conn.Close()
+			continue
+		}
+
 		go func() {
-			session := NewSession(conn, s.api, s.hostname, s.tlsConfig)
+			defer s.limiter.Release(ip)
+			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.limiter)
 			if implicitTLS {
 				session.tls_ = true
 			}
@@ -112,4 +123,13 @@ func (s *Server) Shutdown() {
 	}
 	s.wg.Wait()
 	slog.Info("imap: server stopped")
+}
+
+// extractIP extracts the IP address from a host:port string.
+func extractIP(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
 }

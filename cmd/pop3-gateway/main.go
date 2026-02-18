@@ -9,6 +9,7 @@ import (
 
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/gateway/pop3"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
 )
@@ -69,7 +70,8 @@ func main() {
 	api := apiclient.New(cfg.APIBaseURL)
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
 
-	pop3Server := pop3.NewServer(cfg.GatewayHostname, api, tlsConfig)
+	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
+	pop3Server := pop3.NewServer(cfg.GatewayHostname, api, tlsConfig, limiter)
 	if err := pop3Server.ListenAndServe(pop3.POP3Ports{
 		POP3:    cfg.POP3Port,
 		POP3TLS: cfg.POP3TLSPort,

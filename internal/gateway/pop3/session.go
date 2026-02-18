@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
 
 // Session represents a single POP3 conversation with a client.
@@ -21,6 +22,7 @@ type Session struct {
 	api       *apiclient.Client
 	hostname  string
 	tlsConfig *tls.Config
+	limiter   *connlimiter.Limiter
 
 	// Session state
 	tls_      bool
@@ -38,7 +40,7 @@ type authState struct {
 }
 
 // NewSession creates a new POP3 session.
-func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config) *Session {
+func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, limiter *connlimiter.Limiter) *Session {
 	return &Session{
 		conn:      conn,
 		reader:    bufio.NewReader(conn),
@@ -46,6 +48,7 @@ func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig
 		api:       api,
 		hostname:  hostname,
 		tlsConfig: tlsConfig,
+		limiter:   limiter,
 		auth:      &authState{},
 		deleted:   make(map[int]bool),
 	}
@@ -185,18 +188,28 @@ func (s *Session) handlePass(arg string) {
 		return
 	}
 
+	ip := extractIP(s.conn.RemoteAddr().String())
+
 	resp, err := s.api.Login(s.auth.username, arg)
 	if err != nil {
 		slog.Warn("pop3: auth failed",
 			"remote", s.conn.RemoteAddr(),
 			"user", s.auth.username,
 			"event", "pop3_auth_failed",
+			"ip", ip,
 		)
+		s.limiter.RecordAuthFail(ip)
+		if s.limiter.IsBanned(ip) {
+			s.err("Too many authentication failures")
+			s.conn.Close()
+			return
+		}
 		s.err("[AUTH] Authentication failed")
 		s.auth.username = "" // reset
 		return
 	}
 
+	s.limiter.ResetAuth(ip)
 	s.auth.authenticated = true
 	s.auth.email = s.auth.username
 	s.auth.token = resp.Data.AccessToken

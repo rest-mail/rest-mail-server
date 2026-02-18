@@ -12,6 +12,7 @@ import (
 
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"gorm.io/gorm"
 )
 
@@ -25,6 +26,7 @@ type Session struct {
 	remoteAddr string
 	tlsConfig  *tls.Config
 	db         *gorm.DB
+	limiter    *connlimiter.Limiter
 
 	// Session state
 	heloName   string
@@ -44,7 +46,7 @@ type authState struct {
 }
 
 // NewSession creates a new SMTP session.
-func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, db *gorm.DB, isSubmission bool) *Session {
+func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, db *gorm.DB, isSubmission bool, limiter *connlimiter.Limiter) *Session {
 	return &Session{
 		conn:         conn,
 		reader:       bufio.NewReader(conn),
@@ -54,6 +56,7 @@ func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig
 		remoteAddr:   conn.RemoteAddr().String(),
 		tlsConfig:    tlsConfig,
 		db:           db,
+		limiter:      limiter,
 		isSubmission: isSubmission,
 		auth:         &authState{},
 	}
@@ -288,18 +291,26 @@ func (s *Session) handleAuthLogin() {
 }
 
 func (s *Session) doAuth(username, password string) {
+	ip := extractIP(s.remoteAddr)
+
 	resp, err := s.api.Login(username, password)
 	if err != nil {
 		slog.Warn("smtp: auth failed",
 			"remote", s.remoteAddr,
 			"user", username,
 			"event", "smtp_auth_failed",
-			"ip", extractIP(s.remoteAddr),
+			"ip", ip,
 		)
+		s.limiter.RecordAuthFail(ip)
+		if s.limiter.IsBanned(ip) {
+			s.reply(421, "Too many authentication failures")
+			return
+		}
 		s.reply(535, "Authentication failed")
 		return
 	}
 
+	s.limiter.ResetAuth(ip)
 	s.auth.authenticated = true
 	s.auth.email = username
 	s.auth.token = resp.Data.AccessToken

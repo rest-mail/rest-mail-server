@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"gorm.io/gorm"
 )
 
@@ -17,18 +18,20 @@ type Server struct {
 	api        *apiclient.Client
 	tlsConfig  *tls.Config
 	db         *gorm.DB
+	limiter    *connlimiter.Limiter
 	listeners  []net.Listener
 	wg         sync.WaitGroup
 	shutdown   chan struct{}
 }
 
 // NewServer creates a new SMTP server.
-func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config, db *gorm.DB) *Server {
+func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config, db *gorm.DB, limiter *connlimiter.Limiter) *Server {
 	return &Server{
 		hostname:  hostname,
 		api:       api,
 		tlsConfig: tlsConfig,
 		db:        db,
+		limiter:   limiter,
 		shutdown:  make(chan struct{}),
 	}
 }
@@ -106,8 +109,16 @@ func (s *Server) acceptLoop(listener net.Listener, isSubmission, implicitTLS boo
 			}
 		}
 
+		ip := extractIP(conn.RemoteAddr().String())
+		if !s.limiter.Accept(ip) {
+			slog.Warn("smtp: connection rejected by limiter", "ip", ip)
+			conn.Close()
+			continue
+		}
+
 		go func() {
-			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.db, isSubmission)
+			defer s.limiter.Release(ip)
+			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.db, isSubmission, s.limiter)
 			if implicitTLS {
 				session.tls_ = true
 			}

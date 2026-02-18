@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
 
 // Session represents a single IMAP conversation with a client.
@@ -22,6 +23,7 @@ type Session struct {
 	api       *apiclient.Client
 	hostname  string
 	tlsConfig *tls.Config
+	limiter   *connlimiter.Limiter
 
 	// Session state
 	tls_       bool
@@ -45,7 +47,7 @@ type selectedMailbox struct {
 }
 
 // NewSession creates a new IMAP session.
-func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config) *Session {
+func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, limiter *connlimiter.Limiter) *Session {
 	return &Session{
 		conn:      conn,
 		reader:    bufio.NewReader(conn),
@@ -53,6 +55,7 @@ func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig
 		api:       api,
 		hostname:  hostname,
 		tlsConfig: tlsConfig,
+		limiter:   limiter,
 		auth:      &authState{},
 		deleted:   make(map[uint]bool),
 	}
@@ -220,17 +223,27 @@ func (s *Session) handleLogin(tag, args string) {
 	username := unquote(parts[0])
 	password := unquote(parts[1])
 
+	ip := extractIP(s.conn.RemoteAddr().String())
+
 	resp, err := s.api.Login(username, password)
 	if err != nil {
 		slog.Warn("imap: auth failed",
 			"remote", s.conn.RemoteAddr(),
 			"user", username,
 			"event", "imap_auth_failed",
+			"ip", ip,
 		)
+		s.limiter.RecordAuthFail(ip)
+		if s.limiter.IsBanned(ip) {
+			s.tagged(tag, "NO", "Too many authentication failures")
+			s.conn.Close()
+			return
+		}
 		s.tagged(tag, "NO", "[AUTHENTICATIONFAILED] Invalid credentials")
 		return
 	}
 
+	s.limiter.ResetAuth(ip)
 	s.auth.authenticated = true
 	s.auth.email = username
 	s.auth.token = resp.Data.AccessToken
@@ -263,12 +276,27 @@ func (s *Session) handleAuthenticate(tag, args string) {
 		return
 	}
 
+	ip := extractIP(s.conn.RemoteAddr().String())
+
 	resp, err := s.api.Login(parts[1], parts[2])
 	if err != nil {
+		slog.Warn("imap: auth failed",
+			"remote", s.conn.RemoteAddr(),
+			"user", parts[1],
+			"event", "imap_auth_failed",
+			"ip", ip,
+		)
+		s.limiter.RecordAuthFail(ip)
+		if s.limiter.IsBanned(ip) {
+			s.tagged(tag, "NO", "Too many authentication failures")
+			s.conn.Close()
+			return
+		}
 		s.tagged(tag, "NO", "[AUTHENTICATIONFAILED] Invalid credentials")
 		return
 	}
 
+	s.limiter.ResetAuth(ip)
 	s.auth.authenticated = true
 	s.auth.email = parts[1]
 	s.auth.token = resp.Data.AccessToken

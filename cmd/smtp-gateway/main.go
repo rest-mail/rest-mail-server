@@ -11,6 +11,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/gateway/queue"
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
@@ -80,7 +81,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, database)
+	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
+	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, database, limiter)
 	if err := smtpServer.ListenAndServe(smtpgw.SMTPPorts{
 		Inbound:       cfg.SMTPPortInbound,
 		Submission:    cfg.SMTPPortSubmission,
