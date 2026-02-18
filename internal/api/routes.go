@@ -73,6 +73,14 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	r.Get("/api/health", healthH.Health)
 
 	// ═══════════════════════════════════════════════════════════════
+	// Email client auto-configuration (no auth)
+	// ═══════════════════════════════════════════════════════════════
+	autoconfigH := handlers.NewAutoconfigHandler(db)
+	r.Get("/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
+	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
+	r.Post("/autodiscover/autodiscover.xml", autoconfigH.MicrosoftAutodiscover)
+
+	// ═══════════════════════════════════════════════════════════════
 	// Auth (no auth)
 	// ═══════════════════════════════════════════════════════════════
 	r.Post("/api/v1/auth/login", authH.Login)

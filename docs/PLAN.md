@@ -1524,7 +1524,7 @@ TLS certificate private keys and DKIM signing private keys are stored in Postgre
 - [x] Implement SNI-based `tls.Config.GetCertificate` in the gateway (with fsnotify hot-reload)
 - [x] Implement certificate storage in database (certificates table)
 - [x] Implement certificate management API endpoints
-- [ ] Implement cert caching with invalidation (Postgres LISTEN/NOTIFY or polling)
+- [x] Implement cert caching with invalidation (Postgres LISTEN/NOTIFY or polling)
 - [x] Implement DKIM key storage and management (dkim_keys table)
 - [x] Add DKIM key management API endpoints
 - [ ] Implement ACME client for Let's Encrypt (production mode)
@@ -5148,9 +5148,9 @@ autodiscover.mail3.test.  A    <gateway-ip>
 These are added automatically by the DNS provider adapter when a domain is created, alongside the existing MX, SPF, DKIM, and PTR records.
 
 ### TODO
-- [ ] Implement Mozilla Autoconfig XML generation (`GET /mail/config-v1.1.xml`)
-- [ ] Implement Microsoft Autodiscover XML generation (`POST /autodiscover/autodiscover.xml`)
-- [ ] Implement Apple well-known fallback (`GET /.well-known/autoconfig/mail/config-v1.1.xml`)
+- [x] Implement Mozilla Autoconfig XML generation (`GET /mail/config-v1.1.xml`)
+- [x] Implement Microsoft Autodiscover XML generation (`POST /autodiscover/autodiscover.xml`)
+- [x] Implement Apple well-known fallback (`GET /.well-known/autoconfig/mail/config-v1.1.xml`)
 - [ ] Add `autoconfig.{domain}` and `autodiscover.{domain}` DNS records to DNS provider adapters
 - [ ] Add autoconfig DNS records to dnsmasq dev config
 - [ ] Test with Thunderbird, Outlook, and Apple Mail

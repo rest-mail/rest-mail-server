@@ -17,7 +17,8 @@ type composeSentMsg struct {
 
 // ComposeModel handles composing and sending mail from the TUI.
 type ComposeModel struct {
-	api *apiclient.Client
+	api   *apiclient.Client
+	token string
 
 	fromInput    textinput.Model
 	toInput      textinput.Model
@@ -30,7 +31,7 @@ type ComposeModel struct {
 	err      error
 }
 
-func NewComposeModel(api *apiclient.Client) ComposeModel {
+func NewComposeModel(api *apiclient.Client, token string) ComposeModel {
 	from := textinput.New()
 	from.Placeholder = "sender@domain.test"
 	from.CharLimit = 255
@@ -55,6 +56,7 @@ func NewComposeModel(api *apiclient.Client) ComposeModel {
 
 	return ComposeModel{
 		api:          api,
+		token:        token,
 		fromInput:    from,
 		toInput:      to,
 		subjectInput: subj,
@@ -171,13 +173,13 @@ func (m ComposeModel) attemptSend() (ComposeModel, tea.Cmd) {
 	m.sending = true
 	m.err = nil
 	return m, func() tea.Msg {
-		req := &apiclient.DeliverRequest{
-			Address:  to,
-			Sender:   from,
+		req := &apiclient.SendRequest{
+			From:     from,
+			To:       []string{to},
 			Subject:  subj,
 			BodyText: body,
 		}
-		_, err := m.api.DeliverMessage(req)
+		err := m.api.SendMessage(m.token, req)
 		return composeSentMsg{err: err}
 	}
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -568,23 +569,23 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	for _, rcpt := range allRecipients {
 		var recipientMailbox models.Mailbox
 		if err := h.db.Where("address = ? AND active = ?", rcpt, true).First(&recipientMailbox).Error; err == nil {
-			// Local delivery
-			inboxMsg := models.Message{
-				MailboxID:    recipientMailbox.ID,
-				Folder:       "INBOX",
-				MsgID:        messageID,
+			// Local delivery with full inbound pipeline
+			_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
+				Mailbox:      recipientMailbox,
 				Sender:       req.From,
 				SenderName:   senderMailbox.DisplayName,
-				RecipientsTo: models.JSONB(toJSON),
-				RecipientsCc: models.JSONB(ccJSON),
+				RecipientsTo: toJSON,
+				RecipientsCc: ccJSON,
 				Subject:      req.Subject,
 				BodyText:     req.BodyText,
 				BodyHTML:     req.BodyHTML,
-				IsRead:       false,
-				SizeBytes:    sizeBytes,
-				ReceivedAt:   now,
+				MessageID:    messageID,
+				InReplyTo:    req.InReplyTo,
+				RawMessage:   rawMessage,
+			})
+			if deliverErr != nil {
+				slog.Warn("local delivery failed for recipient", "recipient", rcpt, "error", deliverErr)
 			}
-			h.db.Create(&inboxMsg)
 		} else {
 			// Remote delivery - queue it with raw message and message reference
 			recipientDomain := rcpt
@@ -670,257 +671,42 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// ── Pipeline execution ───────────────────────────────────────────
-	// Convert delivery request to pipeline.EmailJSON for filter processing.
-	var toAddrs []pipeline.Address
-	if req.RecipientsTo != nil {
-		var toStrings []string
-		if json.Unmarshal(req.RecipientsTo, &toStrings) == nil {
-			for _, addr := range toStrings {
-				toAddrs = append(toAddrs, pipeline.Address{Address: addr})
-			}
-		}
-	}
-	var ccAddrs []pipeline.Address
-	if req.RecipientsCc != nil {
-		var ccStrings []string
-		if json.Unmarshal(req.RecipientsCc, &ccStrings) == nil {
-			for _, addr := range ccStrings {
-				ccAddrs = append(ccAddrs, pipeline.Address{Address: addr})
-			}
-		}
-	}
-
-	emailJSON := &pipeline.EmailJSON{
-		Envelope: pipeline.Envelope{
-			MailFrom:  req.Sender,
-			RcptTo:    []string{mailbox.Address},
-			ClientIP:  req.ClientIP,
-			Helo:      req.HeloName,
-			Direction: "inbound",
-		},
-		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Name: req.SenderName, Address: req.Sender}},
-			To:        toAddrs,
-			Cc:        ccAddrs,
-			Subject:   req.Subject,
-			MessageID: req.MessageID,
-			InReplyTo: req.InReplyTo,
-		},
-		Body: pipeline.Body{
-			ContentType: "text/plain",
-			Content:     req.BodyText,
-		},
-	}
-	// If there is both text and HTML, use multipart/alternative parts.
-	if req.BodyText != "" && req.BodyHTML != "" {
-		emailJSON.Body = pipeline.Body{
-			ContentType: "multipart/alternative",
-			Parts: []pipeline.Body{
-				{ContentType: "text/plain; charset=utf-8", Content: req.BodyText},
-				{ContentType: "text/html; charset=utf-8", Content: req.BodyHTML},
-			},
-		}
-	} else if req.BodyHTML != "" {
-		emailJSON.Body = pipeline.Body{
-			ContentType: "text/html",
-			Content:     req.BodyHTML,
-		}
-	}
-
-	// Look up the domain's inbound pipeline config from DB.
-	var pipelineCfg *pipeline.PipelineConfig
-	var dbPipeline models.Pipeline
-	if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", mailbox.DomainID, "inbound", true).
-		First(&dbPipeline).Error; err == nil {
-		// Found a DB-backed pipeline — parse its filter list.
-		var filterConfigs []pipeline.FilterConfig
-		if jsonErr := json.Unmarshal(dbPipeline.Filters, &filterConfigs); jsonErr == nil {
-			pipelineCfg = &pipeline.PipelineConfig{
-				ID:        dbPipeline.ID,
-				DomainID:  dbPipeline.DomainID,
-				Direction: dbPipeline.Direction,
-				Filters:   filterConfigs,
-				Active:    dbPipeline.Active,
-			}
-		}
-	}
-	// Fall back to the default inbound pipeline if none was found in the DB.
-	if pipelineCfg == nil {
-		pipelineCfg = pipeline.DefaultInboundPipeline(mailbox.DomainID)
-	}
-
-	// Run the pipeline.
-	if h.engine != nil {
-		pipelineCtx := pipeline.WithDB(r.Context(), h.db)
-		pipelineResult, pipeErr := h.engine.Execute(pipelineCtx, pipelineCfg, emailJSON)
-		if pipeErr != nil {
-			respond.Error(w, http.StatusInternalServerError, "pipeline_error", "Pipeline execution failed")
-			return
-		}
-
-		h.logPipelineExecution(pipelineCfg.ID, nil, "inbound", pipelineResult)
-
-		switch pipelineResult.FinalAction {
-		case pipeline.ActionReject:
-			rejectMsg := pipelineResult.RejectMsg
-			if rejectMsg == "" {
-				rejectMsg = "Message rejected by policy"
-			}
-			respond.Error(w, 550, "rejected", rejectMsg)
-			return
-
-		case pipeline.ActionQuarantine:
-			// Insert into quarantine table instead of delivering.
-			preview := req.BodyText
-			if len(preview) > 200 {
-				preview = preview[:200]
-			}
-			qItem := models.Quarantine{
-				MailboxID:        mailbox.ID,
-				Sender:           req.Sender,
-				Subject:          req.Subject,
-				BodyPreview:      preview,
-				RawMessage:       req.RawMessage,
-				QuarantineReason: "pipeline",
-				ReceivedAt:       time.Now(),
-				ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
-			}
-			h.db.Create(&qItem)
-			respond.Data(w, http.StatusOK, map[string]string{"status": "quarantined"})
-			return
-
-		case pipeline.ActionDiscard:
-			respond.Data(w, http.StatusOK, map[string]string{"status": "discarded"})
-			return
-
-		case pipeline.ActionDefer:
-			respond.Error(w, 451, "deferred", "Try again later")
-			return
-
-		case pipeline.ActionContinue:
-			// Update emailJSON from pipeline result in case transforms modified it.
-			emailJSON = pipelineResult.FinalEmail
-		}
-	}
-
-	// ── Insert message (continue action) ────────────────────────────
-
-	sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
-
-	// Compute thread ID — use first message-id from References chain (thread root),
-	// fall back to In-Reply-To, fall back to this message's own ID.
-	threadID := req.MessageID
-	if req.References != "" {
-		refs := strings.Fields(req.References)
-		if len(refs) > 0 {
-			threadID = strings.Trim(refs[0], "<>")
-		}
-	} else if req.InReplyTo != "" {
-		threadID = req.InReplyTo
-	}
-
-	// Quota check before delivery
-	if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes+int64(sizeBytes) > mailbox.QuotaBytes {
-		respond.Error(w, http.StatusUnprocessableEntity, "mailbox_full", "Recipient mailbox is over quota")
-		return
-	}
-
-	msg := models.Message{
-		MailboxID:    mailbox.ID,
-		Folder:       "INBOX",
-		MsgID:        req.MessageID,
-		InReplyTo:    req.InReplyTo,
-		References:   req.References,
-		ThreadID:     threadID,
+	// Delegate to shared local delivery helper (pipeline + quota + attachments + SSE)
+	msg, err := h.deliverToLocal(r.Context(), localDeliveryParams{
+		Mailbox:      mailbox,
 		Sender:       req.Sender,
 		SenderName:   req.SenderName,
-		RecipientsTo: models.JSONB(req.RecipientsTo),
-		RecipientsCc: models.JSONB(req.RecipientsCc),
+		RecipientsTo: req.RecipientsTo,
+		RecipientsCc: req.RecipientsCc,
 		Subject:      req.Subject,
 		BodyText:     req.BodyText,
 		BodyHTML:     req.BodyHTML,
+		MessageID:    req.MessageID,
+		InReplyTo:    req.InReplyTo,
+		References:   req.References,
 		RawMessage:   req.RawMessage,
-		SizeBytes:    sizeBytes,
-	}
-
-	if err := h.db.Create(&msg).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to deliver message")
+		ClientIP:     req.ClientIP,
+		HeloName:     req.HeloName,
+	})
+	if err != nil {
+		errStr := err.Error()
+		switch {
+		case strings.HasPrefix(errStr, "rejected:"):
+			respond.Error(w, 550, "rejected", strings.TrimPrefix(errStr, "rejected: "))
+		case strings.HasPrefix(errStr, "deferred:"):
+			respond.Error(w, 451, "deferred", "Try again later")
+		case strings.HasPrefix(errStr, "mailbox_full:"):
+			respond.Error(w, http.StatusUnprocessableEntity, "mailbox_full", "Recipient mailbox is over quota")
+		default:
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to deliver message")
+		}
 		return
 	}
 
-	// Update quota
-	h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
-		"subject_bytes": gorm.Expr("subject_bytes + ?", len(req.Subject)),
-		"body_bytes":    gorm.Expr("body_bytes + ?", len(req.BodyText)+len(req.BodyHTML)),
-		"message_count": gorm.Expr("message_count + 1"),
-	})
-	h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes))
-
-	// Persist attachments from pipeline extraction to DB
-	if emailJSON != nil {
-		var hasAttachments bool
-		allAttachments := append(emailJSON.Attachments, emailJSON.Inline...)
-		for _, att := range allAttachments {
-			if att.Ref == "" {
-				continue // Not yet extracted to storage
-			}
-			dbAtt := models.Attachment{
-				MessageID:   msg.ID,
-				Filename:    att.Filename,
-				ContentType: att.ContentType,
-				SizeBytes:   att.Size,
-				StorageType: att.Storage,
-				StorageRef:  att.Ref,
-				Checksum:    att.Checksum,
-			}
-			if err := h.db.Create(&dbAtt).Error; err != nil {
-				slog.Error("deliver: failed to persist attachment", "message_id", msg.ID, "filename", att.Filename, "error", err)
-				continue
-			}
-			hasAttachments = true
-		}
-		if hasAttachments {
-			h.db.Model(&msg).Update("has_attachments", true)
-
-			var totalAttBytes int64
-			for _, att := range allAttachments {
-				if att.Ref != "" {
-					totalAttBytes += att.Size
-				}
-			}
-			if totalAttBytes > 0 {
-				h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
-					Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", totalAttBytes))
-				h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).
-					Update("attachment_bytes", gorm.Expr("attachment_bytes + ?", totalAttBytes))
-			}
-		}
-	}
-
-	// Publish SSE event for real-time notification
-	if h.broker != nil {
-		h.broker.Publish(mailbox.ID, SSEEvent{
-			Type: "new_message",
-			Data: map[string]interface{}{
-				"message_id": msg.ID,
-				"folder":     msg.Folder,
-				"sender":     msg.Sender,
-				"subject":    msg.Subject,
-			},
-		})
-
-		// Also publish folder_update with unread count
-		var unreadCount int64
-		h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ?",
-			mailbox.ID, "INBOX", false, false).Count(&unreadCount)
-		h.broker.Publish(mailbox.ID, SSEEvent{
-			Type: "folder_update",
-			Data: map[string]interface{}{
-				"folder":       "INBOX",
-				"unread_count": unreadCount,
-			},
-		})
+	if msg == nil {
+		// Quarantined or discarded
+		respond.Data(w, http.StatusOK, map[string]string{"status": "processed"})
+		return
 	}
 
 	respond.Data(w, http.StatusCreated, msg)
@@ -1572,6 +1358,259 @@ func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.R
 		}
 	}
 	return false
+}
+
+// localDeliveryParams holds the information needed for local message delivery with
+// full inbound pipeline processing, quota checks, attachment extraction, and SSE events.
+type localDeliveryParams struct {
+	Mailbox      models.Mailbox
+	Sender       string
+	SenderName   string
+	RecipientsTo json.RawMessage
+	RecipientsCc json.RawMessage
+	Subject      string
+	BodyText     string
+	BodyHTML     string
+	MessageID    string
+	InReplyTo    string
+	References   string
+	RawMessage   string
+	ClientIP     string
+	HeloName     string
+}
+
+// deliverToLocal runs the inbound pipeline and delivers a message to a local mailbox.
+// This is the shared logic used by both DeliverMessage (gateway inbound) and
+// SendMessage (local recipient delivery).
+func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (*models.Message, error) {
+	mailbox := params.Mailbox
+
+	// ── Build pipeline EmailJSON ─────────────────────────────────────
+	var toAddrs []pipeline.Address
+	if params.RecipientsTo != nil {
+		var toStrings []string
+		if json.Unmarshal(params.RecipientsTo, &toStrings) == nil {
+			for _, addr := range toStrings {
+				toAddrs = append(toAddrs, pipeline.Address{Address: addr})
+			}
+		}
+	}
+	var ccAddrs []pipeline.Address
+	if params.RecipientsCc != nil {
+		var ccStrings []string
+		if json.Unmarshal(params.RecipientsCc, &ccStrings) == nil {
+			for _, addr := range ccStrings {
+				ccAddrs = append(ccAddrs, pipeline.Address{Address: addr})
+			}
+		}
+	}
+
+	emailJSON := &pipeline.EmailJSON{
+		Envelope: pipeline.Envelope{
+			MailFrom:  params.Sender,
+			RcptTo:    []string{mailbox.Address},
+			ClientIP:  params.ClientIP,
+			Helo:      params.HeloName,
+			Direction: "inbound",
+		},
+		Headers: pipeline.Headers{
+			From:      []pipeline.Address{{Name: params.SenderName, Address: params.Sender}},
+			To:        toAddrs,
+			Cc:        ccAddrs,
+			Subject:   params.Subject,
+			MessageID: params.MessageID,
+			InReplyTo: params.InReplyTo,
+		},
+		Body: pipeline.Body{
+			ContentType: "text/plain",
+			Content:     params.BodyText,
+		},
+	}
+	if params.BodyText != "" && params.BodyHTML != "" {
+		emailJSON.Body = pipeline.Body{
+			ContentType: "multipart/alternative",
+			Parts: []pipeline.Body{
+				{ContentType: "text/plain; charset=utf-8", Content: params.BodyText},
+				{ContentType: "text/html; charset=utf-8", Content: params.BodyHTML},
+			},
+		}
+	} else if params.BodyHTML != "" {
+		emailJSON.Body = pipeline.Body{
+			ContentType: "text/html",
+			Content:     params.BodyHTML,
+		}
+	}
+
+	// ── Run inbound pipeline ─────────────────────────────────────────
+	if h.engine != nil {
+		var pipelineCfg *pipeline.PipelineConfig
+		var dbPipeline models.Pipeline
+		if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", mailbox.DomainID, "inbound", true).
+			First(&dbPipeline).Error; err == nil {
+			var filterConfigs []pipeline.FilterConfig
+			if jsonErr := json.Unmarshal(dbPipeline.Filters, &filterConfigs); jsonErr == nil {
+				pipelineCfg = &pipeline.PipelineConfig{
+					ID:        dbPipeline.ID,
+					DomainID:  dbPipeline.DomainID,
+					Direction: dbPipeline.Direction,
+					Filters:   filterConfigs,
+					Active:    dbPipeline.Active,
+				}
+			}
+		}
+		if pipelineCfg == nil {
+			pipelineCfg = pipeline.DefaultInboundPipeline(mailbox.DomainID)
+		}
+
+		pipelineCtx := pipeline.WithDB(ctx, h.db)
+		pipelineResult, pipeErr := h.engine.Execute(pipelineCtx, pipelineCfg, emailJSON)
+		if pipeErr != nil {
+			return nil, fmt.Errorf("pipeline execution failed: %w", pipeErr)
+		}
+
+		h.logPipelineExecution(pipelineCfg.ID, nil, "inbound", pipelineResult)
+
+		switch pipelineResult.FinalAction {
+		case pipeline.ActionReject:
+			return nil, fmt.Errorf("rejected: %s", pipelineResult.RejectMsg)
+		case pipeline.ActionQuarantine:
+			preview := params.BodyText
+			if len(preview) > 200 {
+				preview = preview[:200]
+			}
+			h.db.Create(&models.Quarantine{
+				MailboxID:        mailbox.ID,
+				Sender:           params.Sender,
+				Subject:          params.Subject,
+				BodyPreview:      preview,
+				RawMessage:       params.RawMessage,
+				QuarantineReason: "pipeline",
+				ReceivedAt:       time.Now(),
+				ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
+			})
+			return nil, nil // quarantined, not an error but no message created
+		case pipeline.ActionDiscard:
+			return nil, nil // discarded, not an error but no message created
+		case pipeline.ActionDefer:
+			return nil, fmt.Errorf("deferred: try again later")
+		case pipeline.ActionContinue:
+			emailJSON = pipelineResult.FinalEmail
+		}
+	}
+
+	// ── Quota check ──────────────────────────────────────────────────
+	sizeBytes := len(params.Subject) + len(params.BodyText) + len(params.BodyHTML)
+	if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes+int64(sizeBytes) > mailbox.QuotaBytes {
+		return nil, fmt.Errorf("mailbox_full: recipient mailbox is over quota")
+	}
+
+	// ── Compute thread ID ────────────────────────────────────────────
+	threadID := params.MessageID
+	if params.References != "" {
+		refs := strings.Fields(params.References)
+		if len(refs) > 0 {
+			threadID = strings.Trim(refs[0], "<>")
+		}
+	} else if params.InReplyTo != "" {
+		threadID = params.InReplyTo
+	}
+
+	// ── Create message ───────────────────────────────────────────────
+	msg := models.Message{
+		MailboxID:    mailbox.ID,
+		Folder:       "INBOX",
+		MsgID:        params.MessageID,
+		InReplyTo:    params.InReplyTo,
+		References:   params.References,
+		ThreadID:     threadID,
+		Sender:       params.Sender,
+		SenderName:   params.SenderName,
+		RecipientsTo: models.JSONB(params.RecipientsTo),
+		RecipientsCc: models.JSONB(params.RecipientsCc),
+		Subject:      params.Subject,
+		BodyText:     params.BodyText,
+		BodyHTML:     params.BodyHTML,
+		RawMessage:   params.RawMessage,
+		SizeBytes:    sizeBytes,
+	}
+
+	if err := h.db.Create(&msg).Error; err != nil {
+		return nil, fmt.Errorf("failed to create message: %w", err)
+	}
+
+	// ── Update quota ─────────────────────────────────────────────────
+	h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
+		"subject_bytes": gorm.Expr("subject_bytes + ?", len(params.Subject)),
+		"body_bytes":    gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
+		"message_count": gorm.Expr("message_count + 1"),
+	})
+	h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes))
+
+	// ── Persist attachments ──────────────────────────────────────────
+	if emailJSON != nil {
+		var hasAttachments bool
+		allAttachments := append(emailJSON.Attachments, emailJSON.Inline...)
+		for _, att := range allAttachments {
+			if att.Ref == "" {
+				continue
+			}
+			dbAtt := models.Attachment{
+				MessageID:   msg.ID,
+				Filename:    att.Filename,
+				ContentType: att.ContentType,
+				SizeBytes:   att.Size,
+				StorageType: att.Storage,
+				StorageRef:  att.Ref,
+				Checksum:    att.Checksum,
+			}
+			if err := h.db.Create(&dbAtt).Error; err != nil {
+				slog.Error("deliver: failed to persist attachment", "message_id", msg.ID, "filename", att.Filename, "error", err)
+				continue
+			}
+			hasAttachments = true
+		}
+		if hasAttachments {
+			h.db.Model(&msg).Update("has_attachments", true)
+
+			var totalAttBytes int64
+			for _, att := range allAttachments {
+				if att.Ref != "" {
+					totalAttBytes += att.Size
+				}
+			}
+			if totalAttBytes > 0 {
+				h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
+					Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", totalAttBytes))
+				h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).
+					Update("attachment_bytes", gorm.Expr("attachment_bytes + ?", totalAttBytes))
+			}
+		}
+	}
+
+	// ── SSE notifications ────────────────────────────────────────────
+	if h.broker != nil {
+		h.broker.Publish(mailbox.ID, SSEEvent{
+			Type: "new_message",
+			Data: map[string]interface{}{
+				"message_id": msg.ID,
+				"folder":     msg.Folder,
+				"sender":     msg.Sender,
+				"subject":    msg.Subject,
+			},
+		})
+		var unreadCount int64
+		h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_read = ? AND is_deleted = ?",
+			mailbox.ID, "INBOX", false, false).Count(&unreadCount)
+		h.broker.Publish(mailbox.ID, SSEEvent{
+			Type: "folder_update",
+			Data: map[string]interface{}{
+				"folder":       "INBOX",
+				"unread_count": unreadCount,
+			},
+		})
+	}
+
+	return &msg, nil
 }
 
 func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {

@@ -6,8 +6,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/restmail/restmail/internal/config"
+	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/gateway/imap"
@@ -65,6 +67,29 @@ func main() {
 		}
 	} else {
 		slog.Warn("no TLS certificate configured — running without TLS")
+	}
+
+	// Open database for DB-backed SNI certificate loading
+	database, err := db.WaitForDB(cfg, 30*time.Second)
+	if err != nil {
+		slog.Warn("database not available for DB-backed SNI", "error", err)
+	}
+
+	// Wire DB-backed certificate loading for SNI
+	if tlsConfig != nil && database != nil {
+		fallbackCert := &tlsConfig.Certificates[0]
+		dbCertLoader := tlsutil.NewDBCertLoader(database, cfg.MasterKey, fallbackCert)
+		prevGetCert := tlsConfig.GetCertificate
+		tlsConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if c, err := dbCertLoader.GetCertificate(hello); c != nil && err == nil {
+				return c, nil
+			}
+			if prevGetCert != nil {
+				return prevGetCert(hello)
+			}
+			return nil, nil
+		}
+		slog.Info("DB-backed SNI certificate loading enabled")
 	}
 
 	api := apiclient.New(cfg.APIBaseURL)

@@ -106,6 +106,24 @@ func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
 	return &resp, nil
 }
 
+// ── Message Send ──────────────────────────────────────────────────────
+
+// SendRequest represents a message to be sent via the webmail API.
+type SendRequest struct {
+	From     string   `json:"from"`
+	To       []string `json:"to"`
+	Cc       []string `json:"cc,omitempty"`
+	Bcc      []string `json:"bcc,omitempty"`
+	Subject  string   `json:"subject"`
+	BodyText string   `json:"body_text"`
+	BodyHTML string   `json:"body_html,omitempty"`
+}
+
+// SendMessage sends a message via the webmail send API.
+func (c *Client) SendMessage(token string, req *SendRequest) error {
+	return c.postAuth("/api/v1/messages/send", token, req, nil)
+}
+
 // ── Folders ───────────────────────────────────────────────────────────
 
 type Folder struct {

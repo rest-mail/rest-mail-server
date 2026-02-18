@@ -60,7 +60,7 @@ func NewModel(api *apiclient.Client, token string) Model {
 		domains: NewDomainsModel(api, token),
 		users:   NewUsersModel(api, token),
 		inbox:   NewInboxModel(api, token),
-		compose: NewComposeModel(api),
+		compose: NewComposeModel(api, token),
 		status:  NewStatusModel(api, token),
 	}
 }
@@ -130,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 		if m.compose.sent {
 			m.view = ViewMain
-			m.compose = NewComposeModel(m.api)
+			m.compose = NewComposeModel(m.api, m.token)
 		}
 	}
 
@@ -262,10 +262,14 @@ func (m Model) renderStatusBar() string {
 			dot = dangerDot
 			statusText = "unreachable"
 		}
-		col := fmt.Sprintf(" %s (%s)\n %s %d users\n %s %d messages\n %s status: %s",
+		msgStr := "n/a"
+		if st.messages > 0 {
+			msgStr = fmt.Sprintf("%d", st.messages)
+		}
+		col := fmt.Sprintf(" %s (%s)\n %s %d users\n %s %s messages\n %s status: %s",
 			d.name, d.serverType,
 			dot, st.users,
-			dot, st.messages,
+			dot, msgStr,
 			dot, statusText,
 		)
 		cols[i] = statusColumnStyle.Width(colWidth).Render(col)

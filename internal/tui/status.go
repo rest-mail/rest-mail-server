@@ -11,8 +11,11 @@ import (
 type statusTickMsg time.Time
 
 type domainStatus struct {
-	healthy  bool
-	users    int
+	healthy bool
+	users   int
+	// messages is not populated - there is no cheap per-domain message count
+	// endpoint; it would require iterating all mailboxes and calling GetQuota
+	// for each. The status bar renders "n/a" when this is zero.
 	messages int
 }
 

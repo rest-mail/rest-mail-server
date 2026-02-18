@@ -81,6 +81,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Wire DB-backed certificate loading for SNI
+	if tlsConfig != nil && database != nil {
+		fallbackCert := &tlsConfig.Certificates[0]
+		dbCertLoader := tlsutil.NewDBCertLoader(database, cfg.MasterKey, fallbackCert)
+		prevGetCert := tlsConfig.GetCertificate
+		tlsConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if c, err := dbCertLoader.GetCertificate(hello); c != nil && err == nil {
+				return c, nil
+			}
+			if prevGetCert != nil {
+				return prevGetCert(hello)
+			}
+			return nil, nil
+		}
+		slog.Info("DB-backed SNI certificate loading enabled")
+	}
+
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, database, limiter)
 	if err := smtpServer.ListenAndServe(smtpgw.SMTPPorts{
