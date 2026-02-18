@@ -123,15 +123,35 @@ export function TopBar() {
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Theme</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => setTheme('light')}>
+                <DropdownMenuItem onClick={() => setTheme('dawn')}>
                   <Sun className="w-4 h-4 mr-2" />
-                  Light
-                  {theme === 'light' && <Check className="w-4 h-4 ml-auto" />}
+                  Dawn
+                  {theme === 'dawn' && <Check className="w-4 h-4 ml-auto" />}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme('dark')}>
+                <DropdownMenuItem onClick={() => setTheme('linen')}>
+                  <Sun className="w-4 h-4 mr-2" />
+                  Linen
+                  {theme === 'linen' && <Check className="w-4 h-4 ml-auto" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('slate')}>
                   <Moon className="w-4 h-4 mr-2" />
-                  Dark
-                  {theme === 'dark' && <Check className="w-4 h-4 ml-auto" />}
+                  Slate
+                  {theme === 'slate' && <Check className="w-4 h-4 ml-auto" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('dusk')}>
+                  <Moon className="w-4 h-4 mr-2" />
+                  Dusk
+                  {theme === 'dusk' && <Check className="w-4 h-4 ml-auto" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('midnight')}>
+                  <Moon className="w-4 h-4 mr-2" />
+                  Midnight
+                  {theme === 'midnight' && <Check className="w-4 h-4 ml-auto" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme('forest')}>
+                  <Moon className="w-4 h-4 mr-2" />
+                  Forest
+                  {theme === 'forest' && <Check className="w-4 h-4 ml-auto" />}
                 </DropdownMenuItem>
               </DropdownMenuSubContent>
             </DropdownMenuSub>

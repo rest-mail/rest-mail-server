@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 
-type Theme = 'light' | 'dark';
-type View = 'mail' | 'compose' | 'addAccount' | 'accountDetails' | 'vacation' | 'quarantine' | 'tlsReports' | 'pipelineTester' | 'pipelineConfig';
+export type Theme = 'dawn' | 'linen' | 'slate' | 'dusk' | 'midnight' | 'forest';
+type View =
+  | 'mail' | 'compose' | 'addAccount' | 'accountDetails'
+  | 'vacation' | 'quarantine' | 'tlsReports'
+  | 'pipelineTester' | 'pipelineConfig'
+  | 'settings' | 'accountSettings';
 
 interface ComposeState {
   to: string;
@@ -20,47 +24,58 @@ interface UIState {
   view: View;
   composeState: ComposeState | null;
   sidebarCollapsed: Record<number, boolean>;
+  selectedAccountId: number | null;  // for accountSettings view
 
   setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
   setView: (view: View) => void;
+  setSelectedAccountId: (id: number | null) => void;
   startCompose: (state?: ComposeState) => void;
   closeCompose: () => void;
   toggleAccountCollapsed: (accountId: number) => void;
 }
 
+const DARK_THEMES: Theme[] = ['midnight', 'forest', 'slate', 'dusk'];
+
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem('restmail-theme');
-  if (stored === 'dark' || stored === 'light') return stored;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  const valid: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest'];
+  if (stored && valid.includes(stored as Theme)) return stored as Theme;
+  // Legacy mapping
+  if (stored === 'dark') return 'midnight';
+  if (stored === 'light') return 'dawn';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'midnight' : 'dawn';
 }
 
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle('dark', theme === 'dark');
+  const all: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest'];
+  // Remove all palette classes, add the selected one
+  document.documentElement.classList.remove(...all, 'dark');
+  document.documentElement.classList.add(theme);
+  // Keep .dark for any shadcn components that use it directly
+  if (DARK_THEMES.includes(theme)) {
+    document.documentElement.classList.add('dark');
+  }
   localStorage.setItem('restmail-theme', theme);
 }
 
 const initialTheme = getInitialTheme();
 applyTheme(initialTheme);
 
-export const useUIStore = create<UIState>((set, get) => ({
+export const useUIStore = create<UIState>((set) => ({
   theme: initialTheme,
   view: 'mail',
   composeState: null,
   sidebarCollapsed: {},
+  selectedAccountId: null,
 
   setTheme: (theme) => {
     applyTheme(theme);
     set({ theme });
   },
 
-  toggleTheme: () => {
-    const next = get().theme === 'light' ? 'dark' : 'light';
-    applyTheme(next);
-    set({ theme: next });
-  },
-
   setView: (view) => set({ view }),
+
+  setSelectedAccountId: (id) => set({ selectedAccountId: id }),
 
   startCompose: (state) => set({
     view: 'compose',
