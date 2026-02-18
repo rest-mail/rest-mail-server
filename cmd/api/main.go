@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,9 +15,29 @@ import (
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
+	"github.com/restmail/restmail/internal/digest"
 )
 
+func loadCACert() {
+	caCert, err := os.ReadFile("/certs/ca.crt")
+	if err != nil {
+		slog.Info("no custom CA cert found, using system defaults")
+		return
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	pool.AppendCertsFromPEM(caCert)
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
+		RootCAs: pool,
+	}
+	slog.Info("loaded custom CA certificate", "path", "/certs/ca.crt")
+}
+
 func main() {
+	loadCACert()
+
 	// Configure structured JSON logging
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -63,6 +85,14 @@ func main() {
 	// Create router
 	router := api.NewRouter(database, jwtService, cfg)
 
+	// Start quarantine digest worker
+	digestInterval := 24 * time.Hour
+	if cfg.Environment == "development" {
+		digestInterval = 1 * time.Hour
+	}
+	digestWorker := digest.NewWorker(database, digestInterval)
+	digestWorker.Start()
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         cfg.APIAddr(),
@@ -87,6 +117,7 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down server...")
+	digestWorker.Shutdown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

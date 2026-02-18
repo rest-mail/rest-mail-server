@@ -18,6 +18,7 @@ const (
 	ViewInbox
 	ViewReadMessage
 	ViewCompose
+	ViewPipelines
 )
 
 // Model is the top-level Bubble Tea model.
@@ -32,11 +33,12 @@ type Model struct {
 	prevView View
 
 	// Sub-models
-	domains  DomainsModel
-	users    UsersModel
-	inbox    InboxModel
-	compose  ComposeModel
-	status   StatusModel
+	domains   DomainsModel
+	users     UsersModel
+	inbox     InboxModel
+	compose   ComposeModel
+	pipelines PipelinesModel
+	status    StatusModel
 
 	// Main menu
 	menuItems []string
@@ -55,13 +57,15 @@ func NewModel(api *apiclient.Client, token string) Model {
 			"Users       - Manage mailboxes and users",
 			"Inbox       - Browse a user's inbox",
 			"Compose     - Send mail as any user",
+			"Pipelines   - View and manage filter pipelines",
 		},
-		menuIdx: 0,
-		domains: NewDomainsModel(api, token),
-		users:   NewUsersModel(api, token),
-		inbox:   NewInboxModel(api, token),
-		compose: NewComposeModel(api, token),
-		status:  NewStatusModel(api, token),
+		menuIdx:   0,
+		domains:   NewDomainsModel(api, token),
+		users:     NewUsersModel(api, token),
+		inbox:     NewInboxModel(api, token),
+		compose:   NewComposeModel(api, token),
+		pipelines: NewPipelinesModel(api, token),
+		status:    NewStatusModel(api, token),
 	}
 }
 
@@ -132,6 +136,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.view = ViewMain
 			m.compose = NewComposeModel(m.api, m.token)
 		}
+	case ViewPipelines:
+		var cmd tea.Cmd
+		m.pipelines, cmd = m.pipelines.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -163,6 +171,9 @@ func (m Model) updateMain(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 3:
 				m.view = ViewCompose
 				return m, m.compose.Init()
+			case 4:
+				m.view = ViewPipelines
+				return m, m.pipelines.Init()
 			}
 		}
 	}
@@ -202,6 +213,8 @@ func (m Model) View() string {
 		content = m.inbox.View(m.width, contentHeight)
 	case ViewCompose:
 		content = m.compose.View(m.width, contentHeight)
+	case ViewPipelines:
+		content = m.pipelines.View(m.width, contentHeight)
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left,

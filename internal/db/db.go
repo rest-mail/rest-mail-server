@@ -77,6 +77,8 @@ func AutoMigrate(db *gorm.DB) error {
 		// Admin features
 		&models.Ban{},
 		&models.ActivityLog{},
+		// MTA-STS (RFC 8461) policies
+		&models.MTASTSPolicy{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

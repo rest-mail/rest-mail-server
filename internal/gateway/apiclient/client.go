@@ -333,6 +333,39 @@ func (c *Client) ResetPassword(token string, id uint, newPassword string) error 
 	return c.patchAuth(fmt.Sprintf("/api/v1/admin/mailboxes/%d", id), token, body, nil)
 }
 
+// ── Pipelines ────────────────────────────────────────────────────────
+
+type PipelineItem struct {
+	ID        uint            `json:"id"`
+	DomainID  uint            `json:"domain_id"`
+	Direction string          `json:"direction"`
+	Filters   json.RawMessage `json:"filters"`
+	Active    bool            `json:"active"`
+}
+
+type PipelineListResponse struct {
+	Data []PipelineItem `json:"data"`
+}
+
+// ListPipelines returns pipelines, optionally filtered by domain_id.
+func (c *Client) ListPipelines(token string, domainID uint) (*PipelineListResponse, error) {
+	var resp PipelineListResponse
+	path := "/api/v1/admin/pipelines"
+	if domainID > 0 {
+		path += fmt.Sprintf("?domain_id=%d", domainID)
+	}
+	if err := c.getAuth(path, token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// TogglePipeline toggles a pipeline's active status.
+func (c *Client) TogglePipeline(token string, id uint, active bool) error {
+	body := map[string]interface{}{"active": active}
+	return c.patchAuth(fmt.Sprintf("/api/v1/admin/pipelines/%d", id), token, body, nil)
+}
+
 // ── Queue Stats ──────────────────────────────────────────────────────
 
 type QueueStatsResponse struct {

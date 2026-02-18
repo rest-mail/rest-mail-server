@@ -55,6 +55,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	dkimH := handlers.NewDKIMHandler(db, cfg.MasterKey)
 	certH := handlers.NewCertificateHandler(db, cfg.MasterKey)
 	testH := handlers.NewTestHandler(db, cfg)
+	mtastsH := handlers.NewMTASTSHandler(db)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -89,6 +90,11 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	r.Get("/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
 	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", autoconfigH.MozillaAutoconfig)
 	r.Post("/autodiscover/autodiscover.xml", autoconfigH.MicrosoftAutodiscover)
+
+	// ═══════════════════════════════════════════════════════════════
+	// MTA-STS policy (no auth — served to external MTAs per RFC 8461)
+	// ═══════════════════════════════════════════════════════════════
+	r.Get("/.well-known/mta-sts.txt", mtastsH.ServePolicy)
 
 	// ═══════════════════════════════════════════════════════════════
 	// Auth (no auth)
@@ -235,8 +241,11 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		// Custom filters
 		r.Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
 		r.Post("/api/v1/admin/custom-filters", pipelineH.CreateCustomFilter)
-		r.Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
 		r.Post("/api/v1/admin/custom-filters/validate", pipelineH.ValidateCustomFilter)
+		r.Get("/api/v1/admin/custom-filters/{id}", pipelineH.GetCustomFilter)
+		r.Patch("/api/v1/admin/custom-filters/{id}", pipelineH.UpdateCustomFilter)
+		r.Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
+		r.Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
 
 		// Queue management
 		r.Get("/api/v1/admin/queue", queueH.ListQueue)
@@ -256,6 +265,11 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		r.Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
 		r.Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
 		r.Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
+
+		// MTA-STS policy management
+		r.Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
+		r.Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
+		r.Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
 
 		// DKIM key management
 		r.Get("/api/v1/admin/dkim", dkimH.ListKeys)

@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,11 +20,30 @@ import (
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
 )
 
+func loadCACert() {
+	caCert, err := os.ReadFile("/certs/ca.crt")
+	if err != nil {
+		slog.Info("no custom CA cert found, using system defaults")
+		return
+	}
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	pool.AppendCertsFromPEM(caCert)
+	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
+		RootCAs: pool,
+	}
+	slog.Info("loaded custom CA certificate", "path", "/certs/ca.crt")
+}
+
 func main() {
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	})
 	slog.SetDefault(slog.New(logHandler))
+
+	loadCACert()
 
 	slog.Info("starting SMTP gateway")
 

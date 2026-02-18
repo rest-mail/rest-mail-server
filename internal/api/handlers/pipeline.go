@@ -281,6 +281,77 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 	respond.Data(w, http.StatusCreated, cf)
 }
 
+// GetCustomFilter returns a single custom filter by ID.
+func (h *PipelineHandler) GetCustomFilter(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
+		return
+	}
+
+	var cf models.CustomFilter
+	if err := h.db.First(&cf, id).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
+		return
+	}
+
+	respond.Data(w, http.StatusOK, cf)
+}
+
+// UpdateCustomFilter updates a custom filter's properties (enable/disable, config, etc.).
+func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
+		return
+	}
+
+	var cf models.CustomFilter
+	if err := h.db.First(&cf, id).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
+		return
+	}
+
+	var req struct {
+		Name        *string          `json:"name"`
+		Description *string          `json:"description"`
+		FilterType  *string          `json:"filter_type"`
+		Direction   *string          `json:"direction"`
+		Config      *json.RawMessage `json:"config"`
+		Enabled     *bool            `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+
+	if req.Name != nil {
+		cf.Name = *req.Name
+	}
+	if req.Description != nil {
+		cf.Description = *req.Description
+	}
+	if req.FilterType != nil {
+		cf.FilterType = *req.FilterType
+	}
+	if req.Direction != nil {
+		cf.Direction = *req.Direction
+	}
+	if req.Config != nil {
+		cf.Config = *req.Config
+	}
+	if req.Enabled != nil {
+		cf.Enabled = *req.Enabled
+	}
+
+	if err := h.db.Save(&cf).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update custom filter")
+		return
+	}
+
+	respond.Data(w, http.StatusOK, cf)
+}
+
 // DeleteCustomFilter removes a custom filter.
 func (h *PipelineHandler) DeleteCustomFilter(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
@@ -295,6 +366,67 @@ func (h *PipelineHandler) DeleteCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 
 	respond.Data(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// TestCustomFilter loads a custom filter from the DB and runs its script against a sample email
+// via the JS filter sidecar.
+func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
+		return
+	}
+
+	var cf models.CustomFilter
+	if err := h.db.First(&cf, id).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
+		return
+	}
+
+	// Parse config to extract the script
+	var config struct {
+		Script string `json:"script"`
+	}
+	if err := json.Unmarshal(cf.Config, &config); err != nil || config.Script == "" {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Filter config does not contain a script")
+		return
+	}
+
+	// Accept optional sample email from request body
+	var req struct {
+		Email *json.RawMessage `json:"email,omitempty"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	// Build sidecar request
+	sidecarBody := map[string]any{"script": config.Script}
+	if req.Email != nil {
+		sidecarBody["email"] = req.Email
+	} else {
+		// Provide a minimal sample email for testing
+		sidecarBody["email"] = map[string]any{
+			"from":    "test@example.com",
+			"to":      []string{"user@example.com"},
+			"subject": "Test email",
+			"body":    "This is a test email for filter testing.",
+		}
+	}
+	bodyBytes, _ := json.Marshal(sidecarBody)
+
+	sidecarURL := "http://js-filter:3100/execute"
+	client := &http.Client{Timeout: 10 * time.Second}
+	sidecarResp, err := client.Post(sidecarURL, "application/json", bytes.NewReader(bodyBytes))
+	if err != nil {
+		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
+		return
+	}
+	defer sidecarResp.Body.Close()
+
+	respBody, _ := io.ReadAll(sidecarResp.Body)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(sidecarResp.StatusCode)
+	w.Write(respBody)
 }
 
 // ValidateCustomFilter syntax-checks a JavaScript filter script via the sidecar.
