@@ -182,15 +182,36 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		mxRecords = []*net.MX{{Host: item.Domain, Pref: 0}}
 	}
 
-	// Try RESTMAIL protocol upgrade on the first MX host
 	firstHost := strings.TrimSuffix(mxRecords[0].Host, ".")
-	upgraded, err := w.tryRESTMAIL(firstHost, item)
-	if upgraded && err == nil {
-		return nil // RESTMAIL delivery succeeded
-	}
-	if upgraded && err != nil {
-		slog.Warn("queue: RESTMAIL delivery failed, falling back to SMTP",
-			"host", firstHost, "error", err)
+
+	// Check capability cache before EHLO probe
+	var cap models.RESTMAILCapability
+	cacheHit := w.db.Where("domain = ? AND expires_at > ?", item.Domain, time.Now()).
+		First(&cap).Error == nil
+
+	if cacheHit {
+		if cap.Supported {
+			slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "url", cap.EndpointURL)
+			err := w.deliverRESTMAILHTTPS(cap.EndpointURL, item)
+			if err == nil {
+				return nil
+			}
+			slog.Warn("queue: cached RESTMAIL delivery failed, invalidating cache",
+				"domain", item.Domain, "error", err)
+			w.db.Where("domain = ?", item.Domain).Delete(&models.RESTMAILCapability{})
+			// Fall through to SMTP
+		}
+		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
+	} else {
+		// No cache or expired — do EHLO probe
+		upgraded, err := w.tryRESTMAIL(firstHost, item)
+		if upgraded && err == nil {
+			return nil // RESTMAIL delivery succeeded
+		}
+		if upgraded && err != nil {
+			slog.Warn("queue: RESTMAIL delivery failed, falling back to SMTP",
+				"host", firstHost, "error", err)
+		}
 	}
 
 	// Fall back to SMTP delivery
@@ -205,6 +226,71 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	}
 
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
+}
+
+// cacheCapability stores a RESTMAIL capability probe result in the database.
+func (w *Worker) cacheCapability(domain string, supported bool, endpointURL string) {
+	now := time.Now()
+	ttl := 15 * time.Minute // negative result TTL
+	if supported {
+		ttl = 1 * time.Hour // positive result TTL
+	}
+
+	cap := models.RESTMAILCapability{
+		Domain:      domain,
+		Supported:   supported,
+		EndpointURL: endpointURL,
+		LastProbed:  now,
+		ExpiresAt:   now.Add(ttl),
+	}
+
+	// Upsert: update if domain exists, insert otherwise
+	result := w.db.Where("domain = ?", domain).First(&models.RESTMAILCapability{})
+	if result.Error == nil {
+		w.db.Where("domain = ?", domain).Updates(map[string]interface{}{
+			"supported":    supported,
+			"endpoint_url": endpointURL,
+			"last_probed":  now,
+			"expires_at":   now.Add(ttl),
+		})
+	} else {
+		w.db.Create(&cap)
+	}
+}
+
+// deliverRESTMAILHTTPS sends the message via HTTPS POST to a known RESTMAIL endpoint.
+func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQueue) error {
+	payload := map[string]interface{}{
+		"from":        item.Sender,
+		"to":          []string{item.Recipient},
+		"raw_message": item.RawMessage,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	messagesURL := endpointURL + "/messages"
+	if !strings.HasPrefix(messagesURL, "http") {
+		messagesURL = "https://" + messagesURL
+	}
+
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: w.tlsInsecure},
+		},
+	}
+	resp, err := httpClient.Post(messagesURL, "application/json", bytes.NewReader(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("RESTMAIL POST to %s: %w", messagesURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		slog.Info("queue: RESTMAIL delivery succeeded", "url", messagesURL, "recipient", item.Recipient)
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
 }
 
 // tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found,
@@ -235,43 +321,18 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 	client.Close()
 
 	if !ok || restmailURL == "" {
+		w.cacheCapability(item.Domain, false, "")
 		return false, nil // No RESTMAIL support
 	}
 
 	slog.Info("queue: RESTMAIL capability detected", "host", host, "url", restmailURL)
+	w.cacheCapability(item.Domain, true, restmailURL)
 
-	// Build the delivery payload
-	payload := map[string]interface{}{
-		"sender":      item.Sender,
-		"recipients":  []string{item.Recipient},
-		"raw_message": item.RawMessage,
-	}
-	payloadBytes, _ := json.Marshal(payload)
-
-	messagesURL := restmailURL + "/messages"
-	if !strings.HasPrefix(messagesURL, "http") {
-		messagesURL = "https://" + messagesURL
-	}
-
-	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: w.tlsInsecure},
-		},
-	}
-	resp, err := httpClient.Post(messagesURL, "application/json", bytes.NewReader(payloadBytes))
+	err = w.deliverRESTMAILHTTPS(restmailURL, item)
 	if err != nil {
-		return true, fmt.Errorf("RESTMAIL POST to %s: %w", messagesURL, err)
+		return true, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		slog.Info("queue: RESTMAIL delivery succeeded", "host", host, "recipient", item.Recipient)
-		return true, nil
-	}
-
-	body, _ := io.ReadAll(resp.Body)
-	return true, fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
+	return true, nil
 }
 
 // generateBounce creates a DSN (Delivery Status Notification) and delivers

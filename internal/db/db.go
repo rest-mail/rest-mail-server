@@ -71,6 +71,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.VacationResponse{},
 		&models.Attachment{},
 		&models.SieveScript{},
+		// RESTMAIL protocol upgrade cache
+		&models.RESTMAILCapability{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

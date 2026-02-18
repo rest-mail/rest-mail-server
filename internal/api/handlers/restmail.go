@@ -9,6 +9,7 @@ import (
 
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -74,11 +75,69 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		InReplyTo  string          `json:"in_reply_to"`
 		References string          `json:"references"`
 		Headers    json.RawMessage `json:"headers"`
+		// Fields sent by the RESTMAIL queue worker
+		RawMessage string   `json:"raw_message"`
+		Sender     string   `json:"sender"`
+		Recipients []string `json:"recipients"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
+	}
+
+	// Accept sender/recipients as aliases for from/to
+	if req.From == "" && req.Sender != "" {
+		req.From = req.Sender
+	}
+	if len(req.To) == 0 && len(req.Recipients) > 0 {
+		req.To = req.Recipients
+	}
+
+	// When raw_message is provided, parse RFC 2822 into structured fields
+	if req.RawMessage != "" {
+		parsed, err := rmime.Parse([]byte(req.RawMessage))
+		if err != nil {
+			slog.Warn("restmail: failed to parse raw_message", "error", err)
+			// Fall through to use whatever structured fields were provided
+		} else {
+			if len(parsed.Headers.From) > 0 && req.From == "" {
+				req.From = parsed.Headers.From[0].Address
+			}
+			if len(parsed.Headers.To) > 0 && len(req.To) == 0 {
+				addrs := make([]string, len(parsed.Headers.To))
+				for i, a := range parsed.Headers.To {
+					addrs[i] = a.Address
+				}
+				req.To = addrs
+			}
+			if parsed.Headers.Subject != "" && req.Subject == "" {
+				req.Subject = parsed.Headers.Subject
+			}
+			if parsed.Headers.MessageID != "" && req.MessageID == "" {
+				req.MessageID = parsed.Headers.MessageID
+			}
+			if parsed.Headers.InReplyTo != "" && req.InReplyTo == "" {
+				req.InReplyTo = parsed.Headers.InReplyTo
+			}
+			if len(parsed.Headers.References) > 0 && req.References == "" {
+				req.References = strings.Join(parsed.Headers.References, " ")
+			}
+			// Extract body text and HTML from parsed parts
+			if req.BodyText == "" || req.BodyHTML == "" {
+				text, html := extractBodyParts(parsed.Body)
+				if req.BodyText == "" {
+					req.BodyText = text
+				}
+				if req.BodyHTML == "" {
+					req.BodyHTML = html
+				}
+			}
+			// Preserve raw headers as JSON
+			if req.Headers == nil && parsed.Headers.Raw != nil {
+				req.Headers, _ = json.Marshal(parsed.Headers.Raw)
+			}
+		}
 	}
 
 	if len(req.To) == 0 {
@@ -262,4 +321,25 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		"delivered": delivered,
 		"failed":    failed,
 	})
+}
+
+// extractBodyParts walks a potentially nested Body structure and returns the
+// first text/plain and text/html content found.
+func extractBodyParts(body pipeline.Body) (text, html string) {
+	if body.ContentType == "text/plain" && body.Content != "" {
+		text = body.Content
+	}
+	if body.ContentType == "text/html" && body.Content != "" {
+		html = body.Content
+	}
+	for _, part := range body.Parts {
+		t, h := extractBodyParts(part)
+		if text == "" {
+			text = t
+		}
+		if html == "" {
+			html = h
+		}
+	}
+	return
 }
