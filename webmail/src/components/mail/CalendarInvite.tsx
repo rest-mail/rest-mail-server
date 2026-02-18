@@ -198,7 +198,7 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
             <Calendar className="w-5 h-5 text-primary shrink-0" />
             <CardTitle className="text-base">{event.summary || 'Calendar Event'}</CardTitle>
           </div>
-          {methodBadge(event.method, event.status)}
+          {methodBadge(event.method, event.status ?? '')}
         </div>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
@@ -358,7 +358,7 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
             <Separator />
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Response from {event.attendees[0].name || event.attendees[0].address}:</span>
-              {partStatBadge(event.attendees[0].partstat)}
+              {partStatBadge(event.attendees[0].partstat ?? '')}
             </div>
           </>
         )}
