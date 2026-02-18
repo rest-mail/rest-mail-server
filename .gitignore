@@ -37,6 +37,7 @@ webmail/dist/
 
 # Generated certs (local)
 certs/
+!docker/certs/
 
 # OS files
 .DS_Store
