@@ -333,6 +333,47 @@ func (c *Client) ResetPassword(token string, id uint, newPassword string) error 
 	return c.patchAuth(fmt.Sprintf("/api/v1/admin/mailboxes/%d", id), token, body, nil)
 }
 
+// ── Queue Stats ──────────────────────────────────────────────────────
+
+type QueueStatsResponse struct {
+	Data struct {
+		Total   int64 `json:"total"`
+		Pending int64 `json:"pending"`
+		Failed  int64 `json:"failed"`
+	} `json:"data"`
+}
+
+// QueueStats returns queue statistics (admin only).
+func (c *Client) QueueStats(token string) (*QueueStatsResponse, error) {
+	var resp QueueStatsResponse
+	if err := c.getAuth("/api/v1/admin/queue/stats", token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ── Bans ──────────────────────────────────────────────────────────────
+
+type BanListResponse struct {
+	Data []struct {
+		ID       uint   `json:"id"`
+		IP       string `json:"ip"`
+		Protocol string `json:"protocol"`
+	} `json:"data"`
+	Pagination *struct {
+		Total int64 `json:"total"`
+	} `json:"pagination"`
+}
+
+// ListBans returns active bans (admin only).
+func (c *Client) ListBans(token string) (*BanListResponse, error) {
+	var resp BanListResponse
+	if err := c.getAuth("/api/v1/admin/bans?active=true&limit=1", token, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // ── HTTP helpers ──────────────────────────────────────────────────────
 
 func (c *Client) get(path string, out interface{}) error {

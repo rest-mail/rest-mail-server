@@ -74,7 +74,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	// Decrypt private key if master key is set
 	keyPEM := cert.KeyPEM
 	if l.masterKey != "" {
-		decrypted, err := crypto.Decrypt(cert.KeyPEM, l.masterKey)
+		decrypted, err := crypto.DecryptString(cert.KeyPEM, l.masterKey)
 		if err != nil {
 			slog.Error("failed to decrypt certificate key", "domain", name, "error", err)
 			if l.fallback != nil {

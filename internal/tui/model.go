@@ -275,7 +275,14 @@ func (m Model) renderStatusBar() string {
 		cols[i] = statusColumnStyle.Width(colWidth).Render(col)
 	}
 
+	domainRow := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+
+	// Global stats row
+	queueStr := fmt.Sprintf("Queue: %d pending", m.status.QueueDepth())
+	banStr := fmt.Sprintf("Bans: %d active", m.status.ActiveBans())
+	globalRow := fmt.Sprintf("  %s  |  %s", queueStr, banStr)
+
 	return statusBarStyle.Width(m.width).Render(
-		lipgloss.JoinHorizontal(lipgloss.Top, cols...),
+		domainRow + "\n" + globalRow,
 	)
 }

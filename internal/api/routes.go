@@ -236,6 +236,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		r.Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
 		r.Post("/api/v1/admin/custom-filters", pipelineH.CreateCustomFilter)
 		r.Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
+		r.Post("/api/v1/admin/custom-filters/validate", pipelineH.ValidateCustomFilter)
 
 		// Queue management
 		r.Get("/api/v1/admin/queue", queueH.ListQueue)

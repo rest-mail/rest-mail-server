@@ -120,7 +120,7 @@ func (h *CertificateHandler) CreateCertificate(w http.ResponseWriter, r *http.Re
 	// Encrypt the private key if master key is configured
 	keyToStore := req.KeyPEM
 	if h.masterKey != "" {
-		encrypted, err := crypto.Encrypt(req.KeyPEM, h.masterKey)
+		encrypted, err := crypto.EncryptString(req.KeyPEM, h.masterKey)
 		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to encrypt private key")
 			return

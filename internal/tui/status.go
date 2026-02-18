@@ -11,19 +11,18 @@ import (
 type statusTickMsg time.Time
 
 type domainStatus struct {
-	healthy bool
-	users   int
-	// messages is not populated - there is no cheap per-domain message count
-	// endpoint; it would require iterating all mailboxes and calling GetQuota
-	// for each. The status bar renders "n/a" when this is zero.
+	healthy  bool
+	users    int
 	messages int
 }
 
 // StatusModel tracks server status for the bottom bar.
 type StatusModel struct {
-	api      *apiclient.Client
-	token    string
-	statuses map[string]domainStatus
+	api        *apiclient.Client
+	token      string
+	statuses   map[string]domainStatus
+	queueDepth int64
+	activeBans int64
 }
 
 func NewStatusModel(api *apiclient.Client, token string) StatusModel {
@@ -72,6 +71,18 @@ func (m StatusModel) Update(msg tea.Msg) (StatusModel, tea.Cmd) {
 
 				m.statuses = newStatuses
 			}
+
+			// Fetch queue stats
+			queueResp, err := m.api.QueueStats(m.token)
+			if err == nil {
+				m.queueDepth = queueResp.Data.Pending
+			}
+
+			// Fetch active ban count
+			banResp, err := m.api.ListBans(m.token)
+			if err == nil && banResp.Pagination != nil {
+				m.activeBans = banResp.Pagination.Total
+			}
 		}
 		return m, tea.Tick(5*time.Second, func(t time.Time) tea.Msg {
 			return statusTickMsg(t)
@@ -86,3 +97,9 @@ func (m StatusModel) GetDomainStatus(domain string) domainStatus {
 	}
 	return domainStatus{}
 }
+
+// QueueDepth returns the current pending queue items.
+func (m StatusModel) QueueDepth() int64 { return m.queueDepth }
+
+// ActiveBans returns the count of active IP bans.
+func (m StatusModel) ActiveBans() int64 { return m.activeBans }

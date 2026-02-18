@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"bytes"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -292,6 +295,50 @@ func (h *PipelineHandler) DeleteCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 
 	respond.Data(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// ValidateCustomFilter syntax-checks a JavaScript filter script via the sidecar.
+func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Script string           `json:"script"`
+		Email  *json.RawMessage `json:"email,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if req.Script == "" {
+		respond.ValidationError(w, map[string]string{"script": "required"})
+		return
+	}
+
+	// Build sidecar request
+	sidecarBody := map[string]any{"script": req.Script}
+	if req.Email != nil {
+		sidecarBody["email"] = req.Email
+	}
+	bodyBytes, _ := json.Marshal(sidecarBody)
+
+	sidecarURL := "http://js-filter:3100/validate"
+	client := &http.Client{Timeout: 5 * time.Second}
+	sidecarResp, err := client.Post(sidecarURL, "application/json", bytes.NewReader(bodyBytes))
+	if err != nil {
+		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
+		return
+	}
+	defer sidecarResp.Body.Close()
+
+	respBody, _ := io.ReadAll(sidecarResp.Body)
+
+	var result json.RawMessage
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(respBody)
 }
 
 // ── Quarantine ───────────────────────────────────────────────────────

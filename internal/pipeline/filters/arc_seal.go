@@ -85,7 +85,7 @@ func (f *arcSealFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*
 	// Decrypt private key if master key is configured
 	privateKeyPEM := domain.DKIMPrivateKey
 	if f.masterKey != "" {
-		decrypted, err := restcrypto.Decrypt(privateKeyPEM, f.masterKey)
+		decrypted, err := restcrypto.DecryptString(privateKeyPEM, f.masterKey)
 		if err != nil {
 			// Fall back to plaintext in case key was stored before encryption was enabled
 			decrypted = privateKeyPEM

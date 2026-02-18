@@ -80,7 +80,7 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 
 	keyToStore := req.PrivateKey
 	if h.masterKey != "" {
-		encrypted, err := crypto.Encrypt(req.PrivateKey, h.masterKey)
+		encrypted, err := crypto.EncryptString(req.PrivateKey, h.masterKey)
 		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to encrypt private key")
 			return

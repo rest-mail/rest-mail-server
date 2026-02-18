@@ -91,6 +91,7 @@ services:
       DB_PASS: restmail
       API_PORT: "8080"
       JWT_SECRET: dev-secret-change-in-production
+      MASTER_KEY: dev-master-key-change-in-production
       ENVIRONMENT: development
       LOG_LEVEL: debug
     ports:
@@ -372,6 +373,64 @@ services:
     networks:
       mailnet:
         ipv4_address: 172.20.0.17
+
+  # ─── rspamd (spam scanning) ─────────────────────────────────────────
+  rspamd:
+    image: rspamd/rspamd:latest
+    container_name: rspamd
+    profiles: ["scanning"]
+    restart: unless-stopped
+    volumes:
+      - ./docker/rspamd/local.d:/etc/rspamd/local.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11333/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.23
+
+  # ─── ClamAV (virus scanning) ──────────────────────────────────────
+  clamav:
+    image: clamav/clamav:stable
+    container_name: clamav
+    profiles: ["scanning"]
+    restart: unless-stopped
+    environment:
+      CLAMAV_NO_FRESHCLAMD: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.24
+
+  # ─── ClamAV REST proxy ────────────────────────────────────────────
+  clamav-rest:
+    image: benzino77/clamav-rest-api:latest
+    container_name: clamav-rest
+    profiles: ["scanning"]
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CLAMD_IP: clamav
+      CLAMD_PORT: "3310"
+      APP_PORT: "3000"
+    depends_on:
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/v1/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.25
 
   # ─── Fail2ban Sidecar ────────────────────────────────────────────────
   fail2ban:
