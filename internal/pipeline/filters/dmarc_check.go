@@ -124,6 +124,30 @@ func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 		}, nil
 	}
 
+	// Check ARC results: if ARC chain is valid, honor the original
+	// authentication on forwarded mail (RFC 8617 §5.2).
+	arcStatus := ""
+	if email.Metadata != nil {
+		arcStatus = email.Metadata["arc_status"]
+	}
+	if arcStatus == "" {
+		// Also check Authentication-Results for arc= result
+		if strings.Contains(authResults, "arc=pass") {
+			arcStatus = "pass"
+		}
+	}
+	if arcStatus == "pass" {
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeAction,
+			Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{
+				Filter: "dmarc_check",
+				Result: "pass",
+				Detail: fmt.Sprintf("policy=%s dmarc=fail but arc=pass (ARC override) domain=%s", policy, domain),
+			},
+		}, nil
+	}
+
 	// DMARC failed — apply policy
 	switch policy {
 	case "reject":

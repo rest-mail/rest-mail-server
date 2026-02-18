@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
 
@@ -66,6 +68,28 @@ func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.Create(&domain).Error; err != nil {
 		respond.Error(w, http.StatusConflict, "already_exists", "Domain already exists")
 		return
+	}
+
+	// Create default inbound and outbound pipelines for the new domain.
+	inboundJSON := pipeline.DefaultPipelineJSON("inbound")
+	outboundJSON := pipeline.DefaultPipelineJSON("outbound")
+
+	if err := h.db.Create(&models.Pipeline{
+		DomainID:  domain.ID,
+		Direction: "inbound",
+		Filters:   inboundJSON,
+		Active:    true,
+	}).Error; err != nil {
+		slog.Error("failed to create default inbound pipeline", "domain", domain.Name, "error", err)
+	}
+
+	if err := h.db.Create(&models.Pipeline{
+		DomainID:  domain.ID,
+		Direction: "outbound",
+		Filters:   outboundJSON,
+		Active:    true,
+	}).Error; err != nil {
+		slog.Error("failed to create default outbound pipeline", "domain", domain.Name, "error", err)
 	}
 
 	respond.Data(w, http.StatusCreated, domain)

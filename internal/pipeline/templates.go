@@ -82,6 +82,13 @@ func defaultInboundFilters() []FilterConfig {
 			Config:      json.RawMessage(`{"fail_action": "tag"}`),
 		},
 		{
+			Name:        "arc_verify",
+			Type:        FilterTypeTransform,
+			Enabled:     true,
+			Unskippable: true,
+			Config:      json.RawMessage(`{}`),
+		},
+		{
 			Name:        "dmarc_check",
 			Type:        FilterTypeAction,
 			Enabled:     true,
@@ -151,6 +158,12 @@ func defaultOutboundFilters() []FilterConfig {
 		},
 		{
 			Name:    "header_cleanup",
+			Type:    FilterTypeTransform,
+			Enabled: true,
+			Config:  json.RawMessage(`{}`),
+		},
+		{
+			Name:    "arc_seal",
 			Type:    FilterTypeTransform,
 			Enabled: true,
 			Config:  json.RawMessage(`{}`),

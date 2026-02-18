@@ -396,7 +396,7 @@ func TestDefaultInboundPipeline(t *testing.T) {
 	}
 
 	expectedFilters := []string{
-		"size_check", "spf_check", "dkim_verify", "dmarc_check",
+		"size_check", "spf_check", "dkim_verify", "arc_verify", "dmarc_check",
 		"domain_allowlist", "contact_whitelist", "greylist",
 		"header_validate", "recipient_check", "extract_attachments", "sieve",
 	}
@@ -424,7 +424,7 @@ func TestDefaultOutboundPipeline(t *testing.T) {
 	}
 
 	expectedFilters := []string{
-		"sender_verify", "rate_limit", "header_cleanup", "dkim_sign",
+		"sender_verify", "rate_limit", "header_cleanup", "arc_seal", "dkim_sign",
 	}
 	if len(p.Filters) != len(expectedFilters) {
 		t.Fatalf("expected %d filters, got %d", len(expectedFilters), len(p.Filters))

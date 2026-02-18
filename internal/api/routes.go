@@ -54,6 +54,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	logH := handlers.NewLogHandler(db)
 	dkimH := handlers.NewDKIMHandler(db, cfg.MasterKey)
 	certH := handlers.NewCertificateHandler(db, cfg.MasterKey)
+	testH := handlers.NewTestHandler(db, cfg)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -63,6 +64,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	pipeline.DefaultRegistry.Register("recipient_check", filters.NewRecipientCheck(db))
 	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
 	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db, cfg.MasterKey))
+	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
 
 	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine)
@@ -274,6 +276,15 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		// Logs
 		r.Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
 		r.Get("/api/v1/admin/logs/activity", logH.ActivityLog)
+
+		// Test endpoints (non-production only)
+		r.Post("/api/v1/admin/test/send", testH.SendTestEmail)
+		r.Get("/api/v1/admin/test/verify", testH.VerifyDelivery)
+		r.Post("/api/v1/admin/test/probe", testH.ProbeServices)
+		r.Post("/api/v1/admin/test/reset", testH.ResetTestData)
+		r.Post("/api/v1/admin/test/seed", testH.SeedTestData)
+		r.Post("/api/v1/admin/test/snapshot", testH.Snapshot)
+		r.Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
 	})
 
 	return r
