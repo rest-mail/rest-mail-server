@@ -22,7 +22,7 @@ const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
 export function Sidebar() {
   const { user } = useAuthStore();
   const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, selectFolder } = useMailStore();
-  const { sidebarCollapsed, toggleAccountCollapsed, setView } = useUIStore();
+  const { sidebarCollapsed, toggleAccountCollapsed, setView, setSelectedAccountId } = useUIStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -153,17 +153,27 @@ export function Sidebar() {
           )}
           {accounts.map(account => (
             <div key={account.id}>
-              <button
-                onClick={() => handleAccountClick(account.id)}
-                className={cn(
-                  "w-full text-left px-3 py-1.5 text-sm flex items-center gap-1.5",
-                  "hover:bg-sidebar-accent transition-colors text-sidebar-foreground"
-                )}
-              >
-                {isExpanded(account.id) ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                <span className="truncate flex-1 font-medium">{account.address}</span>
-                {!isExpanded(account.id) && <InboxBadge />}
-              </button>
+              <div className="group flex items-center hover:bg-sidebar-accent transition-colors">
+                <button
+                  onClick={() => handleAccountClick(account.id)}
+                  className="flex-1 text-left px-3 py-1.5 text-sm flex items-center gap-1.5 text-sidebar-foreground min-w-0"
+                >
+                  {isExpanded(account.id) ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
+                  <span className="truncate flex-1 font-medium">{account.address}</span>
+                  {!isExpanded(account.id) && <InboxBadge />}
+                </button>
+                <button
+                  title="Account settings"
+                  onClick={() => {
+                    setSelectedAccountId(account.id);
+                    setView('accountSettings');
+                    setMobileOpen(false);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 mr-1 rounded text-muted-foreground hover:text-foreground"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
 
               {isExpanded(account.id) && (
                 <div className="ml-4">
