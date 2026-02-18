@@ -1,5 +1,5 @@
 # ── Stage 1: module cache (shared by all later stages) ───────────────
-FROM golang:1.24-alpine AS deps
+FROM golang:alpine AS deps
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
