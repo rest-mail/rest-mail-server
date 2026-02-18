@@ -67,16 +67,20 @@ tasks:
       - build/gateways/pop3-gateway
 
   build:tui:
-    desc: Build the TUI admin tool
+    desc: Build the TUI admin tool (auto-detects OS/arch)
+    vars:
+      HOST_OS:
+        sh: go env GOHOSTOS
+      HOST_ARCH:
+        sh: go env GOHOSTARCH
     cmds:
-      - go build -o build/tui/tui ./cmd/tui
+      - GOOS={{.HOST_OS}} GOARCH={{.HOST_ARCH}} go build -o build/tui/tui-{{.HOST_OS}}-{{.HOST_ARCH}} ./cmd/tui
+      - echo "Built build/tui/tui-{{.HOST_OS}}-{{.HOST_ARCH}}"
     sources:
       - cmd/tui/**/*.go
       - internal/tui/**/*.go
       - go.mod
       - go.sum
-    generates:
-      - build/tui/tui
 
   build:tui:darwin-arm64:
     desc: Cross-compile TUI for macOS Apple Silicon
@@ -101,6 +105,10 @@ tasks:
       GOARCH: arm64
     cmds:
       - go build -o build/tui/tui-linux-arm64 ./cmd/tui
+
+  build:tui:all:
+    desc: Build TUI for all platforms
+    deps: [build:tui:darwin-arm64, build:tui:darwin-amd64, build:tui:linux-arm64, build:tui]
 
   build:certgen:
     desc: Build the certificate generator

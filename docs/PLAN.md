@@ -2245,7 +2245,32 @@ The bottom three columns provide an at-a-glance dashboard for each mail server, 
 - Connects to the Go REST API for all operations (same API the webmail uses)
 - May also connect directly to Postgres for admin-only queries not exposed via the API
 - Runs on the host, not in a container -- requires the Docker stack to be running
-- Built as a separate Go binary in the same module (e.g. `cmd/tui/`)
+- Built as a separate Go binary in the same module (`cmd/tui/`)
+
+### Building & Running
+
+Build for your current machine (auto-detects OS/arch):
+```bash
+task build:tui
+# Binary output: build/tui/tui-<os>-<arch>
+```
+
+Or cross-compile for a specific platform:
+```bash
+task build:tui:darwin-arm64   # macOS Apple Silicon
+task build:tui:darwin-amd64   # macOS Intel
+task build:tui:linux-arm64    # Linux ARM64
+task build:tui:all            # All platforms
+```
+
+Run (point at the API):
+```bash
+./build/tui/tui-darwin-arm64 -api http://localhost:8080 -user eve@mail3.test -pass password123
+# Or use env vars:
+export RESTMAIL_ADMIN_EMAIL=eve@mail3.test
+export RESTMAIL_ADMIN_PASSWORD=password123
+./build/tui/tui-darwin-arm64 -api http://localhost:8080
+```
 
 ### TODO
 - [x] Set up Bubble Tea project structure (cmd/tui/, internal/tui/)
@@ -2255,7 +2280,8 @@ The bottom three columns provide an at-a-glance dashboard for each mail server, 
 - [x] Build user management view (list, create, delete, reset password)
 - [x] Build inbox browser view (select user → list messages → read message)
 - [x] Build compose view (select sender, enter recipient, subject, body, send)
-- [ ] Wire up API client to Go REST API
+- [x] Wire up API client to Go REST API
+- [x] Cross-compile build tasks (Taskfile.yml: `build:tui`, per-platform, all)
 - [ ] Add real-time status polling for the bottom server status columns
 
 ---
