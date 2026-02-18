@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -176,15 +177,16 @@ func NewEventHandler(db *gorm.DB, broker *SSEBroker, jwtService *auth.JWTService
 }
 
 // Events handles GET /api/v1/accounts/{id}/events as a Server-Sent Events stream.
-// Authentication is performed via the ?token= query parameter because the
-// EventSource browser API does not support custom headers.
+// Authentication is performed via the standard Authorization: Bearer header.
+// The client uses fetch() instead of EventSource so it can send headers.
 func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
-	// 1. Auth via query param token
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Token query parameter required")
+	// 1. Auth via Authorization: Bearer header
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authorization header required")
 		return
 	}
+	token := strings.TrimPrefix(authHeader, "Bearer ")
 
 	claims, err := h.jwtService.ValidateToken(token)
 	if err != nil {

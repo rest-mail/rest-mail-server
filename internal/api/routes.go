@@ -141,7 +141,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 	r.Post("/restmail/messages", restmailH.Deliver)
 
 	// ═══════════════════════════════════════════════════════════════
-	// SSE (query-param auth, outside JWT middleware group)
+	// SSE — outside JWT middleware group; handler validates Authorization: Bearer
 	// ═══════════════════════════════════════════════════════════════
 	r.Get("/api/v1/accounts/{id}/events", eventH.Events)
 
