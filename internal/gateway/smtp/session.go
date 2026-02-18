@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -444,6 +445,10 @@ func (s *Session) handleDATA() {
 
 	// Parse the message and deliver to each recipient
 	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList := parseRawMessage(data)
+
+	if messageID == "" {
+		messageID = rmail.GenerateMessageID(rmail.DomainFromAddress(s.mailFrom))
+	}
 
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient

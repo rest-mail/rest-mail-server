@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -18,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -460,17 +460,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate Message-ID
-	uuidBytes := make([]byte, 16)
-	if _, err := rand.Read(uuidBytes); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate message ID")
-		return
-	}
-	domain := req.From
-	if idx := strings.LastIndex(req.From, "@"); idx >= 0 {
-		domain = req.From[idx+1:]
-	}
-	messageID := fmt.Sprintf("<%x-%x-%x-%x-%x@%s>",
-		uuidBytes[0:4], uuidBytes[4:6], uuidBytes[6:8], uuidBytes[8:10], uuidBytes[10:16], domain)
+	messageID := rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
 
 	// Marshal recipient lists
 	toJSON, _ := json.Marshal(req.To)
@@ -1496,6 +1486,11 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		case pipeline.ActionContinue:
 			emailJSON = pipelineResult.FinalEmail
 		}
+	}
+
+	// ── Ensure Message-ID exists ────────────────────────────────────
+	if params.MessageID == "" {
+		params.MessageID = rmail.GenerateMessageID(rmail.DomainFromAddress(params.Sender))
 	}
 
 	// ── Quota check ──────────────────────────────────────────────────

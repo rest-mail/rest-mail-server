@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -162,6 +163,7 @@ func buildVacationReply(from, to, subject, body, inReplyTo string) string {
 	b.WriteString("To: " + to + "\r\n")
 	b.WriteString("Subject: " + subject + "\r\n")
 	b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
+	b.WriteString("Message-ID: " + rmail.GenerateMessageID(rmail.DomainFromAddress(from)) + "\r\n")
 	if inReplyTo != "" {
 		b.WriteString("In-Reply-To: " + inReplyTo + "\r\n")
 		b.WriteString("References: " + inReplyTo + "\r\n")
