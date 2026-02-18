@@ -30,6 +30,10 @@ type userCreatedMsg struct {
 	err error
 }
 
+type passwordResetMsg struct {
+	err error
+}
+
 // UsersModel handles user/mailbox management.
 type UsersModel struct {
 	api    *apiclient.Client
@@ -45,6 +49,12 @@ type UsersModel struct {
 	nameInput    textinput.Model
 	passInput    textinput.Model
 	createFocus  int
+
+	// Password reset mode
+	resetting      bool
+	resetUserID    uint
+	resetUserEmail string
+	resetPassInput textinput.Model
 }
 
 func NewUsersModel(api *apiclient.Client, token string) UsersModel {
@@ -64,12 +74,19 @@ func NewUsersModel(api *apiclient.Client, token string) UsersModel {
 	pi.CharLimit = 100
 	pi.Width = 40
 
+	rp := textinput.New()
+	rp.Placeholder = "new password"
+	rp.EchoMode = textinput.EchoPassword
+	rp.CharLimit = 100
+	rp.Width = 40
+
 	return UsersModel{
-		api:        api,
-		token:      token,
-		emailInput: ei,
-		nameInput:  ni,
-		passInput:  pi,
+		api:            api,
+		token:          token,
+		emailInput:     ei,
+		nameInput:      ni,
+		passInput:      pi,
+		resetPassInput: rp,
 	}
 }
 
@@ -122,9 +139,21 @@ func (m UsersModel) Update(msg tea.Msg) (UsersModel, tea.Cmd) {
 		}
 		return m, m.loadUsers
 
+	case passwordResetMsg:
+		m.resetting = false
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.err = nil
+		}
+		return m, m.loadUsers
+
 	case tea.KeyMsg:
 		if m.creating {
 			return m.updateCreating(msg)
+		}
+		if m.resetting {
+			return m.updateResetting(msg)
 		}
 
 		switch msg.String() {
@@ -152,14 +181,41 @@ func (m UsersModel) Update(msg tea.Msg) (UsersModel, tea.Cmd) {
 		case "r":
 			if len(m.users) > 0 {
 				u := m.users[m.cursor]
-				return m, func() tea.Msg {
-					err := m.api.ResetPassword(m.token, u.id, "changeme123")
-					return userDeletedMsg{err: err} // reuse msg type to trigger reload
-				}
+				m.resetting = true
+				m.resetUserID = u.id
+				m.resetUserEmail = u.email
+				m.resetPassInput.Reset()
+				m.resetPassInput.Focus()
+				return m, textinput.Blink
 			}
 		}
 	}
 	return m, nil
+}
+
+func (m UsersModel) updateResetting(msg tea.KeyMsg) (UsersModel, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.resetting = false
+		m.resetPassInput.Reset()
+		return m, nil
+	case "enter":
+		pass := m.resetPassInput.Value()
+		if pass == "" {
+			return m, nil
+		}
+		uid := m.resetUserID
+		m.resetting = false
+		m.resetPassInput.Reset()
+		return m, func() tea.Msg {
+			err := m.api.ResetPassword(m.token, uid, pass)
+			return passwordResetMsg{err: err}
+		}
+	}
+
+	var cmd tea.Cmd
+	m.resetPassInput, cmd = m.resetPassInput.Update(msg)
+	return m, cmd
 }
 
 func (m UsersModel) updateCreating(msg tea.KeyMsg) (UsersModel, tea.Cmd) {
@@ -258,10 +314,16 @@ func (m UsersModel) View(width, height int) string {
 	if m.creating {
 		b.WriteString("\n")
 		b.WriteString(lipgloss.NewStyle().PaddingLeft(2).Bold(true).Render("  Create User") + "\n")
-		b.WriteString(fmt.Sprintf("    Email:    %s\n", m.emailInput.View()))
-		b.WriteString(fmt.Sprintf("    Name:     %s\n", m.nameInput.View()))
-		b.WriteString(fmt.Sprintf("    Password: %s\n", m.passInput.View()))
+		fmt.Fprintf(&b, "    Email:    %s\n", m.emailInput.View())
+		fmt.Fprintf(&b, "    Name:     %s\n", m.nameInput.View())
+		fmt.Fprintf(&b, "    Password: %s\n", m.passInput.View())
 		b.WriteString(helpStyle.Render("  tab: next field  enter: save  esc: cancel") + "\n")
+	} else if m.resetting {
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().PaddingLeft(2).Bold(true).Render(
+			fmt.Sprintf("  Reset Password for %s", m.resetUserEmail)) + "\n")
+		fmt.Fprintf(&b, "    New Password: %s\n", m.resetPassInput.View())
+		b.WriteString(helpStyle.Render("  enter: reset  esc: cancel") + "\n")
 	} else {
 		b.WriteString("\n" + helpStyle.Render("  c: create  d: delete  r: reset password  esc: back"))
 	}
