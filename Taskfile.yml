@@ -304,14 +304,14 @@ tasks:
 
   # ── Database ───────────────────────────────────────────
   db:migrate:
-    desc: Run database migrations
+    desc: Run database migrations inside the api container
     cmds:
-      - go run ./cmd/migrate
+      - docker compose exec api go run ./cmd/migrate
 
   db:seed:
-    desc: Seed database with test data
+    desc: Seed database with test data inside the api container
     cmds:
-      - go run ./cmd/seed
+      - docker compose exec api go run ./cmd/seed
 
   db:reset:
     desc: Reset database (migrate + seed)
@@ -331,39 +331,63 @@ tasks:
       - bash docker/certs/generate-certs.sh
 
   # ── Development Workflow ───────────────────────────────
+  #
+  # Everything runs inside Docker containers.
+  # Hot reload is handled by docker-compose.override.yml:
+  #   api     → air (rebuilds Go on .go file changes)
+  #   webmail → Vite HMR (instant React updates)
+  #
+  # Startup order:
+  #   1. Infrastructure: postgres (wait healthy), dnsmasq, js-filter, certgen (one-shot)
+  #   2. Mail servers:   postfix-mail1/2, dovecot-mail1/2
+  #   3. API:            waits internally for postgres to be healthy, runs AutoMigrate
+  #   4. Health check:   poll /api/health until the API is serving requests
+  #   5. Gateways:       smtp-gateway, imap-gateway, pop3-gateway
+  #   6. Webmail:        Vite dev server with HMR
+  #
   dev:
-    desc: Start full dev environment (containers + API)
+    desc: Start the full dev environment in Docker with hot reload
     cmds:
-      - task: up
-      - echo "Waiting for services to be healthy..."
-      - sleep 5
-      - echo "Dev environment ready. API at http://localhost:8080"
+      # Phase 1 — infrastructure (postgres + its deps resolve via depends_on internally)
+      - echo "► Starting infrastructure..."
+      - docker compose up -d --build postgres dnsmasq js-filter certgen postfix-mail1 dovecot-mail1 postfix-mail2 dovecot-mail2
 
-  dev:api:
-    desc: Run the API server locally with hot reload (requires DB)
-    cmds:
-      - air
+      # Phase 2 — API (Docker waits for postgres healthy before starting it)
+      - echo "► Starting API..."
+      - docker compose up -d --build api
 
-  dev:smtp-gateway:
-    desc: Run the SMTP gateway locally (requires API + DB)
-    cmds:
-      - go run ./cmd/smtp-gateway
+      # Phase 3 — wait for the API to be actually serving requests
+      - task: health:wait
 
-  dev:imap-gateway:
-    desc: Run the IMAP gateway locally (requires API + DB)
-    cmds:
-      - go run ./cmd/imap-gateway
+      # Phase 4 — gateways and webmail (Docker ensures certgen has exited before gateways)
+      - echo "► Starting gateways and webmail..."
+      - docker compose up -d --build smtp-gateway imap-gateway pop3-gateway webmail
 
-  dev:pop3-gateway:
-    desc: Run the POP3 gateway locally (requires API + DB)
-    cmds:
-      - go run ./cmd/pop3-gateway
+      - |
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  restmail dev environment ready"
+        echo ""
+        echo "  Webmail   →  http://localhost:3000"
+        echo "  API       →  http://localhost:8080"
+        echo "  API docs  →  http://localhost:8080/api/docs"
+        echo ""
+        echo "  task logs          tail all container logs"
+        echo "  task logs:api      tail API logs only"
+        echo "  task ps            show container status"
+        echo "  task dev:restart   restart a service (e.g. task dev:restart -- api)"
+        echo "  task down          stop everything"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  dev:webmail:
-    desc: Run the webmail frontend dev server
-    dir: webmail
+  dev:restart:
+    desc: Rebuild and restart a single service, e.g. task dev:restart -- api
     cmds:
-      - npm run dev
+      - docker compose up -d --build {{.CLI_ARGS}}
+
+  dev:stop:
+    desc: Stop dev containers without removing them
+    cmds:
+      - docker compose stop
 
   # ── Setup ──────────────────────────────────────────────
   setup:
@@ -398,9 +422,9 @@ tasks:
 
   # ── Website ────────────────────────────────────────────
   website:go:
-    desc: Run the RESTMAIL landing page via Go dev server
+    desc: Run the RESTMAIL landing page via Go dev server (inside api container)
     cmds:
-      - go run ./cmd/website -addr :8090 -root website
+      - docker compose exec api go run ./cmd/website -addr :8090 -root /app/website
 
   website:dev:
     desc: Start the website container (nginx)
