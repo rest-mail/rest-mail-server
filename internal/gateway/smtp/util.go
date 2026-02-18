@@ -84,7 +84,7 @@ func decodeBase64(s string) ([]byte, error) {
 }
 
 // parseRawMessage parses an RFC 2822 message to extract key headers and body parts.
-func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, senderName string) {
+func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string) {
 	msg := string(data)
 
 	// Split headers and body at the first blank line
@@ -129,6 +129,27 @@ func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, sende
 			if idx := strings.Index(from, "<"); idx > 0 {
 				senderName = strings.TrimSpace(from[:idx])
 				senderName = strings.Trim(senderName, "\"")
+			}
+		} else if strings.HasPrefix(lower, "in-reply-to:") {
+			inReplyTo = strings.TrimSpace(line[12:])
+			inReplyTo = strings.Trim(inReplyTo, "<>")
+		} else if strings.HasPrefix(lower, "references:") {
+			references = strings.TrimSpace(line[11:])
+		} else if strings.HasPrefix(lower, "to:") {
+			toRaw := strings.TrimSpace(line[3:])
+			for _, addr := range strings.Split(toRaw, ",") {
+				addr = strings.TrimSpace(addr)
+				if a := extractEmailFromHeader(addr); a != "" {
+					toList = append(toList, a)
+				}
+			}
+		} else if strings.HasPrefix(lower, "cc:") {
+			ccRaw := strings.TrimSpace(line[3:])
+			for _, addr := range strings.Split(ccRaw, ",") {
+				addr = strings.TrimSpace(addr)
+				if a := extractEmailFromHeader(addr); a != "" {
+					ccList = append(ccList, a)
+				}
 			}
 		} else if strings.HasPrefix(lower, "content-type:") {
 			contentType = strings.TrimSpace(line[13:])
@@ -264,5 +285,21 @@ func unhex(c byte) int {
 		return int(c - 'a' + 10)
 	}
 	return -1
+}
+
+// extractEmailFromHeader extracts the email address from a header value like
+// "Name <addr>" or bare "addr".
+func extractEmailFromHeader(s string) string {
+	if idx := strings.Index(s, "<"); idx >= 0 {
+		end := strings.Index(s, ">")
+		if end > idx {
+			return s[idx+1 : end]
+		}
+	}
+	s = strings.TrimSpace(s)
+	if strings.Contains(s, "@") {
+		return s
+	}
+	return ""
 }
 

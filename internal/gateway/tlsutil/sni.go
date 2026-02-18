@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // SNICertLoader provides SNI-based certificate selection by loading
@@ -18,6 +20,8 @@ type SNICertLoader struct {
 	fallback    *tls.Certificate
 	mu          sync.RWMutex
 	cache       map[string]*tls.Certificate
+	watcher     *fsnotify.Watcher
+	stopCh      chan struct{}
 }
 
 // NewSNICertLoader creates a loader that serves certificates from certDir.
@@ -76,4 +80,73 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 
 	slog.Info("sni: loaded certificate", "domain", name)
 	return &cert, nil
+}
+
+// Invalidate removes a domain's cached certificate so it reloads from disk
+// on the next TLS handshake.
+func (l *SNICertLoader) Invalidate(domain string) {
+	l.mu.Lock()
+	delete(l.cache, domain)
+	l.mu.Unlock()
+	slog.Info("sni: invalidated cached cert", "domain", domain)
+}
+
+// StartWatching begins monitoring the cert directory for file changes.
+func (l *SNICertLoader) StartWatching() error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("sni: create watcher: %w", err)
+	}
+
+	if err := watcher.Add(l.certDir); err != nil {
+		watcher.Close()
+		return fmt.Errorf("sni: watch %s: %w", l.certDir, err)
+	}
+
+	l.watcher = watcher
+	l.stopCh = make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				if event.Op&(fsnotify.Create|fsnotify.Write) == 0 {
+					continue
+				}
+				base := filepath.Base(event.Name)
+				ext := filepath.Ext(base)
+				if ext != ".crt" && ext != ".key" {
+					continue
+				}
+				domain := strings.TrimSuffix(base, ext)
+				domain = strings.ToLower(domain)
+				l.Invalidate(domain)
+
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				slog.Error("sni: watcher error", "error", err)
+
+			case <-l.stopCh:
+				return
+			}
+		}
+	}()
+
+	slog.Info("sni: watching cert directory", "dir", l.certDir)
+	return nil
+}
+
+// Stop shuts down the file watcher.
+func (l *SNICertLoader) Stop() {
+	if l.stopCh != nil {
+		close(l.stopCh)
+	}
+	if l.watcher != nil {
+		l.watcher.Close()
+	}
 }

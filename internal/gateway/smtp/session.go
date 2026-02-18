@@ -3,6 +3,7 @@ package smtp
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -431,7 +432,7 @@ func (s *Session) handleDATA() {
 	s.data = data
 
 	// Parse the message and deliver to each recipient
-	subject, bodyText, bodyHTML, messageID, senderName := parseRawMessage(data)
+	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList := parseRawMessage(data)
 
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient
@@ -448,6 +449,8 @@ func (s *Session) handleDATA() {
 				Domain:     recipientDomain,
 				RawMessage: string(data),
 				Status:     "pending",
+				MaxRetries: 30,
+				ExpiresAt:  time.Now().Add(72 * time.Hour),
 			}
 			if err := s.db.Create(&queueEntry).Error; err != nil {
 				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
@@ -467,15 +470,37 @@ func (s *Session) handleDATA() {
 			BodyText:   bodyText,
 			BodyHTML:   bodyHTML,
 			MessageID:  messageID,
+			InReplyTo:  inReplyTo,
+			References: references,
 			RawMessage: string(data),
 			ClientIP:   extractIP(s.remoteAddr),
 			HeloName:   s.heloName,
+		}
+		if len(toList) > 0 {
+			toJSON, _ := json.Marshal(toList)
+			deliverReq.RecipientsTo = toJSON
+		}
+		if len(ccList) > 0 {
+			ccJSON, _ := json.Marshal(ccList)
+			deliverReq.RecipientsCc = ccJSON
 		}
 
 		_, err = s.api.DeliverMessage(deliverReq)
 		if err != nil {
 			slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
-			s.reply(451, "Temporary delivery failure")
+			// Map API error codes to SMTP reply codes
+			if apiErr, ok := err.(*apiclient.APIError); ok {
+				switch {
+				case apiErr.StatusCode == 403 || apiErr.StatusCode == 550:
+					s.reply(550, "Rejected by policy")
+				case apiErr.StatusCode == 503 || apiErr.StatusCode == 451:
+					s.reply(451, "Try again later")
+				default:
+					s.reply(451, "Temporary delivery failure")
+				}
+			} else {
+				s.reply(451, "Temporary delivery failure")
+			}
 			return
 		}
 

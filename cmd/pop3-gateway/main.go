@@ -54,6 +54,11 @@ func main() {
 			loader := tlsutil.NewSNICertLoader(cfg.TLSCertDir, &cert)
 			tlsConfig.GetCertificate = loader.GetCertificate
 			slog.Info("TLS configured with SNI", "cert", cfg.TLSCertPath, "cert_dir", cfg.TLSCertDir)
+			if err := loader.StartWatching(); err != nil {
+				slog.Warn("SNI file watcher failed to start", "error", err)
+			} else {
+				defer loader.Stop()
+			}
 		} else {
 			slog.Info("TLS configured", "cert", cfg.TLSCertPath)
 		}
