@@ -312,6 +312,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── Outbound pipeline execution ────────────────────────────────
+	var extraHeaders map[string]string // populated by pipeline transforms (e.g. DKIM-Signature)
 	if h.engine != nil {
 		var outToAddrs []pipeline.Address
 		for _, addr := range req.To {
@@ -403,7 +404,30 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
 			return
 		case pipeline.ActionContinue:
-			// Pipeline passed, continue with sending
+			// Feed pipeline transforms back into req so downstream code
+			// (sent message creation + raw RFC 2822 builder) uses the
+			// pipeline output (e.g. header_cleanup, dkim_sign).
+			if outResult.FinalEmail != nil {
+				req.Subject = outResult.FinalEmail.Headers.Subject
+
+				bodyText, bodyHTML := extractBodyParts(outResult.FinalEmail.Body)
+				if bodyText != "" {
+					req.BodyText = bodyText
+				}
+				if bodyHTML != "" {
+					req.BodyHTML = bodyHTML
+				}
+
+				// Update recipients if the pipeline modified them.
+				if len(outResult.FinalEmail.Envelope.RcptTo) > 0 {
+					req.To = outResult.FinalEmail.Envelope.RcptTo
+					req.Cc = nil
+					req.Bcc = nil
+				}
+
+				// Capture extra headers (e.g. DKIM-Signature) for the raw message.
+				extraHeaders = outResult.FinalEmail.Headers.Extra
+			}
 		}
 	}
 
@@ -472,6 +496,11 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			b.WriteString("In-Reply-To: <" + req.InReplyTo + ">\r\n")
 		}
 		b.WriteString("MIME-Version: 1.0\r\n")
+
+		// Write extra headers added by pipeline transforms (e.g. DKIM-Signature).
+		for name, value := range extraHeaders {
+			b.WriteString(name + ": " + value + "\r\n")
+		}
 
 		if req.BodyText != "" && req.BodyHTML != "" {
 			boundary := fmt.Sprintf("=_restmail_%d", now.UnixNano())
