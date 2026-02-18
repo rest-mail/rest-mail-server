@@ -4,7 +4,5 @@
   "private": true,
   "description": "Sandboxed JavaScript filter execution for restmail pipeline",
   "main": "server.js",
-  "dependencies": {
-    "vm2": "^3.9.19"
-  }
+  "dependencies": {}
 }

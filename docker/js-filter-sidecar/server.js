@@ -1,5 +1,5 @@
 const http = require('http');
-const { VM } = require('vm2');
+const vm = require('vm');
 
 const PORT = process.env.PORT || 3100;
 
@@ -24,14 +24,31 @@ const server = http.createServer((req, res) => {
 
       const timeout = timeout_ms || 500;
 
-      const vm = new VM({
-        timeout,
-        sandbox: {},
-        eval: false,
-        wasm: false,
-      });
+      // Build a restricted sandbox — no require, process, fs, net, etc.
+      const logs = [];
+      const sandbox = {
+        JSON,
+        Math,
+        Date,
+        String,
+        Array,
+        Object,
+        RegExp,
+        parseInt,
+        parseFloat,
+        isNaN,
+        isFinite,
+        encodeURIComponent,
+        decodeURIComponent,
+        console: {
+          log: (...args) => { logs.push(args.map(String).join(' ')); },
+          warn: (...args) => { logs.push(args.map(String).join(' ')); },
+          error: (...args) => { logs.push(args.map(String).join(' ')); },
+        },
+      };
 
-      // Run the script to define the filter function, then call it
+      const context = vm.createContext(sandbox);
+
       const wrappedScript = `
         ${script}
         if (typeof filter !== 'function') {
@@ -40,12 +57,12 @@ const server = http.createServer((req, res) => {
         filter(${JSON.stringify(email)});
       `;
 
-      const result = vm.run(wrappedScript);
+      const result = vm.runInContext(wrappedScript, context, { timeout });
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ result }));
+      res.end(JSON.stringify({ result, logs }));
     } catch (err) {
-      if (err.message && err.message.includes('timed out')) {
+      if (err.code === 'ERR_SCRIPT_EXECUTION_TIMEOUT') {
         res.writeHead(408, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'execution timeout' }));
         return;

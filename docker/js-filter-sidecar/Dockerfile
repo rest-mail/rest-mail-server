@@ -7,10 +7,8 @@ WORKDIR /app
 COPY server.js .
 COPY package.json .
 
-RUN npm install --production
-
 USER jsfilter
 
 EXPOSE 3100
 
-CMD ["node", "server.js"]
+CMD ["node", "--max-old-space-size=64", "server.js"]
