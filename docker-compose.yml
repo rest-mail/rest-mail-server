@@ -134,6 +134,10 @@ services:
       target: prod
     container_name: api
     restart: unless-stopped
+    labels:
+      - docker-proxy.api.host=localhost
+      - docker-proxy.api.port=8080
+      - docker-proxy.api.path=/api
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
@@ -170,6 +174,10 @@ services:
       target: prod
     container_name: webmail
     restart: unless-stopped
+    labels:
+      - docker-proxy.webmail.host=localhost
+      - docker-proxy.webmail.port=80
+      - docker-proxy.webmail.path=/
     ports:
       - "3000:80"
     depends_on:
@@ -435,6 +443,10 @@ services:
     image: nginx:alpine
     container_name: website
     restart: unless-stopped
+    labels:
+      - docker-proxy.website.host=restmail.localhost
+      - docker-proxy.website.port=80
+      - docker-proxy.website.path=/
     ports:
       - "8090:80"
     volumes:

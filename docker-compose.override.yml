@@ -17,6 +17,8 @@ services:
     build:
       context: ./webmail
       target: dev
+    labels:
+      - docker-proxy.webmail.port=3000
     ports:
       - "3001:3000"
     volumes:
