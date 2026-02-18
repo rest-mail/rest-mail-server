@@ -9,6 +9,7 @@ import (
 
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
@@ -138,6 +139,10 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 				req.Headers, _ = json.Marshal(parsed.Headers.Raw)
 			}
 		}
+	}
+
+	if req.MessageID == "" {
+		req.MessageID = rmail.GenerateMessageID(rmail.DomainFromAddress(req.From))
 	}
 
 	if len(req.To) == 0 {
