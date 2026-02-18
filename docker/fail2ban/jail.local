@@ -1,0 +1,29 @@
+[DEFAULT]
+banaction = iptables-multiport
+
+[restmail-smtp]
+enabled  = true
+filter   = restmail-smtp
+logpath  = /var/log/restmail/smtp-gateway.log
+maxretry = 5
+bantime  = 1800
+findtime = 600
+port     = 25,587
+
+[restmail-imap]
+enabled  = true
+filter   = restmail-imap
+logpath  = /var/log/restmail/imap-gateway.log
+maxretry = 5
+bantime  = 1800
+findtime = 600
+port     = 143,993
+
+[restmail-pop3]
+enabled  = true
+filter   = restmail-pop3
+logpath  = /var/log/restmail/pop3-gateway.log
+maxretry = 5
+bantime  = 1800
+findtime = 600
+port     = 110,995

@@ -13,6 +13,7 @@ volumes:
   mail2-maildir:
   mail3-attachments:
   certs:
+  gateway-logs:
 
 services:
   # ─── Certificate Generator (init container) ──────────────────────────
@@ -371,3 +372,16 @@ services:
     networks:
       mailnet:
         ipv4_address: 172.20.0.17
+
+  # ─── Fail2ban Sidecar ────────────────────────────────────────────────
+  fail2ban:
+    build:
+      context: ./docker/fail2ban
+    profiles: ["security"]
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    network_mode: host
+    volumes:
+      - gateway-logs:/var/log/restmail:ro
+    restart: unless-stopped
