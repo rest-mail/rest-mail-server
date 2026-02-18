@@ -1,146 +1,344 @@
-# REST MAIL
+# RESTMAIL
 
-A modern email server built in Go that extends traditional SMTP/IMAP with a REST API, pipeline-based message processing, and a React webmail client.
+A full-featured mail server platform that exposes email functionality through a REST API while maintaining protocol-level indistinguishability from traditional Postfix/Dovecot mail servers. Built in Go with a React webmail frontend, RESTMAIL gives you programmatic control over every aspect of email delivery, filtering, and administration.
 
-## Architecture
+## Features
 
-REST MAIL consists of several services orchestrated via Docker Compose:
+**Core Email**
+- Full REST API for sending, receiving, searching, threading, and managing email
+- SMTP, IMAP, and POP3 gateways that behave identically to Postfix/Dovecot
+- MIME parsing with attachment handling, inline images, and iCalendar support
+- Calendar invite detection, RSVP responses, and `.ics` composition
+- Drafts, forwarding, folder management, and quota tracking
 
-| Service | Container IP | Ports | Description |
-|---------|-------------|-------|-------------|
-| **API** | 172.20.0.20 | 8080 | REST API server (chi router, GORM/PostgreSQL) |
-| **PostgreSQL** | 172.20.0.2 | 5432 | Primary database |
-| **dnsmasq** | 172.20.0.3 | 53 | Local DNS for dev domains |
-| **Postfix (mail1)** | 172.20.0.11 | 25, 587 | Traditional MTA for mail1.test |
-| **Postfix (mail2)** | 172.20.0.12 | 25, 587 | Traditional MTA for mail2.test |
-| **Postfix (mail3)** | 172.20.0.13 | 25, 587 | RESTMAIL-enabled MTA for mail3.test |
-| **Dovecot (mail1)** | 172.20.0.14 | 143, 993 | IMAP/POP3 for mail1.test |
-| **Dovecot (mail2)** | 172.20.0.17 | 143, 993 | IMAP/POP3 for mail2.test |
-| **SMTP Gateway** | — | 2525, 2587, 2465 | Go SMTP gateway (submission, STARTTLS, implicit TLS) |
-| **IMAP Gateway** | 172.20.0.15 | 1143, 1993 | Go IMAP gateway |
-| **POP3 Gateway** | 172.20.0.16 | 1110, 1995 | Go POP3 gateway |
-| **Webmail** | 172.20.0.21 | 3000 | React SPA |
+**Security and Authentication**
+- TLS with SNI support and DB-backed certificate management
+- DKIM signing, SPF verification, DMARC policy enforcement
+- ARC sealing for forwarded messages
+- MTA-STS and TLS-RPT (RFC 8460/8461)
+- ACME/Let's Encrypt auto-renewal
+- JWT authentication with bcrypt passwords (Dovecot-compatible `{BLF-CRYPT}` format)
+- PROXY protocol support for reverse proxies (HAProxy, nginx)
+- Connection rate limiting, auth ban tracking, fail2ban integration
 
-### Mail Domains
+**Pipeline Engine**
+- 16+ built-in filters: spam scoring, virus scanning, greylisting, DKIM signing, attachment dedup, header rewriting, recipient verification, sender allow/blocklists, vacation responder, and more
+- Custom filter support via JavaScript (Node.js sidecar) and Sieve scripts
+- Configurable inbound and outbound pipelines per domain
+- Quarantine with release/delete management
 
-- **mail1.test** — Traditional Postfix/Dovecot domain
-- **mail2.test** — Traditional Postfix/Dovecot domain
-- **mail3.test** — RESTMAIL protocol-enabled domain (API-native)
+**Administration**
+- Domain, mailbox, and alias CRUD via REST API
+- Queue management with retry, bounce, and bulk operations
+- Delivery and activity log queries
+- IP ban management
+- OpenAPI 3.1 spec (108 operations) with Swagger UI
+- TUI admin tool (bubbletea) with inbox, search, compose, and live status
+- React webmail with rich text editor, contacts, vacation settings
+- Prometheus metrics endpoint with Grafana dashboards
+- Email client auto-configuration (Mozilla, Microsoft, Apple)
 
-## Tech Stack
-
-- **Go 1.24+** — API server, gateways, TUI, tools
-- **chi** — HTTP router
-- **GORM** — ORM with PostgreSQL
-- **JWT** — Authentication (`golang-jwt/jwt/v5`)
-- **bcrypt** — Passwords prefixed with `{BLF-CRYPT}` for Dovecot compatibility
-- **React 18 + TypeScript** — Webmail SPA
-- **Tailwind CSS + shadcn/ui** — UI components
-- **Postfix** — MTA
-- **Dovecot** — IMAP/POP3 server
-
-## Project Structure
-
-```
-cmd/
-  api/            REST API server
-  smtp-gateway/   SMTP gateway service
-  imap-gateway/   IMAP gateway service
-  pop3-gateway/   POP3 gateway service
-  tui/            Terminal UI admin tool
-  certgen/        TLS/DKIM certificate generator
-  migrate/        Database migration runner
-  seed/           Test data seeder
-  rotate-key/     Master key rotation tool
-  website/        Project website
-
-internal/
-  api/            HTTP handlers, routes, middleware
-  api/respond/    Response helpers
-  acme/           ACME (Let's Encrypt) client
-  auth/           JWT + bcrypt authentication
-  config/         Environment variable loading
-  crypto/         AES-256-GCM encryption helpers
-  db/models/      GORM model structs
-  digest/         Quarantine digest email worker
-  dns/            Pluggable DNS provider adapters
-  gateway/        Protocol gateway internals
-    smtp/         SMTP session, PROXY protocol
-    imap/         IMAP session handler
-    pop3/         POP3 session handler
-    queue/        Outbound queue worker (MX lookup, backoff, RESTMAIL upgrade)
-    apiclient/    API client for gateways
-  mail/           Message-ID generation, helpers
-  metrics/        Prometheus metrics collectors
-  mime/           RFC 2822 parser, iCalendar support
-  pipeline/       Filter engine, registry, 16+ built-in filters
-    filters/      Individual filter implementations
-  tui/            TUI views and models
-
-docker/
-  certs/          Certificate generation Dockerfile
-  dnsmasq/        DNS server configuration
-  dovecot/        Dovecot IMAP/POP3 configuration
-  postfix/        Postfix MTA configuration
-  smtp-gateway/   SMTP gateway Dockerfile
-  imap-gateway/   IMAP gateway Dockerfile
-  pop3-gateway/   POP3 gateway Dockerfile
-  fail2ban/       Fail2ban sidecar
-  js-filter-sidecar/  Node.js JavaScript filter runtime
-  rspamd/         Rspamd spam filter sidecar
-
-webmail/          React SPA frontend
-website/          Project website
-tests/e2e/        End-to-end test suite (13 stages)
-```
-
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Docker & Docker Compose
-- Go 1.24+
-- Node.js 18+ (for webmail development)
+- Docker and Docker Compose
+- [Task](https://taskfile.dev/) (optional, for `task` commands)
 
-### Quick Start
+### Start the Stack
 
 ```bash
-# Generate TLS certificates and start all services
-docker compose up -d
+# Start all services (builds images on first run)
+docker compose up -d --build
 
-# Wait for services to be healthy
-curl -sf http://localhost:8080/health
-
-# Seed test data
-go run ./cmd/seed
-
-# Access the webmail
-open http://localhost:3000
+# Or using Task
+task up
 ```
 
-### Development
+This brings up PostgreSQL, dnsmasq, the REST API, webmail, SMTP/IMAP/POP3 gateways, Postfix/Dovecot for traditional domains, and the project website.
+
+### Seed Test Data
 
 ```bash
-# Build all Go binaries
-go build -o build/api/api ./cmd/api
-go build -o build/gateways/smtp-gateway ./cmd/smtp-gateway
-go build -o build/gateways/imap-gateway ./cmd/imap-gateway
-go build -o build/gateways/pop3-gateway ./cmd/pop3-gateway
-go build -o build/tui/tui ./cmd/tui
-go build -o build/tools/certgen ./cmd/certgen
-go build -o build/tools/rotate-key ./cmd/rotate-key
+# Run migrations and seed sample domains, mailboxes, and messages
+task db:reset
 
-# Run tests
-go test ./...
-go test -race ./internal/...
+# Or without Task
+go run ./cmd/migrate && go run ./cmd/seed
+```
 
-# Run E2E tests (requires Docker stack running)
-go test -v -count=1 ./tests/e2e/
+### Access Services
 
-# Webmail development
-cd webmail
-npm install
-npm run dev
+| Service        | URL / Port                          |
+|----------------|-------------------------------------|
+| REST API       | http://localhost:8080               |
+| Swagger UI     | http://localhost:8080/api/docs      |
+| Webmail        | http://localhost:3000               |
+| Website        | http://localhost:8090               |
+| SMTP           | localhost:25 / 587 / 465            |
+| IMAP           | localhost:143 / 993                 |
+| POP3           | localhost:110 / 995                 |
+| Health check   | http://localhost:8080/api/health    |
+| Metrics        | http://localhost:8080/metrics       |
+
+### Test Domains
+
+| Domain       | Type        | Description                        |
+|--------------|-------------|------------------------------------|
+| mail1.test   | Traditional | Postfix + Dovecot                  |
+| mail2.test   | Traditional | Postfix + Dovecot (second domain)  |
+| mail3.test   | RESTMAIL    | Go gateways backed by REST API     |
+
+## Architecture
+
+```
+                          Clients
+                    (Thunderbird, Outlook, curl)
+                             |
+              +--------------+--------------+
+              |              |              |
+         SMTP:25/587    IMAP:143/993   POP3:110/995
+              |              |              |
+     +--------+--------+    |    +---------+---------+
+     | SMTP Gateway     |    |    | POP3 Gateway      |
+     | (Go, mail3.test) |    |    | (Go, mail3.test)  |
+     +--------+---------+    |    +---------+---------+
+              |         +----+----+         |
+              |         | IMAP GW |         |
+              |         | (Go)    |         |
+              |         +----+----+         |
+              |              |              |
+              +------+-------+------+-------+
+                     |              |
+                     v              v
+              +------+------+  +---+---+
+              | REST API    |  |Postfix|  (mail1.test, mail2.test)
+              | :8080 (Go)  |  +---+---+
+              +------+------+      |
+                     |         +---+----+
+              +------+------+  |Dovecot |
+              | Pipeline    |  +--------+
+              | Engine      |
+              +------+------+
+                     |
+              +------+------+
+              | PostgreSQL  |
+              | :5432       |
+              +-------------+
+
+     +-------------+    +-----------+    +--------+
+     | Webmail     |    | TUI Admin |    |dnsmasq |
+     | :3000 React |    | (bubbletea)|   | DNS    |
+     +-------------+    +-----------+    +--------+
+```
+
+### Directory Layout
+
+```
+cmd/
+  api/              REST API server (main entry point)
+  smtp-gateway/     SMTP protocol gateway
+  imap-gateway/     IMAP protocol gateway
+  pop3-gateway/     POP3 protocol gateway
+  tui/              Terminal admin UI
+  migrate/          Database migration runner
+  certgen/          TLS/DKIM certificate generator
+  seed/             Test data seeder
+  website/          Project website server
+internal/
+  api/              Handlers, middleware, routes, SSE, response helpers
+  auth/             JWT + bcrypt authentication
+  config/           Environment variable loading
+  crypto/           AES-256-GCM encryption helpers
+  db/models/        GORM model structs (30+ models)
+  dns/              Pluggable DNS providers (dnsmasq, externaldns, manual)
+  gateway/          SMTP, IMAP, POP3 implementations + queue worker
+  mail/             Message-ID generation
+  metrics/          Prometheus instrumentation
+  mime/             MIME parser, iCalendar support
+  pipeline/         Processing engine, filter registry, 16+ built-in filters
+  tui/              TUI screens and components
+webmail/            React frontend (Vite + TypeScript + Tailwind + shadcn/ui)
+website/            Project landing page (static HTML)
+docker/             Dockerfiles for Postfix, Dovecot, dnsmasq, gateways, etc.
+monitoring/         Prometheus config, alerting rules, Grafana dashboards
+tests/e2e/          End-to-end test suite (10 stages)
+```
+
+## Development
+
+### Prerequisites
+
+- Go 1.24+
+- Node.js 18+ and npm
+- Docker and Docker Compose
+- [Task](https://taskfile.dev/) (recommended)
+
+### Setup
+
+```bash
+# Install Go and Node dependencies, verify build
+task setup
+
+# Generate TLS and DKIM certificates for dev domains
+task certs:generate
+```
+
+### Building
+
+```bash
+# Build all Go binaries (output to build/)
+task build
+
+# Build individual components
+task build:api
+task build:gateways
+task build:tui
+task build:tools
+```
+
+Build artifacts are written to `build/{api,gateways,tui,tools}/`.
+
+### Running Tests
+
+```bash
+# Unit tests
+task test
+
+# Unit tests with coverage report
+task test:coverage
+
+# End-to-end tests (requires running containers)
+task test:e2e
+
+# All tests
+task test:all
+```
+
+### Local Development
+
+```bash
+# Start the full Docker stack
+task dev
+
+# Run the API with hot reload (requires air)
+task dev:api
+
+# Run the webmail frontend dev server
+task dev:webmail
+
+# Run individual gateways locally
+task dev:smtp-gateway
+task dev:imap-gateway
+task dev:pop3-gateway
+```
+
+### Code Quality
+
+```bash
+task fmt       # Format Go code
+task vet       # Run go vet
+task lint      # Run golangci-lint
+task tidy      # Tidy and verify Go modules
+```
+
+## Configuration
+
+All configuration is done via environment variables. The API, gateways, and tools all share the same config loader.
+
+### Core Variables
+
+| Variable            | Default                        | Description                          |
+|---------------------|--------------------------------|--------------------------------------|
+| `DB_HOST`           | `localhost`                    | PostgreSQL host                      |
+| `DB_PORT`           | `5432`                         | PostgreSQL port                      |
+| `DB_NAME`           | `restmail`                     | Database name                        |
+| `DB_USER`           | `restmail`                     | Database user                        |
+| `DB_PASS`           | `restmail`                     | Database password                    |
+| `API_PORT`          | `8080`                         | REST API listen port                 |
+| `API_HOST`          | `0.0.0.0`                      | REST API bind address                |
+| `JWT_SECRET`        | `dev-secret-change-in-production` | JWT signing key (required in prod) |
+| `MASTER_KEY`        | *(empty)*                      | AES key for encrypting private keys at rest (required in prod) |
+| `ENVIRONMENT`       | `development`                  | `development`, `production`, or `test` |
+| `LOG_LEVEL`         | `info`                         | Logging level (`debug`, `info`, `warn`, `error`) |
+
+### TLS and Certificates
+
+| Variable            | Default | Description                                    |
+|---------------------|---------|------------------------------------------------|
+| `TLS_CERT_PATH`     | *(empty)* | Path to TLS certificate file                 |
+| `TLS_KEY_PATH`      | *(empty)* | Path to TLS private key file                 |
+| `TLS_CERT_DIR`      | *(empty)* | Directory with per-domain cert/key pairs for SNI |
+| `ACME_ENABLED`      | `false`   | Enable ACME/Let's Encrypt auto-renewal       |
+| `ACME_EMAIL`        | *(empty)* | Contact email for ACME account               |
+| `ACME_STAGING`      | `false`   | Use Let's Encrypt staging directory          |
+
+### Gateway Variables
+
+| Variable                      | Default           | Description                   |
+|-------------------------------|--------------------|-------------------------------|
+| `GATEWAY_HOSTNAME`            | `mail3.test`       | Hostname announced by gateways |
+| `API_BASE_URL`                | `http://localhost:8080` | Internal API URL for gateways |
+| `SMTP_PORT_INBOUND`           | `25`               | SMTP inbound port             |
+| `SMTP_PORT_SUBMISSION`        | `587`              | SMTP submission port          |
+| `SMTP_PORT_SUBMISSION_TLS`    | `465`              | SMTP implicit TLS port        |
+| `IMAP_PORT`                   | `143`              | IMAP port                     |
+| `IMAP_TLS_PORT`               | `993`              | IMAP implicit TLS port        |
+| `POP3_PORT`                   | `110`              | POP3 port                     |
+| `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
+| `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
+| `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `CORS_ALLOWED_ORIGINS`        | `http://localhost:3000` | Comma-separated CORS origins |
+| `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Comma-separated CIDRs for PROXY protocol |
+| `DNS_PROVIDER`                | `dnsmasq`          | DNS provider (`dnsmasq`, `externaldns`, `manual`) |
+
+## API Overview
+
+The REST API exposes 108 operations across these resource groups:
+
+- **Auth** -- Login, logout, token refresh
+- **Accounts** -- Link/unlink mail accounts, test connections
+- **Messages** -- List, read, send, reply, forward, delete, search, thread
+- **Folders** -- Create, rename, delete, list
+- **Drafts** -- Save, update, send
+- **Attachments** -- Download, list per message
+- **Contacts** -- CRUD, block senders, import, autocomplete
+- **Vacation** -- Get/set/disable auto-responder
+- **Sieve** -- Upload, validate, delete filter scripts
+- **Calendar** -- RSVP to invites, list calendar events
+- **Quarantine** -- List, release, delete quarantined messages
+- **Admin: Domains** -- CRUD, DNS check
+- **Admin: Mailboxes** -- CRUD
+- **Admin: Aliases** -- CRUD
+- **Admin: Pipelines** -- CRUD, test filters, view logs
+- **Admin: Custom Filters** -- CRUD, validate, test
+- **Admin: Queue** -- List, retry, bounce, bulk operations
+- **Admin: DKIM** -- Key management
+- **Admin: Certificates** -- TLS certificate CRUD
+- **Admin: Bans** -- List, create, delete IP bans
+- **Admin: Logs** -- Delivery and activity log queries
+- **Admin: MTA-STS** -- Policy management per domain
+- **Admin: TLS-RPT** -- View TLS report submissions
+- **SSE** -- Real-time event stream per account
+- **Health** -- `GET /api/health`
+- **Metrics** -- `GET /metrics` (Prometheus)
+
+### Documentation
+
+- **Swagger UI**: http://localhost:8080/api/docs
+- **OpenAPI spec**: http://localhost:8080/api/docs/openapi.yaml
+
+### Authentication Example
+
+```bash
+# Login
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "admin@mail1.test", "password": "password"}'
+
+# Use the returned access token
+curl http://localhost:8080/api/v1/accounts \
+  -H "Authorization: Bearer <access_token>"
 ```
 
 ## Pipeline Filters
@@ -160,6 +358,10 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | `size_limit` | Check | Message size enforcement |
 | `attachment_check` | Check | Blocked file type/extension checking |
 | `greylist` | Check | Greylisting with DB-backed tracking |
+| `recipient_check` | Check | Verify recipient exists |
+| `sender_verify` | Check | Sender domain verification |
+| `domain_allowlist` | Check | Domain-level allow/blocklist |
+| `contact_whitelist` | Check | Per-user contact allowlist |
 | `vacation` | Action | Auto-reply responder |
 | `sieve` | Action | Sieve script execution |
 | `webhook` | Action | HTTP webhook notifications |
@@ -168,64 +370,39 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | `rspamd` | Adapter | Rspamd spam scanning |
 | `clamav` | Adapter | ClamAV virus scanning |
 
-## API Overview
+## Docker Compose Profiles
 
-The REST API is documented via OpenAPI 3.1 spec, available at `/api/docs` in development mode.
+The default `docker compose up` starts the core services. Optional profiles add extra capabilities:
 
-### Key Endpoints
+```bash
+# Enable spam/virus scanning (rspamd + ClamAV)
+docker compose --profile scanning up -d
 
-- `POST /api/v1/auth/login` — Authenticate and get JWT
-- `GET /api/v1/accounts` — List linked email accounts
-- `GET /api/v1/accounts/:id/folders/:folder/messages` — List messages
-- `GET /api/v1/messages/:id` — Get message detail
-- `POST /api/v1/messages/send` — Send a message
-- `POST /api/v1/messages/deliver` — Deliver inbound message (gateway)
-- `GET /api/v1/admin/domains` — List domains
-- `GET /api/v1/admin/pipelines` — List pipeline configurations
-- `POST /api/v1/admin/pipelines/test` — Test a pipeline with sample email
-- `GET /api/v1/admin/queue` — View outbound queue
-- `GET /.well-known/mta-sts.txt` — MTA-STS policy
-- `POST /.well-known/smtp-tlsrpt` — TLS-RPT report ingestion
+# Enable monitoring (Prometheus + Grafana)
+docker compose --profile monitoring up -d
+
+# Enable fail2ban
+docker compose --profile security up -d
+
+# Combine profiles
+docker compose --profile scanning --profile monitoring up -d
+```
+
+| Profile      | Services                              | Ports               |
+|-------------|---------------------------------------|----------------------|
+| *(default)* | API, webmail, gateways, Postfix/Dovecot, PostgreSQL, dnsmasq, website | 8080, 3000, 8090, 25, 587, 465, 143, 993, 110, 995 |
+| `scanning`  | rspamd, ClamAV, ClamAV REST proxy    | --                   |
+| `monitoring`| Prometheus, Grafana, postgres-exporter| 9090, 3001           |
+| `security`  | fail2ban                              | --                   |
 
 ## RESTMAIL Protocol
 
-REST MAIL introduces the RESTMAIL SMTP extension for HTTP-based mail delivery between RESTMAIL-capable servers. When an outbound queue worker detects RESTMAIL support via EHLO, it upgrades the connection to HTTPS POST delivery, bypassing traditional SMTP data transfer.
+RESTMAIL introduces an SMTP extension for HTTP-based mail delivery between RESTMAIL-capable servers. When an outbound queue worker detects RESTMAIL support via EHLO, it upgrades the connection to HTTPS POST delivery, bypassing traditional SMTP data transfer. The protocol endpoints are:
 
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | — | PostgreSQL connection string |
-| `JWT_SECRET` | — | JWT signing secret |
-| `MASTER_KEY` | — | AES-256 key for encrypting private keys |
-| `SMTP_PORT_INBOUND` | 25 | SMTP inbound port |
-| `SMTP_PORT_SUBMISSION` | 587 | SMTP submission port |
-| `SMTP_PORT_IMPLICIT_TLS` | 465 | SMTP implicit TLS port |
-| `QUEUE_WORKERS` | 4 | Outbound queue worker count |
-| `QUEUE_POLL_INTERVAL` | 5s | Queue polling interval |
-| `ACME_ENABLED` | false | Enable Let's Encrypt auto-provisioning |
-| `ACME_EMAIL` | — | ACME contact email |
-| `PROXY_PROTOCOL_TRUSTED_CIDRS` | — | Trusted CIDRs for PROXY protocol |
-| `CORS_ALLOWED_ORIGINS` | http://localhost:3000 | CORS origins |
-
-## E2E Test Suite
-
-The test suite (`tests/e2e/`) has 13 stages:
-
-1. **Health** — Service connectivity
-2. **Auth** — Login, registration, JWT
-3. **Domains** — CRUD operations
-4. **Mailboxes** — Create, quota, password
-5. **Folders** — CRUD, system folders
-6. **Messages** — Send, receive, search
-7. **Queue** — Outbound delivery
-8. **Pipeline** — Filter execution
-9. **Certificates** — TLS cert management
-10. **Pipeline Filters** — Individual filter tests
-11. **Queue Retry** — 4xx retry with backoff
-12. **Bounce DSN** — 5xx bounce delivery
-13. **IMAP IDLE** — Push notifications
+- `GET /restmail/capabilities` -- Advertise RESTMAIL support
+- `GET /restmail/mailboxes` -- Verify recipient mailbox exists
+- `POST /restmail/messages` -- Deliver message via HTTP
 
 ## License
 
-MIT
+*TBD -- License information will be added here.*

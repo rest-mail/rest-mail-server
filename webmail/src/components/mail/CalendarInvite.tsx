@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Clock,
   AlertTriangle,
+  History,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as api from '@/api/client';
@@ -131,11 +132,33 @@ function partStatBadge(partstat: string) {
 export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
   const [respondingAs, setRespondingAs] = useState<string | null>(null);
   const [responded, setResponded] = useState<string | null>(null);
+  const [versionInfo, setVersionInfo] = useState<{
+    isSuperseded: boolean;
+    isCancelledByUpdate: boolean;
+    latestSequence: number;
+    versionCount: number;
+  } | null>(null);
   const { accounts, activeAccountId } = useMailStore();
 
   if (!events || events.length === 0) return null;
 
   const event = events[0]; // Display the first event (most common case)
+
+  // Check if this event has been superseded by a newer version
+  useEffect(() => {
+    if (!event.uid || !activeAccountId) return;
+    api.getCalendarEvents(activeAccountId).then(res => {
+      const match = res.data?.find((e: { uid: string }) => e.uid === event.uid);
+      if (match && (match.sequence > event.sequence || match.is_cancelled)) {
+        setVersionInfo({
+          isSuperseded: match.sequence > event.sequence,
+          isCancelledByUpdate: match.is_cancelled && event.method !== 'CANCEL',
+          latestSequence: match.sequence,
+          versionCount: match.versions,
+        });
+      }
+    }).catch(() => { /* silently ignore - feature enhancement only */ });
+  }, [event.uid, event.sequence, event.method, activeAccountId]);
 
   const handleRespond = async (response: 'ACCEPTED' | 'DECLINED' | 'TENTATIVE') => {
     setRespondingAs(response);
@@ -243,6 +266,28 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
           </>
         )}
 
+        {/* Superseded warning */}
+        {versionInfo?.isSuperseded && !isCancelled && (
+          <>
+            <Separator />
+            <div className="flex items-center gap-2 text-sm text-amber-600">
+              <History className="w-4 h-4" />
+              <p>This invite has been updated (version {event.sequence} → {versionInfo.latestSequence}). Check your inbox for the latest version.</p>
+            </div>
+          </>
+        )}
+
+        {/* Cancelled by update warning */}
+        {versionInfo?.isCancelledByUpdate && !isCancelled && (
+          <>
+            <Separator />
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <AlertTriangle className="w-4 h-4" />
+              <p>This event has been cancelled by the organizer.</p>
+            </div>
+          </>
+        )}
+
         {/* Cancelled warning */}
         {isCancelled && (
           <>
@@ -254,8 +299,15 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
           </>
         )}
 
-        {/* RSVP buttons -- only show for REQUEST method and non-cancelled events */}
-        {isRequest && !isCancelled && (
+        {/* Version count */}
+        {versionInfo && versionInfo.versionCount > 1 && (
+          <div className="text-xs text-muted-foreground pl-6">
+            {versionInfo.versionCount} versions of this event received
+          </div>
+        )}
+
+        {/* RSVP buttons -- only show for REQUEST method, non-cancelled, non-superseded events */}
+        {isRequest && !isCancelled && !versionInfo?.isSuperseded && !versionInfo?.isCancelledByUpdate && (
           <>
             <Separator />
             <div className="flex items-center gap-2">
