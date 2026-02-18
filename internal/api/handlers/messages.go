@@ -1972,7 +1972,7 @@ func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Reque
 	}
 
 	seen := map[string]*calEventSummary{}
-	var result []calEventSummary
+	var order []string // preserve insertion order
 	for _, v := range versions {
 		if existing, ok := seen[v.UID]; ok {
 			existing.Versions++
@@ -1993,7 +1993,12 @@ func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Reque
 			Versions:    1,
 		}
 		seen[v.UID] = s
-		result = append(result, *s)
+		order = append(order, v.UID)
+	}
+
+	result := make([]calEventSummary, 0, len(order))
+	for _, uid := range order {
+		result = append(result, *seen[uid])
 	}
 
 	respond.Data(w, http.StatusOK, result)
