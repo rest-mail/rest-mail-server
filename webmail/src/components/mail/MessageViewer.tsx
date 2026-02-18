@@ -222,7 +222,7 @@ export function MessageViewer() {
   return (
     <div className="h-full flex flex-col">
       {/* Action bar */}
-      <div className="flex items-center gap-1 px-4 py-2">
+      <div className="flex flex-wrap items-center gap-1 px-4 py-2">
         <Button variant="ghost" size="sm" onClick={handleReply}>Reply</Button>
         <Button variant="ghost" size="sm" onClick={handleReplyAll}>Reply All</Button>
         <Button variant="ghost" size="sm" onClick={handleForward}>Forward</Button>
@@ -354,7 +354,7 @@ export function MessageViewer() {
           {/* Body */}
           {msg.body_html ? (
             <div
-              className="prose prose-sm dark:prose-invert max-w-none"
+              className="prose prose-sm dark:prose-invert max-w-none [&_img]:max-w-full [&_img]:h-auto"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(msg.body_html, {
                   ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'strong', 'em', 'a', 'ul', 'ol', 'li',

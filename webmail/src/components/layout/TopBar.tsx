@@ -68,19 +68,19 @@ export function TopBar() {
 
   return (
     <>
-      <div className="flex items-center justify-between px-4 py-2 bg-background">
+      <div className="flex items-center justify-between gap-2 px-4 py-2 bg-background">
         {/* Left: action buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button size="sm" onClick={() => startCompose()}>
             Compose
           </Button>
-          <Button variant="outline" size="sm" onClick={() => refresh()}>
+          <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => refresh()}>
             Get Mail
           </Button>
         </div>
 
         {/* Center: search bar */}
-        <div className="flex-1 max-w-md mx-4">
+        <div className="flex-1 max-w-md min-w-0 hidden sm:block">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -108,7 +108,7 @@ export function TopBar() {
         {/* Right: user menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" className="shrink-0 max-w-[200px] truncate">
               {user?.email}
             </Button>
           </DropdownMenuTrigger>

@@ -13,13 +13,13 @@ import { ComposeView } from '@/components/compose/ComposeView';
 import { AddAccountView } from '@/components/account/AddAccountView';
 import { AccountDetailsView } from '@/components/account/AccountDetailsView';
 import { Separator } from '@/components/ui/separator';
-import { useSSE, type SSEEvent } from '@/hooks/useSSE';
+import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { useNotifications } from '@/hooks/useNotifications';
 
 function App() {
   const { isAuthenticated, logout } = useAuthStore();
   const { view, startCompose } = useUIStore();
-  const { activeAccountId, refresh, loadFolders } = useMailStore();
+  const { accounts, refresh, loadFolders } = useMailStore();
 
   // Wire up 401 handler to auto-logout
   useEffect(() => {
@@ -56,8 +56,9 @@ function App() {
     }
   }, [refresh, loadFolders, showDesktopNotification]);
 
-  // Subscribe to SSE events for active account
-  useSSE(isAuthenticated ? activeAccountId : null, handleSSEEvent);
+  // Subscribe to SSE events for all linked accounts
+  const accountIds = isAuthenticated ? accounts.map(a => a.id) : [];
+  useMultiAccountSSE(accountIds, handleSSEEvent);
 
   // Keyboard shortcuts
   useEffect(() => {
