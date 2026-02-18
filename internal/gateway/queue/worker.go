@@ -18,7 +18,53 @@ import (
 
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// SMTPError represents a structured SMTP error with response code.
+type SMTPError struct {
+	Code     int    // 3-digit SMTP code (e.g. 550)
+	Enhanced string // Enhanced status code (e.g. "5.1.1")
+	Message  string // Human-readable message
+}
+
+func (e *SMTPError) Error() string {
+	if e.Enhanced != "" {
+		return fmt.Sprintf("SMTP %d %s: %s", e.Code, e.Enhanced, e.Message)
+	}
+	return fmt.Sprintf("SMTP %d: %s", e.Code, e.Message)
+}
+
+func (e *SMTPError) IsPermanent() bool {
+	return e.Code >= 500 && e.Code < 600
+}
+
+// parseSMTPError extracts SMTP status code from a net/smtp error string.
+func parseSMTPError(err error) *SMTPError {
+	msg := err.Error()
+	// Try to parse "NNN X.X.X rest" or "NNN rest"
+	if len(msg) >= 3 && msg[0] >= '1' && msg[0] <= '5' {
+		code := 0
+		fmt.Sscanf(msg[:3], "%d", &code)
+		if code >= 100 && code <= 599 {
+			rest := strings.TrimSpace(msg[3:])
+			enhanced := ""
+			if len(rest) > 0 && rest[0] >= '1' && rest[0] <= '5' {
+				parts := strings.SplitN(rest, " ", 2)
+				if len(parts[0]) >= 5 && strings.Count(parts[0], ".") == 2 {
+					enhanced = parts[0]
+					if len(parts) > 1 {
+						rest = parts[1]
+					} else {
+						rest = ""
+					}
+				}
+			}
+			return &SMTPError{Code: code, Enhanced: enhanced, Message: rest}
+		}
+	}
+	return &SMTPError{Code: 0, Message: msg}
+}
 
 // Worker processes outbound mail queue entries.
 type Worker struct {
@@ -136,21 +182,43 @@ func (w *Worker) processOne(workerID int) {
 		return
 	}
 
+	// Extract SMTP error code if available
+	var smtpErr *SMTPError
+	var errorCode int
+	if se, ok := deliveryErr.(*SMTPError); ok {
+		smtpErr = se
+		errorCode = se.Code
+	}
+
 	slog.Warn("queue: delivery failed",
 		"id", item.ID,
 		"recipient", item.Recipient,
 		"attempt", item.Attempts+1,
 		"error", deliveryErr,
+		"smtp_code", errorCode,
 	)
 
-	// Check if we should retry or bounce
+	// Permanent failure (5xx) — bounce immediately, don't retry
+	if smtpErr != nil && smtpErr.IsPermanent() {
+		w.db.Model(&item).Updates(map[string]interface{}{
+			"status":          "bounced",
+			"last_error":      deliveryErr.Error(),
+			"last_error_code": errorCode,
+		})
+		slog.Warn("queue: permanent failure, bouncing", "id", item.ID, "smtp_code", errorCode)
+		w.generateBounce(item, smtpErr)
+		return
+	}
+
+	// Check if we should retry or bounce (max retries exhausted)
 	if item.Attempts+1 >= item.MaxRetries {
 		w.db.Model(&item).Updates(map[string]interface{}{
-			"status":     "bounced",
-			"last_error": deliveryErr.Error(),
+			"status":          "bounced",
+			"last_error":      deliveryErr.Error(),
+			"last_error_code": errorCode,
 		})
 		slog.Warn("queue: message bounced (max retries)", "id", item.ID, "recipient", item.Recipient)
-		w.generateBounce(item)
+		w.generateBounce(item, &SMTPError{Code: 0, Message: deliveryErr.Error()})
 		return
 	}
 
@@ -161,9 +229,10 @@ func (w *Worker) processOne(workerID int) {
 	}
 
 	w.db.Model(&item).Updates(map[string]interface{}{
-		"status":      "deferred",
-		"next_attempt": time.Now().Add(backoff),
-		"last_error":  deliveryErr.Error(),
+		"status":          "deferred",
+		"next_attempt":    time.Now().Add(backoff),
+		"last_error":      deliveryErr.Error(),
+		"last_error_code": errorCode,
 	})
 }
 
@@ -231,9 +300,9 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 // cacheCapability stores a RESTMAIL capability probe result in the database.
 func (w *Worker) cacheCapability(domain string, supported bool, endpointURL string) {
 	now := time.Now()
-	ttl := 15 * time.Minute // negative result TTL
+	ttl := 15 * time.Minute
 	if supported {
-		ttl = 1 * time.Hour // positive result TTL
+		ttl = 1 * time.Hour
 	}
 
 	cap := models.RESTMAILCapability{
@@ -244,18 +313,10 @@ func (w *Worker) cacheCapability(domain string, supported bool, endpointURL stri
 		ExpiresAt:   now.Add(ttl),
 	}
 
-	// Upsert: update if domain exists, insert otherwise
-	result := w.db.Where("domain = ?", domain).First(&models.RESTMAILCapability{})
-	if result.Error == nil {
-		w.db.Where("domain = ?", domain).Updates(map[string]interface{}{
-			"supported":    supported,
-			"endpoint_url": endpointURL,
-			"last_probed":  now,
-			"expires_at":   now.Add(ttl),
-		})
-	} else {
-		w.db.Create(&cap)
-	}
+	w.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "domain"}},
+		DoUpdates: clause.AssignmentColumns([]string{"supported", "endpoint_url", "last_probed", "expires_at"}),
+	}).Create(&cap)
 }
 
 // deliverRESTMAILHTTPS sends the message via HTTPS POST to a known RESTMAIL endpoint.
@@ -335,24 +396,9 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 	return true, nil
 }
 
-// generateBounce creates a DSN (Delivery Status Notification) and delivers
-// it to the original sender's mailbox if the sender is a local user.
-func (w *Worker) generateBounce(item models.OutboundQueue) {
-	bounceSubject := fmt.Sprintf("Undelivered Mail Returned to Sender <%s>", item.Recipient)
-	bounceBody := fmt.Sprintf(
-		"This is the mail delivery system at %s.\n\n"+
-			"I'm sorry to inform you that your message could not be delivered to one or more\n"+
-			"recipients. The delivery has been attempted %d times over the message lifetime.\n\n"+
-			"For further assistance, please contact your mail administrator.\n\n"+
-			"--- Delivery report ---\n"+
-			"Reporting-MTA: dns; %s\n"+
-			"Final-Recipient: rfc822; %s\n"+
-			"Action: failed\n"+
-			"Status: 5.0.0\n"+
-			"Diagnostic-Code: smtp; %s\n",
-		w.hostname, item.Attempts, w.hostname, item.Recipient, item.LastError,
-	)
-
+// generateBounce creates an RFC 3464 DSN (Delivery Status Notification)
+// and delivers it to the original sender's mailbox if the sender is local.
+func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	// Check if the sender has a local mailbox
 	var senderMailbox struct {
 		ID     uint
@@ -364,8 +410,87 @@ func (w *Worker) generateBounce(item models.OutboundQueue) {
 		return
 	}
 
-	// Insert bounce message directly into the sender's INBOX
 	now := time.Now()
+	boundary := fmt.Sprintf("=_restmail_dsn_%d", now.UnixNano())
+	msgID := fmt.Sprintf("<dsn-%d-%d@%s>", item.ID, now.UnixNano(), w.hostname)
+
+	statusCode := "5.0.0"
+	diagnosticCode := "smtp; delivery failed"
+	if smtpErr != nil {
+		if smtpErr.Enhanced != "" {
+			statusCode = smtpErr.Enhanced
+		} else if smtpErr.Code >= 500 {
+			statusCode = fmt.Sprintf("%d.0.0", smtpErr.Code/100)
+		}
+		if smtpErr.Code > 0 {
+			diagnosticCode = fmt.Sprintf("smtp; %d %s", smtpErr.Code, smtpErr.Message)
+		} else {
+			diagnosticCode = fmt.Sprintf("smtp; %s", smtpErr.Message)
+		}
+	}
+
+	// Extract original headers from RawMessage for Part 3
+	originalHeaders := item.RawMessage
+	if idx := strings.Index(originalHeaders, "\r\n\r\n"); idx >= 0 {
+		originalHeaders = originalHeaders[:idx]
+	} else if idx := strings.Index(originalHeaders, "\n\n"); idx >= 0 {
+		originalHeaders = originalHeaders[:idx]
+	}
+
+	// Part 1: Human-readable
+	humanPart := fmt.Sprintf(
+		"This is the mail delivery system at %s.\r\n\r\n"+
+			"Your message could not be delivered to the following recipient:\r\n\r\n"+
+			"    %s\r\n\r\n"+
+			"The delivery has been attempted %d time(s).\r\n\r\n"+
+			"Error: %s\r\n",
+		w.hostname, item.Recipient, item.Attempts, diagnosticCode,
+	)
+
+	// Part 2: Machine-readable DSN (RFC 3464)
+	dsnPart := fmt.Sprintf(
+		"Reporting-MTA: dns; %s\r\n"+
+			"Arrival-Date: %s\r\n\r\n"+
+			"Final-Recipient: rfc822; %s\r\n"+
+			"Action: failed\r\n"+
+			"Status: %s\r\n"+
+			"Diagnostic-Code: %s\r\n",
+		w.hostname,
+		item.CreatedAt.Format(time.RFC1123Z),
+		item.Recipient,
+		statusCode,
+		diagnosticCode,
+	)
+
+	// Build full multipart/report message
+	bounceSubject := fmt.Sprintf("Undelivered Mail Returned to Sender <%s>", item.Recipient)
+
+	var b strings.Builder
+	b.WriteString("From: mailer-daemon@" + w.hostname + "\r\n")
+	b.WriteString("To: " + item.Sender + "\r\n")
+	b.WriteString("Subject: " + bounceSubject + "\r\n")
+	b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
+	b.WriteString("Message-ID: " + msgID + "\r\n")
+	b.WriteString("MIME-Version: 1.0\r\n")
+	b.WriteString("Content-Type: multipart/report; report-type=delivery-status; boundary=\"" + boundary + "\"\r\n")
+	b.WriteString("\r\n")
+	// Part 1
+	b.WriteString("--" + boundary + "\r\n")
+	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+	b.WriteString(humanPart + "\r\n")
+	// Part 2
+	b.WriteString("--" + boundary + "\r\n")
+	b.WriteString("Content-Type: message/delivery-status\r\n\r\n")
+	b.WriteString(dsnPart + "\r\n")
+	// Part 3
+	b.WriteString("--" + boundary + "\r\n")
+	b.WriteString("Content-Type: text/rfc822-headers\r\n\r\n")
+	b.WriteString(originalHeaders + "\r\n")
+	b.WriteString("--" + boundary + "--\r\n")
+
+	rawBounce := b.String()
+
+	// Insert bounce message into sender's INBOX
 	bounceMsg := map[string]interface{}{
 		"mailbox_id":    senderMailbox.ID,
 		"folder":        "INBOX",
@@ -374,9 +499,10 @@ func (w *Worker) generateBounce(item models.OutboundQueue) {
 		"recipients_to": fmt.Sprintf(`["%s"]`, item.Sender),
 		"recipients_cc": "[]",
 		"subject":       bounceSubject,
-		"body_text":     bounceBody,
+		"body_text":     humanPart,
+		"raw_message":   rawBounce,
 		"is_read":       false,
-		"size_bytes":    len(bounceSubject) + len(bounceBody),
+		"size_bytes":    len(rawBounce),
 		"received_at":   now,
 		"created_at":    now,
 		"updated_at":    now,
@@ -387,7 +513,7 @@ func (w *Worker) generateBounce(item models.OutboundQueue) {
 		return
 	}
 
-	slog.Info("queue: bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
+	slog.Info("queue: RFC 3464 bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
 }
 
 // deliverToHost attempts SMTP delivery to a specific host.
@@ -429,12 +555,12 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue) error {
 
 	// Set sender
 	if err := client.Mail(item.Sender); err != nil {
-		return fmt.Errorf("MAIL FROM to %s: %w", host, err)
+		return parseSMTPError(err)
 	}
 
 	// Set recipient
 	if err := client.Rcpt(item.Recipient); err != nil {
-		return fmt.Errorf("RCPT TO %s at %s: %w", item.Recipient, host, err)
+		return parseSMTPError(err)
 	}
 
 	// Send data
@@ -448,7 +574,7 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue) error {
 		return fmt.Errorf("write message to %s: %w", host, err)
 	}
 	if err := wc.Close(); err != nil {
-		return fmt.Errorf("end DATA to %s: %w", host, err)
+		return parseSMTPError(err)
 	}
 
 	// Quit
