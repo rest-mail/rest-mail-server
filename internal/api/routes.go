@@ -221,6 +221,9 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		// Queue management
 		r.Get("/api/v1/admin/queue", queueH.ListQueue)
 		r.Get("/api/v1/admin/queue/stats", queueH.QueueStats)
+		r.Post("/api/v1/admin/queue/bulk-retry", queueH.BulkRetry)
+		r.Post("/api/v1/admin/queue/bulk-bounce", queueH.BulkBounce)
+		r.Delete("/api/v1/admin/queue/bulk-delete", queueH.BulkDelete)
 		r.Get("/api/v1/admin/queue/{id}", queueH.GetQueueEntry)
 		r.Post("/api/v1/admin/queue/{id}/retry", queueH.RetryQueueEntry)
 		r.Post("/api/v1/admin/queue/{id}/bounce", queueH.BounceQueueEntry)

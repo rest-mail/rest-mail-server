@@ -616,6 +616,16 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Auto-collect recipient contacts
+	for _, rcptAddr := range allRecipients {
+		contact := models.Contact{MailboxID: senderMailbox.ID, Email: rcptAddr}
+		h.db.Where(contact).Attrs(models.Contact{
+			Name:       "",
+			TrustLevel: "auto",
+			Source:     "sent",
+		}).FirstOrCreate(&models.Contact{})
+	}
+
 	respond.Data(w, http.StatusCreated, sentMsg)
 }
 

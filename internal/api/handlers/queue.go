@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -29,6 +30,12 @@ func (h *QueueHandler) ListQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	if domain := r.URL.Query().Get("domain"); domain != "" {
 		query = query.Where("domain = ?", domain)
+	}
+	if sender := r.URL.Query().Get("sender"); sender != "" {
+		query = query.Where("sender ILIKE ?", "%"+sender+"%")
+	}
+	if recipient := r.URL.Query().Get("recipient"); recipient != "" {
+		query = query.Where("recipient ILIKE ?", "%"+recipient+"%")
 	}
 
 	limit := 50
@@ -163,4 +170,102 @@ func (h *QueueHandler) QueueStats(w http.ResponseWriter, r *http.Request) {
 	stats["total"] = total
 
 	respond.Data(w, http.StatusOK, stats)
+}
+
+type bulkQueueRequest struct {
+	IDs    []uint `json:"ids"`
+	Filter *struct {
+		Status string `json:"status"`
+		Domain string `json:"domain"`
+	} `json:"filter"`
+}
+
+func (h *QueueHandler) buildBulkQuery(req bulkQueueRequest) *gorm.DB {
+	query := h.db.Model(&models.OutboundQueue{})
+	if len(req.IDs) > 0 {
+		return query.Where("id IN ?", req.IDs)
+	}
+	if req.Filter != nil {
+		if req.Filter.Status != "" {
+			query = query.Where("status = ?", req.Filter.Status)
+		}
+		if req.Filter.Domain != "" {
+			query = query.Where("domain = ?", req.Filter.Domain)
+		}
+	}
+	return query
+}
+
+// BulkRetry forces immediate retry for multiple queue entries.
+// POST /api/v1/admin/queue/bulk-retry
+func (h *QueueHandler) BulkRetry(w http.ResponseWriter, r *http.Request) {
+	var req bulkQueueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if len(req.IDs) == 0 && req.Filter == nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "ids or filter required")
+		return
+	}
+	if len(req.IDs) > 1000 {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "max 1000 IDs per request")
+		return
+	}
+
+	result := h.buildBulkQuery(req).
+		Where("status IN ?", []string{"deferred", "pending"}).
+		Updates(map[string]interface{}{
+			"status":       "pending",
+			"next_attempt": time.Now(),
+		})
+
+	respond.Data(w, http.StatusOK, map[string]int64{"affected": result.RowsAffected})
+}
+
+// BulkBounce forces a bounce for multiple queue entries.
+// POST /api/v1/admin/queue/bulk-bounce
+func (h *QueueHandler) BulkBounce(w http.ResponseWriter, r *http.Request) {
+	var req bulkQueueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if len(req.IDs) == 0 && req.Filter == nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "ids or filter required")
+		return
+	}
+	if len(req.IDs) > 1000 {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "max 1000 IDs per request")
+		return
+	}
+
+	result := h.buildBulkQuery(req).Updates(map[string]interface{}{
+		"status":     "bounced",
+		"last_error": "manually bounced by admin (bulk)",
+	})
+
+	respond.Data(w, http.StatusOK, map[string]int64{"affected": result.RowsAffected})
+}
+
+// BulkDelete removes multiple queue entries.
+// DELETE /api/v1/admin/queue/bulk-delete
+func (h *QueueHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
+	var req bulkQueueRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if len(req.IDs) == 0 && req.Filter == nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "ids or filter required")
+		return
+	}
+	if len(req.IDs) > 1000 {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "max 1000 IDs per request")
+		return
+	}
+
+	result := h.buildBulkQuery(req).Delete(&models.OutboundQueue{})
+
+	respond.Data(w, http.StatusOK, map[string]int64{"affected": result.RowsAffected})
 }

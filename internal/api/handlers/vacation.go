@@ -2,39 +2,25 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
-
-// VacationConfig stores out-of-office auto-reply settings for a mailbox.
-type VacationConfig struct {
-	ID        uint       `gorm:"primaryKey" json:"id"`
-	MailboxID uint       `gorm:"uniqueIndex;not null" json:"mailbox_id"`
-	Enabled   bool       `gorm:"default:false" json:"enabled"`
-	Subject   string     `gorm:"size:500" json:"subject"`
-	Body      string     `gorm:"type:text" json:"body"`
-	StartDate *time.Time `json:"start_date,omitempty"`
-	EndDate   *time.Time `json:"end_date,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-}
-
-func (VacationConfig) TableName() string { return "vacation_configs" }
 
 // VacationHandler manages vacation/out-of-office auto-reply settings.
 type VacationHandler struct {
 	db *gorm.DB
 }
 
-// NewVacationHandler creates a new VacationHandler and auto-migrates the
-// vacation_configs table.
+// NewVacationHandler creates a new VacationHandler.
 func NewVacationHandler(db *gorm.DB) *VacationHandler {
-	db.AutoMigrate(&VacationConfig{})
 	return &VacationHandler{db: db}
 }
 
@@ -48,16 +34,45 @@ type vacationSetting struct {
 	EndDate   *time.Time `json:"end_date,omitempty"`
 }
 
+// resolveMailboxID resolves the account ID from the URL to a mailbox ID,
+// verifying that the authenticated user owns the account (either as their
+// primary account or a linked account).
+func (h *VacationHandler) resolveMailboxID(r *http.Request, accountIDStr string) (uint, error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return 0, fmt.Errorf("no claims")
+	}
+
+	accountID, err := strconv.ParseUint(accountIDStr, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+
+	var account models.WebmailAccount
+	if err := h.db.First(&account, accountID).Error; err == nil {
+		if account.ID == claims.WebmailAccountID {
+			return account.PrimaryMailboxID, nil
+		}
+	}
+
+	var linked models.LinkedAccount
+	if err := h.db.Where("webmail_account_id = ? AND id = ?", claims.WebmailAccountID, accountID).First(&linked).Error; err == nil {
+		return linked.MailboxID, nil
+	}
+
+	return 0, fmt.Errorf("access denied")
+}
+
 // GetVacation returns the vacation auto-reply configuration for a mailbox.
 // GET /api/v1/accounts/{id}/vacation
 func (h *VacationHandler) GetVacation(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
-	var config VacationConfig
+	var config models.VacationConfig
 	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&config).Error; err != nil {
 		// Return defaults when no vacation config exists yet.
 		respond.Data(w, http.StatusOK, vacationSetting{
@@ -80,9 +95,9 @@ func (h *VacationHandler) GetVacation(w http.ResponseWriter, r *http.Request) {
 // SetVacation creates or updates the vacation auto-reply configuration.
 // PUT /api/v1/accounts/{id}/vacation
 func (h *VacationHandler) SetVacation(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -117,13 +132,13 @@ func (h *VacationHandler) SetVacation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var config VacationConfig
+	var config models.VacationConfig
 	result := h.db.Where("mailbox_id = ?", mailboxID).First(&config)
 
 	if result.Error != nil {
 		// Create new config.
-		config = VacationConfig{
-			MailboxID: uint(mailboxID),
+		config = models.VacationConfig{
+			MailboxID: mailboxID,
 			Enabled:   req.Enabled,
 			Subject:   req.Subject,
 			Body:      req.Body,
@@ -161,13 +176,13 @@ func (h *VacationHandler) SetVacation(w http.ResponseWriter, r *http.Request) {
 // DisableVacation turns off the vacation auto-reply for a mailbox.
 // DELETE /api/v1/accounts/{id}/vacation
 func (h *VacationHandler) DisableVacation(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
-	var config VacationConfig
+	var config models.VacationConfig
 	if err := h.db.Where("mailbox_id = ?", mailboxID).First(&config).Error; err != nil {
 		// Nothing to disable; return success.
 		w.WriteHeader(http.StatusNoContent)

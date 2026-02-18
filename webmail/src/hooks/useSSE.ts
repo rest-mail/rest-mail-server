@@ -6,6 +6,8 @@ export interface SSEEvent {
   data: Record<string, unknown>;
 }
 
+const EVENT_TYPES = ['new_message', 'folder_update', 'message_updated', 'message_deleted', 'message_sent'];
+
 export function useSSE(
   accountId: number | null,
   onEvent: (event: SSEEvent) => void,
@@ -19,29 +21,46 @@ export function useSSE(
     const token = getToken();
     if (!token) return;
 
-    const url = `/api/v1/accounts/${accountId}/events?token=${encodeURIComponent(token)}`;
-    const es = new EventSource(url);
+    let es: EventSource | null = null;
+    let delay = 1000;
+    const maxDelay = 30000;
+    let closed = false;
 
-    const handleEvent = (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data);
-        onEventRef.current({ type: e.type, data });
-      } catch {
-        // ignore malformed events
-      }
-    };
+    function connect() {
+      if (closed) return;
 
-    es.addEventListener('new_message', handleEvent);
-    es.addEventListener('folder_update', handleEvent);
-    es.addEventListener('message_updated', handleEvent);
-    es.addEventListener('message_deleted', handleEvent);
+      const url = `/api/v1/accounts/${accountId}/events?token=${encodeURIComponent(token)}`;
+      es = new EventSource(url);
 
-    es.onerror = () => {
-      // EventSource auto-reconnects on error
-    };
+      const handleEvent = (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          onEventRef.current({ type: e.type, data });
+        } catch {
+          // ignore malformed events
+        }
+      };
+
+      EVENT_TYPES.forEach(type => es!.addEventListener(type, handleEvent));
+
+      es.onopen = () => {
+        delay = 1000; // reset backoff on successful connection
+      };
+
+      es.onerror = () => {
+        es?.close();
+        if (!closed) {
+          setTimeout(connect, delay);
+          delay = Math.min(delay * 2, maxDelay);
+        }
+      };
+    }
+
+    connect();
 
     return () => {
-      es.close();
+      closed = true;
+      es?.close();
     };
   }, [accountId]);
 }
@@ -49,6 +68,7 @@ export function useSSE(
 /**
  * Subscribe to SSE events for multiple accounts simultaneously.
  * Opens one EventSource per account and forwards all events to the callback.
+ * Includes exponential backoff on reconnect.
  */
 export function useMultiAccountSSE(
   accountIds: number[],
@@ -64,35 +84,54 @@ export function useMultiAccountSSE(
     const token = getToken();
     if (!token || accountIds.length === 0) return;
 
-    const sources: EventSource[] = [];
+    const cleanups: (() => void)[] = [];
 
     for (const id of accountIds) {
-      const url = `/api/v1/accounts/${id}/events?token=${encodeURIComponent(token)}`;
-      const es = new EventSource(url);
+      let es: EventSource | null = null;
+      let delay = 1000;
+      const maxDelay = 30000;
+      let closed = false;
 
-      const handleEvent = (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          onEventRef.current({ type: e.type, data });
-        } catch {
-          // ignore malformed events
-        }
-      };
+      function connect() {
+        if (closed) return;
 
-      es.addEventListener('new_message', handleEvent);
-      es.addEventListener('folder_update', handleEvent);
-      es.addEventListener('message_updated', handleEvent);
-      es.addEventListener('message_deleted', handleEvent);
+        const url = `/api/v1/accounts/${id}/events?token=${encodeURIComponent(token)}`;
+        es = new EventSource(url);
 
-      es.onerror = () => {
-        // EventSource auto-reconnects on error
-      };
+        const handleEvent = (e: MessageEvent) => {
+          try {
+            const data = JSON.parse(e.data);
+            onEventRef.current({ type: e.type, data });
+          } catch {
+            // ignore malformed events
+          }
+        };
 
-      sources.push(es);
+        EVENT_TYPES.forEach(type => es!.addEventListener(type, handleEvent));
+
+        es.onopen = () => {
+          delay = 1000;
+        };
+
+        es.onerror = () => {
+          es?.close();
+          if (!closed) {
+            setTimeout(connect, delay);
+            delay = Math.min(delay * 2, maxDelay);
+          }
+        };
+      }
+
+      connect();
+
+      cleanups.push(() => {
+        closed = true;
+        es?.close();
+      });
     }
 
     return () => {
-      sources.forEach(es => es.close());
+      cleanups.forEach(fn => fn());
     };
   }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 }

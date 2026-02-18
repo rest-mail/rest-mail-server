@@ -128,6 +128,23 @@ type VacationResponse struct {
 
 func (VacationResponse) TableName() string { return "vacation_responses" }
 
+// VacationConfig stores out-of-office auto-reply settings for a mailbox.
+type VacationConfig struct {
+	ID        uint       `gorm:"primaryKey" json:"id"`
+	MailboxID uint       `gorm:"uniqueIndex;not null" json:"mailbox_id"`
+	Enabled   bool       `gorm:"default:false" json:"enabled"`
+	Subject   string     `gorm:"size:500" json:"subject"`
+	Body      string     `gorm:"type:text" json:"body"`
+	StartDate *time.Time `json:"start_date,omitempty"`
+	EndDate   *time.Time `json:"end_date,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+
+	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"-"`
+}
+
+func (VacationConfig) TableName() string { return "vacation_configs" }
+
 // Attachment represents a stored attachment reference.
 type Attachment struct {
 	ID          uint      `gorm:"primaryKey" json:"id"`
