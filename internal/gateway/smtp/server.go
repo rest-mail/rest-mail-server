@@ -14,14 +14,15 @@ import (
 
 // Server listens for SMTP connections and spawns session handlers.
 type Server struct {
-	hostname   string
-	api        *apiclient.Client
-	tlsConfig  *tls.Config
-	db         *gorm.DB
-	limiter    *connlimiter.Limiter
-	listeners  []net.Listener
-	wg         sync.WaitGroup
-	shutdown   chan struct{}
+	hostname              string
+	api                   *apiclient.Client
+	tlsConfig             *tls.Config
+	db                    *gorm.DB
+	limiter               *connlimiter.Limiter
+	proxyProtocolCIDRs    []string
+	listeners             []net.Listener
+	wg                    sync.WaitGroup
+	shutdown              chan struct{}
 }
 
 // NewServer creates a new SMTP server.
@@ -34,6 +35,11 @@ func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config, db
 		limiter:   limiter,
 		shutdown:  make(chan struct{}),
 	}
+}
+
+// SetProxyProtocol configures PROXY protocol support with the given trusted CIDRs.
+func (s *Server) SetProxyProtocol(trustedCIDRs []string) {
+	s.proxyProtocolCIDRs = trustedCIDRs
 }
 
 // ListenAndServe starts SMTP listeners on the specified ports.
@@ -83,6 +89,16 @@ func (s *Server) listen(port int, isSubmission, implicitTLS bool) error {
 			return err
 		}
 		slog.Info("smtp: listening", "port", port, "submission", isSubmission)
+	}
+
+	// Wrap with PROXY protocol if trusted CIDRs are configured
+	if len(s.proxyProtocolCIDRs) > 0 {
+		wrapped, err := WrapWithProxyProtocol(listener, s.proxyProtocolCIDRs)
+		if err != nil {
+			listener.Close()
+			return fmt.Errorf("proxy protocol: %w", err)
+		}
+		listener = wrapped
 	}
 
 	s.listeners = append(s.listeners, listener)

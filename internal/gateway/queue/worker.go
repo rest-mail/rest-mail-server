@@ -21,6 +21,34 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// mtaStsPolicy represents a parsed MTA-STS (RFC 8461) policy.
+type mtaStsPolicy struct {
+	Version string   // "STSv1"
+	Mode    string   // "enforce", "testing", "none"
+	MX      []string // MX host patterns (may include wildcards like "*.example.com")
+	MaxAge  int      // seconds
+}
+
+// mxMatchesPolicy checks whether the given MX host matches any of the
+// policy's mx patterns. Patterns may use a leading wildcard (e.g. "*.example.com").
+func (p *mtaStsPolicy) mxMatchesPolicy(mxHost string) bool {
+	mxHost = strings.TrimSuffix(strings.ToLower(mxHost), ".")
+	for _, pattern := range p.MX {
+		pattern = strings.TrimSuffix(strings.ToLower(pattern), ".")
+		if pattern == mxHost {
+			return true
+		}
+		// Wildcard match: "*.example.com" matches "mail.example.com"
+		if strings.HasPrefix(pattern, "*.") {
+			suffix := pattern[1:] // ".example.com"
+			if strings.HasSuffix(mxHost, suffix) && strings.Count(mxHost, ".") == strings.Count(suffix, ".") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // SMTPError represents a structured SMTP error with response code.
 type SMTPError struct {
 	Code     int    // 3-digit SMTP code (e.g. 550)
@@ -283,11 +311,40 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		}
 	}
 
+	// Check MTA-STS policy for the target domain (RFC 8461)
+	var stsPolicy *mtaStsPolicy
+	policy, err := w.checkMTASTS(item.Domain)
+	if err != nil {
+		slog.Debug("queue: MTA-STS not available, proceeding normally",
+			"domain", item.Domain, "error", err)
+	} else {
+		stsPolicy = policy
+		slog.Info("queue: MTA-STS policy found",
+			"domain", item.Domain, "mode", policy.Mode, "mx_count", len(policy.MX))
+	}
+
 	// Fall back to SMTP delivery
 	var lastErr error
 	for _, mx := range mxRecords {
 		host := strings.TrimSuffix(mx.Host, ".")
-		lastErr = w.deliverToHost(host, item)
+
+		// MTA-STS MX validation
+		if stsPolicy != nil && len(stsPolicy.MX) > 0 {
+			if !stsPolicy.mxMatchesPolicy(host) {
+				if stsPolicy.Mode == "enforce" {
+					slog.Warn("queue: MTA-STS enforce — MX host not in policy, skipping",
+						"host", host, "domain", item.Domain)
+					lastErr = fmt.Errorf("MTA-STS enforce: MX host %s not in policy for %s", host, item.Domain)
+					continue
+				}
+				if stsPolicy.Mode == "testing" {
+					slog.Warn("queue: MTA-STS testing — MX host not in policy, delivering anyway",
+						"host", host, "domain", item.Domain)
+				}
+			}
+		}
+
+		lastErr = w.deliverToHost(host, item, stsPolicy)
 		if lastErr == nil {
 			return nil
 		}
@@ -516,12 +573,78 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	slog.Info("queue: RFC 3464 bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
 }
 
+// checkMTASTS fetches and parses the MTA-STS policy for a domain.
+// It returns the parsed policy or nil if no policy is available.
+// The fetch uses a short timeout (5s) so it never blocks delivery.
+func (w *Worker) checkMTASTS(domain string) (*mtaStsPolicy, error) {
+	url := fmt.Sprintf("https://mta-sts.%s/.well-known/mta-sts.txt", domain)
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: w.tlsInsecure},
+		},
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("MTA-STS fetch failed for %s: %w", domain, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("MTA-STS returned HTTP %d for %s", resp.StatusCode, domain)
+	}
+
+	// Limit body to 64KB to prevent abuse
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return nil, fmt.Errorf("MTA-STS read failed for %s: %w", domain, err)
+	}
+
+	policy := &mtaStsPolicy{}
+	for _, line := range strings.Split(string(body), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "version":
+			policy.Version = value
+		case "mode":
+			policy.Mode = value
+		case "mx":
+			policy.MX = append(policy.MX, value)
+		case "max_age":
+			fmt.Sscanf(value, "%d", &policy.MaxAge)
+		}
+	}
+
+	if policy.Version != "STSv1" {
+		return nil, fmt.Errorf("MTA-STS unsupported version %q for %s", policy.Version, domain)
+	}
+
+	return policy, nil
+}
+
 // deliverToHost attempts SMTP delivery to a specific host.
-func (w *Worker) deliverToHost(host string, item models.OutboundQueue) error {
+// If an MTA-STS policy is provided, TLS requirements are enforced accordingly.
+func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtaStsPolicy) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	addr := host + ":25"
+
+	// Determine if MTA-STS requires TLS
+	requireTLS := stsPolicy != nil && stsPolicy.Mode == "enforce"
+	testingTLS := stsPolicy != nil && stsPolicy.Mode == "testing"
 
 	// Dial with timeout
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
@@ -543,15 +666,37 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue) error {
 	}
 
 	// Try STARTTLS if available
+	tlsEstablished := false
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		tlsConfig := &tls.Config{
 			ServerName:         host,
 			InsecureSkipVerify: w.tlsInsecure,
 		}
 		if err := client.StartTLS(tlsConfig); err != nil {
-			slog.Debug("queue: STARTTLS failed, continuing without TLS", "host", host, "error", err)
+			if requireTLS {
+				return fmt.Errorf("MTA-STS enforce: STARTTLS failed for %s: %w", host, err)
+			}
+			if testingTLS {
+				slog.Warn("queue: MTA-STS testing — STARTTLS failed, delivering anyway",
+					"host", host, "error", err)
+			} else {
+				slog.Debug("queue: STARTTLS failed, continuing without TLS", "host", host, "error", err)
+			}
+		} else {
+			tlsEstablished = true
+		}
+	} else {
+		// No STARTTLS support at all
+		if requireTLS {
+			return fmt.Errorf("MTA-STS enforce: host %s does not support STARTTLS", host)
+		}
+		if testingTLS {
+			slog.Warn("queue: MTA-STS testing — host does not support STARTTLS, delivering anyway",
+				"host", host)
 		}
 	}
+
+	_ = tlsEstablished // available for future logging/metrics
 
 	// Set sender
 	if err := client.Mail(item.Sender); err != nil {

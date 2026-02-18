@@ -56,6 +56,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	certH := handlers.NewCertificateHandler(db, cfg.MasterKey)
 	testH := handlers.NewTestHandler(db, cfg)
 	mtastsH := handlers.NewMTASTSHandler(db)
+	tlsrptH := handlers.NewTLSReportHandler(db)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -95,6 +96,11 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 	// MTA-STS policy (no auth — served to external MTAs per RFC 8461)
 	// ═══════════════════════════════════════════════════════════════
 	r.Get("/.well-known/mta-sts.txt", mtastsH.ServePolicy)
+
+	// ═══════════════════════════════════════════════════════════════
+	// TLS-RPT report ingestion (no auth — receives reports from external MTAs per RFC 8460)
+	// ═══════════════════════════════════════════════════════════════
+	r.Post("/.well-known/smtp-tlsrpt", tlsrptH.ReceiveReport)
 
 	// ═══════════════════════════════════════════════════════════════
 	// Auth (no auth)
@@ -270,6 +276,9 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config) htt
 		r.Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
 		r.Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
 		r.Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
+
+		// TLS-RPT reports
+		r.Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)
 
 		// DKIM key management
 		r.Get("/api/v1/admin/dkim", dkimH.ListKeys)

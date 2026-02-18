@@ -123,6 +123,10 @@ func main() {
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	bancheck.Wire(limiter, database, "smtp")
 	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, database, limiter)
+	if len(cfg.ProxyProtocolTrustedCIDRs) > 0 {
+		smtpServer.SetProxyProtocol(cfg.ProxyProtocolTrustedCIDRs)
+		slog.Info("PROXY protocol configured", "trusted_cidrs", cfg.ProxyProtocolTrustedCIDRs)
+	}
 	if err := smtpServer.ListenAndServe(smtpgw.SMTPPorts{
 		Inbound:       cfg.SMTPPortInbound,
 		Submission:    cfg.SMTPPortSubmission,

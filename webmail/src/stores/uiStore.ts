@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 type Theme = 'light' | 'dark';
-type View = 'mail' | 'compose' | 'addAccount' | 'accountDetails';
+type View = 'mail' | 'compose' | 'addAccount' | 'accountDetails' | 'vacation' | 'quarantine';
 
 interface ComposeState {
   to: string;

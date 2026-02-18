@@ -218,6 +218,62 @@ export async function deleteAccount(accountId: number): Promise<void> {
   await request(`${BASE}/accounts/${accountId}`, { method: 'DELETE' });
 }
 
+// Vacation
+export interface VacationData {
+  id: number;
+  mailbox_id: number;
+  enabled: boolean;
+  subject: string;
+  body: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export async function getVacation(accountId: number): Promise<{ data: VacationData | null }> {
+  return request(`${BASE}/accounts/${accountId}/vacation`);
+}
+
+export async function setVacation(accountId: number, data: {
+  enabled: boolean;
+  subject: string;
+  body: string;
+  start_date?: string;
+  end_date?: string;
+}): Promise<{ data: VacationData }> {
+  return request(`${BASE}/accounts/${accountId}/vacation`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function disableVacation(accountId: number): Promise<void> {
+  await request(`${BASE}/accounts/${accountId}/vacation`, { method: 'DELETE' });
+}
+
+// Quarantine
+export interface QuarantineItem {
+  id: number;
+  mailbox_id: number;
+  sender: string;
+  subject: string;
+  body_preview: string;
+  quarantine_reason: string;
+  received_at: string;
+  spam_score?: number;
+}
+
+export async function listQuarantine(accountId: number): Promise<{ data: QuarantineItem[] }> {
+  return request(`${BASE}/accounts/${accountId}/quarantine`);
+}
+
+export async function releaseQuarantine(accountId: number, messageId: number): Promise<void> {
+  await request(`${BASE}/accounts/${accountId}/quarantine/${messageId}/release`, { method: 'POST' });
+}
+
+export async function deleteQuarantine(accountId: number, messageId: number): Promise<void> {
+  await request(`${BASE}/accounts/${accountId}/quarantine/${messageId}`, { method: 'DELETE' });
+}
+
 // Folder management
 export async function createFolder(accountId: number, name: string): Promise<{ data: Folder }> {
   return request(`${BASE}/accounts/${accountId}/folders`, {

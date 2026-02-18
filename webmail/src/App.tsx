@@ -12,6 +12,8 @@ import { MessageViewer } from '@/components/mail/MessageViewer';
 import { ComposeView } from '@/components/compose/ComposeView';
 import { AddAccountView } from '@/components/account/AddAccountView';
 import { AccountDetailsView } from '@/components/account/AccountDetailsView';
+import { VacationView } from '@/components/settings/VacationView';
+import { QuarantineView } from '@/components/settings/QuarantineView';
 import { Separator } from '@/components/ui/separator';
 import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { useNotifications } from '@/hooks/useNotifications';

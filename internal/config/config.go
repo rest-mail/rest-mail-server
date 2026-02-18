@@ -53,6 +53,9 @@ type Config struct {
 	QueueWorkers    int
 	QueuePollInterval time.Duration
 
+	// PROXY protocol
+	ProxyProtocolTrustedCIDRs []string
+
 	// CORS
 	CORSAllowedOrigins []string
 
@@ -98,6 +101,8 @@ func Load() (*Config, error) {
 		POP3TLSPort:           getEnvInt("POP3_TLS_PORT", 995),
 		QueueWorkers:          getEnvInt("QUEUE_WORKERS", 4),
 		QueuePollInterval:     getEnvDuration("QUEUE_POLL_INTERVAL", 5*time.Second),
+
+		ProxyProtocolTrustedCIDRs: getEnvSlice("PROXY_PROTOCOL_TRUSTED_CIDRS", nil),
 
 		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
 
