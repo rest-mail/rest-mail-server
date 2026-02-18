@@ -106,6 +106,8 @@ function App() {
             {view === 'compose' && <div className="h-full animate-fade-in"><ComposeView /></div>}
             {view === 'addAccount' && <div className="h-full animate-fade-in"><AddAccountView /></div>}
             {view === 'accountDetails' && <div className="h-full animate-fade-in"><AccountDetailsView /></div>}
+            {view === 'vacation' && <div className="h-full animate-fade-in"><VacationView /></div>}
+            {view === 'quarantine' && <div className="h-full animate-fade-in"><QuarantineView /></div>}
           </div>
         </div>
       </div>

@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, MoreHorizontal, Inbox, Send, FileText, Trash2, AlertTriangle, Archive, Folder, ChevronDown, ChevronRight, Plus, UserPlus } from 'lucide-react';
+import { Menu, X, MoreHorizontal, Inbox, Send, FileText, Trash2, AlertTriangle, Archive, Folder, ChevronDown, ChevronRight, Plus, UserPlus, Palmtree, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
@@ -269,6 +269,23 @@ export function Sidebar() {
           ))}
         </div>
       </ScrollArea>
+
+      {/* Settings shortcuts */}
+      <Separator />
+      <div className="px-3 py-2 space-y-0.5">
+        <button
+          onClick={() => { setView('vacation'); setMobileOpen(false); }}
+          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <Palmtree className="w-4 h-4" /> Vacation
+        </button>
+        <button
+          onClick={() => { setView('quarantine'); setMobileOpen(false); }}
+          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <ShieldAlert className="w-4 h-4" /> Quarantine
+        </button>
+      </div>
 
       {/* Add Account */}
       <Separator />
