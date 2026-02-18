@@ -260,13 +260,14 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		From     string   `json:"from"`
-		To       []string `json:"to"`
-		Cc       []string `json:"cc"`
-		Bcc      []string `json:"bcc"`
-		Subject  string   `json:"subject"`
-		BodyText string   `json:"body_text"`
-		BodyHTML string   `json:"body_html"`
+		From      string   `json:"from"`
+		To        []string `json:"to"`
+		Cc        []string `json:"cc"`
+		Bcc       []string `json:"bcc"`
+		Subject   string   `json:"subject"`
+		BodyText  string   `json:"body_text"`
+		BodyHTML  string   `json:"body_html"`
+		InReplyTo string   `json:"in_reply_to"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -435,6 +436,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		MailboxID:    senderMailbox.ID,
 		Folder:       "Sent",
 		MessageID:    messageID,
+		InReplyTo:    req.InReplyTo,
 		Sender:       req.From,
 		SenderName:   senderMailbox.DisplayName,
 		RecipientsTo: models.JSONB(toJSON),
@@ -465,6 +467,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		b.WriteString("Subject: " + req.Subject + "\r\n")
 		b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
 		b.WriteString("Message-ID: " + messageID + "\r\n")
+		if req.InReplyTo != "" {
+			b.WriteString("In-Reply-To: <" + req.InReplyTo + ">\r\n")
+		}
 		b.WriteString("MIME-Version: 1.0\r\n")
 
 		if req.BodyText != "" && req.BodyHTML != "" {

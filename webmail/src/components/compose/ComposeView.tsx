@@ -16,7 +16,7 @@ export function ComposeView() {
   const [from, setFrom] = useState(accounts[0]?.address || '');
   const [to, setTo] = useState(composeState?.to || '');
   const [cc, setCc] = useState(composeState?.cc || '');
-  const [bcc, _setBcc] = useState(composeState?.bcc || '');
+  const [bcc, setBcc] = useState(composeState?.bcc || '');
   const [subject, setSubject] = useState(composeState?.subject || '');
   const [htmlContent, setHtmlContent] = useState(composeState?.quoteHtml || '');
   const [isHtml, setIsHtml] = useState(true);
@@ -39,6 +39,7 @@ export function ComposeView() {
         subject,
         body_text: isHtml ? stripHtml(htmlContent) : plainText,
         body_html: isHtml ? htmlContent : undefined,
+        in_reply_to: composeState?.inReplyTo,
       });
       toast.success('Message sent');
       closeCompose();
@@ -81,6 +82,10 @@ export function ComposeView() {
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Cc</Label>
           <Input value={cc} onChange={e => setCc(e.target.value)} placeholder="" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="w-12 text-right text-sm text-muted-foreground">Bcc</Label>
+          <Input value={bcc} onChange={e => setBcc(e.target.value)} placeholder="" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Subject</Label>

@@ -71,6 +71,11 @@ services:
         ipv4_address: 172.20.0.22
     expose:
       - "3100"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 3100 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # ─── Go REST API ────────────────────────────────────────────────────
   api:
@@ -98,6 +103,8 @@ services:
       postgres:
         condition: service_healthy
       dnsmasq:
+        condition: service_started
+      js-filter:
         condition: service_started
     dns:
       - 172.20.0.3
@@ -270,6 +277,8 @@ services:
         condition: service_started
       certgen:
         condition: service_completed_successfully
+      dovecot-mail1:
+        condition: service_started
     dns:
       - 172.20.0.3
     networks:
@@ -329,6 +338,8 @@ services:
         condition: service_started
       certgen:
         condition: service_completed_successfully
+      dovecot-mail2:
+        condition: service_started
     dns:
       - 172.20.0.3
     networks:

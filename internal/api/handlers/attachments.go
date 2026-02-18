@@ -43,9 +43,9 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Security: ensure the storage ref is within expected paths
+	// Security: ensure the storage ref is within the attachments directory
 	cleanPath := filepath.Clean(att.StorageRef)
-	if strings.Contains(cleanPath, "..") {
+	if !strings.HasPrefix(cleanPath, "/attachments/") || strings.Contains(cleanPath, "..") {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Invalid storage path")
 		return
 	}

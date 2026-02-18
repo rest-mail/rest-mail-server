@@ -143,6 +143,7 @@ export async function sendMessage(data: {
   subject: string;
   body_text: string;
   body_html?: string;
+  in_reply_to?: string;
 }): Promise<void> {
   await request(`${BASE}/messages/send`, {
     method: 'POST',

@@ -42,6 +42,8 @@ function App() {
       refresh();
     } else if (event.type === 'folder_update') {
       loadFolders();
+    } else if (event.type === 'message_updated' || event.type === 'message_deleted') {
+      refresh();
     }
   }, [refresh, loadFolders, showDesktopNotification]);
 

@@ -7,7 +7,7 @@ import { Mail } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
 export function MessageViewer() {
-  const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg } = useMailStore();
+  const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg, accounts } = useMailStore();
   const { startCompose } = useUIStore();
 
   if (loadingMessage) {
@@ -54,6 +54,38 @@ export function MessageViewer() {
     });
   };
 
+  const handleReplyAll = () => {
+    const date = new Date(msg.received_at).toLocaleString();
+    const sender = msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender;
+    const quoteHtml = `<p><br></p><blockquote><p>On ${date}, ${sender} wrote:</p>${msg.body_html || `<p>${msg.body_text}</p>`}</blockquote>`;
+
+    // Get all original To recipients except the current user
+    let replyTo = msg.sender;
+    let replyCc = '';
+
+    // Parse recipients_to (JSON array of strings)
+    try {
+      const originalTo: string[] = typeof msg.recipients_to === 'string'
+        ? JSON.parse(msg.recipients_to)
+        : (msg.recipients_to || []);
+      // Combine original To + Cc, excluding the current user's address
+      const currentUser = accounts[0]?.address || '';
+      const allRecipients = originalTo.filter(addr => addr !== currentUser && addr !== msg.sender);
+      replyCc = allRecipients.join(', ');
+    } catch {
+      // fallback: no CC
+    }
+
+    startCompose({
+      to: replyTo,
+      cc: replyCc,
+      bcc: '',
+      subject: msg.subject.startsWith('Re:') ? msg.subject : `Re: ${msg.subject}`,
+      inReplyTo: msg.message_id,
+      quoteHtml,
+    });
+  };
+
   const handleForward = () => {
     const date = new Date(msg.received_at).toLocaleString();
     const fwdHeader = `---------- Forwarded message ----------\nFrom: ${msg.sender}\nDate: ${date}\nSubject: ${msg.subject}\n\n`;
@@ -78,7 +110,7 @@ export function MessageViewer() {
       {/* Action bar */}
       <div className="flex items-center gap-1 px-4 py-2">
         <Button variant="ghost" size="sm" onClick={handleReply}>Reply</Button>
-        <Button variant="ghost" size="sm" onClick={handleReply}>Reply All</Button>
+        <Button variant="ghost" size="sm" onClick={handleReplyAll}>Reply All</Button>
         <Button variant="ghost" size="sm" onClick={handleForward}>Forward</Button>
         <Separator orientation="vertical" className="h-5 mx-1" />
         <Button variant="ghost" size="sm" onClick={() => deleteMsg(msg.id)}>Delete</Button>

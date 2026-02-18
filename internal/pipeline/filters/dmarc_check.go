@@ -87,15 +87,39 @@ func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 	spfPass := strings.Contains(authResults, "spf=pass")
 	dkimPass := strings.Contains(authResults, "dkim=pass")
 
-	// DMARC requires alignment: either SPF or DKIM must pass AND align with From domain
-	if spfPass || dkimPass {
+	// Extract SPF authenticated domain from auth-results
+	spfAligned := false
+	if spfPass {
+		// Look for smtp.mailfrom= in auth results
+		spfDomain := extractAuthDomain(authResults, "smtp.mailfrom=")
+		if spfDomain != "" {
+			spfAligned = domainsAlign(spfDomain, domain)
+		}
+	}
+
+	// Extract DKIM authenticated domain from auth-results
+	dkimAligned := false
+	if dkimPass {
+		// For DKIM, the d= domain is in the DKIM-Signature header
+		// but we simplified by checking the auth-results domain
+		dkimDomain := extractAuthDomain(authResults, "header.d=")
+		if dkimDomain == "" {
+			// Fallback: if DKIM passed, assume alignment (conservative for our stub verifier)
+			dkimAligned = true
+		} else {
+			dkimAligned = domainsAlign(dkimDomain, domain)
+		}
+	}
+
+	// DMARC requires both pass AND alignment
+	if spfAligned || dkimAligned {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
 			Action: pipeline.ActionContinue,
 			Log: pipeline.FilterLog{
 				Filter: "dmarc_check",
 				Result: "pass",
-				Detail: fmt.Sprintf("policy=%s spf=%v dkim=%v", policy, spfPass, dkimPass),
+				Detail: fmt.Sprintf("policy=%s spf_pass=%v spf_aligned=%v dkim_pass=%v dkim_aligned=%v", policy, spfPass, spfAligned, dkimPass, dkimAligned),
 			},
 		}, nil
 	}
@@ -157,4 +181,40 @@ func parseDMARCPolicy(record string) string {
 		}
 	}
 	return "none"
+}
+
+// extractAuthDomain extracts a domain from Authentication-Results for a given key.
+// e.g., for key "smtp.mailfrom=", extracts the domain from "spf=pass (matched ...) smtp.mailfrom=user@example.com"
+func extractAuthDomain(authResults, key string) string {
+	idx := strings.Index(authResults, key)
+	if idx < 0 {
+		return ""
+	}
+	rest := authResults[idx+len(key):]
+	// Extract until space, semicolon, or end
+	end := strings.IndexAny(rest, " ;,")
+	if end >= 0 {
+		rest = rest[:end]
+	}
+	// If it's an email address, extract the domain
+	if atIdx := strings.LastIndex(rest, "@"); atIdx >= 0 {
+		return rest[atIdx+1:]
+	}
+	return rest
+}
+
+// domainsAlign checks if two domains are aligned per DMARC relaxed alignment.
+// Relaxed alignment: the organizational domains must match.
+// For simplicity, we check if one domain is a suffix of the other or they're equal.
+func domainsAlign(authDomain, fromDomain string) bool {
+	authDomain = strings.ToLower(authDomain)
+	fromDomain = strings.ToLower(fromDomain)
+	if authDomain == fromDomain {
+		return true
+	}
+	// Relaxed: check organizational domain (simple: check if one is subdomain of other)
+	if strings.HasSuffix(authDomain, "."+fromDomain) || strings.HasSuffix(fromDomain, "."+authDomain) {
+		return true
+	}
+	return false
 }
