@@ -314,6 +314,24 @@ tasks:
       - go build ./...
       - echo "Setup complete."
 
+  # ── Website ────────────────────────────────────────────
+  website:
+    desc: Run the RESTMAIL landing page dev server
+    aliases: [website:dev]
+    cmds:
+      - go run ./cmd/website -addr :8090 -root website
+
+  website:build:
+    desc: Build the website server binary
+    cmds:
+      - go build -o build/tools/website ./cmd/website
+    sources:
+      - cmd/website/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/website
+
   # ── Clean ──────────────────────────────────────────────
   clean:
     desc: Remove build artifacts

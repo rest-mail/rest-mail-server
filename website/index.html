@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>REST Mail — Because the mail server protocol is old, and needs to take a REST...</title>
+  <meta name="description" content="REST Mail replaces legacy mail server protocols with a modern REST API. SMTP, IMAP, and POP3 are ascending to heaven — replaced by something better, easier, and modern.">
+  <meta name="theme-color" content="#f8f7f4">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="./css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%E2%9C%89</text></svg>">
+</head>
+<body>
+
+  <!-- Floating protocol ghosts (animated via JS) -->
+  <div class="ascending-protocols" aria-hidden="true" id="ascending-protocols"></div>
+
+  <!-- Navigation -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner container">
+      <a href="#" class="nav-logo">REST Mail</a>
+      <div class="nav-links" id="nav-links">
+        <a href="#what">About</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#protocol">Protocol</a>
+        <a href="#features">Features</a>
+        <a href="#architecture">Architecture</a>
+        <a href="https://github.com/restmail/restmail" class="nav-cta">GitHub</a>
+      </div>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ============================================================
+       1. HERO / LANDING
+       ============================================================ -->
+  <header class="hero">
+    <div class="hero-clouds" aria-hidden="true">
+      <div class="cloud cloud-1"></div>
+      <div class="cloud cloud-2"></div>
+      <div class="cloud cloud-3"></div>
+      <div class="cloud cloud-4"></div>
+      <div class="cloud cloud-5"></div>
+    </div>
+    <div class="hero-sunbeam" aria-hidden="true"></div>
+    <div class="container hero-content">
+      <div class="hero-epitaph">
+        <div class="epitaph-cross" aria-hidden="true">&#10013;</div>
+        <div class="epitaph-protocols">
+          <span class="protocol-ghost" data-protocol="SMTP">SMTP</span>
+          <span class="protocol-ghost" data-protocol="IMAP">IMAP</span>
+          <span class="protocol-ghost" data-protocol="POP3">POP3</span>
+        </div>
+      </div>
+      <h1 class="hero-title">REST Mail</h1>
+      <p class="hero-tagline">Because the mail server protocol is old, and needs to take a REST&hellip;</p>
+      <p class="hero-subtitle">
+        A modern REST-native email server that speaks SMTP to the world and HTTPS to its peers.
+        When two REST Mail servers find each other, they automatically upgrade &mdash; no configuration needed.
+      </p>
+      <div class="hero-actions">
+        <a href="http://localhost:8080" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Try Webmail
+        </a>
+        <a href="https://github.com/restmail/restmail" class="btn btn-ghost">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       2. WHAT IS REST MAIL?
+       ============================================================ -->
+  <section class="what-section" id="what">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-number">I</span>
+        <h2>What is REST Mail?</h2>
+      </div>
+      <div class="what-grid">
+        <div class="what-problem">
+          <h3>The Problem</h3>
+          <p>
+            Running your own email server has always been painful. You need to configure Postfix for SMTP,
+            Dovecot for IMAP, worry about SPF, DKIM, DMARC, manage queues, deal with bounces, set up
+            TLS certificates, fight spam &mdash; all with protocols designed in the 1980s.
+          </p>
+          <p>
+            These protocols served us well, but they were built for a different era. It is time for them
+            to rest.
+          </p>
+        </div>
+        <div class="what-solution">
+          <h3>The Solution</h3>
+          <p>
+            REST Mail replaces the internal complexity with a clean REST API. Every mailbox operation
+            &mdash; send, receive, search, label, filter &mdash; is an HTTP endpoint. Your webmail,
+            mobile app, or automation scripts talk REST.
+          </p>
+          <p>
+            But REST Mail still speaks SMTP, IMAP, and POP3 to the outside world through protocol
+            gateways. The rest of the internet never knows the difference. Full compatibility,
+            modern internals.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       3. HOW IT WORKS
+       ============================================================ -->
+  <section class="how-section" id="how-it-works">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-number">II</span>
+        <h2>How It Works</h2>
+        <p class="section-desc">Protocol gateways translate legacy protocols into REST API calls, preserving full compatibility while modernizing the internals.</p>
+      </div>
+
+      <div class="arch-flow">
+        <!-- External World -->
+        <div class="flow-column">
+          <div class="flow-header">The Outside World</div>
+          <div class="flow-card flow-card-legacy">
+            <div class="flow-card-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </div>
+            <div class="flow-card-title">Legacy Servers</div>
+            <div class="flow-card-detail">Gmail, Outlook, Postfix, etc.</div>
+          </div>
+          <div class="flow-card flow-card-legacy">
+            <div class="flow-card-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <div class="flow-card-title">Email Clients</div>
+            <div class="flow-card-detail">Thunderbird, Apple Mail</div>
+          </div>
+        </div>
+
+        <!-- Arrows -->
+        <div class="flow-arrows">
+          <div class="flow-arrow">
+            <span class="flow-arrow-label">SMTP</span>
+            <div class="flow-arrow-line"></div>
+          </div>
+          <div class="flow-arrow">
+            <span class="flow-arrow-label">IMAP / POP3</span>
+            <div class="flow-arrow-line"></div>
+          </div>
+        </div>
+
+        <!-- Gateways -->
+        <div class="flow-column">
+          <div class="flow-header">Protocol Gateways</div>
+          <div class="flow-card flow-card-gateway">
+            <div class="flow-card-title">SMTP Gateway</div>
+            <div class="flow-card-detail">Postfix + Go bridge</div>
+          </div>
+          <div class="flow-card flow-card-gateway">
+            <div class="flow-card-title">IMAP / POP3 Gateway</div>
+            <div class="flow-card-detail">TLS :993 / :995</div>
+          </div>
+        </div>
+
+        <!-- Arrows -->
+        <div class="flow-arrows">
+          <div class="flow-arrow flow-arrow-rest">
+            <span class="flow-arrow-label">REST</span>
+            <div class="flow-arrow-line flow-arrow-line-rest"></div>
+          </div>
+          <div class="flow-arrow flow-arrow-rest">
+            <span class="flow-arrow-label">REST</span>
+            <div class="flow-arrow-line flow-arrow-line-rest"></div>
+          </div>
+        </div>
+
+        <!-- Core -->
+        <div class="flow-column">
+          <div class="flow-header">REST Mail Core</div>
+          <div class="flow-card flow-card-core">
+            <div class="flow-card-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m11-7h-6m-6 0H1m17.36-5.64l-4.24 4.24M9.88 14.12l-4.24 4.24m0-12.72l4.24 4.24m4.24 4.24l4.24 4.24"/></svg>
+            </div>
+            <div class="flow-card-title">REST API + Pipeline</div>
+            <div class="flow-card-detail">Go, chi, PostgreSQL</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Three domains diagram -->
+      <div class="domains-demo">
+        <h3>Three Test Domains Show the Interop</h3>
+        <div class="domains-grid">
+          <div class="domain-card">
+            <div class="domain-name">mail1.test</div>
+            <div class="domain-type">Traditional</div>
+            <div class="domain-desc">Postfix + Dovecot</div>
+          </div>
+          <div class="domain-arrow">
+            <svg viewBox="0 0 60 24" width="60" height="24"><line x1="0" y1="12" x2="48" y2="12" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4,3"/><polygon points="48,7 60,12 48,17" fill="currentColor"/></svg>
+          </div>
+          <div class="domain-card">
+            <div class="domain-name">mail2.test</div>
+            <div class="domain-type">Traditional</div>
+            <div class="domain-desc">Postfix + Dovecot</div>
+          </div>
+          <div class="domain-arrow domain-arrow-upgrade">
+            <svg viewBox="0 0 60 24" width="60" height="24"><line x1="0" y1="12" x2="48" y2="12" stroke="currentColor" stroke-width="2"/><polygon points="48,7 60,12 48,17" fill="currentColor"/></svg>
+          </div>
+          <div class="domain-card domain-card-rest">
+            <div class="domain-name">mail3.test</div>
+            <div class="domain-type domain-type-rest">REST Mail</div>
+            <div class="domain-desc">REST-native delivery</div>
+          </div>
+        </div>
+        <p class="domains-caption">
+          mail1 and mail2 communicate over standard SMTP. When either talks to mail3 (a REST Mail domain),
+          the connection automatically upgrades to HTTPS/REST &mdash; faster, richer, end-to-end encrypted.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       4. THE RESTMAIL PROTOCOL
+       ============================================================ -->
+  <section class="protocol-section" id="protocol">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-number">III</span>
+        <h2>The REST Mail Protocol</h2>
+        <p class="section-desc">When two REST Mail servers discover each other, they skip SMTP entirely and deliver natively over HTTPS.</p>
+      </div>
+
+      <div class="protocol-steps">
+        <div class="protocol-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>DNS Discovery</h3>
+            <p>
+              The sending server looks up a DNS TXT record at <code>_restmail.recipient-domain.com</code>.
+              If the record exists, the recipient is running REST Mail.
+            </p>
+            <div class="step-code">
+              <pre><code>$ dig TXT _restmail.example.com
+;; ANSWER:
+_restmail.example.com. TXT "v=restmail1 endpoint=https://mail.example.com/v1"</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="protocol-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>EHLO Capability Exchange</h3>
+            <p>
+              During the SMTP EHLO handshake, both servers advertise their REST Mail capability.
+              If both sides support it, the upgrade is negotiated.
+            </p>
+            <div class="step-code">
+              <pre><code>S: 250-mail.example.com Hello
+S: 250-STARTTLS
+S: 250-SIZE 52428800
+S: 250 X-RESTMAIL v1 https://mail.example.com/v1</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="protocol-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>REST Delivery</h3>
+            <p>
+              Instead of continuing the SMTP transaction, the sending server delivers the message
+              directly via an authenticated HTTPS POST to the recipient's REST API endpoint.
+            </p>
+            <div class="step-code">
+              <pre><code>POST /v1/deliver HTTP/2
+Host: mail.example.com
+Content-Type: application/json
+Authorization: Bearer &lt;signed-jwt&gt;
+
+{
+  "from": "alice@sender.com",
+  "to": ["bob@example.com"],
+  "subject": "Hello from REST Mail",
+  "body_html": "&lt;p&gt;Delivered over REST!&lt;/p&gt;",
+  "delivered_via": "restmail/https"
+}</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       5. FEATURES
+       ============================================================ -->
+  <section class="features-section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-number">IV</span>
+        <h2>Features</h2>
+        <p class="section-desc">Everything you need to run email as a first-class service.</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </div>
+          <h3>Protocol Compatibility</h3>
+          <p>Full SMTP, IMAP, and POP3 gateways. Use Thunderbird, Apple Mail, Outlook, or any standard email client. The outside world never knows.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <h3>REST API First</h3>
+          <p>Every mailbox operation is an HTTP endpoint. Send, receive, search, label, and manage mail with standard REST calls.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.28.46.73.77 1.24.85H21a2 2 0 0 1 0 4h-.09c-.5.08-.96.39-1.24.85z"/></svg>
+          </div>
+          <h3>Pipeline Engine</h3>
+          <p>16+ built-in filters: SPF, DKIM, DMARC, greylisting, rate limiting, Sieve scripts, webhooks, JavaScript, and more. Chain them in any order.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>Sieve Support</h3>
+          <p>Industry-standard Sieve scripting for server-side mail filtering. Users write their own rules without touching server config.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <h3>React Webmail</h3>
+          <p>A modern webmail client built with React and Vite, served directly from the stack. Real-time updates via Server-Sent Events.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </div>
+          <h3>TUI Admin</h3>
+          <p>A terminal-based admin interface built with Bubble Tea. Manage domains, users, mailboxes, and pipelines from the command line.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          </div>
+          <h3>Real-time SSE</h3>
+          <p>Server-Sent Events push new messages and status updates to connected clients instantly. No polling required.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <h3>Attachment Dedup</h3>
+          <p>Content-addressable attachment storage. Identical files are stored once regardless of how many messages reference them.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon-wrap">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          </div>
+          <h3>Quota Management</h3>
+          <p>Per-user and per-domain storage quotas with real-time tracking. Prevent runaway usage before it becomes a problem.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       6. ARCHITECTURE
+       ============================================================ -->
+  <section class="architecture-section" id="architecture">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-number">V</span>
+        <h2>Architecture</h2>
+        <p class="section-desc">A complete email stack built on proven technology.</p>
+      </div>
+
+      <div class="stack-grid">
+        <div class="stack-card">
+          <div class="stack-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <h3>Go Backend</h3>
+          <p>The REST API, protocol gateways, outbound queue, TUI admin, and all tooling are written in Go 1.24+. Single static binaries, fast compilation, excellent concurrency.</p>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          </div>
+          <h3>PostgreSQL</h3>
+          <p>All data lives in PostgreSQL via GORM with AutoMigrate. Messages, attachments, domains, users, pipelines, queue state &mdash; everything in one reliable store.</p>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>
+          </div>
+          <h3>chi Router</h3>
+          <p>Lightweight, idiomatic Go HTTP routing. Middleware chains for JWT auth, logging, CORS, rate limiting, and request validation.</p>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </div>
+          <h3>React Webmail</h3>
+          <p>Vite-built React frontend with real-time SSE updates. Compose, read, search, and manage mail from the browser.</p>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </div>
+          <h3>Bubble Tea TUI</h3>
+          <p>Terminal admin interface for managing the entire stack. Domains, users, mailboxes, pipelines &mdash; all from your terminal.</p>
+        </div>
+
+        <div class="stack-card">
+          <div class="stack-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 12H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          </div>
+          <h3>Docker Compose</h3>
+          <p>One command brings up the entire stack: Postfix, Dovecot, PostgreSQL, dnsmasq, API, gateways, webmail. Production-ready from the start.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       7. ABOUT
+       ============================================================ -->
+  <section class="about-section" id="about">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-number">VI</span>
+        <h2>About</h2>
+      </div>
+      <div class="about-content">
+        <div class="about-text">
+          <p>
+            REST Mail is an open-source project exploring what email infrastructure looks like when
+            you start from REST and work backward to legacy protocol compatibility, rather than the
+            other way around.
+          </p>
+          <p>
+            It is a love letter to the engineers who built SMTP, IMAP, and POP3 &mdash; and a gentle
+            suggestion that after 40+ years of faithful service, these protocols have earned their rest.
+          </p>
+          <p>
+            The entire stack is designed to be self-hosted, developer-friendly, and transparent.
+            No vendor lock-in. No cloud dependency. Just a modern email server you can understand,
+            modify, and trust.
+          </p>
+        </div>
+        <div class="about-meta">
+          <div class="about-meta-item">
+            <div class="about-meta-label">License</div>
+            <div class="about-meta-value">MIT</div>
+          </div>
+          <div class="about-meta-item">
+            <div class="about-meta-label">Language</div>
+            <div class="about-meta-value">Go 1.24+</div>
+          </div>
+          <div class="about-meta-item">
+            <div class="about-meta-label">Source</div>
+            <div class="about-meta-value"><a href="https://github.com/restmail/restmail">github.com/restmail/restmail</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       8. FOOTER
+       ============================================================ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <div class="footer-logo">REST Mail</div>
+          <p>Because the mail server protocol is old, and needs to take a REST.</p>
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/restmail/restmail">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            GitHub Repository
+          </a>
+          <a href="http://localhost:8080">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Webmail Login
+          </a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>REST Mail is open source software licensed under the <strong>MIT License</strong>.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./js/main.js"></script>
+</body>
+</html>
