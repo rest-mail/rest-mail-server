@@ -1,0 +1,88 @@
+---
+# Reference mail server using docker-mailserver.
+#
+# This is a single-domain Postfix + Dovecot stack that behaves like a
+# standard Internet mail server.  Use it to:
+#
+#   1. Verify that RESTMAIL gateways are indistinguishable from this stack
+#      (same protocol behaviour, same SMTP/IMAP/POP3 responses).
+#   2. Baseline deliverability: confirm that mail sent from the reference
+#      stack reaches RESTMAIL domains, and vice-versa.
+#   3. Client testing: connect Thunderbird, Outlook, or Apple Mail to the
+#      reference stack and confirm auto-discovery works the same way.
+#
+# Start:
+#   cd reference && docker compose up -d
+#
+# Default credentials:
+#   User: alice@ref.test    Password: password
+#   User: bob@ref.test      Password: password
+
+networks:
+  refnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
+
+volumes:
+  ref-mail-data:
+  ref-mail-state:
+  ref-mail-logs:
+  ref-mail-config:
+
+services:
+  # ─── dnsmasq for ref.test domain ─────────────────────────────────────────
+  ref-dnsmasq:
+    image: andyshinn/dnsmasq:latest
+    container_name: ref-dnsmasq
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./config/dnsmasq.conf:/etc/dnsmasq.conf:ro
+    networks:
+      refnet:
+        ipv4_address: 172.21.0.2
+
+  # ─── docker-mailserver ───────────────────────────────────────────────────
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: ref-mailserver
+    hostname: mail.ref.test
+    restart: unless-stopped
+    ports:
+      - "12025:25"    # SMTP (MTA-to-MTA)
+      - "12143:143"   # IMAP STARTTLS
+      - "12587:587"   # Submission STARTTLS
+      - "12993:993"   # IMAPS
+      - "12110:110"   # POP3 STARTTLS
+      - "12995:995"   # POP3S
+    volumes:
+      - ref-mail-data:/var/mail
+      - ref-mail-state:/var/mail-state
+      - ref-mail-logs:/var/log/mail
+      - ref-mail-config:/tmp/docker-mailserver
+    environment:
+      ENABLE_RSPAMD: 0
+      ENABLE_CLAMAV: 0
+      ENABLE_FAIL2BAN: 0
+      SMTP_ONLY: 0
+      SSL_TYPE: self-signed
+      POSTMASTER_ADDRESS: postmaster@ref.test
+      PERMIT_DOCKER: network
+      LOG_LEVEL: info
+    dns:
+      - 172.21.0.2
+    networks:
+      refnet:
+        ipv4_address: 172.21.0.10
+    cap_add:
+      - NET_ADMIN
+      - SYS_PTRACE
+    healthcheck:
+      test: ["CMD-SHELL", "ss -lntp | grep ':25 ' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

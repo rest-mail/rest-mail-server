@@ -460,6 +460,92 @@ func TestRequiredRecords(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// FullRequiredRecords helper tests
+// ---------------------------------------------------------------------------
+
+func TestFullRequiredRecords_WithAPIIP(t *testing.T) {
+	records := FullRequiredRecords("mail.test", "10.0.0.1", "10.0.0.5")
+
+	byName := map[string]DNSRecord{}
+	for _, r := range records {
+		byName[r.Type+":"+r.Name] = r
+	}
+
+	// Core records should be present
+	if _, ok := byName["A:mail.test"]; !ok {
+		t.Error("missing A record for mail.test")
+	}
+	if _, ok := byName["MX:mail.test"]; !ok {
+		t.Error("missing MX record")
+	}
+	if _, ok := byName["TXT:mail.test"]; !ok {
+		t.Error("missing SPF record")
+	}
+	if _, ok := byName["TXT:_dmarc.mail.test"]; !ok {
+		t.Error("missing DMARC record")
+	}
+
+	// Autoconfig records must point to apiIP
+	ac := byName["A:autoconfig.mail.test"]
+	if ac.Value != "10.0.0.5" {
+		t.Errorf("autoconfig A should point to apiIP 10.0.0.5, got %s", ac.Value)
+	}
+	ad := byName["A:autodiscover.mail.test"]
+	if ad.Value != "10.0.0.5" {
+		t.Errorf("autodiscover A should point to apiIP 10.0.0.5, got %s", ad.Value)
+	}
+
+	// SRV records
+	for _, srvName := range []string{
+		"SRV:_submission._tcp.mail.test",
+		"SRV:_imap._tcp.mail.test",
+		"SRV:_imaps._tcp.mail.test",
+		"SRV:_pop3._tcp.mail.test",
+		"SRV:_pop3s._tcp.mail.test",
+	} {
+		if _, ok := byName[srvName]; !ok {
+			t.Errorf("missing SRV record: %s", srvName)
+		}
+	}
+
+	// MTA-STS records
+	mtas := byName["TXT:_mta-sts.mail.test"]
+	if !strings.Contains(mtas.Value, "v=STSv1") {
+		t.Errorf("_mta-sts TXT should contain v=STSv1, got %s", mtas.Value)
+	}
+	mtaA := byName["A:mta-sts.mail.test"]
+	if mtaA.Value != "10.0.0.5" {
+		t.Errorf("mta-sts A should point to apiIP, got %s", mtaA.Value)
+	}
+
+	// TLS-RPT record
+	tlsrpt := byName["TXT:_smtp._tls.mail.test"]
+	if !strings.Contains(tlsrpt.Value, "v=TLSRPTv1") {
+		t.Errorf("_smtp._tls TXT should contain v=TLSRPTv1, got %s", tlsrpt.Value)
+	}
+}
+
+func TestFullRequiredRecords_DefaultsAPIIPToMailIP(t *testing.T) {
+	records := FullRequiredRecords("mail.test", "10.0.0.1", "")
+
+	byName := map[string]DNSRecord{}
+	for _, r := range records {
+		byName[r.Type+":"+r.Name] = r
+	}
+
+	// When apiIP is empty, autoconfig should point to mailIP
+	ac := byName["A:autoconfig.mail.test"]
+	if ac.Value != "10.0.0.1" {
+		t.Errorf("autoconfig A should default to mailIP 10.0.0.1, got %s", ac.Value)
+	}
+
+	mtas := byName["A:mta-sts.mail.test"]
+	if mtas.Value != "10.0.0.1" {
+		t.Errorf("mta-sts A should default to mailIP, got %s", mtas.Value)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Integration-style: roundtrip EnsureRecords -> RemoveRecords for dnsmasq
 // ---------------------------------------------------------------------------
 

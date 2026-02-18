@@ -16,6 +16,9 @@
   "mounts": [
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind"
   ],
-  "postCreateCommand": "go version && docker --version",
-  "remoteUser": "vscode"
+  "postCreateCommand": "go version && docker --version && claude install",
+  "remoteUser": "vscode",
+  "containerEnv": {
+    "ANTHROPIC_MODEL": "claude-sonnet-4-6"
+  }
 }

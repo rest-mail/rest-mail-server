@@ -25,10 +25,13 @@ RUN apk add --no-cache ca-certificates curl
 
 COPY --from=builder /bin/restmail-api /usr/local/bin/restmail-api
 COPY --from=builder /bin/restmail-seed /usr/local/bin/restmail-seed
+COPY docker/api-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD curl -sf http://localhost:8080/api/health || exit 1
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["restmail-api"]
