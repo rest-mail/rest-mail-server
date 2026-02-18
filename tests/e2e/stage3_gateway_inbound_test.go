@@ -1,7 +1,10 @@
 package e2e
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -213,5 +216,168 @@ func testStage3GatewayInbound(t *testing.T) {
 		}
 		t.Logf("Gateway POP3 RETR 1 returned %d bytes", len(msg))
 		pc.sendExpect(t, "QUIT", "+OK")
+	})
+
+	t.Run("IMAP_GetQuota", func(t *testing.T) {
+		ic := dialIMAP(t, mail3IMAPAddr)
+		defer ic.close()
+
+		ic.login(t, "testuser@mail3.test", adminPassword)
+
+		// Send GETQUOTAROOT INBOX command
+		result, lines := ic.command(t, "GETQUOTAROOT INBOX")
+		if !strings.Contains(result, "OK") {
+			t.Fatalf("GETQUOTAROOT INBOX failed: %s", result)
+		}
+
+		// Verify response contains QUOTAROOT and STORAGE
+		allLines := strings.Join(lines, "\n")
+		hasQuotaRoot := false
+		hasStorage := false
+		for _, line := range lines {
+			upper := strings.ToUpper(line)
+			if strings.Contains(upper, "QUOTAROOT") {
+				hasQuotaRoot = true
+			}
+			if strings.Contains(upper, "STORAGE") {
+				hasStorage = true
+			}
+		}
+		if !hasQuotaRoot {
+			t.Errorf("GETQUOTAROOT response missing QUOTAROOT line; got:\n%s", allLines)
+		}
+		if !hasStorage {
+			t.Errorf("GETQUOTAROOT response missing STORAGE info; got:\n%s", allLines)
+		}
+		t.Logf("GETQUOTAROOT INBOX response (%d lines):\n%s", len(lines), allLines)
+
+		// Send GETQUOTA "" command (root quota)
+		result2, lines2 := ic.command(t, `GETQUOTA ""`)
+		if !strings.Contains(result2, "OK") {
+			// Some servers may not support GETQUOTA on root; log but don't hard-fail
+			t.Logf("GETQUOTA \"\" result: %s (may not be supported)", result2)
+		} else {
+			allLines2 := strings.Join(lines2, "\n")
+			hasQuota := false
+			hasStorage2 := false
+			for _, line := range lines2 {
+				upper := strings.ToUpper(line)
+				if strings.Contains(upper, "QUOTA") {
+					hasQuota = true
+				}
+				if strings.Contains(upper, "STORAGE") {
+					hasStorage2 = true
+				}
+			}
+			if !hasQuota {
+				t.Errorf("GETQUOTA response missing QUOTA line; got:\n%s", allLines2)
+			}
+			if !hasStorage2 {
+				t.Errorf("GETQUOTA response missing STORAGE info; got:\n%s", allLines2)
+			}
+			t.Logf("GETQUOTA \"\" response (%d lines):\n%s", len(lines2), allLines2)
+		}
+
+		ic.command(t, "LOGOUT")
+	})
+
+	t.Run("Attachment_Upload_Download", func(t *testing.T) {
+		// Build a multipart MIME message with a text/plain attachment
+		attachContent := "This is the attachment content for E2E testing.\nLine 2 of attachment."
+		encodedAttach := base64.StdEncoding.EncodeToString([]byte(attachContent))
+		boundary := fmt.Sprintf("e2e-boundary-%d", time.Now().UnixNano())
+		subject := fmt.Sprintf("attachment-test-%d", time.Now().UnixNano())
+
+		var mimeBody strings.Builder
+		mimeBody.WriteString(fmt.Sprintf("From: sender@mail1.test\r\n"))
+		mimeBody.WriteString(fmt.Sprintf("To: testuser@mail3.test\r\n"))
+		mimeBody.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+		mimeBody.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
+		mimeBody.WriteString(fmt.Sprintf("Message-ID: <att-test-%d@test.local>\r\n", time.Now().UnixNano()))
+		mimeBody.WriteString(fmt.Sprintf("MIME-Version: 1.0\r\n"))
+		mimeBody.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary))
+		mimeBody.WriteString("\r\n")
+		// Text part
+		mimeBody.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		mimeBody.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+		mimeBody.WriteString("Content-Transfer-Encoding: 7bit\r\n")
+		mimeBody.WriteString("\r\n")
+		mimeBody.WriteString("This is the body of the message with an attachment.\r\n")
+		mimeBody.WriteString("\r\n")
+		// Attachment part
+		mimeBody.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		mimeBody.WriteString("Content-Type: text/plain; charset=utf-8; name=\"testfile.txt\"\r\n")
+		mimeBody.WriteString("Content-Transfer-Encoding: base64\r\n")
+		mimeBody.WriteString("Content-Disposition: attachment; filename=\"testfile.txt\"\r\n")
+		mimeBody.WriteString("\r\n")
+		// Base64 content wrapped at 76 chars
+		for i := 0; i < len(encodedAttach); i += 76 {
+			end := i + 76
+			if end > len(encodedAttach) {
+				end = len(encodedAttach)
+			}
+			mimeBody.WriteString(encodedAttach[i:end])
+			mimeBody.WriteString("\r\n")
+		}
+		// Closing boundary
+		mimeBody.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
+
+		// Send the raw MIME message via SMTP
+		sendRawMailViaSMTP(t, mail1SMTPAddr, "sender@mail1.test", "testuser@mail3.test", mimeBody.String())
+
+		// Wait for delivery via API
+		gwClient := newAPIClient()
+		if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
+			t.Fatalf("Cannot login as testuser@mail3.test: %v", err)
+		}
+
+		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
+		t.Logf("Attachment message delivered: id=%d", msgID)
+
+		// List attachments via API
+		resp, err := gwClient.get(fmt.Sprintf("/api/v1/messages/%d/attachments", msgID))
+		requireNoError(t, err)
+		requireStatus(t, resp, http.StatusOK)
+
+		var attList struct {
+			Data []struct {
+				ID          uint   `json:"id"`
+				Filename    string `json:"filename"`
+				ContentType string `json:"content_type"`
+				SizeBytes   int64  `json:"size_bytes"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&attList); err != nil {
+			t.Fatalf("decode attachments list: %v", err)
+		}
+		resp.Body.Close()
+
+		if len(attList.Data) == 0 {
+			t.Fatal("expected at least one attachment, got none")
+		}
+
+		att := attList.Data[0]
+		t.Logf("Found attachment: id=%d filename=%q type=%q size=%d",
+			att.ID, att.Filename, att.ContentType, att.SizeBytes)
+
+		if att.Filename != "testfile.txt" {
+			t.Errorf("expected attachment filename 'testfile.txt', got %q", att.Filename)
+		}
+
+		// Download the attachment
+		dlResp, err := gwClient.get(fmt.Sprintf("/api/v1/attachments/%d", att.ID))
+		requireNoError(t, err)
+		requireStatus(t, dlResp, http.StatusOK)
+
+		dlBody, err := io.ReadAll(dlResp.Body)
+		dlResp.Body.Close()
+		requireNoError(t, err)
+
+		downloaded := string(dlBody)
+		if downloaded != attachContent {
+			t.Errorf("attachment content mismatch:\n  got:  %q\n  want: %q", downloaded, attachContent)
+		} else {
+			t.Logf("Attachment download verified: %d bytes match original", len(dlBody))
+		}
 	})
 }

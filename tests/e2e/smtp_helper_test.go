@@ -175,6 +175,23 @@ func sendMailViaSubmission(t *testing.T, submitAddr, from, to, user, pass, subje
 	sc.sendExpect(t, "QUIT", "221")
 }
 
+// sendRawMailViaSMTP sends a pre-built raw MIME message via SMTP.
+// The rawMsg should contain all headers and body (From, To, Subject, MIME parts, etc.).
+func sendRawMailViaSMTP(t *testing.T, smtpAddr, from, to, rawMsg string) {
+	t.Helper()
+	sc := dialSMTP(t, smtpAddr)
+	defer sc.close()
+
+	sc.ehlo(t, "test.local")
+	sc.sendExpect(t, "MAIL FROM:<"+from+">", "250")
+	sc.sendExpect(t, "RCPT TO:<"+to+">", "250")
+	sc.sendExpect(t, "DATA", "354")
+
+	sc.send(t, rawMsg)
+	sc.sendExpect(t, ".", "250")
+	sc.sendExpect(t, "QUIT", "221")
+}
+
 // ── IMAP helper ──────────────────────────────────────────────────────
 
 type imapConn struct {
