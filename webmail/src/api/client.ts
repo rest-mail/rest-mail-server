@@ -1,4 +1,4 @@
-import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination } from '../types';
+import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment } from '../types';
 
 const BASE = '/api/v1';
 
@@ -134,6 +134,26 @@ export async function getAccountQuota(accountId: number): Promise<{ data: QuotaD
   return request(`${BASE}/accounts/${accountId}/quota`);
 }
 
+// Attachments
+export async function listAttachments(messageId: number): Promise<{ data: Attachment[] }> {
+  return request(`${BASE}/messages/${messageId}/attachments`);
+}
+
+export function getAttachmentUrl(attachmentId: number): string {
+  return `${BASE}/attachments/${attachmentId}`;
+}
+
+// Contacts
+export interface ContactSuggestion {
+  id: number;
+  email: string;
+  name: string;
+}
+
+export async function suggestContacts(accountId: number, query: string): Promise<{ data: ContactSuggestion[] }> {
+  return request(`${BASE}/accounts/${accountId}/contacts/suggest?q=${encodeURIComponent(query)}`);
+}
+
 // Send
 export async function sendMessage(data: {
   from: string;
@@ -148,5 +168,33 @@ export async function sendMessage(data: {
   await request(`${BASE}/messages/send`, {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+// Drafts
+export async function createDraft(data: {
+  from: string;
+  to?: string[];
+  cc?: string[];
+  subject?: string;
+  body_text?: string;
+  body_html?: string;
+}): Promise<{ data: MessageDetail }> {
+  return request(`${BASE}/messages/draft`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateDraft(draftId: number, data: Record<string, unknown>): Promise<{ data: MessageDetail }> {
+  return request(`${BASE}/messages/draft/${draftId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function sendDraft(draftId: number): Promise<void> {
+  await request(`${BASE}/messages/draft/${draftId}/send`, {
+    method: 'POST',
   });
 }

@@ -53,6 +53,13 @@ export interface Account {
   mailbox_id: number;
 }
 
+export interface Attachment {
+  id: number;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}
+
 export interface Pagination {
   cursor: string;
   has_more: boolean;

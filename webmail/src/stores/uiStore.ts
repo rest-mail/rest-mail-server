@@ -10,6 +10,9 @@ interface ComposeState {
   subject: string;
   inReplyTo?: string;
   quoteHtml?: string;
+  draftId?: number;
+  bodyHtml?: string;
+  bodyText?: string;
 }
 
 interface UIState {

@@ -18,6 +18,11 @@ interface MailState {
   hasMore: boolean;
   cursor: string | null;
 
+  // Search
+  searchQuery: string;
+  searchResults: MessageSummary[] | null;
+  isSearching: boolean;
+
   // Loading states
   loadingFolders: boolean;
   loadingMessages: boolean;
@@ -35,6 +40,8 @@ interface MailState {
   markFlagged: (msgId: number, flagged: boolean) => Promise<void>;
   deleteMsg: (msgId: number) => Promise<void>;
   refresh: () => Promise<void>;
+  searchMessages: (query: string) => Promise<void>;
+  clearSearch: () => void;
 }
 
 export const useMailStore = create<MailState>((set, get) => ({
@@ -47,6 +54,9 @@ export const useMailStore = create<MailState>((set, get) => ({
   selectedMessage: null,
   hasMore: false,
   cursor: null,
+  searchQuery: '',
+  searchResults: null,
+  isSearching: false,
   loadingFolders: false,
   loadingMessages: false,
   loadingMessage: false,
@@ -164,5 +174,27 @@ export const useMailStore = create<MailState>((set, get) => ({
   refresh: async () => {
     await get().loadFolders();
     await get().loadMessages();
+  },
+
+  searchMessages: async (query: string) => {
+    const { activeAccountId, activeFolder } = get();
+    if (!activeAccountId) return;
+
+    if (!query.trim()) {
+      get().clearSearch();
+      return;
+    }
+
+    set({ searchQuery: query, isSearching: true });
+    try {
+      const resp = await api.searchMessages(activeAccountId, query, activeFolder);
+      set({ searchResults: resp.data, isSearching: false });
+    } catch {
+      set({ isSearching: false });
+    }
+  },
+
+  clearSearch: () => {
+    set({ searchQuery: '', searchResults: null, isSearching: false });
   },
 }));

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useUIStore } from '@/stores/uiStore';
 import { useMailStore } from '@/stores/mailStore';
@@ -7,40 +7,98 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { RichTextEditor } from './RichTextEditor';
+import { AutocompleteInput } from './AutocompleteInput';
 import * as api from '@/api/client';
+
+function parseRecipients(raw: string): string[] {
+  return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+}
 
 export function ComposeView() {
   const { composeState, closeCompose } = useUIStore();
   const { accounts } = useMailStore();
 
   const [from, setFrom] = useState(accounts[0]?.address || '');
-  const [to, setTo] = useState(composeState?.to || '');
-  const [cc, setCc] = useState(composeState?.cc || '');
-  const [bcc, setBcc] = useState(composeState?.bcc || '');
+  const [to, setTo] = useState<string[]>(parseRecipients(composeState?.to || ''));
+  const [cc, setCc] = useState<string[]>(parseRecipients(composeState?.cc || ''));
+  const [bcc, setBcc] = useState<string[]>(parseRecipients(composeState?.bcc || ''));
   const [subject, setSubject] = useState(composeState?.subject || '');
-  const [htmlContent, setHtmlContent] = useState(composeState?.quoteHtml || '');
+  const [htmlContent, setHtmlContent] = useState(composeState?.quoteHtml || composeState?.bodyHtml || '');
   const [isHtml, setIsHtml] = useState(true);
-  const [plainText, setPlainText] = useState('');
+  const [plainText, setPlainText] = useState(composeState?.bodyText || '');
   const [sending, setSending] = useState(false);
+  const [draftId, setDraftId] = useState<number | null>(composeState?.draftId || null);
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  // Auto-save timer
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSaveRef = useRef<string>('');
+
+  const getFormSnapshot = useCallback(() => {
+    return JSON.stringify({ from, to, cc, bcc, subject, htmlContent, plainText });
+  }, [from, to, cc, bcc, subject, htmlContent, plainText]);
+
+  // Auto-save every 30 seconds if content changed
+  useEffect(() => {
+    autoSaveRef.current = setInterval(() => {
+      const snapshot = getFormSnapshot();
+      if (snapshot !== lastSaveRef.current && (to.length > 0 || subject || htmlContent || plainText)) {
+        handleSaveDraft(true);
+      }
+    }, 30000);
+    return () => {
+      if (autoSaveRef.current) clearInterval(autoSaveRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, cc, bcc, subject, htmlContent, plainText, draftId]);
+
+  const getDraftData = () => ({
+    from,
+    to: to.length > 0 ? to : undefined,
+    cc: cc.length > 0 ? cc : undefined,
+    subject: subject || undefined,
+    body_text: isHtml ? stripHtml(htmlContent) : plainText,
+    body_html: isHtml ? htmlContent : undefined,
+  });
+
+  const handleSaveDraft = async (silent = false) => {
+    setSavingDraft(true);
+    try {
+      if (draftId) {
+        await api.updateDraft(draftId, getDraftData());
+      } else {
+        const resp = await api.createDraft(getDraftData());
+        setDraftId(resp.data.id);
+      }
+      lastSaveRef.current = getFormSnapshot();
+      if (!silent) toast.success('Draft saved');
+    } catch (err) {
+      if (!silent) toast.error(err instanceof Error ? err.message : 'Failed to save draft');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
 
   const handleSend = async () => {
-    if (!to.trim()) return;
+    if (to.length === 0) return;
     setSending(true);
     try {
-      const recipients = to.split(',').map(s => s.trim()).filter(Boolean);
-      const ccList = cc ? cc.split(',').map(s => s.trim()).filter(Boolean) : undefined;
-      const bccList = bcc ? bcc.split(',').map(s => s.trim()).filter(Boolean) : undefined;
-
-      await api.sendMessage({
-        from,
-        to: recipients,
-        cc: ccList,
-        bcc: bccList,
-        subject,
-        body_text: isHtml ? stripHtml(htmlContent) : plainText,
-        body_html: isHtml ? htmlContent : undefined,
-        in_reply_to: composeState?.inReplyTo,
-      });
+      if (draftId) {
+        // Update draft with latest content then send it
+        await api.updateDraft(draftId, getDraftData());
+        await api.sendDraft(draftId);
+      } else {
+        await api.sendMessage({
+          from,
+          to,
+          cc: cc.length > 0 ? cc : undefined,
+          bcc: bcc.length > 0 ? bcc : undefined,
+          subject,
+          body_text: isHtml ? stripHtml(htmlContent) : plainText,
+          body_html: isHtml ? htmlContent : undefined,
+          in_reply_to: composeState?.inReplyTo,
+        });
+      }
       toast.success('Message sent');
       closeCompose();
     } catch (err) {
@@ -50,12 +108,23 @@ export function ComposeView() {
     }
   };
 
+  const handleDiscard = async () => {
+    if (draftId) {
+      try {
+        await api.deleteMessage(draftId);
+      } catch {
+        // ignore — draft may already be gone
+      }
+    }
+    closeCompose();
+  };
+
   return (
     <div className="h-full flex flex-col bg-background">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2">
-        <h2 className="font-semibold">Compose</h2>
-        <Button variant="ghost" size="sm" onClick={closeCompose}>
+        <h2 className="font-semibold">{draftId ? 'Edit Draft' : 'Compose'}</h2>
+        <Button variant="ghost" size="sm" onClick={handleDiscard}>
           {"\u2715"}
         </Button>
       </div>
@@ -77,15 +146,15 @@ export function ComposeView() {
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">To</Label>
-          <Input value={to} onChange={e => setTo(e.target.value)} placeholder="recipient@example.com" />
+          <AutocompleteInput value={to} onChange={setTo} placeholder="recipient@example.com" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Cc</Label>
-          <Input value={cc} onChange={e => setCc(e.target.value)} placeholder="" />
+          <AutocompleteInput value={cc} onChange={setCc} placeholder="" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Bcc</Label>
-          <Input value={bcc} onChange={e => setBcc(e.target.value)} placeholder="" />
+          <AutocompleteInput value={bcc} onChange={setBcc} placeholder="" />
         </div>
         <div className="flex items-center gap-2">
           <Label className="w-12 text-right text-sm text-muted-foreground">Subject</Label>
@@ -135,8 +204,11 @@ export function ComposeView() {
       <Separator />
       {/* Footer */}
       <div className="flex items-center justify-end gap-2 px-4 py-2">
-        <Button variant="outline" size="sm" onClick={closeCompose}>
+        <Button variant="outline" size="sm" onClick={handleDiscard}>
           Discard
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => handleSaveDraft(false)} disabled={savingDraft}>
+          {savingDraft ? 'Saving...' : 'Save Draft'}
         </Button>
         <Button size="sm" onClick={handleSend} disabled={sending}>
           {sending ? 'Sending...' : 'Send'}

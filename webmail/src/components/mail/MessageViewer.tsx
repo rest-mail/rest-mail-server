@@ -1,14 +1,45 @@
+import { useState, useEffect } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
+import { listAttachments, getAttachmentUrl } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Mail } from 'lucide-react';
+import { Mail, Paperclip } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import type { Attachment } from '@/types';
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export function MessageViewer() {
   const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg, accounts } = useMailStore();
   const { startCompose } = useUIStore();
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(false);
+
+  useEffect(() => {
+    if (!selectedMessage?.has_attachments) {
+      setAttachments([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAttachments(true);
+    listAttachments(selectedMessage.id)
+      .then((res) => {
+        if (!cancelled) setAttachments(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setAttachments([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAttachments(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedMessage?.id, selectedMessage?.has_attachments]);
 
   if (loadingMessage) {
     return (
@@ -38,6 +69,39 @@ export function MessageViewer() {
   }
 
   const msg = selectedMessage;
+
+  // If it's a draft, open in compose mode
+  if (msg.is_draft) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+        <Mail className="w-10 h-10 stroke-1" />
+        <p className="text-sm font-medium">Draft message</p>
+        <Button
+          size="sm"
+          onClick={() => {
+            let parsedTo: string[] = [];
+            try {
+              parsedTo = typeof msg.recipients_to === 'string'
+                ? JSON.parse(msg.recipients_to)
+                : (msg.recipients_to || []);
+            } catch { /* ignore */ }
+
+            startCompose({
+              to: parsedTo.join(', '),
+              cc: '',
+              bcc: '',
+              subject: msg.subject || '',
+              draftId: msg.id,
+              bodyHtml: msg.body_html || '',
+              bodyText: msg.body_text || '',
+            });
+          }}
+        >
+          Continue editing
+        </Button>
+      </div>
+    );
+  }
 
   const handleReply = () => {
     const date = new Date(msg.received_at).toLocaleString();
@@ -145,6 +209,40 @@ export function MessageViewer() {
             )}
           </div>
           <Separator className="my-4" />
+
+          {/* Attachments */}
+          {msg.has_attachments && (
+            <div className="mb-4">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-2">
+                <Paperclip className="w-4 h-4" />
+                <span>Attachments</span>
+              </div>
+              {loadingAttachments ? (
+                <div className="flex gap-2">
+                  <div className="h-7 w-32 rounded-full bg-muted animate-pulse" />
+                  <div className="h-7 w-28 rounded-full bg-muted animate-pulse" />
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((att) => (
+                    <a
+                      key={att.id}
+                      href={getAttachmentUrl(att.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={att.filename}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-muted hover:bg-muted/80 text-foreground transition-colors"
+                    >
+                      <Paperclip className="w-3 h-3" />
+                      {att.filename}
+                      <span className="text-muted-foreground">({formatFileSize(att.size_bytes)})</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+              <Separator className="mt-4" />
+            </div>
+          )}
 
           {/* Body */}
           {msg.body_html ? (

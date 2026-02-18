@@ -3,31 +3,35 @@ import { useMailStore } from '@/stores/mailStore';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Inbox, Mail } from 'lucide-react';
+import { Inbox, Mail, Search, X } from 'lucide-react';
 
 export function MessageList() {
   const {
     messages, selectedMessageId, loadingMessages, activeFolder,
     selectMessage, hasMore, loadMoreMessages,
+    searchResults, searchQuery, isSearching, clearSearch,
   } = useMailStore();
 
+  const isInSearch = searchResults !== null;
+  const displayMessages = isInSearch ? searchResults : messages;
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!messages.length) return;
+    if (!displayMessages.length) return;
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement).isContentEditable) return;
 
-    const idx = messages.findIndex(m => m.id === selectedMessageId);
+    const idx = displayMessages.findIndex(m => m.id === selectedMessageId);
 
     if (e.key === 'ArrowDown' || e.key === 'j') {
       e.preventDefault();
-      const next = Math.min(idx + 1, messages.length - 1);
-      selectMessage(messages[next].id);
+      const next = Math.min(idx + 1, displayMessages.length - 1);
+      selectMessage(displayMessages[next].id);
     } else if (e.key === 'ArrowUp' || e.key === 'k') {
       e.preventDefault();
       const prev = Math.max(idx - 1, 0);
-      selectMessage(messages[prev].id);
+      selectMessage(displayMessages[prev].id);
     }
-  }, [messages, selectedMessageId, selectMessage]);
+  }, [displayMessages, selectedMessageId, selectMessage]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -49,7 +53,7 @@ export function MessageList() {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
-  if (loadingMessages) {
+  if (loadingMessages && !isInSearch) {
     return (
       <div className="divide-y divide-border">
         {Array.from({ length: 8 }).map((_, i) => (
@@ -68,7 +72,21 @@ export function MessageList() {
     );
   }
 
-  if (messages.length === 0) {
+  if (displayMessages.length === 0) {
+    if (isInSearch) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
+          <Search className="w-10 h-10 stroke-1" />
+          <p className="text-sm">No results for "{searchQuery}"</p>
+          <button
+            onClick={clearSearch}
+            className="text-sm text-primary hover:underline"
+          >
+            Clear search
+          </button>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
         <Inbox className="w-10 h-10 stroke-1" />
@@ -80,7 +98,22 @@ export function MessageList() {
   return (
     <ScrollArea className="h-full">
       <div className="divide-y divide-border">
-        {messages.map(msg => (
+        {isInSearch && (
+          <div className="flex items-center justify-between px-4 py-2 bg-muted/50 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <Search className="h-3.5 w-3.5" />
+              {isSearching ? 'Searching...' : `${searchResults.length} result${searchResults.length === 1 ? '' : 's'} for "${searchQuery}"`}
+            </span>
+            <button
+              onClick={clearSearch}
+              className="flex items-center gap-1 text-primary hover:underline"
+            >
+              <X className="h-3.5 w-3.5" />
+              Clear
+            </button>
+          </div>
+        )}
+        {displayMessages.map(msg => (
           <button
             key={msg.id}
             onClick={() => selectMessage(msg.id)}

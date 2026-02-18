@@ -1,7 +1,9 @@
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useMailStore } from '@/stores/mailStore';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,11 +16,55 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { Search, X, Loader2 } from 'lucide-react';
 
 export function TopBar() {
   const { user, logout } = useAuthStore();
   const { startCompose, theme, setTheme, setView } = useUIStore();
-  const { refresh } = useMailStore();
+  const { refresh, searchMessages, clearSearch, isSearching, searchQuery } = useMailStore();
+
+  const [inputValue, setInputValue] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync input value when search is cleared externally
+  useEffect(() => {
+    if (!searchQuery && inputValue) {
+      setInputValue('');
+    }
+  }, [searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const debouncedSearch = useCallback((value: string) => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      if (value.trim()) {
+        searchMessages(value);
+      } else {
+        clearSearch();
+      }
+    }, 300);
+  }, [searchMessages, clearSearch]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    debouncedSearch(value);
+  };
+
+  const handleClearSearch = () => {
+    setInputValue('');
+    clearSearch();
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleClearSearch();
+      inputRef.current?.blur();
+    }
+  };
 
   return (
     <>
@@ -31,6 +77,32 @@ export function TopBar() {
           <Button variant="outline" size="sm" onClick={() => refresh()}>
             Get Mail
           </Button>
+        </div>
+
+        {/* Center: search bar */}
+        <div className="flex-1 max-w-md mx-4">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              ref={inputRef}
+              type="text"
+              placeholder="Search messages..."
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              className="pl-9 pr-9 h-8"
+            />
+            {isSearching ? (
+              <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
+            ) : inputValue ? (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {/* Right: user menu */}
