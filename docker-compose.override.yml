@@ -1,6 +1,5 @@
 # Development overrides — hot reload for all services.
 # Automatically merged with docker-compose.yml by docker compose.
-version: "3.8"
 
 services:
   # ─── API: air hot reload ─────────────────────────────────────────────
