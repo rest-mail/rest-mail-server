@@ -12,16 +12,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
 
 type DomainHandler struct {
-	db *gorm.DB
+	db  *gorm.DB
+	dns dns.Provider
 }
 
-func NewDomainHandler(db *gorm.DB) *DomainHandler {
-	return &DomainHandler{db: db}
+func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
+	return &DomainHandler{db: db, dns: dnsProvider}
 }
 
 func (h *DomainHandler) List(w http.ResponseWriter, r *http.Request) {

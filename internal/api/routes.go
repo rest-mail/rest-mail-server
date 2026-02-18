@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
+	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
@@ -21,7 +22,7 @@ import (
 
 // NewRouter creates and configures the chi router with all API routes.
 // The acmeClient parameter is optional; pass nil when ACME is disabled.
-func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, acmeClient ...*acmeclient.Client) http.Handler {
+func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) http.Handler {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -41,7 +42,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, acm
 	// Initialize handlers
 	healthH := handlers.NewHealthHandler(db)
 	authH := handlers.NewAuthHandler(db, jwtService)
-	domainH := handlers.NewDomainHandler(db)
+	domainH := handlers.NewDomainHandler(db, dnsProvider)
 	mailboxH := handlers.NewMailboxHandler(db)
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()

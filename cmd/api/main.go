@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/digest"
+	"github.com/restmail/restmail/internal/dns"
 )
 
 func loadCACert() {
@@ -105,8 +106,16 @@ func main() {
 		)
 	}
 
+	// Create DNS provider
+	dnsProvider, err := dns.NewProvider(cfg.DNSProvider)
+	if err != nil {
+		slog.Error("failed to create DNS provider", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("DNS provider initialized", "provider", cfg.DNSProvider)
+
 	// Create router
-	router := api.NewRouter(database, jwtService, cfg, acmeClientPtr)
+	router := api.NewRouter(database, jwtService, cfg, dnsProvider, acmeClientPtr)
 
 	// Start ACME renewal manager (if enabled)
 	if acmeManager != nil {
