@@ -140,7 +140,7 @@ type Attachment struct {
 	Checksum    string    `gorm:"size:64;index" json:"checksum"` // SHA-256 hex
 	CreatedAt   time.Time `json:"created_at"`
 
-	Message Message `gorm:"foreignKey:MessageID" json:"-"`
+	Message Message `gorm:"foreignKey:MessageID;references:ID" json:"-"`
 }
 
 func (Attachment) TableName() string { return "attachments" }

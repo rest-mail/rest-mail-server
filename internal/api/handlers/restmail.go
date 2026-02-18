@@ -224,7 +224,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		msg := models.Message{
 			MailboxID:    mailbox.ID,
 			Folder:       "INBOX",
-			MessageID:    req.MessageID,
+			MsgID:        req.MessageID,
 			InReplyTo:    req.InReplyTo,
 			References:   req.References,
 			ThreadID:     threadID,

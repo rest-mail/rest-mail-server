@@ -435,7 +435,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	sentMsg := models.Message{
 		MailboxID:    senderMailbox.ID,
 		Folder:       "Sent",
-		MessageID:    messageID,
+		MsgID:        messageID,
 		InReplyTo:    req.InReplyTo,
 		Sender:       req.From,
 		SenderName:   senderMailbox.DisplayName,
@@ -508,7 +508,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			inboxMsg := models.Message{
 				MailboxID:    recipientMailbox.ID,
 				Folder:       "INBOX",
-				MessageID:    messageID,
+				MsgID:        messageID,
 				Sender:       req.From,
 				SenderName:   senderMailbox.DisplayName,
 				RecipientsTo: models.JSONB(toJSON),
@@ -729,7 +729,7 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
 		Folder:       "INBOX",
-		MessageID:    req.MessageID,
+		MsgID:        req.MessageID,
 		InReplyTo:    req.InReplyTo,
 		References:   req.References,
 		ThreadID:     threadID,

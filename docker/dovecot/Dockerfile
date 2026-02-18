@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     rsyslog \
     ca-certificates \
     openssl \
+    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Create vmail user (must match Postfix's virtual_uid_maps/virtual_gid_maps)

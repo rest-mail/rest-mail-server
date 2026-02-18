@@ -17,11 +17,9 @@ volumes:
 services:
   # ─── Certificate Generator (init container) ──────────────────────────
   certgen:
-    image: alpine:3.20
-    command: /certs/generate-certs.sh
+    build: ./docker/certs
     volumes:
       - certs:/certs
-      - ./docker/certs/generate-certs.sh:/certs/generate-certs.sh:ro
     networks:
       mailnet:
         ipv4_address: 172.20.0.99

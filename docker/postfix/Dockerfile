@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     openssl \
     libsasl2-modules \
     sasl2-bin \
+    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Create vmail user for virtual mail delivery

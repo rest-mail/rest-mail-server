@@ -21,7 +21,7 @@ type OutboundQueue struct {
 	ExpiresAt     time.Time  `json:"expires_at"`
 
 	// Associations
-	Message *Message `gorm:"foreignKey:MessageID" json:"message,omitempty"`
+	Message *Message `gorm:"foreignKey:MessageID;references:ID" json:"message,omitempty"`
 }
 
 func (OutboundQueue) TableName() string { return "outbound_queue" }

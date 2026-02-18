@@ -49,7 +49,7 @@ type Message struct {
 	ID             uint      `gorm:"primaryKey" json:"id"`
 	MailboxID      uint      `gorm:"not null;index:idx_messages_mailbox_folder;index:idx_messages_mailbox_deleted" json:"mailbox_id"`
 	Folder         string    `gorm:"size:255;not null;default:INBOX;index:idx_messages_mailbox_folder" json:"folder"`
-	MessageID      string    `gorm:"size:995;index" json:"message_id"`
+	MsgID          string    `gorm:"column:message_id;size:995;index" json:"message_id"`
 	InReplyTo      string    `gorm:"size:995" json:"in_reply_to"`
 	References     string    `gorm:"type:text" json:"references"`
 	ThreadID       string    `gorm:"size:995;index" json:"thread_id"`
