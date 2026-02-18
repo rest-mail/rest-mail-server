@@ -350,7 +350,7 @@ tasks:
     cmds:
       # Phase 1 — infrastructure (postgres + its deps resolve via depends_on internally)
       - echo "► Starting infrastructure..."
-      - docker compose up -d --build postgres dnsmasq js-filter certgen postfix-mail1 dovecot-mail1 postfix-mail2 dovecot-mail2
+      - docker compose up -d --build docker-config-gen docker-proxy postgres dnsmasq js-filter certgen postfix-mail1 dovecot-mail1 postfix-mail2 dovecot-mail2
 
       # Phase 2 — API (Docker waits for postgres healthy before starting it)
       - echo "► Starting API..."

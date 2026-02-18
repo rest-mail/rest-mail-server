@@ -16,10 +16,17 @@ volumes:
   grafana-data:
 
 services:
-  # ─── Docker Config Generator ─────────────────────────────────────────
-  # Watches Docker events and generates nginx proxy config automatically.
-  # Added as a depends_on to every root service (certgen, postgres,
-  # js-filter, website) so it is always running before any other container.
+  # ─── Frontend Proxy (two-container set) ─────────────────────────────
+  #
+  # docker-config-gen: watches Docker events; when a container with
+  #   recognised labels starts/stops it calls docker-proxy's scripts to
+  #   add or remove an nginx upstream + server block dynamically.
+  #
+  # docker-proxy: nginx reverse proxy whose config is managed entirely by
+  #   docker-config-gen.  It is the single HTTP/HTTPS entry point for the
+  #   whole stack.  Individual services declare their routing by adding
+  #   docker-config-gen.* labels to their service definitions.
+  #
   docker-config-gen:
     image: ghcr.io/antimatter-studios/docker-config-gen:latest
     container_name: docker-config-gen
@@ -31,6 +38,24 @@ services:
     networks:
       mailnet:
         ipv4_address: 172.20.0.4
+
+  docker-proxy:
+    image: ghcr.io/antimatter-studios/docker-proxy:latest
+    container_name: docker-proxy
+    restart: always
+    labels:
+      - docker-config-gen.request=/app/scripts/request.sh
+      - docker-config-gen.response=/app/scripts/response.sh
+      - docker-config-gen.renderer=nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      docker-config-gen:
+        condition: service_started
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.5
 
   # ─── Certificate Generator (init container) ──────────────────────────
   certgen:
