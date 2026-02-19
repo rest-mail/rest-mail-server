@@ -177,7 +177,7 @@ services:
     labels:
       - docker-proxy.webmail.host=localhost
       - docker-proxy.webmail.port=80
-      - docker-proxy.webmail.path=/
+      - docker-proxy.webmail.path=/webmail
     ports:
       - "3000:80"
     depends_on:
@@ -444,7 +444,7 @@ services:
     container_name: website
     restart: unless-stopped
     labels:
-      - docker-proxy.website.host=restmail.localhost
+      - docker-proxy.website.host=localhost
       - docker-proxy.website.port=80
       - docker-proxy.website.path=/
     ports:
