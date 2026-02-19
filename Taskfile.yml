@@ -523,6 +523,16 @@ tasks:
     cmds:
       - docker compose down -v
 
+  prune:
+    desc: Remove all stopped containers (fixes name-conflict errors on restart)
+    cmds:
+      - docker container prune -f
+
+  prune:all:
+    desc: Remove stopped containers, unused images, networks, and build cache
+    cmds:
+      - docker system prune -f
+
   # ── Logs ───────────────────────────────────────────────
   logs:
     desc: Tail logs from all containers
