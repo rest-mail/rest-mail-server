@@ -473,6 +473,11 @@ tasks:
     cmds:
       - docker compose up -d --build pop3-gateway
 
+  restart:dev:
+    desc: Restart all running dev containers (preserves dep order)
+    cmds:
+      - docker compose restart
+
   # ── dev / down ─────────────────────────────────────────
   dev:
     desc: Start the full dev environment (hot reload via air + Vite)
