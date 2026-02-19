@@ -514,24 +514,27 @@ tasks:
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
   down:
-    desc: Stop and remove all containers
+    desc: Stop and remove all containers (including orphans)
     cmds:
-      - docker compose down
+      - docker compose down --remove-orphans
 
   down:clean:
-    desc: Stop containers and remove volumes (destructive)
+    desc: Stop containers, remove volumes and orphans (destructive)
     cmds:
-      - docker compose down -v
+      - docker compose down --remove-orphans -v
 
-  prune:
-    desc: Remove all stopped containers (fixes name-conflict errors on restart)
+  reset:
+    desc: Full teardown — remove all containers, orphans, then prune stale names
     cmds:
+      - docker compose down --remove-orphans
       - docker container prune -f
 
-  prune:all:
-    desc: Remove stopped containers, unused images, networks, and build cache
+  reset:hard:
+    desc: Full teardown including volumes — use when you want a clean slate
     cmds:
-      - docker system prune -f
+      - docker compose down --remove-orphans -v
+      - docker container prune -f
+      - docker network prune -f
 
   # ── Logs ───────────────────────────────────────────────
   logs:
