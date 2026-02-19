@@ -226,6 +226,7 @@ tasks:
   start:docker-config-gen:
     desc: Start the docker-config-gen event watcher
     cmds:
+      - docker rm -f docker-config-gen 2>/dev/null || true
       - docker compose up -d --build --force-recreate docker-config-gen
 
   start:docker-proxy:
