@@ -544,6 +544,16 @@ tasks:
     cmds:
       - docker compose logs -f --tail=100 pop3-gateway
 
+  logs:webmail:
+    desc: Tail logs from the webmail container
+    cmds:
+      - docker compose logs -f --tail=100 webmail
+
+  logs:website:
+    desc: Tail logs from the website container
+    cmds:
+      - docker compose logs -f --tail=100 website
+
   logs:gateways:
     desc: Tail logs from all protocol gateways
     cmds:
@@ -617,28 +627,6 @@ tasks:
         done
         echo "ERROR: API did not become healthy within 60 seconds."
         exit 1
-
-  # ── Website ────────────────────────────────────────────
-  website:go:
-    desc: Run the RESTMAIL landing page via Go dev server (inside api container)
-    cmds:
-      - docker compose exec api go run ./cmd/website -addr :8090 -root /app/website
-
-  website:dev:
-    desc: Start the website container (nginx)
-    cmds:
-      - docker compose up -d website
-      - echo "Website running at http://localhost:8090"
-
-  website:stop:
-    desc: Stop the website container
-    cmds:
-      - docker compose stop website
-
-  website:logs:
-    desc: View website container logs
-    cmds:
-      - docker compose logs -f --tail=100 website
 
   # ── Clean ──────────────────────────────────────────────
   clean:
