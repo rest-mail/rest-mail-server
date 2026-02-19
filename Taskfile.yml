@@ -361,7 +361,7 @@ tasks:
 
       # Phase 4 — gateways and webmail (Docker ensures certgen has exited before gateways)
       - echo "► Starting gateways and webmail..."
-      - docker compose up -d --build smtp-gateway imap-gateway pop3-gateway webmail
+      - docker compose up -d --build smtp-gateway imap-gateway pop3-gateway webmail website
 
       - |
         echo ""
