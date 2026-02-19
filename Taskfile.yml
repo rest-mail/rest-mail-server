@@ -216,120 +216,275 @@ tasks:
       - go mod tidy
       - go mod verify
 
-  # ── Per-container start tasks ──────────────────────────
+  # ── start:<service> ────────────────────────────────────
   #
   # Each task starts exactly one container and declares deps on the tasks
-  # that must run first. Docker Compose's own depends_on handles fine-grained
-  # health/completion checks internally; the task deps just express the graph.
+  # for its prerequisites. Docker Compose's own depends_on handles fine-
+  # grained health/completion checks; the task deps express the graph so
+  # that `task start:api` automatically brings up postgres, dnsmasq, etc.
   #
-  up:docker-config-gen:
+  start:docker-config-gen:
     desc: Start the docker-config-gen event watcher
     cmds:
       - docker compose up -d --build docker-config-gen
 
-  up:docker-proxy:
+  start:docker-proxy:
     desc: Start the nginx frontend proxy
-    deps: [up:docker-config-gen]
+    deps: [start:docker-config-gen]
     cmds:
       - docker compose up -d --build docker-proxy
 
-  up:postgres:
+  start:postgres:
     desc: Start PostgreSQL
-    deps: [up:docker-config-gen]
+    deps: [start:docker-config-gen]
     cmds:
       - docker compose up -d --build postgres
 
-  up:dnsmasq:
+  start:dnsmasq:
     desc: Start the DNS server
-    deps: [up:docker-config-gen]
+    deps: [start:docker-config-gen]
     cmds:
       - docker compose up -d --build dnsmasq
 
-  up:js-filter:
+  start:js-filter:
     desc: Start the JS filter sidecar
-    deps: [up:docker-config-gen]
+    deps: [start:docker-config-gen]
     cmds:
       - docker compose up -d --build js-filter
 
-  up:certgen:
+  start:certgen:
     desc: Run the certificate generator (one-shot init container)
-    deps: [up:docker-config-gen]
+    deps: [start:docker-config-gen]
     cmds:
       - docker compose up -d --build certgen
 
-  up:dovecot-mail1:
+  start:dovecot-mail1:
     desc: Start Dovecot for mail1.test
-    deps: [up:postgres, up:certgen]
+    deps: [start:postgres, start:certgen]
     cmds:
       - docker compose up -d --build dovecot-mail1
 
-  up:dovecot-mail2:
+  start:dovecot-mail2:
     desc: Start Dovecot for mail2.test
-    deps: [up:postgres, up:certgen]
+    deps: [start:postgres, start:certgen]
     cmds:
       - docker compose up -d --build dovecot-mail2
 
-  up:postfix-mail1:
+  start:postfix-mail1:
     desc: Start Postfix for mail1.test
-    deps: [up:dovecot-mail1, up:dnsmasq]
+    deps: [start:dovecot-mail1, start:dnsmasq]
     cmds:
       - docker compose up -d --build postfix-mail1
 
-  up:postfix-mail2:
+  start:postfix-mail2:
     desc: Start Postfix for mail2.test
-    deps: [up:dovecot-mail2, up:dnsmasq]
+    deps: [start:dovecot-mail2, start:dnsmasq]
     cmds:
       - docker compose up -d --build postfix-mail2
 
-  up:api:
+  start:api:
     desc: Start the REST API (waits for health endpoint)
-    deps: [up:postgres, up:dnsmasq, up:js-filter]
+    deps: [start:postgres, start:dnsmasq, start:js-filter]
     cmds:
       - docker compose up -d --build api
       - task: health:wait
 
-  up:webmail:
+  start:webmail:
     desc: Start the webmail frontend
-    deps: [up:api]
+    deps: [start:api]
     cmds:
       - docker compose up -d --build webmail
 
-  up:website:
+  start:website:
     desc: Start the project website
-    deps: [up:docker-config-gen]
+    deps: [start:docker-config-gen]
     cmds:
       - docker compose up -d --build website
 
-  up:smtp-gateway:
+  start:smtp-gateway:
     desc: Start the SMTP gateway
-    deps: [up:api, up:certgen]
+    deps: [start:api, start:certgen]
     cmds:
       - docker compose up -d --build smtp-gateway
 
-  up:imap-gateway:
+  start:imap-gateway:
     desc: Start the IMAP gateway
-    deps: [up:api, up:certgen]
+    deps: [start:api, start:certgen]
     cmds:
       - docker compose up -d --build imap-gateway
 
-  up:pop3-gateway:
+  start:pop3-gateway:
     desc: Start the POP3 gateway
-    deps: [up:api, up:certgen]
+    deps: [start:api, start:certgen]
     cmds:
       - docker compose up -d --build pop3-gateway
 
-  # ── Composite start / stop ─────────────────────────────
+  # ── stop:<service> ─────────────────────────────────────
+  stop:docker-config-gen:
+    desc: Stop the docker-config-gen container
+    cmds:
+      - docker compose stop docker-config-gen
+
+  stop:docker-proxy:
+    desc: Stop the nginx frontend proxy
+    cmds:
+      - docker compose stop docker-proxy
+
+  stop:postgres:
+    desc: Stop PostgreSQL
+    cmds:
+      - docker compose stop postgres
+
+  stop:dnsmasq:
+    desc: Stop the DNS server
+    cmds:
+      - docker compose stop dnsmasq
+
+  stop:js-filter:
+    desc: Stop the JS filter sidecar
+    cmds:
+      - docker compose stop js-filter
+
+  stop:dovecot-mail1:
+    desc: Stop Dovecot for mail1.test
+    cmds:
+      - docker compose stop dovecot-mail1
+
+  stop:dovecot-mail2:
+    desc: Stop Dovecot for mail2.test
+    cmds:
+      - docker compose stop dovecot-mail2
+
+  stop:postfix-mail1:
+    desc: Stop Postfix for mail1.test
+    cmds:
+      - docker compose stop postfix-mail1
+
+  stop:postfix-mail2:
+    desc: Stop Postfix for mail2.test
+    cmds:
+      - docker compose stop postfix-mail2
+
+  stop:api:
+    desc: Stop the REST API
+    cmds:
+      - docker compose stop api
+
+  stop:webmail:
+    desc: Stop the webmail frontend
+    cmds:
+      - docker compose stop webmail
+
+  stop:website:
+    desc: Stop the project website
+    cmds:
+      - docker compose stop website
+
+  stop:smtp-gateway:
+    desc: Stop the SMTP gateway
+    cmds:
+      - docker compose stop smtp-gateway
+
+  stop:imap-gateway:
+    desc: Stop the IMAP gateway
+    cmds:
+      - docker compose stop imap-gateway
+
+  stop:pop3-gateway:
+    desc: Stop the POP3 gateway
+    cmds:
+      - docker compose stop pop3-gateway
+
+  # ── restart:<service> ──────────────────────────────────
+  # Rebuilds and restarts a single container. Prerequisites are assumed
+  # to already be running (use start:<service> if they are not).
+  restart:docker-config-gen:
+    desc: Rebuild and restart docker-config-gen
+    cmds:
+      - docker compose up -d --build docker-config-gen
+
+  restart:docker-proxy:
+    desc: Rebuild and restart the nginx frontend proxy
+    cmds:
+      - docker compose up -d --build docker-proxy
+
+  restart:postgres:
+    desc: Restart PostgreSQL
+    cmds:
+      - docker compose restart postgres
+
+  restart:dnsmasq:
+    desc: Restart the DNS server
+    cmds:
+      - docker compose restart dnsmasq
+
+  restart:js-filter:
+    desc: Rebuild and restart the JS filter sidecar
+    cmds:
+      - docker compose up -d --build js-filter
+
+  restart:dovecot-mail1:
+    desc: Restart Dovecot for mail1.test
+    cmds:
+      - docker compose restart dovecot-mail1
+
+  restart:dovecot-mail2:
+    desc: Restart Dovecot for mail2.test
+    cmds:
+      - docker compose restart dovecot-mail2
+
+  restart:postfix-mail1:
+    desc: Restart Postfix for mail1.test
+    cmds:
+      - docker compose restart postfix-mail1
+
+  restart:postfix-mail2:
+    desc: Restart Postfix for mail2.test
+    cmds:
+      - docker compose restart postfix-mail2
+
+  restart:api:
+    desc: Rebuild and restart the REST API (air hot reload)
+    cmds:
+      - docker compose up -d --build api
+
+  restart:webmail:
+    desc: Rebuild and restart the webmail frontend (Vite HMR)
+    cmds:
+      - docker compose up -d --build webmail
+
+  restart:website:
+    desc: Restart the project website
+    cmds:
+      - docker compose restart website
+
+  restart:smtp-gateway:
+    desc: Rebuild and restart the SMTP gateway (air hot reload)
+    cmds:
+      - docker compose up -d --build smtp-gateway
+
+  restart:imap-gateway:
+    desc: Rebuild and restart the IMAP gateway (air hot reload)
+    cmds:
+      - docker compose up -d --build imap-gateway
+
+  restart:pop3-gateway:
+    desc: Rebuild and restart the POP3 gateway (air hot reload)
+    cmds:
+      - docker compose up -d --build pop3-gateway
+
+  # ── dev / down ─────────────────────────────────────────
   dev:
     desc: Start the full dev environment (hot reload via air + Vite)
     deps:
-      - up:docker-proxy
-      - up:webmail
-      - up:website
-      - up:smtp-gateway
-      - up:imap-gateway
-      - up:pop3-gateway
-      - up:postfix-mail1
-      - up:postfix-mail2
+      - start:docker-proxy
+      - start:webmail
+      - start:website
+      - start:smtp-gateway
+      - start:imap-gateway
+      - start:pop3-gateway
+      - start:postfix-mail1
+      - start:postfix-mail2
     cmds:
       - |
         echo ""
@@ -345,15 +500,16 @@ tasks:
         echo "    Webmail →  http://localhost:3001  (Vite, HMR)"
         echo "    API     →  http://localhost:8080"
         echo ""
-        echo "  task up:<service>  start one service + its deps"
-        echo "  task logs          tail all container logs"
-        echo "  task logs:api      tail API logs only"
-        echo "  task ps            show container status"
-        echo "  task down          stop everything"
+        echo "  task start:<service>    start a service + its deps"
+        echo "  task stop:<service>     stop a single container"
+        echo "  task restart:<service>  rebuild + restart a container"
+        echo "  task logs               tail all container logs"
+        echo "  task ps                 show container status"
+        echo "  task down               stop everything"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
   down:
-    desc: Stop all containers
+    desc: Stop and remove all containers
     cmds:
       - docker compose down
 
@@ -430,11 +586,6 @@ tasks:
     desc: Generate self-signed CA and dev certificates
     cmds:
       - bash docker/certs/generate-certs.sh
-
-  dev:stop:
-    desc: Stop dev containers without removing them
-    cmds:
-      - docker compose stop
 
   # ── Setup ──────────────────────────────────────────────
   setup:
