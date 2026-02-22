@@ -8,8 +8,10 @@ import (
 )
 
 func testStage9DatabaseConsistency(t *testing.T) {
+	// The API now only manages mail3.test (each server has its own database).
+	// Use a mail3.test admin account for consistency checks.
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@mail1.test", adminPassword); err != nil {
+	if err := adminClient.login("eve@mail3.test", adminPassword); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
@@ -28,15 +30,15 @@ func testStage9DatabaseConsistency(t *testing.T) {
 		dbCount := len(dbMessages.Data)
 		t.Logf("Direct DB message count: %d", dbCount)
 
-		// Compare with user-facing API counts
-		alice := getMailboxByAddress(t, adminClient, "alice@mail1.test")
+		// Compare with user-facing API counts for a mail3.test user
+		eve := getMailboxByAddress(t, adminClient, "eve@mail3.test")
 
-		aliceClient := newAPIClient()
-		if err := aliceClient.login("alice@mail1.test", adminPassword); err != nil {
-			t.Skipf("Cannot login as alice: %v", err)
+		eveClient := newAPIClient()
+		if err := eveClient.login("eve@mail3.test", adminPassword); err != nil {
+			t.Skipf("Cannot login as eve: %v", err)
 		}
 
-		foldersResp, err := aliceClient.get(fmt.Sprintf("/api/v1/accounts/%d/folders", alice.ID))
+		foldersResp, err := eveClient.get(fmt.Sprintf("/api/v1/accounts/%d/folders", eve.ID))
 		requireNoError(t, err)
 		requireStatus(t, foldersResp, http.StatusOK)
 
@@ -55,11 +57,11 @@ func testStage9DatabaseConsistency(t *testing.T) {
 			apiTotal += f.Total
 			t.Logf("  Folder %s: %d messages", f.Name, f.Total)
 		}
-		t.Logf("API total for alice: %d", apiTotal)
+		t.Logf("API total for eve: %d", apiTotal)
 	})
 
 	t.Run("NoOrphanedMailboxes", func(t *testing.T) {
-		// Verify all mailboxes belong to existing domains
+		// Verify all mailboxes in mail3 DB belong to existing domains
 		resp, err := httpClient.Get(apiBaseURL + "/api/test/db/mailboxes")
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
@@ -112,7 +114,7 @@ func testStage9DatabaseConsistency(t *testing.T) {
 	})
 
 	t.Run("DomainConsistency", func(t *testing.T) {
-		// Verify domains from test endpoint match admin API
+		// Verify domains from test endpoint match admin API (mail3.test only)
 		testResp, err := httpClient.Get(apiBaseURL + "/api/test/db/domains")
 		requireNoError(t, err)
 		requireStatus(t, testResp, http.StatusOK)
@@ -149,30 +151,8 @@ func testStage9DatabaseConsistency(t *testing.T) {
 		}
 	})
 
-	t.Run("PostfixDovecotSeeApiData", func(t *testing.T) {
-		// Create a new user via API, then verify Postfix accepts mail to them
-		// and Dovecot authenticates them
-		newAddr := "consistency-check@mail1.test"
-		createMailbox(t, adminClient, newAddr, adminPassword, "Consistency Check")
-
-		// Postfix should accept RCPT TO for this user
-		sc := dialSMTP(t, mail1SMTPAddr)
-		defer sc.close()
-		sc.ehlo(t, "test.local")
-		sc.sendExpect(t, "MAIL FROM:<test@test.local>", "250")
-		resp := sc.sendExpect(t, "RCPT TO:<"+newAddr+">", "250")
-		t.Logf("Postfix accepts API-created user: %s", resp)
-		sc.sendExpect(t, "QUIT", "221")
-
-		// Dovecot should authenticate this user
-		ic := dialIMAP(t, mail1IMAPAddr)
-		defer ic.close()
-		result, _ := ic.command(t, fmt.Sprintf("LOGIN %s %s", newAddr, adminPassword))
-		if result == "" {
-			t.Error("empty IMAP LOGIN response")
-		} else {
-			t.Logf("Dovecot auth for API-created user: %s", result)
-		}
-		ic.command(t, "LOGOUT")
-	})
+	// NOTE: The previous PostfixDovecotSeeApiData test was removed because
+	// each mail server now has its own database. The API (postgres-mail3)
+	// cannot create users visible to Postfix/Dovecot (postgres-mail1/mail2).
+	// Traditional server users are managed via SQL init scripts.
 }

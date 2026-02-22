@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func testStage8TUIFlows(t *testing.T) {
+func testStage8ConsoleFlows(t *testing.T) {
 	// The TUI is a terminal application — we can't drive it interactively
-	// from a test. Instead, we test the API operations that the TUI performs:
+	// from a test. Instead, we test the API operations that the console performs:
 	// domain management, user CRUD, inbox browsing, and compose/send.
 
 	adminClient := newAPIClient()
@@ -16,7 +16,7 @@ func testStage8TUIFlows(t *testing.T) {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
-	t.Run("TuiDomainManagement", func(t *testing.T) {
+	t.Run("ConsoleDomainManagement", func(t *testing.T) {
 		// List domains
 		resp, err := adminClient.get("/api/v1/admin/domains")
 		requireNoError(t, err)
@@ -31,7 +31,7 @@ func testStage8TUIFlows(t *testing.T) {
 		t.Logf("Domains: %d", len(list.Data))
 
 		// Create a test domain
-		testDomain := createDomain(t, adminClient, "tui-test.example", "traditional")
+		testDomain := createDomain(t, adminClient, "console-test.example", "traditional")
 		t.Logf("Created domain: %+v", testDomain)
 
 		// Delete it
@@ -45,9 +45,9 @@ func testStage8TUIFlows(t *testing.T) {
 		t.Log("Domain created and deleted successfully")
 	})
 
-	t.Run("TuiUserCreation", func(t *testing.T) {
+	t.Run("ConsoleUserCreation", func(t *testing.T) {
 		// Create a user
-		mb := createMailbox(t, adminClient, "tuiuser@mail1.test", adminPassword, "TUI User")
+		mb := createMailbox(t, adminClient, "consoleuser@mail1.test", adminPassword, "Console User")
 		t.Logf("Created mailbox: %+v", mb)
 
 		// Verify it shows in list
@@ -64,7 +64,7 @@ func testStage8TUIFlows(t *testing.T) {
 
 		found := false
 		for _, m := range list.Data {
-			if m.Address == "tuiuser@mail1.test" {
+			if m.Address == "consoleuser@mail1.test" {
 				found = true
 				break
 			}
@@ -74,9 +74,9 @@ func testStage8TUIFlows(t *testing.T) {
 		}
 	})
 
-	t.Run("TuiPasswordReset", func(t *testing.T) {
+	t.Run("ConsolePasswordReset", func(t *testing.T) {
 		// Update mailbox password via PATCH
-		mb := getMailboxByAddress(t, adminClient, "tuiuser@mail1.test")
+		mb := getMailboxByAddress(t, adminClient, "consoleuser@mail1.test")
 		resp, err := adminClient.patch(fmt.Sprintf("/api/v1/admin/mailboxes/%d", mb.ID),
 			map[string]string{"password": "newpassword123"})
 		requireNoError(t, err)
@@ -88,15 +88,15 @@ func testStage8TUIFlows(t *testing.T) {
 
 		// Verify new password works
 		testClient := newAPIClient()
-		err = testClient.login("tuiuser@mail1.test", "newpassword123")
+		err = testClient.login("consoleuser@mail1.test", "newpassword123")
 		if err != nil {
 			t.Fatalf("login with new password failed: %v", err)
 		}
 		t.Log("Password reset and login with new password successful")
 	})
 
-	t.Run("TuiInboxBrowsing", func(t *testing.T) {
-		// Login as a user and browse inbox (same API the TUI uses)
+	t.Run("ConsoleInboxBrowsing", func(t *testing.T) {
+		// Login as a user and browse inbox (same API the console uses)
 		client := newAPIClient()
 		if err := client.login("alice@mail1.test", adminPassword); err != nil {
 			t.Skipf("Cannot login: %v", err)
@@ -136,13 +136,13 @@ func testStage8TUIFlows(t *testing.T) {
 		}
 	})
 
-	t.Run("TuiComposeMail", func(t *testing.T) {
-		// Compose and send (same API the TUI uses)
+	t.Run("ConsoleComposeMail", func(t *testing.T) {
+		// Compose and send (same API the console uses)
 		resp, err := adminClient.post("/api/v1/messages/deliver", map[string]string{
 			"address":   "alice@mail1.test",
-			"sender":    "tuiuser@mail1.test",
-			"subject":   "TUI compose test",
-			"body_text": "Sent from TUI test",
+			"sender":    "consoleuser@mail1.test",
+			"subject":   "Console compose test",
+			"body_text": "Sent from console test",
 		})
 		requireNoError(t, err)
 		if resp.StatusCode >= 400 {
@@ -150,11 +150,11 @@ func testStage8TUIFlows(t *testing.T) {
 			t.Fatalf("compose failed (%d): %s", resp.StatusCode, body)
 		}
 		resp.Body.Close()
-		t.Log("TUI compose/send successful")
+		t.Log("Console compose/send successful")
 	})
 
-	t.Run("TuiServerStatus", func(t *testing.T) {
-		// The TUI polls /api/health for status — verify it works
+	t.Run("ConsoleServerStatus", func(t *testing.T) {
+		// The console polls /api/health for status — verify it works
 		resp, err := httpClient.Get(apiBaseURL + "/api/health")
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
