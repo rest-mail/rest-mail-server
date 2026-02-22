@@ -50,8 +50,9 @@ func GetClaims(r *http.Request) *auth.Claims {
 }
 
 // AdminOnly restricts access to admin users.
-// Checks the is_admin flag on the JWT claims (set from WebmailAccount.IsAdmin).
-// In development mode, all authenticated users are allowed through.
+// Checks either:
+// - UserType == "admin" (for admin users authenticated via admin login)
+// - IsAdmin == true (for mailbox users with admin flag - legacy)
 func AdminOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := GetClaims(r)
@@ -59,10 +60,47 @@ func AdminOnly(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 			return
 		}
-		if !claims.IsAdmin {
+		// Allow access if user type is admin OR if legacy IsAdmin flag is set
+		if claims.UserType != "admin" && !claims.IsAdmin {
 			writeError(w, http.StatusForbidden, "forbidden", "Admin access required")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// RequireCapability restricts access to users with a specific capability.
+// The wildcard "*" capability grants access to all endpoints.
+func RequireCapability(capability string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := GetClaims(r)
+			if claims == nil {
+				writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+				return
+			}
+
+			// Admin users have capabilities, mailbox users don't
+			if claims.UserType != "admin" {
+				writeError(w, http.StatusForbidden, "forbidden", "Admin access required")
+				return
+			}
+
+			// Check if user has the required capability or wildcard
+			hasCapability := false
+			for _, cap := range claims.Capabilities {
+				if cap == "*" || cap == capability {
+					hasCapability = true
+					break
+				}
+			}
+
+			if !hasCapability {
+				writeError(w, http.StatusForbidden, "forbidden", "Insufficient permissions")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
