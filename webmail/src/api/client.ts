@@ -1,6 +1,9 @@
 import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment } from '../types';
 
-const BASE = '/api/v1';
+// Complete API URL is configurable via VITE_API_URL environment variable
+// Must be a complete URL - can be same-origin or cross-origin
+// Examples: http://localhost:8080/api/v1, https://api.example.com/v1, http://restmail.localhost/api/v1
+const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
 
 let accessToken = '';
 

@@ -18,7 +18,11 @@ CMD ["npm", "run", "dev"]
 
 # ── Stage 4: prod (nginx serving built assets) ────────────────────────
 FROM nginx:alpine AS prod
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+ARG NGINX_BASE_PATH=/
+ENV NGINX_BASE_PATH=${NGINX_BASE_PATH}
+COPY nginx.conf /etc/nginx/conf.d/default.conf.template
+COPY docker-entrypoint.sh /docker-entrypoint.d/30-configure-base-path.sh
+RUN chmod +x /docker-entrypoint.d/30-configure-base-path.sh
 COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

@@ -119,7 +119,9 @@ export function useSSE(
 
     function connect() {
       if (closed) return;
-      const url = `/api/v1/accounts/${accountId}/events`;
+      // Use complete API URL
+      const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
+      const url = `${apiUrl}/accounts/${accountId}/events`;
       cancelStream = openStream(
         url, token, lastEventId,
         (e) => onEventRef.current(e),
@@ -175,7 +177,9 @@ export function useMultiAccountSSE(
 
       function connect() {
         if (closed) return;
-        const url = `/api/v1/accounts/${id}/events`;
+        // Use complete API URL
+        const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
+        const url = `${apiUrl}/accounts/${id}/events`;
         cancelStream = openStream(
           url, token, lastEventId,
           (e) => onEventRef.current(e),
