@@ -83,6 +83,12 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.TLSReport{},
 		// Calendar event lifecycle tracking
 		&models.CalendarEventVersion{},
+		// RBAC models
+		&models.AdminUser{},
+		&models.Role{},
+		&models.Capability{},
+		&models.UserRole{},
+		&models.RoleCapability{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)

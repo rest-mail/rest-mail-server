@@ -40,9 +40,19 @@ type LoginResponse struct {
 	} `json:"data"`
 }
 
-// Login authenticates a user and returns an access token.
+// Login authenticates a mailbox user and returns an access token.
 func (c *Client) Login(email, password string) (*LoginResponse, error) {
 	body := map[string]string{"email": email, "password": password}
+	var resp LoginResponse
+	if err := c.post("/api/v1/auth/login", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// LoginAdmin authenticates an admin user and returns an access token.
+func (c *Client) LoginAdmin(username, password string) (*LoginResponse, error) {
+	body := map[string]string{"username": username, "password": password}
 	var resp LoginResponse
 	if err := c.post("/api/v1/auth/login", body, &resp); err != nil {
 		return nil, err

@@ -19,11 +19,15 @@ var (
 // Claims represents the JWT claims for access and refresh tokens.
 type Claims struct {
 	jwt.RegisteredClaims
-	Email            string `json:"email"`
-	WebmailAccountID uint   `json:"webmail_account_id"`
-	MailboxID        uint   `json:"mailbox_id"`
-	IsAdmin          bool   `json:"is_admin,omitempty"`
-	TokenType        string `json:"token_type"`
+	Email            string   `json:"email,omitempty"`            // For mailbox users
+	WebmailAccountID uint     `json:"webmail_account_id,omitempty"` // For mailbox users
+	MailboxID        uint     `json:"mailbox_id,omitempty"`       // For mailbox users
+	IsAdmin          bool     `json:"is_admin,omitempty"`         // Deprecated: use UserType
+	UserType         string   `json:"user_type"`                  // "mailbox" or "admin"
+	AdminUserID      uint     `json:"admin_user_id,omitempty"`    // For admin users
+	Username         string   `json:"username,omitempty"`         // For admin users
+	Capabilities     []string `json:"capabilities,omitempty"`     // For admin users
+	TokenType        string   `json:"token_type"`
 }
 
 // TokenPair contains both access and refresh tokens.
@@ -49,14 +53,14 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 	}
 }
 
-// GenerateTokenPair creates both access and refresh tokens for a user.
+// GenerateTokenPair creates both access and refresh tokens for a mailbox user.
 func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAccountID uint, isAdmin bool) (*TokenPair, error) {
 	now := time.Now()
 
 	// Access token
 	accessClaims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   fmt.Sprintf("%d", mailboxID),
+			Subject:   fmt.Sprintf("mailbox:%d", mailboxID),
 			Issuer:    "restmail",
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessExpiry)),
@@ -65,6 +69,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
 		IsAdmin:          isAdmin,
+		UserType:         "mailbox",
 		TokenType:        "access",
 	}
 
@@ -77,7 +82,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 	// Refresh token
 	refreshClaims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   fmt.Sprintf("%d", mailboxID),
+			Subject:   fmt.Sprintf("mailbox:%d", mailboxID),
 			Issuer:    "restmail",
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.refreshExpiry)),
@@ -86,7 +91,61 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
 		IsAdmin:          isAdmin,
+		UserType:         "mailbox",
 		TokenType:        "refresh",
+	}
+
+	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
+	refreshStr, err := refreshToken.SignedString(s.secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign refresh token: %w", err)
+	}
+
+	return &TokenPair{
+		AccessToken:  accessStr,
+		RefreshToken: refreshStr,
+		ExpiresIn:    int(s.accessExpiry.Seconds()),
+	}, nil
+}
+
+// GenerateAdminTokenPair creates both access and refresh tokens for an admin user.
+func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, capabilities []string) (*TokenPair, error) {
+	now := time.Now()
+
+	// Access token
+	accessClaims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   fmt.Sprintf("admin:%d", adminUserID),
+			Issuer:    "restmail",
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessExpiry)),
+		},
+		UserType:     "admin",
+		AdminUserID:  adminUserID,
+		Username:     username,
+		Capabilities: capabilities,
+		TokenType:    "access",
+	}
+
+	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	accessStr, err := accessToken.SignedString(s.secret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign access token: %w", err)
+	}
+
+	// Refresh token
+	refreshClaims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   fmt.Sprintf("admin:%d", adminUserID),
+			Issuer:    "restmail",
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.refreshExpiry)),
+		},
+		UserType:     "admin",
+		AdminUserID:  adminUserID,
+		Username:     username,
+		Capabilities: capabilities,
+		TokenType:    "refresh",
 	}
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)

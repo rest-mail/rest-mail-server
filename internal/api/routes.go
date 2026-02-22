@@ -11,6 +11,8 @@ import (
 	acmeclient "github.com/restmail/restmail/internal/acme"
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
+	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/version"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/dns"
@@ -78,6 +80,23 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine)
 	pipelineH := handlers.NewPipelineHandler(db, pipelineEngine)
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine)
+
+	// ═══════════════════════════════════════════════════════════════
+	// API root — version and discovery (no auth)
+	// ═══════════════════════════════════════════════════════════════
+	r.Get("/api", func(w http.ResponseWriter, r *http.Request) {
+		respond.Data(w, http.StatusOK, map[string]any{
+			"name":       "restmail",
+			"version":    version.Version,
+			"commit":     version.Commit,
+			"build_date": version.BuildDate,
+			"links": map[string]string{
+				"health": "/api/health",
+				"docs":   "/api/docs",
+				"login":  "/api/v1/auth/login",
+			},
+		})
+	})
 
 	// ═══════════════════════════════════════════════════════════════
 	// API Documentation (no auth)
