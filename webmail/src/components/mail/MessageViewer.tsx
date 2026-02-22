@@ -4,7 +4,6 @@ import { useUIStore } from '@/stores/uiStore';
 import * as api from '@/api/client';
 import { listAttachments, getAttachmentUrl } from '@/api/client';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   DropdownMenu,
@@ -12,7 +11,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Mail, Paperclip, FolderOpen, MessageSquare, Reply, ReplyAll, Forward, Trash2, Eye, EyeOff, Flag, FlagOff, Image, FileText as FileTextIcon, File } from 'lucide-react';
+import { Mail, Paperclip, MessageSquare, Reply, Forward, Trash2, Archive, MoreHorizontal, Eye, EyeOff, Flag, FlagOff, Image, FileText as FileTextIcon, File } from 'lucide-react';
 import { toast } from 'sonner';
 import DOMPurify from 'dompurify';
 import type { Attachment, MessageSummary } from '@/types';
@@ -28,6 +27,19 @@ function attachmentIcon(contentType: string) {
   if (contentType.startsWith('image/')) return <Image className="w-3.5 h-3.5" />;
   if (contentType === 'application/pdf') return <FileTextIcon className="w-3.5 h-3.5" />;
   return <File className="w-3.5 h-3.5" />;
+}
+
+/** Compact icon-only action button matching the design (28x28 rounded) */
+function ActionBtn({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className="w-7 h-7 rounded-2xl bg-background flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+    >
+      {children}
+    </button>
+  );
 }
 
 export function MessageViewer() {
@@ -59,7 +71,6 @@ export function MessageViewer() {
     return () => { cancelled = true; };
   }, [selectedMessage?.id, selectedMessage?.has_attachments]);
 
-  // Reset thread state when message changes
   useEffect(() => {
     setShowThread(false);
     setThreadMessages([]);
@@ -96,17 +107,17 @@ export function MessageViewer() {
 
   if (loadingMessage) {
     return (
-      <div className="p-6 space-y-4 animate-pulse">
-        <div className="h-5 w-64 rounded bg-muted" />
+      <div className="p-5 space-y-4">
+        <div className="h-5 w-64 rounded shimmer" />
         <div className="space-y-2">
-          <div className="h-3.5 w-48 rounded bg-muted" />
-          <div className="h-3.5 w-36 rounded bg-muted" />
+          <div className="h-3 w-48 rounded shimmer" />
+          <div className="h-3 w-36 rounded shimmer" />
         </div>
-        <div className="h-px bg-muted my-4" />
+        <div className="h-px bg-border my-4" />
         <div className="space-y-2">
-          <div className="h-3 w-full rounded bg-muted" />
-          <div className="h-3 w-5/6 rounded bg-muted" />
-          <div className="h-3 w-4/6 rounded bg-muted" />
+          <div className="h-3 w-full rounded shimmer" />
+          <div className="h-3 w-5/6 rounded shimmer" />
+          <div className="h-3 w-4/6 rounded shimmer" />
         </div>
       </div>
     );
@@ -116,21 +127,19 @@ export function MessageViewer() {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
         <Mail className="w-10 h-10 stroke-1" />
-        <p className="text-sm">Select a message to read</p>
+        <p className="font-mono text-sm">// select_a_message</p>
       </div>
     );
   }
 
   const msg = selectedMessage;
 
-  // If it's a draft, open in compose mode
   if (msg.is_draft) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
         <Mail className="w-10 h-10 stroke-1" />
-        <p className="text-sm font-medium">Draft message</p>
-        <Button
-          size="sm"
+        <p className="font-mono text-sm">// draft_message</p>
+        <button
           onClick={() => {
             let parsedTo: string[] = [];
             try {
@@ -149,9 +158,10 @@ export function MessageViewer() {
               bodyText: msg.body_text || '',
             });
           }}
+          className="font-mono text-xs text-primary hover:underline"
         >
-          Continue editing
-        </Button>
+          [continue_editing]
+        </button>
       </div>
     );
   }
@@ -176,11 +186,9 @@ export function MessageViewer() {
     const sender = msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender;
     const quoteHtml = `<p><br></p><blockquote><p>On ${date}, ${sender} wrote:</p>${msg.body_html || `<p>${msg.body_text}</p>`}</blockquote>`;
 
-    // Get all original To recipients except the current user
     const replyTo = msg.sender;
     let replyCc = '';
 
-    // Use the active account's address (not always accounts[0])
     const activeAccount = accounts.find(a => a.id === activeAccountId);
     const currentUser = activeAccount?.address || accounts[0]?.address || '';
 
@@ -227,64 +235,85 @@ export function MessageViewer() {
   };
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Action bar */}
-      <div className="flex flex-wrap items-center gap-1 px-4 py-2">
-        <Button variant="ghost" size="sm" onClick={handleReply}><Reply className="w-4 h-4 mr-1" />Reply</Button>
-        <Button variant="ghost" size="sm" onClick={handleReplyAll}><ReplyAll className="w-4 h-4 mr-1" />Reply All</Button>
-        <Button variant="ghost" size="sm" onClick={handleForward}><Forward className="w-4 h-4 mr-1" />Forward</Button>
-        <Separator orientation="vertical" className="h-5 mx-1" />
+    <div className="h-full flex flex-col bg-background">
+      {/* Action bar — compact icon buttons */}
+      <div className="flex items-center gap-1.5 h-10 px-3 bg-secondary shrink-0">
+        <ActionBtn onClick={handleReply} title="Reply">
+          <Reply className="w-3.5 h-3.5" />
+        </ActionBtn>
+        <ActionBtn onClick={handleForward} title="Forward">
+          <Forward className="w-3.5 h-3.5" />
+        </ActionBtn>
+        <ActionBtn onClick={() => handleMove('Archive')} title="Archive">
+          <Archive className="w-3.5 h-3.5" />
+        </ActionBtn>
+        <ActionBtn onClick={() => deleteMsg(msg.id)} title="Delete">
+          <Trash2 className="w-3.5 h-3.5" />
+        </ActionBtn>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* More actions dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
-              <FolderOpen className="w-4 h-4 mr-1" />
-              Move to
-            </Button>
+            <button className="w-7 h-7 rounded-2xl bg-background flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleReplyAll}>
+              reply_all
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => markRead(msg.id, !msg.is_read)}>
+              {msg.is_read ? 'mark_unread' : 'mark_read'}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => markFlagged(msg.id, !msg.is_flagged)}>
+              {msg.is_flagged ? 'unflag' : 'flag'}
+            </DropdownMenuItem>
             {['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk']
               .filter(f => f !== activeFolder)
               .map(f => (
-                <DropdownMenuItem key={f} onClick={() => handleMove(f)}>{f}</DropdownMenuItem>
+                <DropdownMenuItem key={f} onClick={() => handleMove(f)}>
+                  move_to: {f.toLowerCase()}
+                </DropdownMenuItem>
               ))}
             {folders
               .filter(f => !['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'].includes(f.name) && f.name !== activeFolder)
               .map(f => (
-                <DropdownMenuItem key={f.name} onClick={() => handleMove(f.name)}>{f.name}</DropdownMenuItem>
+                <DropdownMenuItem key={f.name} onClick={() => handleMove(f.name)}>
+                  move_to: {f.name.toLowerCase()}
+                </DropdownMenuItem>
               ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="ghost" size="sm" onClick={() => deleteMsg(msg.id)}><Trash2 className="w-4 h-4 mr-1" />Delete</Button>
-        <Button variant="ghost" size="sm" onClick={() => markRead(msg.id, !msg.is_read)}>
-          {msg.is_read ? <><EyeOff className="w-4 h-4 mr-1" />Mark Unread</> : <><Eye className="w-4 h-4 mr-1" />Mark Read</>}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => markFlagged(msg.id, !msg.is_flagged)}>
-          {msg.is_flagged ? <><FlagOff className="w-4 h-4 mr-1" />Unflag</> : <><Flag className="w-4 h-4 mr-1" />Flag</>}
-        </Button>
       </div>
-      <Separator />
 
       {/* Message content */}
       <ScrollArea className="flex-1">
-        <div className="px-6 py-4">
-          {/* Headers */}
-          <h2 className="text-lg font-semibold mb-2">{msg.subject || '(no subject)'}</h2>
+        <div className="px-5 py-4">
+          {/* Subject — Oswald uppercase */}
+          <h2 className="font-heading-oswald text-xl font-bold mb-3 text-foreground">
+            {msg.subject || '(no subject)'}
+          </h2>
+
+          {/* Sender row */}
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary shrink-0">
-              {(msg.sender_name || msg.sender).slice(0, 2).toUpperCase()}
+            <div className="w-8 h-8 rounded-2xl bg-primary flex items-center justify-center font-mono text-xs font-bold text-primary-foreground shrink-0">
+              {(msg.sender_name || msg.sender).slice(0, 1).toUpperCase()}
             </div>
-            <div className="text-sm space-y-0.5 text-muted-foreground flex-1">
+            <div className="font-mono text-xs space-y-0.5 text-muted-foreground flex-1 min-w-0">
               <p>
-                <span className="font-medium text-foreground">From:</span>{' '}
+                <span className="font-medium text-foreground">from:</span>{' '}
                 {msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender}
               </p>
               <p>
-                <span className="font-medium text-foreground">Date:</span>{' '}
+                <span className="font-medium text-foreground">date:</span>{' '}
                 {formatDate(msg.received_at)}
               </p>
               {msg.recipients_to && (
                 <p>
-                  <span className="font-medium text-foreground">To:</span>{' '}
+                  <span className="font-medium text-foreground">to:</span>{' '}
                   {typeof msg.recipients_to === 'string' ? msg.recipients_to : JSON.stringify(msg.recipients_to)}
                 </p>
               )}
@@ -294,22 +323,20 @@ export function MessageViewer() {
           {/* Thread indicator */}
           {msg.thread_id && msg.thread_id.length > 0 && (
             <div className="mt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-muted-foreground hover:text-foreground px-0"
+              <button
+                className="font-mono text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
                 onClick={handleToggleThread}
                 disabled={loadingThread}
               >
-                <MessageSquare className="w-3.5 h-3.5 mr-1" />
-                {loadingThread ? 'Loading...' : showThread ? 'Hide conversation' : 'Show conversation'}
-              </Button>
+                <MessageSquare className="w-3.5 h-3.5" />
+                {loadingThread ? '// loading...' : showThread ? '// hide_conversation' : '// show_conversation'}
+              </button>
               {showThread && threadMessages.length > 0 && (
                 <div className="mt-2 space-y-1">
                   {threadMessages.map(tm => (
                     <button
                       key={tm.id}
-                      className="block w-full text-left text-xs py-2 px-3 rounded-lg border bg-card hover:bg-accent transition-colors"
+                      className="block w-full text-left font-mono text-xs py-2 px-3 rounded-2xl border bg-card hover:bg-accent transition-colors"
                       onClick={() => selectMessage(tm.id)}
                     >
                       <span className="font-medium">{tm.subject || '(no subject)'}</span>
@@ -322,24 +349,25 @@ export function MessageViewer() {
                 </div>
               )}
               {showThread && threadMessages.length === 0 && (
-                <p className="text-xs text-muted-foreground mt-1 ml-1">No other messages in this conversation.</p>
+                <p className="font-mono text-xs text-muted-foreground mt-1 ml-1">// no_other_messages</p>
               )}
             </div>
           )}
 
-          <Separator className="my-4" />
+          {/* Divider */}
+          <div className="h-px bg-border my-4" />
 
           {/* Attachments */}
           {msg.has_attachments && (
             <div className="mb-4">
-              <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground mb-2">
-                <Paperclip className="w-4 h-4" />
-                <span>Attachments</span>
+              <div className="flex items-center gap-1.5 font-mono text-xs font-medium text-muted-foreground mb-2">
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>// attachments</span>
               </div>
               {loadingAttachments ? (
                 <div className="flex gap-2">
-                  <div className="h-7 w-32 rounded-full bg-muted animate-pulse" />
-                  <div className="h-7 w-28 rounded-full bg-muted animate-pulse" />
+                  <div className="h-7 w-32 rounded-2xl bg-muted animate-pulse" />
+                  <div className="h-7 w-28 rounded-2xl bg-muted animate-pulse" />
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -350,7 +378,7 @@ export function MessageViewer() {
                       target="_blank"
                       rel="noopener noreferrer"
                       download={att.filename}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-muted hover:bg-muted/80 text-foreground transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-2xl font-mono text-xs font-medium bg-secondary hover:bg-secondary/80 text-foreground transition-colors"
                     >
                       {attachmentIcon(att.content_type || '')}
                       {att.filename}
@@ -359,7 +387,7 @@ export function MessageViewer() {
                   ))}
                 </div>
               )}
-              <Separator className="mt-4" />
+              <div className="h-px bg-border mt-4" />
             </div>
           )}
 
@@ -371,7 +399,7 @@ export function MessageViewer() {
           {/* Body */}
           {msg.body_html ? (
             <div
-              className="prose prose-sm dark:prose-invert max-w-none [&_img]:max-w-full [&_img]:h-auto"
+              className="prose prose-sm dark:prose-invert max-w-none font-mono text-[13px] leading-relaxed [&_img]:max-w-full [&_img]:h-auto"
               dangerouslySetInnerHTML={{
                 __html: DOMPurify.sanitize(msg.body_html, {
                   ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'strong', 'em', 'a', 'ul', 'ol', 'li',
@@ -382,7 +410,7 @@ export function MessageViewer() {
               }}
             />
           ) : (
-            <pre className="text-sm whitespace-pre-wrap font-mono text-foreground">
+            <pre className="font-mono text-[13px] whitespace-pre-wrap text-foreground leading-relaxed">
               {msg.body_text}
             </pre>
           )}

@@ -25,7 +25,7 @@ function load(): Settings {
 
 function defaults(): Settings {
   return {
-    readingPane: 'bottom',
+    readingPane: 'right',
     density: 'comfortable',
     autoSaveDrafts: true,
     desktopNotifications: false,

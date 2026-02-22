@@ -5,24 +5,31 @@ import { useUIStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
 import * as api from '@/api/client';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Menu, X, MoreHorizontal, Inbox, Send, FileText, Trash2, AlertTriangle, Archive, Folder, ChevronDown, ChevronRight, Plus, UserPlus, Palmtree, ShieldAlert, ShieldCheck, FlaskConical, Settings2 } from 'lucide-react';
+import { Menu, X, MoreHorizontal, ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const SYSTEM_FOLDERS = ['INBOX', 'Sent', 'Drafts', 'Trash', 'Archive', 'Junk'];
 
+/** 6x6 square indicator — orange when active, muted when inactive */
+function Indicator({ active }: { active: boolean }) {
+  return (
+    <span
+      className={cn("w-1.5 h-1.5 shrink-0", active ? "bg-primary" : "bg-muted-foreground")}
+    />
+  );
+}
+
 export function Sidebar() {
   const { user } = useAuthStore();
   const { accounts, folders, activeFolder, activeAccountId, loadingFolders, setActiveAccount, loadAccounts, loadFolders, selectFolder } = useMailStore();
-  const { sidebarCollapsed, toggleAccountCollapsed, setView, setSelectedAccountId } = useUIStore();
+  const { sidebarCollapsed, toggleAccountCollapsed, setView, setSelectedAccountId, startCompose } = useUIStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -104,27 +111,15 @@ export function Sidebar() {
     }
   };
 
-  const folderIcon = (name: string): React.ReactNode => {
-    switch (name) {
-      case 'INBOX': return <Inbox className="w-4 h-4" />;
-      case 'Sent': return <Send className="w-4 h-4" />;
-      case 'Drafts': return <FileText className="w-4 h-4" />;
-      case 'Trash': return <Trash2 className="w-4 h-4" />;
-      case 'Junk': return <AlertTriangle className="w-4 h-4" />;
-      case 'Archive': return <Archive className="w-4 h-4" />;
-      default: return <Folder className="w-4 h-4" />;
-    }
-  };
-
   const isExpanded = (accountId: number) => {
     return activeAccountId === accountId && !sidebarCollapsed[accountId];
   };
 
   const sidebarContent = (
     <>
-      {/* Logo */}
-      <div className="px-4 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-bold tracking-tight text-sidebar-primary">
+      {/* Logo area */}
+      <div className="h-12 flex items-center justify-between px-4 shrink-0">
+        <h1 className="font-heading-oswald text-lg font-semibold text-primary tracking-wider">
           REST MAIL
         </h1>
         <Button
@@ -136,30 +131,46 @@ export function Sidebar() {
           <X className="w-4 h-4" />
         </Button>
       </div>
-      <Separator />
 
-      {/* Account tree */}
+      {/* Compose button */}
+      <div className="flex justify-center px-3 pb-2 shrink-0">
+        <button
+          onClick={() => startCompose()}
+          className="w-[200px] h-8 rounded-2xl bg-primary flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+        >
+          <span className="font-mono text-sm font-semibold text-primary-foreground">+</span>
+          <span className="font-mono text-xs font-semibold text-primary-foreground">compose</span>
+        </button>
+      </div>
+
+      {/* Divider */}
+      <div className="h-px bg-border shrink-0" />
+
+      {/* Account header */}
       <ScrollArea className="flex-1">
-        <div className="py-2">
+        <div className="py-1">
           {accounts.length === 0 && !loadingFolders && (
-            <div className="px-3 py-4 animate-pulse space-y-2">
-              <div className="h-4 w-36 rounded bg-muted" />
+            <div className="px-4 py-4 animate-pulse space-y-2">
+              <div className="h-3.5 w-36 rounded bg-muted" />
               <div className="ml-4 space-y-1.5">
-                <div className="h-3.5 w-24 rounded bg-muted" />
-                <div className="h-3.5 w-20 rounded bg-muted" />
-                <div className="h-3.5 w-16 rounded bg-muted" />
+                <div className="h-3 w-24 rounded bg-muted" />
+                <div className="h-3 w-20 rounded bg-muted" />
+                <div className="h-3 w-16 rounded bg-muted" />
               </div>
             </div>
           )}
           {accounts.map(account => (
             <div key={account.id}>
+              {/* Account row */}
               <div className="group flex items-center hover:bg-sidebar-accent transition-colors">
                 <button
                   onClick={() => handleAccountClick(account.id)}
-                  className="flex-1 text-left px-3 py-1.5 text-sm flex items-center gap-1.5 text-sidebar-foreground min-w-0"
+                  className="flex-1 text-left px-4 py-1.5 flex items-center gap-1.5 min-w-0"
                 >
-                  {isExpanded(account.id) ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
-                  <span className="truncate flex-1 font-medium">{account.address}</span>
+                  <span className="text-muted-foreground text-[10px]">
+                    {isExpanded(account.id) ? '▾' : '▸'}
+                  </span>
+                  <span className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{account.address}</span>
                   {!isExpanded(account.id) && <InboxBadge />}
                 </button>
                 <button
@@ -175,78 +186,82 @@ export function Sidebar() {
                 </button>
               </div>
 
+              {/* Folder list */}
               {isExpanded(account.id) && (
-                <div className="ml-4">
+                <div className="px-1.5 py-1 space-y-px">
                   {loadingFolders ? (
-                    <div className="py-1 px-3 space-y-1.5 animate-pulse">
+                    <div className="py-1 px-2.5 space-y-1.5 animate-pulse">
                       {Array.from({ length: 4 }).map((_, i) => (
-                        <div key={i} className="h-3.5 w-20 rounded bg-muted" />
+                        <div key={i} className="h-3 w-20 rounded bg-muted" />
                       ))}
                     </div>
                   ) : (
                     <>
-                      {folders.map(f => (
-                        <div key={f.name} className="group flex items-center">
-                          {renamingFolder === f.name ? (
-                            <input
-                              autoFocus
-                              value={renameValue}
-                              onChange={e => setRenameValue(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') handleRenameFolder(f.name);
-                                if (e.key === 'Escape') setRenamingFolder(null);
-                              }}
-                              onBlur={() => handleRenameFolder(f.name)}
-                              className="flex-1 px-3 py-1 text-sm bg-transparent border border-input rounded-md outline-none"
-                            />
-                          ) : (
-                            <button
-                              onClick={() => handleFolderClick(f.name)}
-                              className={cn(
-                                "flex-1 text-left px-3 py-1 text-sm flex items-center gap-2 rounded-md transition-colors",
-                                activeFolder === f.name
-                                  ? "bg-sidebar-accent text-sidebar-primary font-medium"
-                                  : "text-sidebar-foreground hover:bg-sidebar-accent"
-                              )}
-                            >
-                              {folderIcon(f.name)}
-                              <span className="flex-1 truncate">{f.name}</span>
-                              {f.unread > 0 && (
-                                <Badge variant="default" className="text-xs px-1.5 py-0 h-5">
-                                  {f.unread}
-                                </Badge>
-                              )}
-                            </button>
-                          )}
-                          {!SYSTEM_FOLDERS.includes(f.name) && !renamingFolder && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button className="p-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground">
-                                  <MoreHorizontal className="w-3.5 h-3.5" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => {
-                                  setRenamingFolder(f.name);
-                                  setRenameValue(f.name);
-                                }}>
-                                  Rename
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => handleDeleteFolder(f.name)}
-                                >
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </div>
-                      ))}
+                      {folders.map(f => {
+                        const isActive = activeFolder === f.name;
+                        return (
+                          <div key={f.name} className="group flex items-center">
+                            {renamingFolder === f.name ? (
+                              <input
+                                autoFocus
+                                value={renameValue}
+                                onChange={e => setRenameValue(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') handleRenameFolder(f.name);
+                                  if (e.key === 'Escape') setRenamingFolder(null);
+                                }}
+                                onBlur={() => handleRenameFolder(f.name)}
+                                className="flex-1 px-2.5 py-1 font-mono text-xs bg-transparent border border-input rounded-2xl outline-none"
+                              />
+                            ) : (
+                              <button
+                                onClick={() => handleFolderClick(f.name)}
+                                className={cn(
+                                  "flex-1 text-left px-2.5 h-8 flex items-center gap-2 rounded-2xl transition-all duration-150 font-mono text-[13px]",
+                                  isActive
+                                    ? "bg-secondary text-foreground font-semibold"
+                                    : "text-muted-foreground hover:bg-secondary/50"
+                                )}
+                              >
+                                <Indicator active={isActive} />
+                                <span className="flex-1 truncate lowercase">{f.name}</span>
+                                {f.unread > 0 && (
+                                  <span className="h-4 min-w-[22px] px-1.5 rounded-2xl bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center badge-glow">
+                                    {f.unread}
+                                  </span>
+                                )}
+                              </button>
+                            )}
+                            {!SYSTEM_FOLDERS.includes(f.name) && !renamingFolder && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button className="p-1 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground">
+                                    <MoreHorizontal className="w-3.5 h-3.5" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => {
+                                    setRenamingFolder(f.name);
+                                    setRenameValue(f.name);
+                                  }}>
+                                    Rename
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={() => handleDeleteFolder(f.name)}
+                                  >
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        );
+                      })}
 
                       {/* Create folder inline */}
                       {creatingFolder ? (
-                        <div className="px-3 py-1">
+                        <div className="px-2.5 py-1">
                           <input
                             autoFocus
                             value={newFolderName}
@@ -259,16 +274,16 @@ export function Sidebar() {
                               if (newFolderName.trim()) handleCreateFolder();
                               else { setCreatingFolder(false); setNewFolderName(''); }
                             }}
-                            placeholder="Folder name"
-                            className="w-full text-sm bg-transparent border border-input rounded-md px-2 py-0.5 outline-none"
+                            placeholder="folder_name"
+                            className="w-full font-mono text-xs bg-transparent border border-input rounded-2xl px-2.5 py-1 outline-none"
                           />
                         </div>
                       ) : (
                         <button
                           onClick={() => setCreatingFolder(true)}
-                          className="w-full text-left px-3 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          className="w-full text-left px-2.5 py-1 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          <Plus className="w-3 h-3 mr-1 inline" /> New folder
+                          [+ new_folder]
                         </button>
                       )}
                     </>
@@ -280,52 +295,40 @@ export function Sidebar() {
         </div>
       </ScrollArea>
 
-      {/* Settings shortcuts */}
-      <Separator />
-      <div className="px-3 py-2 space-y-0.5">
-        <button
-          onClick={() => { setView('vacation'); setMobileOpen(false); }}
-          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-        >
-          <Palmtree className="w-4 h-4" /> Vacation
-        </button>
-        <button
-          onClick={() => { setView('quarantine'); setMobileOpen(false); }}
-          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-        >
-          <ShieldAlert className="w-4 h-4" /> Quarantine
-        </button>
-        <button
-          onClick={() => { setView('tlsReports'); setMobileOpen(false); }}
-          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-        >
-          <ShieldCheck className="w-4 h-4" /> TLS Reports
-        </button>
-        <button
-          onClick={() => { setView('pipelineTester'); setMobileOpen(false); }}
-          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-        >
-          <FlaskConical className="w-4 h-4" /> Pipeline Tester
-        </button>
-        <button
-          onClick={() => { setView('pipelineConfig'); setMobileOpen(false); }}
-          className="w-full text-left px-3 py-1.5 text-sm flex items-center gap-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-        >
-          <Settings2 className="w-4 h-4" /> Pipelines
-        </button>
+      {/* Divider */}
+      <div className="h-px bg-border shrink-0" />
+
+      {/* Bottom nav — settings shortcuts */}
+      <div className="px-1.5 py-1.5 space-y-px shrink-0">
+        {([
+          { view: 'vacation' as const, label: 'vacation' },
+          { view: 'quarantine' as const, label: 'quarantine' },
+          { view: 'tlsReports' as const, label: 'tls_reports' },
+          { view: 'pipelineTester' as const, label: 'pipeline_tester' },
+          { view: 'pipelineConfig' as const, label: 'pipelines' },
+        ] as const).map(item => (
+          <button
+            key={item.view}
+            onClick={() => { setView(item.view); setMobileOpen(false); }}
+            className="w-full text-left px-2.5 h-[30px] flex items-center gap-2 rounded-2xl font-mono text-xs text-muted-foreground hover:bg-secondary/50 hover:text-foreground transition-colors"
+          >
+            <Indicator active={false} />
+            {item.label}
+          </button>
+        ))}
       </div>
 
+      {/* Divider */}
+      <div className="h-px bg-border shrink-0" />
+
       {/* Add Account */}
-      <Separator />
-      <div className="p-3">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full"
+      <div className="px-3 py-2 shrink-0">
+        <button
           onClick={() => { setView('addAccount'); setMobileOpen(false); }}
+          className="w-full h-[30px] flex items-center justify-center rounded-2xl font-mono text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
-          <UserPlus className="w-4 h-4 mr-1" /> Add Account
-        </Button>
+          [+ add_account]
+        </button>
       </div>
     </>
   );
@@ -369,8 +372,8 @@ function InboxBadge() {
   const inbox = folders.find(f => f.name === 'INBOX');
   if (!inbox || inbox.unread === 0) return null;
   return (
-    <Badge variant="default" className="text-xs px-1.5 py-0 h-5">
+    <span className="h-4 min-w-[22px] px-1.5 rounded-2xl bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center badge-glow font-mono">
       {inbox.unread}
-    </Badge>
+    </span>
   );
 }

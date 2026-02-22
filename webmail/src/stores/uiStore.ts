@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Theme = 'dawn' | 'linen' | 'slate' | 'dusk' | 'midnight' | 'forest';
+export type Theme = 'dawn' | 'linen' | 'slate' | 'dusk' | 'midnight' | 'forest' | 'neon' | 'aurora' | 'industrial';
 type View =
   | 'mail' | 'compose' | 'addAccount' | 'accountDetails'
   | 'vacation' | 'quarantine' | 'tlsReports'
@@ -34,20 +34,20 @@ interface UIState {
   toggleAccountCollapsed: (accountId: number) => void;
 }
 
-const DARK_THEMES: Theme[] = ['midnight', 'forest', 'slate', 'dusk'];
+const DARK_THEMES: Theme[] = ['midnight', 'forest', 'slate', 'dusk', 'neon', 'aurora', 'industrial'];
 
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem('restmail-theme');
-  const valid: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest'];
+  const valid: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest', 'neon', 'aurora', 'industrial'];
   if (stored && valid.includes(stored as Theme)) return stored as Theme;
   // Legacy mapping
-  if (stored === 'dark') return 'midnight';
+  if (stored === 'dark') return 'industrial';
   if (stored === 'light') return 'dawn';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'midnight' : 'dawn';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'industrial' : 'dawn';
 }
 
 function applyTheme(theme: Theme) {
-  const all: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest'];
+  const all: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest', 'neon', 'aurora', 'industrial'];
   // Remove all palette classes, add the selected one
   document.documentElement.classList.remove(...all, 'dark');
   document.documentElement.classList.add(theme);

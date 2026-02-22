@@ -21,14 +21,11 @@ import { SettingsView } from '@/components/settings/SettingsView';
 import { AccountSettingsView } from '@/components/account/AccountSettingsView';
 import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useSettingsStore, type ReadingPane, type Density } from '@/stores/settingsStore';
 
 function App() {
   const { isAuthenticated, logout } = useAuthStore();
   const { view, startCompose } = useUIStore();
   const { accounts, refresh, loadFolders } = useMailStore();
-  const { readingPane, density } = useSettingsStore();
-
   // Wire up 401 handler to auto-logout
   useEffect(() => {
     setOnUnauthorized(() => {
@@ -108,7 +105,7 @@ function App() {
 
           {/* Content area */}
           <div className="flex-1 overflow-hidden">
-            {view === 'mail' && <div className="h-full animate-fade-in"><MailView readingPane={readingPane} density={density} /></div>}
+            {view === 'mail' && <div className="h-full animate-fade-in"><MailView /></div>}
             {view === 'compose' && <div className="h-full animate-fade-in"><ComposeView /></div>}
             {view === 'addAccount' && <div className="h-full animate-fade-in"><AddAccountView /></div>}
             {view === 'accountDetails' && <div className="h-full animate-fade-in"><AccountDetailsView /></div>}
@@ -127,37 +124,15 @@ function App() {
   );
 }
 
-function MailView({ readingPane, density: _density }: { readingPane: ReadingPane; density: Density }) {
-  // _density is consumed by MessageList directly from settingsStore — no prop drilling needed
-  // readingPane controls layout here
-  if (readingPane === 'right') {
-    return (
-      <div className="h-full flex flex-row">
-        <div className="w-2/5 min-w-0 border-r border-border overflow-hidden">
-          <MessageList />
-        </div>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <MessageViewer />
-        </div>
-      </div>
-    );
-  }
-
-  if (readingPane === 'off') {
-    return (
-      <div className="h-full flex flex-col">
-        <MessageList />
-      </div>
-    );
-  }
-
-  // Default: bottom
+function MailView() {
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 min-h-0 border-b border-border overflow-hidden">
+    <div className="h-full flex flex-col lg:flex-row">
+      {/* Message list: top half on <lg, fixed 380px column on lg+ */}
+      <div className="h-1/2 lg:h-full lg:w-[380px] shrink-0 min-w-0 border-b lg:border-b-0 lg:border-r border-border overflow-hidden">
         <MessageList />
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* Message viewer: bottom half on <lg, flex remaining on lg+ */}
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
         <MessageViewer />
       </div>
     </div>

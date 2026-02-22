@@ -11,7 +11,8 @@ export function useNotifications() {
   const showDesktopNotification = useCallback((title: string, body: string) => {
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
-    new Notification(title, { body, icon: '/favicon.ico' });
+    const icon = `${import.meta.env.BASE_URL}favicon.svg`;
+    new Notification(title, { body, icon });
   }, []);
 
   return { requestPermission, showDesktopNotification };
