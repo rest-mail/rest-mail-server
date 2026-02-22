@@ -1,0 +1,4 @@
+services:
+  website:
+    volumes:
+      - ./:/usr/share/nginx/html

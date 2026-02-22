@@ -1,70 +1,24 @@
 networks:
   mailnet:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
+    external: true
+    name: ${COMPOSE_PROJECT_NAME:-rest-mail}_mailnet
 
 volumes:
-  postgres-data:
+  postgres-mail1-data:
+  postgres-mail2-data:
+  postgres-mail3-data:
   mail1-maildir:
   mail2-maildir:
   mail3-attachments:
   certs:
   gateway-logs:
-  prometheus-data:
-  grafana-data:
 
 services:
-  # ─── Frontend Proxy (two-container set) ─────────────────────────────
-  #
-  # docker-config-gen: watches Docker events; when a container with
-  #   recognised labels starts/stops it calls docker-proxy's scripts to
-  #   add or remove an nginx upstream + server block dynamically.
-  #
-  # docker-proxy: nginx reverse proxy whose config is managed entirely by
-  #   docker-config-gen.  It is the single HTTP/HTTPS entry point for the
-  #   whole stack.  Individual services declare their routing by adding
-  #   docker-config-gen.* labels to their service definitions.
-  #
-  docker-config-gen:
-    image: ghcr.io/antimatter-studios/docker-config-gen:latest
-    container_name: docker-config-gen
-    restart: unless-stopped
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      DEBUG: ${DEBUG:-false}
-    networks:
-      mailnet:
-        ipv4_address: 172.20.0.4
-
-  docker-proxy:
-    image: ghcr.io/antimatter-studios/docker-proxy:latest
-    container_name: docker-proxy
-    restart: unless-stopped
-    labels:
-      - docker-config-gen.request=/app/scripts/request.sh
-      - docker-config-gen.response=/app/scripts/response.sh
-      - docker-config-gen.renderer=nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      docker-config-gen:
-        condition: service_started
-    networks:
-      mailnet:
-        ipv4_address: 172.20.0.5
-
   # ─── Certificate Generator (init container) ──────────────────────────
   certgen:
     build: ./docker/certs
     volumes:
       - certs:/certs
-    depends_on:
-      docker-config-gen:
-        condition: service_started
     networks:
       mailnet:
         ipv4_address: 172.20.0.99
@@ -72,49 +26,79 @@ services:
   # ─── DNS Server ──────────────────────────────────────────────────────
   dnsmasq:
     build: ./docker/dnsmasq
-    container_name: dnsmasq
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
     networks:
       mailnet:
         ipv4_address: 172.20.0.3
-    depends_on:
-      certgen:
-        condition: service_completed_successfully
 
-  # ─── PostgreSQL ──────────────────────────────────────────────────────
-  postgres:
+  # ─── PostgreSQL for mail1.test (traditional) ────────────────────────
+  postgres-mail1:
     image: postgres:16-alpine
-    container_name: postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: restmail
       POSTGRES_USER: restmail
       POSTGRES_PASSWORD: restmail
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-mail1-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-traditional.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/postgres/seed-mail1.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U restmail"]
       interval: 10s
       timeout: 5s
       retries: 5
-    depends_on:
-      docker-config-gen:
-        condition: service_started
     networks:
       mailnet:
-        ipv4_address: 172.20.0.2
+        ipv4_address: 172.20.0.41
+
+  # ─── PostgreSQL for mail2.test (traditional) ────────────────────────
+  postgres-mail2:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: restmail
+      POSTGRES_USER: restmail
+      POSTGRES_PASSWORD: restmail
+    volumes:
+      - postgres-mail2-data:/var/lib/postgresql/data
+      - ./docker/postgres/init-traditional.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./docker/postgres/seed-mail2.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U restmail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.42
+
+  # ─── PostgreSQL for mail3.test (REST API + gateways) ────────────────
+  postgres-mail3:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: restmail
+      POSTGRES_USER: restmail
+      POSTGRES_PASSWORD: restmail
+    volumes:
+      - postgres-mail3-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U restmail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      mailnet:
+        ipv4_address: 172.20.0.43
 
   # ─── JS Filter Sidecar ─────────────────────────────────────────────
   js-filter:
     build:
       context: ./docker/js-filter-sidecar
-    container_name: restmail-js-filter
     restart: unless-stopped
-    depends_on:
-      docker-config-gen:
-        condition: service_started
     networks:
       mailnet:
         ipv4_address: 172.20.0.22
@@ -132,14 +116,13 @@ services:
       context: .
       dockerfile: Dockerfile
       target: prod
-    container_name: api
     restart: unless-stopped
     labels:
-      - docker-proxy.api.host=localhost
+      - docker-proxy.api.host=restmail.localhost
       - docker-proxy.api.port=8080
       - docker-proxy.api.path=/api
     environment:
-      DB_HOST: postgres
+      DB_HOST: postgres-mail3
       DB_PORT: "5432"
       DB_NAME: restmail
       DB_USER: restmail
@@ -154,38 +137,11 @@ services:
     volumes:
       - certs:/certs:ro
       - mail3-attachments:/attachments
-    depends_on:
-      postgres:
-        condition: service_healthy
-      dnsmasq:
-        condition: service_started
-      js-filter:
-        condition: service_started
     dns:
       - 172.20.0.3
     networks:
       mailnet:
         ipv4_address: 172.20.0.20
-
-  # ─── React Webmail Frontend ────────────────────────────────────────
-  webmail:
-    build:
-      context: ./webmail
-      target: prod
-    container_name: webmail
-    restart: unless-stopped
-    labels:
-      - docker-proxy.webmail.host=localhost
-      - docker-proxy.webmail.port=80
-      - docker-proxy.webmail.path=/webmail
-    ports:
-      - "3000:80"
-    depends_on:
-      api:
-        condition: service_started
-    networks:
-      mailnet:
-        ipv4_address: 172.20.0.21
 
   # ─── SMTP Gateway (mail3.test) ──────────────────────────────────────
   smtp-gateway:
@@ -193,7 +149,6 @@ services:
       context: .
       dockerfile: docker/smtp-gateway/Dockerfile
       target: prod
-    container_name: smtp-gateway
     restart: unless-stopped
     hostname: mail3.test
     ports:
@@ -203,7 +158,7 @@ services:
     environment:
       GATEWAY_HOSTNAME: mail3.test
       API_BASE_URL: http://api:8080
-      DB_HOST: postgres
+      DB_HOST: postgres-mail3
       DB_PORT: "5432"
       DB_NAME: restmail
       DB_USER: restmail
@@ -218,15 +173,6 @@ services:
       ENVIRONMENT: development
     volumes:
       - certs:/certs:ro
-    depends_on:
-      api:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      dnsmasq:
-        condition: service_started
-      certgen:
-        condition: service_completed_successfully
     dns:
       - 172.20.0.3
     healthcheck:
@@ -244,15 +190,21 @@ services:
       context: .
       dockerfile: docker/imap-gateway/Dockerfile
       target: prod
-    container_name: imap-gateway
     restart: unless-stopped
     hostname: mail3.test
+    labels:
+      - docker-proxy.imaps.proto=tcp
+      - docker-proxy.imaps.port=993
     ports:
       - "143:143"
-      - "993:993"
     environment:
       GATEWAY_HOSTNAME: mail3.test
       API_BASE_URL: http://api:8080
+      DB_HOST: postgres-mail3
+      DB_PORT: "5432"
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
       TLS_CERT_PATH: /certs/mail3.test.crt
       TLS_KEY_PATH: /certs/mail3.test.key
       IMAP_PORT: "143"
@@ -261,11 +213,6 @@ services:
       ENVIRONMENT: development
     volumes:
       - certs:/certs:ro
-    depends_on:
-      api:
-        condition: service_started
-      certgen:
-        condition: service_completed_successfully
     dns:
       - 172.20.0.3
     healthcheck:
@@ -283,7 +230,6 @@ services:
       context: .
       dockerfile: docker/pop3-gateway/Dockerfile
       target: prod
-    container_name: pop3-gateway
     restart: unless-stopped
     hostname: mail3.test
     ports:
@@ -292,6 +238,11 @@ services:
     environment:
       GATEWAY_HOSTNAME: mail3.test
       API_BASE_URL: http://api:8080
+      DB_HOST: postgres-mail3
+      DB_PORT: "5432"
+      DB_NAME: restmail
+      DB_USER: restmail
+      DB_PASS: restmail
       TLS_CERT_PATH: /certs/mail3.test.crt
       TLS_KEY_PATH: /certs/mail3.test.key
       POP3_PORT: "110"
@@ -300,11 +251,6 @@ services:
       ENVIRONMENT: development
     volumes:
       - certs:/certs:ro
-    depends_on:
-      api:
-        condition: service_started
-      certgen:
-        condition: service_completed_successfully
     dns:
       - 172.20.0.3
     healthcheck:
@@ -319,13 +265,12 @@ services:
   # ─── Postfix mail1.test ─────────────────────────────────────────────
   postfix-mail1:
     build: ./docker/postfix
-    container_name: postfix-mail1
     restart: unless-stopped
     hostname: mail1.test
     environment:
       MAIL_DOMAIN: mail1.test
       MAIL_HOSTNAME: mail1.test
-      DB_HOST: postgres
+      DB_HOST: postgres-mail1
       DB_NAME: restmail
       DB_USER: restmail
       DB_PASS: restmail
@@ -334,15 +279,6 @@ services:
       TLS_KEY_PATH: /certs/mail1.test.key
     volumes:
       - certs:/certs:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      dnsmasq:
-        condition: service_started
-      certgen:
-        condition: service_completed_successfully
-      dovecot-mail1:
-        condition: service_started
     dns:
       - 172.20.0.3
     networks:
@@ -352,12 +288,11 @@ services:
   # ─── Dovecot mail1.test ─────────────────────────────────────────────
   dovecot-mail1:
     build: ./docker/dovecot
-    container_name: dovecot-mail1
     restart: unless-stopped
     hostname: mail1.test
     environment:
       MAIL_DOMAIN: mail1.test
-      DB_HOST: postgres
+      DB_HOST: postgres-mail1
       DB_NAME: restmail
       DB_USER: restmail
       DB_PASS: restmail
@@ -366,11 +301,6 @@ services:
     volumes:
       - certs:/certs:ro
       - mail1-maildir:/var/mail/vhosts
-    depends_on:
-      postgres:
-        condition: service_healthy
-      certgen:
-        condition: service_completed_successfully
     dns:
       - 172.20.0.3
     networks:
@@ -380,13 +310,12 @@ services:
   # ─── Postfix mail2.test ─────────────────────────────────────────────
   postfix-mail2:
     build: ./docker/postfix
-    container_name: postfix-mail2
     restart: unless-stopped
     hostname: mail2.test
     environment:
       MAIL_DOMAIN: mail2.test
       MAIL_HOSTNAME: mail2.test
-      DB_HOST: postgres
+      DB_HOST: postgres-mail2
       DB_NAME: restmail
       DB_USER: restmail
       DB_PASS: restmail
@@ -395,15 +324,6 @@ services:
       TLS_KEY_PATH: /certs/mail2.test.key
     volumes:
       - certs:/certs:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      dnsmasq:
-        condition: service_started
-      certgen:
-        condition: service_completed_successfully
-      dovecot-mail2:
-        condition: service_started
     dns:
       - 172.20.0.3
     networks:
@@ -413,12 +333,11 @@ services:
   # ─── Dovecot mail2.test ─────────────────────────────────────────────
   dovecot-mail2:
     build: ./docker/dovecot
-    container_name: dovecot-mail2
     restart: unless-stopped
     hostname: mail2.test
     environment:
       MAIL_DOMAIN: mail2.test
-      DB_HOST: postgres
+      DB_HOST: postgres-mail2
       DB_NAME: restmail
       DB_USER: restmail
       DB_PASS: restmail
@@ -427,41 +346,15 @@ services:
     volumes:
       - certs:/certs:ro
       - mail2-maildir:/var/mail/vhosts
-    depends_on:
-      postgres:
-        condition: service_healthy
-      certgen:
-        condition: service_completed_successfully
     dns:
       - 172.20.0.3
     networks:
       mailnet:
         ipv4_address: 172.20.0.17
 
-  # ─── Project Website ───────────────────────────────────────────────
-  website:
-    image: nginx:alpine
-    container_name: website
-    restart: unless-stopped
-    labels:
-      - docker-proxy.website.host=localhost
-      - docker-proxy.website.port=80
-      - docker-proxy.website.path=/
-    ports:
-      - "8090:80"
-    volumes:
-      - ./website:/usr/share/nginx/html:ro
-    depends_on:
-      docker-config-gen:
-        condition: service_started
-    networks:
-      mailnet:
-        ipv4_address: 172.20.0.26
-
   # ─── rspamd (spam scanning) ─────────────────────────────────────────
   rspamd:
     image: rspamd/rspamd:latest
-    container_name: rspamd
     profiles: ["scanning"]
     restart: unless-stopped
     volumes:
@@ -478,7 +371,6 @@ services:
   # ─── ClamAV (virus scanning) ──────────────────────────────────────
   clamav:
     image: clamav/clamav:stable
-    container_name: clamav
     profiles: ["scanning"]
     restart: unless-stopped
     environment:
@@ -496,7 +388,6 @@ services:
   # ─── ClamAV REST proxy ────────────────────────────────────────────
   clamav-rest:
     image: benzino77/clamav-rest-api:latest
-    container_name: clamav-rest
     profiles: ["scanning"]
     restart: unless-stopped
     environment:
@@ -504,9 +395,6 @@ services:
       CLAMD_IP: clamav
       CLAMD_PORT: "3310"
       APP_PORT: "3000"
-    depends_on:
-      clamav:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/v1/version || exit 1"]
       interval: 10s
@@ -529,65 +417,3 @@ services:
       - gateway-logs:/var/log/restmail:ro
     restart: unless-stopped
 
-  # ─── Prometheus ────────────────────────────────────────────────────
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    container_name: prometheus
-    profiles: ["monitoring"]
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=30d'
-      - '--web.enable-lifecycle'
-    depends_on:
-      api:
-        condition: service_started
-    dns:
-      - 172.20.0.3
-    networks:
-      mailnet:
-        ipv4_address: 172.20.0.30
-
-  # ─── Grafana ───────────────────────────────────────────────────────
-  grafana:
-    image: grafana/grafana:10.4.1
-    container_name: grafana
-    profiles: ["monitoring"]
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: restmail
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-      - grafana-data:/var/lib/grafana
-    depends_on:
-      prometheus:
-        condition: service_started
-    networks:
-      mailnet:
-        ipv4_address: 172.20.0.31
-
-  # ─── PostgreSQL Exporter ───────────────────────────────────────────
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: postgres-exporter
-    profiles: ["monitoring"]
-    restart: unless-stopped
-    environment:
-      DATA_SOURCE_NAME: "postgresql://restmail:restmail@postgres:5432/restmail?sslmode=disable"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      mailnet:
-        ipv4_address: 172.20.0.32

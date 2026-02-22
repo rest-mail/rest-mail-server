@@ -8,7 +8,7 @@ build/
 /smtp-gateway
 /imap-gateway
 /pop3-gateway
-/tui
+/console
 
 # Go test binary
 *.test

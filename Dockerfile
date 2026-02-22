@@ -6,9 +6,16 @@ RUN go mod download
 
 # ── Stage 2: builder ─────────────────────────────────────────────────
 FROM deps AS builder
+RUN apk add --no-cache git
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/restmail-api  ./cmd/api \
- && CGO_ENABLED=0 GOOS=linux go build -o /bin/restmail-seed ./cmd/seed
+ARG VERSION=dev
+RUN COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
+ && BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+ && LDFLAGS="-X github.com/restmail/restmail/internal/version.Version=${VERSION} \
+             -X github.com/restmail/restmail/internal/version.Commit=${COMMIT} \
+             -X github.com/restmail/restmail/internal/version.BuildDate=${BUILD_DATE}" \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o /bin/restmail-api  ./cmd/api \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o /bin/restmail-seed ./cmd/seed
 
 # ── Stage 3: dev (hot reload via air) ────────────────────────────────
 # Source code is volume-mounted at /app by docker-compose.override.yml.

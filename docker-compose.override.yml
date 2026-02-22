@@ -12,22 +12,6 @@ services:
       - .:/app
       - /app/tmp
 
-  # ─── Webmail: Vite HMR ───────────────────────────────────────────────
-  webmail:
-    build:
-      context: ./webmail
-      target: dev
-    labels:
-      - docker-proxy.webmail.port=3000
-    ports:
-      - "3001:3000"
-    volumes:
-      - ./webmail:/app
-      - /app/node_modules
-    environment:
-      # Tells vite.config.ts which host to proxy /api requests to
-      VITE_PROXY_TARGET: http://api:8080
-
   # ─── SMTP Gateway: air hot reload ────────────────────────────────────
   smtp-gateway:
     build:

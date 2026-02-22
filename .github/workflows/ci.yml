@@ -90,7 +90,7 @@ jobs:
           - cmd/smtp-gateway
           - cmd/imap-gateway
           - cmd/pop3-gateway
-          - cmd/tui
+          - cmd/console
           - cmd/certgen
           - cmd/migrate
           - cmd/seed
