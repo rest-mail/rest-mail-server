@@ -33,7 +33,7 @@ A full-featured mail server platform that exposes email functionality through a 
 - Delivery and activity log queries
 - IP ban management
 - OpenAPI 3.1 spec (108 operations) with Swagger UI
-- TUI admin tool (bubbletea) with inbox, search, compose, and live status
+- Console admin tool (bubbletea) with inbox, search, compose, and live status
 - React webmail with rich text editor, contacts, vacation settings
 - Prometheus metrics endpoint with Grafana dashboards
 - Email client auto-configuration (Mozilla, Microsoft, Apple)
@@ -127,7 +127,7 @@ go run ./cmd/migrate && go run ./cmd/seed
               +-------------+
 
      +-------------+    +-----------+    +--------+
-     | Webmail     |    | TUI Admin |    |dnsmasq |
+     | Webmail     |    | Console   |    |dnsmasq |
      | :3000 React |    | (bubbletea)|   | DNS    |
      +-------------+    +-----------+    +--------+
 ```
@@ -140,7 +140,7 @@ cmd/
   smtp-gateway/     SMTP protocol gateway
   imap-gateway/     IMAP protocol gateway
   pop3-gateway/     POP3 protocol gateway
-  tui/              Terminal admin UI
+  console/          Terminal admin UI
   migrate/          Database migration runner
   certgen/          TLS/DKIM certificate generator
   seed/             Test data seeder
@@ -157,7 +157,7 @@ internal/
   metrics/          Prometheus instrumentation
   mime/             MIME parser, iCalendar support
   pipeline/         Processing engine, filter registry, 16+ built-in filters
-  tui/              TUI screens and components
+  console/          Console screens and components
 webmail/            React frontend (Vite + TypeScript + Tailwind + shadcn/ui)
 website/            Project landing page (static HTML)
 docker/             Dockerfiles for Postfix, Dovecot, dnsmasq, gateways, etc.
@@ -193,11 +193,11 @@ task build
 # Build individual components
 task build:api
 task build:gateways
-task build:tui
+task build:console
 task build:tools
 ```
 
-Build artifacts are written to `build/{api,gateways,tui,tools}/`.
+Build artifacts are written to `build/{api,gateways,console,tools}/`.
 
 ### Running Tests
 

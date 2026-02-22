@@ -106,7 +106,7 @@ The project also includes:
 - A **shared PostgreSQL database** used by Postfix/Dovecot on mail1/mail2 (for email addresses, aliases, domain config -- no flat files) and by the rest-mail backend for mail3
 - A **Go REST API backend** -- the single backend that both the protocol gateway and the webmail frontend talk to
 - A **React/Zustand/Tailwind webmail frontend** -- a modern, slick web UI for reading and composing mail
-- A **Go TUI admin tool** (Bubble Tea) for direct administration of domains, users, passwords, inboxes, and composing mail across all three mail servers
+- A **Go console admin tool** (Bubble Tea) for direct administration of domains, users, passwords, inboxes, and composing mail across all three mail servers
 
 ### Test Scenarios
 
@@ -121,7 +121,7 @@ The three-server setup lets us verify all interop paths:
 | mail3 → mail3         | Upgrade: RESTMAIL siblings discover each other, upgrade to REST        |
 | IMAP client → mail3   | Read: standard IMAP client can read mail from rest-mail normally       |
 | webmail → API         | Native: React UI → REST API → Postgres (no gateway, no protocol xlat) |
-| TUI → API             | Native: Bubble Tea → REST API → Postgres (no gateway)                  |
+| Console → API         | Native: Bubble Tea → REST API → Postgres (no gateway)                  |
 
 ### Fully Dockerised
 
@@ -136,14 +136,14 @@ The three-server setup lets us verify all interop paths:
 | `postfix-mail2`      | 1     | 25, 465, 587                 | SMTP server for mail2.test (traditional, TLS)                      |
 | `dovecot-mail2`      | 1     | 143, 993, 110, 995           | IMAP/POP3 server for mail2.test (traditional, TLS, Maildir volume) |
 | `gateway`            | 1     | 25, 465, 587, 143, 993, 110, 995 | Protocol gateway for mail3.test -- SNI TLS, SMTP AUTH, queue   |
-| `api` (Go backend)   | 1     | 8080 (HTTPS)                 | REST API backend -- shared by gateway, webmail, and TUI            |
+| `api` (Go backend)   | 1     | 8080 (HTTPS)                 | REST API backend -- shared by gateway, webmail, and console        |
 | `webmail` (React)    | 1     | 443                          | Frontend served via nginx (HTTPS)                                  |
 | **Total**            | **9** |                              |                                                                    |
 | `rspamd` (optional)  | 0-1   | 11333                        | Spam scoring, DKIM, DMARC (profile: filter)                       |
 | `clamav` (optional)  | 0-1   | 3310                         | Virus scanning (profile: filter)                                   |
 | `fail2ban` (optional)| 0-1   | —                            | IP banning via iptables (profile: filter)                          |
 
-The **Go TUI admin tool** runs on the host (not in a container) and connects to the API and database over the Docker network.
+The **Go console admin tool** runs on the host (not in a container) and connects to the API and database over the Docker network.
 
 All containers share a single Docker network with a fixed subnet. Static IPs are assigned to mail-related containers so dnsmasq can provide stable A/MX records. Inter-service communication (SMTP relay, LMTP delivery, DB queries, API calls) all happens over this internal network.
 
@@ -259,7 +259,7 @@ This ensures: Postgres is ready before the API starts, the API is ready before t
         │ REST API calls over Docker network
         │
 ┌───────┴──────────┐
-│  Go TUI (host)   │
+│  Go console      │
 │  Bubble Tea      │
 │  admin tool      │
 └──────────────────┘
@@ -292,10 +292,10 @@ mail1 postfix                    mail3 gateway                Go REST API       
 Bring up an existing, known-working dockerised Postfix + Dovecot mail server setup to serve as a reference. This gives us a working baseline to compare against as we build the custom solution.
 
 ### TODO
-- [x] Research and select a suitable existing docker-based mail server image/compose setup (e.g. docker-mailserver, mailu, or similar)
-- [x] Create a `reference/` directory with the chosen setup's docker-compose and config
-- [x] Bring up the reference stack and verify it can send/receive mail locally
-- [x] Document the key configuration files, ports, and architecture decisions observed
+- [ ] Research and select a suitable existing docker-based mail server image/compose setup (e.g. docker-mailserver, mailu, or similar)
+- [ ] Create a `reference/` directory with the chosen setup's docker-compose and config
+- [ ] Bring up the reference stack and verify it can send/receive mail locally
+- [ ] Document the key configuration files, ports, and architecture decisions observed
 
 ---
 
@@ -373,7 +373,7 @@ Entrypoint scripts read these variables, render the config templates (main.cf, m
 - [x] Create entrypoint scripts that render config from environment variables
 - [ ] Test a single domain pair can send and receive mail internally
 
----
+---  
 
 ## Phase 3: DNS Resolution with dnsmasq
 
@@ -481,10 +481,10 @@ The **manual** adapter simply returns the list of records that need to be create
 - [x] Design the `DNSProvider` adapter interface (`internal/dns/provider.go`)
 - [x] Implement dnsmasq adapter (dev: write config, reload)
 - [x] Implement manual adapter (returns required records as JSON)
-- [x] Implement externaldns adapter (k8s: create DNSEndpoint CRDs)
-- [x] Add `GET /api/admin/domains/:id/dns` endpoint (show required records)
-- [x] Add DNS record verification to domain health checks
-- [x] Document how to implement a custom DNS provider adapter
+- [ ] Implement externaldns adapter (k8s: create DNSEndpoint CRDs)
+- [ ] Add `GET /api/admin/domains/:id/dns` endpoint (show required records)
+- [ ] Add DNS record verification to domain health checks
+- [ ] Document how to implement a custom DNS provider adapter
 
 ---
 
@@ -762,14 +762,14 @@ This shared schema means: create a domain or mailbox via the API, and both Postf
 - [x] Configure Postfix to use pgsql lookup tables for virtual domains/mailboxes/aliases
 - [x] Configure Dovecot to authenticate and locate mailboxes via pgsql
 - [x] Write seed data script: test domains (mail1.test, mail2.test), test mailboxes, webmail accounts with primary + secondary linked accounts
-- [x] Verify Postfix + Dovecot still deliver mail correctly with the database backend
+- [ ] Verify Postfix + Dovecot still deliver mail correctly with the database backend
 - [x] Create `quota_usage` table and add `quota_bytes` / `quota_used_bytes` columns to `mailboxes`
 - [x] Implement incremental quota tracking (adjust on message delivery and deletion)
 - [x] Add quota check to `recipient_check` pipeline filter (reject 452 when over quota)
 - [x] Add quota API endpoints (user: GET usage, admin: GET/SET per-mailbox and domain default)
 - [x] Implement IMAP `GETQUOTA` / `GETQUOTAROOT` commands in gateway (RFC 2087)
 - [x] Add quota bar to webmail UI (account sidebar)
-- [x] Add periodic quota reconciliation task (fix any drift from crashes/bugs)
+- [ ] Add periodic quota reconciliation task (fix any drift from crashes/bugs)
 
 ---
 
@@ -777,7 +777,7 @@ This shared schema means: create a domain or mailbox via the API, and both Postf
 
 The RESTMAIL Protocol API **is** the mail server. Everything a traditional mail server does -- authenticating users, accepting inbound mail, delivering outbound mail, storing messages, managing mailboxes -- is expressed as REST endpoints. There is no separate mail daemon; the API _is_ the daemon.
 
-The webmail frontend consumes the same operations that any mail client would use (login, list folders, read messages, send mail), just natively over REST instead of through IMAP/SMTP protocol translation. The protocol gateway translates SMTP/IMAP/POP3 commands into the same API calls. The TUI admin tool uses the same API plus admin-only endpoints.
+The webmail frontend consumes the same operations that any mail client would use (login, list folders, read messages, send mail), just natively over REST instead of through IMAP/SMTP protocol translation. The protocol gateway translates SMTP/IMAP/POP3 commands into the same API calls. The console admin tool uses the same API plus admin-only endpoints.
 
 ### API Layers
 
@@ -799,7 +799,7 @@ The webmail frontend consumes the same operations that any mail client would use
 │  └───────────────────────────────────────────────────────────┘  │
 │       ▲              ▲              ▲                            │
 │       │              │              │                            │
-│    Webmail        Protocol       TUI admin                      │
+│    Webmail        Protocol       Console admin                  │
 │    (native)       Gateway        (native)                       │
 │                   (translated)                                   │
 │                                                                  │
@@ -821,7 +821,7 @@ The webmail frontend consumes the same operations that any mail client would use
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The **mail server operations** layer is the heart of the RESTMAIL protocol. It's what the webmail and TUI consume directly. It's also what the protocol gateway translates SMTP/IMAP/POP3 into. Every operation maps 1:1 to something a traditional mail server would do:
+The **mail server operations** layer is the heart of the RESTMAIL protocol. It's what the webmail and console consume directly. It's also what the protocol gateway translates SMTP/IMAP/POP3 into. Every operation maps 1:1 to something a traditional mail server would do:
 
 ### API Versioning
 
@@ -831,7 +831,7 @@ Throughout this document, `/api/` is shorthand for `/api/v1/`.
 
 ### Standard Response Format
 
-All API responses follow a consistent JSON structure. This ensures the frontend, gateway, TUI, and test suite can handle responses uniformly.
+All API responses follow a consistent JSON structure. This ensures the frontend, gateway, console, and test suite can handle responses uniformly.
 
 **Success responses:**
 
@@ -919,7 +919,7 @@ HTTP 204 No Content
 ```
 ═══════════════════════════════════════════════════════════════════════════
  MAIL SERVER OPERATIONS (core RESTMAIL protocol)
- Used by: webmail, TUI, protocol gateway
+ Used by: webmail, console, protocol gateway
  These map 1:1 to traditional mail server operations
 ═══════════════════════════════════════════════════════════════════════════
 
@@ -1018,7 +1018,7 @@ Real-time (SSE)                                    ≈ IMAP IDLE
 
 ═══════════════════════════════════════════════════════════════════════════
  ADMINISTRATION (manage ALL servers -- mail1, mail2, mail3)
- Used by: TUI, webmail (admin panel), test harness
+ Used by: console, webmail (admin panel), test harness
 ═══════════════════════════════════════════════════════════════════════════
 
 Domains
@@ -1097,7 +1097,7 @@ System Logs
 
 ═══════════════════════════════════════════════════════════════════════════
  TESTING & DIAGNOSTICS
- Used by: test harness, TUI, CI/CD
+ Used by: test harness, console, CI/CD
 ═══════════════════════════════════════════════════════════════════════════
 
 Health & Status
@@ -1215,7 +1215,7 @@ The API is documented using an **OpenAPI 3.1 spec** that serves as both document
 - Serves interactive Swagger UI at `/api/docs` in development
 - **Used by the test suite** to validate that every endpoint responds with the correct status codes, headers, and response shapes -- the OpenAPI spec is the contract the tests assert against
 - Frontend TypeScript types can be auto-generated from the spec (e.g. `openapi-typescript`)
-- The TUI client can also be generated from the spec
+- The console client can also be generated from the spec
 
 ```
 openapi.yaml (or generated)
@@ -1223,7 +1223,7 @@ openapi.yaml (or generated)
     ├──► Swagger UI at /api/docs (interactive browser)
     ├──► Go test suite: validate responses match spec
     ├──► TypeScript types: auto-generated for React frontend
-    └──► API client: auto-generated for TUI
+    └──► API client: auto-generated for console
 ```
 
 ### Go Web Framework: chi
@@ -1296,8 +1296,8 @@ r.Post("/restmail/messages", handlers.RestmailDeliver)
 - [x] Create `Taskfile.yml` (Go Task) with common development tasks (see Development Tooling below)
 - [x] Set up GORM connection with PostgreSQL driver (`gorm.io/driver/postgres`)
 - [x] Implement AutoMigrate for all GORM models at startup
-- [x] Write OpenAPI 3.1 spec (`openapi.yaml`) for all endpoints
-- [x] Set up Swagger UI serving at `/api/docs` in dev mode
+- [ ] Write OpenAPI 3.1 spec (`openapi.yaml`) for all endpoints
+- [ ] Set up Swagger UI serving at `/api/docs` in dev mode
 - [x] Implement RESTMAIL server-to-server endpoints (`/restmail/messages`, `/restmail/mailboxes`, `/restmail/capabilities`)
 - [x] Implement auth endpoints (login/logout/refresh with JWT)
 - [x] Implement linked accounts endpoints (list, add, remove, set primary)
@@ -1317,13 +1317,13 @@ r.Post("/restmail/messages", handlers.RestmailDeliver)
 - [x] Implement DKIM key management endpoints (generate, list, revoke, DNS record)
 - [x] Implement queue management endpoints (list, retry, bounce, stats)
 - [x] Implement pipeline/filter management endpoints (CRUD, test)
-- [x] Implement log query endpoints (structured logs, delivery log, pipeline log)
+- [ ] Implement log query endpoints (structured logs, delivery log, pipeline log)
 - [x] Implement health/status endpoints (API health, per-server probe, cert expiry)
-- [x] Implement test endpoints (send, verify, probe SMTP/IMAP/POP3/DNS, reset, seed, snapshot/restore)
+- [ ] Implement test endpoints (send, verify, probe SMTP/IMAP/POP3/DNS, reset, seed, snapshot/restore)
 - [x] Add middleware (CORS, JWT auth, request logging, error handling, rate limiting)
 - [x] Add Dockerfile for the Go backend
 - [x] Add to docker-compose.yml
-- [x] Generate TypeScript types from OpenAPI spec for the React frontend
+- [ ] Generate TypeScript types from OpenAPI spec for the React frontend
 
 ---
 
@@ -1518,7 +1518,7 @@ TLS certificate private keys and DKIM signing private keys are stored in Postgre
 ### TODO
 - [x] Create self-signed CA generation script (run once at first startup)
 - [x] Generate per-domain certs signed by the dev CA (mail1.test, mail2.test, mail3.test)
-- [x] Mount CA cert as trusted root in all containers
+- [ ] Mount CA cert as trusted root in all containers
 - [x] Configure Postfix STARTTLS with generated certs (smtpd_tls_cert_file, smtpd_tls_key_file)
 - [x] Configure Dovecot TLS with generated certs (ssl_cert, ssl_key)
 - [x] Implement SNI-based `tls.Config.GetCertificate` in the gateway (with fsnotify hot-reload)
@@ -1527,13 +1527,13 @@ TLS certificate private keys and DKIM signing private keys are stored in Postgre
 - [x] Implement cert caching with invalidation (Postgres LISTEN/NOTIFY or polling)
 - [x] Implement DKIM key storage and management (dkim_keys table)
 - [x] Add DKIM key management API endpoints
-- [x] Implement ACME client for Let's Encrypt (production mode)
-- [x] Add cert expiry monitoring to health endpoints
+- [ ] Implement ACME client for Let's Encrypt (production mode)
+- [ ] Add cert expiry monitoring to health endpoints
 - [x] Create database migrations for `certificates` and `dkim_keys` tables
 - [x] Add cert generation to docker-compose init / entrypoint flow
-- [x] Implement AES-256-GCM encryption/decryption helper for private key storage
-- [x] Add `MASTER_KEY` environment variable to docker-compose.yml (hardcoded for dev)
-- [x] Implement master key rotation script (re-encrypt all keys with new master key)
+- [ ] Implement AES-256-GCM encryption/decryption helper for private key storage
+- [ ] Add `MASTER_KEY` environment variable to docker-compose.yml (hardcoded for dev)
+- [ ] Implement master key rotation script (re-encrypt all keys with new master key)
 
 ---
 
@@ -1904,9 +1904,9 @@ POP3 is simpler than IMAP — it operates on a single mailbox (INBOX) with no fo
 | Another RESTMAIL server   | SMTP EHLO → sees `RESTMAIL` cap → **drops TCP** → HTTPS REST API   |
 | External IMAP/POP3 client | IMAP/POP3 → **Protocol Gateway** → REST API → Postgres              |
 | Webmail frontend          | HTTP → **REST API directly** → Postgres (native RESTMAIL)           |
-| TUI admin tool            | HTTP → **REST API directly** → Postgres (native RESTMAIL)           |
+| Console admin tool        | HTTP → **REST API directly** → Postgres (native RESTMAIL)           |
 
-The webmail and TUI speak native RESTMAIL -- direct REST API calls. Traditional mail servers go through the protocol gateway. But when two RESTMAIL servers meet, they discover each other via the SMTP EHLO capability advertisement and **upgrade** to direct HTTPS/REST communication, skipping the SMTP protocol entirely.
+The webmail and console speak native RESTMAIL -- direct REST API calls. Traditional mail servers go through the protocol gateway. But when two RESTMAIL servers meet, they discover each other via the SMTP EHLO capability advertisement and **upgrade** to direct HTTPS/REST communication, skipping the SMTP protocol entirely.
 
 ### SMTP AUTH (Submission Port)
 
@@ -2195,20 +2195,20 @@ DELETE /api/v1/admin/bans/:ip         - Unban an IP
 - [x] Verify mail delivery: mail3.test → mail3.test (RESTMAIL upgrade path)
 - [x] Verify SMTP AUTH on 587 (authenticate, send, verify relay)
 - [x] Verify IMAPS on 993 (connect with implicit TLS, authenticate, read)
-- [x] Verify queue retry: simulate 4xx response, confirm retry with backoff
-- [x] Verify bounce: simulate 5xx response, confirm DSN delivered to sender
-- [x] Verify IMAP IDLE: connect, IDLE, deliver message, confirm push notification
+- [ ] Verify queue retry: simulate 4xx response, confirm retry with backoff
+- [ ] Verify bounce: simulate 5xx response, confirm DSN delivered to sender
+- [ ] Verify IMAP IDLE: connect, IDLE, deliver message, confirm push notification
 - [x] Implement Go-level connection limits (max concurrent, max per IP, rate per IP, auth failure tracking)
 - [x] Emit structured JSON log events for fail2ban parsing (auth failures, rate exceeded, abuse patterns)
 - [x] Write fail2ban jail configs for SMTP auth, IMAP auth, and SMTP abuse patterns
 - [x] Write fail2ban filter configs (regex patterns matching gateway JSON log format)
 - [x] Add fail2ban sidecar container to docker-compose.yml (profile: security)
-- [x] Add ban management admin API endpoints (list bans, unban IP)
-- [x] Document fail2ban setup and tuning for production deployments
+- [ ] Add ban management admin API endpoints (list bans, unban IP)
+- [ ] Document fail2ban setup and tuning for production deployments
 
 ---
 
-## Phase 9: Go TUI Admin Tool (Bubble Tea)
+## Phase 9: Go Console Admin Tool (Bubble Tea)
 
 A terminal-based admin interface built with Go and [Bubble Tea](https://github.com/charmbracelet/bubbletea) for direct administration of the entire rest-mail system. Runs on the host machine and connects to the API/database over the Docker network.
 
@@ -2245,35 +2245,35 @@ The bottom three columns provide an at-a-glance dashboard for each mail server, 
 - Connects to the Go REST API for all operations (same API the webmail uses)
 - May also connect directly to Postgres for admin-only queries not exposed via the API
 - Runs on the host, not in a container -- requires the Docker stack to be running
-- Built as a separate Go binary in the same module (`cmd/tui/`)
+- Built as a separate Go binary in the same module (`cmd/console/`)
 
 ### Building & Running
 
 Build for your current machine (auto-detects OS/arch):
 ```bash
-task build:tui
-# Binary output: build/tui/tui-<os>-<arch>
+task build:console
+# Binary output: build/console/console-<os>-<arch>
 ```
 
 Or cross-compile for a specific platform:
 ```bash
-task build:tui:darwin-arm64   # macOS Apple Silicon
-task build:tui:darwin-amd64   # macOS Intel
-task build:tui:linux-arm64    # Linux ARM64
-task build:tui:all            # All platforms
+task build:console:darwin-arm64   # macOS Apple Silicon
+task build:console:darwin-amd64   # macOS Intel
+task build:console:linux-arm64    # Linux ARM64
+task build:console:all            # All platforms
 ```
 
 Run (point at the API):
 ```bash
-./build/tui/tui-darwin-arm64 -api http://localhost:8080 -user eve@mail3.test -pass password123
+./build/console/console-darwin-arm64 -api http://localhost:8080 -user eve@mail3.test -pass password123
 # Or use env vars:
 export RESTMAIL_ADMIN_EMAIL=eve@mail3.test
 export RESTMAIL_ADMIN_PASSWORD=password123
-./build/tui/tui-darwin-arm64 -api http://localhost:8080
+./build/console/console-darwin-arm64 -api http://localhost:8080
 ```
 
 ### TODO
-- [x] Set up Bubble Tea project structure (cmd/tui/, internal/tui/)
+- [x] Set up Bubble Tea project structure (cmd/console/, internal/console/)
 - [x] Install Bubble Tea, Lip Gloss, Bubbles dependencies
 - [x] Build main layout with bottom three-column server status bar
 - [x] Build domain management view (list, add, remove)
@@ -2281,8 +2281,8 @@ export RESTMAIL_ADMIN_PASSWORD=password123
 - [x] Build inbox browser view (select user → list messages → read message)
 - [x] Build compose view (select sender, enter recipient, subject, body, send)
 - [x] Wire up API client to Go REST API
-- [x] Cross-compile build tasks (Taskfile.yml: `build:tui`, per-platform, all)
-- [x] Add real-time status polling for the bottom server status columns
+- [x] Cross-compile build tasks (Taskfile.yml: `build:console`, per-platform, all)
+- [ ] Add real-time status polling for the bottom server status columns
 
 ---
 
@@ -2304,7 +2304,7 @@ tests/
   stage5_indistinguishability_test.go  ← mail3 must look like a real server
   stage6_restmail_upgrade_test.go
   stage7_webmail_test.go
-  stage8_tui_test.go
+  stage8_console_test.go
   stage9_consistency_test.go
 ```
 
@@ -2613,15 +2613,15 @@ Test: WebmailDeleteMessage
 Test: WebmailMarkAsRead
 ```
 
-### Stage 8: TUI Flows
+### Stage 8: Console Flows
 
 ```
-Test: TuiDomainManagement
-Test: TuiUserCreation
-Test: TuiPasswordReset
-Test: TuiInboxBrowsing
-Test: TuiComposeMail
-Test: TuiServerStatus
+Test: ConsoleDomainManagement
+Test: ConsoleUserCreation
+Test: ConsolePasswordReset
+Test: ConsoleInboxBrowsing
+Test: ConsoleComposeMail
+Test: ConsoleServerStatus
 ```
 
 ### Stage 9: Database Consistency
@@ -2650,13 +2650,13 @@ Test: PostfixDovecotSeeApiData
 - [x] Write Stage 5 tests: indistinguishability (mail3 looks like a real server)
 - [x] Write Stage 6 tests: RESTMAIL protocol upgrade
 - [x] Write Stage 7 tests: webmail flows
-- [x] Write Stage 8 tests: TUI flows
+- [x] Write Stage 8 tests: console flows
 - [x] Write Stage 9 tests: database consistency
 - [x] Set up test runner that enforces stage ordering (stage 2 must pass before 3+)
-- [x] Enhance Stage 2: SMTP AUTH submission (port 587 + STARTTLS + AUTH PLAIN), IMAP full message FETCH content readback, POP3 RETR message readback
-- [x] Enhance Stage 3: gateway SMTP AUTH submission, submission-requires-auth check, IMAP FETCH BODY[] readback, POP3 RETR readback
-- [x] Enhance Stage 5: SMTP STARTTLS send, SIZE enforcement (10MB limit), IMAP STARTTLS, POP3 STLS
-- [x] Document the full setup and usage in a README
+- [ ] Enhance Stage 2: SMTP AUTH submission (port 587 + STARTTLS + AUTH PLAIN), IMAP full message FETCH content readback, POP3 RETR message readback
+- [ ] Enhance Stage 3: gateway SMTP AUTH submission, submission-requires-auth check, IMAP FETCH BODY[] readback, POP3 RETR readback
+- [ ] Enhance Stage 5: SMTP STARTTLS send, SIZE enforcement (10MB limit), IMAP STARTTLS, POP3 STLS
+- [ ] Document the full setup and usage in a README
 
 ---
 
@@ -3576,7 +3576,7 @@ The pipeline doesn't need to know what's on the other end of the webhook -- it j
 
 ### Visual Pipeline Testing
 
-This is where the system becomes truly powerful. The webmail admin UI (and the TUI) include a **pipeline test mode** where you can:
+This is where the system becomes truly powerful. The webmail admin UI (and the console) include a **pipeline test mode** where you can:
 
 1. **Compose or paste a sample email** (headers + body, or use a template)
 2. **Select a pipeline** (inbound or outbound for a domain)
@@ -3786,16 +3786,16 @@ Outbound flow (compose → pipeline → SMTP relay):
 - [x] Implement email-to-JSON serialisation (RFC 2822 → JSON) and deserialisation (JSON → RFC 2822)
 - [x] Implement built-in action filters: `spf_check`, `dmarc_check`, `header_validate`, `sender_verify`, `recipient_check`, `rate_limit`, `size_check`
 - [x] Implement built-in transform filters: `dkim_verify`, `dkim_sign`, `header_cleanup`, `extract_attachments`
-- [x] Implement ARC verification filter (`arc_verify`): parse ARC chain, verify seals + message signatures (reuses DKIM crypto)
-- [x] Implement ARC sealing filter (`arc_seal`): add AAR + AMS + AS headers when relaying, using domain's DKIM key
-- [x] Wire `dmarc_check` to consider ARC results when SPF/DKIM fail on forwarded mail
+- [ ] Implement ARC verification filter (`arc_verify`): parse ARC chain, verify seals + message signatures (reuses DKIM crypto)
+- [ ] Implement ARC sealing filter (`arc_seal`): add AAR + AMS + AS headers when relaying, using domain's DKIM key
+- [ ] Wire `dmarc_check` to consider ARC results when SPF/DKIM fail on forwarded mail
 - [x] Implement the `webhook` filter (POST email JSON to external URL, act on response)
-- [x] Design adapter filter interface (`internal/pipeline/adapter.go`) -- standard wrapper for external services
-- [x] Implement rspamd adapter filter (HTTP API client, JSON → rspamd format → FilterResult)
-- [x] Implement ClamAV adapter filter (clamd TCP protocol, INSTREAM command → FilterResult)
-- [x] Add optional rspamd and clamav sidecar containers to docker-compose.yml (using profiles)
-- [x] Document adapter vs built-in filter choice (lightweight built-ins vs full-featured adapters)
-- [x] Implement the `duplicate` action (fork email to webhook/queue while continuing pipeline)
+- [ ] Design adapter filter interface (`internal/pipeline/adapter.go`) -- standard wrapper for external services
+- [ ] Implement rspamd adapter filter (HTTP API client, JSON → rspamd format → FilterResult)
+- [ ] Implement ClamAV adapter filter (clamd TCP protocol, INSTREAM command → FilterResult)
+- [ ] Add optional rspamd and clamav sidecar containers to docker-compose.yml (using profiles)
+- [ ] Document adapter vs built-in filter choice (lightweight built-ins vs full-featured adapters)
+- [ ] Implement the `duplicate` action (fork email to webhook/queue while continuing pipeline)
 - [x] Implement attachment storage backend: filesystem writer + S3-compatible writer
 - [x] Implement SHA-256 checksum computation in `extract_attachments` filter
 - [x] Implement checksum-based attachment deduplication (reuse existing `storage_ref` if checksum matches)
@@ -3805,18 +3805,18 @@ Outbound flow (compose → pipeline → SMTP relay):
 - [x] Implement custom filter interpreter (evaluate JSON condition matching + transforms at runtime)
 - [x] Implement Sieve filter: embed a Sieve interpreter (or write one) that operates on email JSON
 - [x] Support standard Sieve commands: `keep`, `fileinto`, `redirect`, `discard`, `reject`
-- [x] Support Sieve extensions: `vacation`, `notify`, `body`, `regex`, `envelope`
+- [ ] Support Sieve extensions: `vacation`, `notify`, `body`, `regex`, `envelope`
 - [x] Add Sieve script management API (per-mailbox CRUD, validation endpoint)
 - [x] Implement vacation/auto-reply with RFC 3834 loop prevention (never reply to auto-replies, mailing lists, MAILER-DAEMON)
 - [x] Create `vacation_responses` table for tracking sent auto-replies (dedup within time window)
 - [x] Add vacation API endpoints (PUT/GET/DELETE `/api/v1/accounts/:id/vacation`)
-- [x] Implement vacation toggle in webmail UI (simple on/off with subject, body, optional date range)
+- [ ] Implement vacation toggle in webmail UI (simple on/off with subject, body, optional date range)
 - [x] Ensure auto-reply messages include `Auto-Submitted: auto-replied` header
 - [x] Implement JavaScript filter: Node.js sidecar container with sandboxed vm module (replaced goja per architecture decision)
 - [x] Add JS filter security: execution timeout, memory limit, no filesystem/network access by default
-- [x] Add JS script validation endpoint (syntax check + dry-run against sample email JSON)
-- [x] Add JavaScript filter management API (CRUD, enable/disable, test)
-- [x] Add optional allowlisted HTTP fetch for JS filters (admin-controlled)
+- [ ] Add JS script validation endpoint (syntax check + dry-run against sample email JSON)
+- [ ] Add JavaScript filter management API (CRUD, enable/disable, test)
+- [ ] Add optional allowlisted HTTP fetch for JS filters (admin-controlled)
 - [x] Implement `contact_whitelist` action filter (lookup sender in recipient's contacts, set skip_filters)
 - [x] Implement `domain_allowlist` action filter (admin-managed allow/block lists per domain)
 - [x] Implement `greylist` action filter (sender/recipient/IP triple tracking, defer on first attempt)
@@ -3827,8 +3827,8 @@ Outbound flow (compose → pipeline → SMTP relay):
 - [x] Add domain allowlist/blocklist admin API endpoints
 - [x] Implement quarantine system (hold borderline spam for user review)
 - [x] Add quarantine API endpoints (list, release, whitelist-and-release, delete, digest)
-- [x] Add quarantine review panel to webmail UI
-- [x] Implement optional quarantine digest email (daily/weekly summary of held messages)
+- [ ] Add quarantine review panel to webmail UI
+- [ ] Implement optional quarantine digest email (daily/weekly summary of held messages)
 - [x] Implement pipeline execution engine (run filters in order, respect action/transform types, handle reject/quarantine/discard/duplicate)
 - [x] Add pipeline management API endpoints (CRUD for pipelines and custom filters)
 - [x] Add pipeline testing API endpoint (run sample email through pipeline, return step-by-step results with JSON state at each stage)
@@ -3836,11 +3836,11 @@ Outbound flow (compose → pipeline → SMTP relay):
 - [x] Integrate pipeline into the gateway's inbound SMTP handler (between parse and storage)
 - [x] Integrate pipeline into the API's outbound message sending (between compose and relay)
 - [x] Create database migrations for `pipelines`, `custom_filters`, `attachments`, `pipeline_logs` tables
-- [x] Build default pipeline templates (sensible inbound + outbound defaults per domain)
-- [x] Build visual pipeline tester UI component in the React webmail admin panel
-- [x] Build pipeline configuration UI (drag-and-drop filter ordering, enable/disable, per-filter config)
-- [x] Add pipeline management views to the TUI admin tool
-- [x] Add Stage 10 to the test suite: pipeline filter tests (each built-in filter + custom filter evaluation + full pipeline execution + attachment extraction + webhook integration)
+- [ ] Build default pipeline templates (sensible inbound + outbound defaults per domain)
+- [ ] Build visual pipeline tester UI component in the React webmail admin panel
+- [ ] Build pipeline configuration UI (drag-and-drop filter ordering, enable/disable, per-filter config)
+- [ ] Add pipeline management views to the console admin tool
+- [ ] Add Stage 10 to the test suite: pipeline filter tests (each built-in filter + custom filter evaluation + full pipeline execution + attachment extraction + webhook integration)
 
 ---
 
@@ -3855,7 +3855,7 @@ rest-mail/
 │   │   └── main.go
 │   ├── gateway/                # Protocol gateway binary (Phase 8)
 │   │   └── main.go
-│   ├── tui/                    # Terminal UI admin tool (Phase 9)
+│   ├── console/                # Terminal UI admin tool (Phase 9)
 │   │   └── main.go
 │   ├── migrate/                # Database migration runner
 │   │   └── main.go
@@ -3899,7 +3899,7 @@ rest-mail/
 │   │   ├── manual.go          # Returns required records as JSON
 │   │   └── externaldns.go     # k8s: create DNSEndpoint CRDs
 │   │
-│   ├── tui/                    # Terminal UI components (Bubble Tea)
+│   ├── console/                # Terminal UI components (Bubble Tea)
 │   │
 │   ├── auth/                   # JWT token creation/validation, bcrypt
 │   │
@@ -3942,7 +3942,7 @@ rest-mail/
 |--------|-------------|---------|
 | `api` | REST API server — all `/api/v1/` and `/restmail/` endpoints | Docker container |
 | `gateway` | Protocol gateway — SMTP/IMAP/POP3 ↔ REST translation | Docker container |
-| `tui` | Terminal admin tool — Bubble Tea UI for managing servers | Host (not containerised) |
+| `console` | Terminal admin tool — Bubble Tea UI for managing servers | Host (not containerised) |
 | `migrate` | Database migration runner — applies/rolls back SQL migrations | `task db:migrate` |
 | `seed` | Test data seeder — populates dev database with test accounts/messages | `task db:seed` |
 | `certgen` | Certificate generator — creates self-signed CA + per-domain certs, DKIM keys | `task certs:generate` |
@@ -3959,7 +3959,7 @@ rest-mail/
 | `internal/pipeline` | `cmd/api`, `cmd/gateway` | Mail processing pipeline engine + all filters |
 | `internal/gateway` | `cmd/gateway` | SMTP/IMAP/POP3 protocol handlers |
 | `internal/dns` | `cmd/api` | Pluggable DNS record management |
-| `internal/tui` | `cmd/tui` | Bubble Tea views and components |
+| `internal/console` | `cmd/console` | Bubble Tea views and components |
 | `internal/auth` | `cmd/api`, `cmd/gateway` | JWT + bcrypt authentication |
 | `internal/config` | All binaries | Environment variable loading |
 | `internal/metrics` | `cmd/api`, `cmd/gateway` | Prometheus metrics |
@@ -4377,14 +4377,14 @@ The key principle: **`docker-compose.override.yml` is automatically loaded** by 
 ### TODO
 
 - [x] Create `Taskfile.yml` at project root with all tasks above
-- [x] Create `.air.toml` configuration for Go hot reload
-- [x] Create `Dockerfile.dev` for Go API (includes air, mounts source)
-- [x] Create `webmail/Dockerfile.dev` for React (runs Vite dev server)
-- [x] Create `docker-compose.override.yml` with dev volume mounts and hot reload commands
-- [x] Add Go Task and air installation to project README prerequisites
-- [x] Ensure all CI/CD pipelines use `task` commands instead of raw shell commands
-- [x] Add `task --list` output to developer onboarding docs
-- [x] Consider adding a `task setup` meta-task that installs Go toolchain dependencies (golangci-lint, goimports, air, etc.)
+- [ ] Create `.air.toml` configuration for Go hot reload
+- [ ] Create `Dockerfile.dev` for Go API (includes air, mounts source)
+- [ ] Create `webmail/Dockerfile.dev` for React (runs Vite dev server)
+- [ ] Create `docker-compose.override.yml` with dev volume mounts and hot reload commands
+- [ ] Add Go Task and air installation to project README prerequisites
+- [ ] Ensure all CI/CD pipelines use `task` commands instead of raw shell commands
+- [ ] Add `task --list` output to developer onboarding docs
+- [ ] Consider adding a `task setup` meta-task that installs Go toolchain dependencies (golangci-lint, goimports, air, etc.)
 
 ---
 
@@ -4515,15 +4515,15 @@ groups:
 
 ### TODO
 
-- [x] Add `prometheus/client_golang` dependency to Go API and gateway
-- [x] Implement `/metrics` endpoint on API (internal port, not exposed to mail clients)
-- [x] Implement `/metrics` endpoint on gateway (internal port)
-- [x] Register all application-level Prometheus collectors (counters, gauges, histograms)
-- [x] Create `monitoring/prometheus.yml` scrape config
-- [x] Create pre-built Grafana dashboards (JSON provisioning)
-- [x] Add Prometheus, Grafana, and postgres-exporter to docker-compose.yml (profile: monitoring)
-- [x] Create alerting rules for queue backlog, cert expiry, auth failure rate, error rate
-- [x] Document how to access Grafana (default credentials, dashboard layout)
+- [ ] Add `prometheus/client_golang` dependency to Go API and gateway
+- [ ] Implement `/metrics` endpoint on API (internal port, not exposed to mail clients)
+- [ ] Implement `/metrics` endpoint on gateway (internal port)
+- [ ] Register all application-level Prometheus collectors (counters, gauges, histograms)
+- [ ] Create `monitoring/prometheus.yml` scrape config
+- [ ] Create pre-built Grafana dashboards (JSON provisioning)
+- [ ] Add Prometheus, Grafana, and postgres-exporter to docker-compose.yml (profile: monitoring)
+- [ ] Create alerting rules for queue backlog, cert expiry, auth failure rate, error rate
+- [ ] Document how to access Grafana (default credentials, dashboard layout)
 
 ---
 
@@ -5037,18 +5037,18 @@ jobs:
 ```
 
 ### TODO
-- [x] Create `.github/workflows/ci.yml` (lint, build, test pipeline)
-- [x] Create `.github/workflows/docker.yml` (Docker build + push to GHCR)
-- [x] Create `.github/workflows/deploy.yml` (staging + production deploy)
-- [x] Create `.github/workflows/scheduled.yml` (weekly dependency updates + security audit)
-- [x] Add `task health:wait` command to Taskfile.yml (poll healthchecks until all pass)
-- [x] Add `task fmt -- --check` mode (verify formatting without modifying files)
-- [x] Add `task tidy -- --check` mode (verify go.mod is tidy)
+- [ ] Create `.github/workflows/ci.yml` (lint, build, test pipeline)
+- [ ] Create `.github/workflows/docker.yml` (Docker build + push to GHCR)
+- [ ] Create `.github/workflows/deploy.yml` (staging + production deploy)
+- [ ] Create `.github/workflows/scheduled.yml` (weekly dependency updates + security audit)
+- [ ] Add `task health:wait` command to Taskfile.yml (poll healthchecks until all pass)
+- [ ] Add `task fmt -- --check` mode (verify formatting without modifying files)
+- [ ] Add `task tidy -- --check` mode (verify go.mod is tidy)
 - [x] Create `Dockerfile.gateway` (multi-stage build for gateway binary)
-- [x] Set up GitHub Environments (staging, production) with protection rules
-- [x] Configure GitHub Container Registry (GHCR) for image storage
-- [x] Add branch protection rules (require CI pass, require review)
-- [x] Ensure all CI/CD pipelines use `task` commands instead of raw shell commands
+- [ ] Set up GitHub Environments (staging, production) with protection rules
+- [ ] Configure GitHub Container Registry (GHCR) for image storage
+- [ ] Add branch protection rules (require CI pass, require review)
+- [ ] Ensure all CI/CD pipelines use `task` commands instead of raw shell commands
 
 ---
 
@@ -5151,8 +5151,8 @@ These are added automatically by the DNS provider adapter when a domain is creat
 - [x] Implement Mozilla Autoconfig XML generation (`GET /mail/config-v1.1.xml`)
 - [x] Implement Microsoft Autodiscover XML generation (`POST /autodiscover/autodiscover.xml`)
 - [x] Implement Apple well-known fallback (`GET /.well-known/autoconfig/mail/config-v1.1.xml`)
-- [x] Add `autoconfig.{domain}` and `autodiscover.{domain}` DNS records to DNS provider adapters
-- [x] Add autoconfig DNS records to dnsmasq dev config
+- [ ] Add `autoconfig.{domain}` and `autodiscover.{domain}` DNS records to DNS provider adapters
+- [ ] Add autoconfig DNS records to dnsmasq dev config
 - [ ] Test with Thunderbird, Outlook, and Apple Mail
 
 ---
@@ -5211,13 +5211,13 @@ GET    /.well-known/mta-sts.txt                      - Public policy endpoint (u
 ```
 
 ### TODO
-- [x] Implement MTA-STS policy serving (`GET /.well-known/mta-sts.txt`)
-- [x] Implement MTA-STS admin API endpoints (get/set policy per domain)
-- [x] Add `_mta-sts`, `_smtp._tls`, and `mta-sts` DNS records to DNS provider adapters
-- [x] Add MTA-STS DNS records to dnsmasq dev config
-- [x] Implement TLS-RPT report ingestion (detect `application/tlsrpt+json`, store for admin)
-- [x] Add TLS reports viewer to webmail admin panel
-- [x] Implement MTA-STS policy checking in outbound SMTP relay (respect other servers' policies)
+- [ ] Implement MTA-STS policy serving (`GET /.well-known/mta-sts.txt`)
+- [ ] Implement MTA-STS admin API endpoints (get/set policy per domain)
+- [ ] Add `_mta-sts`, `_smtp._tls`, and `mta-sts` DNS records to DNS provider adapters
+- [ ] Add MTA-STS DNS records to dnsmasq dev config
+- [ ] Implement TLS-RPT report ingestion (detect `application/tlsrpt+json`, store for admin)
+- [ ] Add TLS reports viewer to webmail admin panel
+- [ ] Implement MTA-STS policy checking in outbound SMTP relay (respect other servers' policies)
 
 ---
 
@@ -5271,12 +5271,12 @@ proxyListener := &proxyproto.Listener{
 After decoding, the real client IP is available via `conn.RemoteAddr()` and flows naturally into SPF checks, fail2ban log entries, and rate limiting — no other code needs to change.
 
 ### TODO
-- [x] Add `github.com/pires/go-proxyproto` dependency
-- [x] Wrap SMTP/IMAP/POP3 listeners with PROXY protocol decoder (opt-in via env var)
-- [x] Implement trusted CIDR validation for PROXY headers
-- [x] Ensure real client IP propagates to SPF checks, fail2ban logs, and rate limiting
-- [x] Document HAProxy / nginx PROXY protocol configuration examples
-- [x] Add PROXY protocol test cases (valid header, missing header, untrusted source)
+- [ ] Add `github.com/pires/go-proxyproto` dependency
+- [ ] Wrap SMTP/IMAP/POP3 listeners with PROXY protocol decoder (opt-in via env var)
+- [ ] Implement trusted CIDR validation for PROXY headers
+- [ ] Ensure real client IP propagates to SPF checks, fail2ban logs, and rate limiting
+- [ ] Document HAProxy / nginx PROXY protocol configuration examples
+- [ ] Add PROXY protocol test cases (valid header, missing header, untrusted source)
 
 ---
 
@@ -5323,11 +5323,11 @@ Reply chain: Message-ID: <ccc@mail3.test>
 ```
 
 ### TODO
-- [x] Implement UUID v7 Message-ID generation in `internal/mail/`
-- [x] Generate Message-ID in compose/send API endpoint (before pipeline)
-- [x] Generate Message-ID in gateway SMTP submission handler (if client omits it)
-- [x] Store Message-ID in messages table, use for In-Reply-To / References threading
-- [x] Never overwrite existing Message-ID on inbound messages
+- [ ] Implement UUID v7 Message-ID generation in `internal/mail/`
+- [ ] Generate Message-ID in compose/send API endpoint (before pipeline)
+- [ ] Generate Message-ID in gateway SMTP submission handler (if client omits it)
+- [ ] Store Message-ID in messages table, use for In-Reply-To / References threading
+- [ ] Never overwrite existing Message-ID on inbound messages
 
 ---
 
@@ -5436,12 +5436,12 @@ The `text/calendar` MIME type is handled by the MIME parser (`internal/mime/`). 
 ```
 
 ### TODO
-- [x] Add iCalendar parser to `internal/mime/` (parse `text/calendar` MIME parts into structured JSON)
-- [x] Include parsed calendar data in the email JSON representation
-- [x] Build calendar invite card component in webmail React UI
-- [x] Implement Accept/Decline/Tentative response (generate iTIP REPLY email)
-- [x] Support composing emails with `.ics` attachments (iTIP REQUEST method)
-- [x] Handle calendar updates (METHOD:CANCEL, METHOD:REQUEST with updated SEQUENCE)
+- [ ] Add iCalendar parser to `internal/mime/` (parse `text/calendar` MIME parts into structured JSON)
+- [ ] Include parsed calendar data in the email JSON representation
+- [ ] Build calendar invite card component in webmail React UI
+- [ ] Implement Accept/Decline/Tentative response (generate iTIP REPLY email)
+- [ ] Support composing emails with `.ics` attachments (iTIP REQUEST method)
+- [ ] Handle calendar updates (METHOD:CANCEL, METHOD:REQUEST with updated SEQUENCE)
 
 ---
 
@@ -5450,23 +5450,23 @@ The `text/calendar` MIME type is handled by the MIME parser (`internal/mime/`). 
 Write a comprehensive README.md at the project root that serves as the entry point for understanding the project. The README should cover:
 
 ### Content
-1. **Project Overview** — What rest-mail is, its architecture (3 domains, REST API, protocol gateway, webmail, TUI)
+1. **Project Overview** — What rest-mail is, its architecture (3 domains, REST API, protocol gateway, webmail, console)
 2. **Quick Start** — How to get the entire system running with `docker compose up`
 3. **Prerequisites** — Go 1.24+, Node 20+, Docker, Docker Compose
 4. **Architecture Diagram** — ASCII or text description of how domains, servers, and services connect
 5. **Service Map** — Table of all services with their container names, IPs, ports, and roles
-6. **Starting Individual Services** — How to run the API, gateway, webmail, and TUI independently for development
+6. **Starting Individual Services** — How to run the API, gateway, webmail, and console independently for development
 7. **Testing** — How to run the e2e test suite (`go test ./tests/e2e/ -v`), what each stage tests, and the stage dependency chain
-8. **Project Structure** — Directory layout with descriptions of each major package (`cmd/`, `internal/api/`, `internal/gateway/`, `internal/pipeline/`, `internal/tui/`, `webmail/`, `docker/`, `tests/`)
+8. **Project Structure** — Directory layout with descriptions of each major package (`cmd/`, `internal/api/`, `internal/gateway/`, `internal/pipeline/`, `internal/console/`, `webmail/`, `docker/`, `tests/`)
 9. **API Reference** — Summary of key API endpoints (auth, admin, messages, folders, search, restmail, health)
 10. **Configuration** — Environment variables and their defaults
-11. **Development Workflow** — How to add a new API endpoint, add a pipeline filter, modify the TUI, or update the webmail frontend
+11. **Development Workflow** — How to add a new API endpoint, add a pipeline filter, modify the console, or update the webmail frontend
 
 ### TODO
-- [x] Write the project README.md at the root
-- [x] Include service map with IPs, ports, and container names
-- [x] Document the e2e test suite and stage ordering
-- [x] Document the development workflow for each component
+- [ ] Write the project README.md at the root
+- [ ] Include service map with IPs, ports, and container names
+- [ ] Document the e2e test suite and stage ordering
+- [ ] Document the development workflow for each component
 
 ---
 
@@ -5488,7 +5488,7 @@ Build a static marketing/landing website for Rest Mail. The site explains the pr
 2. **What is Rest Mail?** — Brief explanation of the problem with traditional mail servers and how Rest Mail replaces them with a REST API while remaining fully compatible with the outside world
 3. **How It Works** — Architecture overview: protocol gateway translates SMTP/IMAP/POP3 into REST API calls. Diagram showing the three mail domains (traditional ↔ rest-mail interop)
 4. **The RESTMAIL Protocol** — How two Rest Mail servers discover each other via EHLO and upgrade from SMTP to native REST delivery
-5. **Features** — Key features: full protocol compatibility, pipeline/filter engine, Sieve support, webmail, TUI admin, real-time SSE, attachment dedup, quota management, etc.
+5. **Features** — Key features: full protocol compatibility, pipeline/filter engine, Sieve support, webmail, console admin, real-time SSE, attachment dedup, quota management, etc.
 6. **Architecture** — Tech stack breakdown: Go backend, PostgreSQL, chi router, React webmail, Bubble Tea TUI, Docker Compose orchestration
 7. **About** — Information about the creator/maintainer
 8. **Footer** — GitHub repo link, webmail login link, license
@@ -5514,8 +5514,8 @@ Build a static marketing/landing website for Rest Mail. The site explains the pr
 - [x] Build the Architecture section
 - [x] Build the About page
 - [x] Create Go static file server for the website (`cmd/website/main.go`)
-- [x] Add website service to docker-compose.yml
-- [x] Add Taskfile entries for building/serving the website
+- [ ] Add website service to docker-compose.yml
+- [ ] Add Taskfile entries for building/serving the website
 
 ---
 
