@@ -9,6 +9,8 @@ build/
 /imap-gateway
 /pop3-gateway
 /console
+/instantmailcheck
+/seed
 
 # Go test binary
 *.test
