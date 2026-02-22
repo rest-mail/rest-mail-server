@@ -1,10 +1,12 @@
-package tui
+package console
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
 
@@ -44,14 +46,25 @@ type Model struct {
 	menuItems []string
 	menuIdx   int
 
+	// RBAC
+	capabilities  []string
+	isSuperAdmin  bool
+	username      string
+
 	err error
 }
 
-// NewModel creates the root TUI model.
+// NewModel creates the root console model.
 func NewModel(api *apiclient.Client, token string) Model {
+	// Parse JWT token to extract capabilities
+	capabilities, isSuperAdmin, username := parseTokenCapabilities(token)
+
 	return Model{
-		api:   api,
-		token: token,
+		api:           api,
+		token:         token,
+		capabilities:  capabilities,
+		isSuperAdmin:  isSuperAdmin,
+		username:      username,
 		menuItems: []string{
 			"Domains     - Manage mail domains",
 			"Users       - Manage mailboxes and users",
@@ -67,6 +80,46 @@ func NewModel(api *apiclient.Client, token string) Model {
 		pipelines: NewPipelinesModel(api, token),
 		status:    NewStatusModel(api, token),
 	}
+}
+
+// parseTokenCapabilities extracts capabilities from the JWT token
+func parseTokenCapabilities(tokenStr string) (capabilities []string, isSuperAdmin bool, username string) {
+	if tokenStr == "" {
+		return nil, false, "anonymous"
+	}
+
+	// Parse without validation (we're just reading claims, API already validated it)
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	token, _, err := parser.ParseUnverified(tokenStr, jwt.MapClaims{})
+	if err != nil {
+		return nil, false, "unknown"
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, false, "unknown"
+	}
+
+	// Extract username
+	if un, ok := claims["username"].(string); ok {
+		username = un
+	} else if email, ok := claims["email"].(string); ok {
+		username = email
+	}
+
+	// Extract capabilities
+	if caps, ok := claims["capabilities"].([]interface{}); ok {
+		for _, cap := range caps {
+			if capStr, ok := cap.(string); ok {
+				capabilities = append(capabilities, capStr)
+				if capStr == "*" {
+					isSuperAdmin = true
+				}
+			}
+		}
+	}
+
+	return capabilities, isSuperAdmin, username
 }
 
 func (m Model) Init() tea.Cmd {
@@ -226,7 +279,17 @@ func (m Model) View() string {
 
 func (m Model) renderMainMenu(height int) string {
 	s := "\n"
-	s += titleStyle.Render("What would you like to do?") + "\n\n"
+	title := "What would you like to do?"
+	if !m.isSuperAdmin && len(m.capabilities) > 0 {
+		capsPreview := strings.Join(m.capabilities[:min(3, len(m.capabilities))], ", ")
+		if len(m.capabilities) > 3 {
+			capsPreview += ", ..."
+		}
+		title += "\n" + lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")).
+			Render(fmt.Sprintf("Capabilities: %s", capsPreview))
+	}
+	s += titleStyle.Render(title) + "\n\n"
 
 	for i, item := range m.menuItems {
 		cursor := "  "
@@ -247,6 +310,14 @@ func (m Model) renderMainMenu(height int) string {
 	}
 
 	return s
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (m Model) renderStatusBar() string {
@@ -293,7 +364,17 @@ func (m Model) renderStatusBar() string {
 	// Global stats row
 	queueStr := fmt.Sprintf("Queue: %d pending", m.status.QueueDepth())
 	banStr := fmt.Sprintf("Bans: %d active", m.status.ActiveBans())
-	globalRow := fmt.Sprintf("  %s  |  %s", queueStr, banStr)
+
+	// Add user info and capability warning
+	userInfo := fmt.Sprintf("User: %s", m.username)
+	if !m.isSuperAdmin {
+		warning := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("202")). // Orange/warning color
+			Render("⚠ Limited Access")
+		userInfo = fmt.Sprintf("%s  |  %s", userInfo, warning)
+	}
+
+	globalRow := fmt.Sprintf("  %s  |  %s  |  %s", queueStr, banStr, userInfo)
 
 	return statusBarStyle.Width(m.width).Render(
 		domainRow + "\n" + globalRow,

@@ -1,4 +1,4 @@
-package tui
+package console
 
 import (
 	"fmt"
@@ -36,19 +36,19 @@ type passwordResetMsg struct {
 
 // UsersModel handles user/mailbox management.
 type UsersModel struct {
-	api    *apiclient.Client
-	token  string
-	users  []userItem
-	cursor int
+	api     *apiclient.Client
+	token   string
+	users   []userItem
+	cursor  int
 	loading bool
 	err     error
 
 	// Create user mode
-	creating     bool
-	emailInput   textinput.Model
-	nameInput    textinput.Model
-	passInput    textinput.Model
-	createFocus  int
+	creating    bool
+	emailInput  textinput.Model
+	nameInput   textinput.Model
+	passInput   textinput.Model
+	createFocus int
 
 	// Password reset mode
 	resetting      bool

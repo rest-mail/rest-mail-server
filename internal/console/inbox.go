@@ -1,4 +1,4 @@
-package tui
+package console
 
 import (
 	"fmt"
@@ -526,9 +526,9 @@ func (m InboxModel) View(width, height int) string {
 				}
 				if i == m.selectedFolder {
 					tabs.WriteString(lipgloss.NewStyle().Bold(true).Foreground(highlightColor).
-						Render("["+label+"]"))
+						Render("[" + label + "]"))
 				} else {
-					tabs.WriteString(mutedStyle.Render(" "+label+" "))
+					tabs.WriteString(mutedStyle.Render(" " + label + " "))
 				}
 				if i < len(m.folders)-1 {
 					tabs.WriteString(mutedStyle.Render(" | "))

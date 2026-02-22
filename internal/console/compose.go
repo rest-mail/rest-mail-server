@@ -1,4 +1,4 @@
-package tui
+package console
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ type composeSentMsg struct {
 	err error
 }
 
-// ComposeModel handles composing and sending mail from the TUI.
+// ComposeModel handles composing and sending mail from the console.
 type ComposeModel struct {
 	api   *apiclient.Client
 	token string

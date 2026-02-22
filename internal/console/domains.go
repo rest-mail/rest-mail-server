@@ -1,4 +1,4 @@
-package tui
+package console
 
 import (
 	"fmt"
@@ -40,7 +40,7 @@ type DomainsModel struct {
 	err     error
 
 	// Add domain mode
-	adding   bool
+	adding    bool
 	nameInput textinput.Model
 	typeInput textinput.Model
 	addFocus  int // 0=name, 1=type
