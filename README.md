@@ -89,6 +89,88 @@ go run ./cmd/migrate && go run ./cmd/seed
 | mail2.test   | Traditional | Postfix + Dovecot (second domain)  |
 | mail3.test   | RESTMAIL    | Go gateways backed by REST API     |
 
+### Test Accounts
+
+After running `task db:seed`, the following accounts are available:
+
+**Admin User (for Console tool):**
+- Username: `admin`
+- Password: `admin123!@`
+- Role: `superadmin` (full access)
+
+**Mail3.test Mailboxes:**
+| Email | Password | Display Name |
+|-------|----------|--------------|
+| `eve@mail3.test` | `password123` | Eve Wilson |
+| `frank@mail3.test` | `password123` | Frank Miller |
+| `postmaster@mail3.test` | `password123` | Postmaster |
+
+**Mail3.test Aliases:**
+- `info@mail3.test` → `eve@mail3.test`
+- `admin@mail3.test` → `eve@mail3.test`
+
+**RBAC System:**
+The seed command also creates a complete Role-Based Access Control system:
+- **Roles**: `superadmin`, `admin`, `readonly`
+- **Capabilities**: 19 permissions covering domains, mailboxes, users, pipelines, messages, queue, and bans
+- See [cmd/seed/main.go](cmd/seed/main.go) for the complete capability list
+
+## Admin Tools
+
+### Console
+
+Interactive terminal admin tool (built with bubbletea) for managing the mail server:
+
+```bash
+# Build the console (auto-detects your OS/architecture)
+task build:console
+
+# Run the console
+task console
+
+# Or run directly without building
+task run:console
+```
+
+**Features:**
+- RBAC-aware access control (displays your role and capabilities)
+- Domain, mailbox, and alias management
+- Queue operations
+- Live status monitoring
+
+**Authentication:** Uses the admin credentials (username/password) seeded by `task db:seed`.
+
+### Instant Mail Check
+
+Standalone CLI tool for comprehensive mail server diagnostics, security auditing, and deliverability testing.
+
+```bash
+# Build the tool (auto-detects your OS/architecture)
+task build:instantmailcheck
+
+# Basic scan (no credentials needed)
+./build/tools/instantmailcheck-$(go env GOHOSTOS)-$(go env GOHOSTARCH) example.com
+
+# Full authenticated test with security audit
+./build/tools/instantmailcheck-$(go env GOHOSTOS)-$(go env GOHOSTARCH) example.com \
+  --user test@example.com --pass secret \
+  --send-to test@example.com \
+  --security-audit -v
+
+# Cross-compile for all platforms
+task build:instantmailcheck:all
+```
+
+**What it checks:**
+- DNS (MX, SPF, DKIM, DMARC, DANE, MTA-STS, TLS-RPT, DNSSEC, CAA, BIMI, PTR)
+- SMTP (ports 25/587/465, STARTTLS, certificates, extensions, open relay)
+- IMAP/POP3 (ports 993/995, authentication, capabilities, IDLE, quotas)
+- Security (TLS versions, banner leaks, user enumeration, brute-force protection, SMTP smuggling)
+- Deliverability (IP/domain blacklists, round-trip tests, header analysis)
+- **Exit codes:** 0 = pass, 1 = invalid args, 2 = score below threshold
+
+**Documentation:** See [docs/INSTANT-MAIL-CHECK.md](docs/INSTANT-MAIL-CHECK.md) for complete reference (architecture, all checks explained, scoring system, CI/CD integration).
+
 ## Architecture
 
 ```
@@ -140,12 +222,14 @@ cmd/
   smtp-gateway/     SMTP protocol gateway
   imap-gateway/     IMAP protocol gateway
   pop3-gateway/     POP3 protocol gateway
-  console/          Terminal admin UI
+  console/          Terminal admin UI (bubbletea) with RBAC
   migrate/          Database migration runner
   certgen/          TLS/DKIM certificate generator
-  seed/             Test data seeder
+  seed/             Test data and RBAC seeder (domains, mailboxes, admin user)
+  instantmailcheck/ Standalone mail server diagnostics and security audit tool
   website/          Project website server
 internal/
+  mailcheck/        Mail server diagnostic checks (DNS, SMTP, IMAP, security, deliverability)
   api/              Handlers, middleware, routes, SSE, response helpers
   auth/             JWT + bcrypt authentication
   config/           Environment variable loading
