@@ -13,5 +13,4 @@ services:
       - /app/node_modules
     environment:
       VITE_BASE_PATH: /webmail
-      VITE_PROXY_TARGET: http://api:8080
       VITE_API_URL: http://restmail.localhost/api/v1
