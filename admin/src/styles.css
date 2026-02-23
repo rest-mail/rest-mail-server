@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+:root {
+  /* Colors - Swiss Clean Design System */
+  --bg-page: #FFFFFF;
+  --bg-surface: #FAFAFA;
+
+  /* Red Accent */
+  --red-primary: #E42313;
+
+  /* Neutral Scale */
+  --black-soft: #0D0D0D;
+  --gray-secondary: #7A7A7A;
+  --gray-muted: #B0B0B0;
+  --gray-placeholder: #D0D0D0;
+  --gray-border: #E8E8E8;
+
+  /* Success */
+  --success: #22C55E;
+}
+
+body {
+  @apply m-0 bg-white;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--black-soft);
+}
+
+/* Fix input backgrounds - override browser defaults and autofill */
+input,
+textarea {
+  background-color: transparent !important;
+}
+
+/* Override autofill styling */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: var(--black-soft);
+  transition: background-color 5000s ease-in-out 0s;
+  box-shadow: inset 0 0 20px 20px transparent;
+}
