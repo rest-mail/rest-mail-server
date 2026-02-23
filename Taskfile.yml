@@ -439,6 +439,12 @@ tasks:
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
 
+  start:admin:dev:
+    desc: Start the admin frontend with Vite HMR (hot reload)
+    deps: [start:api]
+    cmds:
+      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
+
   start:smtp-gateway:
     desc: Start the SMTP gateway
     deps: [start:api, start:certgen]
@@ -512,6 +518,11 @@ tasks:
     desc: Stop the project website (dev)
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml stop website
+
+  stop:admin:dev:
+    desc: Stop the admin frontend
+    cmds:
+      - docker compose -f admin/docker-compose.yml stop admin
 
   stop:smtp-gateway:
     desc: Stop the SMTP gateway
@@ -591,6 +602,11 @@ tasks:
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
 
+  restart:admin:dev:
+    desc: Rebuild and restart the admin frontend (Vite HMR)
+    cmds:
+      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
+
   restart:smtp-gateway:
     desc: Rebuild and restart the SMTP gateway (air hot reload)
     cmds:
@@ -636,6 +652,7 @@ tasks:
     deps:
       - start:webmail-dev
       - start:website-dev
+      - start:admin:dev
       - start:smtp-gateway
       - start:imap-gateway
       - start:pop3-gateway
