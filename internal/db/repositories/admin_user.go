@@ -3,6 +3,7 @@ package repositories
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -84,19 +85,47 @@ func (r *AdminUserRepository) HasCapability(userID uint, capabilityName string) 
 	return false, nil
 }
 
-// Create creates a new admin user.
-func (r *AdminUserRepository) Create(user *models.AdminUser) error {
-	return r.db.Create(user).Error
+// Create creates a new admin user with the provided details.
+func (r *AdminUserRepository) Create(username string, email *string, passwordHash string) (*models.AdminUser, error) {
+	user := &models.AdminUser{
+		Username:     username,
+		PasswordHash: passwordHash,
+		Active:       true,
+	}
+	if email != nil {
+		user.Email = *email
+	}
+
+	if err := r.db.Create(user).Error; err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
-// Update updates an existing admin user.
-func (r *AdminUserRepository) Update(user *models.AdminUser) error {
-	return r.db.Save(user).Error
+// Update updates an existing admin user with the provided fields.
+func (r *AdminUserRepository) Update(id uint, updates map[string]interface{}) error {
+	return r.db.Model(&models.AdminUser{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// UpdatePassword updates the password hash for an admin user.
+func (r *AdminUserRepository) UpdatePassword(id uint, passwordHash string) error {
+	now := time.Now()
+	return r.db.Model(&models.AdminUser{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"password_hash":        passwordHash,
+		"last_password_change": now,
+	}).Error
 }
 
 // Delete deletes an admin user.
 func (r *AdminUserRepository) Delete(userID uint) error {
 	return r.db.Delete(&models.AdminUser{}, userID).Error
+}
+
+// List returns all admin users.
+func (r *AdminUserRepository) List() ([]models.AdminUser, error) {
+	var users []models.AdminUser
+	err := r.db.Preload("Roles").Find(&users).Error
+	return users, err
 }
 
 // ListUsers returns all admin users with pagination.
@@ -112,6 +141,15 @@ func (r *AdminUserRepository) ListUsers(limit, offset int) ([]models.AdminUser, 
 	return users, total, err
 }
 
+// GetRoles returns all roles for a user.
+func (r *AdminUserRepository) GetRoles(userID uint) ([]models.Role, error) {
+	var user models.AdminUser
+	if err := r.db.Preload("Roles").First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+	return user.Roles, nil
+}
+
 // AssignRole assigns a role to a user.
 func (r *AdminUserRepository) AssignRole(userID, roleID uint, grantedBy *uint) error {
 	userRole := models.UserRole{
@@ -122,10 +160,46 @@ func (r *AdminUserRepository) AssignRole(userID, roleID uint, grantedBy *uint) e
 	return r.db.Create(&userRole).Error
 }
 
+// AssignRoles replaces all roles for a user with the provided role IDs.
+func (r *AdminUserRepository) AssignRoles(userID uint, roleIDs []uint) error {
+	// Start transaction
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete existing role assignments
+		if err := tx.Where("user_id = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
+			return err
+		}
+
+		// Create new role assignments
+		for _, roleID := range roleIDs {
+			userRole := models.UserRole{
+				UserID: userID,
+				RoleID: roleID,
+			}
+			if err := tx.Create(&userRole).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
 // RevokeRole removes a role from a user.
 func (r *AdminUserRepository) RevokeRole(userID, roleID uint) error {
 	return r.db.Where("user_id = ? AND role_id = ?", userID, roleID).
 		Delete(&models.UserRole{}).Error
+}
+
+// ListRoles returns all roles.
+func (r *AdminUserRepository) ListRoles() ([]models.Role, error) {
+	roleRepo := NewRoleRepository(r.db)
+	return roleRepo.List()
+}
+
+// ListCapabilities returns all capabilities.
+func (r *AdminUserRepository) ListCapabilities() ([]models.Capability, error) {
+	capRepo := NewCapabilityRepository(r.db)
+	return capRepo.List()
 }
 
 // RoleRepository handles role operations.

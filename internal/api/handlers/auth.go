@@ -28,9 +28,10 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	AccessToken string   `json:"access_token"`
-	ExpiresIn   int      `json:"expires_in"`
-	User        userInfo `json:"user"`
+	AccessToken  string   `json:"access_token"`
+	ExpiresIn    int      `json:"expires_in"`
+	User         userInfo `json:"user"`
+	Capabilities []string `json:"capabilities,omitempty"` // For admin users
 }
 
 type userInfo struct {
@@ -122,8 +123,9 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, username, password strin
 	h.db.Model(adminUser).Update("updated_at", time.Now())
 
 	respond.Data(w, http.StatusOK, loginResponse{
-		AccessToken: tokens.AccessToken,
-		ExpiresIn:   tokens.ExpiresIn,
+		AccessToken:  tokens.AccessToken,
+		ExpiresIn:    tokens.ExpiresIn,
+		Capabilities: capNames,
 		User: userInfo{
 			ID:          adminUser.ID,
 			Email:       adminUser.Username, // Use username in email field for compatibility

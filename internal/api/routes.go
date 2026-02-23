@@ -65,6 +65,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 	testH := handlers.NewTestHandler(db, cfg)
 	mtastsH := handlers.NewMTASTSHandler(db)
 	tlsrptH := handlers.NewTLSReportHandler(db)
+	statsH := handlers.NewStatsHandler(db)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -246,6 +247,21 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
 		r.Use(middleware.AdminOnly)
+
+		// Dashboard stats
+		r.Get("/api/v1/admin/stats", statsH.GetDashboardStats)
+
+		// Admin user management
+		adminUserH := handlers.NewAdminUserHandler(db)
+		r.Get("/api/v1/admin/admin-users", adminUserH.ListAdminUsers)
+		r.Post("/api/v1/admin/admin-users", adminUserH.CreateAdminUser)
+		r.Get("/api/v1/admin/admin-users/{id}", adminUserH.GetAdminUser)
+		r.Put("/api/v1/admin/admin-users/{id}", adminUserH.UpdateAdminUser)
+		r.Delete("/api/v1/admin/admin-users/{id}", adminUserH.DeleteAdminUser)
+
+		// Role and capability management
+		r.Get("/api/v1/admin/roles", adminUserH.ListRoles)
+		r.Get("/api/v1/admin/capabilities", adminUserH.ListCapabilities)
 
 		// Domains
 		r.Get("/api/v1/admin/domains", domainH.List)

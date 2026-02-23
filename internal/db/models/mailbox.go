@@ -17,8 +17,9 @@ type Mailbox struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 
 	// Associations
-	Domain   Domain    `gorm:"foreignKey:DomainID" json:"domain,omitempty"`
-	Messages []Message `gorm:"foreignKey:MailboxID" json:"messages,omitempty"`
+	Domain     Domain      `gorm:"foreignKey:DomainID" json:"domain,omitempty"`
+	Messages   []Message   `gorm:"foreignKey:MailboxID" json:"messages,omitempty"`
+	QuotaUsage *QuotaUsage `gorm:"foreignKey:MailboxID" json:"quota_usage,omitempty"`
 }
 
 // UniqueIndex on (domain_id, local_part)

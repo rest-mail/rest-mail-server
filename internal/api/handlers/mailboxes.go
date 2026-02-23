@@ -23,7 +23,7 @@ func NewMailboxHandler(db *gorm.DB) *MailboxHandler {
 
 func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
 	var mailboxes []models.Mailbox
-	query := h.db.Preload("Domain")
+	query := h.db.Preload("Domain").Preload("QuotaUsage")
 
 	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
@@ -118,7 +118,7 @@ func (h *MailboxHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mailbox models.Mailbox
-	if err := h.db.Preload("Domain").First(&mailbox, id).Error; err != nil {
+	if err := h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 		return
 	}
@@ -182,7 +182,7 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.db.Preload("Domain").First(&mailbox, id)
+	h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id)
 	respond.Data(w, http.StatusOK, mailbox)
 }
 
