@@ -7,50 +7,14 @@ vars:
   GO_MODULE: github.com/restmail/restmail
 
 tasks:
-  # ── Build ──────────────────────────────────────────────
+
+  # ════════════════════════════════════════════════════════
+  # Build
+  # ════════════════════════════════════════════════════════
+
   build:
     desc: Build all Go binaries
     deps: [build:api, build:smtp-gateway, build:imap-gateway, build:pop3-gateway, build:console, build:certgen, build:migrate, build:seed]
-
-  net:ensure:
-    desc: Ensure the shared mailnet docker network exists
-    run: once
-    cmds:
-      - |
-        docker network inspect "${COMPOSE_PROJECT_NAME}_mailnet" >/dev/null 2>&1 || \
-          docker network create --driver bridge --subnet 172.20.0.0/16 "${COMPOSE_PROJECT_NAME}_mailnet"
-
-  container:purge:
-    desc: Remove legacy containers from previous layouts (safe; containers only)
-    cmds:
-      - task: down
-      - |
-        ids=$(docker ps -aq --filter "name=^/${COMPOSE_PROJECT_NAME}-")
-        if [ -n "$ids" ]; then
-          docker rm -f $ids
-        fi
-
-  container:purge:hard:
-    desc: Remove legacy containers + volumes + shared network (destructive)
-    cmds:
-      - task: down:clean
-      - |
-        ids=$(docker ps -aq --filter "name=^/${COMPOSE_PROJECT_NAME}-")
-        if [ -n "$ids" ]; then
-          docker rm -f $ids
-        fi
-      - |
-        docker network rm "${COMPOSE_PROJECT_NAME}_mailnet" >/dev/null 2>&1 || true
-
-  compose:purge:
-    desc: Alias for container:purge
-    cmds:
-      - task: container:purge
-
-  compose:purge:hard:
-    desc: Alias for container:purge:hard
-    cmds:
-      - task: container:purge:hard
 
   build:api:
     desc: Build the REST API server
@@ -109,6 +73,22 @@ tasks:
     generates:
       - build/gateways/pop3-gateway
 
+  build:webmail:
+    desc: Build the webmail Docker image (production)
+    cmds:
+      - docker compose -f docker-compose.yml build webmail
+
+  build:website:
+    desc: Build the website server binary
+    cmds:
+      - go build -o build/tools/website ./cmd/website
+    sources:
+      - cmd/website/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/website
+
   build:console:
     desc: Build the console admin tool (auto-detects OS/arch)
     vars:
@@ -153,14 +133,44 @@ tasks:
     desc: Build console for all platforms
     deps: [build:console:darwin-arm64, build:console:darwin-amd64, build:console:linux-arm64, build:console]
 
-  run:console:
-    desc: Run the console admin tool without building (development mode)
-    cmds:
-      - docker compose exec -it -e RESTMAIL_ADMIN_USERNAME=${RESTMAIL_ADMIN_USERNAME:-admin} -e RESTMAIL_ADMIN_PASSWORD=${RESTMAIL_ADMIN_PASSWORD:-admin123!@} api go run ./cmd/console --api http://localhost:8080
-
   build:tools:
     desc: Build all tool binaries (certgen, migrate, seed, website, instantmailcheck)
     deps: [build:certgen, build:migrate, build:seed, build:website, build:instantmailcheck]
+
+  build:certgen:
+    desc: Build the certificate generator
+    cmds:
+      - go build -o build/tools/certgen ./cmd/certgen
+    sources:
+      - cmd/certgen/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/certgen
+
+  build:migrate:
+    desc: Build the migration runner
+    cmds:
+      - go build -o build/tools/migrate ./cmd/migrate
+    sources:
+      - cmd/migrate/**/*.go
+      - internal/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/migrate
+
+  build:seed:
+    desc: Build the test data seeder
+    cmds:
+      - go build -o build/tools/seed ./cmd/seed
+    sources:
+      - cmd/seed/**/*.go
+      - internal/**/*.go
+      - go.mod
+      - go.sum
+    generates:
+      - build/tools/seed
 
   build:instantmailcheck:
     desc: Build the Instant Mail Check CLI tool (auto-detects OS/arch)
@@ -230,58 +240,10 @@ tasks:
     desc: Build Instant Mail Check for all platforms
     deps: [build:instantmailcheck:darwin-arm64, build:instantmailcheck:darwin-amd64, build:instantmailcheck:linux-arm64, build:instantmailcheck:linux-amd64, build:instantmailcheck]
 
-  build:certgen:
-    desc: Build the certificate generator
-    cmds:
-      - go build -o build/tools/certgen ./cmd/certgen
-    sources:
-      - cmd/certgen/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/certgen
+  # ════════════════════════════════════════════════════════
+  # Test
+  # ════════════════════════════════════════════════════════
 
-  build:migrate:
-    desc: Build the migration runner
-    cmds:
-      - go build -o build/tools/migrate ./cmd/migrate
-    sources:
-      - cmd/migrate/**/*.go
-      - internal/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/migrate
-
-  build:seed:
-    desc: Build the test data seeder
-    cmds:
-      - go build -o build/tools/seed ./cmd/seed
-    sources:
-      - cmd/seed/**/*.go
-      - internal/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/seed
-
-  build:webmail:
-    desc: Build the webmail Docker image (production)
-    cmds:
-      - docker compose -f docker-compose.yml build webmail
-
-  build:website:
-    desc: Build the website server binary
-    cmds:
-      - go build -o build/tools/website ./cmd/website
-    sources:
-      - cmd/website/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/website
-
-  # ── Test ───────────────────────────────────────────────
   test:
     desc: Run unit tests
     cmds:
@@ -315,7 +277,10 @@ tasks:
       - task: test:unit
       - task: test:e2e
 
-  # ── Code Quality ──────────────────────────────────────
+  # ════════════════════════════════════════════════════════
+  # Code Quality
+  # ════════════════════════════════════════════════════════
+
   fmt:
     desc: Format Go source code
     cmds:
@@ -337,13 +302,16 @@ tasks:
       - go mod tidy
       - go mod verify
 
-  # ── start:<service> ────────────────────────────────────
+  # ════════════════════════════════════════════════════════
+  # start:<service>
   #
   # Each task starts exactly one container and declares deps on the tasks
   # for its prerequisites. Docker Compose's own depends_on handles fine-
   # grained health/completion checks; the task deps express the graph so
   # that `task start:api` automatically brings up postgres, dnsmasq, etc.
-  #
+  # ════════════════════════════════════════════════════════
+
+  # ── Infrastructure ──────────────────────────────────────
   start:postgres:
     desc: Start all PostgreSQL instances
     deps: [start:postgres-mail1, start:postgres-mail2, start:postgres-mail3]
@@ -384,6 +352,7 @@ tasks:
     cmds:
       - docker compose up -d --build --force-recreate certgen
 
+  # ── Mail ────────────────────────────────────────────────
   start:dovecot-mail1:
     desc: Start Dovecot for mail1.test
     deps: [start:postgres-mail1, start:certgen]
@@ -408,6 +377,7 @@ tasks:
     cmds:
       - docker compose up -d --build --force-recreate postfix-mail2
 
+  # ── API ─────────────────────────────────────────────────
   start:api:
     desc: Start the REST API (waits for health endpoint)
     deps: [start:postgres-mail3, start:dnsmasq, start:js-filter]
@@ -415,36 +385,7 @@ tasks:
       - docker compose up -d --build --force-recreate api
       - task: health:wait
 
-  start:webmail:
-    desc: Start the webmail frontend (production nginx)
-    deps: [start:api]
-    cmds:
-      - docker compose -f webmail/docker-compose.yml up -d --build --force-recreate webmail
-
-  start:webmail-dev:
-    desc: Start the webmail frontend with Vite HMR (hot reload)
-    deps: [start:api]
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml up -d --build --force-recreate webmail
-
-  start:website:
-    desc: Start the project website
-    deps: [net:ensure]
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml up -d --build --force-recreate website
-
-  start:website-dev:
-    desc: Start the project website with live source mount (dev)
-    deps: [net:ensure]
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
-
-  start:admin:dev:
-    desc: Start the admin frontend with Vite HMR (hot reload)
-    deps: [start:api]
-    cmds:
-      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
-
+  # ── Gateways ────────────────────────────────────────────
   start:smtp-gateway:
     desc: Start the SMTP gateway
     deps: [start:api, start:certgen]
@@ -463,7 +404,44 @@ tasks:
     cmds:
       - docker compose up -d --build --force-recreate pop3-gateway
 
-  # ── stop:<service> ─────────────────────────────────────
+  # ── Webmail ─────────────────────────────────────────────
+  start:webmail:
+    desc: Start the webmail frontend (production nginx)
+    deps: [start:api]
+    cmds:
+      - docker compose -f webmail/docker-compose.yml up -d --build --force-recreate webmail
+
+  start:webmail:dev:
+    desc: Start the webmail frontend with Vite HMR (hot reload)
+    deps: [start:api]
+    cmds:
+      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml up -d --build --force-recreate webmail
+
+  # ── Website ─────────────────────────────────────────────
+  start:website:
+    desc: Start the project website
+    deps: [net:ensure]
+    cmds:
+      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml up -d --build --force-recreate website
+
+  start:website:dev:
+    desc: Start the project website with live source mount (dev)
+    deps: [net:ensure]
+    cmds:
+      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
+
+  # ── Admin ───────────────────────────────────────────────
+  start:admin:dev:
+    desc: Start the admin frontend with Vite HMR (hot reload)
+    deps: [start:api]
+    cmds:
+      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
+
+  # ════════════════════════════════════════════════════════
+  # stop:<service>
+  # ════════════════════════════════════════════════════════
+
+  # ── Infrastructure ──────────────────────────────────────
   stop:postgres:
     desc: Stop all PostgreSQL instances
     cmds:
@@ -479,6 +457,7 @@ tasks:
     cmds:
       - docker compose stop js-filter
 
+  # ── Mail ────────────────────────────────────────────────
   stop:dovecot-mail1:
     desc: Stop Dovecot for mail1.test
     cmds:
@@ -499,31 +478,13 @@ tasks:
     cmds:
       - docker compose stop postfix-mail2
 
+  # ── API ─────────────────────────────────────────────────
   stop:api:
     desc: Stop the REST API
     cmds:
       - docker compose stop api
 
-  stop:webmail:
-    desc: Stop the webmail frontend
-    cmds:
-      - docker compose -f webmail/docker-compose.yml stop webmail
-
-  stop:website:
-    desc: Stop the project website
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml stop website
-
-  stop:website-dev:
-    desc: Stop the project website (dev)
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml stop website
-
-  stop:admin:dev:
-    desc: Stop the admin frontend
-    cmds:
-      - docker compose -f admin/docker-compose.yml stop admin
-
+  # ── Gateways ────────────────────────────────────────────
   stop:smtp-gateway:
     desc: Stop the SMTP gateway
     cmds:
@@ -539,9 +500,48 @@ tasks:
     cmds:
       - docker compose stop pop3-gateway
 
-  # ── restart:<service> ──────────────────────────────────
+  # ── Webmail ─────────────────────────────────────────────
+  stop:webmail:
+    desc: Stop the webmail frontend
+    cmds:
+      - docker compose -f webmail/docker-compose.yml stop webmail
+
+  stop:webmail:dev:
+    desc: Stop webmail containers (Vite HMR)
+    cmds:
+      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml stop
+
+  # ── Website ─────────────────────────────────────────────
+  stop:website:
+    desc: Stop the project website
+    cmds:
+      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml stop website
+
+  stop:website:dev:
+    desc: Stop the project website (dev)
+    cmds:
+      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml stop website
+
+  # ── Admin ───────────────────────────────────────────────
+  stop:admin:dev:
+    desc: Stop the admin frontend
+    cmds:
+      - docker compose -f admin/docker-compose.yml stop admin
+
+  # ── Monitoring ──────────────────────────────────────────
+  stop:monitoring:
+    desc: Stop monitoring containers
+    cmds:
+      - docker compose -f monitoring/docker-compose.yml stop
+
+  # ════════════════════════════════════════════════════════
+  # restart:<service>
+  #
   # Rebuilds and restarts a single container. Prerequisites are assumed
   # to already be running (use start:<service> if they are not).
+  # ════════════════════════════════════════════════════════
+
+  # ── Infrastructure ──────────────────────────────────────
   restart:postgres:
     desc: Restart all PostgreSQL instances
     cmds:
@@ -557,6 +557,7 @@ tasks:
     cmds:
       - docker compose up -d --build --force-recreate js-filter
 
+  # ── Mail ────────────────────────────────────────────────
   restart:dovecot-mail1:
     desc: Restart Dovecot for mail1.test
     cmds:
@@ -577,36 +578,13 @@ tasks:
     cmds:
       - docker compose restart postfix-mail2
 
+  # ── API ─────────────────────────────────────────────────
   restart:api:
     desc: Rebuild and restart the REST API (air hot reload)
     cmds:
       - docker compose up -d --build --force-recreate api
 
-  restart:webmail:
-    desc: Rebuild and restart the webmail frontend
-    cmds:
-      - docker compose -f webmail/docker-compose.yml up -d --build --force-recreate webmail
-
-  restart:webmail-dev:
-    desc: Rebuild and restart the webmail frontend (Vite HMR)
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml up -d --build --force-recreate webmail
-
-  restart:website:
-    desc: Restart the project website
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml restart website
-
-  restart:website-dev:
-    desc: Restart the project website (dev)
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
-
-  restart:admin:dev:
-    desc: Rebuild and restart the admin frontend (Vite HMR)
-    cmds:
-      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
-
+  # ── Gateways ────────────────────────────────────────────
   restart:smtp-gateway:
     desc: Rebuild and restart the SMTP gateway (air hot reload)
     cmds:
@@ -622,36 +600,49 @@ tasks:
     cmds:
       - docker compose up -d --build --force-recreate pop3-gateway
 
-  restart:dev:core:
-    desc: Restart core containers (root compose)
+  # ── Webmail ─────────────────────────────────────────────
+  restart:webmail:
+    desc: Rebuild and restart the webmail frontend
     cmds:
-      - docker compose -f docker-compose.yml -f docker-compose.override.yml restart
+      - docker compose -f webmail/docker-compose.yml up -d --build --force-recreate webmail
 
-  restart:dev:webmail:
-    desc: Restart webmail containers
+  restart:webmail:dev:
+    desc: Rebuild and restart the webmail frontend (Vite HMR)
     cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml restart
+      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml up -d --build --force-recreate webmail
 
-  restart:dev:website:
-    desc: Restart website containers
+  # ── Website ─────────────────────────────────────────────
+  restart:website:
+    desc: Restart the project website
     cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml restart
+      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml restart website
 
-  restart:dev:monitoring:
+  restart:website:dev:
+    desc: Restart the project website (dev)
+    cmds:
+      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
+
+  # ── Admin ───────────────────────────────────────────────
+  restart:admin:dev:
+    desc: Rebuild and restart the admin frontend (Vite HMR)
+    cmds:
+      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
+
+  # ── Monitoring ──────────────────────────────────────────
+  restart:monitoring:
     desc: Restart monitoring containers
     cmds:
-      - docker compose -f monitoring/docker-compose.yml restart
+      - docker compose -p $COMPOSE_PROJECT_NAME -f monitoring/docker-compose.yml restart
 
-  restart:dev:
-    desc: Restart all running dev containers (preserves dep order)
-    deps: [restart:dev:monitoring, restart:dev:webmail, restart:dev:website, restart:dev:core]
+  # ════════════════════════════════════════════════════════
+  # dev / stop / restart (all services)
+  # ════════════════════════════════════════════════════════
 
-  # ── dev / down ─────────────────────────────────────────
   dev:
     desc: Start the full dev environment (hot reload via air + Vite)
     deps:
-      - start:webmail-dev
-      - start:website-dev
+      - start:webmail:dev
+      - start:website:dev
       - start:admin:dev
       - start:smtp-gateway
       - start:imap-gateway
@@ -675,15 +666,41 @@ tasks:
         echo ""
         echo "  task start:<service>    start a service + its deps"
         echo "  task stop:<service>     stop a single container"
+        echo "  task stop               stop all containers (preserves them)"
         echo "  task restart:<service>  rebuild + restart a container"
         echo "  task logs               tail all container logs"
         echo "  task ps                 show container status"
-        echo "  task down               stop everything"
+        echo "  task down               stop + remove all containers"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  stop:
+    desc: Stop all containers without removing them (fast restart with `task dev`)
+    deps: [stop:core, stop:dev, stop:monitoring]
+
+  stop:core:
+    desc: Stop all core containers (root compose)
+    cmds:
+      - docker compose -f docker-compose.yml -f docker-compose.override.yml stop
+
+  stop:dev:
+    desc: Stop all dev containers without removing them (fast restart with `task dev`)
+    deps: [stop:core, stop:webmail:dev, stop:website:dev, stop:admin:dev, stop:monitoring]
+
+  restart:dev:
+    desc: Restart all running dev containers (preserves dep order)
+    deps: [restart:dev:core, restart:webmail:dev, restart:website:dev, restart:admin:dev, restart:monitoring]
+
+  restart:dev:core:
+    desc: Restart core containers (root compose)
+    deps: [restart:api, restart:smtp-gateway, restart:imap-gateway, restart:pop3-gateway]
+
+  # ════════════════════════════════════════════════════════
+  # down / down:clean / reset
+  # ════════════════════════════════════════════════════════
 
   down:
     desc: Stop and remove all containers (including orphans)
-    deps: [down:monitoring, down:webmail-dev, down:website-dev, down:core]
+    deps: [down:core, down:webmail:dev, down:website:dev, down:monitoring]
 
   down:core:
     desc: Stop and remove core containers (root compose)
@@ -695,7 +712,7 @@ tasks:
     cmds:
       - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans
 
-  down:webmail-dev:
+  down:webmail:dev:
     desc: Stop and remove webmail dev containers (Vite HMR)
     cmds:
       - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans
@@ -705,7 +722,7 @@ tasks:
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml down --remove-orphans
 
-  down:website-dev:
+  down:website:dev:
     desc: Stop and remove website dev containers
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml down --remove-orphans
@@ -714,6 +731,10 @@ tasks:
     desc: Stop and remove monitoring containers
     cmds:
       - docker compose -f monitoring/docker-compose.yml down --remove-orphans
+
+  down:clean:
+    desc: Stop containers, remove volumes and orphans (destructive)
+    deps: [down:clean:core, down:clean:webmail:dev, down:clean:website:dev, down:clean:monitoring]
 
   down:clean:core:
     desc: Stop core containers and remove volumes (destructive)
@@ -725,7 +746,7 @@ tasks:
     cmds:
       - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans -v
 
-  down:clean:webmail-dev:
+  down:clean:webmail:dev:
     desc: Stop webmail dev containers and remove volumes (destructive)
     cmds:
       - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans -v
@@ -735,7 +756,7 @@ tasks:
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml down --remove-orphans -v
 
-  down:clean:website-dev:
+  down:clean:website:dev:
     desc: Stop website dev containers and remove volumes (destructive)
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml down --remove-orphans -v
@@ -744,10 +765,6 @@ tasks:
     desc: Stop monitoring containers and remove volumes (destructive)
     cmds:
       - docker compose -f monitoring/docker-compose.yml down --remove-orphans -v
-
-  down:clean:
-    desc: Stop containers, remove volumes and orphans (destructive)
-    deps: [down:clean:monitoring, down:clean:webmail-dev, down:clean:website-dev, down:clean:core]
 
   reset:
     desc: Full teardown — remove all containers, orphans, then prune stale names
@@ -762,35 +779,28 @@ tasks:
       - docker container prune -f
       - docker network prune -f
 
-  # ── Logs ───────────────────────────────────────────────
+  # ════════════════════════════════════════════════════════
+  # Logs
+  # ════════════════════════════════════════════════════════
+
+  logs:
+    desc: Tail logs from all containers
+    deps: [logs:core, logs:webmail, logs:website, logs:monitoring]
+
   logs:core:
     desc: Tail logs from core containers
     cmds:
       - docker compose -f docker-compose.yml -f docker-compose.override.yml logs -f --tail=100
 
-  logs:webmail:
-    desc: Tail logs from webmail containers
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml logs -f --tail=100
-
-  logs:website:
-    desc: Tail logs from website containers
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml logs -f --tail=100
-
-  logs:monitoring:
-    desc: Tail logs from monitoring containers
-    cmds:
-      - docker compose -f monitoring/docker-compose.yml logs -f --tail=100
-
-  logs:
-    desc: Tail logs from all containers
-    deps: [logs:monitoring, logs:webmail, logs:website, logs:core]
-
   logs:api:
     desc: Tail logs from the API container
     cmds:
       - docker compose logs -f --tail=100 api
+
+  logs:gateways:
+    desc: Tail logs from all protocol gateways
+    cmds:
+      - docker compose logs -f --tail=100 smtp-gateway imap-gateway pop3-gateway
 
   logs:smtp-gateway:
     desc: Tail logs from the SMTP gateway
@@ -807,25 +817,43 @@ tasks:
     cmds:
       - docker compose logs -f --tail=100 pop3-gateway
 
+  logs:mail:
+    desc: Tail logs from mail containers
+    cmds:
+      - docker compose logs -f --tail=100 postfix-mail1 dovecot-mail1 postfix-mail2 dovecot-mail2
+
+  logs:webmail:
+    desc: Tail logs from webmail containers
+    cmds:
+      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml logs -f --tail=100
+
   logs:webmail:container:
     desc: Tail logs from the webmail container
     cmds:
       - docker compose -f webmail/docker-compose.yml logs -f --tail=100 webmail
+
+  logs:website:
+    desc: Tail logs from website containers
+    cmds:
+      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml logs -f --tail=100
 
   logs:website:container:
     desc: Tail logs from the website container
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml logs -f --tail=100 website
 
-  logs:gateways:
-    desc: Tail logs from all protocol gateways
+  logs:monitoring:
+    desc: Tail logs from monitoring containers
     cmds:
-      - docker compose logs -f --tail=100 smtp-gateway imap-gateway pop3-gateway
+      - docker compose -f monitoring/docker-compose.yml logs -f --tail=100
 
-  logs:mail:
-    desc: Tail logs from mail containers
-    cmds:
-      - docker compose logs -f --tail=100 postfix-mail1 dovecot-mail1 postfix-mail2 dovecot-mail2
+  # ════════════════════════════════════════════════════════
+  # ps (container status)
+  # ════════════════════════════════════════════════════════
+
+  ps:
+    desc: Show running containers
+    deps: [ps:core, ps:webmail, ps:website, ps:monitoring]
 
   ps:core:
     desc: Show running core containers
@@ -847,11 +875,10 @@ tasks:
     cmds:
       - docker compose -f monitoring/docker-compose.yml ps
 
-  ps:
-    desc: Show running containers
-    deps: [ps:monitoring, ps:webmail, ps:website, ps:core]
+  # ════════════════════════════════════════════════════════
+  # Database
+  # ════════════════════════════════════════════════════════
 
-  # ── Database ───────────────────────────────────────────
   db:migrate:
     desc: Run database migrations for mail3 (API handles its own schema)
     cmds:
@@ -886,27 +913,18 @@ tasks:
     cmds:
       - docker compose exec postgres-mail2 psql -U restmail -d restmail
 
-  # ── Certificates ───────────────────────────────────────
-  certs:generate:
-    desc: Generate self-signed CA and dev certificates
-    cmds:
-      - bash docker/certs/generate-certs.sh
+  # ════════════════════════════════════════════════════════
+  # Utilities
+  # ════════════════════════════════════════════════════════
 
-  # ── Setup ──────────────────────────────────────────────
-  setup:
-    desc: Install dependencies, build all binaries, verify toolchain
+  net:ensure:
+    desc: Ensure the shared mailnet docker network exists
+    run: once
     cmds:
-      - echo "Checking Go..."
-      - go version
-      - echo "Downloading Go modules..."
-      - go mod download
-      - echo "Installing webmail dependencies..."
-      - cd webmail && npm ci
-      - echo "Verifying build..."
-      - go build ./...
-      - echo "Setup complete."
+      - |
+        docker network inspect "${COMPOSE_PROJECT_NAME}_mailnet" >/dev/null 2>&1 || \
+          docker network create --driver bridge --subnet 172.20.0.0/16 "${COMPOSE_PROJECT_NAME}_mailnet"
 
-  # ── Health Check ─────────────────────────────────────────
   health:wait:
     desc: Wait for the API health endpoint to respond (up to 60s)
     cmds:
@@ -923,9 +941,63 @@ tasks:
         echo "ERROR: API did not become healthy within 60 seconds."
         exit 1
 
-  # ── Clean ──────────────────────────────────────────────
+  run:console:
+    desc: Run the console admin tool without building (development mode)
+    cmds:
+      - docker compose exec -it -e RESTMAIL_ADMIN_USERNAME=${RESTMAIL_ADMIN_USERNAME:-admin} -e RESTMAIL_ADMIN_PASSWORD=${RESTMAIL_ADMIN_PASSWORD:-admin123!@} api go run ./cmd/console --api http://localhost:8080
+
+  certs:generate:
+    desc: Generate self-signed CA and dev certificates
+    cmds:
+      - bash docker/certs/generate-certs.sh
+
+  setup:
+    desc: Install dependencies, build all binaries, verify toolchain
+    cmds:
+      - echo "Checking Go..."
+      - go version
+      - echo "Downloading Go modules..."
+      - go mod download
+      - echo "Installing webmail dependencies..."
+      - cd webmail && npm ci
+      - echo "Verifying build..."
+      - go build ./...
+      - echo "Setup complete."
+
   clean:
     desc: Remove build artifacts
     cmds:
       - rm -rf build/
       - rm -f coverage.out coverage.html
+
+  container:purge:
+    desc: Remove legacy containers from previous layouts (safe; containers only)
+    cmds:
+      - task: down
+      - |
+        ids=$(docker ps -aq --filter "name=^/${COMPOSE_PROJECT_NAME}-")
+        if [ -n "$ids" ]; then
+          docker rm -f $ids
+        fi
+
+  container:purge:hard:
+    desc: Remove legacy containers + volumes + shared network (destructive)
+    cmds:
+      - task: down:clean
+      - |
+        ids=$(docker ps -aq --filter "name=^/${COMPOSE_PROJECT_NAME}-")
+        if [ -n "$ids" ]; then
+          docker rm -f $ids
+        fi
+      - |
+        docker network rm "${COMPOSE_PROJECT_NAME}_mailnet" >/dev/null 2>&1 || true
+
+  compose:purge:
+    desc: Alias for container:purge
+    cmds:
+      - task: container:purge
+
+  compose:purge:hard:
+    desc: Alias for container:purge:hard
+    cmds:
+      - task: container:purge:hard
