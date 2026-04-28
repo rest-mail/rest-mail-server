@@ -60,7 +60,7 @@ Deliver mail from `ref.test` to `mail3.test` (RESTMAIL domain) and back:
 ```bash
 # Send from reference to RESTMAIL (requires both stacks on the same Docker network)
 swaks --to alice@mail3.test --from bob@ref.test \
-      --server 172.20.0.13 --port 25
+      --server 10.99.0.13 --port 25
 ```
 
 ### 3. Client auto-discovery
@@ -69,6 +69,6 @@ Configure Thunderbird with `alice@ref.test`. Confirm that autoconfig resolves co
 
 ## Notes
 
-- The reference stack runs on the `172.21.0.0/24` network, separate from the main RESTMAIL `172.20.0.0/16` network.
+- The reference stack runs on the `172.21.0.0/24` network, separate from the main RESTMAIL `10.99.0.0/16` network.
 - To test cross-stack delivery, connect both compose networks with a Docker network alias or use `--network` flags.
 - docker-mailserver stores accounts in `/tmp/docker-mailserver/` inside the container (persisted via the `ref-mail-config` volume).
