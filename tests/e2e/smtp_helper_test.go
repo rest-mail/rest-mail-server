@@ -412,7 +412,7 @@ func (pc *pop3Conn) stat(t *testing.T) string {
 func resolveDomain(t *testing.T, domain string) []string {
 	t.Helper()
 	// Use net.LookupHost which will use the system resolver.
-	// In the Docker environment, containers use dnsmasq (172.20.0.3).
+	// In the Docker environment, containers use dnsmasq (10.99.0.3).
 	addrs, err := net.LookupHost(domain)
 	if err != nil {
 		t.Logf("DNS lookup for %s failed: %v (may not be using dnsmasq)", domain, err)

@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	imapsGWAddr = envOr("IMAPS_GW_ADDR", "172.20.0.15:993")
+	imapsGWAddr = envOr("IMAPS_GW_ADDR", "10.99.0.15:993")
 )
 
 func testStage10Verification(t *testing.T) {

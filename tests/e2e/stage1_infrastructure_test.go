@@ -106,9 +106,9 @@ func testStage1Infrastructure(t *testing.T) {
 			name string
 			ip   string
 		}{
-			{"mail1.test", "172.20.0.11"},
-			{"mail2.test", "172.20.0.12"},
-			{"mail3.test", "172.20.0.13"},
+			{"mail1.test", "10.99.0.11"},
+			{"mail2.test", "10.99.0.12"},
+			{"mail3.test", "10.99.0.13"},
 		}
 		for _, d := range domains {
 			addrs := resolveDomain(t, d.name)
