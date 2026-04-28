@@ -6,16 +6,25 @@ A standalone CLI tool for comprehensive mail server diagnostics, security auditi
 
 1. [Quick Start](#quick-start)
 2. [Why This Tool Exists](#why-this-tool-exists)
-3. [Architecture](#architecture)
-4. [Design Decisions & Rationale](#design-decisions--rationale)
-5. [Tier System](#tier-system)
-6. [All Checks Reference](#all-checks-reference)
-7. [Scoring System](#scoring-system)
-8. [Security Audit Mode](#security-audit-mode)
-9. [Output Formats](#output-formats)
-10. [Files & Code Map](#files--code-map)
-11. [Adding New Checks](#adding-new-checks)
-12. [Roadmap](#roadmap)
+3. [Responsible Use](#responsible-use)
+4. [Architecture](#architecture)
+5. [Design Decisions & Rationale](#design-decisions--rationale)
+6. [Tier System](#tier-system)
+7. [All Checks Reference](#all-checks-reference)
+8. [Scoring System](#scoring-system)
+9. [Security Audit Mode](#security-audit-mode)
+10. [Output Formats](#output-formats)
+11. [Files & Code Map](#files--code-map)
+12. [Adding New Checks](#adding-new-checks)
+13. [Roadmap](#roadmap)
+14. [Troubleshooting Guide](#troubleshooting-guide)
+15. [Security & Privacy Considerations](#security--privacy-considerations)
+16. [CI/CD Integration Examples](#cicd-integration-examples)
+17. [Performance Characteristics](#performance-characteristics)
+18. [Comparison with Similar Tools](#comparison-with-similar-tools)
+19. [FAQ](#faq)
+20. [Glossary](#glossary)
+21. [Quick Reference Card](#quick-reference-card)
 
 ---
 
@@ -94,6 +103,18 @@ The tool is a single Go binary with zero runtime dependencies on the rest-mail A
 - **CI/CD friendly** — just copy the binary, run it, check the exit code
 - **Portable** — cross-compiles to Linux/macOS/Windows, no containers needed
 - **Trustworthy** — you can read every line of code, no data leaves your machine
+
+### Responsible use
+
+Tier 1–3 checks look like a normal external mail client. Tier 4 (`--security-audit`) actively probes for exploitable conditions: rapid bad auth (brute-force detector), RCPT TO enumeration, SMTP smuggling vectors, rate-limiter probing. These are safe but *noisy* — they will trigger fail2ban, IDS alerts, and possibly complaints from your hosting provider if you're not the server owner.
+
+**Only run this tool against mail servers you own or have explicit written permission to test.** Scanning third-party servers without authorization is illegal in most jurisdictions (CFAA in the US, Computer Misuse Act in the UK, similar laws elsewhere) and unethical regardless.
+
+For authorized security research:
+- Start with Tier 1 (the default) on a production schedule; it's passive.
+- Add Tier 2/3 from a designated test account, not shared credentials.
+- Only run Tier 4 with prior coordination — schedule it, document it, notify on-call if your org has one.
+- If you're sharing output externally (bug bounty, consulting report), redact the `Detail` field in JSON output — it can contain banner strings with internal hostnames, IP addresses from PTR lookups, and server version strings.
 
 ---
 
@@ -815,6 +836,38 @@ Colored output grouped by category with lipgloss styling:
 - Remediation advice shown in cyan for FAIL/WARN checks (the `Fix` field)
 - Duration shown in gray next to each check
 
+**Sample output** (abbreviated):
+```
+Instant Mail Check v1.4.2
+Domain: example.com
+
+━━━ DNS Records ━━━
+  [PASS]  MX Records          1 MX: mail.example.com (pri 10)       45ms
+  [PASS]  SPF Record          v=spf1 ip4:203.0.113.5 -all            22ms
+  [WARN]  DKIM Record         1024-bit key (upgrade to 2048)        134ms
+          Fix: Generate new 2048-bit key: opendkim-genkey -s <selector> -b 2048
+  [PASS]  DMARC Record        p=quarantine; rua=...                  31ms
+  [FAIL]  DNSSEC              No AD flag; domain not DNSSEC-signed    18ms
+          Fix: Enable DNSSEC at your registrar
+
+━━━ SMTP / Submission ━━━
+  [PASS]  SMTP Banner         220 mail.example.com ESMTP (generic)    98ms
+  [PASS]  STARTTLS (25)       TLSv1.3 with chacha20-poly1305         312ms
+  [PASS]  TLS Cert (25)       Let's Encrypt, 62 days remaining       140ms
+  [WARN]  Submission (587)    AUTH advertised before STARTTLS        180ms
+          Fix: Set smtpd_tls_auth_only=yes in Postfix main.cf
+
+━━━ Security ━━━
+  [PASS]  Open Relay          Rejected (550)                         260ms
+  [FAIL]  Banner Info Leak    Reveals: "Postfix 3.5.6"                22ms
+          Fix: smtpd_banner = $myhostname ESMTP (no version)
+
+━━━ Summary ━━━
+  Score: 78/100 (Good)
+  Checks: 24 PASS · 4 WARN · 2 FAIL · 1 SKIP
+  Duration: 8.4s
+```
+
 ### Verbose (`-v`)
 
 Same as terminal but includes `Detail` field for every check — shows raw responses, full banners, certificate details, etc.
@@ -1135,3 +1188,657 @@ These features are not yet implemented but would add value:
 - **Parallel check execution** — Run independent checks concurrently (currently sequential within tiers)
 - **Custom DNSBL lists** — Allow users to specify additional blacklists via config file
 - **SMTP TLS reporting** — Generate TLS-RPT compatible JSON reports from check results
+
+---
+
+## Troubleshooting Guide
+
+### Common Issues & Solutions
+
+#### "Connection refused" or "Connection timed out" on all checks
+
+**Symptoms:** All SMTP/IMAP/POP3 checks fail with connection errors  
+**Common Causes:**
+- Firewall blocking outbound connections on mail ports (25, 587, 993, 995)
+- ISP blocking port 25 (common on residential connections)
+- Target server down or unreachable
+
+**Solutions:**
+```bash
+# Test if port 25 is blocked by your ISP
+telnet gmail-smtp-in.l.google.com 25
+
+# If blocked, try from a different network or use --timeout 30s
+# For tier 2/3 tests, port 587/993 may work even if 25 is blocked
+```
+
+#### DKIM check shows "not found" but I know it's configured
+
+**Symptoms:** DKIM check fails despite having DKIM configured  
+**Common Causes:**
+- Using a non-standard selector name not in the 17 common selectors list
+- DNS propagation delay after recent DKIM setup
+- Misconfigured DNS (selector._domainkey TXT record missing)
+
+**Solutions:**
+```bash
+# Specify your custom selector
+./instantmailcheck example.com --dkim-selector mycustomselector
+
+# Verify DNS directly
+dig TXT mycustomselector._domainkey.example.com
+```
+
+#### "Open Relay" false positive
+
+**Symptoms:** Open relay check fails, but server is properly secured  
+**Common Causes:**
+- Relay check attempts to external address that happens to be accepted (e.g., backup MX)
+- Server configured to accept mail for hosted domains but test domain not recognized
+
+**Verification:**
+```bash
+# Manual test - should be rejected
+telnet your-mx-server 25
+HELO test
+MAIL FROM:<test@external.com>
+RCPT TO:<test@external.com>
+# Should return 550 or similar rejection
+```
+
+#### Score 0% with valid-looking domain
+
+**Symptoms:** All checks fail, score is 0%  
+**Common Causes:**
+- Typo in domain name
+- Domain has no MX records (e.g., parked domain)
+- DNS resolution issues on checking machine
+
+**Diagnostic:**
+```bash
+# Verify domain has MX records
+dig MX example.com
+
+# Check if DNS is working
+./instantmailcheck google.com --checks dns  # Should pass
+```
+
+#### IMAP authentication succeeds but round-trip fails
+
+**Symptoms:** IMAP login passes, but round-trip test times out  
+**Common Causes:**
+- Mail delivery delayed in queue
+- User's mailbox filters/moves test message to folder other than INBOX
+- IMAP quota exceeded
+- Antispam holding message in quarantine
+
+**Solutions:**
+```bash
+# Increase round-trip polling timeout
+./instantmailcheck example.com --user test@example.com --pass secret --timeout 60s
+
+# Check if message arrives in spam/junk folder in your mail client
+```
+
+#### Blacklist check fails immediately with DNS error
+
+**Symptoms:** All blacklist checks return "Error" status  
+**Common Causes:**
+- DNS resolver not responding to TXT queries
+- DNS rate limiting blocking queries
+- Corporate DNS filtering DNSBL queries
+
+**Diagnostic:**
+```bash
+# Test DNSBL lookup manually
+dig +short 2.0.0.127.zen.spamhaus.org
+# Should return 127.0.0.x if listed, NXDOMAIN if clean
+```
+
+---
+
+## Security & Privacy Considerations
+
+### Credential Handling
+
+The tool handles credentials as follows:
+
+1. **Password in command line:** When using `--pass`, the password appears in:
+   - Process list (`ps aux`) - visible to all users on the system
+   - Shell history (bash_history, zsh_history)
+   - System audit logs (if process auditing enabled)
+
+   **Recommendation:** Use environment variables or secure input:
+   ```bash
+   # Option 1: Environment variable (not visible in ps)
+   export IMC_PASS="yourpassword"
+   ./instantmailcheck example.com --user test@example.com --pass "$IMC_PASS"
+   unset IMC_PASS
+   
+   # Option 2: Interactive input (not implemented yet - future improvement)
+   ```
+
+2. **Password in memory:** Passwords are held in memory during execution and cleared after. No password caching occurs.
+
+3. **Network transmission:**
+   - PLAIN/LOGIN mechanisms send base64-encoded credentials (not encrypted)
+   - Always ensure STARTTLS completes before authentication
+   - The tool warns if AUTH is advertised on unencrypted connections
+
+### Test Email Content
+
+The test emails sent during Tier 2/3 checks contain:
+- **Subject:** `InstantMailCheck test <timestamp>`
+- **Body:** Plain text with unique identifier for round-trip correlation
+- **From:** Generated test address (not your real email)
+- **Headers:** Standard email headers plus `X-InstantMailCheck: true`
+
+**No sensitive data is included in test emails.**
+
+### DNS Queries
+
+The tool sends DNS queries directly to your system's configured resolvers:
+- Queries are not logged by the tool
+- Some DNSBL queries may be logged by your DNS provider
+- No queries are sent to third-party analytics or tracking services
+
+### Network Connections
+
+All network connections are made directly to the target mail server:
+- **No proxy servers** - connections are direct
+- **No callback mechanisms** - the tool doesn't require inbound connections
+- **No external service dependencies** - except DNS resolution
+
+---
+
+## CI/CD Integration Examples
+
+### GitHub Actions
+
+```yaml
+# .github/workflows/mail-health-check.yml
+name: Mail Server Health Check
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # Daily at 9am
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download InstantMailCheck
+        run: |
+          curl -L -o instantmailcheck https://github.com/restmail/restmail/releases/latest/download/instantmailcheck-linux-amd64
+          chmod +x instantmailcheck
+      
+      - name: Run Health Check (Tier 1)
+        run: |
+          ./instantmailcheck ${{ secrets.MAIL_DOMAIN }} \
+            --json \
+            --threshold 75 \
+            --output report.json
+      
+      - name: Parse Results
+        id: results
+        run: |
+          SCORE=$(jq -r '.score' report.json)
+          PERCENTAGE=$(jq -r '.percentage' report.json)
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "percentage=$PERCENTAGE" >> $GITHUB_OUTPUT
+      
+      - name: Create Issue on Failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Mail Server Health Check Failed',
+              body: `Score: ${{ steps.results.outputs.percentage }}% (threshold: 75%)`
+            })
+      
+      - name: Upload Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: mail-check-report
+          path: report.json
+```
+
+### GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+mail_health_check:
+  stage: test
+  image: alpine:latest
+  before_script:
+    - apk add --no-cache curl jq
+    - curl -L -o /usr/local/bin/instantmailcheck https://gitlab.com/api/v4/projects/xxx/packages/generic/instantmailcheck/latest/instantmailcheck-linux-amd64
+    - chmod +x /usr/local/bin/instantmailcheck
+  script:
+    - |
+      instantmailcheck "$MAIL_DOMAIN" \
+        --json \
+        --threshold 75 \
+        || exit_code=$?
+      
+      if [ "${exit_code:-0}" -eq 2 ]; then
+        echo "Health check failed - score below threshold"
+        exit 1
+      fi
+  artifacts:
+    reports:
+      junit: report.xml  # Convert JSON to JUnit for GitLab
+    expire_in: 1 week
+  only:
+    - schedules
+    - web
+```
+
+### Jenkins Pipeline
+
+```groovy
+// Jenkinsfile
+pipeline {
+    agent any
+    
+    environment {
+        MAIL_DOMAIN = 'example.com'
+        IMC_THRESHOLD = '75'
+    }
+    
+    stages {
+        stage('Download Tool') {
+            steps {
+                sh '''
+                    curl -L -o instantmailcheck https://releases.example.com/instantmailcheck-linux-amd64
+                    chmod +x instantmailcheck
+                '''
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                sh '''
+                    ./instantmailcheck $MAIL_DOMAIN \
+                        --markdown \
+                        --threshold $IMC_THRESHOLD \
+                        --output mail-report.md
+                '''
+            }
+        }
+        
+        stage('Publish Report') {
+            steps {
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: 'mail-report.md',
+                    reportName: 'Mail Health Report'
+                ])
+            }
+        }
+    }
+    
+    post {
+        failure {
+            emailext (
+                subject: "Mail Server Health Check Failed: ${env.JOB_NAME}",
+                body: "Score below threshold. See attached report.",
+                to: "${env.CHANGE_AUTHOR_EMAIL}"
+            )
+        }
+    }
+}
+```
+
+### Kubernetes CronJob
+
+```yaml
+# mail-check-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mail-health-check
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: mail-check
+            image: alpine:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              apk add --no-cache curl jq
+              curl -L -o /tmp/imc https://example.com/instantmailcheck-linux-amd64
+              chmod +x /tmp/imc
+              /tmp/imc "$MAIL_DOMAIN" --json --threshold 75
+            env:
+            - name: MAIL_DOMAIN
+              value: "example.com"
+          restartPolicy: OnFailure
+```
+
+---
+
+## Performance Characteristics
+
+### Execution Time Breakdown
+
+Typical execution times (with default 10s timeout):
+
+| Tier | Duration | Bottleneck |
+|------|----------|------------|
+| Tier 1 (Public) | 5-15s | DNS lookups, TCP connections |
+| Tier 2 (+ Send) | 10-25s | SMTP delivery latency |
+| Tier 3 (+ Auth) | 20-45s | IMAP polling, round-trip |
+| Tier 4 (+ Audit) | 25-60s | Multiple connection attempts |
+
+**DNS lookups** are the most time-consuming operation due to:
+- Sequential MX → A/AAAA → PTR lookups
+- 12 parallel blacklist queries (fast, but waits for all)
+- DNS timeout handling (2-3s per query)
+
+**Optimization:** Use `--timeout 5s` for faster checks (may miss slow servers).
+
+### Resource Usage
+
+| Resource | Typical Usage | Peak |
+|----------|---------------|------|
+| Memory | 10-20 MB | 50 MB (large responses) |
+| CPU | Low (< 5%) | Brief spikes during crypto |
+| Network | ~50 KB per run | ~200 KB with verbose output |
+| File Descriptors | 10-20 | Parallel connections |
+
+### Parallelism
+
+Currently, checks within each phase are **sequential**:
+```
+Phase 1: DNS checks run sequentially (not parallel)
+Phase 2: Connection checks run sequentially
+...
+```
+
+**Exceptions:**
+- Blacklist lookups use goroutines (12 parallel DNS queries)
+- DKIM selector brute-force uses parallel queries
+
+**Future:** Phase 8 roadmap includes full parallel check execution.
+
+---
+
+## Comparison with Similar Tools
+
+| Feature | InstantMailCheck | MXToolbox | Mail-Tester | TestSSL.sh |
+|---------|------------------|-----------|-------------|------------|
+| **Standalone CLI** | ✅ Yes | ❌ Web only | ❌ Web only | ✅ Yes |
+| **Open Source** | ✅ Yes | ❌ No | ❌ No | ✅ Yes |
+| **Free** | ✅ Yes | Partial | Partial | ✅ Yes |
+| **CI/CD Integration** | ✅ Native | ❌ Manual | ❌ Manual | ✅ Scriptable |
+| **IMAP/POP3 Testing** | ✅ Full | ❌ No | ❌ No | ❌ No |
+| **Authenticated Tests** | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| **SMTP Smuggling Test** | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| **Round-Trip Delivery** | ✅ Yes | ❌ No | ⚠️ Basic | ❌ No |
+| **Header Analysis** | ✅ Deep | ❌ No | ⚠️ Basic | ❌ No |
+| **Security Audit Mode** | ✅ Built-in | ❌ No | ❌ No | ✅ TLS-focused |
+| **Blacklist Checking** | ✅ 15 lists | ✅ Yes | ❌ No | ❌ No |
+| **Score/Grading** | ✅ Weighted | ❌ No | ✅ 0-10 | ❌ No |
+| **No Registration** | ✅ Yes | ❌ Required | ⚠️ Optional | ✅ Yes |
+| **Rate Limiting** | ✅ Tests | ❌ Aggressive | ❌ Aggressive | ✅ N/A |
+
+**When to use each:**
+
+- **InstantMailCheck:** Comprehensive audits, CI/CD pipelines, authenticated testing, security research
+- **MXToolbox:** Quick external checks, blacklist monitoring, visual DNS analysis
+- **Mail-Tester:** Spam filter testing, content scoring, deliverability prediction
+- **TestSSL.sh:** Deep TLS/SSL analysis, cipher suite auditing, certificate inspection
+
+---
+
+## FAQ
+
+**Q: Can I run this against Gmail, Outlook, or another provider I don't own?**
+A: Tier 1 checks only (no `--send-to`, `--user`, `--pass`, or `--security-audit`). Public DNS and SMTP-banner probing is routine traffic; Tier 2+ sends mail or authenticates against their servers, and Tier 4 behavior is what rate-limiters are designed to block. Even Tier 1 against very-large providers may set off heuristics if run repeatedly. See [Responsible Use](#responsible-use).
+
+**Q: What's the difference between FAIL and ERROR?**
+A: `FAIL` means the check ran and the server's behavior is wrong (e.g., open relay accepted a test message). `ERROR` means the check *couldn't run* due to infrastructure (DNS timeout, connection refused, TLS handshake failed before we got to the actual check). ERROR scores 0 but isn't necessarily the server's fault — verify your own network first.
+
+**Q: How often should I run this?**
+A: Tier 1 nightly in CI/CD is fine — it's lightweight and catches drift (expired cert, DNS change, blacklist listing). Tier 3 weekly or on config changes. Tier 4 only on-demand or pre-production deploys; don't schedule it recurrently against production since it generates alerts.
+
+**Q: Can I run it against many domains at once?**
+A: No built-in batching yet. Use a shell loop:
+```bash
+for d in mail1.example.com mail2.example.com mail3.example.com; do
+  ./instantmailcheck "$d" --json --threshold 75 > "reports/$d.json" || echo "FAIL: $d"
+done
+```
+Parallel (with GNU parallel):
+```bash
+echo "mail1.example.com mail2.example.com mail3.example.com" \
+  | tr ' ' '\n' | parallel -j4 './instantmailcheck {} --json --output reports/{}.json'
+```
+
+**Q: How do I verify the tool itself is working?**
+A: Run against a known-healthy public mail provider:
+```bash
+./instantmailcheck gmail.com --checks dns   # Should score close to 100%
+```
+If this scores low, check your local DNS resolver / firewall before suspecting the tool.
+
+**Q: Why does the DKIM check take so long?**
+A: Without `--dkim-selector`, we try 17 common selectors (google, selector1, selector2, default, k1, mail, dkim, etc.) in parallel to auto-discover. Passing the selector explicitly makes it ~10× faster. Use `--dkim-selector default` (or whatever you configured).
+
+**Q: Can I use this behind a corporate proxy?**
+A: Not yet. All connections are direct — port 53 for DNS, ports 25/465/587/143/993/110/995 to the target. Corporate networks that block these ports (very common for port 25 on wifi / residential) will report many ERRORs. Run from a cloud VM, or ask your infra team to whitelist outbound mail ports for the scanning host.
+
+**Q: What if my server uses non-standard ports?**
+A: Not configurable today (see Roadmap). The tool assumes RFC-standard ports for all protocols. For non-standard deployments, check via `openssl s_client -connect host:port` manually until port flags land.
+
+**Q: Does it leak my credentials?**
+A: The tool doesn't call home or log to external services. But `--pass` on the command line does appear in `ps aux` and shell history. Prefer `export IMC_PASS=...; --pass "$IMC_PASS"; unset IMC_PASS`. See [Security & Privacy Considerations](#security--privacy-considerations).
+
+**Q: The score dropped 10 points after an upgrade — what changed?**
+A: The tool calibrates scoring over time as new threats emerge (e.g., 1024-bit DKIM was acceptable in 2020 but is now a WARN worth ~5 points). Check `git log` on `internal/mailcheck/report.go` for `ScoreWeights` changes between versions. Use a fixed version pin in CI if you need score stability.
+
+**Q: A DNSBL lookup says I'm listed but my mail is delivering fine — can I ignore it?**
+A: Usually yes for smaller DNSBLs (UCEProtect levels, some regional lists). The big ones (Spamhaus ZEN, Barracuda) matter — listing there correlates strongly with actual delivery failure to major providers. Each DNSBL's website has a self-remove form; use it.
+
+**Q: Can I export results to Prometheus/Grafana?**
+A: Parse the JSON output:
+```bash
+./instantmailcheck example.com --json | jq -r '
+  "instantmailcheck_score{domain=\"" + .domain + "\"} " + (.score|tostring),
+  (.checks[] | "instantmailcheck_check{domain=\"" + $d + "\",name=\"" + .name + "\",status=\"" + .status + "\"} 1")
+' > /var/lib/node_exporter/textfile/mailcheck.prom
+```
+Schedule via cron; node_exporter reads the textfile collector output. Grafana dashboard can alert on score drops or specific checks flipping to FAIL.
+
+**Q: I found a false positive / false negative. Where do I report?**
+A: Open an issue in the project repo. Include: domain being tested (if public), tool version (`./instantmailcheck --version`), `--json` output, and the expected result with reasoning. Private domains: attach the JSON output but redact MX hostnames and PTRs if sensitive — the check logic is deterministic enough to reproduce from the output.
+
+**Q: Does the tool modify the target server in any way?**
+A: No. All checks are read-only / probe-only. Tier 2 sends an email, which will land in an inbox, but otherwise nothing is written/changed. Tier 4 generates auth failures and connection attempts that will be *logged* by the server — but logs are server-side, not state-changing.
+
+**Q: Will Tier 4 get me banned from my own server?**
+A: Probably briefly, if fail2ban or similar is configured (which is a good sign — you *want* rate-limiting). The rapid-auth check deliberately triggers this. Whitelist your scanner's IP or run Tier 4 from a network location not covered by the ban rules.
+
+---
+
+## Glossary
+
+### Authentication Protocols
+
+**SPF (Sender Policy Framework)**  
+DNS-based system that specifies which IP addresses are authorized to send email for a domain. Receiving servers check SPF to detect forgery.
+
+**DKIM (DomainKeys Identified Mail)**  
+Cryptographic signing system where the sending server signs emails with a private key, and publishes the public key in DNS. Proves email hasn't been tampered with.
+
+**DMARC (Domain-based Message Authentication, Reporting, and Conformance)**  
+Policy framework that tells receiving servers what to do when SPF or DKIM fail. Also enables aggregate reporting (`rua=`) of authentication results.
+
+**ARC (Authenticated Received Chain)**  
+Protocol for preserving authentication results across mailing lists and forwarding services. Prevents DMARC failures on legitimate forwarded mail.
+
+### DNS Terms
+
+**MX Record (Mail Exchanger)**  
+DNS record specifying which servers handle email for a domain. Contains hostname and priority.
+
+**PTR Record (Reverse DNS)**  
+DNS record mapping an IP address back to a hostname. Used by receiving servers to verify sender legitimacy.
+
+**FCrDNS (Forward-Confirmed Reverse DNS)**  
+Validation that a PTR hostname resolves back to the original IP address. Indicates properly configured reverse DNS.
+
+**DNSSEC (DNS Security Extensions)**  
+Cryptographic signing of DNS responses to prevent spoofing. Required for DANE to be effective.
+
+**CAA Record (Certificate Authority Authorization)**  
+DNS record specifying which Certificate Authorities can issue TLS certificates for a domain.
+
+### TLS/Security Terms
+
+**STARTTLS**  
+SMTP command to upgrade a plaintext connection to TLS encryption. Used on ports 25 and 587.
+
+**Implicit TLS**  
+Connection starts immediately with TLS negotiation (no plaintext phase). Used on ports 465, 993, 995.
+
+**DANE/TLSA (DNS-based Authentication of Named Entities)**  
+System for publishing TLS certificate fingerprints in DNS (TLSA records). Enables verification without trusting the CA system.
+
+**MTA-STS (Mail Transfer Agent Strict Transport Security)**  
+Policy framework requiring TLS for mail delivery to a domain. Like HSTS for email.
+
+**TLS-RPT (TLS Reporting)**  
+Mechanism for receiving reports about TLS connection failures from sending servers.
+
+**SMTP Smuggling**  
+Attack technique exploiting differences in how servers interpret line endings (`\n` vs `\r\n`) to inject forged emails.
+
+### Email Infrastructure
+
+**MTA (Mail Transfer Agent)**  
+Software that transfers email between servers (e.g., Postfix, Sendmail, Exim).
+
+**MUA (Mail User Agent)**  
+Email client software (e.g., Thunderbird, Apple Mail, Outlook).
+
+**MX Host**  
+The server specified in an MX record that receives email for a domain.
+
+**Open Relay**  
+Misconfigured SMTP server that accepts email from anyone and forwards it to anyone. Spammer target.
+
+**Backscatter**  
+Bounce messages sent to forged return addresses. Caused by servers accepting mail before validating recipients.
+
+### Blacklist Terms
+
+**DNSBL (DNS-based Blackhole List)**  
+Real-time blacklist queried via DNS. Used to reject mail from known spam sources.
+
+**RBL (Realtime Blackhole List)**  
+Synonym for DNSBL.
+
+**DBL (Domain Block List)**  
+Blacklist based on domain names appearing in spam/malicious content (vs IP-based lists).
+
+### IMAP Terms
+
+**IDLE**  
+IMAP extension enabling push notifications. Server notifies client when new mail arrives instead of client polling.
+
+**CONDSTORE**  
+IMAP extension for efficient synchronization of message state changes (flags, etc.).
+
+**SPECIAL-USE**  
+IMAP extension identifying standard folders (Sent, Trash, Drafts) automatically.
+
+### Check Status Values
+
+| Status | Meaning |
+|--------|---------|
+| **PASS** | Check succeeded, full weight awarded |
+| **WARN** | Partial success, 50% weight awarded |
+| **FAIL** | Check failed, 0% weight |
+| **SKIP** | Not applicable (e.g., IPv6 not configured), 0% weight |
+| **ERROR** | Infrastructure failure (DNS timeout, connection refused), 0% weight |
+
+---
+
+## Quick Reference Card
+
+### Essential Commands
+
+```bash
+# Basic health check
+./instantmailcheck example.com
+
+# With credentials for full testing
+./instantmailcheck example.com --user admin@example.com --pass secret --send-to test@example.com
+
+# Security audit
+./instantmailcheck example.com --security-audit
+
+# CI/CD with threshold
+./instantmailcheck example.com --json --threshold 80 || echo "Health check failed"
+
+# Generate markdown report
+./instantmailcheck example.com --markdown --output report.md
+
+# Filter to security checks only
+./instantmailcheck example.com --checks security --security-audit
+```
+
+### Exit Codes Quick Reference
+
+| Code | Meaning | CI/CD Action |
+|------|---------|--------------|
+| 0 | Success (score ≥ threshold) | ✅ Continue |
+| 1 | Invalid arguments | ❌ Fail build (configuration error) |
+| 2 | Poor health (score < threshold) | ❌ Fail build (health check failed) |
+
+### Common Port Reference
+
+| Port | Protocol | Encryption | Purpose |
+|------|----------|------------|---------|
+| 25 | SMTP | STARTTLS | Server-to-server delivery |
+| 110 | POP3 | None | Legacy access (deprecated) |
+| 143 | IMAP | None | Legacy access (deprecated) |
+| 465 | Submission | Implicit TLS | Client submission (RFC 8314) |
+| 587 | Submission | STARTTLS | Client submission (standard) |
+| 993 | IMAP | Implicit TLS | Modern IMAP access |
+| 995 | POP3 | Implicit TLS | Modern POP3 access |
+
+### File Locations (Source)
+
+```
+cmd/instantmailcheck/
+├── main.go              # CLI entry point
+
+internal/mailcheck/
+├── report.go            # Data models, scoring
+├── runner.go            # Check orchestration
+├── display.go           # Output formatting
+├── dnsutil.go           # Low-level DNS helpers
+├── dns.go               # DNS checks (MX, SPF, DKIM, etc.)
+├── smtp.go              # SMTP protocol checks
+├── tls.go               # TLS/certificate checks
+├── imap.go              # IMAP protocol checks
+├── pop3.go              # POP3 protocol checks
+├── security.go          # Security probes
+├── blacklist.go         # DNSBL lookups
+└── headers.go           # Header analysis, round-trip
+```
