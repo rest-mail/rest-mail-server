@@ -314,40 +314,47 @@ tasks:
   # ── Infrastructure ──────────────────────────────────────
   start:postgres:
     desc: Start all PostgreSQL instances
+    run: once
     deps: [start:postgres-mail1, start:postgres-mail2, start:postgres-mail3]
 
   start:postgres-mail1:
     desc: Start PostgreSQL for mail1.test
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose up -d --build --force-recreate postgres-mail1
 
   start:postgres-mail2:
     desc: Start PostgreSQL for mail2.test
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose up -d --build --force-recreate postgres-mail2
 
   start:postgres-mail3:
     desc: Start PostgreSQL for mail3.test (API + gateways)
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose up -d --build --force-recreate postgres-mail3
 
   start:dnsmasq:
     desc: Start the DNS server
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose up -d --build --force-recreate dnsmasq
 
   start:js-filter:
     desc: Start the JS filter sidecar
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose up -d --build --force-recreate js-filter
 
   start:certgen:
     desc: Run the certificate generator (one-shot init container)
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose up -d --build --force-recreate certgen
@@ -355,24 +362,28 @@ tasks:
   # ── Mail ────────────────────────────────────────────────
   start:dovecot-mail1:
     desc: Start Dovecot for mail1.test
+    run: once
     deps: [start:postgres-mail1, start:certgen]
     cmds:
       - docker compose up -d --build --force-recreate dovecot-mail1
 
   start:dovecot-mail2:
     desc: Start Dovecot for mail2.test
+    run: once
     deps: [start:postgres-mail2, start:certgen]
     cmds:
       - docker compose up -d --build --force-recreate dovecot-mail2
 
   start:postfix-mail1:
     desc: Start Postfix for mail1.test
+    run: once
     deps: [start:dovecot-mail1, start:dnsmasq]
     cmds:
       - docker compose up -d --build --force-recreate postfix-mail1
 
   start:postfix-mail2:
     desc: Start Postfix for mail2.test
+    run: once
     deps: [start:dovecot-mail2, start:dnsmasq]
     cmds:
       - docker compose up -d --build --force-recreate postfix-mail2
@@ -380,6 +391,7 @@ tasks:
   # ── API ─────────────────────────────────────────────────
   start:api:
     desc: Start the REST API (waits for health endpoint)
+    run: once
     deps: [start:postgres-mail3, start:dnsmasq, start:js-filter]
     cmds:
       - docker compose up -d --build --force-recreate api
@@ -388,18 +400,21 @@ tasks:
   # ── Gateways ────────────────────────────────────────────
   start:smtp-gateway:
     desc: Start the SMTP gateway
+    run: once
     deps: [start:api, start:certgen]
     cmds:
       - docker compose up -d --build --force-recreate smtp-gateway
 
   start:imap-gateway:
     desc: Start the IMAP gateway
+    run: once
     deps: [start:api, start:certgen]
     cmds:
       - docker compose up -d --build --force-recreate imap-gateway
 
   start:pop3-gateway:
     desc: Start the POP3 gateway
+    run: once
     deps: [start:api, start:certgen]
     cmds:
       - docker compose up -d --build --force-recreate pop3-gateway
@@ -407,12 +422,14 @@ tasks:
   # ── Webmail ─────────────────────────────────────────────
   start:webmail:
     desc: Start the webmail frontend (production nginx)
+    run: once
     deps: [start:api]
     cmds:
       - docker compose -f webmail/docker-compose.yml up -d --build --force-recreate webmail
 
   start:webmail:dev:
     desc: Start the webmail frontend with Vite HMR (hot reload)
+    run: once
     deps: [start:api]
     cmds:
       - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml up -d --build --force-recreate webmail
@@ -420,12 +437,14 @@ tasks:
   # ── Website ─────────────────────────────────────────────
   start:website:
     desc: Start the project website
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml up -d --build --force-recreate website
 
   start:website:dev:
     desc: Start the project website with live source mount (dev)
+    run: once
     deps: [net:ensure]
     cmds:
       - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
@@ -433,6 +452,7 @@ tasks:
   # ── Admin ───────────────────────────────────────────────
   start:admin:dev:
     desc: Start the admin frontend with Vite HMR (hot reload)
+    run: once
     deps: [start:api]
     cmds:
       - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
