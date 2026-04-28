@@ -45,3 +45,5 @@ certs/
 .DS_Store
 Thumbs.db
 .task/checksum
+.history
+.claude
