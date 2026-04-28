@@ -401,10 +401,10 @@ For each mail domain, the following DNS records are needed:
 
 | Record Type | Name                           | Value                        | Purpose                         |
 |-------------|--------------------------------|------------------------------|---------------------------------|
-| A           | mail1.test                     | 172.20.0.x                   | Server hostname                 |
+| A           | mail1.test                     | 10.99.0.x                   | Server hostname                 |
 | MX          | mail1.test                     | 10 mail1.test                | Mail routing                    |
 | PTR         | x.0.20.172.in-addr.arpa        | mail1.test                   | Reverse DNS (deliverability)    |
-| TXT         | mail1.test                     | v=spf1 ip4:172.20.0.x -all  | SPF policy                      |
+| TXT         | mail1.test                     | v=spf1 ip4:10.99.0.x -all  | SPF policy                      |
 | TXT         | default._domainkey.mail1.test  | v=DKIM1; k=rsa; p=...       | DKIM public key                 |
 | TXT         | _dmarc.mail1.test              | v=DMARC1; p=reject; ...     | DMARC policy                    |
 
@@ -1834,7 +1834,7 @@ smtp-gateway:
   environment:
     API_BASE_URL: http://api:8080
   networks:
-    restmail: { ipv4_address: 172.20.0.14 }
+    restmail: { ipv4_address: 10.99.0.14 }
 
 imap-gateway:
   build: { context: ., dockerfile: docker/imap-gateway/Dockerfile }
@@ -1842,7 +1842,7 @@ imap-gateway:
   environment:
     API_BASE_URL: http://api:8080
   networks:
-    restmail: { ipv4_address: 172.20.0.15 }
+    restmail: { ipv4_address: 10.99.0.15 }
 
 pop3-gateway:
   build: { context: ., dockerfile: docker/pop3-gateway/Dockerfile }
@@ -1850,7 +1850,7 @@ pop3-gateway:
   environment:
     API_BASE_URL: http://api:8080
   networks:
-    restmail: { ipv4_address: 172.20.0.16 }
+    restmail: { ipv4_address: 10.99.0.16 }
 ```
 
 ### Protocol Translation Examples
@@ -2677,7 +2677,7 @@ Every email is represented as a JSON document as it flows through the pipeline. 
   "envelope": {
     "mail_from": "alice@mail1.test",
     "rcpt_to": ["bob@mail3.test"],
-    "client_ip": "172.20.0.10",
+    "client_ip": "10.99.0.10",
     "client_hostname": "mail1.test",
     "helo": "mail1.test",
     "tls": true,
@@ -3491,7 +3491,7 @@ Every filter returns a standardised result. The shape depends on whether it's an
     "filter": "spf_check",
     "duration_ms": 12,
     "result": "pass",
-    "detail": "SPF pass for mail1.test: IP 172.20.0.10 is authorised"
+    "detail": "SPF pass for mail1.test: IP 10.99.0.10 is authorised"
   }
 }
 ```
