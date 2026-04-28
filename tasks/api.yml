@@ -1,0 +1,126 @@
+version: "3"
+
+# rest-mail/tasks/api — Taskfile
+#
+# Drives the REST API container via plain `docker run` (no compose).
+# Included by the main Taskfile under namespace `api`.
+#
+# Joins the testbed's mailnet network at a static IP so peers can reach it
+# by name. Resolves DB / SMTP peers via the testbed dnsmasq. Two build
+# targets are supported via MODE: `dev` (air hot-reload, repo bind-mounted
+# at /app) and `prod` (statically built binary).
+#
+# Output is friendly by default. Re-run with VERBOSE=1 to see the raw
+# docker / shell output (e.g. VERBOSE=1 task api:up).
+
+silent: true
+
+vars:
+  API_PROJECT: '{{.API_PROJECT | default "rest-mail"}}'
+  API_NETWORK: '{{.API_NETWORK | default "testbed_mailnet"}}'
+  API_CERTS_VOLUME: '{{.API_CERTS_VOLUME | default "testbed_certs"}}'
+  API_DNS_IP: '{{.API_DNS_IP | default "10.99.0.10"}}'
+  API_IP: '{{.API_IP | default "10.99.0.20"}}'
+  API_PORT: '{{.API_PORT | default "8080"}}'
+  API_MODE: '{{.API_MODE | default "dev"}}'
+  API_IMAGE_TAG: '{{.API_IMAGE_TAG | default "dev"}}'
+  API_REGISTRY: '{{.API_REGISTRY | default "ghcr.io/rest-mail"}}'
+  API_IMAGE: '{{.API_REGISTRY}}/api:{{.API_IMAGE_TAG}}'
+  API_CONTAINER_NAME: '{{.API_PROJECT}}-api'
+  API_ATTACHMENTS_VOLUME: '{{.API_PROJECT}}-mail3-attachments'
+  API_DB_HOST: '{{.API_DB_HOST | default "rest-mail-postgres"}}'
+  API_DB_PORT: '{{.API_DB_PORT | default "5432"}}'
+  API_DB_NAME: '{{.API_DB_NAME | default "restmail"}}'
+  API_DB_USER: '{{.API_DB_USER | default "restmail"}}'
+  API_DB_PASS: '{{.API_DB_PASS | default "restmail"}}'
+  API_JWT_SECRET: '{{.API_JWT_SECRET | default "dev-secret-change-in-production"}}'
+  API_MASTER_KEY: '{{.API_MASTER_KEY | default "dev-master-key-change-in-production"}}'
+  API_LOG_LEVEL: '{{.API_LOG_LEVEL | default "debug"}}'
+  API_ENVIRONMENT: '{{.API_ENVIRONMENT | default "development"}}'
+  API_PROXY_HOST: '{{.API_PROXY_HOST | default "restmail.localhost"}}'
+
+tasks:
+
+  # ════════════════════════════════════════════════════════
+  # build
+  # ════════════════════════════════════════════════════════
+
+  build:
+    desc: Build the api image (target controlled by MODE — dev or prod)
+    cmds:
+      - |
+        echo "  building {{.API_IMAGE}} (target={{.API_MODE}})"
+        docker build -t {{.API_IMAGE}} --target {{.API_MODE}} -f Dockerfile . >$OUTPUT 2>&1
+
+  # ════════════════════════════════════════════════════════
+  # up / down / restart
+  # ════════════════════════════════════════════════════════
+
+  up:
+    desc: Start the api container (creates attachments volume if missing; recreates container)
+    deps: [build]
+    cmds:
+      - |
+        if docker volume inspect {{.API_ATTACHMENTS_VOLUME}} >/dev/null 2>&1; then
+          [ -n "$VERBOSE" ] && echo "  volume {{.API_ATTACHMENTS_VOLUME}} already exists" || true
+        else
+          echo "  creating volume {{.API_ATTACHMENTS_VOLUME}}"
+          docker volume create {{.API_ATTACHMENTS_VOLUME}} >$OUTPUT 2>&1
+        fi
+      - |
+        echo "  starting api ({{.API_CONTAINER_NAME}} @ {{.API_IP}}, mode={{.API_MODE}})"
+        if [ "{{.API_MODE}}" = "dev" ]; then
+          DEV_MOUNTS="-v $(pwd):/app -v /app/tmp"
+        else
+          DEV_MOUNTS=""
+        fi
+        docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        docker run -d --name {{.API_CONTAINER_NAME}} \
+          --restart unless-stopped \
+          --network {{.API_NETWORK}} \
+          --ip {{.API_IP}} \
+          --dns {{.API_DNS_IP}} \
+          -p {{.API_PORT}}:{{.API_PORT}} \
+          -v {{.API_CERTS_VOLUME}}:/certs:ro \
+          -v {{.API_ATTACHMENTS_VOLUME}}:/attachments \
+          $DEV_MOUNTS \
+          -l docker-proxy.api.host={{.API_PROXY_HOST}} \
+          -l docker-proxy.api.port={{.API_PORT}} \
+          -l docker-proxy.api.path=/api \
+          -e DB_HOST={{.API_DB_HOST}} \
+          -e DB_PORT={{.API_DB_PORT}} \
+          -e DB_NAME={{.API_DB_NAME}} \
+          -e DB_USER={{.API_DB_USER}} \
+          -e DB_PASS={{.API_DB_PASS}} \
+          -e API_PORT={{.API_PORT}} \
+          -e JWT_SECRET={{.API_JWT_SECRET}} \
+          -e MASTER_KEY={{.API_MASTER_KEY}} \
+          -e ENVIRONMENT={{.API_ENVIRONMENT}} \
+          -e LOG_LEVEL={{.API_LOG_LEVEL}} \
+          {{.API_IMAGE}} >$OUTPUT 2>&1
+
+  down:
+    desc: Stop and remove the api container (preserves the attachments volume)
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.API_CONTAINER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.API_CONTAINER_NAME}}"
+          docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.API_CONTAINER_NAME}} not running"
+        fi
+
+  restart:
+    desc: Recreate the api container
+    cmds:
+      - task: down
+      - task: up
+
+  # ════════════════════════════════════════════════════════
+  # Diagnostics
+  # ════════════════════════════════════════════════════════
+
+  logs:
+    desc: Tail api logs
+    cmds:
+      - docker logs -f --tail=100 {{.API_CONTAINER_NAME}}

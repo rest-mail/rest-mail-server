@@ -1,0 +1,129 @@
+version: "3"
+
+# rest-mail/tasks/pop3-gateway — Taskfile
+#
+# Drives the POP3 gateway container via plain `docker run` (no compose).
+# Included by the main Taskfile under namespace `pop3-gateway`.
+#
+# Joins the testbed's mailnet network at a static IP so peers can reach it
+# by name. Mounts the shared certs volume read-only and a per-project logs
+# volume. In dev MODE bind-mounts the source tree for `air` hot reload.
+#
+# Output is friendly by default. Re-run with VERBOSE=1 to see the raw
+# docker / shell output (e.g. VERBOSE=1 task pop3-gateway:up).
+
+silent: true
+
+vars:
+  POP3_GATEWAY_PROJECT: '{{.POP3_GATEWAY_PROJECT | default "rest-mail"}}'
+  POP3_GATEWAY_NETWORK: '{{.POP3_GATEWAY_NETWORK | default "testbed_mailnet"}}'
+  POP3_GATEWAY_CERTS_VOLUME: '{{.POP3_GATEWAY_CERTS_VOLUME | default "testbed_certs"}}'
+  POP3_GATEWAY_DNS_IP: '{{.POP3_GATEWAY_DNS_IP | default "10.99.0.10"}}'
+  POP3_GATEWAY_IP: '{{.POP3_GATEWAY_IP | default "10.99.0.16"}}'
+  POP3_GATEWAY_MAIL3_HOSTNAME: '{{.POP3_GATEWAY_MAIL3_HOSTNAME | default "mail3.test"}}'
+  POP3_GATEWAY_MODE: '{{.POP3_GATEWAY_MODE | default "dev"}}'
+  POP3_GATEWAY_IMAGE_TAG: '{{.POP3_GATEWAY_IMAGE_TAG | default "dev"}}'
+  POP3_GATEWAY_REGISTRY: '{{.POP3_GATEWAY_REGISTRY | default "ghcr.io/rest-mail"}}'
+  POP3_GATEWAY_IMAGE: '{{.POP3_GATEWAY_REGISTRY}}/pop3-gateway:{{.POP3_GATEWAY_IMAGE_TAG}}'
+  POP3_GATEWAY_CONTAINER_NAME: '{{.POP3_GATEWAY_PROJECT}}-pop3-gateway'
+  POP3_GATEWAY_LOGS_VOLUME: '{{.POP3_GATEWAY_PROJECT}}-gateway-logs'
+  POP3_GATEWAY_API_BASE_URL: '{{.POP3_GATEWAY_API_BASE_URL | default (printf "http://%s-api:8080" .POP3_GATEWAY_PROJECT)}}'
+  POP3_GATEWAY_DB_HOST: '{{.POP3_GATEWAY_DB_HOST | default (printf "%s-postgres" .POP3_GATEWAY_PROJECT)}}'
+  POP3_GATEWAY_DB_PORT: '{{.POP3_GATEWAY_DB_PORT | default "5432"}}'
+  POP3_GATEWAY_DB_NAME: '{{.POP3_GATEWAY_DB_NAME | default "restmail"}}'
+  POP3_GATEWAY_DB_USER: '{{.POP3_GATEWAY_DB_USER | default "restmail"}}'
+  POP3_GATEWAY_DB_PASS: '{{.POP3_GATEWAY_DB_PASS | default "restmail"}}'
+  POP3_GATEWAY_TLS_CERT_PATH: '{{.POP3_GATEWAY_TLS_CERT_PATH | default "/certs/mail3.test.crt"}}'
+  POP3_GATEWAY_TLS_KEY_PATH: '{{.POP3_GATEWAY_TLS_KEY_PATH | default "/certs/mail3.test.key"}}'
+  POP3_PORT: '{{.POP3_PORT | default "110"}}'
+  POP3_TLS_PORT: '{{.POP3_TLS_PORT | default "995"}}'
+  POP3_GATEWAY_LOG_LEVEL: '{{.POP3_GATEWAY_LOG_LEVEL | default "debug"}}'
+  POP3_GATEWAY_ENVIRONMENT: '{{.POP3_GATEWAY_ENVIRONMENT | default "development"}}'
+
+tasks:
+
+  # ════════════════════════════════════════════════════════
+  # build / up / down / restart
+  # ════════════════════════════════════════════════════════
+
+  build:
+    desc: Build the pop3-gateway image (target {{.POP3_GATEWAY_MODE}})
+    cmds:
+      - |
+        echo "  building {{.POP3_GATEWAY_IMAGE}} (target {{.POP3_GATEWAY_MODE}})"
+        docker build -t {{.POP3_GATEWAY_IMAGE}} --target {{.POP3_GATEWAY_MODE}} -f docker/pop3-gateway/Dockerfile . >$OUTPUT 2>&1
+
+  up:
+    desc: Start (or recreate) the pop3-gateway container
+    deps: [build]
+    cmds:
+      - |
+        if docker volume inspect {{.POP3_GATEWAY_LOGS_VOLUME}} >/dev/null 2>&1; then
+          [ -n "$VERBOSE" ] && echo "  volume {{.POP3_GATEWAY_LOGS_VOLUME}} already exists" || true
+        else
+          echo "  creating volume {{.POP3_GATEWAY_LOGS_VOLUME}}"
+          docker volume create {{.POP3_GATEWAY_LOGS_VOLUME}} >$OUTPUT 2>&1
+        fi
+      - |
+        echo "  starting pop3-gateway ({{.POP3_GATEWAY_CONTAINER_NAME}} @ {{.POP3_GATEWAY_IP}}, mode {{.POP3_GATEWAY_MODE}})"
+        if [ "{{.POP3_GATEWAY_MODE}}" = "dev" ]; then
+          DEV_MOUNTS="-v $(pwd):/app -v /app/tmp"
+        else
+          DEV_MOUNTS=""
+        fi
+        docker rm -f {{.POP3_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        docker run -d --name {{.POP3_GATEWAY_CONTAINER_NAME}} \
+          --hostname {{.POP3_GATEWAY_MAIL3_HOSTNAME}} \
+          --restart unless-stopped \
+          --network {{.POP3_GATEWAY_NETWORK}} \
+          --ip {{.POP3_GATEWAY_IP}} \
+          --dns {{.POP3_GATEWAY_DNS_IP}} \
+          -p {{.POP3_PORT}}:110 \
+          -p {{.POP3_TLS_PORT}}:995 \
+          -v {{.POP3_GATEWAY_CERTS_VOLUME}}:/certs:ro \
+          -v {{.POP3_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
+          $DEV_MOUNTS \
+          --health-cmd 'nc -z localhost {{.POP3_PORT}}' \
+          --health-interval 10s \
+          --health-timeout 5s \
+          --health-retries 5 \
+          -e GATEWAY_HOSTNAME={{.POP3_GATEWAY_MAIL3_HOSTNAME}} \
+          -e API_BASE_URL={{.POP3_GATEWAY_API_BASE_URL}} \
+          -e DB_HOST={{.POP3_GATEWAY_DB_HOST}} \
+          -e DB_PORT={{.POP3_GATEWAY_DB_PORT}} \
+          -e DB_NAME={{.POP3_GATEWAY_DB_NAME}} \
+          -e DB_USER={{.POP3_GATEWAY_DB_USER}} \
+          -e DB_PASS={{.POP3_GATEWAY_DB_PASS}} \
+          -e TLS_CERT_PATH={{.POP3_GATEWAY_TLS_CERT_PATH}} \
+          -e TLS_KEY_PATH={{.POP3_GATEWAY_TLS_KEY_PATH}} \
+          -e POP3_PORT={{.POP3_PORT}} \
+          -e POP3_TLS_PORT={{.POP3_TLS_PORT}} \
+          -e LOG_LEVEL={{.POP3_GATEWAY_LOG_LEVEL}} \
+          -e ENVIRONMENT={{.POP3_GATEWAY_ENVIRONMENT}} \
+          {{.POP3_GATEWAY_IMAGE}} >$OUTPUT 2>&1
+
+  down:
+    desc: Stop and remove the pop3-gateway container (preserves logs volume)
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.POP3_GATEWAY_CONTAINER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.POP3_GATEWAY_CONTAINER_NAME}}"
+          docker rm -f {{.POP3_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.POP3_GATEWAY_CONTAINER_NAME}} not running"
+        fi
+
+  restart:
+    desc: Recreate the pop3-gateway container
+    cmds:
+      - task: down
+      - task: up
+
+  # ════════════════════════════════════════════════════════
+  # Diagnostics
+  # ════════════════════════════════════════════════════════
+
+  logs:
+    desc: Tail pop3-gateway logs
+    cmds:
+      - docker logs -f --tail=100 {{.POP3_GATEWAY_CONTAINER_NAME}}

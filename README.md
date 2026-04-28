@@ -42,20 +42,25 @@ A full-featured mail server platform that exposes email functionality through a 
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- [Task](https://taskfile.dev/) (optional, for `task` commands)
+- Docker
+- [Task](https://taskfile.dev/) — required (the repo is driven entirely by Taskfiles, no docker-compose)
 
 ### Start the Stack
 
-```bash
-# Start all services (builds images on first run)
-docker compose up -d --build
+The stack joins the `rest-mail/testbed` substrate (mailnet network + dnsmasq + certs volume). Bring the testbed up first, then start the restmail product stack.
 
-# Or using Task
-task up
+```bash
+# 1. First run only — clone the testbed into .workspace/
+task testbed:init
+
+# 2. Bring up the testbed substrate (network, certs volume, dnsmasq)
+task testbed:up
+
+# 3. Start the restmail (mail3.test) product stack
+task dev   # alias for restmail:mail3:up
 ```
 
-This brings up PostgreSQL, dnsmasq, the REST API, webmail, SMTP/IMAP/POP3 gateways, Postfix/Dovecot for traditional domains, and the project website.
+`task dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, admin UI, and the project website. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`Taskfile.yml`](Taskfile.yml).
 
 ### Seed Test Data
 
@@ -83,10 +88,10 @@ go run ./cmd/migrate && go run ./cmd/seed
 
 ### Test Domains
 
+This repo only ships **mail3.test** (the RESTMAIL product). For traditional reference instances (mail1.test, mail2.test, ...) running Postfix + Dovecot, see [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver). Reference instances are launched one at a time — `task mailserver:mail1:up`, `task mailserver:mail2:up`, etc. — and you decide how many to run.
+
 | Domain       | Type        | Description                        |
 |--------------|-------------|------------------------------------|
-| mail1.test   | Traditional | Postfix + Dovecot                  |
-| mail2.test   | Traditional | Postfix + Dovecot (second domain)  |
 | mail3.test   | RESTMAIL    | Go gateways backed by REST API     |
 
 ### Test Accounts
@@ -125,10 +130,7 @@ Interactive terminal admin tool (built with bubbletea) for managing the mail ser
 # Build the console (auto-detects your OS/architecture)
 task build:console
 
-# Run the console
-task console
-
-# Or run directly without building
+# Run the console (executes inside the api container)
 task run:console
 ```
 
@@ -142,36 +144,34 @@ task run:console
 
 ### Instant Mail Check
 
-Standalone CLI tool for comprehensive mail server diagnostics, security auditing, and deliverability testing.
+Standalone CLI tool for comprehensive mail server diagnostics, security auditing, and deliverability testing. Lives in its own repo: [`rest-mail/instantmailcheck`](https://github.com/rest-mail/instantmailcheck).
 
 ```bash
-# Build the tool (auto-detects your OS/architecture)
-task build:instantmailcheck
+# Homebrew (macOS / Linux)
+brew install antimatter-studios/tap/instantmailcheck
 
-# Basic scan (no credentials needed)
-./build/tools/instantmailcheck-$(go env GOHOSTOS)-$(go env GOHOSTARCH) example.com
+# Or via Go
+go install github.com/rest-mail/instantmailcheck@latest
 
-# Full authenticated test with security audit
-./build/tools/instantmailcheck-$(go env GOHOSTOS)-$(go env GOHOSTARCH) example.com \
-  --user test@example.com --pass secret \
-  --send-to test@example.com \
-  --security-audit -v
-
-# Cross-compile for all platforms
-task build:instantmailcheck:all
+# Or download a pre-built binary
+# https://github.com/rest-mail/instantmailcheck/releases
 ```
 
-**What it checks:**
-- DNS (MX, SPF, DKIM, DMARC, DANE, MTA-STS, TLS-RPT, DNSSEC, CAA, BIMI, PTR)
-- SMTP (ports 25/587/465, STARTTLS, certificates, extensions, open relay)
-- IMAP/POP3 (ports 993/995, authentication, capabilities, IDLE, quotas)
-- Security (TLS versions, banner leaks, user enumeration, brute-force protection, SMTP smuggling)
-- Deliverability (IP/domain blacklists, round-trip tests, header analysis)
-- **Exit codes:** 0 = pass, 1 = invalid args, 2 = score below threshold
+Run against any mail-serving domain:
 
-**Documentation:** See [docs/INSTANT-MAIL-CHECK.md](docs/INSTANT-MAIL-CHECK.md) for complete reference (architecture, all checks explained, scoring system, CI/CD integration).
+```bash
+instantmailcheck example.com                                    # Tier 1: public audit
+instantmailcheck example.com --send-to alice@example.com         # Tier 2: send test
+instantmailcheck example.com --user alice@example.com \          # Tier 3: round-trip
+                             --pass secret --send-to alice@example.com
+instantmailcheck example.com --security-audit                    # Tier 4: security
+```
+
+See the [upstream README](https://github.com/rest-mail/instantmailcheck#readme) for the full reference.
 
 ## Architecture
+
+This repo ships **mail3.test only** — the RESTMAIL product. Postfix/Dovecot reference instances live in [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver) and dnsmasq lives in [`rest-mail/testbed`](https://github.com/rest-mail/testbed). All three projects share the `mailnet` Docker network and the `certs` volume that the testbed provides.
 
 ```
                           Clients
@@ -181,37 +181,43 @@ task build:instantmailcheck:all
               |              |              |
          SMTP:25/587    IMAP:143/993   POP3:110/995
               |              |              |
-     +--------+--------+    |    +---------+---------+
-     | SMTP Gateway     |    |    | POP3 Gateway      |
-     | (Go, mail3.test) |    |    | (Go, mail3.test)  |
-     +--------+---------+    |    +---------+---------+
+     +--------+--------+     |    +--------+--------+
+     | SMTP Gateway    |     |    | POP3 Gateway    |
+     | (Go, mail3.test)|     |    | (Go, mail3.test)|
+     +--------+--------+     |    +--------+--------+
               |         +----+----+         |
               |         | IMAP GW |         |
               |         | (Go)    |         |
               |         +----+----+         |
               |              |              |
               +------+-------+------+-------+
-                     |              |
-                     v              v
-              +------+------+  +---+---+
-              | REST API    |  |Postfix|  (mail1.test, mail2.test)
-              | :8080 (Go)  |  +---+---+
-              +------+------+      |
-                     |         +---+----+
-              +------+------+  |Dovecot |
-              | Pipeline    |  +--------+
-              | Engine      |
-              +------+------+
-                     |
-              +------+------+
-              | PostgreSQL  |
-              | :5432       |
-              +-------------+
+                            |
+                            v
+                     +------+------+
+                     | REST API    |
+                     | :8080 (Go)  |
+                     +------+------+
+                            |
+                     +------+------+
+                     | Pipeline    |
+                     | Engine      |
+                     +------+------+
+                            |
+                     +------+------+
+                     | PostgreSQL  |
+                     | :5432       |
+                     +-------------+
 
-     +-------------+    +-----------+    +--------+
-     | Webmail     |    | Console   |    |dnsmasq |
-     | :3000 React |    | (bubbletea)|   | DNS    |
-     +-------------+    +-----------+    +--------+
+     +-------------+    +-----------+    +-----------+
+     | Webmail     |    | Admin UI  |    | Console   |
+     | (React)     |    | (React)   |    | (bubbletea)|
+     +-------------+    +-----------+    +-----------+
+
+  External (separate repos, joined via mailnet):
+     [testbed]              [reference-mailserver]
+     - dnsmasq DNS          - Postfix + Dovecot (mail1.test, mail2.test, ...)
+     - certs volume         - rspamd, fail2ban
+     - mailnet network      - postgres
 ```
 
 ### Directory Layout
@@ -226,7 +232,6 @@ cmd/
   migrate/          Database migration runner
   certgen/          TLS/DKIM certificate generator
   seed/             Test data and RBAC seeder (domains, mailboxes, admin user)
-  instantmailcheck/ Standalone mail server diagnostics and security audit tool
   website/          Project website server
 internal/
   mailcheck/        Mail server diagnostic checks (DNS, SMTP, IMAP, security, deliverability)
@@ -243,10 +248,13 @@ internal/
   pipeline/         Processing engine, filter registry, 16+ built-in filters
   console/          Console screens and components
 webmail/            React frontend (Vite + TypeScript + Tailwind + shadcn/ui)
-website/            Project landing page (static HTML)
-docker/             Dockerfiles for Postfix, Dovecot, dnsmasq, gateways, etc.
+admin/              Admin UI (React)
+docker/             Dockerfiles for the API, gateways, webmail, admin, website
+helm/               Helm chart for restmail (mail3 only)
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
+tasks/              Per-service Taskfiles (one per container) included from root Taskfile.yml
 tests/e2e/          End-to-end test suite (10 stages)
+.workspace/         Sibling repos cloned on demand (testbed, reference-mailserver) — gitignored
 ```
 
 ## Development
@@ -255,17 +263,20 @@ tests/e2e/          End-to-end test suite (10 stages)
 
 - Go 1.24+
 - Node.js 18+ and npm
-- Docker and Docker Compose
-- [Task](https://taskfile.dev/) (recommended)
+- Docker
+- [Task](https://taskfile.dev/)
 
 ### Setup
 
 ```bash
 # Install Go and Node dependencies, verify build
 task setup
+```
 
-# Generate TLS and DKIM certificates for dev domains
-task certs:generate
+TLS certificates are provisioned on demand by the gateway containers (their dev-target images run `certgen` against the shared `testbed_certs` volume). To pull the dev CA out of the testbed for browser/IMAP-client trust:
+
+```bash
+cd .workspace/testbed && task ca:fetch    # writes ./ca.crt
 ```
 
 ### Building
@@ -302,20 +313,25 @@ task test:all
 ### Local Development
 
 ```bash
-# Start the full Docker stack
-task dev
+# Start the full restmail (mail3.test) product stack
+task dev                       # alias for restmail:mail3:up
 
-# Run the API with hot reload (requires air)
-task dev:api
+# Drive a single container
+task api:up                    # build + run the API
+task smtp-gateway:up           # build + run the SMTP gateway
+task webmail:up
+task admin:up
+# ... same up/down/restart/logs pattern for every service
 
-# Run the webmail frontend dev server
-task dev:webmail
+# Tail logs for any container
+task api:logs
+task smtp-gateway:logs
 
-# Run individual gateways locally
-task dev:smtp-gateway
-task dev:imap-gateway
-task dev:pop3-gateway
+# Tear it all down
+task restmail:mail3:down
 ```
+
+Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
 
 ### Code Quality
 
@@ -454,30 +470,19 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | `rspamd` | Adapter | Rspamd spam scanning |
 | `clamav` | Adapter | ClamAV virus scanning |
 
-## Docker Compose Profiles
+## Optional Capabilities
 
-The default `docker compose up` starts the core services. Optional profiles add extra capabilities:
+Spam/virus scanning, fail2ban, and rspamd come from the reference mail server stack ([`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver)) — bring up a reference instance to get them. Monitoring lives in this repo:
 
 ```bash
-# Enable spam/virus scanning (rspamd + ClamAV)
-docker compose --profile scanning up -d
-
-# Enable monitoring (Prometheus + Grafana)
-docker compose --profile monitoring up -d
-
-# Enable fail2ban
-docker compose --profile security up -d
-
-# Combine profiles
-docker compose --profile scanning --profile monitoring up -d
+task monitoring:up      # Prometheus + Grafana + postgres-exporter
+task monitoring:down
 ```
 
-| Profile      | Services                              | Ports               |
-|-------------|---------------------------------------|----------------------|
-| *(default)* | API, webmail, gateways, Postfix/Dovecot, PostgreSQL, dnsmasq, website | 8080, 3000, 8090, 25, 587, 465, 143, 993, 110, 995 |
-| `scanning`  | rspamd, ClamAV, ClamAV REST proxy    | --                   |
-| `monitoring`| Prometheus, Grafana, postgres-exporter| 9090, 3001           |
-| `security`  | fail2ban                              | --                   |
+| Stack         | Comes From                  | Tasks                            |
+|---------------|-----------------------------|----------------------------------|
+| Monitoring    | this repo                   | `task monitoring:up\|down\|logs` |
+| rspamd, fail2ban | `rest-mail/reference-mailserver` | `task mailserver:mail1:up` (etc.) |
 
 ## RESTMAIL Protocol
 

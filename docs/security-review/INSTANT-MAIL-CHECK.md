@@ -1,5 +1,7 @@
 # Instant Mail Check — Complete Reference
 
+> **Note (2026-04-28):** This document was written when `instantmailcheck` lived inside `rest-mail-server`. The tool now lives at https://github.com/rest-mail/instantmailcheck with its own release pipeline. Architecture and check details below are still accurate; file paths under `cmd/instantmailcheck/` and `internal/mailcheck/` are now in that upstream repo.
+
 A standalone CLI tool for comprehensive mail server diagnostics, security auditing, and deliverability testing. Built for administrators testing their own servers.
 
 ## Table of Contents

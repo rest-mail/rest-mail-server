@@ -1,15 +1,298 @@
 version: "3"
 
+# silent: true hides the `task: [name] cmd` prelude. Use `task -v` on the
+# CLI to bring the prelude back when debugging. Each tasks/*.yml include
+# also sets silent: true on its own scope.
+silent: true
+
+# OUTPUT redirects raw command stdout. Default is /dev/null (quiet); set
+# VERBOSE=1 to send raw output to stdout instead. Defined here at the
+# top level via env: with sh:, which propagates as a shell env var to
+# every task in this file AND every task in the included tasks/*.yml
+# files. Per-cmd usage: `docker build … >$OUTPUT 2>&1` — no per-block
+# `[ -n "${VERBOSE}" ] && OUTPUT=…` boilerplate needed.
 env:
   COMPOSE_PROJECT_NAME: rest-mail
+  OUTPUT:
+    sh: '[ -n "$VERBOSE" ] && echo /dev/stdout || echo /dev/null'
 
+# ════════════════════════════════════════════════════════
+# Centralized vars — single source of truth for ports, IPs, hostnames,
+# credentials, and image tags. Per-service Taskfiles in tasks/ inherit
+# these via the `includes:` block below. Future: derive testbed DNS
+# zone records from these values to simulate a real mail server zone.
+# ════════════════════════════════════════════════════════
 vars:
   GO_MODULE: github.com/restmail/restmail
+
+  # NOTE: parent vars use a RESTMAIL_/MAIL3_/MONITORING_ prefix to avoid
+  # collision with subproject (testbed, mailserver) include vars. Task
+  # 3.49.1 merges all included Taskfiles' vars into a flat shared
+  # namespace at invocation time, so a bare `PROJECT: rest-mail` here
+  # would be overwritten by the testbed include's `PROJECT: testbed`.
+  RESTMAIL_PROJECT: rest-mail
+
+  # Substrate (testbed-owned)
+  RESTMAIL_NETWORK: testbed_mailnet
+  RESTMAIL_CERTS_VOLUME: testbed_certs
+  RESTMAIL_TESTBED_DNS_IP: 10.99.0.10
+
+  # Image registry/org and tag. Locally-built images are tagged with the
+  # same FQDN as upstream pulls (ghcr.io/rest-mail/<svc>:dev) for
+  # consistency with reference-* images that come from the registry.
+  RESTMAIL_REGISTRY: ghcr.io/rest-mail
+  RESTMAIL_IMAGE_TAG: dev
+
+  # Mail3 instance identity
+  MAIL3_HOSTNAME: mail3.test
+  RESTMAIL_PROXY_HOST: restmail.localhost
+
+  # Container IPs on mailnet
+  MAIL3_API_IP: 10.99.0.20
+  MAIL3_SMTP_IP: 10.99.0.13
+  MAIL3_IMAP_IP: 10.99.0.15
+  MAIL3_POP3_IP: 10.99.0.16
+  MAIL3_POSTGRES_IP: 10.99.0.43
+  MAIL3_JS_FILTER_IP: 10.99.0.22
+  MAIL3_WEBMAIL_IP: 10.99.0.21
+  MAIL3_ADMIN_IP: 10.99.0.27
+  MAIL3_WEBSITE_IP: 10.99.0.26
+  MONITORING_PROMETHEUS_IP: 10.99.0.30
+  MONITORING_GRAFANA_IP: 10.99.0.31
+  MONITORING_POSTGRES_EXPORTER_IP: 10.99.0.32
+
+  # Postgres
+  MAIL3_DB_NAME: restmail
+  MAIL3_DB_USER: restmail
+  MAIL3_DB_PASS: restmail
+
+  # API
+  MAIL3_API_PORT: '8080'
+  MAIL3_JWT_SECRET: dev-secret-change-in-production
+  MAIL3_MASTER_KEY: dev-master-key-change-in-production
+
+  # SMTP/IMAP/POP3 ports
+  MAIL3_SMTP_PORT_INBOUND: '25'
+  MAIL3_SMTP_PORT_SUBMISSION: '587'
+  MAIL3_SMTP_PORT_SUBMISSION_TLS: '465'
+  MAIL3_IMAP_PORT: '143'
+  MAIL3_IMAP_TLS_PORT: '993'
+  MAIL3_POP3_PORT: '110'
+  MAIL3_POP3_TLS_PORT: '995'
+
+  # Build / runtime (RESTMAIL_IMAGE_TAG already declared above)
+  MAIL3_LOG_LEVEL: debug
+  MAIL3_ENVIRONMENT: development
+
+# ════════════════════════════════════════════════════════
+# Includes
+#
+# Subproject Taskfiles are pulled in so all their operational tasks (up,
+# down, smoke, dig, ...) flow through automatically. `optional: true`
+# lets a fresh checkout work before *:init has run; tasks under that
+# namespace become available once the directory exists.
+#
+# Each tasks/<service>.yml is included with vars passed from the
+# centralized vars block above so values stay in one place.
+# ════════════════════════════════════════════════════════
+includes:
+  # ── Local services (this repo) ──────────────────────────
+  # Subproject includes (testbed, mailserver:*) come AFTER these. Task
+  # processes includes in document order and each include's vars block
+  # bleeds into the resolution context for subsequent includes — so any
+  # include that references {{.RESTMAIL_PROJECT}} etc. must come before the
+  # subproject includes that override those names.
+  postgres:
+    taskfile: ./tasks/postgres.yml
+    vars:
+      POSTGRES_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      POSTGRES_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      POSTGRES_IP: '{{.MAIL3_POSTGRES_IP}}'
+      POSTGRES_DB_NAME: '{{.MAIL3_DB_NAME}}'
+      POSTGRES_DB_USER: '{{.MAIL3_DB_USER}}'
+      POSTGRES_DB_PASS: '{{.MAIL3_DB_PASS}}'
+
+  js-filter:
+    taskfile: ./tasks/js-filter.yml
+    vars:
+      JS_FILTER_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      JS_FILTER_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      JS_FILTER_IP: '{{.MAIL3_JS_FILTER_IP}}'
+      JS_FILTER_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      JS_FILTER_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+
+  api:
+    taskfile: ./tasks/api.yml
+    vars:
+      API_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      API_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      API_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      API_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
+      API_IP: '{{.MAIL3_API_IP}}'
+      API_PORT: '{{.MAIL3_API_PORT}}'
+      API_MODE: dev
+      API_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      API_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      API_DB_NAME: '{{.MAIL3_DB_NAME}}'
+      API_DB_USER: '{{.MAIL3_DB_USER}}'
+      API_DB_PASS: '{{.MAIL3_DB_PASS}}'
+      API_JWT_SECRET: '{{.MAIL3_JWT_SECRET}}'
+      API_MASTER_KEY: '{{.MAIL3_MASTER_KEY}}'
+      API_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
+      API_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+
+  smtp-gateway:
+    taskfile: ./tasks/smtp-gateway.yml
+    vars:
+      SMTP_GATEWAY_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      SMTP_GATEWAY_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      SMTP_GATEWAY_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      SMTP_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
+      SMTP_GATEWAY_IP: '{{.MAIL3_SMTP_IP}}'
+      SMTP_GATEWAY_MAIL3_HOSTNAME: '{{.MAIL3_HOSTNAME}}'
+      SMTP_GATEWAY_MODE: dev
+      SMTP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      SMTP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      SMTP_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
+      SMTP_GATEWAY_DB_USER: '{{.MAIL3_DB_USER}}'
+      SMTP_GATEWAY_DB_PASS: '{{.MAIL3_DB_PASS}}'
+      SMTP_GATEWAY_PORT_INBOUND: '{{.MAIL3_SMTP_PORT_INBOUND}}'
+      SMTP_GATEWAY_PORT_SUBMISSION: '{{.MAIL3_SMTP_PORT_SUBMISSION}}'
+      SMTP_GATEWAY_PORT_SUBMISSION_TLS: '{{.MAIL3_SMTP_PORT_SUBMISSION_TLS}}'
+      SMTP_GATEWAY_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
+      SMTP_GATEWAY_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+
+  imap-gateway:
+    taskfile: ./tasks/imap-gateway.yml
+    vars:
+      IMAP_GATEWAY_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      IMAP_GATEWAY_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      IMAP_GATEWAY_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      IMAP_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
+      IMAP_GATEWAY_IP: '{{.MAIL3_IMAP_IP}}'
+      IMAP_GATEWAY_MAIL3_HOSTNAME: '{{.MAIL3_HOSTNAME}}'
+      IMAP_GATEWAY_MODE: dev
+      IMAP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      IMAP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      IMAP_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
+      IMAP_GATEWAY_DB_USER: '{{.MAIL3_DB_USER}}'
+      IMAP_GATEWAY_DB_PASS: '{{.MAIL3_DB_PASS}}'
+      IMAP_GATEWAY_PORT: '{{.MAIL3_IMAP_PORT}}'
+      IMAP_GATEWAY_TLS_PORT: '{{.MAIL3_IMAP_TLS_PORT}}'
+      IMAP_GATEWAY_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
+      IMAP_GATEWAY_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+      IMAP_GATEWAY_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
+
+  pop3-gateway:
+    taskfile: ./tasks/pop3-gateway.yml
+    vars:
+      POP3_GATEWAY_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      POP3_GATEWAY_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      POP3_GATEWAY_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      POP3_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
+      POP3_GATEWAY_IP: '{{.MAIL3_POP3_IP}}'
+      POP3_GATEWAY_MAIL3_HOSTNAME: '{{.MAIL3_HOSTNAME}}'
+      POP3_GATEWAY_MODE: dev
+      POP3_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      POP3_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      POP3_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
+      POP3_GATEWAY_DB_USER: '{{.MAIL3_DB_USER}}'
+      POP3_GATEWAY_DB_PASS: '{{.MAIL3_DB_PASS}}'
+      POP3_PORT: '{{.MAIL3_POP3_PORT}}'
+      POP3_TLS_PORT: '{{.MAIL3_POP3_TLS_PORT}}'
+      POP3_GATEWAY_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
+      POP3_GATEWAY_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+
+  webmail:
+    taskfile: ./tasks/webmail.yml
+    vars:
+      WEBMAIL_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      WEBMAIL_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      WEBMAIL_IP: '{{.MAIL3_WEBMAIL_IP}}'
+      WEBMAIL_MODE: dev
+      WEBMAIL_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      WEBMAIL_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      WEBMAIL_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
+
+  admin:
+    taskfile: ./tasks/admin.yml
+    vars:
+      ADMIN_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      ADMIN_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      ADMIN_IP: '{{.MAIL3_ADMIN_IP}}'
+      ADMIN_MODE: dev
+      ADMIN_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
+      ADMIN_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      ADMIN_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
+
+  website:
+    taskfile: ./tasks/website.yml
+    vars:
+      WEBSITE_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      WEBSITE_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      WEBSITE_IP: '{{.MAIL3_WEBSITE_IP}}'
+      WEBSITE_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      WEBSITE_IMAGE_TAG: latest
+      WEBSITE_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
+
+  monitoring:
+    taskfile: ./tasks/monitoring.yml
+    vars:
+      MONITORING_PROJECT: '{{.RESTMAIL_PROJECT}}'
+      MONITORING_NETWORK: '{{.RESTMAIL_NETWORK}}'
+      PROMETHEUS_IP: '{{.MONITORING_PROMETHEUS_IP}}'
+      GRAFANA_IP: '{{.MONITORING_GRAFANA_IP}}'
+      POSTGRES_EXPORTER_IP: '{{.MONITORING_POSTGRES_EXPORTER_IP}}'
+
+  # ── Subprojects (must come last) ────────────────────────
+  # Each of these sets PROJECT/IMAGE_TAG to its own value and Task bleeds
+  # those into later includes' var resolution. Putting them last keeps
+  # the local-service includes above resolving against the parent
+  # vars block (PROJECT=rest-mail, IMAGE_TAG=dev).
+  testbed:
+    taskfile: .workspace/testbed/Taskfile.yml
+    dir: .workspace/testbed
+    optional: true
+    vars:
+      PROJECT: testbed
+      IMAGE_TAG: 2026.04.28
+
+  mailserver:mail1:
+    taskfile: .workspace/reference-mailserver/Taskfile.yml
+    dir: .workspace/reference-mailserver
+    optional: true
+    vars:
+      CONFIG: mail1
+      HOSTNAME: mail1.test
+      MAILNET_NAME: '{{.RESTMAIL_NETWORK}}'
+      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      IMAGE_TAG: 2026.04.28
+      POSTGRES_IP: 10.99.0.41
+      POSTFIX_IP: 10.99.0.11
+      DOVECOT_IP: 10.99.0.111
+      RSPAMD_IP: 10.99.0.13
+      FAIL2BAN_IP: 10.99.0.14
+
+  mailserver:mail2:
+    taskfile: .workspace/reference-mailserver/Taskfile.yml
+    dir: .workspace/reference-mailserver
+    optional: true
+    vars:
+      CONFIG: mail2
+      HOSTNAME: mail2.test
+      MAILNET_NAME: '{{.RESTMAIL_NETWORK}}'
+      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      IMAGE_TAG: 2026.04.28
+      POSTGRES_IP: 10.99.0.42
+      POSTFIX_IP: 10.99.0.12
+      DOVECOT_IP: 10.99.0.112
+      RSPAMD_IP: 10.99.0.23
+      FAIL2BAN_IP: 10.99.0.24
 
 tasks:
 
   # ════════════════════════════════════════════════════════
-  # Build
+  # Build (Go binaries — used for local development without Docker)
   # ════════════════════════════════════════════════════════
 
   build:
@@ -73,11 +356,6 @@ tasks:
     generates:
       - build/gateways/pop3-gateway
 
-  build:webmail:
-    desc: Build the webmail Docker image (production)
-    cmds:
-      - docker compose -f docker-compose.yml build webmail
-
   build:website:
     desc: Build the website server binary
     cmds:
@@ -134,8 +412,8 @@ tasks:
     deps: [build:console:darwin-arm64, build:console:darwin-amd64, build:console:linux-arm64, build:console]
 
   build:tools:
-    desc: Build all tool binaries (certgen, migrate, seed, website, instantmailcheck)
-    deps: [build:certgen, build:migrate, build:seed, build:website, build:instantmailcheck]
+    desc: Build all tool binaries (certgen, migrate, seed, website)
+    deps: [build:certgen, build:migrate, build:seed, build:website]
 
   build:certgen:
     desc: Build the certificate generator
@@ -172,73 +450,12 @@ tasks:
     generates:
       - build/tools/seed
 
-  build:instantmailcheck:
-    desc: Build the Instant Mail Check CLI tool (auto-detects OS/arch)
-    vars:
-      HOST_OS:
-        sh: go env GOHOSTOS
-      HOST_ARCH:
-        sh: go env GOHOSTARCH
-      VERSION:
-        sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-    cmds:
-      - go build -ldflags "-X main.Version={{.VERSION}}" -o build/tools/instantmailcheck-{{.HOST_OS}}-{{.HOST_ARCH}} ./cmd/instantmailcheck
-      - echo "Built build/tools/instantmailcheck-{{.HOST_OS}}-{{.HOST_ARCH}} ({{.VERSION}})"
-    sources:
-      - cmd/instantmailcheck/**/*.go
-      - internal/mailcheck/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/instantmailcheck-{{.HOST_OS}}-{{.HOST_ARCH}}
-
-  build:instantmailcheck:darwin-arm64:
-    desc: Cross-compile Instant Mail Check for macOS Apple Silicon
-    vars:
-      VERSION:
-        sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-    env:
-      GOOS: darwin
-      GOARCH: arm64
-    cmds:
-      - go build -ldflags "-X main.Version={{.VERSION}}" -o build/tools/instantmailcheck-darwin-arm64 ./cmd/instantmailcheck
-
-  build:instantmailcheck:darwin-amd64:
-    desc: Cross-compile Instant Mail Check for macOS Intel
-    vars:
-      VERSION:
-        sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-    env:
-      GOOS: darwin
-      GOARCH: amd64
-    cmds:
-      - go build -ldflags "-X main.Version={{.VERSION}}" -o build/tools/instantmailcheck-darwin-amd64 ./cmd/instantmailcheck
-
-  build:instantmailcheck:linux-arm64:
-    desc: Cross-compile Instant Mail Check for Linux arm64
-    vars:
-      VERSION:
-        sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-    env:
-      GOOS: linux
-      GOARCH: arm64
-    cmds:
-      - go build -ldflags "-X main.Version={{.VERSION}}" -o build/tools/instantmailcheck-linux-arm64 ./cmd/instantmailcheck
-
-  build:instantmailcheck:linux-amd64:
-    desc: Cross-compile Instant Mail Check for Linux amd64
-    vars:
-      VERSION:
-        sh: git describe --tags --always --dirty 2>/dev/null || echo "dev"
-    env:
-      GOOS: linux
-      GOARCH: amd64
-    cmds:
-      - go build -ldflags "-X main.Version={{.VERSION}}" -o build/tools/instantmailcheck-linux-amd64 ./cmd/instantmailcheck
-
-  build:instantmailcheck:all:
-    desc: Build Instant Mail Check for all platforms
-    deps: [build:instantmailcheck:darwin-arm64, build:instantmailcheck:darwin-amd64, build:instantmailcheck:linux-arm64, build:instantmailcheck:linux-amd64, build:instantmailcheck]
+  # instantmailcheck moved to its own repo:
+  #   https://github.com/rest-mail/instantmailcheck
+  # Install via Homebrew:
+  #   brew install antimatter-studios/tap/instantmailcheck
+  # Or via Go:
+  #   go install github.com/rest-mail/instantmailcheck@latest
 
   # ════════════════════════════════════════════════════════
   # Test
@@ -278,7 +495,7 @@ tasks:
       - task: test:e2e
 
   # ════════════════════════════════════════════════════════
-  # Code Quality
+  # Code quality
   # ════════════════════════════════════════════════════════
 
   fmt:
@@ -303,673 +520,177 @@ tasks:
       - go mod verify
 
   # ════════════════════════════════════════════════════════
-  # start:<service>
+  # restmail product stack
   #
-  # Each task starts exactly one container and declares deps on the tasks
-  # for its prerequisites. Docker Compose's own depends_on handles fine-
-  # grained health/completion checks; the task deps express the graph so
-  # that `task start:api` automatically brings up postgres, dnsmasq, etc.
+  # `restmail:mail3:up` brings up the full mail3.test product stack
+  # — postgres, js-filter, api, three protocol gateways, webmail,
+  # admin, website. Each individual service is included from
+  # tasks/<service>.yml under its own namespace, so `task <svc>:up`,
+  # `task <svc>:down`, `task <svc>:logs` etc. are also available.
   # ════════════════════════════════════════════════════════
 
-  # ── Infrastructure ──────────────────────────────────────
-  start:postgres:
-    desc: Start all PostgreSQL instances
-    run: once
-    deps: [start:postgres-mail1, start:postgres-mail2, start:postgres-mail3]
-
-  start:postgres-mail1:
-    desc: Start PostgreSQL for mail1.test
-    run: once
-    deps: [net:ensure]
+  restmail:mail3:up:
+    desc: Bring up the full restmail product stack for mail3.test
     cmds:
-      - docker compose up -d --build --force-recreate postgres-mail1
-
-  start:postgres-mail2:
-    desc: Start PostgreSQL for mail2.test
-    run: once
-    deps: [net:ensure]
-    cmds:
-      - docker compose up -d --build --force-recreate postgres-mail2
-
-  start:postgres-mail3:
-    desc: Start PostgreSQL for mail3.test (API + gateways)
-    run: once
-    deps: [net:ensure]
-    cmds:
-      - docker compose up -d --build --force-recreate postgres-mail3
-
-  start:dnsmasq:
-    desc: Start the DNS server
-    run: once
-    deps: [net:ensure]
-    cmds:
-      - docker compose up -d --build --force-recreate dnsmasq
-
-  start:js-filter:
-    desc: Start the JS filter sidecar
-    run: once
-    deps: [net:ensure]
-    cmds:
-      - docker compose up -d --build --force-recreate js-filter
-
-  start:certgen:
-    desc: Run the certificate generator (one-shot init container)
-    run: once
-    deps: [net:ensure]
-    cmds:
-      - docker compose up -d --build --force-recreate certgen
-
-  # ── Mail ────────────────────────────────────────────────
-  start:dovecot-mail1:
-    desc: Start Dovecot for mail1.test
-    run: once
-    deps: [start:postgres-mail1, start:certgen]
-    cmds:
-      - docker compose up -d --build --force-recreate dovecot-mail1
-
-  start:dovecot-mail2:
-    desc: Start Dovecot for mail2.test
-    run: once
-    deps: [start:postgres-mail2, start:certgen]
-    cmds:
-      - docker compose up -d --build --force-recreate dovecot-mail2
-
-  start:postfix-mail1:
-    desc: Start Postfix for mail1.test
-    run: once
-    deps: [start:dovecot-mail1, start:dnsmasq]
-    cmds:
-      - docker compose up -d --build --force-recreate postfix-mail1
-
-  start:postfix-mail2:
-    desc: Start Postfix for mail2.test
-    run: once
-    deps: [start:dovecot-mail2, start:dnsmasq]
-    cmds:
-      - docker compose up -d --build --force-recreate postfix-mail2
-
-  # ── API ─────────────────────────────────────────────────
-  start:api:
-    desc: Start the REST API (waits for health endpoint)
-    run: once
-    deps: [start:postgres-mail3, start:dnsmasq, start:js-filter]
-    cmds:
-      - docker compose up -d --build --force-recreate api
+      - task: postgres:up
+      - |
+        echo "  waiting for postgres to become healthy..."
+        for i in $(seq 1 30); do
+          status=$(docker inspect -f '{{`{{.State.Health.Status}}`}}' {{.RESTMAIL_PROJECT}}-postgres 2>/dev/null || echo "starting")
+          if [ "$status" = "healthy" ]; then
+            echo "  postgres healthy"
+            break
+          fi
+          sleep 1
+        done
+      - task: js-filter:up
+      - task: api:up
       - task: health:wait
-
-  # ── Gateways ────────────────────────────────────────────
-  start:smtp-gateway:
-    desc: Start the SMTP gateway
-    run: once
-    deps: [start:api, start:certgen]
-    cmds:
-      - docker compose up -d --build --force-recreate smtp-gateway
-
-  start:imap-gateway:
-    desc: Start the IMAP gateway
-    run: once
-    deps: [start:api, start:certgen]
-    cmds:
-      - docker compose up -d --build --force-recreate imap-gateway
-
-  start:pop3-gateway:
-    desc: Start the POP3 gateway
-    run: once
-    deps: [start:api, start:certgen]
-    cmds:
-      - docker compose up -d --build --force-recreate pop3-gateway
-
-  # ── Webmail ─────────────────────────────────────────────
-  start:webmail:
-    desc: Start the webmail frontend (production nginx)
-    run: once
-    deps: [start:api]
-    cmds:
-      - docker compose -f webmail/docker-compose.yml up -d --build --force-recreate webmail
-
-  start:webmail:dev:
-    desc: Start the webmail frontend with Vite HMR (hot reload)
-    run: once
-    deps: [start:api]
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml up -d --build --force-recreate webmail
-
-  # ── Website ─────────────────────────────────────────────
-  start:website:
-    desc: Start the project website
-    run: once
-    deps: [net:ensure]
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml up -d --build --force-recreate website
-
-  start:website:dev:
-    desc: Start the project website with live source mount (dev)
-    run: once
-    deps: [net:ensure]
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
-
-  # ── Admin ───────────────────────────────────────────────
-  start:admin:dev:
-    desc: Start the admin frontend with Vite HMR (hot reload)
-    run: once
-    deps: [start:api]
-    cmds:
-      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
-
-  # ════════════════════════════════════════════════════════
-  # stop:<service>
-  # ════════════════════════════════════════════════════════
-
-  # ── Infrastructure ──────────────────────────────────────
-  stop:postgres:
-    desc: Stop all PostgreSQL instances
-    cmds:
-      - docker compose stop postgres-mail1 postgres-mail2 postgres-mail3
-
-  stop:dnsmasq:
-    desc: Stop the DNS server
-    cmds:
-      - docker compose stop dnsmasq
-
-  stop:js-filter:
-    desc: Stop the JS filter sidecar
-    cmds:
-      - docker compose stop js-filter
-
-  # ── Mail ────────────────────────────────────────────────
-  stop:dovecot-mail1:
-    desc: Stop Dovecot for mail1.test
-    cmds:
-      - docker compose stop dovecot-mail1
-
-  stop:dovecot-mail2:
-    desc: Stop Dovecot for mail2.test
-    cmds:
-      - docker compose stop dovecot-mail2
-
-  stop:postfix-mail1:
-    desc: Stop Postfix for mail1.test
-    cmds:
-      - docker compose stop postfix-mail1
-
-  stop:postfix-mail2:
-    desc: Stop Postfix for mail2.test
-    cmds:
-      - docker compose stop postfix-mail2
-
-  # ── API ─────────────────────────────────────────────────
-  stop:api:
-    desc: Stop the REST API
-    cmds:
-      - docker compose stop api
-
-  # ── Gateways ────────────────────────────────────────────
-  stop:smtp-gateway:
-    desc: Stop the SMTP gateway
-    cmds:
-      - docker compose stop smtp-gateway
-
-  stop:imap-gateway:
-    desc: Stop the IMAP gateway
-    cmds:
-      - docker compose stop imap-gateway
-
-  stop:pop3-gateway:
-    desc: Stop the POP3 gateway
-    cmds:
-      - docker compose stop pop3-gateway
-
-  # ── Webmail ─────────────────────────────────────────────
-  stop:webmail:
-    desc: Stop the webmail frontend
-    cmds:
-      - docker compose -f webmail/docker-compose.yml stop webmail
-
-  stop:webmail:dev:
-    desc: Stop webmail containers (Vite HMR)
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml stop
-
-  # ── Website ─────────────────────────────────────────────
-  stop:website:
-    desc: Stop the project website
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml stop website
-
-  stop:website:dev:
-    desc: Stop the project website (dev)
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml stop website
-
-  # ── Admin ───────────────────────────────────────────────
-  stop:admin:dev:
-    desc: Stop the admin frontend
-    cmds:
-      - docker compose -f admin/docker-compose.yml stop admin
-
-  # ── Monitoring ──────────────────────────────────────────
-  stop:monitoring:
-    desc: Stop monitoring containers
-    cmds:
-      - docker compose -f monitoring/docker-compose.yml stop
-
-  # ════════════════════════════════════════════════════════
-  # restart:<service>
-  #
-  # Rebuilds and restarts a single container. Prerequisites are assumed
-  # to already be running (use start:<service> if they are not).
-  # ════════════════════════════════════════════════════════
-
-  # ── Infrastructure ──────────────────────────────────────
-  restart:postgres:
-    desc: Restart all PostgreSQL instances
-    cmds:
-      - docker compose restart postgres-mail1 postgres-mail2 postgres-mail3
-
-  restart:dnsmasq:
-    desc: Restart the DNS server
-    cmds:
-      - docker compose restart dnsmasq
-
-  restart:js-filter:
-    desc: Rebuild and restart the JS filter sidecar
-    cmds:
-      - docker compose up -d --build --force-recreate js-filter
-
-  # ── Mail ────────────────────────────────────────────────
-  restart:dovecot-mail1:
-    desc: Restart Dovecot for mail1.test
-    cmds:
-      - docker compose restart dovecot-mail1
-
-  restart:dovecot-mail2:
-    desc: Restart Dovecot for mail2.test
-    cmds:
-      - docker compose restart dovecot-mail2
-
-  restart:postfix-mail1:
-    desc: Restart Postfix for mail1.test
-    cmds:
-      - docker compose restart postfix-mail1
-
-  restart:postfix-mail2:
-    desc: Restart Postfix for mail2.test
-    cmds:
-      - docker compose restart postfix-mail2
-
-  # ── API ─────────────────────────────────────────────────
-  restart:api:
-    desc: Rebuild and restart the REST API (air hot reload)
-    cmds:
-      - docker compose up -d --build --force-recreate api
-
-  # ── Gateways ────────────────────────────────────────────
-  restart:smtp-gateway:
-    desc: Rebuild and restart the SMTP gateway (air hot reload)
-    cmds:
-      - docker compose up -d --build --force-recreate smtp-gateway
-
-  restart:imap-gateway:
-    desc: Rebuild and restart the IMAP gateway (air hot reload)
-    cmds:
-      - docker compose up -d --build --force-recreate imap-gateway
-
-  restart:pop3-gateway:
-    desc: Rebuild and restart the POP3 gateway (air hot reload)
-    cmds:
-      - docker compose up -d --build --force-recreate pop3-gateway
-
-  # ── Webmail ─────────────────────────────────────────────
-  restart:webmail:
-    desc: Rebuild and restart the webmail frontend
-    cmds:
-      - docker compose -f webmail/docker-compose.yml up -d --build --force-recreate webmail
-
-  restart:webmail:dev:
-    desc: Rebuild and restart the webmail frontend (Vite HMR)
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml up -d --build --force-recreate webmail
-
-  # ── Website ─────────────────────────────────────────────
-  restart:website:
-    desc: Restart the project website
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml restart website
-
-  restart:website:dev:
-    desc: Restart the project website (dev)
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml up -d --force-recreate website
-
-  # ── Admin ───────────────────────────────────────────────
-  restart:admin:dev:
-    desc: Rebuild and restart the admin frontend (Vite HMR)
-    cmds:
-      - docker compose -f admin/docker-compose.yml -f admin/docker-compose.override.yml up -d --build --force-recreate admin
-
-  # ── Monitoring ──────────────────────────────────────────
-  restart:monitoring:
-    desc: Restart monitoring containers
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f monitoring/docker-compose.yml restart
-
-  # ════════════════════════════════════════════════════════
-  # dev / stop / restart (all services)
-  # ════════════════════════════════════════════════════════
-
-  dev:
-    desc: Start the full dev environment (hot reload via air + Vite)
-    deps:
-      - start:webmail:dev
-      - start:website:dev
-      - start:admin:dev
-      - start:smtp-gateway
-      - start:imap-gateway
-      - start:pop3-gateway
-      - start:postfix-mail1
-      - start:postfix-mail2
-    cmds:
+      - task: db:seed
+      - task: smtp-gateway:up
+      - task: imap-gateway:up
+      - task: pop3-gateway:up
+      - task: webmail:up
+      - task: admin:up
+      - task: website:up
       - |
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  restmail dev environment ready"
+        echo "  restmail (mail3.test) ready"
         echo ""
         echo "  Website   →  http://localhost/"
         echo "  Webmail   →  http://localhost/webmail"
+        echo "  Admin     →  http://localhost/admin"
         echo "  API       →  http://localhost/api"
         echo "  API docs  →  http://localhost/api/docs"
         echo ""
         echo "  Direct (bypass proxy):"
-        echo "    Webmail →  http://localhost:3001  (Vite, HMR)"
-        echo "    API     →  http://localhost:8080"
+        echo "    API     →  http://localhost:{{.MAIL3_API_PORT}}"
         echo ""
-        echo "  task start:<service>    start a service + its deps"
-        echo "  task stop:<service>     stop a single container"
-        echo "  task stop               stop all containers (preserves them)"
-        echo "  task restart:<service>  rebuild + restart a container"
-        echo "  task logs               tail all container logs"
-        echo "  task ps                 show container status"
-        echo "  task down               stop + remove all containers"
+        echo "  task <service>:up|down|restart|logs    drive a single service"
+        echo "  task restmail:mail3:down               stop everything"
+        echo "  task restmail:mail3:restart            rebuild + recreate"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-  stop:
-    desc: Stop all containers without removing them (fast restart with `task dev`)
-    deps: [stop:core, stop:dev, stop:monitoring]
-
-  stop:core:
-    desc: Stop all core containers (root compose)
+  restmail:mail3:down:
+    desc: Stop the restmail mail3 stack (preserves data volumes)
     cmds:
-      - docker compose -f docker-compose.yml -f docker-compose.override.yml stop
+      - task: website:down
+      - task: admin:down
+      - task: webmail:down
+      - task: pop3-gateway:down
+      - task: imap-gateway:down
+      - task: smtp-gateway:down
+      - task: api:down
+      - task: js-filter:down
+      - task: postgres:down
 
-  stop:dev:
-    desc: Stop all dev containers without removing them (fast restart with `task dev`)
-    deps: [stop:core, stop:webmail:dev, stop:website:dev, stop:admin:dev, stop:monitoring]
-
-  restart:dev:
-    desc: Restart all running dev containers (preserves dep order)
-    deps: [restart:dev:core, restart:webmail:dev, restart:website:dev, restart:admin:dev, restart:monitoring]
-
-  restart:dev:core:
-    desc: Restart core containers (root compose)
-    deps: [restart:api, restart:smtp-gateway, restart:imap-gateway, restart:pop3-gateway]
-
-  # ════════════════════════════════════════════════════════
-  # down / down:clean / reset
-  # ════════════════════════════════════════════════════════
-
-  down:
-    desc: Stop and remove all containers (including orphans)
-    deps: [down:core, down:webmail:dev, down:website:dev, down:monitoring]
-
-  down:core:
-    desc: Stop and remove core containers (root compose)
+  restmail:mail3:restart:
+    desc: Stop + recreate the full restmail stack (rebuilds images)
     cmds:
-      - docker compose -f docker-compose.yml -f docker-compose.override.yml down --remove-orphans
+      - task: restmail:mail3:down
+      - task: restmail:mail3:up
 
-  down:webmail:
-    desc: Stop and remove webmail containers
+  restmail:mail3:logs:
+    desc: Print available log commands for the restmail mail3 stack
     cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans
+      - |
+        echo "Tail logs for individual services:"
+        echo "  task postgres:logs"
+        echo "  task js-filter:logs"
+        echo "  task api:logs"
+        echo "  task smtp-gateway:logs"
+        echo "  task imap-gateway:logs"
+        echo "  task pop3-gateway:logs"
+        echo "  task webmail:logs"
+        echo "  task admin:logs"
+        echo "  task website:logs"
 
-  down:webmail:dev:
-    desc: Stop and remove webmail dev containers (Vite HMR)
+  dev:
+    desc: Alias for restmail:mail3:up (legacy name)
+    deps: [restmail:mail3:up]
+
+  health:wait:
+    desc: Wait for the API health endpoint to respond (up to 60s)
     cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans
-
-  down:website:
-    desc: Stop and remove website containers
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml down --remove-orphans
-
-  down:website:dev:
-    desc: Stop and remove website dev containers
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml down --remove-orphans
-
-  down:monitoring:
-    desc: Stop and remove monitoring containers
-    cmds:
-      - docker compose -f monitoring/docker-compose.yml down --remove-orphans
-
-  down:clean:
-    desc: Stop containers, remove volumes and orphans (destructive)
-    deps: [down:clean:core, down:clean:webmail:dev, down:clean:website:dev, down:clean:monitoring]
-
-  down:clean:core:
-    desc: Stop core containers and remove volumes (destructive)
-    cmds:
-      - docker compose -f docker-compose.yml -f docker-compose.override.yml down --remove-orphans -v
-
-  down:clean:webmail:
-    desc: Stop webmail containers and remove volumes (destructive)
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans -v
-
-  down:clean:webmail:dev:
-    desc: Stop webmail dev containers and remove volumes (destructive)
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml down --remove-orphans -v
-
-  down:clean:website:
-    desc: Stop website containers and remove volumes (destructive)
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml down --remove-orphans -v
-
-  down:clean:website:dev:
-    desc: Stop website dev containers and remove volumes (destructive)
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml -f website/docker-compose.override.yml down --remove-orphans -v
-
-  down:clean:monitoring:
-    desc: Stop monitoring containers and remove volumes (destructive)
-    cmds:
-      - docker compose -f monitoring/docker-compose.yml down --remove-orphans -v
-
-  reset:
-    desc: Full teardown — remove all containers, orphans, then prune stale names
-    deps: [down]
-    cmds:
-      - docker container prune -f
-
-  reset:hard:
-    desc: Full teardown including volumes — use when you want a clean slate
-    deps: [down:clean]
-    cmds:
-      - docker container prune -f
-      - docker network prune -f
-
-  # ════════════════════════════════════════════════════════
-  # Logs
-  # ════════════════════════════════════════════════════════
-
-  logs:
-    desc: Tail logs from all containers
-    deps: [logs:core, logs:webmail, logs:website, logs:monitoring]
-
-  logs:core:
-    desc: Tail logs from core containers
-    cmds:
-      - docker compose -f docker-compose.yml -f docker-compose.override.yml logs -f --tail=100
-
-  logs:api:
-    desc: Tail logs from the API container
-    cmds:
-      - docker compose logs -f --tail=100 api
-
-  logs:gateways:
-    desc: Tail logs from all protocol gateways
-    cmds:
-      - docker compose logs -f --tail=100 smtp-gateway imap-gateway pop3-gateway
-
-  logs:smtp-gateway:
-    desc: Tail logs from the SMTP gateway
-    cmds:
-      - docker compose logs -f --tail=100 smtp-gateway
-
-  logs:imap-gateway:
-    desc: Tail logs from the IMAP gateway
-    cmds:
-      - docker compose logs -f --tail=100 imap-gateway
-
-  logs:pop3-gateway:
-    desc: Tail logs from the POP3 gateway
-    cmds:
-      - docker compose logs -f --tail=100 pop3-gateway
-
-  logs:mail:
-    desc: Tail logs from mail containers
-    cmds:
-      - docker compose logs -f --tail=100 postfix-mail1 dovecot-mail1 postfix-mail2 dovecot-mail2
-
-  logs:webmail:
-    desc: Tail logs from webmail containers
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml logs -f --tail=100
-
-  logs:webmail:container:
-    desc: Tail logs from the webmail container
-    cmds:
-      - docker compose -f webmail/docker-compose.yml logs -f --tail=100 webmail
-
-  logs:website:
-    desc: Tail logs from website containers
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml logs -f --tail=100
-
-  logs:website:container:
-    desc: Tail logs from the website container
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml logs -f --tail=100 website
-
-  logs:monitoring:
-    desc: Tail logs from monitoring containers
-    cmds:
-      - docker compose -f monitoring/docker-compose.yml logs -f --tail=100
-
-  # ════════════════════════════════════════════════════════
-  # ps (container status)
-  # ════════════════════════════════════════════════════════
+      - |
+        echo "  waiting for api health endpoint..."
+        for i in $(seq 1 30); do
+          if curl -sf http://localhost:{{.MAIL3_API_PORT}}/api/health > /dev/null 2>&1; then
+            echo "  api healthy"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "ERROR: api did not become healthy within 60 seconds." >&2
+        exit 1
 
   ps:
-    desc: Show running containers
-    deps: [ps:core, ps:webmail, ps:website, ps:monitoring]
-
-  ps:core:
-    desc: Show running core containers
+    desc: Show all running rest-mail-* containers
     cmds:
-      - docker compose -f docker-compose.yml -f docker-compose.override.yml ps
-
-  ps:webmail:
-    desc: Show running webmail containers
-    cmds:
-      - docker compose -f webmail/docker-compose.yml -f webmail/docker-compose.override.yml ps
-
-  ps:website:
-    desc: Show running website containers
-    cmds:
-      - docker compose -p $COMPOSE_PROJECT_NAME -f website/docker-compose.yml ps
-
-  ps:monitoring:
-    desc: Show running monitoring containers
-    cmds:
-      - docker compose -f monitoring/docker-compose.yml ps
+      - docker ps -a --filter "name=^/{{.RESTMAIL_PROJECT}}-"
 
   # ════════════════════════════════════════════════════════
   # Database
   # ════════════════════════════════════════════════════════
 
   db:migrate:
-    desc: Run database migrations for mail3 (API handles its own schema)
+    desc: Run database migrations for mail3 (executed inside the api container)
     cmds:
-      - docker compose exec api go run ./cmd/migrate
+      - docker exec {{.RESTMAIL_PROJECT}}-api go run ./cmd/migrate
 
   db:seed:
-    desc: Seed mail3 database with test data (mail1/mail2 are auto-seeded via init scripts)
+    desc: Seed the mail3 database with test data
     cmds:
-      - docker compose exec api go run ./cmd/seed
+      - docker exec {{.RESTMAIL_PROJECT}}-api go run ./cmd/seed
 
   db:reset:
-    desc: Reset all databases (destroy volumes + recreate)
+    desc: Drop the postgres data volume, recreate, then seed (destructive)
     cmds:
-      - docker compose stop postgres-mail1 postgres-mail2 postgres-mail3
-      - docker compose rm -f postgres-mail1 postgres-mail2 postgres-mail3
-      - docker volume rm -f rest-mail_postgres-mail1-data rest-mail_postgres-mail2-data rest-mail_postgres-mail3-data
-      - task: start:postgres
+      - task: postgres:reset
       - task: db:seed
 
   db:psql:
-    desc: Open psql shell to the mail3 database
+    desc: Open a psql shell to the mail3 database
     cmds:
-      - docker compose exec postgres-mail3 psql -U restmail -d restmail
+      - task: postgres:psql
 
-  db:psql:mail1:
-    desc: Open psql shell to the mail1 database
-    cmds:
-      - docker compose exec postgres-mail1 psql -U restmail -d restmail
+  # ════════════════════════════════════════════════════════
+  # Subproject bootstrap (clone-only)
+  #
+  # rest-mail/testbed and rest-mail/reference-mailserver are cloned into
+  # .workspace/* (gitignored). Both repos' Taskfiles are pulled in via
+  # the `includes:` block at the top of this file, so all their
+  # operational tasks (up, down, smoke, dig, ...) flow through
+  # automatically once cloned. The clone steps live here because the
+  # include can't bootstrap itself — first-run is `task testbed:init`
+  # and `task mailserver:init`.
+  # ════════════════════════════════════════════════════════
 
-  db:psql:mail2:
-    desc: Open psql shell to the mail2 database
+  testbed:init:
+    desc: First-run only — clone rest-mail/testbed into .workspace/testbed
+    status:
+      - test -d .workspace/testbed/.git
     cmds:
-      - docker compose exec postgres-mail2 psql -U restmail -d restmail
+      - mkdir -p .workspace
+      - git clone git@github.com:rest-mail/testbed.git .workspace/testbed
+
+  mailserver:init:
+    desc: First-run only — clone rest-mail/reference-mailserver into .workspace/reference-mailserver
+    status:
+      - test -d .workspace/reference-mailserver/.git
+    cmds:
+      - mkdir -p .workspace
+      - git clone git@github.com:rest-mail/reference-mailserver.git .workspace/reference-mailserver
 
   # ════════════════════════════════════════════════════════
   # Utilities
   # ════════════════════════════════════════════════════════
 
-  net:ensure:
-    desc: Ensure the shared mailnet docker network exists
-    run: once
-    cmds:
-      - |
-        docker network inspect "${COMPOSE_PROJECT_NAME}_mailnet" >/dev/null 2>&1 || \
-          docker network create --driver bridge --subnet 172.20.0.0/16 "${COMPOSE_PROJECT_NAME}_mailnet"
-
-  health:wait:
-    desc: Wait for the API health endpoint to respond (up to 60s)
-    cmds:
-      - |
-        echo "Waiting for API health endpoint..."
-        for i in $(seq 1 30); do
-          if curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
-            echo "API is healthy."
-            exit 0
-          fi
-          echo "  attempt $i/30 - not ready yet..."
-          sleep 2
-        done
-        echo "ERROR: API did not become healthy within 60 seconds."
-        exit 1
-
   run:console:
-    desc: Run the console admin tool without building (development mode)
+    desc: Run the console admin tool inside the api container
     cmds:
-      - docker compose exec -it -e RESTMAIL_ADMIN_USERNAME=${RESTMAIL_ADMIN_USERNAME:-admin} -e RESTMAIL_ADMIN_PASSWORD=${RESTMAIL_ADMIN_PASSWORD:-admin123!@} api go run ./cmd/console --api http://localhost:8080
-
-  certs:generate:
-    desc: Generate self-signed CA and dev certificates
-    cmds:
-      - bash docker/certs/generate-certs.sh
+      - docker exec -it -e RESTMAIL_ADMIN_USERNAME=${RESTMAIL_ADMIN_USERNAME:-admin} -e RESTMAIL_ADMIN_PASSWORD=${RESTMAIL_ADMIN_PASSWORD:-admin123!@} {{.RESTMAIL_PROJECT}}-api go run ./cmd/console --api http://localhost:{{.MAIL3_API_PORT}}
 
   setup:
     desc: Install dependencies, build all binaries, verify toolchain
@@ -990,34 +711,13 @@ tasks:
       - rm -rf build/
       - rm -f coverage.out coverage.html
 
-  container:purge:
-    desc: Remove legacy containers from previous layouts (safe; containers only)
+  purge:
+    desc: Remove all rest-mail-* containers (does not touch volumes — use restmail:mail3:down + postgres:reset for data)
     cmds:
-      - task: down
       - |
-        ids=$(docker ps -aq --filter "name=^/${COMPOSE_PROJECT_NAME}-")
+        ids=$(docker ps -aq --filter "name=^/{{.RESTMAIL_PROJECT}}-")
         if [ -n "$ids" ]; then
           docker rm -f $ids
+        else
+          echo "no rest-mail containers to remove"
         fi
-
-  container:purge:hard:
-    desc: Remove legacy containers + volumes + shared network (destructive)
-    cmds:
-      - task: down:clean
-      - |
-        ids=$(docker ps -aq --filter "name=^/${COMPOSE_PROJECT_NAME}-")
-        if [ -n "$ids" ]; then
-          docker rm -f $ids
-        fi
-      - |
-        docker network rm "${COMPOSE_PROJECT_NAME}_mailnet" >/dev/null 2>&1 || true
-
-  compose:purge:
-    desc: Alias for container:purge
-    cmds:
-      - task: container:purge
-
-  compose:purge:hard:
-    desc: Alias for container:purge:hard
-    cmds:
-      - task: container:purge:hard

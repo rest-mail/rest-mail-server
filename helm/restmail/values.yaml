@@ -1,0 +1,228 @@
+# Default values for restmail (production shape).
+#
+# These defaults assume:
+#   * Real cluster DNS — peer services resolve via in-cluster DNS, no
+#     dnsmasq sidecar or testbed DNS server.
+#   * A TLS Secret populated by an external operator (cert-manager,
+#     external-secrets, manual upload). The chart references it by name.
+#   * External Secrets for DB credentials and API keys (not embedded).
+#   * Cloud LoadBalancer support for SMTP/IMAP/POP3 mail ports.
+#
+# For local kind/k3s development against rest-mail/testbed see values-dev.yaml.
+
+# ── Global ────────────────────────────────────────────────────────────────
+global:
+  # Image registry (override per-image with .image.repository if needed).
+  imageRegistry: ghcr.io/rest-mail
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+# ── Mail server identity ──────────────────────────────────────────────────
+# Defaults are placeholders — override at install time. The defaults are
+# deliberately neutral example.com values so `helm template` renders without
+# arguments, but a real install MUST set both to the cluster's real FQDN.
+mailserver:
+  # Public FQDN the SMTP/IMAP/POP3 gateways announce (HELO, banners).
+  hostname: mail.example.com
+  # Primary mail domain served.
+  domain: example.com
+
+# ── DNS / networking ──────────────────────────────────────────────────────
+networking:
+  # Use cluster DNS by default. Override to "None" + dnsConfig for testbed.
+  dnsPolicy: ClusterFirst
+  dnsConfig: {}
+  # Optional additional pod-level DNS search/options injected into every pod.
+  # For testbed-mode usage see values-dev.yaml.
+
+# ── TLS ───────────────────────────────────────────────────────────────────
+tls:
+  # Name of an existing Kubernetes Secret of type kubernetes.io/tls.
+  # Mounted at /certs/ in every gateway pod.
+  # Expected keys: tls.crt, tls.key.
+  secretName: restmail-tls
+  # Mount path inside the pod.
+  mountPath: /certs
+  # Filename the gateways read for cert/key. The chart maps the Secret's
+  # tls.crt/tls.key to these names so existing env vars keep working.
+  certFilename: tls.crt
+  keyFilename: tls.key
+
+# ── PostgreSQL (mail3) ────────────────────────────────────────────────────
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+  # Reference an existing secret with keys: POSTGRES_PASSWORD, POSTGRES_USER,
+  # POSTGRES_DB. Setting this disables embedded credentials below.
+  existingSecret: restmail-postgres
+  auth:
+    username: ""
+    password: ""
+    database: ""
+  service:
+    type: ClusterIP
+    port: 5432
+  persistence:
+    enabled: true
+    storageClass: ""
+    size: 20Gi
+    accessMode: ReadWriteOnce
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# ── REST API ──────────────────────────────────────────────────────────────
+api:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rest-mail/api
+    tag: ""        # falls back to .Chart.AppVersion when empty
+    pullPolicy: ""
+  # Reference an existing secret with keys: JWT_SECRET, MASTER_KEY, DB_PASS.
+  existingSecret: restmail-api
+  # Used only when existingSecret is unset (development / values-dev.yaml).
+  jwtSecret: ""
+  masterKey: ""
+  port: 8080
+  environment: production
+  logLevel: info
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: ""
+    path: /api
+    tls:
+      enabled: false
+      secretName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+  attachments:
+    persistence:
+      enabled: true
+      storageClass: ""
+      size: 20Gi
+      accessMode: ReadWriteOnce
+
+# ── JS filter sidecar ─────────────────────────────────────────────────────
+jsFilter:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rest-mail/js-filter
+    tag: ""
+    pullPolicy: ""
+  port: 3100
+  service:
+    type: ClusterIP
+    port: 3100
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# ── SMTP gateway ──────────────────────────────────────────────────────────
+smtpGateway:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rest-mail/smtp-gateway
+    tag: ""
+    pullPolicy: ""
+  ports:
+    inbound: 25
+    submission: 587
+    submissionTLS: 465
+  queueWorkers: 4
+  logLevel: info
+  environment: production
+  service:
+    type: LoadBalancer
+    annotations: {}
+    externalTrafficPolicy: Local
+    # loadBalancerIP: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+# ── IMAP gateway ──────────────────────────────────────────────────────────
+imapGateway:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rest-mail/imap-gateway
+    tag: ""
+    pullPolicy: ""
+  ports:
+    plain: 143
+    tls: 993
+  logLevel: info
+  environment: production
+  service:
+    type: LoadBalancer
+    annotations: {}
+    externalTrafficPolicy: Local
+    # loadBalancerIP: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+# ── POP3 gateway ──────────────────────────────────────────────────────────
+pop3Gateway:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rest-mail/pop3-gateway
+    tag: ""
+    pullPolicy: ""
+  ports:
+    plain: 110
+    tls: 995
+  logLevel: info
+  environment: production
+  service:
+    type: LoadBalancer
+    annotations: {}
+    externalTrafficPolicy: Local
+    # loadBalancerIP: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+
+# ── Pod-level extras (security, scheduling) ───────────────────────────────
+podSecurityContext: {}
+securityContext: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Service account ───────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}

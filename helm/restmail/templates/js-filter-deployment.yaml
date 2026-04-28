@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "restmail.componentName" (list . "js-filter") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "js-filter") | nindent 4 }}
+spec:
+  replicas: {{ .Values.jsFilter.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list . "js-filter") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "restmail.componentSelectorLabels" (list . "js-filter") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      {{- include "restmail.dnsSpec" . | nindent 6 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: js-filter
+          image: "{{ .Values.jsFilter.image.repository }}:{{ include "restmail.imageTag" (list . .Values.jsFilter.image.tag) }}"
+          imagePullPolicy: {{ include "restmail.imagePullPolicy" (list . .Values.jsFilter.image.pullPolicy) }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.jsFilter.port }}
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.jsFilter.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

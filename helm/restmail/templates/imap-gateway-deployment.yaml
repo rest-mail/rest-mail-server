@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "restmail.componentName" (list . "imap-gateway") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "imap-gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.imapGateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list . "imap-gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "restmail.componentSelectorLabels" (list . "imap-gateway") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      hostname: {{ .Values.mailserver.hostname | replace "." "-" | trunc 63 | trimSuffix "-" }}
+      {{- include "restmail.dnsSpec" . | nindent 6 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: imap-gateway
+          image: "{{ .Values.imapGateway.image.repository }}:{{ include "restmail.imageTag" (list . .Values.imapGateway.image.tag) }}"
+          imagePullPolicy: {{ include "restmail.imagePullPolicy" (list . .Values.imapGateway.image.pullPolicy) }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: imap
+              containerPort: {{ .Values.imapGateway.ports.plain }}
+              protocol: TCP
+            - name: imaps
+              containerPort: {{ .Values.imapGateway.ports.tls }}
+              protocol: TCP
+          env:
+            - name: GATEWAY_HOSTNAME
+              value: {{ .Values.mailserver.hostname | quote }}
+            - name: API_BASE_URL
+              value: {{ include "restmail.api.url" . | quote }}
+            - name: IMAP_PORT
+              value: {{ .Values.imapGateway.ports.plain | quote }}
+            - name: IMAP_TLS_PORT
+              value: {{ .Values.imapGateway.ports.tls | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.imapGateway.logLevel | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.imapGateway.environment | quote }}
+            {{- include "restmail.dbEnv" . | nindent 12 }}
+            {{- include "restmail.tlsEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: tls
+              mountPath: {{ .Values.tls.mountPath }}
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: imap
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: imap
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.imapGateway.resources | nindent 12 }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            items:
+              - key: tls.crt
+                path: {{ .Values.tls.certFilename }}
+              - key: tls.key
+                path: {{ .Values.tls.keyFilename }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

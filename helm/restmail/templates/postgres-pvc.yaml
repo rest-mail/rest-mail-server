@@ -1,0 +1,24 @@
+{{- if and .Values.postgres.enabled .Values.postgres.persistence.enabled -}}
+{{- /*
+Standalone PVC declaration. We use a Deployment + PVC rather than a
+StatefulSet's volumeClaimTemplate because the chart only supports a
+single replica and a manually-managed PVC is simpler to back up and
+migrate. If you switch to multiple replicas, swap to the StatefulSet
+template instead.
+*/ -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "restmail.componentName" (list . "postgres-data") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "postgres") | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.postgres.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.postgres.persistence.size }}
+  {{- with .Values.postgres.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,78 @@
+# Development overrides for kind/k3s running alongside rest-mail/testbed.
+#
+# This file is OPT-IN. It encodes the testbed-specific knowledge (mailnet
+# subnet, dnsmasq IP, mail3.test hostname, inline cleartext credentials)
+# that the production values intentionally omit.
+#
+# Apply with:
+#   helm install restmail helm/restmail -f helm/restmail/values-dev.yaml
+#
+# Prerequisites:
+#   * rest-mail/testbed running on the same cluster (provides mailnet,
+#     dnsmasq at 10.99.0.10, certgen).
+#   * A TLS Secret created from the testbed CA's mail3.test cert/key.
+#     See README.md for: task -d /path/to/testbed ca:fetch followed by
+#     `kubectl create secret tls testbed-mail3-tls --cert=... --key=...`.
+
+# ── Mail server identity (the testbed serves mail3.test) ──────────────────
+mailserver:
+  hostname: mail3.test
+  domain: mail3.test
+
+# ── DNS — point pods at the testbed's dnsmasq ─────────────────────────────
+networking:
+  dnsPolicy: None
+  dnsConfig:
+    nameservers:
+      - 10.99.0.10
+    searches:
+      - test
+    options:
+      - name: ndots
+        value: "1"
+
+# ── TLS — use the secret created from `task ca:fetch` output ──────────────
+tls:
+  secretName: testbed-mail3-tls
+
+# ── PostgreSQL — inline dev creds, no external Secret ─────────────────────
+postgres:
+  existingSecret: ""
+  auth:
+    username: restmail
+    password: restmail
+    database: restmail
+  persistence:
+    size: 5Gi
+
+# ── API — dev secrets inline ──────────────────────────────────────────────
+api:
+  existingSecret: ""
+  jwtSecret: dev-secret-change-in-production
+  masterKey: dev-master-key-change-in-production
+  environment: development
+  logLevel: debug
+  attachments:
+    persistence:
+      size: 5Gi
+
+# ── Gateways — dev log levels, NodePort instead of LoadBalancer ──────────
+# kind/k3s without a cloud LB driver can't satisfy LoadBalancer; NodePort
+# is the portable dev choice.
+smtpGateway:
+  logLevel: debug
+  environment: development
+  service:
+    type: NodePort
+
+imapGateway:
+  logLevel: debug
+  environment: development
+  service:
+    type: NodePort
+
+pop3Gateway:
+  logLevel: debug
+  environment: development
+  service:
+    type: NodePort

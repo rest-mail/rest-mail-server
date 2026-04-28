@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "restmail.componentName" (list . "smtp-gateway") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "smtp-gateway") | nindent 4 }}
+  {{- with .Values.smtpGateway.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.smtpGateway.service.type }}
+  {{- if and (eq .Values.smtpGateway.service.type "LoadBalancer") .Values.smtpGateway.service.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.smtpGateway.service.externalTrafficPolicy }}
+  {{- end }}
+  {{- with .Values.smtpGateway.service.loadBalancerIP }}
+  loadBalancerIP: {{ . | quote }}
+  {{- end }}
+  selector:
+    {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 4 }}
+  ports:
+    - name: smtp
+      port: {{ .Values.smtpGateway.ports.inbound }}
+      targetPort: smtp
+      protocol: TCP
+    - name: submission
+      port: {{ .Values.smtpGateway.ports.submission }}
+      targetPort: submission
+      protocol: TCP
+    - name: submissions
+      port: {{ .Values.smtpGateway.ports.submissionTLS }}
+      targetPort: submissions
+      protocol: TCP

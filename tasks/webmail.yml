@@ -1,0 +1,113 @@
+version: "3"
+
+# rest-mail/tasks/webmail — Taskfile
+#
+# Drives the webmail frontend container via plain `docker run` (no compose).
+# Included by the main Taskfile under namespace `webmail`.
+#
+# Joins the testbed's mailnet network at a static IP. Two build targets are
+# supported via MODE: `dev` (Vite HMR on port 3000, repo bind-mounted at /app)
+# and `prod` (nginx serving the built bundle on port 80). No host port
+# mapping in either mode — traffic is routed via docker-proxy labels.
+#
+# Output is friendly by default. Re-run with VERBOSE=1 to see the raw
+# docker / shell output (e.g. VERBOSE=1 task webmail:up).
+
+silent: true
+
+vars:
+  WEBMAIL_PROJECT: '{{.WEBMAIL_PROJECT | default "rest-mail"}}'
+  WEBMAIL_NETWORK: '{{.WEBMAIL_NETWORK | default "testbed_mailnet"}}'
+  WEBMAIL_IP: '{{.WEBMAIL_IP | default "10.99.0.21"}}'
+  WEBMAIL_MODE: '{{.WEBMAIL_MODE | default "dev"}}'
+  WEBMAIL_IMAGE_TAG: '{{.WEBMAIL_IMAGE_TAG | default "dev"}}'
+  WEBMAIL_REGISTRY: '{{.WEBMAIL_REGISTRY | default "ghcr.io/rest-mail"}}'
+  WEBMAIL_IMAGE: '{{.WEBMAIL_REGISTRY}}/webmail:{{.WEBMAIL_IMAGE_TAG}}'
+  WEBMAIL_CONTAINER_NAME: '{{.WEBMAIL_PROJECT}}-webmail'
+  WEBMAIL_BUILD_CONTEXT: '{{.WEBMAIL_BUILD_CONTEXT | default "./webmail"}}'
+  WEBMAIL_BASE_PATH: '{{.WEBMAIL_BASE_PATH | default "/webmail"}}'
+  WEBMAIL_API_URL: '{{.WEBMAIL_API_URL | default "http://restmail.localhost/api/v1"}}'
+  WEBMAIL_PROXY_HOST: '{{.WEBMAIL_PROXY_HOST | default "restmail.localhost"}}'
+  WEBMAIL_DEV_PORT: '3000'
+  WEBMAIL_PROD_PORT: '80'
+
+tasks:
+
+  # ════════════════════════════════════════════════════════
+  # build
+  # ════════════════════════════════════════════════════════
+
+  build:
+    desc: Build the webmail image (target controlled by MODE — dev or prod)
+    cmds:
+      - |
+        echo "  building {{.WEBMAIL_IMAGE}} (target={{.WEBMAIL_MODE}})"
+        if [ "{{.WEBMAIL_MODE}}" = "prod" ]; then
+          docker build -t {{.WEBMAIL_IMAGE}} --target prod --build-arg NGINX_BASE_PATH={{.WEBMAIL_BASE_PATH}} {{.WEBMAIL_BUILD_CONTEXT}} >$OUTPUT 2>&1
+        else
+          docker build -t {{.WEBMAIL_IMAGE}} --target dev {{.WEBMAIL_BUILD_CONTEXT}} >$OUTPUT 2>&1
+        fi
+
+  # ════════════════════════════════════════════════════════
+  # up / down / restart
+  # ════════════════════════════════════════════════════════
+
+  up:
+    desc: Start the webmail container (recreates if already present)
+    deps: [build]
+    cmds:
+      - |
+        echo "  starting webmail ({{.WEBMAIL_CONTAINER_NAME}} @ {{.WEBMAIL_IP}}, mode={{.WEBMAIL_MODE}})"
+        docker rm -f {{.WEBMAIL_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        if [ "{{.WEBMAIL_MODE}}" = "prod" ]; then
+          docker run -d --name {{.WEBMAIL_CONTAINER_NAME}} \
+            --restart unless-stopped \
+            --network {{.WEBMAIL_NETWORK}} \
+            --ip {{.WEBMAIL_IP}} \
+            -e NGINX_BASE_PATH={{.WEBMAIL_BASE_PATH}} \
+            -e VITE_API_URL={{.WEBMAIL_API_URL}} \
+            -l docker-proxy.webmail.host={{.WEBMAIL_PROXY_HOST}} \
+            -l docker-proxy.webmail.port={{.WEBMAIL_PROD_PORT}} \
+            -l docker-proxy.webmail.path={{.WEBMAIL_BASE_PATH}} \
+            {{.WEBMAIL_IMAGE}} >$OUTPUT 2>&1
+        else
+          docker run -d --name {{.WEBMAIL_CONTAINER_NAME}} \
+            --restart unless-stopped \
+            --network {{.WEBMAIL_NETWORK}} \
+            --ip {{.WEBMAIL_IP}} \
+            -v "$(pwd)/webmail:/app" \
+            -v /app/node_modules \
+            -e VITE_BASE_PATH={{.WEBMAIL_BASE_PATH}} \
+            -e VITE_API_URL={{.WEBMAIL_API_URL}} \
+            -l docker-proxy.webmail.host={{.WEBMAIL_PROXY_HOST}} \
+            -l docker-proxy.webmail.port={{.WEBMAIL_DEV_PORT}} \
+            -l docker-proxy.webmail.path={{.WEBMAIL_BASE_PATH}} \
+            -l docker-proxy.webmail.websocket=true \
+            {{.WEBMAIL_IMAGE}} >$OUTPUT 2>&1
+        fi
+
+  down:
+    desc: Stop and remove the webmail container
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.WEBMAIL_CONTAINER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.WEBMAIL_CONTAINER_NAME}}"
+          docker rm -f {{.WEBMAIL_CONTAINER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.WEBMAIL_CONTAINER_NAME}} not running"
+        fi
+
+  restart:
+    desc: Recreate the webmail container
+    cmds:
+      - task: down
+      - task: up
+
+  # ════════════════════════════════════════════════════════
+  # Diagnostics
+  # ════════════════════════════════════════════════════════
+
+  logs:
+    desc: Tail webmail logs
+    cmds:
+      - docker logs -f --tail=100 {{.WEBMAIL_CONTAINER_NAME}}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "restmail.componentName" (list . "js-filter") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "js-filter") | nindent 4 }}
+spec:
+  type: {{ .Values.jsFilter.service.type }}
+  selector:
+    {{- include "restmail.componentSelectorLabels" (list . "js-filter") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.jsFilter.service.port }}
+      targetPort: http
+      protocol: TCP

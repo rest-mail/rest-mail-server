@@ -1,0 +1,256 @@
+version: "3"
+
+# rest-mail/tasks/monitoring — Taskfile
+#
+# Drives the prometheus + grafana + postgres-exporter trio via plain
+# `docker run` (no compose). Included by the main Taskfile under namespace
+# `monitoring`.
+#
+# All three containers join the testbed's mailnet network at static IPs
+# so they can scrape peers (and each other) by name. Prometheus and
+# Grafana keep state in named volumes so containers can be recreated
+# without losing data.
+#
+# Bind mounts use $(pwd) — paths are relative to the project root via
+# the include `dir:` configured in the main Taskfile.
+#
+# Output is friendly by default. Re-run with VERBOSE=1 to see the raw
+# docker / shell output (e.g. VERBOSE=1 task monitoring:up).
+
+silent: true
+
+vars:
+  MONITORING_PROJECT: '{{.MONITORING_PROJECT | default "rest-mail"}}'
+  MONITORING_NETWORK: '{{.MONITORING_NETWORK | default "testbed_mailnet"}}'
+  MONITORING_REGISTRY: '{{.MONITORING_REGISTRY | default "ghcr.io/rest-mail"}}'
+
+  # prometheus
+  PROMETHEUS_UPSTREAM_IMAGE: '{{.PROMETHEUS_UPSTREAM_IMAGE | default "prom/prometheus:v2.51.0"}}'
+  PROMETHEUS_IMAGE: '{{.MONITORING_REGISTRY}}/prometheus:v2.51.0'
+  PROMETHEUS_IP: '{{.PROMETHEUS_IP | default "10.99.0.30"}}'
+  PROMETHEUS_PORT: '{{.PROMETHEUS_PORT | default "9090"}}'
+  PROMETHEUS_DNS: '{{.PROMETHEUS_DNS | default "10.99.0.3"}}'
+  PROMETHEUS_NAME: '{{.MONITORING_PROJECT}}-prometheus'
+  PROMETHEUS_DATA_VOLUME: '{{.MONITORING_PROJECT}}-prometheus-data'
+
+  # grafana
+  GRAFANA_UPSTREAM_IMAGE: '{{.GRAFANA_UPSTREAM_IMAGE | default "grafana/grafana:10.4.1"}}'
+  GRAFANA_IMAGE: '{{.MONITORING_REGISTRY}}/grafana:10.4.1'
+  GRAFANA_IP: '{{.GRAFANA_IP | default "10.99.0.31"}}'
+  GRAFANA_PORT: '{{.GRAFANA_PORT | default "3001"}}'
+  GRAFANA_ADMIN_USER: '{{.GRAFANA_ADMIN_USER | default "admin"}}'
+  GRAFANA_ADMIN_PASSWORD: '{{.GRAFANA_ADMIN_PASSWORD | default "restmail"}}'
+  GRAFANA_NAME: '{{.MONITORING_PROJECT}}-grafana'
+  GRAFANA_DATA_VOLUME: '{{.MONITORING_PROJECT}}-grafana-data'
+
+  # postgres-exporter
+  POSTGRES_EXPORTER_UPSTREAM_IMAGE: '{{.POSTGRES_EXPORTER_UPSTREAM_IMAGE | default "prometheuscommunity/postgres-exporter:v0.15.0"}}'
+  POSTGRES_EXPORTER_IMAGE: '{{.MONITORING_REGISTRY}}/postgres-exporter:v0.15.0'
+  POSTGRES_EXPORTER_IP: '{{.POSTGRES_EXPORTER_IP | default "10.99.0.32"}}'
+  POSTGRES_EXPORTER_NAME: '{{.MONITORING_PROJECT}}-postgres-exporter'
+  MONITORING_DB_HOST: '{{.MONITORING_DB_HOST | default (printf "%s-postgres" (.MONITORING_PROJECT | default "rest-mail"))}}'
+  MONITORING_DB_NAME: '{{.MONITORING_DB_NAME | default "restmail"}}'
+  MONITORING_DB_USER: '{{.MONITORING_DB_USER | default "restmail"}}'
+  MONITORING_DB_PASS: '{{.MONITORING_DB_PASS | default "restmail"}}'
+
+tasks:
+
+  # ════════════════════════════════════════════════════════
+  # Aggregate
+  # ════════════════════════════════════════════════════════
+
+  up:
+    desc: Bring up the monitoring stack (prometheus + grafana + postgres-exporter)
+    cmds:
+      - task: prometheus:up
+      - task: grafana:up
+      - task: postgres-exporter:up
+      - |
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  monitoring stack ready"
+        echo ""
+        echo "  Prometheus       →  http://localhost:{{.PROMETHEUS_PORT}}  ({{.PROMETHEUS_IP}})"
+        echo "  Grafana          →  http://localhost:{{.GRAFANA_PORT}}  ({{.GRAFANA_IP}})"
+        echo "                      user: {{.GRAFANA_ADMIN_USER}}  pass: {{.GRAFANA_ADMIN_PASSWORD}}"
+        echo "  postgres-exporter→  {{.POSTGRES_EXPORTER_IP}}  (scraped by prometheus)"
+        echo ""
+        echo "  task monitoring:logs        list per-service log commands"
+        echo "  task monitoring:down        stop all three containers"
+        echo "  task monitoring:restart     down + up"
+        echo "  VERBOSE=1 task …            raw docker output"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  down:
+    desc: Stop and remove all monitoring containers (preserves data volumes)
+    cmds:
+      - task: postgres-exporter:down
+      - task: grafana:down
+      - task: prometheus:down
+
+  restart:
+    desc: Recreate the full monitoring stack
+    cmds:
+      - task: down
+      - task: up
+
+  logs:
+    desc: Show available per-service log commands (docker can't tail multiple containers natively)
+    cmds:
+      - |
+        echo "  docker can't tail multiple containers natively. Pick one:"
+        echo ""
+        echo "    task monitoring:prometheus:logs"
+        echo "    task monitoring:grafana:logs"
+        echo "    task monitoring:postgres-exporter:logs"
+        echo ""
+        echo "  or run them in parallel in separate shells."
+
+  ps:
+    desc: Show monitoring container status
+    cmds:
+      - docker ps -a --filter "name={{.PROMETHEUS_NAME}}" --filter "name={{.GRAFANA_NAME}}" --filter "name={{.POSTGRES_EXPORTER_NAME}}"
+
+  # ════════════════════════════════════════════════════════
+  # prometheus
+  # ════════════════════════════════════════════════════════
+
+  prometheus:up:
+    desc: Start (or recreate) the prometheus container
+    cmds:
+      - |
+        if docker volume inspect {{.PROMETHEUS_DATA_VOLUME}} >/dev/null 2>&1; then
+          [ -n "$VERBOSE" ] && echo "  volume {{.PROMETHEUS_DATA_VOLUME}} already exists" || true
+        else
+          echo "  creating volume {{.PROMETHEUS_DATA_VOLUME}}"
+          docker volume create {{.PROMETHEUS_DATA_VOLUME}} >$OUTPUT 2>&1
+        fi
+      - |
+        if ! docker image inspect {{.PROMETHEUS_IMAGE}} >/dev/null 2>&1; then
+          echo "  pulling {{.PROMETHEUS_UPSTREAM_IMAGE}} and tagging as {{.PROMETHEUS_IMAGE}}"
+          docker pull {{.PROMETHEUS_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          docker tag {{.PROMETHEUS_UPSTREAM_IMAGE}} {{.PROMETHEUS_IMAGE}}
+        fi
+      - |
+        echo "  starting prometheus ({{.PROMETHEUS_NAME}} @ {{.PROMETHEUS_IP}})"
+        docker rm -f {{.PROMETHEUS_NAME}} >$OUTPUT 2>&1 || true
+        docker run -d --name {{.PROMETHEUS_NAME}} \
+          --restart unless-stopped \
+          --network {{.MONITORING_NETWORK}} \
+          --ip {{.PROMETHEUS_IP}} \
+          --dns {{.PROMETHEUS_DNS}} \
+          -p {{.PROMETHEUS_PORT}}:9090 \
+          -v "$(pwd)/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+          -v "$(pwd)/monitoring/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro" \
+          -v {{.PROMETHEUS_DATA_VOLUME}}:/prometheus \
+          {{.PROMETHEUS_IMAGE}} \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.retention.time=30d \
+          --web.enable-lifecycle >$OUTPUT 2>&1
+
+  prometheus:down:
+    desc: Stop and remove the prometheus container (preserves the data volume)
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.PROMETHEUS_NAME}}$" | grep -q .; then
+          echo "  stopping {{.PROMETHEUS_NAME}}"
+          docker rm -f {{.PROMETHEUS_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.PROMETHEUS_NAME}} not running"
+        fi
+
+  prometheus:logs:
+    desc: Tail prometheus logs
+    cmds:
+      - docker logs -f --tail=100 {{.PROMETHEUS_NAME}}
+
+  # ════════════════════════════════════════════════════════
+  # grafana
+  # ════════════════════════════════════════════════════════
+
+  grafana:up:
+    desc: Start (or recreate) the grafana container
+    cmds:
+      - |
+        if docker volume inspect {{.GRAFANA_DATA_VOLUME}} >/dev/null 2>&1; then
+          [ -n "$VERBOSE" ] && echo "  volume {{.GRAFANA_DATA_VOLUME}} already exists" || true
+        else
+          echo "  creating volume {{.GRAFANA_DATA_VOLUME}}"
+          docker volume create {{.GRAFANA_DATA_VOLUME}} >$OUTPUT 2>&1
+        fi
+      - |
+        if ! docker image inspect {{.GRAFANA_IMAGE}} >/dev/null 2>&1; then
+          echo "  pulling {{.GRAFANA_UPSTREAM_IMAGE}} and tagging as {{.GRAFANA_IMAGE}}"
+          docker pull {{.GRAFANA_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          docker tag {{.GRAFANA_UPSTREAM_IMAGE}} {{.GRAFANA_IMAGE}}
+        fi
+      - |
+        echo "  starting grafana ({{.GRAFANA_NAME}} @ {{.GRAFANA_IP}})"
+        docker rm -f {{.GRAFANA_NAME}} >$OUTPUT 2>&1 || true
+        docker run -d --name {{.GRAFANA_NAME}} \
+          --restart unless-stopped \
+          --network {{.MONITORING_NETWORK}} \
+          --ip {{.GRAFANA_IP}} \
+          -p {{.GRAFANA_PORT}}:3000 \
+          -e GF_SECURITY_ADMIN_USER={{.GRAFANA_ADMIN_USER}} \
+          -e GF_SECURITY_ADMIN_PASSWORD={{.GRAFANA_ADMIN_PASSWORD}} \
+          -e GF_USERS_ALLOW_SIGN_UP=false \
+          -v "$(pwd)/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro" \
+          -v "$(pwd)/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro" \
+          -v {{.GRAFANA_DATA_VOLUME}}:/var/lib/grafana \
+          {{.GRAFANA_IMAGE}} >$OUTPUT 2>&1
+
+  grafana:down:
+    desc: Stop and remove the grafana container (preserves the data volume)
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.GRAFANA_NAME}}$" | grep -q .; then
+          echo "  stopping {{.GRAFANA_NAME}}"
+          docker rm -f {{.GRAFANA_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.GRAFANA_NAME}} not running"
+        fi
+
+  grafana:logs:
+    desc: Tail grafana logs
+    cmds:
+      - docker logs -f --tail=100 {{.GRAFANA_NAME}}
+
+  # ════════════════════════════════════════════════════════
+  # postgres-exporter
+  # ════════════════════════════════════════════════════════
+
+  postgres-exporter:up:
+    desc: Start (or recreate) the postgres-exporter container
+    cmds:
+      - |
+        if ! docker image inspect {{.POSTGRES_EXPORTER_IMAGE}} >/dev/null 2>&1; then
+          echo "  pulling {{.POSTGRES_EXPORTER_UPSTREAM_IMAGE}} and tagging as {{.POSTGRES_EXPORTER_IMAGE}}"
+          docker pull {{.POSTGRES_EXPORTER_UPSTREAM_IMAGE}} >$OUTPUT 2>&1
+          docker tag {{.POSTGRES_EXPORTER_UPSTREAM_IMAGE}} {{.POSTGRES_EXPORTER_IMAGE}}
+        fi
+      - |
+        echo "  starting postgres-exporter ({{.POSTGRES_EXPORTER_NAME}} @ {{.POSTGRES_EXPORTER_IP}})"
+        docker rm -f {{.POSTGRES_EXPORTER_NAME}} >$OUTPUT 2>&1 || true
+        docker run -d --name {{.POSTGRES_EXPORTER_NAME}} \
+          --restart unless-stopped \
+          --network {{.MONITORING_NETWORK}} \
+          --ip {{.POSTGRES_EXPORTER_IP}} \
+          -e DATA_SOURCE_NAME="postgresql://{{.MONITORING_DB_USER}}:{{.MONITORING_DB_PASS}}@{{.MONITORING_DB_HOST}}:5432/{{.MONITORING_DB_NAME}}?sslmode=disable" \
+          {{.POSTGRES_EXPORTER_IMAGE}} >$OUTPUT 2>&1
+
+  postgres-exporter:down:
+    desc: Stop and remove the postgres-exporter container
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.POSTGRES_EXPORTER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.POSTGRES_EXPORTER_NAME}}"
+          docker rm -f {{.POSTGRES_EXPORTER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.POSTGRES_EXPORTER_NAME}} not running"
+        fi
+
+  postgres-exporter:logs:
+    desc: Tail postgres-exporter logs
+    cmds:
+      - docker logs -f --tail=100 {{.POSTGRES_EXPORTER_NAME}}

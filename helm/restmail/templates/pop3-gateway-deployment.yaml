@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "restmail.componentName" (list . "pop3-gateway") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "pop3-gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.pop3Gateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list . "pop3-gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "restmail.componentSelectorLabels" (list . "pop3-gateway") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      hostname: {{ .Values.mailserver.hostname | replace "." "-" | trunc 63 | trimSuffix "-" }}
+      {{- include "restmail.dnsSpec" . | nindent 6 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: pop3-gateway
+          image: "{{ .Values.pop3Gateway.image.repository }}:{{ include "restmail.imageTag" (list . .Values.pop3Gateway.image.tag) }}"
+          imagePullPolicy: {{ include "restmail.imagePullPolicy" (list . .Values.pop3Gateway.image.pullPolicy) }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: pop3
+              containerPort: {{ .Values.pop3Gateway.ports.plain }}
+              protocol: TCP
+            - name: pop3s
+              containerPort: {{ .Values.pop3Gateway.ports.tls }}
+              protocol: TCP
+          env:
+            - name: GATEWAY_HOSTNAME
+              value: {{ .Values.mailserver.hostname | quote }}
+            - name: API_BASE_URL
+              value: {{ include "restmail.api.url" . | quote }}
+            - name: POP3_PORT
+              value: {{ .Values.pop3Gateway.ports.plain | quote }}
+            - name: POP3_TLS_PORT
+              value: {{ .Values.pop3Gateway.ports.tls | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.pop3Gateway.logLevel | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.pop3Gateway.environment | quote }}
+            {{- include "restmail.dbEnv" . | nindent 12 }}
+            {{- include "restmail.tlsEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: tls
+              mountPath: {{ .Values.tls.mountPath }}
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: pop3
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: pop3
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.pop3Gateway.resources | nindent 12 }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            items:
+              - key: tls.crt
+                path: {{ .Values.tls.certFilename }}
+              - key: tls.key
+                path: {{ .Values.tls.keyFilename }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

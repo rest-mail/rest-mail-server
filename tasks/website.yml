@@ -1,0 +1,86 @@
+version: "3"
+
+# rest-mail/tasks/website — Taskfile
+#
+# Drives the website (marketing/landing) container via plain `docker run`
+# (no compose). Included by the main Taskfile under namespace `website`.
+#
+# Image is pulled from the registry (not built locally). Joins the testbed's
+# mailnet network at a static IP and exposes itself via docker-proxy labels.
+#
+# Output is friendly by default. Re-run with VERBOSE=1 to see the raw
+# docker / shell output (e.g. VERBOSE=1 task website:up).
+
+silent: true
+
+vars:
+  WEBSITE_PROJECT: '{{.WEBSITE_PROJECT | default "rest-mail"}}'
+  WEBSITE_NETWORK: '{{.WEBSITE_NETWORK | default "testbed_mailnet"}}'
+  WEBSITE_IP: '{{.WEBSITE_IP | default "10.99.0.26"}}'
+  WEBSITE_IMAGE_TAG: '{{.WEBSITE_IMAGE_TAG | default "latest"}}'
+  WEBSITE_REGISTRY: '{{.WEBSITE_REGISTRY | default "ghcr.io/rest-mail"}}'
+  WEBSITE_IMAGE: '{{.WEBSITE_REGISTRY}}/website:{{.WEBSITE_IMAGE_TAG}}'
+  WEBSITE_CONTAINER_NAME: '{{.WEBSITE_PROJECT}}-website'
+  WEBSITE_HOST_PORT: '{{.WEBSITE_HOST_PORT | default "8090"}}'
+  WEBSITE_CONTAINER_PORT: '80'
+  WEBSITE_PROXY_HOST: '{{.WEBSITE_PROXY_HOST | default "restmail.localhost"}}'
+
+tasks:
+
+  # ════════════════════════════════════════════════════════
+  # pull
+  # ════════════════════════════════════════════════════════
+
+  pull:
+    desc: Pull the website image from the registry
+    cmds:
+      - |
+        echo "  pulling {{.WEBSITE_IMAGE}}"
+        docker pull {{.WEBSITE_IMAGE}} >$OUTPUT 2>&1
+
+  # ════════════════════════════════════════════════════════
+  # up / down / restart
+  # ════════════════════════════════════════════════════════
+
+  up:
+    desc: Start the website container (pulls image; recreates container)
+    deps: [pull]
+    cmds:
+      - |
+        echo "  starting website ({{.WEBSITE_CONTAINER_NAME}} @ {{.WEBSITE_IP}})"
+        docker rm -f {{.WEBSITE_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        docker run -d --name {{.WEBSITE_CONTAINER_NAME}} \
+          --restart unless-stopped \
+          --network {{.WEBSITE_NETWORK}} \
+          --ip {{.WEBSITE_IP}} \
+          -p {{.WEBSITE_HOST_PORT}}:{{.WEBSITE_CONTAINER_PORT}} \
+          -l docker-proxy.website.host={{.WEBSITE_PROXY_HOST}} \
+          -l docker-proxy.website.port={{.WEBSITE_CONTAINER_PORT}} \
+          -l docker-proxy.website.path=/ \
+          {{.WEBSITE_IMAGE}} >$OUTPUT 2>&1
+
+  down:
+    desc: Stop and remove the website container
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.WEBSITE_CONTAINER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.WEBSITE_CONTAINER_NAME}}"
+          docker rm -f {{.WEBSITE_CONTAINER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.WEBSITE_CONTAINER_NAME}} not running"
+        fi
+
+  restart:
+    desc: Recreate the website container
+    cmds:
+      - task: down
+      - task: up
+
+  # ════════════════════════════════════════════════════════
+  # Diagnostics
+  # ════════════════════════════════════════════════════════
+
+  logs:
+    desc: Tail website logs
+    cmds:
+      - docker logs -f --tail=100 {{.WEBSITE_CONTAINER_NAME}}

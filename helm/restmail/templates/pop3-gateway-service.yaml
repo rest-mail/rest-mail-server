@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "restmail.componentName" (list . "pop3-gateway") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "pop3-gateway") | nindent 4 }}
+  {{- with .Values.pop3Gateway.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.pop3Gateway.service.type }}
+  {{- if and (eq .Values.pop3Gateway.service.type "LoadBalancer") .Values.pop3Gateway.service.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ .Values.pop3Gateway.service.externalTrafficPolicy }}
+  {{- end }}
+  {{- with .Values.pop3Gateway.service.loadBalancerIP }}
+  loadBalancerIP: {{ . | quote }}
+  {{- end }}
+  selector:
+    {{- include "restmail.componentSelectorLabels" (list . "pop3-gateway") | nindent 4 }}
+  ports:
+    - name: pop3
+      port: {{ .Values.pop3Gateway.ports.plain }}
+      targetPort: pop3
+      protocol: TCP
+    - name: pop3s
+      port: {{ .Values.pop3Gateway.ports.tls }}
+      targetPort: pop3s
+      protocol: TCP

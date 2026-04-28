@@ -1,0 +1,17 @@
+{{- if .Values.postgres.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "restmail.componentName" (list . "postgres") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "postgres") | nindent 4 }}
+spec:
+  type: {{ .Values.postgres.service.type }}
+  selector:
+    {{- include "restmail.componentSelectorLabels" (list . "postgres") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.service.port }}
+      targetPort: 5432
+      protocol: TCP
+{{- end }}

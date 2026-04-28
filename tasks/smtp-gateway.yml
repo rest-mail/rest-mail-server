@@ -1,0 +1,150 @@
+version: "3"
+
+# rest-mail/tasks/smtp-gateway — Taskfile
+#
+# Drives the SMTP gateway container (mail3.test) via plain `docker run`
+# (no compose). Included by the main Taskfile under namespace `smtp-gateway`.
+#
+# Joins the testbed's mailnet network at a static IP so peers can reach it
+# by name. TLS certs are mounted read-only from the shared testbed certs
+# volume; logs live in a named volume so the container can be recreated
+# without losing them.
+#
+# MODE=dev (default) builds the `dev` Dockerfile target (air hot reload)
+# and bind-mounts the project root into /app. MODE=prod builds the prod
+# target with no bind mounts.
+#
+# Output is friendly by default. Re-run with VERBOSE=1 to see the raw
+# docker / shell output (e.g. VERBOSE=1 task smtp-gateway:up).
+
+silent: true
+
+vars:
+  SMTP_GATEWAY_PROJECT: '{{.SMTP_GATEWAY_PROJECT | default "rest-mail"}}'
+  SMTP_GATEWAY_NETWORK: '{{.SMTP_GATEWAY_NETWORK | default "testbed_mailnet"}}'
+  SMTP_GATEWAY_CERTS_VOLUME: '{{.SMTP_GATEWAY_CERTS_VOLUME | default "testbed_certs"}}'
+  SMTP_GATEWAY_DNS_IP: '{{.SMTP_GATEWAY_DNS_IP | default "10.99.0.10"}}'
+  SMTP_GATEWAY_IP: '{{.SMTP_GATEWAY_IP | default "10.99.0.13"}}'
+  SMTP_GATEWAY_MAIL3_HOSTNAME: '{{.SMTP_GATEWAY_MAIL3_HOSTNAME | default "mail3.test"}}'
+  SMTP_GATEWAY_MODE: '{{.SMTP_GATEWAY_MODE | default "dev"}}'
+  SMTP_GATEWAY_IMAGE_TAG: '{{.SMTP_GATEWAY_IMAGE_TAG | default "dev"}}'
+  SMTP_GATEWAY_REGISTRY: '{{.SMTP_GATEWAY_REGISTRY | default "ghcr.io/rest-mail"}}'
+  SMTP_GATEWAY_IMAGE: '{{.SMTP_GATEWAY_REGISTRY}}/smtp-gateway:{{.SMTP_GATEWAY_IMAGE_TAG}}'
+  SMTP_GATEWAY_CONTAINER_NAME: '{{.SMTP_GATEWAY_PROJECT}}-smtp-gateway'
+  SMTP_GATEWAY_LOGS_VOLUME: '{{.SMTP_GATEWAY_PROJECT}}-gateway-logs'
+  SMTP_GATEWAY_API_BASE_URL: '{{.SMTP_GATEWAY_API_BASE_URL | default "http://rest-mail-api:8080"}}'
+  SMTP_GATEWAY_DB_HOST: '{{.SMTP_GATEWAY_DB_HOST | default "rest-mail-postgres"}}'
+  SMTP_GATEWAY_DB_PORT: '{{.SMTP_GATEWAY_DB_PORT | default "5432"}}'
+  SMTP_GATEWAY_DB_NAME: '{{.SMTP_GATEWAY_DB_NAME | default "restmail"}}'
+  SMTP_GATEWAY_DB_USER: '{{.SMTP_GATEWAY_DB_USER | default "restmail"}}'
+  SMTP_GATEWAY_DB_PASS: '{{.SMTP_GATEWAY_DB_PASS | default "restmail"}}'
+  SMTP_GATEWAY_TLS_CERT_PATH: '{{.SMTP_GATEWAY_TLS_CERT_PATH | default "/certs/mail3.test.crt"}}'
+  SMTP_GATEWAY_TLS_KEY_PATH: '{{.SMTP_GATEWAY_TLS_KEY_PATH | default "/certs/mail3.test.key"}}'
+  SMTP_GATEWAY_PORT_INBOUND: '{{.SMTP_GATEWAY_PORT_INBOUND | default "25"}}'
+  SMTP_GATEWAY_PORT_SUBMISSION: '{{.SMTP_GATEWAY_PORT_SUBMISSION | default "587"}}'
+  SMTP_GATEWAY_PORT_SUBMISSION_TLS: '{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS | default "465"}}'
+  SMTP_GATEWAY_QUEUE_WORKERS: '{{.SMTP_GATEWAY_QUEUE_WORKERS | default "4"}}'
+  SMTP_GATEWAY_LOG_LEVEL: '{{.SMTP_GATEWAY_LOG_LEVEL | default "debug"}}'
+  SMTP_GATEWAY_ENVIRONMENT: '{{.SMTP_GATEWAY_ENVIRONMENT | default "development"}}'
+
+tasks:
+
+  # ════════════════════════════════════════════════════════
+  # build
+  # ════════════════════════════════════════════════════════
+
+  build:
+    desc: Build the smtp-gateway image (target controlled by MODE=dev|prod)
+    cmds:
+      - |
+        echo "  building {{.SMTP_GATEWAY_IMAGE}} (target: {{.SMTP_GATEWAY_MODE}})"
+        docker build \
+          -t {{.SMTP_GATEWAY_IMAGE}} \
+          --target {{.SMTP_GATEWAY_MODE}} \
+          -f docker/smtp-gateway/Dockerfile \
+          . >$OUTPUT 2>&1
+
+  # ════════════════════════════════════════════════════════
+  # up / down / restart
+  # ════════════════════════════════════════════════════════
+
+  up:
+    desc: Start smtp-gateway (builds image; creates logs volume if missing; recreates container)
+    deps: [build]
+    cmds:
+      - |
+        if docker volume inspect {{.SMTP_GATEWAY_LOGS_VOLUME}} >/dev/null 2>&1; then
+          [ -n "$VERBOSE" ] && echo "  volume {{.SMTP_GATEWAY_LOGS_VOLUME}} already exists" || true
+        else
+          echo "  creating volume {{.SMTP_GATEWAY_LOGS_VOLUME}}"
+          docker volume create {{.SMTP_GATEWAY_LOGS_VOLUME}} >$OUTPUT 2>&1
+        fi
+      - |
+        echo "  starting smtp-gateway ({{.SMTP_GATEWAY_CONTAINER_NAME}} @ {{.SMTP_GATEWAY_IP}}, mode: {{.SMTP_GATEWAY_MODE}})"
+
+        # Build the dev-only bind-mount fragment when MODE=dev
+        if [ "{{.SMTP_GATEWAY_MODE}}" = "dev" ]; then
+          DEV_MOUNTS="-v $(pwd):/app -v /app/tmp"
+        else
+          DEV_MOUNTS=""
+        fi
+
+        docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        docker run -d --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
+          --hostname {{.SMTP_GATEWAY_MAIL3_HOSTNAME}} \
+          --restart unless-stopped \
+          --network {{.SMTP_GATEWAY_NETWORK}} \
+          --ip {{.SMTP_GATEWAY_IP}} \
+          --dns {{.SMTP_GATEWAY_DNS_IP}} \
+          -p {{.SMTP_GATEWAY_PORT_INBOUND}}:{{.SMTP_GATEWAY_PORT_INBOUND}} \
+          -p {{.SMTP_GATEWAY_PORT_SUBMISSION}}:{{.SMTP_GATEWAY_PORT_SUBMISSION}} \
+          -p {{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}:{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}} \
+          -v {{.SMTP_GATEWAY_CERTS_VOLUME}}:/certs:ro \
+          -v {{.SMTP_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
+          $DEV_MOUNTS \
+          --health-cmd 'nc -z localhost {{.SMTP_GATEWAY_PORT_INBOUND}} || exit 1' \
+          --health-interval 10s \
+          --health-timeout 5s \
+          --health-retries 3 \
+          -e GATEWAY_HOSTNAME={{.SMTP_GATEWAY_MAIL3_HOSTNAME}} \
+          -e API_BASE_URL={{.SMTP_GATEWAY_API_BASE_URL}} \
+          -e DB_HOST={{.SMTP_GATEWAY_DB_HOST}} \
+          -e DB_PORT={{.SMTP_GATEWAY_DB_PORT}} \
+          -e DB_NAME={{.SMTP_GATEWAY_DB_NAME}} \
+          -e DB_USER={{.SMTP_GATEWAY_DB_USER}} \
+          -e DB_PASS={{.SMTP_GATEWAY_DB_PASS}} \
+          -e TLS_CERT_PATH={{.SMTP_GATEWAY_TLS_CERT_PATH}} \
+          -e TLS_KEY_PATH={{.SMTP_GATEWAY_TLS_KEY_PATH}} \
+          -e SMTP_PORT_INBOUND={{.SMTP_GATEWAY_PORT_INBOUND}} \
+          -e SMTP_PORT_SUBMISSION={{.SMTP_GATEWAY_PORT_SUBMISSION}} \
+          -e SMTP_PORT_SUBMISSION_TLS={{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}} \
+          -e QUEUE_WORKERS={{.SMTP_GATEWAY_QUEUE_WORKERS}} \
+          -e LOG_LEVEL={{.SMTP_GATEWAY_LOG_LEVEL}} \
+          -e ENVIRONMENT={{.SMTP_GATEWAY_ENVIRONMENT}} \
+          {{.SMTP_GATEWAY_IMAGE}} >$OUTPUT 2>&1
+
+  down:
+    desc: Stop and remove smtp-gateway (preserves the logs volume)
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.SMTP_GATEWAY_CONTAINER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.SMTP_GATEWAY_CONTAINER_NAME}}"
+          docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.SMTP_GATEWAY_CONTAINER_NAME}} not running"
+        fi
+
+  restart:
+    desc: Recreate the smtp-gateway container
+    cmds:
+      - task: down
+      - task: up
+
+  # ════════════════════════════════════════════════════════
+  # Diagnostics
+  # ════════════════════════════════════════════════════════
+
+  logs:
+    desc: Tail smtp-gateway logs
+    cmds:
+      - docker logs -f --tail=100 {{.SMTP_GATEWAY_CONTAINER_NAME}}

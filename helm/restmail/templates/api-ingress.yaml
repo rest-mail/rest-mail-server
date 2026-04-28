@@ -1,0 +1,33 @@
+{{- if .Values.api.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "restmail.componentName" (list . "api") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "api") | nindent 4 }}
+  {{- with .Values.api.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.api.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.api.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.api.ingress.host | quote }}
+      secretName: {{ default (printf "%s-ingress-tls" (include "restmail.fullname" .)) .Values.api.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.api.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ .Values.api.ingress.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "restmail.componentName" (list . "api") }}
+                port:
+                  number: {{ .Values.api.service.port }}
+{{- end }}

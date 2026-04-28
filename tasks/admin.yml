@@ -1,0 +1,116 @@
+version: "3"
+
+# rest-mail/admin — Taskfile
+#
+# Drives the admin panel frontend container via plain `docker run`.
+# Included by the main Taskfile under namespace `admin`.
+#
+# MODE=dev   → Vite dev server with HMR (port 3000), bind-mounts ./admin
+# MODE=prod  → nginx serving the built bundle (port 80)
+#
+# No host port mapping — exposed via docker-proxy labels on the
+# testbed_mailnet network. Re-run with VERBOSE=1 to see raw docker output.
+
+silent: true
+
+vars:
+  ADMIN_PROJECT: '{{.ADMIN_PROJECT | default "rest-mail"}}'
+  ADMIN_NETWORK: '{{.ADMIN_NETWORK | default "testbed_mailnet"}}'
+  ADMIN_IP: '{{.ADMIN_IP | default "10.99.0.27"}}'
+  ADMIN_MODE: '{{.ADMIN_MODE | default "dev"}}'
+  ADMIN_IMAGE_TAG: '{{.ADMIN_IMAGE_TAG | default "dev"}}'
+  ADMIN_REGISTRY: '{{.ADMIN_REGISTRY | default "ghcr.io/rest-mail"}}'
+  ADMIN_IMAGE: '{{.ADMIN_REGISTRY}}/admin:{{.ADMIN_IMAGE_TAG}}'
+  ADMIN_CONTAINER_NAME: '{{.ADMIN_PROJECT}}-admin'
+  ADMIN_BUILD_CONTEXT: '{{.ADMIN_BUILD_CONTEXT | default "./admin"}}'
+  ADMIN_BASE_PATH: '{{.ADMIN_BASE_PATH | default "/admin"}}'
+  ADMIN_API_URL_DEV: '{{.ADMIN_API_URL_DEV | default "http://restmail.localhost/api/v1"}}'
+  ADMIN_API_URL_PROD: '{{.ADMIN_API_URL_PROD | default "http://restmail.localhost/api"}}'
+  ADMIN_PROXY_HOST: '{{.ADMIN_PROXY_HOST | default "restmail.localhost"}}'
+  ADMIN_DEV_PORT: '3000'
+  ADMIN_PROD_PORT: '80'
+
+tasks:
+
+  # ════════════════════════════════════════════════════════
+  # build
+  # ════════════════════════════════════════════════════════
+
+  build:
+    desc: Build the admin image (MODE=dev|prod, default dev)
+    cmds:
+      - |
+        if [ "{{.ADMIN_MODE}}" = "prod" ]; then
+          echo "  building {{.ADMIN_IMAGE}} (target: prod, base path: {{.ADMIN_BASE_PATH}})"
+          docker build -t {{.ADMIN_IMAGE}} --target prod \
+            --build-arg NGINX_BASE_PATH={{.ADMIN_BASE_PATH}} \
+            {{.ADMIN_BUILD_CONTEXT}} >$OUTPUT 2>&1
+        else
+          echo "  building {{.ADMIN_IMAGE}} (target: dev)"
+          docker build -t {{.ADMIN_IMAGE}} --target dev {{.ADMIN_BUILD_CONTEXT}} >$OUTPUT 2>&1
+        fi
+
+  # ════════════════════════════════════════════════════════
+  # up / down / restart
+  # ════════════════════════════════════════════════════════
+
+  up:
+    desc: Start the admin container (MODE=dev|prod, default dev)
+    deps: [build]
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.ADMIN_CONTAINER_NAME}}$" | grep -q .; then
+          echo "  removing existing {{.ADMIN_CONTAINER_NAME}}"
+          docker rm -f {{.ADMIN_CONTAINER_NAME}} >$OUTPUT 2>&1
+        fi
+      - |
+        if [ "{{.ADMIN_MODE}}" = "prod" ]; then
+          echo "  starting {{.ADMIN_CONTAINER_NAME}} (prod @ {{.ADMIN_IP}}, port {{.ADMIN_PROD_PORT}})"
+          docker run -d --name {{.ADMIN_CONTAINER_NAME}} \
+            --restart unless-stopped \
+            --network {{.ADMIN_NETWORK}} \
+            --ip {{.ADMIN_IP}} \
+            -e NGINX_BASE_PATH={{.ADMIN_BASE_PATH}} \
+            -e VITE_API_URL={{.ADMIN_API_URL_PROD}} \
+            -l docker-proxy.admin.host={{.ADMIN_PROXY_HOST}} \
+            -l docker-proxy.admin.port={{.ADMIN_PROD_PORT}} \
+            -l docker-proxy.admin.path={{.ADMIN_BASE_PATH}} \
+            {{.ADMIN_IMAGE}} >$OUTPUT 2>&1
+        else
+          echo "  starting {{.ADMIN_CONTAINER_NAME}} (dev @ {{.ADMIN_IP}}, port {{.ADMIN_DEV_PORT}})"
+          docker run -d --name {{.ADMIN_CONTAINER_NAME}} \
+            --restart unless-stopped \
+            --network {{.ADMIN_NETWORK}} \
+            --ip {{.ADMIN_IP}} \
+            -v "$(pwd)/admin:/app" \
+            -v /app/node_modules \
+            -e VITE_BASE_PATH={{.ADMIN_BASE_PATH}} \
+            -e VITE_API_URL={{.ADMIN_API_URL_DEV}} \
+            -l docker-proxy.admin.host={{.ADMIN_PROXY_HOST}} \
+            -l docker-proxy.admin.port={{.ADMIN_DEV_PORT}} \
+            -l docker-proxy.admin.path={{.ADMIN_BASE_PATH}} \
+            -l docker-proxy.admin.websocket=true \
+            {{.ADMIN_IMAGE}} >$OUTPUT 2>&1
+        fi
+
+  down:
+    desc: Stop and remove the admin container
+    cmds:
+      - |
+        if docker ps -aq --filter "name=^/{{.ADMIN_CONTAINER_NAME}}$" | grep -q .; then
+          echo "  stopping {{.ADMIN_CONTAINER_NAME}}"
+          docker rm -f {{.ADMIN_CONTAINER_NAME}} >$OUTPUT 2>&1
+        else
+          echo "  {{.ADMIN_CONTAINER_NAME}} not running"
+        fi
+
+  restart:
+    desc: Restart the admin container
+    cmds:
+      - task: down
+      - task: up
+
+  logs:
+    desc: Tail admin container logs
+    cmds:
+      - docker logs -f --tail=100 {{.ADMIN_CONTAINER_NAME}}

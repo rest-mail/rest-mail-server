@@ -1,0 +1,17 @@
+{{- if .Values.api.attachments.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "restmail.componentName" (list . "api-attachments") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "api") | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.api.attachments.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.api.attachments.persistence.size }}
+  {{- with .Values.api.attachments.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+{{- end }}

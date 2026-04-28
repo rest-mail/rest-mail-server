@@ -23,9 +23,9 @@ The development stack simulates three parallel mail domains on one host — `mai
 
 ```
 cmd/                  Go binaries (api, smtp-gateway, imap-gateway, pop3-gateway,
-                      console, migrate, seed, certgen, instantmailcheck, website)
+                      console, migrate, seed, certgen, website)
 internal/             Shared packages (api, auth, config, crypto, db, dns, gateway,
-                      mail, mailcheck, metrics, mime, pipeline, console)
+                      mail, metrics, mime, pipeline, console)
 webmail/              React end-user webmail (Vite + TS + Tailwind)
 admin/                React admin UI (TanStack Router + Zustand + Tailwind v4)
 website/              Static project landing page
@@ -62,13 +62,11 @@ Dates below reflect when the corresponding feature/plan was merged, implemented,
 - Toast notification system (success/error/warning/info, 5 s auto-dismiss).
 - Updated [admin/src/lib/stores/queueStore.ts](../admin/src/lib/stores/queueStore.ts) with selection state and bulk actions; enhanced [admin/src/routes/queue/index.tsx](../admin/src/routes/queue/index.tsx) and [admin/src/routes/queue/$id.tsx](../admin/src/routes/queue/$id.tsx).
 
-### 2026-02-22 — Instant Mail Check CLI shipped
-- Standalone diagnostic binary at [cmd/instantmailcheck/main.go](../cmd/instantmailcheck/main.go) with internal package [internal/mailcheck/](../internal/mailcheck/).
+### 2026-02-22 — Instant Mail Check CLI shipped (now upstream)
+- Originally a standalone diagnostic binary at `cmd/instantmailcheck/main.go` + `internal/mailcheck/` here.
+- 2026-04-28: extracted to its own repo at https://github.com/rest-mail/instantmailcheck — no longer ships from this codebase. Install via `brew install antimatter-studios/tap/instantmailcheck` or `go install github.com/rest-mail/instantmailcheck@latest`.
 - Four tiers: public probe (no credentials) → send test → authenticated round-trip → exploit simulation.
 - 40+ individual checks across DNS, SMTP, IMAP, POP3, TLS, security, reputation, headers, round-trip.
-- Three output modes: terminal (lipgloss), JSON (`--json`), Markdown (`--markdown --output`).
-- Weighted scoring; exit code 2 if `--threshold` not met.
-- `task build:instantmailcheck` and `task build:instantmailcheck:all` (cross-compile).
 
 ### 2026-02-18 — Multiple plan batches drafted
 Design and implementation documents for "Batch 2" (attachment ownership + dedup, quota accounting, connection limiter, fail2ban), "Batch 3" (contact auto-populate, vacation filter, queue bulk ops, SSE refinements), "Critical Items" (9 integration gaps), and "Webmail themes + settings" (6 palettes, user menu, settings page). Status of each item is tracked in §5 Outstanding — some have since been implemented; others remain on the backlog.
@@ -286,7 +284,7 @@ Pluggable `Provider` interface at [internal/dns/](../internal/dns/) with methods
 
 ### 4.5 Diagnostic tool: Instant Mail Check
 
-Standalone CLI at [cmd/instantmailcheck/main.go](../cmd/instantmailcheck/main.go) — zero dependency on RESTMAIL API/DB, so it can audit any mail server. Raw TCP implementations of SMTP/IMAP/POP3 (not library-based) to control exact response codes and support intentional protocol misuse (e.g. SMTP smuggling tests). Uses `miekg/dns` for advanced DNS queries (TLSA, CAA, DNSSEC AD flag) that stdlib `net.Resolver` can't handle.
+Now lives at [`rest-mail/instantmailcheck`](https://github.com/rest-mail/instantmailcheck) — extracted 2026-04-28 because the tool is publicly useful beyond this project. Install via `brew install antimatter-studios/tap/instantmailcheck` or `go install github.com/rest-mail/instantmailcheck@latest`. Zero dependency on RESTMAIL API/DB — can audit any mail server. Raw TCP implementations of SMTP/IMAP/POP3 (not library-based) to control exact response codes and support intentional protocol misuse (e.g. SMTP smuggling tests). Uses `miekg/dns` for advanced DNS queries (TLSA, CAA, DNSSEC AD flag) that stdlib `net.Resolver` can't handle.
 
 #### Tiers
 - **Tier 1 (public probe)** — no credentials. 19 DNS checks (MX, SPF, DKIM with common selectors or `--dkim-selector`, DMARC, MTA-STS, TLS-RPT, PTR, DANE/TLSA, DNSSEC, CAA, BIMI, Forward-Confirmed rDNS, IPv6 readiness, client autoconfig), SMTP banner/STARTTLS/cert/submission/SMTPS/extensions, IMAPS/POP3S cert, open relay test, banner info leak, VRFY/EXPN, plaintext ports (110/143), TLS minimum version, self-signed cert, plaintext AUTH, auth mechanisms, DNSBL (12 major lists), domain blacklist (Spamhaus DBL, SURBL, URIBL).
@@ -311,9 +309,7 @@ Standalone CLI at [cmd/instantmailcheck/main.go](../cmd/instantmailcheck/main.go
 ./instantmailcheck example.com --threshold 80                  # default 50
 ```
 
-Build: `task build:instantmailcheck` (auto-detects OS/arch). Cross-compile: `task build:instantmailcheck:all`.
-
-See [docs/INSTANT-MAIL-CHECK.md](INSTANT-MAIL-CHECK.md) for the complete reference (architecture, every check explained, scoring table, CI integration).
+Install via Homebrew, Go, or pre-built binary — see https://github.com/rest-mail/instantmailcheck. The complete reference (architecture, every check explained, scoring table, CI integration) lives in that repo's README.
 
 ### 4.6 Webmail (React / Vite / Tailwind / shadcn)
 

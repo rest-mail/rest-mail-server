@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "restmail.componentName" (list . "smtp-gateway") }}
+  labels:
+    {{- include "restmail.componentLabels" (list . "smtp-gateway") | nindent 4 }}
+spec:
+  replicas: {{ .Values.smtpGateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      hostname: {{ .Values.mailserver.hostname | replace "." "-" | trunc 63 | trimSuffix "-" }}
+      {{- include "restmail.dnsSpec" . | nindent 6 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: smtp-gateway
+          image: "{{ .Values.smtpGateway.image.repository }}:{{ include "restmail.imageTag" (list . .Values.smtpGateway.image.tag) }}"
+          imagePullPolicy: {{ include "restmail.imagePullPolicy" (list . .Values.smtpGateway.image.pullPolicy) }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: smtp
+              containerPort: {{ .Values.smtpGateway.ports.inbound }}
+              protocol: TCP
+            - name: submission
+              containerPort: {{ .Values.smtpGateway.ports.submission }}
+              protocol: TCP
+            - name: submissions
+              containerPort: {{ .Values.smtpGateway.ports.submissionTLS }}
+              protocol: TCP
+          env:
+            - name: GATEWAY_HOSTNAME
+              value: {{ .Values.mailserver.hostname | quote }}
+            - name: API_BASE_URL
+              value: {{ include "restmail.api.url" . | quote }}
+            - name: SMTP_PORT_INBOUND
+              value: {{ .Values.smtpGateway.ports.inbound | quote }}
+            - name: SMTP_PORT_SUBMISSION
+              value: {{ .Values.smtpGateway.ports.submission | quote }}
+            - name: SMTP_PORT_SUBMISSION_TLS
+              value: {{ .Values.smtpGateway.ports.submissionTLS | quote }}
+            - name: QUEUE_WORKERS
+              value: {{ .Values.smtpGateway.queueWorkers | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.smtpGateway.logLevel | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.smtpGateway.environment | quote }}
+            {{- include "restmail.dbEnv" . | nindent 12 }}
+            {{- include "restmail.tlsEnv" . | nindent 12 }}
+          volumeMounts:
+            - name: tls
+              mountPath: {{ .Values.tls.mountPath }}
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.smtpGateway.resources | nindent 12 }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName }}
+            items:
+              - key: tls.crt
+                path: {{ .Values.tls.certFilename }}
+              - key: tls.key
+                path: {{ .Values.tls.keyFilename }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
