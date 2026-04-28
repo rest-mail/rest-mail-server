@@ -168,9 +168,9 @@ If `configPath` is empty, it defaults to `/etc/dnsmasq.d/domains.conf`.
 
 ```
 # DNS records for mail1.test
-address=/mail1.test/172.20.0.11
+address=/mail1.test/10.99.0.11
 mx-host=mail1.test,mail1.test,10
-txt-record=mail1.test,"v=spf1 ip4:172.20.0.11 -all"
+txt-record=mail1.test,"v=spf1 ip4:10.99.0.11 -all"
 txt-record=_dmarc.mail1.test,"v=DMARC1; p=reject; rua=mailto:postmaster@mail1.test"
 ```
 

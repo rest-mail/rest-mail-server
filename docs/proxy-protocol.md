@@ -64,7 +64,7 @@ PROXY_PROTOCOL_TRUSTED_CIDRS=10.0.1.0/24,172.16.0.0/12,fd00::/8
 Trust the Docker bridge network (useful for the default RESTMAIL compose setup):
 
 ```
-PROXY_PROTOCOL_TRUSTED_CIDRS=172.20.0.0/16
+PROXY_PROTOCOL_TRUSTED_CIDRS=10.99.0.0/16
 ```
 
 ## HAProxy Configuration
@@ -92,7 +92,7 @@ frontend ft_smtp
     default_backend bk_smtp
 
 backend bk_smtp
-    server smtp1 172.20.0.13:25 send-proxy-v2
+    server smtp1 10.99.0.13:25 send-proxy-v2
 
 # ── SMTP Submission (port 587) ───────────────────────────────────────
 frontend ft_smtp_submission
@@ -100,7 +100,7 @@ frontend ft_smtp_submission
     default_backend bk_smtp_submission
 
 backend bk_smtp_submission
-    server smtp1 172.20.0.13:587 send-proxy-v2
+    server smtp1 10.99.0.13:587 send-proxy-v2
 
 # ── SMTP Submission TLS (port 465) ───────────────────────────────────
 frontend ft_smtp_submission_tls
@@ -108,7 +108,7 @@ frontend ft_smtp_submission_tls
     default_backend bk_smtp_submission_tls
 
 backend bk_smtp_submission_tls
-    server smtp1 172.20.0.13:465 send-proxy-v2
+    server smtp1 10.99.0.13:465 send-proxy-v2
 
 # ── IMAP (port 143) ─────────────────────────────────────────────────
 frontend ft_imap
@@ -116,7 +116,7 @@ frontend ft_imap
     default_backend bk_imap
 
 backend bk_imap
-    server imap1 172.20.0.15:143 send-proxy-v2
+    server imap1 10.99.0.15:143 send-proxy-v2
 
 # ── IMAPS (port 993) ────────────────────────────────────────────────
 frontend ft_imaps
@@ -124,7 +124,7 @@ frontend ft_imaps
     default_backend bk_imaps
 
 backend bk_imaps
-    server imap1 172.20.0.15:993 send-proxy-v2
+    server imap1 10.99.0.15:993 send-proxy-v2
 
 # ── POP3 (port 110) ─────────────────────────────────────────────────
 frontend ft_pop3
@@ -132,7 +132,7 @@ frontend ft_pop3
     default_backend bk_pop3
 
 backend bk_pop3
-    server pop3_1 172.20.0.16:110 send-proxy-v2
+    server pop3_1 10.99.0.16:110 send-proxy-v2
 
 # ── POP3S (port 995) ────────────────────────────────────────────────
 frontend ft_pop3s
@@ -140,7 +140,7 @@ frontend ft_pop3s
     default_backend bk_pop3s
 
 backend bk_pop3s
-    server pop3_1 172.20.0.16:995 send-proxy-v2
+    server pop3_1 10.99.0.16:995 send-proxy-v2
 ```
 
 Key points:
@@ -168,7 +168,7 @@ stream {
 
     # ── SMTP (port 25) ──────────────────────────────────────────────
     upstream smtp_backend {
-        server 172.20.0.13:25;
+        server 10.99.0.13:25;
     }
     server {
         listen 25;
@@ -178,7 +178,7 @@ stream {
 
     # ── SMTP Submission (port 587) ──────────────────────────────────
     upstream smtp_submission_backend {
-        server 172.20.0.13:587;
+        server 10.99.0.13:587;
     }
     server {
         listen 587;
@@ -188,7 +188,7 @@ stream {
 
     # ── SMTP Submission TLS (port 465) ──────────────────────────────
     upstream smtp_submission_tls_backend {
-        server 172.20.0.13:465;
+        server 10.99.0.13:465;
     }
     server {
         listen 465;
@@ -198,7 +198,7 @@ stream {
 
     # ── IMAP (port 143) ────────────────────────────────────────────
     upstream imap_backend {
-        server 172.20.0.15:143;
+        server 10.99.0.15:143;
     }
     server {
         listen 143;
@@ -208,7 +208,7 @@ stream {
 
     # ── IMAPS (port 993) ───────────────────────────────────────────
     upstream imaps_backend {
-        server 172.20.0.15:993;
+        server 10.99.0.15:993;
     }
     server {
         listen 993;
@@ -218,7 +218,7 @@ stream {
 
     # ── POP3 (port 110) ────────────────────────────────────────────
     upstream pop3_backend {
-        server 172.20.0.16:110;
+        server 10.99.0.16:110;
     }
     server {
         listen 110;
@@ -228,7 +228,7 @@ stream {
 
     # ── POP3S (port 995) ───────────────────────────────────────────
     upstream pop3s_backend {
-        server 172.20.0.16:995;
+        server 10.99.0.16:995;
     }
     server {
         listen 995;
@@ -272,7 +272,7 @@ services:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     networks:
       mailnet:
-        ipv4_address: 172.20.0.30
+        ipv4_address: 10.99.0.30
     depends_on:
       - smtp-gateway
       - imap-gateway
@@ -283,7 +283,7 @@ services:
     # ... existing build/image config ...
     environment:
       # ... existing env vars ...
-      PROXY_PROTOCOL_TRUSTED_CIDRS: "172.20.0.30/32"
+      PROXY_PROTOCOL_TRUSTED_CIDRS: "10.99.0.30/32"
     # Remove host port mappings since HAProxy handles them:
     # ports:
     #   - "25:25"
@@ -291,31 +291,31 @@ services:
     #   - "465:465"
     networks:
       mailnet:
-        ipv4_address: 172.20.0.13
+        ipv4_address: 10.99.0.13
 
   # ── IMAP Gateway ──────────────────────────────────────────────────
   imap-gateway:
     # ... existing build/image config ...
     environment:
       # ... existing env vars ...
-      PROXY_PROTOCOL_TRUSTED_CIDRS: "172.20.0.30/32"
+      PROXY_PROTOCOL_TRUSTED_CIDRS: "10.99.0.30/32"
     networks:
       mailnet:
-        ipv4_address: 172.20.0.15
+        ipv4_address: 10.99.0.15
 
   # ── POP3 Gateway ──────────────────────────────────────────────────
   pop3-gateway:
     # ... existing build/image config ...
     environment:
       # ... existing env vars ...
-      PROXY_PROTOCOL_TRUSTED_CIDRS: "172.20.0.30/32"
+      PROXY_PROTOCOL_TRUSTED_CIDRS: "10.99.0.30/32"
     networks:
       mailnet:
-        ipv4_address: 172.20.0.16
+        ipv4_address: 10.99.0.16
 ```
 
 The important change is that `PROXY_PROTOCOL_TRUSTED_CIDRS` is set to the
-HAProxy container's static IP (`172.20.0.30/32`). Only PROXY headers arriving
+HAProxy container's static IP (`10.99.0.30/32`). Only PROXY headers arriving
 from that address will be honored.
 
 ## Security Considerations
@@ -353,8 +353,8 @@ Recommendations:
 When a gateway starts with `PROXY_PROTOCOL_TRUSTED_CIDRS` set, it logs:
 
 ```
-{"level":"INFO","msg":"PROXY protocol configured","trusted_cidrs":["172.20.0.30/32"]}
-{"level":"INFO","msg":"smtp: PROXY protocol enabled","trusted_cidrs":["172.20.0.30/32"]}
+{"level":"INFO","msg":"PROXY protocol configured","trusted_cidrs":["10.99.0.30/32"]}
+{"level":"INFO","msg":"smtp: PROXY protocol enabled","trusted_cidrs":["10.99.0.30/32"]}
 ```
 
 Look for these lines in `docker logs smtp-gateway`.
@@ -371,7 +371,7 @@ greeting from a trusted source:
   printf "EHLO test.example.com\r\n"
   sleep 2
   printf "QUIT\r\n"
-} | nc 172.20.0.13 25
+} | nc 10.99.0.13 25
 ```
 
 If PROXY protocol is working, the gateway will see the client as `203.0.113.50`
@@ -431,7 +431,7 @@ These tests cover:
 | Library | `github.com/pires/go-proxyproto` |
 | Source file | `internal/gateway/smtp/proxyproto.go` |
 | Test file | `internal/gateway/proxyproto_test.go` |
-| Default gateway IPs | SMTP: `172.20.0.13`, IMAP: `172.20.0.15`, POP3: `172.20.0.16` |
+| Default gateway IPs | SMTP: `10.99.0.13`, IMAP: `10.99.0.15`, POP3: `10.99.0.16` |
 | SMTP ports | 25 (inbound), 587 (submission), 465 (submission TLS) |
 | IMAP ports | 143 (plain/STARTTLS), 993 (implicit TLS) |
 | POP3 ports | 110 (plain/STARTTLS), 995 (implicit TLS) |
