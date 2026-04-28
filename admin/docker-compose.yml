@@ -15,7 +15,7 @@ services:
       - docker-proxy.admin.path=/admin
     networks:
       mailnet:
-        ipv4_address: 172.20.0.27
+        ipv4_address: 10.99.0.27
 
 networks:
   mailnet:

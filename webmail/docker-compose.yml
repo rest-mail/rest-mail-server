@@ -15,7 +15,7 @@ services:
       - docker-proxy.webmail.path=/webmail
     networks:
       mailnet:
-        ipv4_address: 172.20.0.21
+        ipv4_address: 10.99.0.21
 
 networks:
   mailnet:

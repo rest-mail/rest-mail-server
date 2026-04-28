@@ -14,7 +14,7 @@ services:
       - ./:/usr/share/nginx/html:ro
     networks:
       mailnet:
-        ipv4_address: 172.20.0.26
+        ipv4_address: 10.99.0.26
 
 networks:
   mailnet:
