@@ -1092,9 +1092,7 @@ func (s *Session) handleAppend(tag, args string) {
 	if flagStart := strings.Index(args, "("); flagStart >= 0 {
 		if flagEnd := strings.Index(args[flagStart:], ")"); flagEnd >= 0 {
 			flagStr := args[flagStart+1 : flagStart+flagEnd]
-			for _, f := range strings.Fields(flagStr) {
-				appendFlags = append(appendFlags, f)
-			}
+			appendFlags = append(appendFlags, strings.Fields(flagStr)...)
 		}
 	}
 

@@ -306,7 +306,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		defer ic.close()
 
 		// Check CAPABILITY for STARTTLS
-		result, lines := ic.command(t, "CAPABILITY")
+		_, lines := ic.command(t, "CAPABILITY")
 		capLine := ""
 		for _, l := range lines {
 			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
@@ -323,7 +323,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		// LOGIN over TLS
 		ic.login(t, "testuser@mail3.test", adminPassword)
 
-		result, _ = ic.command(t, "SELECT INBOX")
+		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
 			t.Fatalf("SELECT INBOX over TLS failed: %s", result)
 		}
@@ -450,7 +450,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		ic := dialIMAP(t, mail3IMAPAddr)
 		defer ic.close()
 
-		result, lines := ic.command(t, "CAPABILITY")
+		_, lines := ic.command(t, "CAPABILITY")
 		capLine := ""
 		for _, l := range lines {
 			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
@@ -466,7 +466,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		// LOGIN with good credentials
 		ic.login(t, "testuser@mail3.test", adminPassword)
 
-		result, _ = ic.command(t, "SELECT INBOX")
+		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
 			t.Fatalf("SELECT INBOX after STARTTLS+LOGIN failed: %s", result)
 		}
@@ -478,7 +478,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		ic := dialIMAP(t, mail3IMAPAddr)
 		defer ic.close()
 
-		result, lines := ic.command(t, "CAPABILITY")
+		_, lines := ic.command(t, "CAPABILITY")
 		capLine := ""
 		for _, l := range lines {
 			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
@@ -492,7 +492,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		ic.starttls(t)
 
 		// LOGIN with bad credentials — should fail
-		result, _ = ic.command(t, "LOGIN testuser@mail3.test wrongpassword")
+		result, _ := ic.command(t, "LOGIN testuser@mail3.test wrongpassword")
 		if strings.Contains(result, "OK") {
 			t.Fatal("IMAP LOGIN with bad password should not return OK")
 		}

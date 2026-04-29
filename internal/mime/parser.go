@@ -87,9 +87,7 @@ func parseHeaders(h mail.Header) pipeline.Headers {
 
 	// Parse References
 	if refs := h.Get("References"); refs != "" {
-		for _, ref := range strings.Fields(refs) {
-			headers.References = append(headers.References, ref)
-		}
+		headers.References = append(headers.References, strings.Fields(refs)...)
 	}
 
 	// Preserve all raw headers

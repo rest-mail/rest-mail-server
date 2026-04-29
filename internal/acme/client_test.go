@@ -8,8 +8,6 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 )
 
-const testMasterKey = "test-master-key-for-acme-tests"
-
 func TestNeedsRenewal(t *testing.T) {
 	tests := []struct {
 		name     string

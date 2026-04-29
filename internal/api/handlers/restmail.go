@@ -257,9 +257,11 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
-			if result.FinalEmail != nil {
-				emailJSON = result.FinalEmail
-			}
+			// NOTE: pipeline-modified email (result.FinalEmail) is intentionally
+			// not propagated into the message stored below — the message is built
+			// from req.* fields. If pipeline output should drive storage, plumb
+			// it through the loop's models.Message{} construction below.
+			_ = result.FinalEmail
 		}
 	}
 

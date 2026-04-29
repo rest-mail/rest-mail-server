@@ -289,12 +289,12 @@ func testStage3GatewayInbound(t *testing.T) {
 		subject := fmt.Sprintf("attachment-test-%d", time.Now().UnixNano())
 
 		var mimeBody strings.Builder
-		mimeBody.WriteString(fmt.Sprintf("From: sender@mail1.test\r\n"))
-		mimeBody.WriteString(fmt.Sprintf("To: testuser@mail3.test\r\n"))
+		mimeBody.WriteString("From: sender@mail1.test\r\n")
+		mimeBody.WriteString("To: testuser@mail3.test\r\n")
 		mimeBody.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 		mimeBody.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 		mimeBody.WriteString(fmt.Sprintf("Message-ID: <att-test-%d@test.local>\r\n", time.Now().UnixNano()))
-		mimeBody.WriteString(fmt.Sprintf("MIME-Version: 1.0\r\n"))
+		mimeBody.WriteString("MIME-Version: 1.0\r\n")
 		mimeBody.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary))
 		mimeBody.WriteString("\r\n")
 		// Text part
