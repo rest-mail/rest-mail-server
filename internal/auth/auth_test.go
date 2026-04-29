@@ -59,7 +59,7 @@ func TestGenerateTokenPair(t *testing.T) {
 	if claims.Issuer != "restmail" {
 		t.Errorf("Issuer = %q; want %q", claims.Issuer, "restmail")
 	}
-	wantSubject := fmt.Sprintf("%d", testMailboxID)
+	wantSubject := fmt.Sprintf("mailbox:%d", testMailboxID)
 	if claims.Subject != wantSubject {
 		t.Errorf("Subject = %q; want %q", claims.Subject, wantSubject)
 	}
