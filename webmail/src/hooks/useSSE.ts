@@ -113,7 +113,7 @@ export function useSSE(
     let closed = false;
     let delay = 1000;
     const maxDelay = 30000;
-    let lastEventId = '';
+    const lastEventId = '';
     let cancelStream: (() => void) | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -171,7 +171,7 @@ export function useMultiAccountSSE(
       let closed = false;
       let delay = 1000;
       const maxDelay = 30000;
-      let lastEventId = '';
+      const lastEventId = '';
       let cancelStream: (() => void) | null = null;
       let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 

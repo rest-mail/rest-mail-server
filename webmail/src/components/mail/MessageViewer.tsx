@@ -3,7 +3,6 @@ import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
 import * as api from '@/api/client';
 import { listAttachments, getAttachmentUrl } from '@/api/client';
-import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   DropdownMenu,
@@ -11,7 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { Mail, Paperclip, MessageSquare, Reply, Forward, Trash2, Archive, MoreHorizontal, Eye, EyeOff, Flag, FlagOff, Image, FileText as FileTextIcon, File } from 'lucide-react';
+import { Mail, Paperclip, MessageSquare, Reply, Forward, Trash2, Archive, MoreHorizontal, Image, FileText as FileTextIcon, File } from 'lucide-react';
 import { toast } from 'sonner';
 import DOMPurify from 'dompurify';
 import type { Attachment, MessageSummary } from '@/types';

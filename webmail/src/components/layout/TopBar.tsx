@@ -80,7 +80,11 @@ export function TopBar() {
   const debouncedSearch = useCallback((value: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      value.trim() ? searchMessages(value) : clearSearch();
+      if (value.trim()) {
+        searchMessages(value);
+      } else {
+        clearSearch();
+      }
     }, 300);
   }, [searchMessages, clearSearch]);
 

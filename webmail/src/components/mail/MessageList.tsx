@@ -16,7 +16,7 @@ export function MessageList() {
   const {
     messages, selectedMessageId, loadingMessages, activeFolder,
     selectMessage, hasMore, loadMoreMessages,
-    searchResults, searchQuery, isSearching, clearSearch,
+    searchResults, searchQuery, clearSearch,
   } = useMailStore();
   const { density } = useSettingsStore();
   const unreadCount = useUnreadCount();

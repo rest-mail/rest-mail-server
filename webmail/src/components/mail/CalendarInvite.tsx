@@ -140,13 +140,15 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
   } | null>(null);
   const { accounts, activeAccountId } = useMailStore();
 
-  if (!events || events.length === 0) return null;
+  // Display the first event (most common case). Computed before any early
+  // return so hooks below see a stable signature on every render.
+  const event = events?.[0];
 
-  const event = events[0]; // Display the first event (most common case)
-
-  // Check if this event has been superseded by a newer version
+  // Check if this event has been superseded by a newer version. Hook must run
+  // on every render (no early return above it) to satisfy rules-of-hooks; the
+  // body short-circuits when there's no event.
   useEffect(() => {
-    if (!event.uid || !activeAccountId) return;
+    if (!event?.uid || !activeAccountId) return;
     api.getCalendarEvents(activeAccountId).then(res => {
       const match = res.data?.find((e: { uid: string }) => e.uid === event.uid);
       if (match && (match.sequence > event.sequence || match.is_cancelled)) {
@@ -158,7 +160,9 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
         });
       }
     }).catch(() => { /* silently ignore - feature enhancement only */ });
-  }, [event.uid, event.sequence, event.method, activeAccountId]);
+  }, [event?.uid, event?.sequence, event?.method, activeAccountId]);
+
+  if (!events || events.length === 0 || !event) return null;
 
   const handleRespond = async (response: 'ACCEPTED' | 'DECLINED' | 'TENTATIVE') => {
     setRespondingAs(response);
