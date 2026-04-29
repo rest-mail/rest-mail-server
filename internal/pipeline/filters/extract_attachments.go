@@ -35,7 +35,7 @@ func NewExtractAttachments(config []byte) (pipeline.Filter, error) {
 		StoragePath: "/attachments",
 	}
 	if len(config) > 0 {
-		json.Unmarshal(config, &cfg)
+		_ = json.Unmarshal(config, &cfg)
 	}
 	return &extractAttFilter{cfg: cfg}, nil
 }

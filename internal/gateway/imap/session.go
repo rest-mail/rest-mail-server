@@ -71,7 +71,7 @@ func (s *Session) Handle() {
 	s.send("* OK [CAPABILITY IMAP4rev1 STARTTLS AUTH=PLAIN] %s IMAP4rev1 RestMail", s.hostname)
 
 	for {
-		s.conn.SetDeadline(time.Now().Add(30 * time.Minute))
+		_ = s.conn.SetDeadline(time.Now().Add(30 * time.Minute))
 
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
@@ -896,7 +896,7 @@ func (s *Session) handleCopy(tag, args string) {
 
 		// Move the new message to the destination folder if not INBOX
 		if dest != "INBOX" && resp != nil {
-			s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": dest})
+			_ = s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": dest})
 		}
 	}
 
@@ -1027,7 +1027,7 @@ func (s *Session) handleDelete(tag, args string) {
 	resp, err := s.api.ListMessages(s.auth.token, s.auth.accountID, folder)
 	if err == nil {
 		for _, msg := range resp.Data {
-			s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": "Trash"})
+			_ = s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": "Trash"})
 		}
 	}
 
@@ -1064,7 +1064,7 @@ func (s *Session) handleRename(tag, args string) {
 	resp, err := s.api.ListMessages(s.auth.token, s.auth.accountID, oldName)
 	if err == nil {
 		for _, msg := range resp.Data {
-			s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": newName})
+			_ = s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"folder": newName})
 		}
 	}
 
@@ -1294,7 +1294,7 @@ func (s *Session) handleIdle(tag string) {
 	}()
 
 	// Wait for DONE from client
-	s.conn.SetDeadline(time.Now().Add(29 * time.Minute))
+	_ = s.conn.SetDeadline(time.Now().Add(29 * time.Minute))
 	for {
 		line, err := s.reader.ReadString('\n')
 		if err != nil {

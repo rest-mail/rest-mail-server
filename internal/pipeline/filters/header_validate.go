@@ -30,7 +30,7 @@ func NewHeaderValidate(config []byte) (pipeline.Filter, error) {
 		RejectInjection: true,
 	}
 	if len(config) > 0 {
-		json.Unmarshal(config, &cfg)
+		_ = json.Unmarshal(config, &cfg)
 	}
 	return &headerValidateFilter{cfg: cfg}, nil
 }

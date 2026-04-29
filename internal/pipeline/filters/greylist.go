@@ -29,7 +29,7 @@ func NewGreylist(db *gorm.DB) pipeline.FilterFactory {
 			SkipIfTrustedSender: true,
 		}
 		if len(config) > 0 {
-			json.Unmarshal(config, &cfg)
+			_ = json.Unmarshal(config, &cfg)
 		}
 		return &greylistFilter{db: db, cfg: cfg}, nil
 	}

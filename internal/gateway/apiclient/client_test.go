@@ -129,7 +129,7 @@ func TestCheckMailbox_Exists(t *testing.T) {
 			t.Errorf("expected address 'user@mail1.test', got %q", addr)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"exists":     true,
 				"mailbox_id": 42,
@@ -155,7 +155,7 @@ func TestCheckMailbox_NotExists(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/mailboxes", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"exists": false,
 			},
@@ -189,7 +189,7 @@ func TestDeliverMessage_Success(t *testing.T) {
 			t.Errorf("expected subject 'Hello', got %q", req.Subject)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"id":         100,
 				"mailbox_id": 42,
@@ -276,7 +276,7 @@ func TestSendMessage_Forbidden(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/messages/send", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error":"forbidden"}`))
+		_, _ = w.Write([]byte(`{"error":"forbidden"}`))
 	})
 
 	c := New(srv.URL)
@@ -412,7 +412,7 @@ func TestGetMessage_NotFound(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/messages/999", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"error":"not found"}`))
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
 	})
 
 	c := New(srv.URL)
@@ -441,7 +441,7 @@ func TestUpdateMessage_Success(t *testing.T) {
 			t.Errorf("expected 'Bearer tok', got %q", auth)
 		}
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["is_read"] != true {
 			t.Errorf("expected is_read=true, got %v", body["is_read"])
 		}
@@ -480,7 +480,7 @@ func TestDeleteMessage_Unauthorized(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/messages/10", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"unauthorized"}`))
+		_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
 	})
 
 	c := New(srv.URL)
@@ -613,7 +613,7 @@ func TestCreateDomain_Success(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["name"] != "newdomain.test" {
 			t.Errorf("expected name 'newdomain.test', got %v", body["name"])
 		}
@@ -686,7 +686,7 @@ func TestCreateMailbox_Success(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["address"] != "new@mail1.test" {
 			t.Errorf("expected address 'new@mail1.test', got %v", body["address"])
 		}

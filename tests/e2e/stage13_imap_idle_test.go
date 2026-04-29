@@ -125,7 +125,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@mail3.test password123\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
 			t.Fatalf("LOGIN failed: %s", loginResp)
@@ -133,7 +133,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// SELECT INBOX
 		fmt.Fprintf(conn, "A002 SELECT INBOX\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		selectResp := readUntilTagRaw(t, reader, "A002")
 		if !strings.Contains(selectResp, "OK") {
 			t.Fatalf("SELECT INBOX failed: %s", selectResp)
@@ -141,7 +141,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// IDLE
 		fmt.Fprintf(conn, "A003 IDLE\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 		// Read continuation response (should be "+ idling" or similar)
 		idleResp, err := reader.ReadString('\n')
@@ -266,7 +266,7 @@ func testStage13ImapIdle(t *testing.T) {
 			t.Logf("IDLE received: %s", line)
 
 			if strings.Contains(line, "EXISTS") {
-				fmt.Sscanf(line, "* %d EXISTS", &newCount)
+				_, _ = fmt.Sscanf(line, "* %d EXISTS", &newCount)
 				if newCount > initialExists {
 					existsReceived = true
 					t.Logf("EXISTS notification received: %d (was %d)", newCount, initialExists)
@@ -398,7 +398,7 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// Send DONE
-		ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
 		fmt.Fprintf(ic.conn, "DONE\r\n")
 
 		// Read tagged OK

@@ -219,7 +219,7 @@ func testStage2TraditionalMail(t *testing.T) {
 		exists := 0
 		for _, line := range lines {
 			if strings.Contains(line, "EXISTS") {
-				fmt.Sscanf(line, "* %d EXISTS", &exists)
+				_, _ = fmt.Sscanf(line, "* %d EXISTS", &exists)
 			}
 		}
 		if exists == 0 {
@@ -399,7 +399,7 @@ func testStage2TraditionalMail(t *testing.T) {
 		exists := 0
 		for _, line := range lines {
 			if strings.Contains(line, "EXISTS") {
-				fmt.Sscanf(line, "* %d EXISTS", &exists)
+				_, _ = fmt.Sscanf(line, "* %d EXISTS", &exists)
 			}
 		}
 		if exists == 0 {
