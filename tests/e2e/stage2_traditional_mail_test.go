@@ -418,7 +418,7 @@ func testStage2TraditionalMail(t *testing.T) {
 			if strings.HasPrefix(line, "* SEARCH") {
 				parts := strings.Fields(line)
 				if len(parts) >= 3 {
-					fmt.Sscanf(parts[2], "%d", &seqNum)
+					_, _ = fmt.Sscanf(parts[2], "%d", &seqNum)
 				}
 			}
 		}
@@ -506,7 +506,7 @@ func testStage2TraditionalMail(t *testing.T) {
 
 		// Parse message count from STAT response ("+OK n size")
 		var msgCount, totalSize int
-		fmt.Sscanf(statResp, "+OK %d %d", &msgCount, &totalSize)
+		_, _ = fmt.Sscanf(statResp, "+OK %d %d", &msgCount, &totalSize)
 		if msgCount == 0 {
 			t.Skip("no messages in POP3 mailbox")
 		}

@@ -1,0 +1,43 @@
+version: "2"
+
+# Linter config for rest-mail-server.
+#
+# errcheck is enabled but with a focused exclude list for patterns that
+# are noisy false-positives in this codebase: deferred Close()s on
+# resources we own, SetDeadline best-effort calls, fmt.Fprint* writers
+# (almost always to a bytes.Buffer or http.ResponseWriter where the
+# error has nowhere meaningful to go). Real production paths still
+# need explicit `_ =` or proper handling.
+
+linters:
+  default: standard
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        # I/O closers — deferred or end-of-scope
+        - io/ioutil.ReadFile
+        - (io.Closer).Close
+        - (net.Conn).Close
+        - (net.Listener).Close
+        - (*net.TCPListener).Close
+        - (*os.File).Close
+        - (*net/http.Response).Body.Close
+        # Best-effort connection management
+        - (net.Conn).SetDeadline
+        - (net.Conn).SetReadDeadline
+        - (net.Conn).SetWriteDeadline
+        - (*bufio.Writer).Flush
+        # Writers — http.ResponseWriter, bytes.Buffer, etc.
+        - fmt.Fprint
+        - fmt.Fprintln
+        - fmt.Fprintf
+
+  # The QF (quick-fix) staticchecks are style suggestions, not bugs —
+  # disable them to keep CI focused on real issues.
+  exclusions:
+    rules:
+      - linters: [staticcheck]
+        text: "QF\\d+"

@@ -396,7 +396,7 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 	var req struct {
 		Email *json.RawMessage `json:"email,omitempty"`
 	}
-	json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	// Build sidecar request
 	sidecarBody := map[string]any{"script": config.Script}
@@ -426,7 +426,7 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(sidecarResp.StatusCode)
-	w.Write(respBody)
+	_, _ = w.Write(respBody)
 }
 
 // ValidateCustomFilter syntax-checks a JavaScript filter script via the sidecar.
@@ -470,7 +470,7 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(respBody)
+	_, _ = w.Write(respBody)
 }
 
 // ── Quarantine ───────────────────────────────────────────────────────

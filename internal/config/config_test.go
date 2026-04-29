@@ -33,7 +33,7 @@ func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range allEnvKeys {
 		t.Setenv(key, "")   // register cleanup to restore original value
-		os.Unsetenv(key)     // truly unset so LookupEnv sees it as absent
+		_ = os.Unsetenv(key)     // truly unset so LookupEnv sees it as absent
 	}
 }
 

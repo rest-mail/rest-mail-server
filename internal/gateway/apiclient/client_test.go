@@ -298,7 +298,7 @@ func TestListFolders_Success(t *testing.T) {
 			t.Errorf("expected 'Bearer tok', got %q", auth)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
 				{"name": "INBOX", "total": 10, "unread": 3},
 				{"name": "Sent", "total": 5, "unread": 0},
@@ -334,7 +334,7 @@ func TestListMessages_Success(t *testing.T) {
 			t.Errorf("expected limit=100, got %q", r.URL.Query().Get("limit"))
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
 				{
 					"id":      1,
@@ -380,7 +380,7 @@ func TestGetMessage_Success(t *testing.T) {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"id":        42,
 				"subject":   "Detailed Message",
@@ -496,7 +496,7 @@ func TestGetQuota_Success(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/accounts/1/quota", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"quota_bytes":      1073741824,
 				"quota_used_bytes": 536870912,
@@ -536,7 +536,7 @@ func TestSearch_WithFolder(t *testing.T) {
 			t.Errorf("expected folder 'INBOX', got %q", folder)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{},
 		})
 	})
@@ -559,7 +559,7 @@ func TestSearch_WithoutFolder(t *testing.T) {
 			t.Errorf("expected no folder param, got %q", folder)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{},
 		})
 	})
@@ -580,7 +580,7 @@ func TestListDomains_Success(t *testing.T) {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
 				{"id": 1, "name": "mail1.test", "server_type": "traditional", "active": true},
 				{"id": 2, "name": "mail3.test", "server_type": "restmail", "active": true},
@@ -657,7 +657,7 @@ func TestListMailboxes_Success(t *testing.T) {
 			t.Errorf("expected GET, got %s", r.Method)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
 				{"id": 1, "address": "user@mail1.test", "display_name": "User One", "domain_id": 1, "active": true},
 			},
@@ -737,7 +737,7 @@ func TestResetPassword_Success(t *testing.T) {
 			t.Errorf("expected PATCH, got %s", r.Method)
 		}
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["password"] != "newpass456" {
 			t.Errorf("expected password 'newpass456', got %v", body["password"])
 		}
@@ -761,7 +761,7 @@ func TestListPipelines_WithDomainID(t *testing.T) {
 			t.Errorf("expected domain_id=2, got %q", domainID)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
 				{"id": 1, "domain_id": 2, "direction": "inbound", "active": true},
 			},
@@ -786,7 +786,7 @@ func TestListPipelines_NoDomainID(t *testing.T) {
 			t.Errorf("expected no domain_id param, got %q", domainID)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{},
 		})
 	})
@@ -807,7 +807,7 @@ func TestTogglePipeline_Success(t *testing.T) {
 			t.Errorf("expected PATCH, got %s", r.Method)
 		}
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["active"] != false {
 			t.Errorf("expected active=false, got %v", body["active"])
 		}
@@ -827,7 +827,7 @@ func TestQueueStats_Success(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/admin/queue/stats", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"total":   100,
 				"pending": 25,
@@ -864,7 +864,7 @@ func TestListBans_Success(t *testing.T) {
 			t.Errorf("expected limit=1 query param")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": []map[string]interface{}{
 				{"id": 1, "ip": "10.0.0.1", "protocol": "smtp"},
 			},
@@ -923,7 +923,7 @@ func TestDecodeResponse_NilOutput(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/test", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	})
 
 	c := New(srv.URL)
@@ -958,7 +958,7 @@ func TestCheckStatus_VariousStatusCodes(t *testing.T) {
 			srv, mux := newTestServer(t)
 			mux.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(`{"status":"test"}`))
+				_, _ = w.Write([]byte(`{"status":"test"}`))
 			})
 
 			c := New(srv.URL)
@@ -979,7 +979,7 @@ func TestAuthorizationHeader_Propagation(t *testing.T) {
 	mux.HandleFunc("/api/v1/admin/domains", func(w http.ResponseWriter, r *http.Request) {
 		capturedAuth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"data": []interface{}{}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": []interface{}{}})
 	})
 
 	c := New(srv.URL)
@@ -998,7 +998,7 @@ func TestContentType_SetOnPost(t *testing.T) {
 	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		capturedContentType = r.Header.Get("Content-Type")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"access_token": "tok",
 				"expires_in":   3600,
@@ -1036,7 +1036,7 @@ func TestRequestBody_Roundtrip(t *testing.T) {
 			t.Errorf("expected raw_message 'raw content here', got %q", req.RawMessage)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{"id": 1, "mailbox_id": 1, "subject": "Test"},
 		})
 	})

@@ -137,7 +137,7 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 	// Handle other error responses
 	if resp.StatusCode != http.StatusOK {
 		var errResp sidecarResponse
-		json.Unmarshal(respBody, &errResp)
+		_ = json.Unmarshal(respBody, &errResp)
 		detail := errResp.Error
 		if detail == "" {
 			detail = fmt.Sprintf("sidecar returned status %d", resp.StatusCode)

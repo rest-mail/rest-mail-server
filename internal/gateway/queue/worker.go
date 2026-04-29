@@ -430,13 +430,13 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 	}
 
 	if err := client.Hello(w.hostname); err != nil {
-		client.Close()
+		_ = client.Close()
 		return false, nil
 	}
 
 	ok, restmailURL := client.Extension("RESTMAIL")
 	_ = client.Quit()
-	client.Close()
+	_ = client.Close()
 
 	if !ok || restmailURL == "" {
 		w.cacheCapability(item.Domain, false, "")
@@ -658,7 +658,7 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 		conn.Close()
 		return fmt.Errorf("SMTP client for %s: %w", addr, err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Say hello
 	if err := client.Hello(w.hostname); err != nil {

@@ -318,12 +318,12 @@ func testStage13ImapIdle(t *testing.T) {
 		if err != nil {
 			t.Skipf("Cannot connect to IMAPS %s: %v", imapsGWAddr, err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		reader := bufio.NewReader(conn)
 
 		// Read greeting
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		greeting, err := reader.ReadString('\n')
 		requireNoError(t, err)
 		if !strings.Contains(greeting, "OK") {
@@ -332,7 +332,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@mail3.test password123\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
 			t.Skipf("IMAPS LOGIN failed: %s", loginResp)
@@ -340,7 +340,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// SELECT INBOX
 		fmt.Fprintf(conn, "A002 SELECT INBOX\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		selectResp := readUntilTagRaw(t, reader, "A002")
 		if !strings.Contains(selectResp, "OK") {
 			t.Fatalf("IMAPS SELECT INBOX failed: %s", selectResp)
@@ -348,7 +348,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// IDLE
 		fmt.Fprintf(conn, "A003 IDLE\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 		contResp, err := reader.ReadString('\n')
 		requireNoError(t, err)
@@ -359,7 +359,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// DONE
 		fmt.Fprintf(conn, "DONE\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		doneResp, err := reader.ReadString('\n')
 		requireNoError(t, err)
 

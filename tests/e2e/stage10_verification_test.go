@@ -200,7 +200,7 @@ func testStage10Verification(t *testing.T) {
 		tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
 		err = tlsConn.Handshake()
 		requireNoError(t, err)
-		defer tlsConn.Close()
+		defer func() { _ = tlsConn.Close() }()
 
 		// Send EHLO again over TLS
 		fmt.Fprintf(tlsConn, "EHLO test.local\r\n")
@@ -228,7 +228,7 @@ func testStage10Verification(t *testing.T) {
 		if err != nil {
 			t.Skipf("Cannot connect to IMAPS %s: %v", imapsGWAddr, err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		// Read server greeting
 		buf := make([]byte, 4096)

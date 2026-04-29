@@ -36,7 +36,7 @@ func NewRateLimit(config []byte) (pipeline.Filter, error) {
 		MaxPerMinute: 20,
 	}
 	if len(config) > 0 {
-		json.Unmarshal(config, &cfg)
+		_ = json.Unmarshal(config, &cfg)
 	}
 	return &rateLimitFilter{
 		cfg:     cfg,

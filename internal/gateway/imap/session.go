@@ -1152,7 +1152,7 @@ func (s *Session) handleAppend(tag, args string) {
 
 	// Move to the target folder if not INBOX
 	if folder != "INBOX" && resp != nil {
-		s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": folder})
+		_ = s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": folder})
 	}
 
 	// Apply parsed flags to the delivered message
@@ -1169,7 +1169,7 @@ func (s *Session) handleAppend(tag, args string) {
 			}
 		}
 		if len(updates) > 0 {
-			s.api.UpdateMessage(s.auth.token, resp.Data.ID, updates)
+			_ = s.api.UpdateMessage(s.auth.token, resp.Data.ID, updates)
 		}
 	}
 
@@ -1439,7 +1439,7 @@ func (s *Session) handleUIDFetch(tag, args string) {
 			s.writer.Flush()
 
 			if !msg.IsRead && !strings.Contains(dataItems, "BODY.PEEK") {
-				s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
+				_ = s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
 				s.messages[seq-1].IsRead = true
 			}
 		} else if strings.Contains(dataItems, "BODY[HEADER]") {
@@ -1556,7 +1556,7 @@ func (s *Session) handleUIDStore(tag, args string) {
 		}
 
 		if len(updates) > 0 {
-			s.api.UpdateMessage(s.auth.token, msg.ID, updates)
+			_ = s.api.UpdateMessage(s.auth.token, msg.ID, updates)
 		}
 
 		newFlags := buildFlags(s.messages[seq-1])
@@ -1614,7 +1614,7 @@ func (s *Session) handleUIDCopy(tag, args string) {
 
 		// Move the new message to the destination folder if not INBOX
 		if dest != "INBOX" && resp != nil {
-			s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": dest})
+			_ = s.api.UpdateMessage(s.auth.token, resp.Data.ID, map[string]interface{}{"folder": dest})
 		}
 	}
 

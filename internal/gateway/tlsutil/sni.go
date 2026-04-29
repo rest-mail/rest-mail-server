@@ -99,7 +99,7 @@ func (l *SNICertLoader) StartWatching() error {
 	}
 
 	if err := watcher.Add(l.certDir); err != nil {
-		watcher.Close()
+		_ = watcher.Close()
 		return fmt.Errorf("sni: watch %s: %w", l.certDir, err)
 	}
 
@@ -147,6 +147,6 @@ func (l *SNICertLoader) Stop() {
 		close(l.stopCh)
 	}
 	if l.watcher != nil {
-		l.watcher.Close()
+		_ = l.watcher.Close()
 	}
 }

@@ -1199,14 +1199,14 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var toList []string
-	json.Unmarshal(draft.RecipientsTo, &toList)
+	_ = json.Unmarshal(draft.RecipientsTo, &toList)
 	if len(toList) == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Draft has no recipients")
 		return
 	}
 
 	var ccList []string
-	json.Unmarshal(draft.RecipientsCc, &ccList)
+	_ = json.Unmarshal(draft.RecipientsCc, &ccList)
 
 	sendBody := map[string]interface{}{
 		"from":        draft.Sender,
@@ -1238,7 +1238,7 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 		w.Header()[k] = v
 	}
 	w.WriteHeader(rec.Code)
-	w.Write(rec.Body.Bytes())
+	_, _ = w.Write(rec.Body.Bytes())
 }
 
 // GetThread returns all messages sharing the same thread_id.
@@ -1325,7 +1325,7 @@ func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "message/rfc822")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(msg.RawMessage))
+	_, _ = w.Write([]byte(msg.RawMessage))
 }
 
 // ForwardMessage forwards an existing message to new recipients.
@@ -1441,7 +1441,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	// Parse calendar events from the message
 	var calEvents []pipeline.CalendarEvent
 	if len(msg.CalendarEventsRaw) > 0 {
-		json.Unmarshal(msg.CalendarEventsRaw, &calEvents)
+		_ = json.Unmarshal(msg.CalendarEventsRaw, &calEvents)
 	}
 
 	if len(calEvents) == 0 {
