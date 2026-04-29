@@ -42,7 +42,7 @@ func testStage10Verification(t *testing.T) {
 		requireNoError(t, recvClient.login("verify-recv@mail3.test", "password123"))
 
 		// Link account
-		recvClient.post("/api/v1/accounts", map[string]string{
+		_, _ = recvClient.post("/api/v1/accounts", map[string]string{
 			"address": "verify-recv@mail3.test", "password": "password123",
 		})
 
@@ -83,7 +83,7 @@ func testStage10Verification(t *testing.T) {
 		requireNoError(t, sendClient.login("verify-out@mail3.test", "password123"))
 
 		// Link account
-		sendClient.post("/api/v1/accounts", map[string]string{
+		_, _ = sendClient.post("/api/v1/accounts", map[string]string{
 			"address": "verify-out@mail3.test", "password": "password123",
 		})
 
@@ -112,7 +112,7 @@ func testStage10Verification(t *testing.T) {
 		// Login as sender
 		sendClient := newAPIClient()
 		requireNoError(t, sendClient.login("verify-rm1@mail3.test", "password123"))
-		sendClient.post("/api/v1/accounts", map[string]string{
+		_, _ = sendClient.post("/api/v1/accounts", map[string]string{
 			"address": "verify-rm1@mail3.test", "password": "password123",
 		})
 
@@ -129,7 +129,7 @@ func testStage10Verification(t *testing.T) {
 		// Login as receiver and verify fast delivery
 		recvClient := newAPIClient()
 		requireNoError(t, recvClient.login("verify-rm2@mail3.test", "password123"))
-		recvClient.post("/api/v1/accounts", map[string]string{
+		_, _ = recvClient.post("/api/v1/accounts", map[string]string{
 			"address": "verify-rm2@mail3.test", "password": "password123",
 		})
 

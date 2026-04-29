@@ -31,8 +31,7 @@ type Model struct {
 	height int
 
 	// Navigation
-	view     View
-	prevView View
+	view View
 
 	// Sub-models
 	domains   DomainsModel
@@ -47,11 +46,9 @@ type Model struct {
 	menuIdx   int
 
 	// RBAC
-	capabilities  []string
-	isSuperAdmin  bool
-	username      string
-
-	err error
+	capabilities []string
+	isSuperAdmin bool
+	username     string
 }
 
 // NewModel creates the root console model.

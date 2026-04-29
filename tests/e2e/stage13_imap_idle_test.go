@@ -55,7 +55,7 @@ func testStage13ImapIdle(t *testing.T) {
 		reader := bufio.NewReader(conn)
 
 		// Read greeting
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		greeting, err := reader.ReadString('\n')
 		requireNoError(t, err)
 		if !strings.Contains(greeting, "OK") {
@@ -64,7 +64,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// Try IDLE without login
 		fmt.Fprintf(conn, "A001 IDLE\r\n")
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		resp, err := reader.ReadString('\n')
 		requireNoError(t, err)
 		resp = strings.TrimSpace(resp)
@@ -117,7 +117,7 @@ func testStage13ImapIdle(t *testing.T) {
 		reader := bufio.NewReader(conn)
 
 		// Read greeting
-		conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		greeting, _ := reader.ReadString('\n')
 		if !strings.Contains(greeting, "OK") {
 			t.Fatalf("unexpected greeting: %s", strings.TrimSpace(greeting))
@@ -218,7 +218,7 @@ func testStage13ImapIdle(t *testing.T) {
 		for _, line := range strings.Split(selectLines, "\n") {
 			line = strings.TrimSpace(line)
 			if strings.Contains(line, "EXISTS") {
-				fmt.Sscanf(line, "* %d EXISTS", &initialExists)
+				_, _ = fmt.Sscanf(line, "* %d EXISTS", &initialExists)
 			}
 		}
 		t.Logf("Initial INBOX message count: %d", initialExists)
@@ -388,7 +388,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 		// Enter and exit IDLE using raw connection
 		tag := ic.nextTag()
-		ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
 		fmt.Fprintf(ic.conn, "%s IDLE\r\n", tag)
 
 		// Read continuation
@@ -438,29 +438,3 @@ func readUntilTagRaw(t *testing.T, reader *bufio.Reader, tag string) string {
 	return strings.Join(allLines, "\n")
 }
 
-// dialIMAPSForIdle connects to IMAPS and returns a raw TLS connection + reader.
-func dialIMAPSForIdle(t *testing.T, addr string) (net.Conn, *bufio.Reader) {
-	t.Helper()
-	conn, err := tls.DialWithDialer(
-		&net.Dialer{Timeout: 10 * time.Second},
-		"tcp",
-		addr,
-		&tls.Config{InsecureSkipVerify: true},
-	)
-	if err != nil {
-		t.Fatalf("dial IMAPS %s: %v", addr, err)
-	}
-	reader := bufio.NewReader(conn)
-	// Read greeting
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
-	greeting, err := reader.ReadString('\n')
-	if err != nil {
-		conn.Close()
-		t.Fatalf("read IMAPS greeting: %v", err)
-	}
-	if !strings.Contains(greeting, "OK") {
-		conn.Close()
-		t.Fatalf("unexpected IMAPS greeting: %s", strings.TrimSpace(greeting))
-	}
-	return conn, reader
-}

@@ -58,7 +58,7 @@ func TestLogin_Success(t *testing.T) {
 			t.Errorf("expected Content-Type application/json, got %q", ct)
 		}
 		var body map[string]string
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		if body["email"] != "user@test.com" {
 			t.Errorf("expected email user@test.com, got %q", body["email"])
 		}
@@ -66,7 +66,7 @@ func TestLogin_Success(t *testing.T) {
 			t.Errorf("expected password 'secret', got %q", body["password"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"data": map[string]interface{}{
 				"access_token": "tok-123",
 				"expires_in":   3600,
@@ -99,7 +99,7 @@ func TestLogin_Unauthorized(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"invalid credentials"}`))
+		_, _ = w.Write([]byte(`{"error":"invalid credentials"}`))
 	})
 
 	c := New(srv.URL)
@@ -181,7 +181,7 @@ func TestDeliverMessage_Success(t *testing.T) {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		var req DeliverRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.Address != "user@mail1.test" {
 			t.Errorf("expected address 'user@mail1.test', got %q", req.Address)
 		}
@@ -220,7 +220,7 @@ func TestDeliverMessage_ServerError(t *testing.T) {
 	srv, mux := newTestServer(t)
 	mux.HandleFunc("/api/v1/messages/deliver", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"internal server error"}`))
+		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
 	})
 
 	c := New(srv.URL)
@@ -250,7 +250,7 @@ func TestSendMessage_Success(t *testing.T) {
 			t.Errorf("expected 'Bearer my-token', got %q", auth)
 		}
 		var req SendRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		if req.From != "sender@test.com" {
 			t.Errorf("expected from 'sender@test.com', got %q", req.From)
 		}
@@ -1022,7 +1022,7 @@ func TestRequestBody_Roundtrip(t *testing.T) {
 	mux.HandleFunc("/api/v1/messages/deliver", func(w http.ResponseWriter, r *http.Request) {
 		bodyBytes, _ := io.ReadAll(r.Body)
 		var req DeliverRequest
-		json.Unmarshal(bodyBytes, &req)
+		_ = json.Unmarshal(bodyBytes, &req)
 		if req.Sender != "alice@test.com" {
 			t.Errorf("expected sender 'alice@test.com', got %q", req.Sender)
 		}

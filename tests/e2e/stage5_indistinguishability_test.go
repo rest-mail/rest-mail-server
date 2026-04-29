@@ -374,7 +374,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		// Send >20MB of data to exceed SIZE limit
 		chunk := strings.Repeat("X", 1024) // 1KB line
 		for i := 0; i < 21000; i++ {       // ~21MB
-			sc.conn.SetDeadline(time.Now().Add(30 * time.Second))
+			_ = sc.conn.SetDeadline(time.Now().Add(30 * time.Second))
 			fmt.Fprintf(sc.conn, "%s\r\n", chunk)
 		}
 

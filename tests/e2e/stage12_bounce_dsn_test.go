@@ -26,7 +26,7 @@ func testStage12BounceDSN(t *testing.T) {
 		requireNoError(t, senderClient.login("bounce-sender@mail3.test", "password123"))
 
 		// Link account
-		senderClient.post("/api/v1/accounts", map[string]string{
+		_, _ = senderClient.post("/api/v1/accounts", map[string]string{
 			"address": "bounce-sender@mail3.test", "password": "password123",
 		})
 

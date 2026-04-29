@@ -64,7 +64,7 @@ func (s *Session) Handle() {
 	s.ok("RestMail POP3 server ready")
 
 	for {
-		s.conn.SetDeadline(time.Now().Add(10 * time.Minute))
+		_ = s.conn.SetDeadline(time.Now().Add(10 * time.Minute))
 
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
@@ -357,7 +357,7 @@ func (s *Session) handleRetr(arg string) {
 
 	// Mark as read
 	if !msg.IsRead {
-		s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
+		_ = s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
 		s.messages[n-1].IsRead = true
 	}
 }

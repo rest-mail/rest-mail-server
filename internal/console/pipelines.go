@@ -32,7 +32,6 @@ type PipelinesModel struct {
 	api       *apiclient.Client
 	token     string
 	pipelines []pipelineItem
-	domains   []domainItem
 	cursor    int
 	loading   bool
 	err       error

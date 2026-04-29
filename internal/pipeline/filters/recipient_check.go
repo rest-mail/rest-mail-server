@@ -10,10 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type recipientCheckConfig struct {
-	// No config needed; uses the database
-}
-
 type recipientCheckFilter struct {
 	db *gorm.DB
 }

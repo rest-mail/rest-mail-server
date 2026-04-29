@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/restmail/restmail/internal/pipeline"
 )
@@ -258,14 +257,3 @@ func addARCAuthResult(email *pipeline.EmailJSON, result string) {
 	}
 }
 
-// parseARCHeaderTag extracts a tag value from a semicolon-separated ARC header.
-// This is a utility for future use when full header parsing is needed.
-func parseARCHeaderTag(header, tag string) string {
-	for _, part := range strings.Split(header, ";") {
-		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, tag+"=") {
-			return strings.TrimSpace(strings.TrimPrefix(part, tag+"="))
-		}
-	}
-	return ""
-}

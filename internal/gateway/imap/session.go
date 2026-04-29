@@ -141,7 +141,7 @@ func (s *Session) Handle() {
 			if s.selected != nil {
 				for _, msg := range s.messages {
 					if s.deleted[msg.ID] {
-						s.api.DeleteMessage(s.auth.token, msg.ID)
+						_ = s.api.DeleteMessage(s.auth.token, msg.ID)
 					}
 				}
 			}
@@ -477,7 +477,7 @@ func (s *Session) handleFetch(tag, args string) {
 
 			// Auto-mark as read
 			if !msg.IsRead {
-				s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
+				_ = s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
 				s.messages[seq-1].IsRead = true
 			}
 		} else if strings.Contains(dataItems, "BODY[HEADER]") {
@@ -832,7 +832,7 @@ func (s *Session) handleStore(tag, args string) {
 		}
 
 		if len(updates) > 0 {
-			s.api.UpdateMessage(s.auth.token, msg.ID, updates)
+			_ = s.api.UpdateMessage(s.auth.token, msg.ID, updates)
 		}
 
 		newFlags := buildFlags(*msg)
@@ -1126,7 +1126,7 @@ func (s *Session) handleAppend(tag, args string) {
 	}
 
 	// Read trailing CRLF
-	s.reader.ReadString('\n')
+	_, _ = s.reader.ReadString('\n')
 
 	// Parse basic headers from raw message for delivery
 	subject, bodyText, bodyHTML, messageID, senderName := parseBasicHeaders(data)

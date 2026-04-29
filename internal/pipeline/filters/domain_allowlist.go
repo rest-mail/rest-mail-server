@@ -29,7 +29,7 @@ func NewDomainAllowlist(db *gorm.DB) pipeline.FilterFactory {
 			RejectMessage: "550 Sender blocked by domain policy",
 		}
 		if len(config) > 0 {
-			json.Unmarshal(config, &cfg)
+			_ = json.Unmarshal(config, &cfg)
 		}
 		return &domainAllowlistFilter{db: db, cfg: cfg}, nil
 	}

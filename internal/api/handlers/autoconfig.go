@@ -102,7 +102,7 @@ func (h *AutoconfigHandler) MozillaAutoconfig(w http.ResponseWriter, r *http.Req
 	fmt.Fprint(w, xml.Header)
 	enc := xml.NewEncoder(w)
 	enc.Indent("", "  ")
-	enc.Encode(config)
+	_ = enc.Encode(config)
 }
 
 // MicrosoftAutodiscover serves Microsoft Outlook Autodiscover XML.

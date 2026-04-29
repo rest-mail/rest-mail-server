@@ -73,7 +73,7 @@ func parseSMTPError(err error) *SMTPError {
 	// Try to parse "NNN X.X.X rest" or "NNN rest"
 	if len(msg) >= 3 && msg[0] >= '1' && msg[0] <= '5' {
 		code := 0
-		fmt.Sscanf(msg[:3], "%d", &code)
+		_, _ = fmt.Sscanf(msg[:3], "%d", &code)
 		if code >= 100 && code <= 599 {
 			rest := strings.TrimSpace(msg[3:])
 			enhanced := ""
@@ -435,7 +435,7 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 	}
 
 	ok, restmailURL := client.Extension("RESTMAIL")
-	client.Quit()
+	_ = client.Quit()
 	client.Close()
 
 	if !ok || restmailURL == "" {
@@ -623,7 +623,7 @@ func (w *Worker) checkMTASTS(domain string) (*mtaStsPolicy, error) {
 		case "mx":
 			policy.MX = append(policy.MX, value)
 		case "max_age":
-			fmt.Sscanf(value, "%d", &policy.MaxAge)
+			_, _ = fmt.Sscanf(value, "%d", &policy.MaxAge)
 		}
 	}
 
@@ -723,7 +723,7 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 	}
 
 	// Quit
-	client.Quit()
+	_ = client.Quit()
 	return nil
 }
 

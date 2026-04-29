@@ -28,7 +28,7 @@ func testStage11QueueRetry(t *testing.T) {
 		requireNoError(t, senderClient.login("retry-sender@mail3.test", "password123"))
 
 		// Link account
-		senderClient.post("/api/v1/accounts", map[string]string{
+		_, _ = senderClient.post("/api/v1/accounts", map[string]string{
 			"address": "retry-sender@mail3.test", "password": "password123",
 		})
 
@@ -102,7 +102,7 @@ func testStage11QueueRetry(t *testing.T) {
 				if item.Recipient == "someone@unreachable-e2e-test-domain.invalid" &&
 					(item.Status == "deferred" || item.Status == "bounced") {
 					// Found our deferred/bounced item. Decode fully.
-					json.Unmarshal(raw, &queueItem)
+					_ = json.Unmarshal(raw, &queueItem)
 					found = true
 					break
 				}

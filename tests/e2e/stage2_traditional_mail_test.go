@@ -575,7 +575,7 @@ func testStage2TraditionalMail(t *testing.T) {
 
 		pc.sendExpect(t, "USER alice@mail1.test", "+OK")
 		// Wrong password should fail
-		pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+		_ = pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
 		fmt.Fprintf(pc.conn, "PASS wrongpassword\r\n")
 		resp := pc.readLine(t)
 		if !strings.HasPrefix(resp, "-ERR") {

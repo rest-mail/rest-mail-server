@@ -19,7 +19,7 @@ func newTestJWTService(accessExpiry time.Duration) *auth.JWTService {
 // okHandler is a simple handler that writes 200 OK; used as the "next" handler in middleware chains.
 var okHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok"))
+	_, _ = w.Write([]byte("ok"))
 })
 
 // parseErrorResponse decodes the standard JSON error body from a response recorder.

@@ -41,7 +41,7 @@ func (sc *smtpConn) close() {
 
 func (sc *smtpConn) send(t *testing.T, cmd string) {
 	t.Helper()
-	sc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = sc.conn.SetDeadline(time.Now().Add(10 * time.Second))
 	_, err := fmt.Fprintf(sc.conn, "%s\r\n", cmd)
 	if err != nil {
 		t.Fatalf("send SMTP command %q: %v", cmd, err)
@@ -50,7 +50,7 @@ func (sc *smtpConn) send(t *testing.T, cmd string) {
 
 func (sc *smtpConn) readLine(t *testing.T) string {
 	t.Helper()
-	sc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = sc.conn.SetDeadline(time.Now().Add(10 * time.Second))
 	line, err := sc.reader.ReadString('\n')
 	if err != nil {
 		t.Fatalf("read SMTP line: %v", err)
@@ -229,7 +229,7 @@ func (ic *imapConn) nextTag() string {
 
 func (ic *imapConn) readLine(t *testing.T) string {
 	t.Helper()
-	ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
 	line, err := ic.reader.ReadString('\n')
 	if err != nil {
 		t.Fatalf("read IMAP line: %v", err)
@@ -255,7 +255,7 @@ func (ic *imapConn) readUntilTag(t *testing.T, tag string) []string {
 func (ic *imapConn) command(t *testing.T, cmd string) (string, []string) {
 	t.Helper()
 	tag := ic.nextTag()
-	ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = ic.conn.SetDeadline(time.Now().Add(10 * time.Second))
 	_, err := fmt.Fprintf(ic.conn, "%s %s\r\n", tag, cmd)
 	if err != nil {
 		t.Fatalf("send IMAP command %q: %v", cmd, err)
@@ -332,7 +332,7 @@ func (pc *pop3Conn) close() {
 
 func (pc *pop3Conn) readLine(t *testing.T) string {
 	t.Helper()
-	pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
 	line, err := pc.reader.ReadString('\n')
 	if err != nil {
 		t.Fatalf("read POP3 line: %v", err)
@@ -342,7 +342,7 @@ func (pc *pop3Conn) readLine(t *testing.T) string {
 
 func (pc *pop3Conn) sendExpect(t *testing.T, cmd string, expectedPrefix string) string {
 	t.Helper()
-	pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
+	_ = pc.conn.SetDeadline(time.Now().Add(10 * time.Second))
 	_, err := fmt.Fprintf(pc.conn, "%s\r\n", cmd)
 	if err != nil {
 		t.Fatalf("send POP3 %q: %v", cmd, err)
@@ -421,6 +421,3 @@ func resolveDomain(t *testing.T, domain string) []string {
 	return addrs
 }
 
-// ── TLS helper ───────────────────────────────────────────────────────
-
-var insecureTLSConfig = &tls.Config{InsecureSkipVerify: true}

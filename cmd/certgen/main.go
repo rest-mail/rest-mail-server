@@ -153,7 +153,7 @@ func generateCA(outputDir string) error {
 	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
 		return err
 	}
-	os.Chmod(keyPath, 0600)
+	_ = os.Chmod(keyPath, 0600)
 
 	slog.Info("CA certificate generated", "cert", certPath, "key", keyPath)
 	return nil
@@ -212,7 +212,7 @@ func generateServerCert(outputDir, domain string) error {
 	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
 		return err
 	}
-	os.Chmod(keyPath, 0600)
+	_ = os.Chmod(keyPath, 0600)
 
 	slog.Info("server certificate generated", "domain", domain, "cert", certPath, "key", keyPath)
 	return nil
@@ -232,7 +232,7 @@ func generateDKIM(outputDir, domain string) error {
 	if err := writePEM(privPath, "RSA PRIVATE KEY", privBytes); err != nil {
 		return err
 	}
-	os.Chmod(privPath, 0600)
+	_ = os.Chmod(privPath, 0600)
 
 	// Write public key
 	pubBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)

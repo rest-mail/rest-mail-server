@@ -73,7 +73,7 @@ func (s *Session) Handle() {
 	s.reply(220, "%s ESMTP RestMail", s.hostname)
 
 	for {
-		s.conn.SetDeadline(time.Now().Add(5 * time.Minute))
+		_ = s.conn.SetDeadline(time.Now().Add(5 * time.Minute))
 
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
@@ -413,7 +413,7 @@ func (s *Session) handleDATA() {
 	// Read message data until lone "." on a line
 	var data []byte
 	for {
-		s.conn.SetDeadline(time.Now().Add(10 * time.Minute))
+		_ = s.conn.SetDeadline(time.Now().Add(10 * time.Minute))
 		line, err := s.reader.ReadBytes('\n')
 		if err != nil {
 			slog.Error("smtp: error reading DATA", "remote", s.remoteAddr, "error", err)

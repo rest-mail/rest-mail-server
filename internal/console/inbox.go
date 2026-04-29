@@ -44,7 +44,6 @@ type InboxModel struct {
 	selectingUser bool
 	userInput     textinput.Model
 	selectedUser  string
-	token         string
 	accountID     uint
 
 	// Folder navigation

@@ -26,7 +26,6 @@ var (
 	mail3POP3Addr   = envOr("MAIL3_POP3_ADDR", "10.99.0.13:110")
 	mail1SubmitAddr = envOr("MAIL1_SUBMIT_ADDR", "10.99.0.11:587")
 	mail3SubmitAddr = envOr("MAIL3_SUBMIT_ADDR", "10.99.0.13:587")
-	dnsServerAddr   = envOr("DNS_SERVER_ADDR", "10.99.0.3:53")
 	adminPassword   = envOr("ADMIN_PASSWORD", "password123")
 )
 
