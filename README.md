@@ -249,7 +249,7 @@ internal/
   console/          Console screens and components
 webmail/            React frontend (Vite + TypeScript + Tailwind + shadcn/ui)
 admin/              Admin UI (React)
-docker/             Dockerfiles for the API, gateways, webmail, admin, website
+projects/           Dockerfiles for the API, gateways, webmail, admin, website
 helm/               Helm chart for restmail (mail3 only)
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
 tasks/              Per-service Taskfiles (one per container) included from root Taskfile.yml

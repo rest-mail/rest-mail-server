@@ -29,7 +29,7 @@ func main() {
 		domains   string
 	)
 
-	flag.StringVar(&outputDir, "out", "docker/certs/output", "Output directory for certificates")
+	flag.StringVar(&outputDir, "out", "projects/certs/output", "Output directory for certificates")
 	flag.BoolVar(&genCA, "ca", false, "Generate CA certificate")
 	flag.BoolVar(&genDKIM, "dkim", false, "Generate DKIM key pair")
 	flag.StringVar(&domain, "domain", "", "Domain name for certificate or DKIM key")

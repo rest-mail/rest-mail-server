@@ -29,7 +29,7 @@ internal/             Shared packages (api, auth, config, crypto, db, dns, gatew
 webmail/              React end-user webmail (Vite + TS + Tailwind)
 admin/                React admin UI (TanStack Router + Zustand + Tailwind v4)
 website/              Static project landing page
-docker/               Dockerfiles and config templates (postfix, dovecot, dnsmasq,
+projects/             Dockerfiles and config templates (postfix, dovecot, dnsmasq,
                       gateways, js-filter-sidecar, etc.)
 docker-compose.yml    Core stack (+ override and profile files)
 Taskfile.yml          Task runner for dev/build/test workflows
@@ -228,7 +228,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `sieve` | Action | Sieve script execution |
 | `webhook` | Action | HTTP POST notification |
 | `duplicate` | Action | Fork message to webhook/queue |
-| `javascript` | Action | Runs in [docker/js-filter-sidecar](../docker/js-filter-sidecar/) (Node.js, `vm.runInNewContext` with whitelisted globals, `--max-old-space-size=64`) |
+| `javascript` | Action | Runs in [projects/js-filter-sidecar](../projects/js-filter-sidecar/) (Node.js, `vm.runInNewContext` with whitelisted globals, `--max-old-space-size=64`) |
 | `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum |
 | `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected |
 

@@ -55,7 +55,7 @@ tasks:
     cmds:
       - |
         echo "  building {{.IMAP_GATEWAY_IMAGE}} (target={{.IMAP_GATEWAY_MODE}})"
-        docker build -t {{.IMAP_GATEWAY_IMAGE}} --target {{.IMAP_GATEWAY_MODE}} -f docker/imap-gateway/Dockerfile . >$OUTPUT 2>&1
+        docker build -t {{.IMAP_GATEWAY_IMAGE}} --target {{.IMAP_GATEWAY_MODE}} -f projects/imap-gateway/Dockerfile . >$OUTPUT 2>&1
 
   up:
     desc: Start (or recreate) the imap-gateway container

@@ -21,7 +21,7 @@ vars:
   JS_FILTER_CONTAINER_NAME: '{{.JS_FILTER_PROJECT}}-js-filter'
   JS_FILTER_REGISTRY: '{{.JS_FILTER_REGISTRY | default "ghcr.io/rest-mail"}}'
   JS_FILTER_IMAGE: '{{.JS_FILTER_REGISTRY}}/js-filter:{{.JS_FILTER_IMAGE_TAG}}'
-  JS_FILTER_BUILD_CONTEXT: '{{.JS_FILTER_BUILD_CONTEXT | default "./docker/js-filter-sidecar"}}'
+  JS_FILTER_BUILD_CONTEXT: '{{.JS_FILTER_BUILD_CONTEXT | default "./projects/js-filter-sidecar"}}'
 
 tasks:
 

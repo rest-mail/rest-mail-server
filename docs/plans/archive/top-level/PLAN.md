@@ -1829,7 +1829,7 @@ All three services share a common internal library (`internal/gateway/`) for RES
 
 ```yaml
 smtp-gateway:
-  build: { context: ., dockerfile: docker/smtp-gateway/Dockerfile }
+  build: { context: ., dockerfile: projects/smtp-gateway/Dockerfile }
   ports: ["25:25", "465:465", "587:587"]
   environment:
     API_BASE_URL: http://api:8080
@@ -1837,7 +1837,7 @@ smtp-gateway:
     restmail: { ipv4_address: 10.99.0.14 }
 
 imap-gateway:
-  build: { context: ., dockerfile: docker/imap-gateway/Dockerfile }
+  build: { context: ., dockerfile: projects/imap-gateway/Dockerfile }
   ports: ["143:143", "993:993"]
   environment:
     API_BASE_URL: http://api:8080
@@ -1845,7 +1845,7 @@ imap-gateway:
     restmail: { ipv4_address: 10.99.0.15 }
 
 pop3-gateway:
-  build: { context: ., dockerfile: docker/pop3-gateway/Dockerfile }
+  build: { context: ., dockerfile: projects/pop3-gateway/Dockerfile }
   ports: ["110:110", "995:995"]
   environment:
     API_BASE_URL: http://api:8080
@@ -3915,7 +3915,7 @@ rest-mail/
 │   ├── Dockerfile              # Production (nginx serving built assets)
 │   └── Dockerfile.dev          # Development (Vite dev server with HMR)
 │
-├── docker/                     # Docker configuration
+├── projects/                   # Per-service Dockerfiles + entrypoints
 │   ├── postfix/               # Postfix config templates + entrypoint
 │   ├── dovecot/               # Dovecot config templates + entrypoint
 │   ├── dnsmasq/               # dnsmasq config
@@ -5457,7 +5457,7 @@ Write a comprehensive README.md at the project root that serves as the entry poi
 5. **Service Map** — Table of all services with their container names, IPs, ports, and roles
 6. **Starting Individual Services** — How to run the API, gateway, webmail, and console independently for development
 7. **Testing** — How to run the e2e test suite (`go test ./tests/e2e/ -v`), what each stage tests, and the stage dependency chain
-8. **Project Structure** — Directory layout with descriptions of each major package (`cmd/`, `internal/api/`, `internal/gateway/`, `internal/pipeline/`, `internal/console/`, `webmail/`, `docker/`, `tests/`)
+8. **Project Structure** — Directory layout with descriptions of each major package (`cmd/`, `internal/api/`, `internal/gateway/`, `internal/pipeline/`, `internal/console/`, `webmail/`, `projects/`, `tests/`)
 9. **API Reference** — Summary of key API endpoints (auth, admin, messages, folders, search, restmail, health)
 10. **Configuration** — Environment variables and their defaults
 11. **Development Workflow** — How to add a new API endpoint, add a pipeline filter, modify the console, or update the webmail frontend

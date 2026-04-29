@@ -1,7 +1,7 @@
-# Audit: restmail-specific leakage in `docker/` daemons
+# Audit: restmail-specific leakage in `projects/` daemons
 
 **Date:** 2026-04-28
-**Scope:** every daemon in `docker/` that's "not ours" — postfix, dovecot, rspamd, clamav, fail2ban, dnsmasq, certgen.
+**Scope:** every daemon in `projects/` that's "not ours" — postfix, dovecot, rspamd, clamav, fail2ban, dnsmasq, certgen.
 **Purpose:** identify what must be made generic before extracting each into a `reference-*` upstream repo.
 
 ## Findings

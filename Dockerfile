@@ -30,7 +30,7 @@ FROM alpine:3.20 AS prod
 RUN apk add --no-cache ca-certificates curl
 COPY --from=builder /bin/restmail-api  /usr/local/bin/restmail-api
 COPY --from=builder /bin/restmail-seed /usr/local/bin/restmail-seed
-COPY docker/api-entrypoint.sh /entrypoint.sh
+COPY projects/api-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \

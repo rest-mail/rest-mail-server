@@ -62,7 +62,7 @@ The `conventions` repo also ships a small lint script (bash or Go) that any imag
 
 - [ ] Confirm `github.com/rest-mail` org has the access needed to create N new repos.
 - [ ] Confirm container registry choice (GHCR `ghcr.io/rest-mail/*` is the natural default).
-- [ ] Audit current `docker/` for any rest-mail-specific code that snuck into "not ours" daemons (e.g. custom postfix milters wired to restmail). These are decision points: rewrite as generic, or keep in restmail.
+- [ ] Audit current `projects/` for any rest-mail-specific code that snuck into "not ours" daemons (e.g. custom postfix milters wired to restmail). These are decision points: rewrite as generic, or keep in restmail.
 - [ ] Write `conventions/CONVENTIONS.md` v0.1 (the bullet list above, expanded). This is the contract; no image work starts until this is written.
 
 ### Phase 1 — Pilot one image end-to-end
@@ -118,7 +118,7 @@ After Phase 3 ships and is verified working:
 
 - [ ] Delete from this repo: `docker/postfix/`, `docker/dovecot/`, `docker/rspamd/`, `docker/clamav/`, `docker/fail2ban/`, `docker/dnsmasq/`, `docker/certs/`, `docker/postgres/seed-mail{1,2}.sql`, `reference/`.
 - [ ] Strip from `docker-compose.yml`: `postgres-mail1`, `postgres-mail2`, `postfix-mail1`, `postfix-mail2`, `dovecot-mail1`, `dovecot-mail2`, `mail1-maildir`, `mail2-maildir`, `postgres-mail1-data`, `postgres-mail2-data`, `dnsmasq`, `certgen`, `rspamd`, `clamav`, `clamav-rest`, `fail2ban`. Mark `mailnet` as `external: true`.
-- [ ] What stays: `api`, `smtp-gateway`, `imap-gateway`, `pop3-gateway`, `js-filter`, `postgres-mail3`, plus restmail's own Dockerfiles in `docker/smtp-gateway/`, `docker/imap-gateway/`, `docker/pop3-gateway/`, `docker/js-filter-sidecar/`, `docker/api-entrypoint.sh`.
+- [ ] What stays: `api`, `smtp-gateway`, `imap-gateway`, `pop3-gateway`, `js-filter`, `postgres-mail3`, plus restmail's own Dockerfiles in `projects/smtp-gateway/`, `projects/imap-gateway/`, `projects/pop3-gateway/`, `projects/js-filter-sidecar/`, `projects/api-entrypoint.sh`.
 - [ ] Update `Taskfile.yml`: `task up` now requires testbed running first; document the dependency.
 - [ ] Optionally provide a `task all:up` convenience target that brings testbed → restmail → reference-mailserver in order.
 - [ ] Update `docs/` to point at the upstream repos.

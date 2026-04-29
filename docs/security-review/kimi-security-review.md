@@ -89,7 +89,7 @@ func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
 
 ### 4. JAVASCRIPT FILTER ALLOWS ARBITRARY CODE EXECUTION [CRITICAL]
 
-**Location:** `internal/pipeline/filters/javascript.go`, `docker/js-filter-sidecar/`
+**Location:** `internal/pipeline/filters/javascript.go`, `projects/js-filter-sidecar/`
 
 **Issue:** The JavaScript filter passes arbitrary user-provided scripts to a Node.js sidecar for execution. The sidecar runs with no apparent sandbox (no VM2, no isolated-vm, no seccomp).
 

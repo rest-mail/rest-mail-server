@@ -125,7 +125,7 @@ This bridges the pipeline filter (writes files to disk) and the download handler
 
 ## 9. JS Filter vm2 Replacement
 
-**Files:** `docker/js-filter-sidecar/server.js`, `docker/js-filter-sidecar/package.json`, `docker/js-filter-sidecar/Dockerfile`
+**Files:** `projects/js-filter-sidecar/server.js`, `projects/js-filter-sidecar/package.json`, `projects/js-filter-sidecar/Dockerfile`
 
 - Replace `vm2` with Node.js built-in `vm.runInNewContext()`.
 - Sandbox object: `JSON`, `Math`, `Date`, `console.log` (captured), `String`, `Array`, `Object`, `RegExp`. No `require`, `process`, `fs`, `net`.
@@ -146,9 +146,9 @@ This bridges the pipeline filter (writes files to disk) and the download handler
 | `internal/gateway/tlsutil/sni.go` | fsnotify watcher for cert hot-reload |
 | `cmd/{smtp,imap,pop3}-gateway/main.go` | Wire StartWatching/Stop on SNICertLoader |
 | `internal/api/handlers/messages.go` | SSE events, draft InReplyTo/References, thread ID on sent msgs, thread root from References, attachment DB rows from pipeline |
-| `docker/js-filter-sidecar/server.js` | Replace vm2 with vm.runInNewContext() |
-| `docker/js-filter-sidecar/package.json` | Remove vm2 dependency |
-| `docker/js-filter-sidecar/Dockerfile` | Add --max-old-space-size=64 |
+| `projects/js-filter-sidecar/server.js` | Replace vm2 with vm.runInNewContext() |
+| `projects/js-filter-sidecar/package.json` | Remove vm2 dependency |
+| `projects/js-filter-sidecar/Dockerfile` | Add --max-old-space-size=64 |
 
 ## Verification
 

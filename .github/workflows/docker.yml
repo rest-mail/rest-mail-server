@@ -24,13 +24,13 @@ jobs:
             dockerfile: Dockerfile
             context: .
           - image: smtp-gateway
-            dockerfile: docker/smtp-gateway/Dockerfile
+            dockerfile: projects/smtp-gateway/Dockerfile
             context: .
           - image: imap-gateway
-            dockerfile: docker/imap-gateway/Dockerfile
+            dockerfile: projects/imap-gateway/Dockerfile
             context: .
           - image: pop3-gateway
-            dockerfile: docker/pop3-gateway/Dockerfile
+            dockerfile: projects/pop3-gateway/Dockerfile
             context: .
           - image: webmail
             dockerfile: webmail/Dockerfile

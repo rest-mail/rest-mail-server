@@ -61,7 +61,7 @@ tasks:
         docker build \
           -t {{.SMTP_GATEWAY_IMAGE}} \
           --target {{.SMTP_GATEWAY_MODE}} \
-          -f docker/smtp-gateway/Dockerfile \
+          -f projects/smtp-gateway/Dockerfile \
           . >$OUTPUT 2>&1
 
   # ════════════════════════════════════════════════════════

@@ -202,7 +202,7 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 
 ### C-7. JavaScript filter sandbox is not a security boundary
 **CWE:** CWE-693 (Protection Mechanism Failure) · CWE-501 (Trust Boundary Violation) · CWE-1336
-**Location:** [docker/js-filter-sidecar/server.js:119-132](../docker/js-filter-sidecar/server.js#L119), driver at [internal/pipeline/filters/javascript.go:34-56](../internal/pipeline/filters/javascript.go#L34)
+**Location:** [projects/js-filter-sidecar/server.js:119-132](../projects/js-filter-sidecar/server.js#L119), driver at [internal/pipeline/filters/javascript.go:34-56](../internal/pipeline/filters/javascript.go#L34)
 **What:** Sidecar uses Node.js `vm.runInNewContext()` with whitelisted globals. Node docs explicitly state this is **not a sandbox**. `(function(){}).constructor("return process")()` escapes; `Object.prototype` is mutable (`Object.freeze` not applied); prototype pollution escapes are trivial.
 **Attack:** Admin uploads malicious custom JavaScript filter (H-10) → RCE in sidecar → env vars (DB creds, `MASTER_KEY`) → pivots. See Chain C.
 **Fix:** Abandon `vm.runInNewContext`. Use `isolated-vm` (V8 isolates with memory + CPU caps), Firecracker microVMs, WebAssembly, or remove user-defined JavaScript filters entirely. Harden container: read-only FS, drop all capabilities, no egress except to API, non-root user, seccomp restricting `execve`.

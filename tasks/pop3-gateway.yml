@@ -51,7 +51,7 @@ tasks:
     cmds:
       - |
         echo "  building {{.POP3_GATEWAY_IMAGE}} (target {{.POP3_GATEWAY_MODE}})"
-        docker build -t {{.POP3_GATEWAY_IMAGE}} --target {{.POP3_GATEWAY_MODE}} -f docker/pop3-gateway/Dockerfile . >$OUTPUT 2>&1
+        docker build -t {{.POP3_GATEWAY_IMAGE}} --target {{.POP3_GATEWAY_MODE}} -f projects/pop3-gateway/Dockerfile . >$OUTPUT 2>&1
 
   up:
     desc: Start (or recreate) the pop3-gateway container

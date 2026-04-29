@@ -1039,9 +1039,9 @@ git commit -m "Persist pipeline-extracted attachments to DB on delivery"
 ### Task 13: JS filter — replace vm2 with Node.js built-in vm
 
 **Files:**
-- Modify: `docker/js-filter-sidecar/server.js` (rewrite sandbox)
-- Modify: `docker/js-filter-sidecar/package.json` (remove vm2)
-- Modify: `docker/js-filter-sidecar/Dockerfile` (add memory limit)
+- Modify: `projects/js-filter-sidecar/server.js` (rewrite sandbox)
+- Modify: `projects/js-filter-sidecar/package.json` (remove vm2)
+- Modify: `projects/js-filter-sidecar/Dockerfile` (add memory limit)
 
 **Step 1: Rewrite server.js**
 
@@ -1163,7 +1163,7 @@ Note: no `npm install` needed since there are zero dependencies.
 **Step 4: Commit**
 
 ```bash
-git add docker/js-filter-sidecar/server.js docker/js-filter-sidecar/package.json docker/js-filter-sidecar/Dockerfile
+git add projects/js-filter-sidecar/server.js projects/js-filter-sidecar/package.json projects/js-filter-sidecar/Dockerfile
 git commit -m "Replace abandoned vm2 with Node.js built-in vm module"
 ```
 
