@@ -15,6 +15,12 @@ env:
   COMPOSE_PROJECT_NAME: rest-mail
   OUTPUT:
     sh: '[ -n "$VERBOSE" ] && echo /dev/stdout || echo /dev/null'
+  # Per-user toggles live in .env.local (gitignored). `task project:toggle
+  # <key>=<value>` writes/updates a key there; the line below sources it
+  # if present so individual toggles propagate as env vars / template vars.
+  # Add a new sh: line per toggle as the surface grows.
+  WEBSITE_MODE:
+    sh: '[ -f .env.local ] && (. ./.env.local; echo "${WEBSITE_MODE:-prod}") || echo prod'
 
 # ════════════════════════════════════════════════════════
 # Centralized vars — single source of truth for ports, IPs, hostnames,
@@ -225,15 +231,24 @@ includes:
       ADMIN_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       ADMIN_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
 
+  # The marketing website lives in its own repo (rest-mail/website) and is
+  # not strictly part of the rest-mail technology stack — it's pulled in
+  # here only so it can sit on mailnet alongside the real services. Like
+  # testbed and reference-mailserver, it's an `optional: true` clone-on-
+  # demand subproject (`task website:init` to bootstrap), so its tasks
+  # only resolve once the dir exists.
   website:
-    taskfile: ./tasks/website.yml
+    taskfile: .workspace/website/Taskfile.yml
+    dir: .workspace/website
+    optional: true
     vars:
-      WEBSITE_PROJECT: '{{.RESTMAIL_PROJECT}}'
-      WEBSITE_NETWORK: '{{.RESTMAIL_NETWORK}}'
-      WEBSITE_IP: '{{.MAIL3_WEBSITE_IP}}'
-      WEBSITE_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
-      WEBSITE_IMAGE_TAG: latest
-      WEBSITE_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
+      PROJECT: '{{.RESTMAIL_PROJECT}}'
+      NETWORK: '{{.RESTMAIL_NETWORK}}'
+      IP: '{{.MAIL3_WEBSITE_IP}}'
+      MODE: '{{.WEBSITE_MODE | default "prod"}}'
+      REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      IMAGE_TAG: latest
+      PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
 
   monitoring:
     taskfile: ./tasks/monitoring.yml
@@ -552,30 +567,11 @@ tasks:
       - task: pop3-gateway:up
       - task: webmail:up
       - task: admin:up
-      - task: website:up
-      - |
-        echo ""
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  restmail (mail3.test) ready"
-        echo ""
-        echo "  Website   →  http://localhost/"
-        echo "  Webmail   →  http://localhost/webmail"
-        echo "  Admin     →  http://localhost/admin"
-        echo "  API       →  http://localhost/api"
-        echo "  API docs  →  http://localhost/api/docs"
-        echo ""
-        echo "  Direct (bypass proxy):"
-        echo "    API     →  http://localhost:{{.MAIL3_API_PORT}}"
-        echo ""
-        echo "  task <service>:up|down|restart|logs    drive a single service"
-        echo "  task restmail:mail3:down               stop everything"
-        echo "  task restmail:mail3:restart            rebuild + recreate"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - task: status
 
   restmail:mail3:down:
     desc: Stop the restmail mail3 stack (preserves data volumes)
     cmds:
-      - task: website:down
       - task: admin:down
       - task: webmail:down
       - task: pop3-gateway:down
@@ -592,19 +588,9 @@ tasks:
       - task: restmail:mail3:up
 
   restmail:mail3:logs:
-    desc: Print available log commands for the restmail mail3 stack
+    desc: 'Alias for `task status` — service names there are the prefixes for <svc>:logs'
     cmds:
-      - |
-        echo "Tail logs for individual services:"
-        echo "  task postgres:logs"
-        echo "  task js-filter:logs"
-        echo "  task api:logs"
-        echo "  task smtp-gateway:logs"
-        echo "  task imap-gateway:logs"
-        echo "  task pop3-gateway:logs"
-        echo "  task webmail:logs"
-        echo "  task admin:logs"
-        echo "  task website:logs"
+      - task: status
 
   dev:
     desc: Alias for restmail:mail3:up (legacy name)
@@ -626,9 +612,92 @@ tasks:
         exit 1
 
   ps:
-    desc: Show all running rest-mail-* containers
+    desc: Show all running rest-mail-* containers (raw docker ps view)
     cmds:
       - docker ps -a --filter "name=^/{{.RESTMAIL_PROJECT}}-"
+
+  status:
+    desc: 'Show what is running and where (toggles + per-service state + URLs). Public, runnable any time.'
+    cmds:
+      - |
+        proj="{{.RESTMAIL_PROJECT}}"
+        host="{{.RESTMAIL_PROXY_HOST}}"
+        api_port="{{.MAIL3_API_PORT}}"
+        smtp_in="{{.MAIL3_SMTP_PORT_INBOUND}}"
+        smtp_sub="{{.MAIL3_SMTP_PORT_SUBMISSION}}"
+        smtp_subtls="{{.MAIL3_SMTP_PORT_SUBMISSION_TLS}}"
+        imap_p="{{.MAIL3_IMAP_PORT}}"
+        imap_tls="{{.MAIL3_IMAP_TLS_PORT}}"
+        pop3_p="{{.MAIL3_POP3_PORT}}"
+        pop3_tls="{{.MAIL3_POP3_TLS_PORT}}"
+
+        # ── helpers ────────────────────────────────────────────────────
+        running() {
+          state=$(docker inspect --format '{{`{{.State.Running}}`}}' "$1" 2>/dev/null || echo missing)
+          case "$state" in
+            true)    printf "● up    " ;;
+            false)   printf "○ down  " ;;
+            missing) printf "· absent" ;;
+          esac
+        }
+
+        # Read a docker-proxy.<ns>.<key> label; empty string if missing/down.
+        plabel() {
+          docker inspect --format "{{`{{index .Config.Labels`}} \"docker-proxy.$2.$3\"{{`}}`}}" "$1" 2>/dev/null || true
+        }
+
+        # Build the proxy URL for a service from its container labels.
+        # Args: container, label-namespace
+        proxy_url() {
+          h=$(plabel "$1" "$2" host)
+          p=$(plabel "$1" "$2" path)
+          [ -z "$h" ] && { echo "—"; return; }
+          [ -z "$p" ] && p=/
+          echo "http://${h}${p}"
+        }
+
+        row() {
+          # name, container, label-ns, direct-suffix
+          state=$(running "$2")
+          if [ -n "$3" ]; then
+            url=$(proxy_url "$2" "$3")
+          else
+            url="—"
+          fi
+          printf "    %-10s %-10s %-42s %s\n" "$1" "$state" "$url" "$4"
+        }
+
+        # ── toggles ────────────────────────────────────────────────────
+        echo ""
+        echo "  Toggles:"
+        echo "    website  → ${WEBSITE_MODE:-prod}    (override: task project:toggle -- website=dev|prod)"
+        echo ""
+
+        # ── services ───────────────────────────────────────────────────
+        echo "  Services:"
+        printf "    %-10s %-10s %-42s %s\n" "name" "state" "proxy URL" "direct"
+        printf "    %-10s %-10s %-42s %s\n" "----" "-----" "---------" "------"
+        row "postgres"  "${proj}-postgres"      ""        "internal :5432"
+        row "js-filter" "${proj}-js-filter"     ""        "internal"
+        row "api"       "${proj}-api"           "api"     ":${api_port} direct"
+        row "smtp-gw"   "${proj}-smtp-gateway"  ""        ":${smtp_in} :${smtp_sub} :${smtp_subtls}"
+        row "imap-gw"   "${proj}-imap-gateway"  ""        ":${imap_p} :${imap_tls}"
+        row "pop3-gw"   "${proj}-pop3-gateway"  ""        ":${pop3_p} :${pop3_tls}"
+        row "webmail"   "${proj}-webmail"       "webmail" ""
+        row "admin"     "${proj}-admin"         "admin"   ""
+        row "website"   "${proj}-website"       "website" "(separate subproject — task website:init|up)"
+        echo ""
+
+        # ── help footer ────────────────────────────────────────────────
+        echo "  Setup:"
+        echo "    task project:proxy:help     ddt setup or DIY requirements"
+        echo "    task project:check          probe proxy URLs from this host"
+        echo ""
+        echo "  Common:"
+        echo "    task <service>:logs         tail one service's logs"
+        echo "    task restmail:mail3:up      bring up the full stack"
+        echo "    task restmail:mail3:down    stop the stack (preserves volumes)"
+        echo ""
 
   # ════════════════════════════════════════════════════════
   # Database
@@ -654,6 +723,148 @@ tasks:
     desc: Open a psql shell to the mail3 database
     cmds:
       - task: postgres:psql
+
+  # ════════════════════════════════════════════════════════
+  # Project toggles (.env.local)
+  #
+  # Per-user mode flags written to .env.local (gitignored). The top-level
+  # env: block sources .env.local so any KEY=VALUE there propagates to
+  # tasks as both env vars and template vars.
+  #
+  # Usage:
+  #   task project:toggle -- website=dev   # set WEBSITE_MODE=dev
+  #   task project:toggle -- website=prod  # revert
+  #   task project:status                  # show current toggles
+  # ════════════════════════════════════════════════════════
+
+  project:toggle:
+    desc: 'Set a service toggle in .env.local (e.g. task project:toggle -- website=dev)'
+    cmds:
+      - |
+        set -e
+        if [ -z "{{.CLI_ARGS}}" ]; then
+          echo "usage: task project:toggle -- <service>=<mode>" >&2
+          echo "example: task project:toggle -- website=dev" >&2
+          exit 2
+        fi
+        file=.env.local
+        touch "$file"
+        for pair in {{.CLI_ARGS}}; do
+          case "$pair" in
+            *=*) ;;
+            *) echo "invalid toggle '$pair' (expected key=value)" >&2; exit 2 ;;
+          esac
+          name=${pair%%=*}
+          value=${pair#*=}
+          # Map shorthand service name to the env var the task layer reads.
+          case "$name" in
+            website) key=WEBSITE_MODE ;;
+            *) echo "unknown toggle '$name' (known: website)" >&2; exit 2 ;;
+          esac
+          if grep -q "^${key}=" "$file"; then
+            sed -i.bak "s|^${key}=.*|${key}=${value}|" "$file" && rm -f "$file.bak"
+          else
+            printf '%s=%s\n' "$key" "$value" >> "$file"
+          fi
+          echo "  set ${key}=${value} in ${file}"
+        done
+
+  project:status:
+    desc: 'Alias for `task status` (toggles + service state are shown there)'
+    cmds:
+      - task: status
+
+  project:check:
+    desc: 'Probe whether the local network environment is ready to serve proxy URLs'
+    cmds:
+      - |
+        host="{{.RESTMAIL_PROXY_HOST}}"
+        ok=1
+        echo "  proxy host: $host"
+        echo ""
+
+        if command -v ddt >/dev/null 2>&1; then
+          ver=$(ddt --version 2>/dev/null | head -1)
+          echo "  ✓ ddt installed     ($ver)"
+        else
+          echo "  ✗ ddt not installed (see 'task project:proxy:help' for both ddt + manual paths)"
+          ok=0
+        fi
+
+        # Anything listening on :80? (docker-proxy / ddt-proxy / your own)
+        if curl --connect-timeout 1 -s -o /dev/null -w '%{http_code}' "http://127.0.0.1/" 2>/dev/null | grep -qE '^[1-5][0-9][0-9]$'; then
+          echo "  ✓ proxy on :80      (something is responding)"
+        else
+          echo "  ✗ proxy on :80      (no response — start ddt: 'ddt start')"
+          ok=0
+        fi
+
+        # Resolve the proxy hostname and route through it.
+        code=$(curl --connect-timeout 1 -s -o /dev/null -w '%{http_code}' "http://${host}/" 2>/dev/null || echo 000)
+        if [ "$code" != "000" ]; then
+          echo "  ✓ ${host} routes  (HTTP $code from /)"
+        else
+          echo "  ✗ ${host} unreachable  (DNS or proxy missing — see 'task project:proxy:help')"
+          ok=0
+        fi
+
+        echo ""
+        if [ "$ok" = 1 ]; then
+          echo "  ready — http://${host}/api should work"
+        else
+          echo "  not ready — run 'task project:proxy:help' for setup options"
+          exit 1
+        fi
+
+  project:proxy:help:
+    desc: 'Show how to set up the local proxy + DNS (ddt or manual)'
+    cmds:
+      - |
+        host="{{.RESTMAIL_PROXY_HOST}}"
+        cat <<EOF
+
+          The rest-mail stack puts \`docker-proxy.<name>.host=${host}\` labels
+          on every container. A reverse proxy on :80 reads those labels and
+          routes requests by Host + path. Two ways to run that proxy:
+
+          ┌─ Option A — docker-dev-tools (recommended) ──────────────────┐
+
+            \`ddt\` provides the IP alias, DNS, and reverse proxy as a
+            single integrated stack. Install once, then it's stateless.
+
+              brew install antimatter-studios/tap/ddt
+              ddt install     # interactive: IP alias + DNS + services
+              ddt start       # bring up dns + proxy
+
+            Verify:
+              ddt status
+              task project:check
+
+            ddt registers \`*.localhost\` with your system resolver and
+            adds 10.254.254.254 to lo0 so containers can reach back to
+            host services with a stable, caller-independent IP.
+
+          ┌─ Option B — bring your own ──────────────────────────────────┐
+
+            If you don't want ddt, you're on your own. The stack needs
+            three things on the host: \`*.localhost\` resolution, a
+            stable IP that's reachable from inside containers, and a
+            reverse proxy on :80 that routes to our containers.
+
+            How you provide those is your call — Traefik, nginx-proxy,
+            Caddy, hand-written nginx, hosts-file edits, whatever fits
+            your setup. You'll need to translate the
+            docker-proxy.<name>.{host,port,path} labels we apply into
+            whatever your proxy expects.
+
+            We don't document a recipe for this path because there's
+            no single right answer, and reproducing ddt's pieces by
+            hand is strictly worse than just running ddt.
+
+          After either path, 'task project:check' should pass and
+          http://${host}/api will route to the api container.
+
+        EOF
 
   # ════════════════════════════════════════════════════════
   # Subproject bootstrap (clone-only)
@@ -682,6 +893,14 @@ tasks:
     cmds:
       - mkdir -p .workspace
       - git clone git@github.com:rest-mail/reference-mailserver.git .workspace/reference-mailserver
+
+  website:init:
+    desc: First-run only — clone rest-mail/website into .workspace/website
+    status:
+      - test -d .workspace/website/.git
+    cmds:
+      - mkdir -p .workspace
+      - git clone git@github.com:rest-mail/website.git .workspace/website
 
   # ════════════════════════════════════════════════════════
   # Utilities
