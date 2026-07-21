@@ -512,41 +512,14 @@ tasks:
   # ════════════════════════════════════════════════════════
 
   restmail:mail3:up:
-    desc: Bring up the full restmail product stack for mail3.test
+    desc: 'Alias for `task instance:up` (INSTANCE defaults to mail3.test)'
     cmds:
-      - task: postgres:up
-      - |
-        echo "  waiting for postgres to become healthy..."
-        for i in $(seq 1 30); do
-          status=$(docker inspect -f '{{`{{.State.Health.Status}}`}}' {{.RESTMAIL_PROJECT}}-postgres 2>/dev/null || echo "starting")
-          if [ "$status" = "healthy" ]; then
-            echo "  postgres healthy"
-            break
-          fi
-          sleep 1
-        done
-      - task: js-filter:up
-      - task: api:up
-      - task: health:wait
-      - task: db:seed
-      - task: smtp-gateway:up
-      - task: imap-gateway:up
-      - task: pop3-gateway:up
-      - task: webmail:up
-      - task: admin:up
-      - task: status
+      - task: instance:up
 
   restmail:mail3:down:
-    desc: Stop the restmail mail3 stack (preserves data volumes)
+    desc: 'Alias for `task instance:down`'
     cmds:
-      - task: admin:down
-      - task: webmail:down
-      - task: pop3-gateway:down
-      - task: imap-gateway:down
-      - task: smtp-gateway:down
-      - task: api:down
-      - task: js-filter:down
-      - task: postgres:down
+      - task: instance:down
 
   restmail:mail3:restart:
     desc: Stop + recreate the full restmail stack (rebuilds images)
@@ -939,6 +912,77 @@ tasks:
         if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
           docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}}"
         fi
+
+  # ── Bring-up (instance-generic; restmail:mail3:* are back-compat aliases) ──
+
+  instance:up:
+    desc: 'Bring up the full stack for INSTANCE (default mail3.test)'
+    cmds:
+      - task: postgres:up
+      - |
+        echo "  waiting for postgres to become healthy..."
+        for i in $(seq 1 30); do
+          status=$(docker inspect -f '{{`{{.State.Health.Status}}`}}' {{.RESTMAIL_PROJECT}}-postgres 2>/dev/null || echo "starting")
+          if [ "$status" = "healthy" ]; then
+            echo "  postgres healthy"
+            break
+          fi
+          sleep 1
+        done
+      - task: js-filter:up
+      - task: api:up
+      - task: health:wait
+      - task: db:seed
+      - task: smtp-gateway:up
+      - task: imap-gateway:up
+      - task: pop3-gateway:up
+      - task: webmail:up
+      - task: admin:up
+      - task: status
+
+  instance:down:
+    desc: "Stop INSTANCE's stack (preserves data volumes)"
+    cmds:
+      - task: admin:down
+      - task: webmail:down
+      - task: pop3-gateway:down
+      - task: imap-gateway:down
+      - task: smtp-gateway:down
+      - task: api:down
+      - task: js-filter:down
+      - task: postgres:down
+
+  instance:restart:
+    desc: "Stop + recreate INSTANCE's stack"
+    cmds:
+      - task: instance:down
+      - task: instance:up
+
+  instance:logs:
+    desc: 'Alias for `task status`'
+    cmds:
+      - task: status
+
+  instance:new:
+    desc: 'Scaffold a new instance + print next steps: task instance:new DOMAIN=mail4.test'
+    cmds:
+      - task: instance:scaffold
+        vars: { DOMAIN: '{{.DOMAIN}}' }
+      - |
+        cat <<BANNER
+
+          {{.DOMAIN}} scaffolded. Next steps:
+
+            INSTANCE={{.DOMAIN}} task instance:dns:register   # publish DNS (needs the testbed running)
+            INSTANCE={{.DOMAIN}} task instance:up             # bring up the stack
+
+          Not yet automated (see docs/plans/2026-07-21-parameterization.md):
+            - TLS cert issuance for {{.DOMAIN}}
+            - DKIM key generation + DNS publication
+            - admin bootstrap (create platform admin + register the domain)
+            - instance-aware DB seeding (cmd/seed is currently mail3.test-specific)
+
+        BANNER
 
   # ════════════════════════════════════════════════════════
   # Utilities
