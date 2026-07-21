@@ -649,9 +649,9 @@ tasks:
       - docker exec {{.RESTMAIL_PROJECT}}-api go run ./cmd/migrate
 
   db:seed:
-    desc: Seed the mail3 database with test data
+    desc: Seed the INSTANCE database with test data (fixture users under its domain)
     cmds:
-      - docker exec {{.RESTMAIL_PROJECT}}-api go run ./cmd/seed
+      - docker exec -e SEED_DOMAIN={{.MAIL3_HOSTNAME}} {{.RESTMAIL_PROJECT}}-api go run ./cmd/seed
 
   db:reset:
     desc: Drop the postgres data volume, recreate, then seed (destructive)
