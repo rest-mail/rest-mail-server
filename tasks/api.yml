@@ -37,6 +37,7 @@ vars:
   API_MASTER_KEY: '{{.API_MASTER_KEY | default "dev-master-key-change-in-production"}}'
   API_LOG_LEVEL: '{{.API_LOG_LEVEL | default "debug"}}'
   API_ENVIRONMENT: '{{.API_ENVIRONMENT | default "development"}}'
+  API_MAILNET_ONLY: '{{.API_MAILNET_ONLY | default "false"}}'
   API_PROXY_HOST: '{{.API_PROXY_HOST | default "restmail.localhost"}}'
 
 tasks:
@@ -75,12 +76,15 @@ tasks:
           DEV_MOUNTS=""
         fi
         docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        # mailnet_only secondary instances skip host-port publishing.
+        PUBLISH="-p {{.API_PORT}}:{{.API_PORT}}"
+        [ "{{.API_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
         docker run -d --name {{.API_CONTAINER_NAME}} \
           --restart unless-stopped \
           --network {{.API_NETWORK}} \
           --ip {{.API_IP}} \
           --dns {{.API_DNS_IP}} \
-          -p {{.API_PORT}}:{{.API_PORT}} \
+          $PUBLISH \
           -v {{.API_CERTS_VOLUME}}:/certs:ro \
           -v {{.API_ATTACHMENTS_VOLUME}}:/attachments \
           $DEV_MOUNTS \

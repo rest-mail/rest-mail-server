@@ -81,6 +81,10 @@ func TestScaffoldEndToEnd(t *testing.T) {
 	if !bytes.Contains(res.Manifest, []byte("project:        rest-mail-mail4")) {
 		t.Error("manifest missing per-instance project rest-mail-mail4")
 	}
+	// Secondary instances are mailnet-only so they can run beside the primary.
+	if !bytes.Contains(res.Config, []byte("MAIL3_MAILNET_ONLY=true\n")) {
+		t.Error("scaffolded config.env should set MAIL3_MAILNET_ONLY=true")
+	}
 	// Three distinct 64-hex-char secrets.
 	if n := bytes.Count(res.Secrets, []byte("MAIL3_")); n != 3 {
 		t.Errorf("expected 3 secret lines, got %d", n)

@@ -46,6 +46,7 @@ vars:
   SMTP_GATEWAY_QUEUE_WORKERS: '{{.SMTP_GATEWAY_QUEUE_WORKERS | default "4"}}'
   SMTP_GATEWAY_LOG_LEVEL: '{{.SMTP_GATEWAY_LOG_LEVEL | default "debug"}}'
   SMTP_GATEWAY_ENVIRONMENT: '{{.SMTP_GATEWAY_ENVIRONMENT | default "development"}}'
+  SMTP_GATEWAY_MAILNET_ONLY: '{{.SMTP_GATEWAY_MAILNET_ONLY | default "false"}}'
 
 tasks:
 
@@ -90,15 +91,17 @@ tasks:
         fi
 
         docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        # mailnet_only secondary instances skip host-port publishing so they
+        # can run beside the primary (reachable on the mailnet like the refs).
+        PUBLISH="-p {{.SMTP_GATEWAY_PORT_INBOUND}}:{{.SMTP_GATEWAY_PORT_INBOUND}} -p {{.SMTP_GATEWAY_PORT_SUBMISSION}}:{{.SMTP_GATEWAY_PORT_SUBMISSION}} -p {{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}:{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}"
+        [ "{{.SMTP_GATEWAY_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
         docker run -d --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
           --hostname {{.SMTP_GATEWAY_MAIL3_HOSTNAME}} \
           --restart unless-stopped \
           --network {{.SMTP_GATEWAY_NETWORK}} \
           --ip {{.SMTP_GATEWAY_IP}} \
           --dns {{.SMTP_GATEWAY_DNS_IP}} \
-          -p {{.SMTP_GATEWAY_PORT_INBOUND}}:{{.SMTP_GATEWAY_PORT_INBOUND}} \
-          -p {{.SMTP_GATEWAY_PORT_SUBMISSION}}:{{.SMTP_GATEWAY_PORT_SUBMISSION}} \
-          -p {{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}:{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}} \
+          $PUBLISH \
           -v {{.SMTP_GATEWAY_CERTS_VOLUME}}:/certs:ro \
           -v {{.SMTP_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
           $DEV_MOUNTS \

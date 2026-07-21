@@ -37,6 +37,11 @@ type Manifest struct {
 	// runtime
 	LogLevel    string `yaml:"log_level"`
 	Environment string `yaml:"environment"`
+	// MailnetOnly true means don't publish gateway/API host ports — the
+	// instance is reachable only on the mailnet (like the reference servers).
+	// Lets a secondary instance run alongside the primary without host-port
+	// collisions. Defaults false (publish), preserving mail3.test behavior.
+	MailnetOnly bool `yaml:"mailnet_only"`
 	DB          struct {
 		Name string `yaml:"name"`
 		User string `yaml:"user"`
@@ -87,6 +92,7 @@ func Render(m *Manifest) ([]byte, error) {
 	kv("MAIL3_DB_USER", m.DB.User)
 	kv("MAIL3_LOG_LEVEL", m.LogLevel)
 	kv("MAIL3_ENVIRONMENT", m.Environment)
+	kv("MAIL3_MAILNET_ONLY", strconv.FormatBool(m.MailnetOnly))
 	b.WriteString("\n")
 
 	// Component IPs and ports (binding-derived). Each component maps to the
