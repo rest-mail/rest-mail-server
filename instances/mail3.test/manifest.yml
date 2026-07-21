@@ -1,0 +1,60 @@
+# Logical mail instance: mail3.test (the rest-mail Go stack on the testbed).
+# See docs/plans/2026-07-21-parameterization.md for the model.
+#
+# Two layers, kept visibly separate so the eventual "same config, either
+# implementation" move is a lift, not a rewrite:
+#   - envelope  → implementation-agnostic identity (domain, hostname, DNS intent)
+#   - binding   → implementation-specific: substrate placement + components
+#
+# There is deliberately NO `type:` field. An instance's nature is emergent
+# from its component set; the execution layer (task catalog) knows how to run
+# each component. Committed because mail3.test is a known fixture; secrets live
+# in the sibling secrets.env (gitignored).
+
+# ── envelope: logical, implementation-agnostic ──────────────────────────
+domain:     mail3.test
+hostname:   mail3.test            # gateway EHLO / PTR name
+proxy_host: restmail.localhost    # reverse-proxy vhost on :80
+
+# ── substrate placement (testbed) ───────────────────────────────────────
+project:        rest-mail
+network:        testbed_mailnet
+certs_volume:   testbed_certs
+testbed_dns_ip: 10.99.0.10
+dns_provider:   testbed-dnsmasq   # future: cloudflare | route53 | manual
+cert_provider:  testbed-certgen   # future: letsencrypt-http01 | letsencrypt-dns01
+
+# ── image source ────────────────────────────────────────────────────────
+registry:  ghcr.io/rest-mail
+image_tag: dev
+
+# ── runtime ─────────────────────────────────────────────────────────────
+log_level:   debug
+environment: development
+
+db:
+  name: restmail
+  user: restmail
+  # password → secrets.env
+
+# ── binding: components on the substrate ────────────────────────────────
+# Each component name maps to a catalog entry (tasks/<name>.yml) that knows
+# how to run it. IPs are allocated at scaffold time and treated as the source
+# of truth (never runtime-autodetected). The component set IS the instance.
+components:
+  - { name: postgres, ip: 10.99.0.43 }
+  - name: api
+    ip: 10.99.0.20
+    port: 8080
+  - name: smtp-gateway
+    ip: 10.99.0.13
+    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+  - name: imap-gateway
+    ip: 10.99.0.15
+    ports: { plain: 143, tls: 993 }
+  - name: pop3-gateway
+    ip: 10.99.0.16
+    ports: { plain: 110, tls: 995 }
+  - { name: js-filter, ip: 10.99.0.22 }
+  - { name: webmail,   ip: 10.99.0.21 }
+  - { name: admin,     ip: 10.99.0.27 }

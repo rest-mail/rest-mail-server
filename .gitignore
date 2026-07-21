@@ -30,6 +30,12 @@ coverage.html
 .env.local
 .env.production
 
+# Instance domain dirs end in ".test", which the "*.test" rule above would
+# otherwise ignore whole — re-include instance dirs so manifests/config commit...
+!instances/*.test/
+# ...but never commit per-instance secrets.
+instances/*/secrets.env
+
 # Docker volumes (local dev)
 postgres-data/
 
