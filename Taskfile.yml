@@ -898,6 +898,48 @@ tasks:
         fi
         go run ./cmd/instance scaffold {{.DOMAIN}}
 
+  instance:dns:register:
+    desc: "Publish <INSTANCE>'s DNS to the testbed dnsmasq (requires the testbed running)"
+    vars:
+      FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+      DNSMASQ_IMAGE: '{{.DNSMASQ_IMAGE | default "ghcr.io/rest-mail/reference-dnsmasq"}}'
+      DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "2026.04.28"}}'
+    cmds:
+      # Reuses reference-dnsmasq's render-fragment with rest-mail's split-gateway
+      # template. mail3.test is currently also declared statically in the testbed
+      # repo's zones.conf; scaffolded instances rely on this dynamic path.
+      - go run ./cmd/instance dns-env -o instances/{{.INSTANCE}}/dns.env instances/{{.INSTANCE}}/manifest.yml
+      - |
+        docker run --rm \
+          -v "{{.FRAG_VOL}}:/dst" \
+          -v "$(pwd)/instances/{{.INSTANCE}}/dns.env:/env:ro" \
+          -v "$(pwd)/projects/dnsmasq/fragment.tmpl:/tmpl:ro" \
+          {{.DNSMASQ_IMAGE}}:{{.DNSMASQ_TAG}} \
+          render-fragment --name {{.INSTANCE}} --project {{.RESTMAIL_PROJECT}}
+      - |
+        if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
+          docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}}"
+        else
+          echo "  note: {{.DNSMASQ_CONTAINER}} not running — fragment written, applies when the testbed dnsmasq starts"
+        fi
+
+  instance:dns:unregister:
+    desc: "Remove <INSTANCE>'s DNS fragment from the testbed dnsmasq"
+    vars:
+      FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+      DNSMASQ_IMAGE: '{{.DNSMASQ_IMAGE | default "ghcr.io/rest-mail/reference-dnsmasq"}}'
+      DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "2026.04.28"}}'
+    cmds:
+      - |
+        docker run --rm -v "{{.FRAG_VOL}}:/dst" \
+          {{.DNSMASQ_IMAGE}}:{{.DNSMASQ_TAG}} remove-fragment --name {{.INSTANCE}}
+      - |
+        if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
+          docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}}"
+        fi
+
   # ════════════════════════════════════════════════════════
   # Utilities
   # ════════════════════════════════════════════════════════

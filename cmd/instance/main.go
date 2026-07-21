@@ -30,6 +30,8 @@ func main() {
 		renderCmd(os.Args[2:])
 	case "scaffold":
 		scaffoldCmd(os.Args[2:])
+	case "dns-env":
+		dnsEnvCmd(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "instance: unknown subcommand %q\n\n", os.Args[1])
 		usage()
@@ -49,7 +51,43 @@ usage:
   instance scaffold [-dir instances] <domain>
       Create instances/<domain>/{manifest.yml,config.env,secrets.env} with a
       freshly-allocated IP block and random secrets. Brings up nothing.
+
+  instance dns-env [-o out.env] <manifest.yml>
+      Render the dns.env consumed by reference-dnsmasq render-fragment.
 `)
+}
+
+func dnsEnvCmd(args []string) {
+	fs := flag.NewFlagSet("dns-env", flag.ExitOnError)
+	out := fs.String("o", "", "output path (default: stdout)")
+	_ = fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "instance dns-env: exactly one manifest path is required")
+		os.Exit(2)
+	}
+	raw, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		fatal("read manifest: %v", err)
+	}
+	m, err := instance.Parse(raw)
+	if err != nil {
+		fatal("%s: %v", fs.Arg(0), err)
+	}
+	data, err := instance.DNSEnv(m)
+	if err != nil {
+		fatal("dns-env %s: %v", fs.Arg(0), err)
+	}
+	if *out == "" {
+		if _, err := os.Stdout.Write(data); err != nil {
+			fatal("write stdout: %v", err)
+		}
+		return
+	}
+	if err := os.WriteFile(*out, data, 0o644); err != nil {
+		fatal("write %s: %v", *out, err)
+	}
+	fmt.Fprintf(os.Stderr, "wrote %s\n", *out)
 }
 
 func scaffoldCmd(args []string) {

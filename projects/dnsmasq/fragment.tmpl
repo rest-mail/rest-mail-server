@@ -1,0 +1,45 @@
+# rest-mail dnsmasq fragment template (split-gateway).
+#
+# Rendered by the reference-dnsmasq `render-fragment` subcommand (envsubst) from
+# a dns.env produced by `cmd/instance dns-env`. Unlike the reference unified-host
+# template, rest-mail runs SMTP / IMAP / POP3 as separate containers, so this
+# points each protocol at its own gateway IP.
+#
+# Variables (from dns.env): MAIL_NAME, MAIL_HOSTNAME, SMTP_IP, IMAP_IP, POP3_IP,
+# API_IP, MAIL_PTR, MTA_STS_ID.
+#
+# DKIM is intentionally NOT here — the record needs the instance's generated
+# public key and is published at instance:up time, not from static config.
+
+# A records — the domain (MX target / inbound SMTP) plus per-protocol hosts
+address=/${MAIL_HOSTNAME}/${SMTP_IP}
+address=/imap.${MAIL_HOSTNAME}/${IMAP_IP}
+address=/pop3.${MAIL_HOSTNAME}/${POP3_IP}
+address=/autoconfig.${MAIL_HOSTNAME}/${API_IP}
+address=/autodiscover.${MAIL_HOSTNAME}/${API_IP}
+address=/mta-sts.${MAIL_HOSTNAME}/${API_IP}
+
+# MX
+mx-host=${MAIL_HOSTNAME},${MAIL_HOSTNAME},10
+
+# Reverse DNS (of the SMTP host)
+ptr-record=${MAIL_PTR},${MAIL_HOSTNAME}
+
+# SPF — allow the SMTP gateway to send for the domain
+txt-record=${MAIL_HOSTNAME},"v=spf1 ip4:${SMTP_IP} -all"
+
+# DMARC
+txt-record=_dmarc.${MAIL_HOSTNAME},"v=DMARC1; p=reject; rua=mailto:postmaster@${MAIL_HOSTNAME}"
+
+# MTA-STS announcement (policy body is served by the API at mta-sts.${MAIL_HOSTNAME})
+txt-record=_mta-sts.${MAIL_HOSTNAME},"v=STSv1; id=${MTA_STS_ID}"
+
+# TLS-RPT
+txt-record=_smtp._tls.${MAIL_HOSTNAME},"v=TLSRPTv1; rua=mailto:tls-reports@${MAIL_HOSTNAME}"
+
+# SRV — point clients at the correct gateway hosts
+srv-host=_imap._tcp.${MAIL_HOSTNAME},imap.${MAIL_HOSTNAME},143,0,5
+srv-host=_imaps._tcp.${MAIL_HOSTNAME},imap.${MAIL_HOSTNAME},993,0,5
+srv-host=_pop3._tcp.${MAIL_HOSTNAME},pop3.${MAIL_HOSTNAME},110,0,5
+srv-host=_pop3s._tcp.${MAIL_HOSTNAME},pop3.${MAIL_HOSTNAME},995,0,5
+srv-host=_submission._tcp.${MAIL_HOSTNAME},${MAIL_HOSTNAME},587,0,5
