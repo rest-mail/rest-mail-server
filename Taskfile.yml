@@ -888,6 +888,16 @@ tasks:
     cmds:
       - go run ./cmd/instance render -check instances/{{.INSTANCE}}/manifest.yml
 
+  instance:scaffold:
+    desc: 'Create a new instance (allocates IPs + secrets): task instance:scaffold DOMAIN=mail4.test'
+    cmds:
+      - |
+        if [ -z "{{.DOMAIN}}" ]; then
+          echo "usage: task instance:scaffold DOMAIN=<domain>" >&2
+          exit 2
+        fi
+        go run ./cmd/instance scaffold {{.DOMAIN}}
+
   # ════════════════════════════════════════════════════════
   # Utilities
   # ════════════════════════════════════════════════════════
