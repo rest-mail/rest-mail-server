@@ -96,7 +96,7 @@ func Load() (*Config, error) {
 
 		DNSProvider: getEnv("DNS_PROVIDER", "dnsmasq"),
 
-		GatewayHostname:       getEnv("GATEWAY_HOSTNAME", "mail3.test"),
+		GatewayHostname:       getEnv("GATEWAY_HOSTNAME", "localhost"),
 		APIBaseURL:            getEnv("API_BASE_URL", "http://localhost:8080"),
 		SMTPPortInbound:       getEnvInt("SMTP_PORT_INBOUND", 25),
 		SMTPPortSubmission:    getEnvInt("SMTP_PORT_SUBMISSION", 587),

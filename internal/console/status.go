@@ -29,11 +29,9 @@ func NewStatusModel(api *apiclient.Client, token string) StatusModel {
 	return StatusModel{
 		api:   api,
 		token: token,
-		statuses: map[string]domainStatus{
-			"mail1.test": {healthy: true},
-			"mail2.test": {healthy: true},
-			"mail3.test": {healthy: true},
-		},
+		// Seeded empty; populated from the API on the first status tick
+		// (see Update). No hardcoded fixture domains.
+		statuses: map[string]domainStatus{},
 	}
 }
 
