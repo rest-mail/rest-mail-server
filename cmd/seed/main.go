@@ -9,6 +9,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/seed"
 	"gorm.io/gorm"
 )
 
@@ -16,7 +17,11 @@ func main() {
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 	slog.SetDefault(slog.New(logHandler))
 
-	slog.Info("seeding mail3.test database with test data")
+	domain := os.Getenv("SEED_DOMAIN")
+	if domain == "" {
+		domain = "mail3.test"
+	}
+	slog.Info("seeding database with test data", "domain", domain)
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -35,7 +40,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := seed(database); err != nil {
+	if err := seedFixture(database, domain); err != nil {
 		slog.Error("seeding failed", "error", err)
 		os.Exit(1)
 	}
@@ -48,60 +53,43 @@ func main() {
 	slog.Info("seeding completed successfully")
 }
 
-func seed(database *gorm.DB) error {
-	// Create mail3.test domain (mail1/mail2 are seeded via SQL init scripts in their own databases)
-	domains := []models.Domain{
-		{Name: "mail3.test", ServerType: "restmail", Active: true, DefaultQuotaBytes: 1073741824},
-	}
-
-	for i := range domains {
-		result := database.Where("name = ?", domains[i].Name).FirstOrCreate(&domains[i])
-		if result.Error != nil {
-			return result.Error
-		}
-		slog.Info("domain", "name", domains[i].Name, "id", domains[i].ID, "created", result.RowsAffected > 0)
-	}
-
-	// Default password for all test accounts
+func seedFixture(database *gorm.DB, domain string) error {
 	defaultPassword, err := auth.HashPassword("password123")
 	if err != nil {
 		return err
 	}
+	fx := seed.BuildFixture(domain, defaultPassword)
 
-	// Create mail3.test mailboxes
-	mailboxes := []models.Mailbox{
-		{DomainID: domains[0].ID, LocalPart: "eve", Address: "eve@mail3.test", Password: defaultPassword, DisplayName: "Eve Wilson", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[0].ID, LocalPart: "frank", Address: "frank@mail3.test", Password: defaultPassword, DisplayName: "Frank Miller", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[0].ID, LocalPart: "postmaster", Address: "postmaster@mail3.test", Password: defaultPassword, DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
+	// Domain (mail1/mail2 are seeded via SQL init scripts in their own databases)
+	result := database.Where("name = ?", fx.Domain.Name).FirstOrCreate(&fx.Domain)
+	if result.Error != nil {
+		return result.Error
 	}
+	slog.Info("domain", "name", fx.Domain.Name, "id", fx.Domain.ID, "created", result.RowsAffected > 0)
 
-	for i := range mailboxes {
-		result := database.Where("address = ?", mailboxes[i].Address).FirstOrCreate(&mailboxes[i])
+	// Mailboxes
+	for i := range fx.Mailboxes {
+		fx.Mailboxes[i].DomainID = fx.Domain.ID
+		result := database.Where("address = ?", fx.Mailboxes[i].Address).FirstOrCreate(&fx.Mailboxes[i])
 		if result.Error != nil {
 			return result.Error
 		}
-		slog.Info("mailbox", "address", mailboxes[i].Address, "id", mailboxes[i].ID, "created", result.RowsAffected > 0)
-
-		// Create quota usage record
-		database.Where("mailbox_id = ?", mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: mailboxes[i].ID})
+		slog.Info("mailbox", "address", fx.Mailboxes[i].Address, "id", fx.Mailboxes[i].ID, "created", result.RowsAffected > 0)
+		database.Where("mailbox_id = ?", fx.Mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: fx.Mailboxes[i].ID})
 	}
 
-	// Create mail3.test aliases
-	aliases := []models.Alias{
-		{DomainID: domains[0].ID, SourceAddress: "info@mail3.test", DestinationAddress: "eve@mail3.test", Active: true},
-		{DomainID: domains[0].ID, SourceAddress: "admin@mail3.test", DestinationAddress: "eve@mail3.test", Active: true},
-	}
-
-	for i := range aliases {
-		result := database.Where("source_address = ? AND destination_address = ?", aliases[i].SourceAddress, aliases[i].DestinationAddress).FirstOrCreate(&aliases[i])
+	// Aliases
+	for i := range fx.Aliases {
+		fx.Aliases[i].DomainID = fx.Domain.ID
+		result := database.Where("source_address = ? AND destination_address = ?", fx.Aliases[i].SourceAddress, fx.Aliases[i].DestinationAddress).FirstOrCreate(&fx.Aliases[i])
 		if result.Error != nil {
 			return result.Error
 		}
-		slog.Info("alias", "source", aliases[i].SourceAddress, "dest", aliases[i].DestinationAddress, "created", result.RowsAffected > 0)
+		slog.Info("alias", "source", fx.Aliases[i].SourceAddress, "dest", fx.Aliases[i].DestinationAddress, "created", result.RowsAffected > 0)
 	}
 
-	// Create webmail accounts for mail3.test users
-	for _, addr := range []string{"eve@mail3.test", "frank@mail3.test"} {
+	// Webmail accounts
+	for _, addr := range fx.WebmailAddresses {
 		var mailbox models.Mailbox
 		database.Where("address = ?", addr).First(&mailbox)
 
