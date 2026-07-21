@@ -112,8 +112,8 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 
 	// Gateway defaults
-	if cfg.GatewayHostname != "mail3.test" {
-		t.Errorf("GatewayHostname = %q, want %q", cfg.GatewayHostname, "mail3.test")
+	if cfg.GatewayHostname != "localhost" {
+		t.Errorf("GatewayHostname = %q, want %q", cfg.GatewayHostname, "localhost")
 	}
 	if cfg.APIBaseURL != "http://localhost:8080" {
 		t.Errorf("APIBaseURL = %q, want %q", cfg.APIBaseURL, "http://localhost:8080")
