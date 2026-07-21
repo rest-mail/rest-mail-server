@@ -875,6 +875,21 @@ tasks:
         fi
         go run ./cmd/instance scaffold {{.DOMAIN}}
 
+  instance:certs:issue:
+    desc: "Issue a TLS cert for INSTANCE into the shared testbed_certs volume (requires the testbed)"
+    vars:
+      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
+      CERTGEN_IMAGE: '{{.CERTGEN_IMAGE | default "ghcr.io/rest-mail/reference-certgen"}}'
+      CERTGEN_TAG: '{{.CERTGEN_TAG | default "2026.04.28"}}'
+    cmds:
+      # Reuses reference-certgen. One wildcard cert (<domain> + *.<domain>)
+      # covers the split-gateway hostnames (imap./pop3./mta-sts.<domain>).
+      - |
+        docker run --rm \
+          -v "{{.CERTS_VOLUME}}:/certs" \
+          -e CERTGEN_DOMAINS="{{.MAIL3_HOSTNAME}}" \
+          {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
+
   instance:dns:register:
     desc: "Publish <INSTANCE>'s DNS to the testbed dnsmasq (requires the testbed running)"
     vars:
