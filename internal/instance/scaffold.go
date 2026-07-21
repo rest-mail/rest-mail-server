@@ -227,8 +227,10 @@ registry:  ghcr.io/rest-mail
 image_tag: dev
 
 # ── runtime ─────────────────────────────────────────────────────────────
-log_level:   debug
-environment: development
+log_level:    debug
+environment:  development
+mailnet_only: true    # secondary instance — reachable on the mailnet only, no
+                      # host-port publishing, so it can run beside the primary
 
 db:
   name: restmail

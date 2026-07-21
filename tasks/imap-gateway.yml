@@ -42,6 +42,7 @@ vars:
   IMAP_GATEWAY_TLS_PORT: '{{.IMAP_GATEWAY_TLS_PORT | default "993"}}'
   IMAP_GATEWAY_LOG_LEVEL: '{{.IMAP_GATEWAY_LOG_LEVEL | default "debug"}}'
   IMAP_GATEWAY_ENVIRONMENT: '{{.IMAP_GATEWAY_ENVIRONMENT | default "development"}}'
+  IMAP_GATEWAY_MAILNET_ONLY: '{{.IMAP_GATEWAY_MAILNET_ONLY | default "false"}}'
   IMAP_GATEWAY_PROXY_HOST: '{{.IMAP_GATEWAY_PROXY_HOST | default "restmail.localhost"}}'
 
 tasks:
@@ -75,13 +76,16 @@ tasks:
           DEV_MOUNTS="-v $(pwd):/app -v /app/tmp"
         fi
         docker rm -f {{.IMAP_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        # mailnet_only secondary instances skip host-port publishing.
+        PUBLISH="-p {{.IMAP_GATEWAY_PORT}}:{{.IMAP_GATEWAY_PORT}}"
+        [ "{{.IMAP_GATEWAY_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
         docker run -d --name {{.IMAP_GATEWAY_CONTAINER_NAME}} \
           --hostname {{.IMAP_GATEWAY_MAIL3_HOSTNAME}} \
           --restart unless-stopped \
           --network {{.IMAP_GATEWAY_NETWORK}} \
           --ip {{.IMAP_GATEWAY_IP}} \
           --dns {{.IMAP_GATEWAY_DNS_IP}} \
-          -p {{.IMAP_GATEWAY_PORT}}:{{.IMAP_GATEWAY_PORT}} \
+          $PUBLISH \
           -l docker-proxy.imaps.proto=tcp \
           -l docker-proxy.imaps.port={{.IMAP_GATEWAY_TLS_PORT}} \
           -l docker-proxy.imaps.host={{.IMAP_GATEWAY_PROXY_HOST}} \

@@ -113,6 +113,7 @@ includes:
       API_MASTER_KEY: '{{.MAIL3_MASTER_KEY | default "dev-master-key-change-in-production"}}'
       API_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
       API_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+      API_MAILNET_ONLY: '{{.MAIL3_MAILNET_ONLY}}'
 
   smtp-gateway:
     taskfile: ./tasks/smtp-gateway.yml
@@ -134,6 +135,7 @@ includes:
       SMTP_GATEWAY_PORT_SUBMISSION_TLS: '{{.MAIL3_SMTP_PORT_SUBMISSION_TLS}}'
       SMTP_GATEWAY_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
       SMTP_GATEWAY_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+      SMTP_GATEWAY_MAILNET_ONLY: '{{.MAIL3_MAILNET_ONLY}}'
 
   imap-gateway:
     taskfile: ./tasks/imap-gateway.yml
@@ -154,6 +156,7 @@ includes:
       IMAP_GATEWAY_TLS_PORT: '{{.MAIL3_IMAP_TLS_PORT}}'
       IMAP_GATEWAY_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
       IMAP_GATEWAY_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+      IMAP_GATEWAY_MAILNET_ONLY: '{{.MAIL3_MAILNET_ONLY}}'
       IMAP_GATEWAY_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
 
   pop3-gateway:
@@ -175,6 +178,7 @@ includes:
       POP3_TLS_PORT: '{{.MAIL3_POP3_TLS_PORT}}'
       POP3_GATEWAY_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
       POP3_GATEWAY_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
+      POP3_GATEWAY_MAILNET_ONLY: '{{.MAIL3_MAILNET_ONLY}}'
 
   webmail:
     taskfile: ./tasks/webmail.yml
