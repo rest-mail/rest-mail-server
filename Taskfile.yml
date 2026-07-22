@@ -35,12 +35,13 @@ vars:
   # manifest.yml; `task instance:render` regenerates config.env from it. The
   # RESTMAIL_*/MAIL3_* config + secrets are loaded via dotenv (below), not
   # hardcoded here.
-  INSTANCE: '{{.INSTANCE | default "mail3.test"}}'
+  INSTANCE: '{{.INSTANCE | default "restmail.test"}}'
   # Where this instance's config (manifest.yml, config.env, secrets.env) lives.
-  # Defaults to instances/<INSTANCE> in this repo, but can point anywhere
-  # relative to the repo root — e.g. a testbed-owned config under .workspace —
-  # so the product need not ship a committed instance.
-  INSTANCE_DIR: '{{.INSTANCE_DIR | default (printf "instances/%s" .INSTANCE)}}'
+  # The primary test instance (restmail.test) is owned by the testbed
+  # (configs/restmail) — the product ships no committed instance; scaffolded
+  # instances live under instances/<INSTANCE>. Override INSTANCE_DIR to point
+  # anywhere relative to the repo root.
+  INSTANCE_DIR: '{{if .INSTANCE_DIR}}{{.INSTANCE_DIR}}{{else if eq .INSTANCE "restmail.test"}}.workspace/testbed/configs/restmail{{else}}instances/{{.INSTANCE}}{{end}}'
 
   # Adjacent testbed services that are NOT part of the mail instance proper,
   # so they stay here rather than in the instance manifest: the marketing
@@ -526,37 +527,37 @@ tasks:
   # ════════════════════════════════════════════════════════
   # restmail product stack
   #
-  # `restmail:mail3:up` brings up the full mail3.test product stack
+  # `restmail:up` brings up the full restmail.test product stack
   # — postgres, js-filter, api, three protocol gateways, webmail,
   # admin, website. Each individual service is included from
   # tasks/<service>.yml under its own namespace, so `task <svc>:up`,
   # `task <svc>:down`, `task <svc>:logs` etc. are also available.
   # ════════════════════════════════════════════════════════
 
-  restmail:mail3:up:
-    desc: 'Alias for `task instance:up` (INSTANCE defaults to mail3.test)'
+  restmail:up:
+    desc: 'Alias for `task instance:up` (INSTANCE defaults to restmail.test)'
     cmds:
       - task: instance:up
 
-  restmail:mail3:down:
+  restmail:down:
     desc: 'Alias for `task instance:down`'
     cmds:
       - task: instance:down
 
-  restmail:mail3:restart:
+  restmail:restart:
     desc: Stop + recreate the full restmail stack (rebuilds images)
     cmds:
-      - task: restmail:mail3:down
-      - task: restmail:mail3:up
+      - task: restmail:down
+      - task: restmail:up
 
-  restmail:mail3:logs:
+  restmail:logs:
     desc: 'Alias for `task status` — service names there are the prefixes for <svc>:logs'
     cmds:
       - task: status
 
   dev:
-    desc: Alias for restmail:mail3:up (legacy name)
-    deps: [restmail:mail3:up]
+    desc: Alias for restmail:up (legacy name)
+    deps: [restmail:up]
 
   health:wait:
     desc: Wait for the API health endpoint to respond (up to 60s)
@@ -657,8 +658,8 @@ tasks:
         echo ""
         echo "  Common:"
         echo "    task <service>:logs         tail one service's logs"
-        echo "    task restmail:mail3:up      bring up the full stack"
-        echo "    task restmail:mail3:down    stop the stack (preserves volumes)"
+        echo "    task restmail:up      bring up the full stack"
+        echo "    task restmail:down    stop the stack (preserves volumes)"
         echo ""
 
   # ════════════════════════════════════════════════════════
@@ -917,7 +918,7 @@ tasks:
       DNSMASQ_TAG: '{{.DNSMASQ_TAG | default "2026.04.28"}}'
     cmds:
       # Reuses reference-dnsmasq's render-fragment with rest-mail's split-gateway
-      # template. mail3.test is currently also declared statically in the testbed
+      # template. restmail.test is currently also declared statically in the testbed
       # repo's zones.conf; scaffolded instances rely on this dynamic path.
       - go run ./cmd/instance dns-env -o {{.INSTANCE_DIR}}/dns.env {{.INSTANCE_DIR}}/manifest.yml
       - |
@@ -977,10 +978,10 @@ tasks:
         docker restart {{.DNSMASQ_CONTAINER}} >/dev/null
         echo "  DKIM provisioned + published for {{.MAIL3_HOSTNAME}}"
 
-  # ── Bring-up (instance-generic; restmail:mail3:* are back-compat aliases) ──
+  # ── Bring-up (instance-generic; restmail:* are back-compat aliases) ──
 
   instance:up:
-    desc: 'Bring up the full stack for INSTANCE (default mail3.test)'
+    desc: 'Bring up the full stack for INSTANCE (default restmail.test)'
     cmds:
       - task: postgres:up
       - |
@@ -1081,7 +1082,7 @@ tasks:
       - rm -f coverage.out coverage.html
 
   purge:
-    desc: Remove all rest-mail-* containers (does not touch volumes — use restmail:mail3:down + postgres:reset for data)
+    desc: Remove all rest-mail-* containers (does not touch volumes — use restmail:down + postgres:reset for data)
     cmds:
       - |
         ids=$(docker ps -aq --filter "name=^/{{.RESTMAIL_PROJECT}}-")
