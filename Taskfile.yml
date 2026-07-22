@@ -945,6 +945,33 @@ tasks:
           docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}}"
         fi
 
+  instance:dkim:
+    desc: "Provision DKIM for INSTANCE (keygen + install via admin API + publish DNS); needs the stack up"
+    vars:
+      FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
+      DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
+      ADMIN_USER: '{{.ADMIN_USER | default "admin"}}'
+      ADMIN_PASS: '{{.ADMIN_PASS | default "admin123!@"}}'
+    cmds:
+      - |
+        set -e
+        # Provision inside the api container (API at localhost:8080 — works for
+        # mailnet-only instances). The txt-record line is the last stdout line;
+        # redirect it to a host file (the repo is Docker-shared), then copy that
+        # into the fragments volume and reload. Avoids docker-stdin/quoted-env,
+        # which Task's embedded shell doesn't pass through cleanly.
+        docker exec {{.RESTMAIL_PROJECT}}-api \
+          go run ./cmd/instance dkim-provision \
+            --domain {{.MAIL3_HOSTNAME}} \
+            --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
+          2>/dev/null | tail -1 > "instances/{{.INSTANCE}}/dkim.conf"
+        docker run --rm \
+          -v "{{.ROOT_DIR}}/instances/{{.INSTANCE}}:/src:ro" \
+          -v "{{.FRAG_VOL}}:/dst" \
+          alpine:3.20 cp /src/dkim.conf /dst/11-{{.INSTANCE}}-dkim.conf
+        docker restart {{.DNSMASQ_CONTAINER}} >/dev/null
+        echo "  DKIM provisioned + published for {{.MAIL3_HOSTNAME}}"
+
   # ── Bring-up (instance-generic; restmail:mail3:* are back-compat aliases) ──
 
   instance:up:
@@ -1009,14 +1036,14 @@ tasks:
       - INSTANCE={{.DOMAIN}} task instance:certs:issue
       - INSTANCE={{.DOMAIN}} task instance:dns:register
       - INSTANCE={{.DOMAIN}} task instance:up
+      - INSTANCE={{.DOMAIN}} task instance:dkim
       - |
         cat <<BANNER
 
-          {{.DOMAIN}} is up — scaffolded, cert issued, DNS registered, seeded, running.
+          {{.DOMAIN}} is up — scaffolded, cert issued, DNS + DKIM published, seeded, running.
           Reachable on the mailnet; secondary instances are mailnet-only.
 
-            DKIM (optional):  INSTANCE={{.DOMAIN}} task instance:dkim
-            Tear down:        INSTANCE={{.DOMAIN}} task instance:down
+            Tear down:  INSTANCE={{.DOMAIN}} task instance:down
 
         BANNER
 
