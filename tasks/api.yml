@@ -28,7 +28,7 @@ vars:
   API_IMAGE: '{{.API_REGISTRY}}/api:{{.API_IMAGE_TAG}}'
   API_CONTAINER_NAME: '{{.API_PROJECT}}-api'
   API_ATTACHMENTS_VOLUME: '{{.API_PROJECT}}-mail3-attachments'
-  API_DB_HOST: '{{.API_DB_HOST | default "rest-mail-postgres"}}'
+  API_DB_HOST: '{{.API_DB_HOST | default "10.99.0.43"}}'
   API_DB_PORT: '{{.API_DB_PORT | default "5432"}}'
   API_DB_NAME: '{{.API_DB_NAME | default "restmail"}}'
   API_DB_USER: '{{.API_DB_USER | default "restmail"}}'
@@ -76,6 +76,13 @@ tasks:
           DEV_MOUNTS=""
         fi
         docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        # The testbed dnsmasq must be the ONLY resolver (mounted resolv.conf, not
+        # --dns): Docker's embedded DNS answers ahead of the --dns upstream for
+        # names matching container hostnames — A-only, no MX/TXT/PTR — corrupting
+        # the simulated internet the SPF/DKIM/DMARC/MTA-STS checks depend on.
+        # Peer services (DB, api) are therefore addressed by static mailnet IPs.
+        mkdir -p {{.ROOT_DIR}}/.cache
+        printf 'nameserver %s\n' "{{.API_DNS_IP}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
         # mailnet_only secondary instances skip host-port publishing.
         PUBLISH="-p {{.API_PORT}}:{{.API_PORT}}"
         [ "{{.API_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
@@ -83,7 +90,7 @@ tasks:
           --restart unless-stopped \
           --network {{.API_NETWORK}} \
           --ip {{.API_IP}} \
-          --dns {{.API_DNS_IP}} \
+          -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
           $PUBLISH \
           -v {{.API_CERTS_VOLUME}}:/certs:ro \
           -v {{.API_ATTACHMENTS_VOLUME}}:/attachments \
