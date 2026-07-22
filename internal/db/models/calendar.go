@@ -21,5 +21,9 @@ type CalendarEventVersion struct {
 
 	// Associations
 	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"-"`
-	Message *Message `gorm:"foreignKey:MessageID" json:"-"`
+	// NOTE: no Message association here, deliberately — it was unused and, like
+	// the ones removed from OutboundQueue/Attachment, GORM misresolved
+	// `foreignKey:MessageID` onto messages.message_id (the RFC 5322 Message-ID
+	// string) during AutoMigrate, rewriting it to bigint. MessageID above is a
+	// plain indexed FK column to messages.id.
 }
