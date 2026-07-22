@@ -40,7 +40,7 @@ func testStage2TraditionalMail(t *testing.T) {
 		}
 		createDomain(t, client, "mail1.test", "traditional")
 		createDomain(t, client, "mail2.test", "traditional")
-		createDomain(t, client, "mail3.test", "restmail")
+		createDomain(t, client, "restmail.test", "restmail")
 	})
 
 	// Create test mailboxes

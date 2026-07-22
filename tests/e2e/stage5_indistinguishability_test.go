@@ -9,46 +9,46 @@ import (
 )
 
 func testStage5Indistinguishability(t *testing.T) {
-	// The stealth test: mail3 must be indistinguishable from mail1/mail2
+	// The stealth test: restmail must be indistinguishable from mail1/mail2
 	// when probed by a standard SMTP client.
 
 	t.Run("EhloCapabilities_MatchTraditional", func(t *testing.T) {
-		// Probe mail1 and mail3 EHLO capabilities
+		// Probe mail1 and restmail EHLO capabilities
 		sc1 := dialSMTP(t, mail1SMTPAddr)
 		defer sc1.close()
 		caps1 := sc1.ehlo(t, "test.local")
 		sc1.sendExpect(t, "QUIT", "221")
 
-		sc3 := dialSMTP(t, mail3SMTPAddr)
+		sc3 := dialSMTP(t, restmailSMTPAddr)
 		defer sc3.close()
 		caps3 := sc3.ehlo(t, "test.local")
 		sc3.sendExpect(t, "QUIT", "221")
 
 		t.Logf("mail1 capabilities: %v", caps1)
-		t.Logf("mail3 capabilities: %v", caps3)
+		t.Logf("restmail capabilities: %v", caps3)
 
-		// mail3 must advertise standard capabilities that mail1 advertises
+		// restmail must advertise standard capabilities that mail1 advertises
 		standardCaps := []string{"PIPELINING", "8BITMIME", "SIZE", "STARTTLS"}
 		for _, cap := range standardCaps {
 			m1Has := hasCapability(caps1, cap)
 			m3Has := hasCapability(caps3, cap)
 			if m1Has && !m3Has {
-				t.Errorf("mail1 has %s but mail3 does not — mail3 should match standard capabilities", cap)
+				t.Errorf("mail1 has %s but restmail does not — restmail should match standard capabilities", cap)
 			}
 			if m3Has {
-				t.Logf("OK: mail3 advertises %s", cap)
+				t.Logf("OK: restmail advertises %s", cap)
 			}
 		}
 
-		// mail3 may have RESTMAIL (that's fine, traditional servers ignore unknown extensions)
+		// restmail may have RESTMAIL (that's fine, traditional servers ignore unknown extensions)
 		if hasCapability(caps3, "RESTMAIL") {
-			t.Log("OK: mail3 advertises RESTMAIL (traditional servers will ignore this)")
+			t.Log("OK: restmail advertises RESTMAIL (traditional servers will ignore this)")
 		}
 	})
 
 	t.Run("EhloResponse_Format", func(t *testing.T) {
 		// The banner and EHLO format should be RFC 5321 compliant
-		sc := dialSMTP(t, mail3SMTPAddr)
+		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
@@ -69,7 +69,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("SmtpConversation_IdenticalBehaviour", func(t *testing.T) {
-		// Run the exact same SMTP conversation against mail1 and mail3
+		// Run the exact same SMTP conversation against mail1 and restmail
 		type smtpStep struct {
 			cmd          string
 			expectedCode string
@@ -93,27 +93,27 @@ func testStage5Indistinguishability(t *testing.T) {
 		}
 		sc1.sendExpect(t, "QUIT", "221")
 
-		// Test mail3 with equivalent commands
+		// Test restmail with equivalent commands
 		steps3 := []smtpStep{
 			{"MAIL FROM:<test@example.com>", "250"},
-			{"RCPT TO:<testuser@mail3.test>", "250"}, // mail3 side
+			{"RCPT TO:<testuser@restmail.test>", "250"}, // restmail side
 			{"RSET", "250"},
 			{"NOOP", "250"},
 		}
 
-		sc3 := dialSMTP(t, mail3SMTPAddr)
+		sc3 := dialSMTP(t, restmailSMTPAddr)
 		defer sc3.close()
 		sc3.ehlo(t, "test.local")
 
 		for _, step := range steps3 {
 			resp := sc3.sendExpect(t, step.cmd, step.expectedCode)
-			t.Logf("mail3 %s → %s", step.cmd, resp)
+			t.Logf("restmail %s → %s", step.cmd, resp)
 		}
 		sc3.sendExpect(t, "QUIT", "221")
 	})
 
 	t.Run("SmtpEdgeCases", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SMTPAddr)
+		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 		sc.ehlo(t, "test.local")
 
@@ -126,7 +126,7 @@ func testStage5Indistinguishability(t *testing.T) {
 
 		// Unknown recipient
 		sc.sendExpect(t, "MAIL FROM:<a@b.com>", "250")
-		sc.send(t, "RCPT TO:<nonexistent-user-xyz@mail3.test>")
+		sc.send(t, "RCPT TO:<nonexistent-user-xyz@restmail.test>")
 		resp := sc.readLine(t)
 		if resp[0] != '5' {
 			t.Errorf("expected 5xx for unknown recipient, got: %s", resp)
@@ -136,7 +136,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("ImapBehaviour_MatchTraditional", func(t *testing.T) {
-		// Compare IMAP session behaviour between mail1 and mail3
+		// Compare IMAP session behaviour between mail1 and restmail
 		// Both should accept LOGIN, LIST folders, LOGOUT
 
 		// mail1 (Dovecot)
@@ -152,16 +152,16 @@ func testStage5Indistinguishability(t *testing.T) {
 
 		ic1.command(t, "LOGOUT")
 
-		// mail3 (gateway)
-		ic3 := dialIMAP(t, mail3IMAPAddr)
+		// restmail (gateway)
+		ic3 := dialIMAP(t, restmailIMAPAddr)
 		defer ic3.close()
-		ic3.login(t, "testuser@mail3.test", adminPassword)
+		ic3.login(t, "testuser@restmail.test", adminPassword)
 
 		result3, lines3 := ic3.command(t, "LIST \"\" \"*\"")
-		t.Logf("mail3 LIST: %d lines, result: %s", len(lines3), result3)
+		t.Logf("restmail LIST: %d lines, result: %s", len(lines3), result3)
 
 		result3, _ = ic3.command(t, "SELECT INBOX")
-		t.Logf("mail3 SELECT INBOX: %s", result3)
+		t.Logf("restmail SELECT INBOX: %s", result3)
 
 		ic3.command(t, "LOGOUT")
 
@@ -170,16 +170,16 @@ func testStage5Indistinguishability(t *testing.T) {
 			t.Error("mail1 LIST did not return OK")
 		}
 		if !strings.Contains(result3, "OK") {
-			t.Error("mail3 LIST did not return OK")
+			t.Error("restmail LIST did not return OK")
 		}
 	})
 
 	t.Run("Pop3Behaviour_MatchTraditional", func(t *testing.T) {
-		// POP3 on mail3 gateway
-		pc := dialPOP3(t, mail3POP3Addr)
+		// POP3 on restmail gateway
+		pc := dialPOP3(t, restmailPOP3Addr)
 		defer pc.close()
 
-		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
 		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
 		pc.sendExpect(t, "STAT", "+OK")
 		pc.sendExpect(t, "LIST", "+OK")
@@ -195,18 +195,18 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("MessageHeaders_NoLeaks", func(t *testing.T) {
-		// Send from mail3 to mail1, then check received headers
+		// Send from restmail to mail1, then check received headers
 		subject := fmt.Sprintf("header-leak-test-%d", time.Now().UnixNano())
 
-		// We deliver via the API to testuser@mail3.test, then mail3 relays to mail1
+		// We deliver via the API to testuser@restmail.test, then restmail relays to mail1
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
+		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
 			t.Skipf("Cannot login: %v", err)
 		}
 
 		resp, err := gwClient.post("/api/v1/messages/deliver", map[string]string{
 			"address":   "alice@mail1.test",
-			"sender":    "testuser@mail3.test",
+			"sender":    "testuser@restmail.test",
 			"subject":   subject,
 			"body_text": "Testing for header leaks",
 		})
@@ -241,12 +241,12 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("SmtpStarttls_Mail3", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SMTPAddr)
+		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
 		if !hasCapability(caps, "STARTTLS") {
-			t.Fatal("mail3 does not advertise STARTTLS")
+			t.Fatal("restmail does not advertise STARTTLS")
 		}
 
 		sc.starttls(t)
@@ -258,10 +258,10 @@ func testStage5Indistinguishability(t *testing.T) {
 		// Send a message over TLS
 		subject := fmt.Sprintf("test-starttls-%d", time.Now().UnixNano())
 		sc.sendExpect(t, "MAIL FROM:<alice@mail1.test>", "250")
-		sc.sendExpect(t, "RCPT TO:<testuser@mail3.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
 
-		msg := fmt.Sprintf("From: alice@mail1.test\r\nTo: testuser@mail3.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <tls-%d@test.local>\r\n\r\nSent over STARTTLS!",
+		msg := fmt.Sprintf("From: alice@mail1.test\r\nTo: testuser@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <tls-%d@test.local>\r\n\r\nSent over STARTTLS!",
 			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
 		sc.send(t, msg)
 		sc.sendExpect(t, ".", "250")
@@ -270,7 +270,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("SmtpSizeEnforcement_Mail3", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SMTPAddr)
+		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
@@ -285,7 +285,7 @@ func testStage5Indistinguishability(t *testing.T) {
 			}
 		}
 		if !foundSize {
-			t.Fatal("mail3 does not advertise SIZE capability")
+			t.Fatal("restmail does not advertise SIZE capability")
 		}
 
 		// Try MAIL FROM with declared size exceeding limit
@@ -302,7 +302,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("ImapStarttls_Mail3", func(t *testing.T) {
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
 		// Check CAPABILITY for STARTTLS
@@ -314,14 +314,14 @@ func testStage5Indistinguishability(t *testing.T) {
 			}
 		}
 		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
-			t.Skipf("mail3 IMAP does not advertise STARTTLS: %s", capLine)
+			t.Skipf("restmail IMAP does not advertise STARTTLS: %s", capLine)
 		}
 
 		ic.starttls(t)
 		t.Log("IMAP STARTTLS handshake successful")
 
 		// LOGIN over TLS
-		ic.login(t, "testuser@mail3.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", adminPassword)
 
 		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -332,7 +332,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("Pop3Stls_Mail3", func(t *testing.T) {
-		pc := dialPOP3(t, mail3POP3Addr)
+		pc := dialPOP3(t, restmailPOP3Addr)
 		defer pc.close()
 
 		caps := pc.capa(t)
@@ -343,14 +343,14 @@ func testStage5Indistinguishability(t *testing.T) {
 			}
 		}
 		if !foundSTLS {
-			t.Skipf("mail3 POP3 does not advertise STLS: %v", caps)
+			t.Skipf("restmail POP3 does not advertise STLS: %v", caps)
 		}
 
 		pc.stls(t)
 		t.Log("POP3 STLS handshake successful")
 
 		// Auth over TLS
-		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
 		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
 
 		statResp := pc.stat(t)
@@ -359,16 +359,16 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("SmtpSizeEnforcement_OversizedData_Mail3", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SMTPAddr)
+		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 
 		sc.ehlo(t, "test.local")
 		sc.sendExpect(t, "MAIL FROM:<test@test.local>", "250")
-		sc.sendExpect(t, "RCPT TO:<testuser@mail3.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
 
 		// Send headers
-		sc.send(t, fmt.Sprintf("From: test@test.local\r\nTo: testuser@mail3.test\r\nSubject: size-test-%d\r\n", time.Now().UnixNano()))
+		sc.send(t, fmt.Sprintf("From: test@test.local\r\nTo: testuser@restmail.test\r\nSubject: size-test-%d\r\n", time.Now().UnixNano()))
 		sc.send(t, "")
 
 		// Send >20MB of data to exceed SIZE limit
@@ -394,31 +394,31 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("SmtpAuthAfterStarttls_Mail3", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SubmitAddr)
+		sc := dialSMTP(t, restmailSubmitAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
 		if !hasCapability(caps, "STARTTLS") {
-			t.Skip("mail3 submission does not advertise STARTTLS")
+			t.Skip("restmail submission does not advertise STARTTLS")
 		}
 
 		sc.starttls(t)
 		caps = sc.ehlo(t, "test.local")
 
 		if !hasCapability(caps, "AUTH") {
-			t.Fatal("mail3 submission does not advertise AUTH after STARTTLS")
+			t.Fatal("restmail submission does not advertise AUTH after STARTTLS")
 		}
 
 		// Good credentials should succeed
-		sc.authPlain(t, "testuser@mail3.test", adminPassword)
+		sc.authPlain(t, "testuser@restmail.test", adminPassword)
 		t.Log("AUTH PLAIN after STARTTLS succeeded")
 
 		// Verify we can send a message after auth
 		subject := fmt.Sprintf("auth-tls-test-%d", time.Now().UnixNano())
-		sc.sendExpect(t, "MAIL FROM:<testuser@mail3.test>", "250")
-		sc.sendExpect(t, "RCPT TO:<testuser@mail3.test>", "250")
+		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
-		msg := fmt.Sprintf("From: testuser@mail3.test\r\nTo: testuser@mail3.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <auth-tls-%d@test.local>\r\n\r\nAuth+TLS test",
+		msg := fmt.Sprintf("From: testuser@restmail.test\r\nTo: testuser@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <auth-tls-%d@test.local>\r\n\r\nAuth+TLS test",
 			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
 		sc.send(t, msg)
 		sc.sendExpect(t, ".", "250")
@@ -426,7 +426,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("SmtpBadAuthAfterStarttls_Mail3", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SubmitAddr)
+		sc := dialSMTP(t, restmailSubmitAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
@@ -435,7 +435,7 @@ func testStage5Indistinguishability(t *testing.T) {
 			sc.ehlo(t, "test.local")
 		}
 
-		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@mail3.test\x00wrongpassword"))
+		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@restmail.test\x00wrongpassword"))
 		sc.send(t, "AUTH PLAIN "+cred)
 		resp := sc.readLine(t)
 		if !strings.HasPrefix(resp, "535") && !strings.HasPrefix(resp, "5") {
@@ -447,7 +447,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("ImapLoginAfterStarttls_Mail3", func(t *testing.T) {
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
 		_, lines := ic.command(t, "CAPABILITY")
@@ -458,13 +458,13 @@ func testStage5Indistinguishability(t *testing.T) {
 			}
 		}
 		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
-			t.Skipf("mail3 IMAP does not advertise STARTTLS: %s", capLine)
+			t.Skipf("restmail IMAP does not advertise STARTTLS: %s", capLine)
 		}
 
 		ic.starttls(t)
 
 		// LOGIN with good credentials
-		ic.login(t, "testuser@mail3.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", adminPassword)
 
 		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -475,7 +475,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("ImapBadLoginAfterStarttls_Mail3", func(t *testing.T) {
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
 		_, lines := ic.command(t, "CAPABILITY")
@@ -486,13 +486,13 @@ func testStage5Indistinguishability(t *testing.T) {
 			}
 		}
 		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
-			t.Skipf("mail3 IMAP does not advertise STARTTLS: %s", capLine)
+			t.Skipf("restmail IMAP does not advertise STARTTLS: %s", capLine)
 		}
 
 		ic.starttls(t)
 
 		// LOGIN with bad credentials — should fail
-		result, _ := ic.command(t, "LOGIN testuser@mail3.test wrongpassword")
+		result, _ := ic.command(t, "LOGIN testuser@restmail.test wrongpassword")
 		if strings.Contains(result, "OK") {
 			t.Fatal("IMAP LOGIN with bad password should not return OK")
 		}
@@ -500,7 +500,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("Pop3BadAuthAfterStls_Mail3", func(t *testing.T) {
-		pc := dialPOP3(t, mail3POP3Addr)
+		pc := dialPOP3(t, restmailPOP3Addr)
 		defer pc.close()
 
 		caps := pc.capa(t)
@@ -511,12 +511,12 @@ func testStage5Indistinguishability(t *testing.T) {
 			}
 		}
 		if !foundSTLS {
-			t.Skipf("mail3 POP3 does not advertise STLS: %v", caps)
+			t.Skipf("restmail POP3 does not advertise STLS: %v", caps)
 		}
 
 		pc.stls(t)
 
-		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
 		resp := pc.sendExpect(t, "PASS wrongpassword", "-ERR")
 		t.Logf("POP3 bad credentials after STLS correctly rejected: %s", resp)
 	})

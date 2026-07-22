@@ -12,30 +12,30 @@ import (
 
 func testStage11QueueRetry(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@mail3.test", adminPassword); err != nil {
+	if err := adminClient.login("admin@restmail.test", adminPassword); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
 	// Ensure domains and mailboxes exist
-	createDomain(t, adminClient, "mail3.test", "restmail")
-	createMailbox(t, adminClient, "retry-sender@mail3.test", "password123", "Retry Sender")
+	createDomain(t, adminClient, "restmail.test", "restmail")
+	createMailbox(t, adminClient, "retry-sender@restmail.test", "password123", "Retry Sender")
 
 	t.Run("EnqueueToUnresolvable_DefersWithRetry", func(t *testing.T) {
 		// Send a message to a domain that has no reachable MX.
 		// The queue worker will fail delivery and defer the item with
 		// exponential backoff.
 		senderClient := newAPIClient()
-		requireNoError(t, senderClient.login("retry-sender@mail3.test", "password123"))
+		requireNoError(t, senderClient.login("retry-sender@restmail.test", "password123"))
 
 		// Link account
 		_, _ = senderClient.post("/api/v1/accounts", map[string]string{
-			"address": "retry-sender@mail3.test", "password": "password123",
+			"address": "retry-sender@restmail.test", "password": "password123",
 		})
 
 		subject := fmt.Sprintf("E2E-retry-%d", time.Now().UnixNano())
 
 		resp, err := senderClient.post("/api/v1/messages/send", map[string]interface{}{
-			"from":      "retry-sender@mail3.test",
+			"from":      "retry-sender@restmail.test",
 			"to":        []string{"someone@unreachable-e2e-test-domain.invalid"},
 			"subject":   subject,
 			"body_text": "This message should be deferred due to unreachable domain.",

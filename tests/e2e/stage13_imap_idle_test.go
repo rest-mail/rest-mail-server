@@ -12,22 +12,22 @@ import (
 
 func testStage13ImapIdle(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@mail3.test", adminPassword); err != nil {
+	if err := adminClient.login("admin@restmail.test", adminPassword); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
 	// Ensure domain and mailboxes exist
-	createDomain(t, adminClient, "mail3.test", "restmail")
+	createDomain(t, adminClient, "restmail.test", "restmail")
 	createDomain(t, adminClient, "mail1.test", "traditional")
-	createMailbox(t, adminClient, "idle-user@mail3.test", "password123", "IDLE Test User")
+	createMailbox(t, adminClient, "idle-user@restmail.test", "password123", "IDLE Test User")
 	createMailbox(t, adminClient, "idle-sender@mail1.test", "password123", "IDLE Sender")
 
 	t.Run("IDLE_CapabilityAdvertised", func(t *testing.T) {
 		// Verify that the IMAP gateway advertises the IDLE capability
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "idle-user@mail3.test", "password123")
+		ic.login(t, "idle-user@restmail.test", "password123")
 
 		result, lines := ic.command(t, "CAPABILITY")
 		if !strings.Contains(result, "OK") {
@@ -46,9 +46,9 @@ func testStage13ImapIdle(t *testing.T) {
 
 	t.Run("IDLE_RequiresAuth", func(t *testing.T) {
 		// Verify that IDLE requires authentication
-		conn, err := net.DialTimeout("tcp", mail3IMAPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", restmailIMAPAddr, 10*time.Second)
 		if err != nil {
-			t.Skipf("Cannot connect to IMAP %s: %v", mail3IMAPAddr, err)
+			t.Skipf("Cannot connect to IMAP %s: %v", restmailIMAPAddr, err)
 		}
 		defer conn.Close()
 
@@ -81,10 +81,10 @@ func testStage13ImapIdle(t *testing.T) {
 	})
 
 	t.Run("IDLE_RequiresSelectedMailbox", func(t *testing.T) {
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "idle-user@mail3.test", "password123")
+		ic.login(t, "idle-user@restmail.test", "password123")
 
 		// Try IDLE without SELECT
 		result, _ := ic.command(t, "IDLE")
@@ -108,9 +108,9 @@ func testStage13ImapIdle(t *testing.T) {
 		// 4. Send DONE to terminate IDLE
 		// 5. Receive tagged OK response
 
-		conn, err := net.DialTimeout("tcp", mail3IMAPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", restmailIMAPAddr, 10*time.Second)
 		if err != nil {
-			t.Skipf("Cannot connect to IMAP %s: %v", mail3IMAPAddr, err)
+			t.Skipf("Cannot connect to IMAP %s: %v", restmailIMAPAddr, err)
 		}
 		defer conn.Close()
 
@@ -124,7 +124,7 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN idle-user@mail3.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
 		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
@@ -182,9 +182,9 @@ func testStage13ImapIdle(t *testing.T) {
 		// 4. Wait for EXISTS notification
 		// 5. Send DONE
 
-		conn, err := net.DialTimeout("tcp", mail3IMAPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", restmailIMAPAddr, 10*time.Second)
 		if err != nil {
-			t.Skipf("Cannot connect to IMAP %s: %v", mail3IMAPAddr, err)
+			t.Skipf("Cannot connect to IMAP %s: %v", restmailIMAPAddr, err)
 		}
 		defer conn.Close()
 
@@ -198,7 +198,7 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN idle-user@mail3.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
 		conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
@@ -234,7 +234,7 @@ func testStage13ImapIdle(t *testing.T) {
 			t.Fatalf("expected IDLE continuation, got: %s", strings.TrimSpace(contResp))
 		}
 
-		// Now send a message to idle-user@mail3.test via SMTP
+		// Now send a message to idle-user@restmail.test via SMTP
 		subject := fmt.Sprintf("IDLE-notify-%d", time.Now().UnixNano())
 		t.Logf("Sending message with subject %q to trigger IDLE notification...", subject)
 
@@ -242,7 +242,7 @@ func testStage13ImapIdle(t *testing.T) {
 			// Small delay to ensure IDLE is fully active
 			time.Sleep(2 * time.Second)
 			sendMailViaSMTP(t, mail1SMTPAddr,
-				"idle-sender@mail1.test", "idle-user@mail3.test",
+				"idle-sender@mail1.test", "idle-user@restmail.test",
 				subject, "This should trigger an IDLE EXISTS notification.")
 		}()
 
@@ -331,7 +331,7 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN idle-user@mail3.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
 		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
@@ -376,10 +376,10 @@ func testStage13ImapIdle(t *testing.T) {
 	t.Run("IDLE_ResumeAfterDone", func(t *testing.T) {
 		// Verify that after IDLE is terminated with DONE, the session
 		// returns to normal command mode and subsequent commands work.
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "idle-user@mail3.test", "password123")
+		ic.login(t, "idle-user@restmail.test", "password123")
 
 		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {

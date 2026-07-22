@@ -54,9 +54,9 @@ func testStage1Infrastructure(t *testing.T) {
 	})
 
 	t.Run("SmtpReachable_Mail3_Gateway", func(t *testing.T) {
-		conn, err := net.DialTimeout("tcp", mail3SMTPAddr, 10*time.Second)
+		conn, err := net.DialTimeout("tcp", restmailSMTPAddr, 10*time.Second)
 		if err != nil {
-			t.Fatalf("cannot reach SMTP on mail3 (gateway): %v", err)
+			t.Fatalf("cannot reach SMTP on restmail (gateway): %v", err)
 		}
 		defer conn.Close()
 
@@ -65,7 +65,7 @@ func testStage1Infrastructure(t *testing.T) {
 		n, _ := conn.Read(buf)
 		greeting := string(buf[:n])
 		if !strings.HasPrefix(greeting, "220") {
-			t.Fatalf("expected 220 greeting from mail3 SMTP, got: %s", greeting)
+			t.Fatalf("expected 220 greeting from restmail SMTP, got: %s", greeting)
 		}
 	})
 
@@ -108,7 +108,7 @@ func testStage1Infrastructure(t *testing.T) {
 		}{
 			{"mail1.test", "10.99.0.11"},
 			{"mail2.test", "10.99.0.12"},
-			{"mail3.test", "10.99.0.13"},
+			{"restmail.test", "10.99.0.13"},
 		}
 		for _, d := range domains {
 			addrs := resolveDomain(t, d.name)
