@@ -17,19 +17,19 @@ func testStage3GatewayInbound(t *testing.T) {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
-	// Setup: Ensure mail3.test domain and a test user exist
-	createDomain(t, adminClient, "mail3.test", "restmail")
-	gwUser := createMailbox(t, adminClient, "testuser@mail3.test", adminPassword, "GW Test User")
+	// Setup: Ensure restmail.test domain and a test user exist
+	createDomain(t, adminClient, "restmail.test", "restmail")
+	gwUser := createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
 
 	t.Run("Mail1_to_Mail3_SmtpDelivery", func(t *testing.T) {
 		subject := fmt.Sprintf("test-m1-to-m3-%d", time.Now().UnixNano())
 		sendMailViaSMTP(t, mail1SMTPAddr,
-			"alice@mail1.test", "testuser@mail3.test",
-			subject, "Hello mail3 from mail1 via SMTP gateway!")
+			"alice@mail1.test", "testuser@restmail.test",
+			subject, "Hello restmail from mail1 via SMTP gateway!")
 
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as testuser@mail3.test: %v", err)
+		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
+			t.Fatalf("Cannot login as testuser@restmail.test: %v", err)
 		}
 
 		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
@@ -39,11 +39,11 @@ func testStage3GatewayInbound(t *testing.T) {
 	t.Run("Mail2_to_Mail3_SmtpDelivery", func(t *testing.T) {
 		subject := fmt.Sprintf("test-m2-to-m3-%d", time.Now().UnixNano())
 		sendMailViaSMTP(t, mail2SMTPAddr,
-			"bob@mail2.test", "testuser@mail3.test",
-			subject, "Hello mail3 from mail2 via SMTP gateway!")
+			"bob@mail2.test", "testuser@restmail.test",
+			subject, "Hello restmail from mail2 via SMTP gateway!")
 
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
+		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
 			t.Fatalf("Cannot login: %v", err)
 		}
 
@@ -52,14 +52,14 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_RejectsUnknownRecipient", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SMTPAddr)
+		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 
 		sc.ehlo(t, "test.local")
 		sc.sendExpect(t, "MAIL FROM:<alice@mail1.test>", "250")
 
 		// RCPT TO for unknown user should be rejected
-		sc.send(t, "RCPT TO:<nobody@mail3.test>")
+		sc.send(t, "RCPT TO:<nobody@restmail.test>")
 		resp := sc.readLine(t)
 		// Should be 550 or 5xx
 		if resp[0] != '5' {
@@ -74,11 +74,11 @@ func testStage3GatewayInbound(t *testing.T) {
 		body := "This is a message integrity test.\r\nLine 2 of the body.\r\nLine 3 with special chars: <>&\"'"
 
 		sendMailViaSMTP(t, mail1SMTPAddr,
-			"alice@mail1.test", "testuser@mail3.test",
+			"alice@mail1.test", "testuser@restmail.test",
 			subject, body)
 
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
+		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
 			t.Fatalf("Cannot login: %v", err)
 		}
 
@@ -113,7 +113,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	t.Run("Mail3_SmtpSubmissionAuth", func(t *testing.T) {
 		subject := fmt.Sprintf("test-gw-submit-%d", time.Now().UnixNano())
 
-		sc := dialSMTP(t, mail3SubmitAddr)
+		sc := dialSMTP(t, restmailSubmitAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
@@ -128,19 +128,19 @@ func testStage3GatewayInbound(t *testing.T) {
 			t.Fatal("gateway submission port does not advertise AUTH")
 		}
 
-		sc.authPlain(t, "testuser@mail3.test", adminPassword)
-		sc.sendExpect(t, "MAIL FROM:<testuser@mail3.test>", "250")
-		sc.sendExpect(t, "RCPT TO:<testuser@mail3.test>", "250")
+		sc.authPlain(t, "testuser@restmail.test", adminPassword)
+		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
 
-		msg := fmt.Sprintf("From: testuser@mail3.test\r\nTo: testuser@mail3.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <gw-submit-%d@test.local>\r\n\r\nSent via gateway submission!",
+		msg := fmt.Sprintf("From: testuser@restmail.test\r\nTo: testuser@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <gw-submit-%d@test.local>\r\n\r\nSent via gateway submission!",
 			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
 		sc.send(t, msg)
 		sc.sendExpect(t, ".", "250")
 		sc.sendExpect(t, "QUIT", "221")
 
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
+		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
 			t.Fatalf("Cannot login: %v", err)
 		}
 
@@ -149,13 +149,13 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_SmtpSubmissionRequiresAuth", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SubmitAddr)
+		sc := dialSMTP(t, restmailSubmitAddr)
 		defer sc.close()
 
 		sc.ehlo(t, "test.local")
 
 		// Try MAIL FROM without auth — should be rejected on submission port
-		sc.send(t, "MAIL FROM:<testuser@mail3.test>")
+		sc.send(t, "MAIL FROM:<testuser@restmail.test>")
 		resp := sc.readLine(t)
 		if !strings.HasPrefix(resp, "530") && !strings.HasPrefix(resp, "5") {
 			t.Errorf("expected 530/5xx rejection without auth on submission port, got: %s", resp)
@@ -166,10 +166,10 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_ImapFetchContent", func(t *testing.T) {
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "testuser@mail3.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", adminPassword)
 
 		result, lines := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -198,10 +198,10 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_Pop3RetrMessage", func(t *testing.T) {
-		pc := dialPOP3(t, mail3POP3Addr)
+		pc := dialPOP3(t, restmailPOP3Addr)
 		defer pc.close()
 
-		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
 		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
 
 		statResp := pc.stat(t)
@@ -219,10 +219,10 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("IMAP_GetQuota", func(t *testing.T) {
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "testuser@mail3.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", adminPassword)
 
 		// Send GETQUOTAROOT INBOX command
 		result, lines := ic.command(t, "GETQUOTAROOT INBOX")
@@ -290,7 +290,7 @@ func testStage3GatewayInbound(t *testing.T) {
 
 		var mimeBody strings.Builder
 		mimeBody.WriteString("From: sender@mail1.test\r\n")
-		mimeBody.WriteString("To: testuser@mail3.test\r\n")
+		mimeBody.WriteString("To: testuser@restmail.test\r\n")
 		mimeBody.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 		mimeBody.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 		mimeBody.WriteString(fmt.Sprintf("Message-ID: <att-test-%d@test.local>\r\n", time.Now().UnixNano()))
@@ -323,12 +323,12 @@ func testStage3GatewayInbound(t *testing.T) {
 		mimeBody.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 
 		// Send the raw MIME message via SMTP
-		sendRawMailViaSMTP(t, mail1SMTPAddr, "sender@mail1.test", "testuser@mail3.test", mimeBody.String())
+		sendRawMailViaSMTP(t, mail1SMTPAddr, "sender@mail1.test", "testuser@restmail.test", mimeBody.String())
 
 		// Wait for delivery via API
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as testuser@mail3.test: %v", err)
+		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
+			t.Fatalf("Cannot login as testuser@restmail.test: %v", err)
 		}
 
 		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
@@ -382,10 +382,10 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_ImapFetchSections", func(t *testing.T) {
-		ic := dialIMAP(t, mail3IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "testuser@mail3.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", adminPassword)
 
 		result, lines := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -422,10 +422,10 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_Pop3Operations", func(t *testing.T) {
-		pc := dialPOP3(t, mail3POP3Addr)
+		pc := dialPOP3(t, restmailPOP3Addr)
 		defer pc.close()
 
-		pc.sendExpect(t, "USER testuser@mail3.test", "+OK")
+		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
 		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
 
 		// STAT — should return message count and total size
@@ -477,7 +477,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_SmtpSubmissionBadCredentials", func(t *testing.T) {
-		sc := dialSMTP(t, mail3SubmitAddr)
+		sc := dialSMTP(t, restmailSubmitAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
@@ -488,7 +488,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		}
 
 		// AUTH PLAIN with wrong password
-		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@mail3.test\x00wrongpassword"))
+		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@restmail.test\x00wrongpassword"))
 		sc.send(t, "AUTH PLAIN "+cred)
 		resp := sc.readLine(t)
 		if !strings.HasPrefix(resp, "535") && !strings.HasPrefix(resp, "5") {

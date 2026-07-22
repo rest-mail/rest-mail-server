@@ -8,10 +8,10 @@ import (
 )
 
 func testStage9DatabaseConsistency(t *testing.T) {
-	// The API now only manages mail3.test (each server has its own database).
-	// Use a mail3.test admin account for consistency checks.
+	// The API now only manages restmail.test (each server has its own database).
+	// Use a restmail.test admin account for consistency checks.
 	adminClient := newAPIClient()
-	if err := adminClient.login("eve@mail3.test", adminPassword); err != nil {
+	if err := adminClient.login("eve@restmail.test", adminPassword); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
@@ -30,11 +30,11 @@ func testStage9DatabaseConsistency(t *testing.T) {
 		dbCount := len(dbMessages.Data)
 		t.Logf("Direct DB message count: %d", dbCount)
 
-		// Compare with user-facing API counts for a mail3.test user
-		eve := getMailboxByAddress(t, adminClient, "eve@mail3.test")
+		// Compare with user-facing API counts for a restmail.test user
+		eve := getMailboxByAddress(t, adminClient, "eve@restmail.test")
 
 		eveClient := newAPIClient()
-		if err := eveClient.login("eve@mail3.test", adminPassword); err != nil {
+		if err := eveClient.login("eve@restmail.test", adminPassword); err != nil {
 			t.Skipf("Cannot login as eve: %v", err)
 		}
 
@@ -61,7 +61,7 @@ func testStage9DatabaseConsistency(t *testing.T) {
 	})
 
 	t.Run("NoOrphanedMailboxes", func(t *testing.T) {
-		// Verify all mailboxes in mail3 DB belong to existing domains
+		// Verify all mailboxes in restmail DB belong to existing domains
 		resp, err := httpClient.Get(apiBaseURL + "/api/test/db/mailboxes")
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
@@ -114,7 +114,7 @@ func testStage9DatabaseConsistency(t *testing.T) {
 	})
 
 	t.Run("DomainConsistency", func(t *testing.T) {
-		// Verify domains from test endpoint match admin API (mail3.test only)
+		// Verify domains from test endpoint match admin API (restmail.test only)
 		testResp, err := httpClient.Get(apiBaseURL + "/api/test/db/domains")
 		requireNoError(t, err)
 		requireStatus(t, testResp, http.StatusOK)
@@ -152,7 +152,7 @@ func testStage9DatabaseConsistency(t *testing.T) {
 	})
 
 	// NOTE: The previous PostfixDovecotSeeApiData test was removed because
-	// each mail server now has its own database. The API (postgres-mail3)
+	// each mail server now has its own database. The API (postgres-restmail)
 	// cannot create users visible to Postfix/Dovecot (postgres-mail1/mail2).
 	// Traditional server users are managed via SQL init scripts.
 }

@@ -10,24 +10,24 @@ import (
 
 func testStage12BounceDSN(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@mail3.test", adminPassword); err != nil {
+	if err := adminClient.login("admin@restmail.test", adminPassword); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
 	// Ensure domain and mailboxes exist
-	createDomain(t, adminClient, "mail3.test", "restmail")
-	createMailbox(t, adminClient, "bounce-sender@mail3.test", "password123", "Bounce Sender")
+	createDomain(t, adminClient, "restmail.test", "restmail")
+	createMailbox(t, adminClient, "bounce-sender@restmail.test", "password123", "Bounce Sender")
 
 	t.Run("BounceAfterMaxRetries", func(t *testing.T) {
 		// Send a message to an unresolvable domain, then force-bounce it
 		// via the admin API to simulate max retries exhausted. Verify the
 		// sender's INBOX receives a DSN (bounce) notification.
 		senderClient := newAPIClient()
-		requireNoError(t, senderClient.login("bounce-sender@mail3.test", "password123"))
+		requireNoError(t, senderClient.login("bounce-sender@restmail.test", "password123"))
 
 		// Link account
 		_, _ = senderClient.post("/api/v1/accounts", map[string]string{
-			"address": "bounce-sender@mail3.test", "password": "password123",
+			"address": "bounce-sender@restmail.test", "password": "password123",
 		})
 
 		// Get account ID
@@ -43,19 +43,19 @@ func testStage12BounceDSN(t *testing.T) {
 
 		var senderAccountID uint
 		for _, a := range accts.Data {
-			if a.Address == "bounce-sender@mail3.test" {
+			if a.Address == "bounce-sender@restmail.test" {
 				senderAccountID = a.ID
 				break
 			}
 		}
 		if senderAccountID == 0 {
-			t.Fatal("could not find linked account for bounce-sender@mail3.test")
+			t.Fatal("could not find linked account for bounce-sender@restmail.test")
 		}
 
 		subject := fmt.Sprintf("E2E-bounce-%d", time.Now().UnixNano())
 
 		sendResp, err := senderClient.post("/api/v1/messages/send", map[string]interface{}{
-			"from":      "bounce-sender@mail3.test",
+			"from":      "bounce-sender@restmail.test",
 			"to":        []string{"nonexistent@bounce-test-unresolvable.invalid"},
 			"subject":   subject,
 			"body_text": "This message should bounce and produce a DSN.",
@@ -158,7 +158,7 @@ func testStage12BounceDSN(t *testing.T) {
 		// test, or we check if the queue worker has already bounced something.
 
 		senderClient := newAPIClient()
-		requireNoError(t, senderClient.login("bounce-sender@mail3.test", "password123"))
+		requireNoError(t, senderClient.login("bounce-sender@restmail.test", "password123"))
 
 		resp, err := senderClient.get("/api/v1/accounts")
 		requireNoError(t, err)
@@ -172,7 +172,7 @@ func testStage12BounceDSN(t *testing.T) {
 
 		var senderAccountID uint
 		for _, a := range accts.Data {
-			if a.Address == "bounce-sender@mail3.test" {
+			if a.Address == "bounce-sender@restmail.test" {
 				senderAccountID = a.ID
 				break
 			}
@@ -352,7 +352,7 @@ func testStage12BounceDSN(t *testing.T) {
 		// 3. text/rfc822-headers original message headers
 
 		// Build a sample DSN like the worker does and verify its structure
-		hostname := "mail3.test"
+		hostname := "restmail.test"
 		recipient := "test@example.com"
 		boundary := fmt.Sprintf("=_restmail_dsn_%d", time.Now().UnixNano())
 

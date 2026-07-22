@@ -16,34 +16,34 @@ var (
 
 func testStage10Verification(t *testing.T) {
 	client := newAPIClient()
-	requireNoError(t, client.login("admin@mail3.test", adminPassword))
+	requireNoError(t, client.login("admin@restmail.test", adminPassword))
 
 	// Ensure domains and mailboxes exist
 	createDomain(t, client, "mail1.test", "traditional")
-	createDomain(t, client, "mail3.test", "restmail")
+	createDomain(t, client, "restmail.test", "restmail")
 	createMailbox(t, client, "verify-sender@mail1.test", "password123", "Verify Sender")
-	createMailbox(t, client, "verify-recv@mail3.test", "password123", "Verify Receiver")
-	createMailbox(t, client, "verify-out@mail3.test", "password123", "Verify Outbound")
-	createMailbox(t, client, "verify-rm1@mail3.test", "password123", "Verify RM1")
-	createMailbox(t, client, "verify-rm2@mail3.test", "password123", "Verify RM2")
+	createMailbox(t, client, "verify-recv@restmail.test", "password123", "Verify Receiver")
+	createMailbox(t, client, "verify-out@restmail.test", "password123", "Verify Outbound")
+	createMailbox(t, client, "verify-rm1@restmail.test", "password123", "Verify RM1")
+	createMailbox(t, client, "verify-rm2@restmail.test", "password123", "Verify RM2")
 	createMailbox(t, client, "smtp-auth-user@mail1.test", "password123", "SMTP Auth")
 	createMailbox(t, client, "imap-test@mail1.test", "password123", "IMAP Test")
 
 	t.Run("Mail1_to_Mail3_Inbound", func(t *testing.T) {
 		subject := fmt.Sprintf("E2E-inbound-%d", time.Now().UnixNano())
 
-		// Send via SMTP from mail1 to mail3
-		msg := fmt.Sprintf("From: verify-sender@mail1.test\r\nTo: verify-recv@mail3.test\r\nSubject: %s\r\n\r\nInbound test body\r\n", subject)
-		err := smtp.SendMail(mail1SMTPAddr, nil, "verify-sender@mail1.test", []string{"verify-recv@mail3.test"}, []byte(msg))
+		// Send via SMTP from mail1 to restmail
+		msg := fmt.Sprintf("From: verify-sender@mail1.test\r\nTo: verify-recv@restmail.test\r\nSubject: %s\r\n\r\nInbound test body\r\n", subject)
+		err := smtp.SendMail(mail1SMTPAddr, nil, "verify-sender@mail1.test", []string{"verify-recv@restmail.test"}, []byte(msg))
 		requireNoError(t, err)
 
 		// Login as receiver and check via API
 		recvClient := newAPIClient()
-		requireNoError(t, recvClient.login("verify-recv@mail3.test", "password123"))
+		requireNoError(t, recvClient.login("verify-recv@restmail.test", "password123"))
 
 		// Link account
 		_, _ = recvClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-recv@mail3.test", "password": "password123",
+			"address": "verify-recv@restmail.test", "password": "password123",
 		})
 
 		// Get account ID
@@ -59,13 +59,13 @@ func testStage10Verification(t *testing.T) {
 
 		var accountID uint
 		for _, a := range accts.Data {
-			if a.Address == "verify-recv@mail3.test" {
+			if a.Address == "verify-recv@restmail.test" {
 				accountID = a.ID
 				break
 			}
 		}
 		if accountID == 0 {
-			t.Fatal("could not find linked account for verify-recv@mail3.test")
+			t.Fatal("could not find linked account for verify-recv@restmail.test")
 		}
 
 		msgID := waitForMessage(t, recvClient, accountID, "INBOX", subject, 30*time.Second)
@@ -78,18 +78,18 @@ func testStage10Verification(t *testing.T) {
 	t.Run("Mail3_to_Mail1_Outbound", func(t *testing.T) {
 		subject := fmt.Sprintf("E2E-outbound-%d", time.Now().UnixNano())
 
-		// Login as mail3 sender
+		// Login as restmail sender
 		sendClient := newAPIClient()
-		requireNoError(t, sendClient.login("verify-out@mail3.test", "password123"))
+		requireNoError(t, sendClient.login("verify-out@restmail.test", "password123"))
 
 		// Link account
 		_, _ = sendClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-out@mail3.test", "password": "password123",
+			"address": "verify-out@restmail.test", "password": "password123",
 		})
 
 		// Send via API
 		resp, err := sendClient.post("/api/v1/messages/send", map[string]any{
-			"from":      "verify-out@mail3.test",
+			"from":      "verify-out@restmail.test",
 			"to":        []string{"verify-sender@mail1.test"},
 			"subject":   subject,
 			"body_text": "Outbound test body",
@@ -99,7 +99,7 @@ func testStage10Verification(t *testing.T) {
 
 		// Verify via SMTP that mail1 received it (check via the API as admin)
 		adminClient := newAPIClient()
-		requireNoError(t, adminClient.login("admin@mail3.test", adminPassword))
+		requireNoError(t, adminClient.login("admin@restmail.test", adminPassword))
 
 		// We can't easily check mail1's mailbox via our API since it's traditional.
 		// Instead verify the message was queued successfully (200 response is sufficient).
@@ -111,15 +111,15 @@ func testStage10Verification(t *testing.T) {
 
 		// Login as sender
 		sendClient := newAPIClient()
-		requireNoError(t, sendClient.login("verify-rm1@mail3.test", "password123"))
+		requireNoError(t, sendClient.login("verify-rm1@restmail.test", "password123"))
 		_, _ = sendClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-rm1@mail3.test", "password": "password123",
+			"address": "verify-rm1@restmail.test", "password": "password123",
 		})
 
-		// Send to another mail3 user
+		// Send to another restmail user
 		resp, err := sendClient.post("/api/v1/messages/send", map[string]any{
-			"from":      "verify-rm1@mail3.test",
-			"to":        []string{"verify-rm2@mail3.test"},
+			"from":      "verify-rm1@restmail.test",
+			"to":        []string{"verify-rm2@restmail.test"},
 			"subject":   subject,
 			"body_text": "Restmail fast delivery test",
 		})
@@ -128,9 +128,9 @@ func testStage10Verification(t *testing.T) {
 
 		// Login as receiver and verify fast delivery
 		recvClient := newAPIClient()
-		requireNoError(t, recvClient.login("verify-rm2@mail3.test", "password123"))
+		requireNoError(t, recvClient.login("verify-rm2@restmail.test", "password123"))
 		_, _ = recvClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-rm2@mail3.test", "password": "password123",
+			"address": "verify-rm2@restmail.test", "password": "password123",
 		})
 
 		resp2, err := recvClient.get("/api/v1/accounts")
@@ -145,13 +145,13 @@ func testStage10Verification(t *testing.T) {
 
 		var accountID uint
 		for _, a := range accts.Data {
-			if a.Address == "verify-rm2@mail3.test" {
+			if a.Address == "verify-rm2@restmail.test" {
 				accountID = a.ID
 				break
 			}
 		}
 		if accountID == 0 {
-			t.Fatal("could not find linked account for verify-rm2@mail3.test")
+			t.Fatal("could not find linked account for verify-rm2@restmail.test")
 		}
 
 		// RESTMAIL path should be near-instant for same-server

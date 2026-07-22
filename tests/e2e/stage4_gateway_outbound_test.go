@@ -15,13 +15,13 @@ func testStage4GatewayOutbound(t *testing.T) {
 	}
 
 	// Ensure users exist
-	createMailbox(t, adminClient, "testuser@mail3.test", adminPassword, "GW Test User")
+	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
 	alice := createMailbox(t, adminClient, "alice@mail1.test", adminPassword, "Alice")
 	bob := createMailbox(t, adminClient, "bob@mail2.test", adminPassword, "Bob")
 
 	gwClient := newAPIClient()
-	if err := gwClient.login("testuser@mail3.test", adminPassword); err != nil {
-		t.Skipf("Cannot login as testuser@mail3.test: %v", err)
+	if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
+		t.Skipf("Cannot login as testuser@restmail.test: %v", err)
 	}
 
 	t.Run("Mail3_to_Mail1_SmtpRelay", func(t *testing.T) {
@@ -30,9 +30,9 @@ func testStage4GatewayOutbound(t *testing.T) {
 		// Send via API (which enqueues in outbound queue, gateway relays via SMTP)
 		resp, err := gwClient.post("/api/v1/messages/deliver", map[string]string{
 			"address":   "alice@mail1.test",
-			"sender":    "testuser@mail3.test",
+			"sender":    "testuser@restmail.test",
 			"subject":   subject,
-			"body_text": "Hello Alice from mail3 via gateway relay!",
+			"body_text": "Hello Alice from restmail via gateway relay!",
 		})
 		requireNoError(t, err)
 		t.Logf("Enqueue response: %d", resp.StatusCode)
@@ -53,9 +53,9 @@ func testStage4GatewayOutbound(t *testing.T) {
 
 		resp, err := gwClient.post("/api/v1/messages/deliver", map[string]string{
 			"address":   "bob@mail2.test",
-			"sender":    "testuser@mail3.test",
+			"sender":    "testuser@restmail.test",
 			"subject":   subject,
-			"body_text": "Hello Bob from mail3 via gateway relay!",
+			"body_text": "Hello Bob from restmail via gateway relay!",
 		})
 		requireNoError(t, err)
 		resp.Body.Close()
@@ -85,7 +85,7 @@ func testStage4GatewayOutbound(t *testing.T) {
 
 	t.Run("QuotaEnforcement", func(t *testing.T) {
 		// Create a mailbox with a very small quota (1024 bytes)
-		quotaAddr := fmt.Sprintf("quotauser-%d@mail3.test", time.Now().UnixNano())
+		quotaAddr := fmt.Sprintf("quotauser-%d@restmail.test", time.Now().UnixNano())
 		var quotaBytes int64 = 1024
 
 		resp, err := adminClient.post("/api/v1/admin/mailboxes", map[string]interface{}{
