@@ -225,14 +225,21 @@ func seedRBAC(database *gorm.DB) error {
 		return err
 	}
 
+	// The attrs MUST go through Attrs(), not as FirstOrCreate conditions: GORM
+	// merges a conditions-struct into the lookup query, and PasswordHash is a
+	// freshly salted bcrypt hash on every run — the SELECT never matches the
+	// stored row, so re-seeding an existing database tried to INSERT a second
+	// "admin" and aborted the whole up chain on the unique username index.
 	var adminUser models.AdminUser
-	result = database.Where("username = ?", "admin").FirstOrCreate(&adminUser, models.AdminUser{
-		Username:               "admin",
-		Email:                  "admin@localhost",
-		PasswordHash:           adminPassword,
-		PasswordChangeRequired: true,
-		Active:                 true,
-	})
+	result = database.Where("username = ?", "admin").
+		Attrs(models.AdminUser{
+			Username:               "admin",
+			Email:                  "admin@localhost",
+			PasswordHash:           adminPassword,
+			PasswordChangeRequired: true,
+			Active:                 true,
+		}).
+		FirstOrCreate(&adminUser)
 	if result.Error != nil {
 		return result.Error
 	}

@@ -12,7 +12,7 @@ import (
 
 func testStage13ImapIdle(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@restmail.test", adminPassword); err != nil {
+	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
@@ -24,7 +24,7 @@ func testStage13ImapIdle(t *testing.T) {
 
 	t.Run("IDLE_CapabilityAdvertised", func(t *testing.T) {
 		// Verify that the IMAP gateway advertises the IDLE capability
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		ic.login(t, "idle-user@restmail.test", "password123")
@@ -81,7 +81,7 @@ func testStage13ImapIdle(t *testing.T) {
 	})
 
 	t.Run("IDLE_RequiresSelectedMailbox", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		ic.login(t, "idle-user@restmail.test", "password123")
@@ -376,7 +376,7 @@ func testStage13ImapIdle(t *testing.T) {
 	t.Run("IDLE_ResumeAfterDone", func(t *testing.T) {
 		// Verify that after IDLE is terminated with DONE, the session
 		// returns to normal command mode and subsequent commands work.
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		ic.login(t, "idle-user@restmail.test", "password123")
