@@ -442,12 +442,13 @@ func TestStages(t *testing.T) {
 	t.Run("Stage13_ImapIdle", testStage13ImapIdle)
 }
 
-// e2eInboundFilters mirrors pipeline.DefaultInboundPipeline exactly, except
-// the greylist delay is zero. Greylisting stays fully active — the first
-// attempt for a new (sender, recipient, ip) triplet is still deferred with
-// 451, exactly like the real internet — but the retry window is instant, so
-// the suite's SMTP helper converges on its immediate retry instead of in
-// five minutes.
+// e2eInboundFilters mirrors pipeline.DefaultInboundPipeline, minus greylist:
+// greylisting defers the first attempt for a new (sender, recipient, ip)
+// triplet, which forces every single-shot delivery assertion in the suite to
+// retry-or-fail. No stage asserts greylist behaviour (the outbound queue's
+// defer/retry — stages 11/12 — is a separate mechanism), so it's dropped here.
+// SPF/DKIM/DMARC stay on: senders inject from no-policy domains (no _dmarc
+// record) so DMARC returns "none" rather than enforcing a p=reject.
 const e2eInboundFilters = `[
  {"name":"size_check","type":"action","enabled":true,"config":{"max_size_mb":25}},
  {"name":"spf_check","type":"action","enabled":true,"config":{"fail_action":"tag"}},
@@ -456,17 +457,16 @@ const e2eInboundFilters = `[
  {"name":"dmarc_check","type":"action","enabled":true,"config":{"fail_action":"quarantine"}},
  {"name":"domain_allowlist","type":"action","enabled":true,"config":{}},
  {"name":"contact_whitelist","type":"action","enabled":true,"config":{}},
- {"name":"greylist","type":"action","enabled":true,"config":{"delay_minutes":0,"ttl_days":36}},
  {"name":"header_validate","type":"action","enabled":true,"config":{}},
  {"name":"recipient_check","type":"action","enabled":true,"config":{}},
- {"name":"extract_attachments","type":"transform","enabled":true,"config":{"storage_dir":"/data/attachments"}},
+ {"name":"extract_attachments","type":"transform","enabled":true,"config":{"storage_path":"/attachments"}},
  {"name":"sieve","type":"transform","enabled":true,"config":{}}
 ]`
 
-// ensureFastGreylist installs (or updates) restmail.test's inbound pipeline
+// ensureE2EPipeline installs (or updates) restmail.test's inbound pipeline
 // with e2eInboundFilters. Idempotent: patches the existing inbound pipeline
 // if one exists, creates it otherwise.
-func ensureFastGreylist(t *testing.T, client *apiClient) {
+func ensureE2EPipeline(t *testing.T, client *apiClient) {
 	t.Helper()
 
 	resp, err := client.get("/api/v1/admin/domains")
@@ -513,7 +513,7 @@ func ensureFastGreylist(t *testing.T, client *apiClient) {
 			if resp.StatusCode >= 300 {
 				t.Fatalf("update e2e inbound pipeline: %d: %s", resp.StatusCode, body)
 			}
-			t.Logf("updated inbound pipeline %d with fast greylist", p.ID)
+			t.Logf("updated inbound pipeline %d with e2e pipeline (no greylist)", p.ID)
 			return
 		}
 	}
@@ -525,7 +525,7 @@ func ensureFastGreylist(t *testing.T, client *apiClient) {
 	if resp.StatusCode >= 300 {
 		t.Fatalf("create e2e inbound pipeline: %d: %s", resp.StatusCode, body)
 	}
-	t.Log("created inbound pipeline with fast greylist")
+	t.Log("created inbound pipeline with e2e pipeline (no greylist)")
 }
 
 // restmailInbox logs in as a restmail mailbox user and returns an authed
@@ -556,4 +556,12 @@ func restmailInbox(t *testing.T, address, password string) (*apiClient, uint) {
 	}
 	t.Fatalf("no webmail account for %s", address)
 	return nil, 0
+}
+
+// requireSuccess accepts any 2xx (e.g. /messages/send returns 201 Created).
+func requireSuccess(t *testing.T, resp *http.Response) {
+	t.Helper()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		t.Fatalf("expected 2xx, got %d: %s", resp.StatusCode, readBody(resp))
+	}
 }

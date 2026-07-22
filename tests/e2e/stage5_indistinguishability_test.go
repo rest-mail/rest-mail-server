@@ -257,11 +257,13 @@ func testStage5Indistinguishability(t *testing.T) {
 
 		// Send a message over TLS
 		subject := fmt.Sprintf("test-starttls-%d", time.Now().UnixNano())
-		sc.sendExpect(t, "MAIL FROM:<alice@mail1.test>", "250")
+		// Sender from a no-policy domain (no _dmarc record) so this unauthenticated
+		// inbound inject isn't DMARC-rejected the way a spoofed mail1.test would be.
+		sc.sendExpect(t, "MAIL FROM:<external@ext-e2e.test>", "250")
 		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
 
-		msg := fmt.Sprintf("From: alice@mail1.test\r\nTo: testuser@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <tls-%d@test.local>\r\n\r\nSent over STARTTLS!",
+		msg := fmt.Sprintf("From: external@ext-e2e.test\r\nTo: testuser@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <tls-%d@test.local>\r\n\r\nSent over STARTTLS!",
 			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
 		sc.send(t, msg)
 		sc.sendExpect(t, ".", "250")
@@ -413,12 +415,14 @@ func testStage5Indistinguishability(t *testing.T) {
 		sc.authPlain(t, "testuser@restmail.test", adminPassword)
 		t.Log("AUTH PLAIN after STARTTLS succeeded")
 
-		// Verify we can send a message after auth
+		// Authenticated submission relays OUTBOUND to an external recipient (the
+		// real use case) — queued for delivery, not looped back through the
+		// inbound DMARC pipeline as a same-domain self-inject.
 		subject := fmt.Sprintf("auth-tls-test-%d", time.Now().UnixNano())
 		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
-		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<alice@mail1.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
-		msg := fmt.Sprintf("From: testuser@restmail.test\r\nTo: testuser@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <auth-tls-%d@test.local>\r\n\r\nAuth+TLS test",
+		msg := fmt.Sprintf("From: testuser@restmail.test\r\nTo: alice@mail1.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <auth-tls-%d@test.local>\r\n\r\nAuth+TLS test",
 			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
 		sc.send(t, msg)
 		sc.sendExpect(t, ".", "250")

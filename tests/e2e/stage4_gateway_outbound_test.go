@@ -20,7 +20,7 @@ func testStage4GatewayOutbound(t *testing.T) {
 	// stop relaying to them. Outbound relay is verified over the reference
 	// servers' own IMAP.
 	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
-	ensureFastGreylist(t, adminClient)
+	ensureE2EPipeline(t, adminClient)
 
 	gwClient := newAPIClient()
 	if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {

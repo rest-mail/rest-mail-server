@@ -15,7 +15,7 @@ func testStage7WebmailFlows(t *testing.T) {
 	}
 
 	createMailbox(t, adminClient, "alice@restmail.test", adminPassword, "Alice")
-	ensureFastGreylist(t, adminClient)
+	ensureE2EPipeline(t, adminClient)
 	_, aliceAcct := restmailInbox(t, "alice@restmail.test", adminPassword)
 
 	t.Run("WebmailLogin", func(t *testing.T) {
@@ -107,14 +107,16 @@ func testStage7WebmailFlows(t *testing.T) {
 		client := newAPIClient()
 		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
-		// Send via deliver endpoint
-		resp, err := client.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "bob@restmail.test",
-			"sender":    "alice@restmail.test",
+		// Compose = the OUTBOUND path (/messages/send). /messages/deliver is
+		// inbound-only and DMARC-rejects a same-domain injected sender.
+		resp, err := client.post("/api/v1/messages/send", map[string]any{
+			"from":      "alice@restmail.test",
+			"to":        []string{"bob@restmail.test"},
 			"subject":   subject,
 			"body_text": "Composed from webmail!",
 		})
 		requireNoError(t, err)
+		requireSuccess(t, resp)
 		resp.Body.Close()
 
 		// Verify delivery
@@ -161,34 +163,39 @@ func testStage7WebmailFlows(t *testing.T) {
 		client := newAPIClient()
 		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
-		// First deliver a throwaway message
+		// First create a throwaway message via a self-send (outbound path).
 		subject := fmt.Sprintf("delete-me-%d", time.Now().UnixNano())
-		resp, err := client.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "alice@restmail.test",
-			"sender":    "deletesender@test.local",
+		resp, err := client.post("/api/v1/messages/send", map[string]any{
+			"from":      "alice@restmail.test",
+			"to":        []string{"alice@restmail.test"},
 			"subject":   subject,
 			"body_text": "This will be deleted",
 		})
 		requireNoError(t, err)
+		requireSuccess(t, resp)
 		resp.Body.Close()
 
 		msgID := waitForMessage(t, client, aliceAcct, "INBOX", subject, 15*time.Second)
 
-		// Delete it
-		delResp, err := client.delete(fmt.Sprintf("/api/v1/messages/%d", msgID))
-		requireNoError(t, err)
-		if delResp.StatusCode >= 400 {
-			body := readBody(delResp)
-			t.Fatalf("delete failed (%d): %s", delResp.StatusCode, body)
+		// DELETE is two-stage (standard webmail): the first moves the message to
+		// Trash (soft delete, still retrievable), the second purges it. Delete
+		// twice, then it's gone.
+		for pass := 1; pass <= 2; pass++ {
+			delResp, err := client.delete(fmt.Sprintf("/api/v1/messages/%d", msgID))
+			requireNoError(t, err)
+			if delResp.StatusCode >= 400 {
+				body := readBody(delResp)
+				t.Fatalf("delete pass %d failed (%d): %s", pass, delResp.StatusCode, body)
+			}
+			delResp.Body.Close()
 		}
-		delResp.Body.Close()
-		t.Logf("Deleted message %d", msgID)
+		t.Logf("Deleted message %d (to Trash, then purged)", msgID)
 
 		// Verify it's gone
 		getResp, err := client.get(fmt.Sprintf("/api/v1/messages/%d", msgID))
 		requireNoError(t, err)
 		if getResp.StatusCode != http.StatusNotFound {
-			t.Errorf("expected 404 after delete, got %d", getResp.StatusCode)
+			t.Errorf("expected 404 after purge, got %d", getResp.StatusCode)
 		}
 		getResp.Body.Close()
 	})

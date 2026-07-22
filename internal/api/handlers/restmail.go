@@ -70,6 +70,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		From       string          `json:"from"`
 		To         []string        `json:"to"`
 		Subject    string          `json:"subject"`
+		Date       string          `json:"date"`
 		BodyText   string          `json:"body_text"`
 		BodyHTML   string          `json:"body_html"`
 		MessageID  string          `json:"message_id"`
@@ -115,6 +116,9 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			if parsed.Headers.Subject != "" && req.Subject == "" {
 				req.Subject = parsed.Headers.Subject
 			}
+			if parsed.Headers.Date != "" && req.Date == "" {
+				req.Date = parsed.Headers.Date
+			}
 			if parsed.Headers.MessageID != "" && req.MessageID == "" {
 				req.MessageID = parsed.Headers.MessageID
 			}
@@ -159,6 +163,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			From:      []pipeline.Address{{Address: req.From}},
 			To:        func() []pipeline.Address { a := make([]pipeline.Address, len(req.To)); for i, r := range req.To { a[i] = pipeline.Address{Address: r} }; return a }(),
 			Subject:   req.Subject,
+			Date:      req.Date,
 			MessageID: req.MessageID,
 		},
 		Body: pipeline.Body{

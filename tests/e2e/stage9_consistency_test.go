@@ -1,158 +1,114 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
 )
 
+// Stage 9 checks internal consistency of the product's own database via its
+// admin API. (The old /api/test/db/* raw-dump endpoints it used to cross-check
+// against are gone — each server owns its own DB now — so consistency is
+// verified between the admin endpoints that DO exist.)
 func testStage9DatabaseConsistency(t *testing.T) {
-	// The API now only manages restmail.test (each server has its own database).
-	// Use a restmail.test admin account for consistency checks.
 	adminClient := newAPIClient()
-	if err := adminClient.login("eve@restmail.test", adminPassword); err != nil {
+	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
-	t.Run("MessageCountsMatchAcrossAPIs", func(t *testing.T) {
-		// Get message count from test endpoint
-		resp, err := httpClient.Get(apiBaseURL + "/api/test/db/messages")
+	type domain struct {
+		ID   uint   `json:"id"`
+		Name string `json:"name"`
+	}
+	type mailbox struct {
+		ID       uint   `json:"id"`
+		Address  string `json:"address"`
+		DomainID uint   `json:"domain_id"`
+		Domain   domain `json:"domain"`
+	}
+
+	listDomains := func(t *testing.T) []domain {
+		resp, err := adminClient.get("/api/v1/admin/domains")
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
-
-		var dbMessages struct {
-			Data []json.RawMessage `json:"data"`
+		var out struct {
+			Data []domain `json:"data"`
 		}
-		if err := decodeJSON(resp, &dbMessages); err != nil {
-			t.Fatalf("decode db messages: %v", err)
-		}
-		dbCount := len(dbMessages.Data)
-		t.Logf("Direct DB message count: %d", dbCount)
-
-		// Compare with user-facing API counts for a restmail.test user
-		eve := getMailboxByAddress(t, adminClient, "eve@restmail.test")
-
-		eveClient := newAPIClient()
-		if err := eveClient.login("eve@restmail.test", adminPassword); err != nil {
-			t.Skipf("Cannot login as eve: %v", err)
-		}
-
-		foldersResp, err := eveClient.get(fmt.Sprintf("/api/v1/accounts/%d/folders", eve.ID))
+		requireNoError(t, decodeJSON(resp, &out))
+		return out.Data
+	}
+	listMailboxes := func(t *testing.T) []mailbox {
+		resp, err := adminClient.get("/api/v1/admin/mailboxes")
 		requireNoError(t, err)
-		requireStatus(t, foldersResp, http.StatusOK)
+		requireStatus(t, resp, http.StatusOK)
+		var out struct {
+			Data []mailbox `json:"data"`
+		}
+		requireNoError(t, decodeJSON(resp, &out))
+		return out.Data
+	}
 
-		var folders struct {
-			Data []struct {
-				Name  string `json:"name"`
-				Total int    `json:"total"`
+	t.Run("MailboxCountMatchesStats", func(t *testing.T) {
+		mailboxes := listMailboxes(t)
+
+		resp, err := adminClient.get("/api/v1/admin/stats")
+		requireNoError(t, err)
+		requireStatus(t, resp, http.StatusOK)
+		var stats struct {
+			Data struct {
+				DomainCount  int `json:"domainCount"`
+				MailboxCount int `json:"mailboxCount"`
 			} `json:"data"`
 		}
-		if err := decodeJSON(foldersResp, &folders); err != nil {
-			t.Fatalf("decode folders: %v", err)
-		}
+		requireNoError(t, decodeJSON(resp, &stats))
 
-		apiTotal := 0
-		for _, f := range folders.Data {
-			apiTotal += f.Total
-			t.Logf("  Folder %s: %d messages", f.Name, f.Total)
+		if stats.Data.MailboxCount != len(mailboxes) {
+			t.Errorf("mailbox count inconsistent: stats=%d, list=%d",
+				stats.Data.MailboxCount, len(mailboxes))
+		} else {
+			t.Logf("Mailbox count consistent across stats + list: %d", len(mailboxes))
 		}
-		t.Logf("API total for eve: %d", apiTotal)
+		if stats.Data.DomainCount != len(listDomains(t)) {
+			t.Errorf("domain count inconsistent: stats=%d, list=%d",
+				stats.Data.DomainCount, len(listDomains(t)))
+		}
 	})
 
 	t.Run("NoOrphanedMailboxes", func(t *testing.T) {
-		// Verify all mailboxes in restmail DB belong to existing domains
-		resp, err := httpClient.Get(apiBaseURL + "/api/test/db/mailboxes")
-		requireNoError(t, err)
-		requireStatus(t, resp, http.StatusOK)
-
-		var mailboxes struct {
-			Data []struct {
-				ID       uint `json:"id"`
-				DomainID uint `json:"domain_id"`
-				Domain   *struct {
-					ID   uint   `json:"id"`
-					Name string `json:"name"`
-				} `json:"domain"`
-				Address string `json:"address"`
-			} `json:"data"`
-		}
-		if err := decodeJSON(resp, &mailboxes); err != nil {
-			t.Fatalf("decode mailboxes: %v", err)
-		}
-
-		domainsResp, err := httpClient.Get(apiBaseURL + "/api/test/db/domains")
-		requireNoError(t, err)
-		requireStatus(t, domainsResp, http.StatusOK)
-
-		var domains struct {
-			Data []struct {
-				ID   uint   `json:"id"`
-				Name string `json:"name"`
-			} `json:"data"`
-		}
-		if err := decodeJSON(domainsResp, &domains); err != nil {
-			t.Fatalf("decode domains: %v", err)
-		}
-
 		domainIDs := make(map[uint]bool)
-		for _, d := range domains.Data {
+		for _, d := range listDomains(t) {
 			domainIDs[d.ID] = true
 		}
 
+		mailboxes := listMailboxes(t)
 		orphaned := 0
-		for _, mb := range mailboxes.Data {
+		for _, mb := range mailboxes {
 			if !domainIDs[mb.DomainID] {
-				t.Errorf("Orphaned mailbox: %s (domain_id=%d not found)", mb.Address, mb.DomainID)
+				t.Errorf("orphaned mailbox: %s (domain_id=%d not in domains list)", mb.Address, mb.DomainID)
 				orphaned++
 			}
+			// The embedded domain must agree with the FK.
+			if mb.Domain.ID != 0 && mb.Domain.ID != mb.DomainID {
+				t.Errorf("mailbox %s: embedded domain id %d != domain_id %d", mb.Address, mb.Domain.ID, mb.DomainID)
+			}
 		}
-
 		if orphaned == 0 {
-			t.Logf("No orphaned mailboxes found (%d mailboxes checked)", len(mailboxes.Data))
+			t.Logf("No orphaned mailboxes (%d checked against %d domains)", len(mailboxes), len(domainIDs))
 		}
 	})
 
-	t.Run("DomainConsistency", func(t *testing.T) {
-		// Verify domains from test endpoint match admin API (restmail.test only)
-		testResp, err := httpClient.Get(apiBaseURL + "/api/test/db/domains")
-		requireNoError(t, err)
-		requireStatus(t, testResp, http.StatusOK)
-
-		var testDomains struct {
-			Data []struct {
-				ID   uint   `json:"id"`
-				Name string `json:"name"`
-			} `json:"data"`
+	t.Run("MailboxAddressMatchesDomain", func(t *testing.T) {
+		// Every mailbox address's domain part must equal its owning domain name.
+		mailboxes := listMailboxes(t)
+		for _, mb := range mailboxes {
+			if mb.Domain.Name == "" {
+				continue
+			}
+			want := fmt.Sprintf("@%s", mb.Domain.Name)
+			if len(mb.Address) <= len(want) || mb.Address[len(mb.Address)-len(want):] != want {
+				t.Errorf("mailbox %s does not belong to its domain %q", mb.Address, mb.Domain.Name)
+			}
 		}
-		if err := decodeJSON(testResp, &testDomains); err != nil {
-			t.Fatalf("decode: %v", err)
-		}
-
-		adminResp, err := adminClient.get("/api/v1/admin/domains")
-		requireNoError(t, err)
-		requireStatus(t, adminResp, http.StatusOK)
-
-		var adminDomains struct {
-			Data []struct {
-				ID   uint   `json:"id"`
-				Name string `json:"name"`
-			} `json:"data"`
-		}
-		if err := decodeJSON(adminResp, &adminDomains); err != nil {
-			t.Fatalf("decode: %v", err)
-		}
-
-		if len(testDomains.Data) != len(adminDomains.Data) {
-			t.Errorf("domain count mismatch: test=%d, admin=%d",
-				len(testDomains.Data), len(adminDomains.Data))
-		} else {
-			t.Logf("Domain count consistent: %d domains", len(testDomains.Data))
-		}
+		t.Logf("All %d mailbox addresses match their domain", len(mailboxes))
 	})
-
-	// NOTE: The previous PostfixDovecotSeeApiData test was removed because
-	// each mail server now has its own database. The API (postgres-restmail)
-	// cannot create users visible to Postfix/Dovecot (postgres-mail1/mail2).
-	// Traditional server users are managed via SQL init scripts.
 }
