@@ -20,7 +20,7 @@ func testStage13ImapIdle(t *testing.T) {
 	createDomain(t, adminClient, "restmail.test", "restmail")
 	createDomain(t, adminClient, "mail1.test", "traditional")
 	createMailbox(t, adminClient, "idle-user@restmail.test", "password123", "IDLE Test User")
-	createMailbox(t, adminClient, "idle-sender@mail1.test", "password123", "IDLE Sender")
+	createMailbox(t, adminClient, "idle-sender@restmail.test", "password123", "IDLE Sender")
 
 	t.Run("IDLE_CapabilityAdvertised", func(t *testing.T) {
 		// Verify that the IMAP gateway advertises the IDLE capability
@@ -242,7 +242,7 @@ func testStage13ImapIdle(t *testing.T) {
 			// Small delay to ensure IDLE is fully active
 			time.Sleep(2 * time.Second)
 			sendMailViaSMTP(t, mail1SMTPAddr,
-				"idle-sender@mail1.test", "idle-user@restmail.test",
+				"idle-sender@restmail.test", "idle-user@restmail.test",
 				subject, "This should trigger an IDLE EXISTS notification.")
 		}()
 
@@ -437,4 +437,3 @@ func readUntilTagRaw(t *testing.T, reader *bufio.Reader, tag string) string {
 	}
 	return strings.Join(allLines, "\n")
 }
-

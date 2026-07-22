@@ -14,10 +14,13 @@ func testStage4GatewayOutbound(t *testing.T) {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
-	// Ensure users exist
+	// Only the restmail sender is a product mailbox. alice@mail1.test and
+	// charlie@mail2.test are users of the reference servers — creating them in
+	// the product DB would make restmail believe it owns those domains and
+	// stop relaying to them. Outbound relay is verified over the reference
+	// servers' own IMAP.
 	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
-	alice := createMailbox(t, adminClient, "alice@mail1.test", adminPassword, "Alice")
-	bob := createMailbox(t, adminClient, "bob@mail2.test", adminPassword, "Bob")
+	ensureFastGreylist(t, adminClient)
 
 	gwClient := newAPIClient()
 	if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
@@ -38,21 +41,16 @@ func testStage4GatewayOutbound(t *testing.T) {
 		t.Logf("Enqueue response: %d", resp.StatusCode)
 		resp.Body.Close()
 
-		// Wait for delivery on alice's end
-		aliceClient := newAPIClient()
-		if err := aliceClient.login("alice@mail1.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as alice: %v", err)
-		}
-
-		msgID := waitForMessage(t, aliceClient, alice.ID, "INBOX", subject, 60*time.Second)
-		t.Logf("Mail3 → Mail1 relay delivered: id=%d", msgID)
+		// alice lives on the mail1 reference server — verify over its IMAP.
+		waitForImapMessage(t, mail1IMAPAddr, "alice@mail1.test", adminPassword, subject, 60*time.Second)
+		t.Log("Mail3 -> Mail1 relay delivered")
 	})
 
 	t.Run("Mail3_to_Mail2_SmtpRelay", func(t *testing.T) {
 		subject := fmt.Sprintf("test-m3-to-m2-%d", time.Now().UnixNano())
 
 		resp, err := gwClient.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "bob@mail2.test",
+			"address":   "charlie@mail2.test",
 			"sender":    "testuser@restmail.test",
 			"subject":   subject,
 			"body_text": "Hello Bob from restmail via gateway relay!",
@@ -60,13 +58,9 @@ func testStage4GatewayOutbound(t *testing.T) {
 		requireNoError(t, err)
 		resp.Body.Close()
 
-		bobClient := newAPIClient()
-		if err := bobClient.login("bob@mail2.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as bob: %v", err)
-		}
-
-		msgID := waitForMessage(t, bobClient, bob.ID, "INBOX", subject, 60*time.Second)
-		t.Logf("Mail3 → Mail2 relay delivered: id=%d", msgID)
+		// charlie lives on the mail2 reference server — verify over its IMAP.
+		waitForImapMessage(t, mail2IMAPAddr, "charlie@mail2.test", adminPassword, subject, 60*time.Second)
+		t.Log("Mail3 -> Mail2 relay delivered")
 	})
 
 	t.Run("Mail3_OutboundFallback", func(t *testing.T) {
@@ -124,11 +118,9 @@ func testStage4GatewayOutbound(t *testing.T) {
 			t.Errorf("expected quota %d bytes, got %d", quotaBytes, created.Data.QuotaBytes)
 		}
 
-		// Login as the quota user
-		quotaClient := newAPIClient()
-		if err := quotaClient.login(quotaAddr, "password123"); err != nil {
-			t.Fatalf("Cannot login as quota user: %v", err)
-		}
+		// Login as the quota user and resolve its webmail-account id (the quota
+		// endpoint is keyed by account, not mailbox).
+		quotaClient, quotaAcctID := restmailInbox(t, quotaAddr, "password123")
 
 		// Send messages until quota fills.
 		// Each message with headers is roughly 200-400 bytes,
@@ -200,7 +192,7 @@ func testStage4GatewayOutbound(t *testing.T) {
 		}
 
 		// Check quota API returns usage info
-		quotaResp, err := quotaClient.get(fmt.Sprintf("/api/v1/accounts/%d/quota", quotaUserID))
+		quotaResp, err := quotaClient.get(fmt.Sprintf("/api/v1/accounts/%d/quota", quotaAcctID))
 		requireNoError(t, err)
 		if quotaResp.StatusCode == http.StatusOK {
 			var quotaInfo struct {

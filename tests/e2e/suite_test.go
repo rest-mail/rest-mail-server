@@ -527,3 +527,33 @@ func ensureFastGreylist(t *testing.T, client *apiClient) {
 	}
 	t.Log("created inbound pipeline with fast greylist")
 }
+
+// restmailInbox logs in as a restmail mailbox user and returns an authed
+// client plus the user's own primary webmail-account id — the {id} that the
+// /accounts/{id}/folders/... message endpoints expect (NOT the mailbox id).
+// Both seeded and admin-created mailboxes get a primary webmail account
+// automatically.
+func restmailInbox(t *testing.T, address, password string) (*apiClient, uint) {
+	t.Helper()
+	c := newAPIClient()
+	requireNoError(t, c.login(address, password))
+	resp, err := c.get("/api/v1/accounts")
+	requireNoError(t, err)
+	var result struct {
+		Data []struct {
+			ID        uint `json:"id"`
+			IsPrimary bool `json:"is_primary"`
+		} `json:"data"`
+	}
+	requireNoError(t, decodeJSON(resp, &result))
+	for _, a := range result.Data {
+		if a.IsPrimary {
+			return c, a.ID
+		}
+	}
+	if len(result.Data) > 0 {
+		return c, result.Data[0].ID
+	}
+	t.Fatalf("no webmail account for %s", address)
+	return nil, 0
+}

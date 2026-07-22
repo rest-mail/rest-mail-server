@@ -21,7 +21,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	// inbound pipeline to the instant-greylist e2e configuration (greylisting
 	// stays active; only its retry window collapses to zero).
 	createDomain(t, adminClient, "restmail.test", "restmail")
-	gwUser := createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
+	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
 	ensureFastGreylist(t, adminClient)
 
 	t.Run("Mail1_to_Mail3_SmtpDelivery", func(t *testing.T) {
@@ -30,12 +30,8 @@ func testStage3GatewayInbound(t *testing.T) {
 			"alice@mail1.test", "testuser@restmail.test",
 			subject, "Hello restmail from mail1 via SMTP gateway!")
 
-		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as testuser@restmail.test: %v", err)
-		}
-
-		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Message delivered via gateway: id=%d", msgID)
 	})
 
@@ -45,12 +41,8 @@ func testStage3GatewayInbound(t *testing.T) {
 			"bob@mail2.test", "testuser@restmail.test",
 			subject, "Hello restmail from mail2 via SMTP gateway!")
 
-		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login: %v", err)
-		}
-
-		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Message delivered via gateway: id=%d", msgID)
 	})
 
@@ -80,12 +72,8 @@ func testStage3GatewayInbound(t *testing.T) {
 			"alice@mail1.test", "testuser@restmail.test",
 			subject, body)
 
-		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login: %v", err)
-		}
-
-		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 
 		// Fetch full message detail
 		resp, err := gwClient.get(fmt.Sprintf("/api/v1/messages/%d", msgID))
@@ -142,12 +130,8 @@ func testStage3GatewayInbound(t *testing.T) {
 		sc.sendExpect(t, ".", "250")
 		sc.sendExpect(t, "QUIT", "221")
 
-		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login: %v", err)
-		}
-
-		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Gateway submission delivery verified: id=%d", msgID)
 	})
 
@@ -329,12 +313,8 @@ func testStage3GatewayInbound(t *testing.T) {
 		sendRawMailViaSMTP(t, mail1SMTPAddr, "sender@mail1.test", "testuser@restmail.test", mimeBody.String())
 
 		// Wait for delivery via API
-		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as testuser@restmail.test: %v", err)
-		}
-
-		msgID := waitForMessage(t, gwClient, gwUser.ID, "INBOX", subject, 30*time.Second)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Attachment message delivered: id=%d", msgID)
 
 		// List attachments via API

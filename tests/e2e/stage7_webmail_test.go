@@ -14,11 +14,13 @@ func testStage7WebmailFlows(t *testing.T) {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
-	alice := createMailbox(t, adminClient, "alice@mail1.test", adminPassword, "Alice")
+	createMailbox(t, adminClient, "alice@restmail.test", adminPassword, "Alice")
+	ensureFastGreylist(t, adminClient)
+	_, aliceAcct := restmailInbox(t, "alice@restmail.test", adminPassword)
 
 	t.Run("WebmailLogin", func(t *testing.T) {
 		client := newAPIClient()
-		err := client.login("alice@mail1.test", adminPassword)
+		err := client.login("alice@restmail.test", adminPassword)
 		requireNoError(t, err)
 		if client.token == "" {
 			t.Fatal("no token after login")
@@ -28,9 +30,9 @@ func testStage7WebmailFlows(t *testing.T) {
 
 	t.Run("WebmailListFolders", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@mail1.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
-		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders", alice.ID))
+		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders", aliceAcct))
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
 
@@ -61,9 +63,9 @@ func testStage7WebmailFlows(t *testing.T) {
 
 	t.Run("WebmailReadMessage", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@mail1.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
-		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=10", alice.ID))
+		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=10", aliceAcct))
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
 
@@ -99,16 +101,16 @@ func testStage7WebmailFlows(t *testing.T) {
 	})
 
 	t.Run("WebmailComposeAndSend", func(t *testing.T) {
-		bob := createMailbox(t, adminClient, "bob@mail2.test", adminPassword, "Bob")
+		createMailbox(t, adminClient, "bob@restmail.test", adminPassword, "Bob")
 		subject := fmt.Sprintf("webmail-compose-%d", time.Now().UnixNano())
 
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@mail1.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
 		// Send via deliver endpoint
 		resp, err := client.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "bob@mail2.test",
-			"sender":    "alice@mail1.test",
+			"address":   "bob@restmail.test",
+			"sender":    "alice@restmail.test",
 			"subject":   subject,
 			"body_text": "Composed from webmail!",
 		})
@@ -116,19 +118,17 @@ func testStage7WebmailFlows(t *testing.T) {
 		resp.Body.Close()
 
 		// Verify delivery
-		bobClient := newAPIClient()
-		requireNoError(t, bobClient.login("bob@mail2.test", adminPassword))
-
-		msgID := waitForMessage(t, bobClient, bob.ID, "INBOX", subject, 30*time.Second)
+		bobClient, bobAcct := restmailInbox(t, "bob@restmail.test", adminPassword)
+		msgID := waitForMessage(t, bobClient, bobAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Webmail compose delivered: id=%d", msgID)
 	})
 
 	t.Run("WebmailMarkAsRead", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@mail1.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
 		// Get first unread message
-		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=10", alice.ID))
+		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=10", aliceAcct))
 		requireNoError(t, err)
 
 		var result struct {
@@ -159,12 +159,12 @@ func testStage7WebmailFlows(t *testing.T) {
 
 	t.Run("WebmailDeleteMessage", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@mail1.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
 		// First deliver a throwaway message
 		subject := fmt.Sprintf("delete-me-%d", time.Now().UnixNano())
 		resp, err := client.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "alice@mail1.test",
+			"address":   "alice@restmail.test",
 			"sender":    "deletesender@test.local",
 			"subject":   subject,
 			"body_text": "This will be deleted",
@@ -172,7 +172,7 @@ func testStage7WebmailFlows(t *testing.T) {
 		requireNoError(t, err)
 		resp.Body.Close()
 
-		msgID := waitForMessage(t, client, alice.ID, "INBOX", subject, 15*time.Second)
+		msgID := waitForMessage(t, client, aliceAcct, "INBOX", subject, 15*time.Second)
 
 		// Delete it
 		delResp, err := client.delete(fmt.Sprintf("/api/v1/messages/%d", msgID))
@@ -196,7 +196,7 @@ func testStage7WebmailFlows(t *testing.T) {
 	t.Run("WebmailAccountSwitching", func(t *testing.T) {
 		// Login as alice, check accounts
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@mail1.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
 		resp, err := client.get("/api/v1/accounts")
 		requireNoError(t, err)

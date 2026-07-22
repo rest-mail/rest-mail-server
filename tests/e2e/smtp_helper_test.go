@@ -438,7 +438,6 @@ func resolveDomain(t *testing.T, domain string) []string {
 	return addrs
 }
 
-
 // waitForImapMessage polls an IMAP server until a message with the given
 // subject is present in INBOX. Reference-server mailboxes live in the
 // reference instances' own databases and are invisible to the product API,
