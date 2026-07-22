@@ -181,6 +181,12 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	// Thread the raw source through for DKIM verification (dkim_verify must
+	// canonicalize the exact signed bytes, not the reconstructed EmailJSON).
+	if req.RawMessage != "" {
+		emailJSON.Metadata = map[string]string{"raw_message": req.RawMessage}
+	}
+
 	// Look up inbound pipeline for the recipient domain
 	var domainName string
 	if len(req.To) > 0 {

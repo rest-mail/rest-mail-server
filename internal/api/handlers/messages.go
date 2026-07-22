@@ -1722,6 +1722,15 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		emailJSON.Headers.InReplyTo = params.InReplyTo
 	}
 
+	// The raw source is the authoritative bytes for DKIM verification — thread
+	// it through so dkim_verify can canonicalize exactly what the signer signed.
+	if params.RawMessage != "" {
+		if emailJSON.Metadata == nil {
+			emailJSON.Metadata = make(map[string]string)
+		}
+		emailJSON.Metadata["raw_message"] = params.RawMessage
+	}
+
 	// ── Run inbound pipeline ─────────────────────────────────────────
 	if h.engine != nil {
 		var pipelineCfg *pipeline.PipelineConfig

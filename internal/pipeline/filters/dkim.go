@@ -15,6 +15,7 @@ import (
 
 	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/dkim"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -35,44 +36,46 @@ func NewDKIMVerify(_ []byte) (pipeline.Filter, error) {
 func (f *dkimVerifyFilter) Name() string             { return "dkim_verify" }
 func (f *dkimVerifyFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
-func (f *dkimVerifyFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
 
-	// Check for DKIM-Signature header
-	dkimSig := ""
-	if raw := email.Headers.Raw; raw != nil {
-		if sigs, ok := raw["Dkim-Signature"]; ok && len(sigs) > 0 {
-			dkimSig = sigs[0]
-		}
+	// DKIM must be verified against the exact signed bytes. The raw message is
+	// threaded through the pipeline as metadata by the inbound handlers; a
+	// parsed/reconstructed EmailJSON cannot reproduce the signer's
+	// canonicalization, so verification requires the raw source.
+	raw := ""
+	if email.Metadata != nil {
+		raw = email.Metadata["raw_message"]
 	}
 
-	result := "none"
+	result := dkim.ResultNone
 	detail := "no DKIM signature present"
+	authResults := "restmail; dkim=none"
 
-	if dkimSig != "" {
-		// In production, this would perform full DKIM verification:
-		// 1. Parse the DKIM-Signature header (d=, s=, b=, bh=, h=)
-		// 2. Look up the public key via DNS (selector._domainkey.domain TXT)
-		// 3. Verify the body hash
-		// 4. Verify the signature over canonicalized headers
-		//
-		// For now, we mark it as present but unverified.
-		result = "neutral"
-		detail = "DKIM signature present (verification pending crypto implementation)"
+	if raw != "" {
+		results := dkim.Verify(ctx, []byte(raw), nil)
+		if len(results) > 0 {
+			result, detail, authResults = summarizeDKIM(results)
+		}
+	} else if hasRawHeader(email.Headers.Raw, "Dkim-Signature") {
+		// Signature present but we never received the raw source to verify it.
+		result = dkim.ResultNeutral
+		detail = "DKIM signature present but raw message unavailable for verification"
+		authResults = "restmail; dkim=neutral"
 	}
 
 	// Add Authentication-Results header
 	if modified.Headers.Extra == nil {
 		modified.Headers.Extra = make(map[string]string)
 	}
-	modified.Headers.Extra["Authentication-Results"] = "restmail; dkim=" + result
+	modified.Headers.Extra["Authentication-Results"] = authResults
 
 	if modified.Headers.Raw == nil {
 		modified.Headers.Raw = make(map[string][]string)
 	}
 	modified.Headers.Raw["Authentication-Results"] = append(
 		modified.Headers.Raw["Authentication-Results"],
-		"restmail; dkim="+result,
+		authResults,
 	)
 
 	return &pipeline.FilterResult{
@@ -85,6 +88,43 @@ func (f *dkimVerifyFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 			Detail: detail,
 		},
 	}, nil
+}
+
+// summarizeDKIM reduces one-or-more signature verdicts to an overall result,
+// a log detail, and an RFC 8601 Authentication-Results value (one dkim= entry
+// per signature). The overall result is the strongest: pass > fail > temperror
+// > permerror > neutral > none.
+func summarizeDKIM(results []dkim.VerifyResult) (overall, detail, authResults string) {
+	rank := map[string]int{
+		dkim.ResultNone: 0, dkim.ResultNeutral: 1, dkim.ResultPermError: 2,
+		dkim.ResultTempError: 3, dkim.ResultFail: 4, dkim.ResultPass: 5,
+	}
+	overall = dkim.ResultNone
+	var entries, details []string
+	for _, r := range results {
+		entry := "dkim=" + r.Result
+		if r.Domain != "" {
+			entry += " header.d=" + r.Domain
+		}
+		entries = append(entries, entry)
+		details = append(details, fmt.Sprintf("d=%s s=%s %s: %s", r.Domain, r.Selector, r.Result, r.Reason))
+		if rank[r.Result] > rank[overall] {
+			overall = r.Result
+		}
+	}
+	authResults = "restmail; " + strings.Join(entries, "; ")
+	detail = strings.Join(details, " | ")
+	return overall, detail, authResults
+}
+
+// hasRawHeader reports whether a canonical (Header-Case) header name has a
+// non-empty value in the parsed raw-header map.
+func hasRawHeader(raw map[string][]string, name string) bool {
+	if raw == nil {
+		return false
+	}
+	vals, ok := raw[name]
+	return ok && len(vals) > 0
 }
 
 // dkimSignFilter signs outbound messages with the domain's DKIM key.

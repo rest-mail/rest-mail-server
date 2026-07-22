@@ -21,7 +21,7 @@ func splitMessage(raw []byte) ([]header, string) {
 	s = strings.ReplaceAll(s, "\r", "\n")
 	s = strings.ReplaceAll(s, "\n", "\r\n")
 
-	headerBlock := s
+	var headerBlock string
 	body := ""
 	if idx := strings.Index(s, "\r\n\r\n"); idx >= 0 {
 		headerBlock = s[:idx]
