@@ -313,9 +313,9 @@ func testStage12BounceDSN(t *testing.T) {
 		// different error codes.
 
 		type smtpTestCase struct {
-			code         int
-			isPermanent  bool
-			description  string
+			code        int
+			isPermanent bool
+			description string
 		}
 
 		cases := []smtpTestCase{

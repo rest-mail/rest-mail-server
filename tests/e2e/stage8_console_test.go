@@ -47,7 +47,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 
 	t.Run("ConsoleUserCreation", func(t *testing.T) {
 		// Create a user
-		mb := createMailbox(t, adminClient, "consoleuser@mail1.test", adminPassword, "Console User")
+		mb := createMailbox(t, adminClient, "consoleuser@restmail.test", adminPassword, "Console User")
 		t.Logf("Created mailbox: %+v", mb)
 
 		// Verify it shows in list
@@ -64,7 +64,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 
 		found := false
 		for _, m := range list.Data {
-			if m.Address == "consoleuser@mail1.test" {
+			if m.Address == "consoleuser@restmail.test" {
 				found = true
 				break
 			}
@@ -76,7 +76,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 
 	t.Run("ConsolePasswordReset", func(t *testing.T) {
 		// Update mailbox password via PATCH
-		mb := getMailboxByAddress(t, adminClient, "consoleuser@mail1.test")
+		mb := getMailboxByAddress(t, adminClient, "consoleuser@restmail.test")
 		resp, err := adminClient.patch(fmt.Sprintf("/api/v1/admin/mailboxes/%d", mb.ID),
 			map[string]string{"password": "newpassword123"})
 		requireNoError(t, err)
@@ -88,7 +88,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 
 		// Verify new password works
 		testClient := newAPIClient()
-		err = testClient.login("consoleuser@mail1.test", "newpassword123")
+		err = testClient.login("consoleuser@restmail.test", "newpassword123")
 		if err != nil {
 			t.Fatalf("login with new password failed: %v", err)
 		}
@@ -96,22 +96,18 @@ func testStage8ConsoleFlows(t *testing.T) {
 	})
 
 	t.Run("ConsoleInboxBrowsing", func(t *testing.T) {
-		// Login as a user and browse inbox (same API the console uses)
-		client := newAPIClient()
-		if err := client.login("alice@mail1.test", adminPassword); err != nil {
-			t.Skipf("Cannot login: %v", err)
-		}
-
-		alice := getMailboxByAddress(t, adminClient, "alice@mail1.test")
+		// Login as a seeded product user and browse inbox (same API the console
+		// uses). restmailInbox resolves the webmail-account id.
+		client, acctID := restmailInbox(t, "eve@restmail.test", "password123")
 
 		// List folders
-		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders", alice.ID))
+		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders", acctID))
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
 		resp.Body.Close()
 
 		// List messages
-		resp, err = client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=50", alice.ID))
+		resp, err = client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=50", acctID))
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
 
@@ -139,8 +135,8 @@ func testStage8ConsoleFlows(t *testing.T) {
 	t.Run("ConsoleComposeMail", func(t *testing.T) {
 		// Compose and send (same API the console uses)
 		resp, err := adminClient.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "alice@mail1.test",
-			"sender":    "consoleuser@mail1.test",
+			"address":   "eve@restmail.test",
+			"sender":    "consoleuser@restmail.test",
 			"subject":   "Console compose test",
 			"body_text": "Sent from console test",
 		})

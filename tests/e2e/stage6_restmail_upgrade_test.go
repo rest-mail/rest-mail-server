@@ -17,7 +17,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 
 	// Ensure restmail users exist
 	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
-	other := createMailbox(t, adminClient, "other@restmail.test", adminPassword, "Other User")
+	createMailbox(t, adminClient, "other@restmail.test", adminPassword, "Other User")
 
 	t.Run("Mail3_EhloAdvertisesRestmail", func(t *testing.T) {
 		sc := dialSMTP(t, restmailSMTPAddr)
@@ -79,12 +79,8 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		resp.Body.Close()
 
 		// Verify delivery
-		otherClient := newAPIClient()
-		if err := otherClient.login("other@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as other: %v", err)
-		}
-
-		msgID := waitForMessage(t, otherClient, other.ID, "INBOX", subject, 15*time.Second)
+		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", adminPassword)
+		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
 		t.Logf("RESTMAIL direct delivery verified: id=%d", msgID)
 	})
 
@@ -106,12 +102,8 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		requireNoError(t, err)
 		resp.Body.Close()
 
-		otherClient := newAPIClient()
-		if err := otherClient.login("other@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as other: %v", err)
-		}
-
-		msgID := waitForMessage(t, otherClient, other.ID, "INBOX", subject, 15*time.Second)
+		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", adminPassword)
+		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
 		t.Logf("Mail3→Mail3 delivery (upgrade path): id=%d", msgID)
 	})
 
@@ -123,13 +115,8 @@ func testStage6RestmailUpgrade(t *testing.T) {
 			"alice@mail1.test", "testuser@restmail.test",
 			subject, "mail1 sends to restmail, ignoring RESTMAIL extension")
 
-		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login: %v", err)
-		}
-
-		testUser := getMailboxByAddress(t, adminClient, "testuser@restmail.test")
-		msgID := waitForMessage(t, gwClient, testUser.ID, "INBOX", subject, 30*time.Second)
+		gwClient, gwAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		msgID := waitForMessage(t, gwClient, gwAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Traditional server delivered to restmail normally: id=%d", msgID)
 	})
 }
