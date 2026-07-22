@@ -36,6 +36,11 @@ vars:
   # RESTMAIL_*/MAIL3_* config + secrets are loaded via dotenv (below), not
   # hardcoded here.
   INSTANCE: '{{.INSTANCE | default "mail3.test"}}'
+  # Where this instance's config (manifest.yml, config.env, secrets.env) lives.
+  # Defaults to instances/<INSTANCE> in this repo, but can point anywhere
+  # relative to the repo root — e.g. a testbed-owned config under .workspace —
+  # so the product need not ship a committed instance.
+  INSTANCE_DIR: '{{.INSTANCE_DIR | default (printf "instances/%s" .INSTANCE)}}'
 
   # Adjacent testbed services that are NOT part of the mail instance proper,
   # so they stay here rather than in the instance manifest: the marketing
@@ -54,8 +59,8 @@ vars:
 # Task skips absent dotenv files and the *_DB_PASS/*_SECRET include mappings
 # fall back to dev defaults.
 dotenv:
-  - 'instances/{{.INSTANCE}}/config.env'
-  - 'instances/{{.INSTANCE}}/secrets.env'
+  - '{{.INSTANCE_DIR}}/config.env'
+  - '{{.INSTANCE_DIR}}/secrets.env'
 
 # ════════════════════════════════════════════════════════
 # Includes
@@ -871,12 +876,12 @@ tasks:
   instance:render:
     desc: 'Render instances/<INSTANCE>/manifest.yml → config.env (run after editing a manifest)'
     cmds:
-      - go run ./cmd/instance render instances/{{.INSTANCE}}/manifest.yml
+      - go run ./cmd/instance render {{.INSTANCE_DIR}}/manifest.yml
 
   instance:check:
     desc: 'Fail if instances/<INSTANCE>/config.env has drifted from its manifest'
     cmds:
-      - go run ./cmd/instance render -check instances/{{.INSTANCE}}/manifest.yml
+      - go run ./cmd/instance render -check {{.INSTANCE_DIR}}/manifest.yml
 
   instance:scaffold:
     desc: 'Create a new instance (allocates IPs + secrets): task instance:scaffold DOMAIN=mail4.test'
@@ -914,11 +919,11 @@ tasks:
       # Reuses reference-dnsmasq's render-fragment with rest-mail's split-gateway
       # template. mail3.test is currently also declared statically in the testbed
       # repo's zones.conf; scaffolded instances rely on this dynamic path.
-      - go run ./cmd/instance dns-env -o instances/{{.INSTANCE}}/dns.env instances/{{.INSTANCE}}/manifest.yml
+      - go run ./cmd/instance dns-env -o {{.INSTANCE_DIR}}/dns.env {{.INSTANCE_DIR}}/manifest.yml
       - |
         docker run --rm \
           -v "{{.FRAG_VOL}}:/dst" \
-          -v "$(pwd)/instances/{{.INSTANCE}}/dns.env:/env:ro" \
+          -v "$(pwd)/{{.INSTANCE_DIR}}/dns.env:/env:ro" \
           -v "$(pwd)/projects/dnsmasq/fragment.tmpl:/tmpl:ro" \
           {{.DNSMASQ_IMAGE}}:{{.DNSMASQ_TAG}} \
           render-fragment --name {{.INSTANCE}} --project {{.RESTMAIL_PROJECT}}
@@ -964,9 +969,9 @@ tasks:
           go run ./cmd/instance dkim-provision \
             --domain {{.MAIL3_HOSTNAME}} \
             --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
-          2>/dev/null | tail -1 > "instances/{{.INSTANCE}}/dkim.conf"
+          2>/dev/null | tail -1 > "{{.INSTANCE_DIR}}/dkim.conf"
         docker run --rm \
-          -v "{{.ROOT_DIR}}/instances/{{.INSTANCE}}:/src:ro" \
+          -v "{{.ROOT_DIR}}/{{.INSTANCE_DIR}}:/src:ro" \
           -v "{{.FRAG_VOL}}:/dst" \
           alpine:3.20 cp /src/dkim.conf /dst/11-{{.INSTANCE}}-dkim.conf
         docker restart {{.DNSMASQ_CONTAINER}} >/dev/null
