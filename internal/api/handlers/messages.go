@@ -1788,6 +1788,23 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		}
 	}
 
+	// ── Persist Authentication-Results ───────────────────────────────
+	// Prepend any Authentication-Results the inbound pipeline produced (the
+	// dkim/spf/dmarc verdicts) onto the stored raw message — standard receiver
+	// behavior — so the outcome is visible via the message API, not buried in
+	// the pipeline execution log.
+	if emailJSON != nil && params.RawMessage != "" {
+		if ars := emailJSON.Headers.Raw["Authentication-Results"]; len(ars) > 0 {
+			var b strings.Builder
+			for _, ar := range ars {
+				b.WriteString("Authentication-Results: ")
+				b.WriteString(ar)
+				b.WriteString("\r\n")
+			}
+			params.RawMessage = b.String() + params.RawMessage
+		}
+	}
+
 	// ── Ensure Message-ID exists ────────────────────────────────────
 	if params.MessageID == "" {
 		params.MessageID = rmail.GenerateMessageID(rmail.DomainFromAddress(params.Sender))
