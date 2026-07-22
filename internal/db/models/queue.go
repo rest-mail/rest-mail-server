@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type OutboundQueue struct {
 	ID            uint       `gorm:"primaryKey" json:"id"`
@@ -31,3 +35,19 @@ type OutboundQueue struct {
 }
 
 func (OutboundQueue) TableName() string { return "outbound_queue" }
+
+// BeforeCreate guarantees every queued message has a delivery deadline and a
+// retry budget, on ANY enqueue path. Without an ExpiresAt the worker's claim
+// query (`... AND expires_at > now`) silently skips the row forever: an
+// enqueue that forgot to set it (as the API /messages/send path did) left
+// expires_at at the zero time and the message never delivered. Defaulting
+// here — rather than at each call site — makes that class of bug impossible.
+func (q *OutboundQueue) BeforeCreate(*gorm.DB) error {
+	if q.ExpiresAt.IsZero() {
+		q.ExpiresAt = time.Now().Add(72 * time.Hour)
+	}
+	if q.MaxRetries == 0 {
+		q.MaxRetries = 30
+	}
+	return nil
+}
