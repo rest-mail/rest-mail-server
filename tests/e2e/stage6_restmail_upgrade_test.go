@@ -63,15 +63,21 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		subject := fmt.Sprintf("restmail-direct-%d", time.Now().UnixNano())
 
 		// The RESTMAIL direct-delivery endpoint takes from + to[] (the shape the
-		// RESTMAIL queue worker posts), not address/sender.
+		// RESTMAIL queue worker posts) plus the raw message a real peer would
+		// send — which must carry a Date (the inbound header_validate rejects
+		// date-less mail). Sender is an unconfigured .test domain so DMARC
+		// returns "none" rather than an internet-forwarded p=reject.
+		raw := fmt.Sprintf("From: peer@ext-e2e.test\r\nTo: other@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <rm-direct-%d@ext-e2e.test>\r\n\r\nDirect REST delivery test",
+			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
+		reqBody, _ := json.Marshal(map[string]any{
+			"from":        "peer@ext-e2e.test",
+			"to":          []string{"other@restmail.test"},
+			"subject":     subject,
+			"body_text":   "Direct REST delivery test",
+			"raw_message": raw,
+		})
 		resp, err := httpClient.Post(apiBaseURL+"/restmail/messages",
-			"application/json",
-			strings.NewReader(fmt.Sprintf(`{
-				"from": "testuser@restmail.test",
-				"to": ["other@restmail.test"],
-				"subject": %q,
-				"body_text": "Direct REST delivery test"
-			}`, subject)))
+			"application/json", strings.NewReader(string(reqBody)))
 		requireNoError(t, err)
 
 		if resp.StatusCode >= 400 {

@@ -22,7 +22,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	// stays active; only its retry window collapses to zero).
 	createDomain(t, adminClient, "restmail.test", "restmail")
 	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
-	ensureFastGreylist(t, adminClient)
+	ensureE2EPipeline(t, adminClient)
 
 	t.Run("Mail1_to_Mail3_SmtpDelivery", func(t *testing.T) {
 		subject := fmt.Sprintf("test-m1-to-m3-%d", time.Now().UnixNano())
@@ -119,20 +119,24 @@ func testStage3GatewayInbound(t *testing.T) {
 			t.Fatal("gateway submission port does not advertise AUTH")
 		}
 
+		// Authenticated submission relays OUTBOUND to an external recipient (the
+		// real submission use case) — verified on the mail1 reference server.
+		// (A same-domain self-submit would loop back through the inbound DMARC
+		// pipeline, which SPF-fails an unauthenticated-looking restmail.test
+		// sender from the submitting client IP.)
 		sc.authPlain(t, "testuser@restmail.test", adminPassword)
 		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
-		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<alice@mail1.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
 
-		msg := fmt.Sprintf("From: testuser@restmail.test\r\nTo: testuser@restmail.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <gw-submit-%d@test.local>\r\n\r\nSent via gateway submission!",
+		msg := fmt.Sprintf("From: testuser@restmail.test\r\nTo: alice@mail1.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <gw-submit-%d@test.local>\r\n\r\nSent via gateway submission!",
 			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
 		sc.send(t, msg)
 		sc.sendExpect(t, ".", "250")
 		sc.sendExpect(t, "QUIT", "221")
 
-		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
-		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
-		t.Logf("Gateway submission delivery verified: id=%d", msgID)
+		waitForImapMessage(t, mail1IMAPAddr, "alice@mail1.test", adminPassword, subject, 30*time.Second)
+		t.Log("Gateway submission relayed + delivered to the reference server")
 	})
 
 	t.Run("Mail3_SmtpSubmissionRequiresAuth", func(t *testing.T) {

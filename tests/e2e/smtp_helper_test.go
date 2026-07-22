@@ -112,7 +112,7 @@ func sendMailViaSMTP(t *testing.T, smtpAddr, from, to, subject, body string) {
 	t.Helper()
 	// Greylisting defers the first attempt for a new (sender, recipient, ip)
 	// triplet with 451 — exactly like the real internet. The e2e pipeline runs
-	// with a zero-length greylist window (see ensureFastGreylist), so an
+	// with a zero-length greylist window (see ensureE2EPipeline), so an
 	// immediate retry passes; retry until the deadline for robustness.
 	deadline := time.Now().Add(30 * time.Second)
 	for {

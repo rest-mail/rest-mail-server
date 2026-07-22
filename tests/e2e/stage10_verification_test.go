@@ -26,7 +26,7 @@ func testStage10Verification(t *testing.T) {
 	createMailbox(t, client, "verify-out@restmail.test", "password123", "Verify Outbound")
 	createMailbox(t, client, "verify-rm1@restmail.test", "password123", "Verify RM1")
 	createMailbox(t, client, "verify-rm2@restmail.test", "password123", "Verify RM2")
-	ensureFastGreylist(t, client)
+	ensureE2EPipeline(t, client)
 
 	t.Run("Mail1_to_Mail3_Inbound", func(t *testing.T) {
 		subject := fmt.Sprintf("E2E-inbound-%d", time.Now().UnixNano())

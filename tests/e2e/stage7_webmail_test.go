@@ -15,7 +15,7 @@ func testStage7WebmailFlows(t *testing.T) {
 	}
 
 	createMailbox(t, adminClient, "alice@restmail.test", adminPassword, "Alice")
-	ensureFastGreylist(t, adminClient)
+	ensureE2EPipeline(t, adminClient)
 	_, aliceAcct := restmailInbox(t, "alice@restmail.test", adminPassword)
 
 	t.Run("WebmailLogin", func(t *testing.T) {
@@ -177,21 +177,25 @@ func testStage7WebmailFlows(t *testing.T) {
 
 		msgID := waitForMessage(t, client, aliceAcct, "INBOX", subject, 15*time.Second)
 
-		// Delete it
-		delResp, err := client.delete(fmt.Sprintf("/api/v1/messages/%d", msgID))
-		requireNoError(t, err)
-		if delResp.StatusCode >= 400 {
-			body := readBody(delResp)
-			t.Fatalf("delete failed (%d): %s", delResp.StatusCode, body)
+		// DELETE is two-stage (standard webmail): the first moves the message to
+		// Trash (soft delete, still retrievable), the second purges it. Delete
+		// twice, then it's gone.
+		for pass := 1; pass <= 2; pass++ {
+			delResp, err := client.delete(fmt.Sprintf("/api/v1/messages/%d", msgID))
+			requireNoError(t, err)
+			if delResp.StatusCode >= 400 {
+				body := readBody(delResp)
+				t.Fatalf("delete pass %d failed (%d): %s", pass, delResp.StatusCode, body)
+			}
+			delResp.Body.Close()
 		}
-		delResp.Body.Close()
-		t.Logf("Deleted message %d", msgID)
+		t.Logf("Deleted message %d (to Trash, then purged)", msgID)
 
 		// Verify it's gone
 		getResp, err := client.get(fmt.Sprintf("/api/v1/messages/%d", msgID))
 		requireNoError(t, err)
 		if getResp.StatusCode != http.StatusNotFound {
-			t.Errorf("expected 404 after delete, got %d", getResp.StatusCode)
+			t.Errorf("expected 404 after purge, got %d", getResp.StatusCode)
 		}
 		getResp.Body.Close()
 	})
