@@ -61,6 +61,35 @@ func TestGenerateKeyAndRecordRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRecordFragmentChunks(t *testing.T) {
+	// Short value → single quoted string.
+	short := RecordFragment("default._domainkey.d.test", "v=DKIM1; k=rsa; p=abc")
+	if short != `txt-record=default._domainkey.d.test,"v=DKIM1; k=rsa; p=abc"` {
+		t.Errorf("short fragment wrong: %s", short)
+	}
+
+	// A value longer than 255 chars must split into multiple <=255 strings
+	// whose concatenation reproduces the original.
+	long := "v=DKIM1; k=rsa; p=" + strings.Repeat("A", 400)
+	frag := RecordFragment("n", long)
+	quoted := frag[len("txt-record=n,"):]
+	parts := strings.Split(quoted, ",")
+	if len(parts) < 2 {
+		t.Fatalf("expected multiple chunks, got %d: %s", len(parts), frag)
+	}
+	var joined string
+	for _, p := range parts {
+		s := strings.TrimPrefix(strings.TrimSuffix(p, `"`), `"`)
+		if len(s) > 255 {
+			t.Errorf("chunk exceeds 255 chars: %d", len(s))
+		}
+		joined += s
+	}
+	if joined != long {
+		t.Error("chunks do not reassemble to the original value")
+	}
+}
+
 func TestRecordValueRejectsBadInput(t *testing.T) {
 	if _, err := RecordValue("not a pem"); err == nil {
 		t.Error("expected error for non-PEM input")

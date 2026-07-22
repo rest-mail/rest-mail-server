@@ -36,6 +36,7 @@ coverage.html
 # ...but never commit per-instance secrets or generated dns.env.
 instances/*/secrets.env
 instances/*/dns.env
+instances/*/dkim.conf
 
 # Docker volumes (local dev)
 postgres-data/

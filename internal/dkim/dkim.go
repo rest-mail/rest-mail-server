@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"strings"
 )
 
 // DefaultSelector is the selector the API's DNS health check looks up
@@ -64,4 +65,25 @@ func RecordValue(publicKeyPEM string) (string, error) {
 	}
 	// block.Bytes is the DER SubjectPublicKeyInfo — exactly what p= carries.
 	return "v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(block.Bytes), nil
+}
+
+// RecordFragment renders a dnsmasq txt-record line for a DKIM record, splitting
+// the value into <=255-char strings (the DNS TXT per-string limit) so that
+// 2048-bit records — whose p= value exceeds 255 chars — stay valid:
+//
+//	txt-record=default._domainkey.d,"chunk1","chunk2"
+func RecordFragment(name, value string) string {
+	const maxLen = 255
+	var chunks []string
+	for i := 0; i < len(value); i += maxLen {
+		end := i + maxLen
+		if end > len(value) {
+			end = len(value)
+		}
+		chunks = append(chunks, `"`+value[i:end]+`"`)
+	}
+	if len(chunks) == 0 {
+		chunks = []string{`""`}
+	}
+	return "txt-record=" + name + "," + strings.Join(chunks, ",")
 }
