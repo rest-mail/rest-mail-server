@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -271,7 +272,20 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// Look up MX records
 	mxRecords, err := net.LookupMX(item.Domain)
 	if err != nil {
-		return fmt.Errorf("MX lookup failed for %s: %w", item.Domain, err)
+		// RFC 5321 implicit MX: a domain with no MX records is still
+		// deliverable via its A/AAAA record. Go's LookupMX reports "no such
+		// host" both for NXDOMAIN and for a host that simply has no MX (and
+		// some resolvers — e.g. Docker's embedded DNS answering for container
+		// hostnames — serve A records but no MX at all), so fall back to the
+		// domain itself and let the dial resolve it. A truly unresolvable host
+		// then fails at connect time and defers as usual. Other lookup errors
+		// (e.g. resolver unreachable) still defer here.
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+			mxRecords = []*net.MX{{Host: item.Domain, Pref: 0}}
+		} else {
+			return fmt.Errorf("MX lookup failed for %s: %w", item.Domain, err)
+		}
 	}
 
 	if len(mxRecords) == 0 {

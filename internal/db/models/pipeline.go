@@ -157,7 +157,10 @@ type Attachment struct {
 	Checksum    string    `gorm:"size:64;index" json:"checksum"` // SHA-256 hex
 	CreatedAt   time.Time `json:"created_at"`
 
-	Message Message `gorm:"foreignKey:MessageID;references:ID" json:"-"`
+	// NOTE: no Message association here, deliberately — it was unused (queries
+	// join messages by raw SQL) and, like the one removed from OutboundQueue,
+	// GORM misresolved `foreignKey:MessageID` onto messages.message_id (the
+	// RFC 5322 Message-ID string) during AutoMigrate, rewriting it to bigint.
 }
 
 func (Attachment) TableName() string { return "attachments" }
