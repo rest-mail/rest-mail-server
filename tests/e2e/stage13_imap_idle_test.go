@@ -123,6 +123,9 @@ func testStage13ImapIdle(t *testing.T) {
 			t.Fatalf("unexpected greeting: %s", strings.TrimSpace(greeting))
 		}
 
+		// The product IMAP gateway requires STARTTLS before LOGIN.
+		conn, reader = rawIMAPStartTLS(t, conn, reader)
+
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
 		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
@@ -196,6 +199,9 @@ func testStage13ImapIdle(t *testing.T) {
 		if !strings.Contains(greeting, "OK") {
 			t.Fatalf("unexpected greeting: %s", strings.TrimSpace(greeting))
 		}
+
+		// The product IMAP gateway requires STARTTLS before LOGIN.
+		conn, reader = rawIMAPStartTLS(t, conn, reader)
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
