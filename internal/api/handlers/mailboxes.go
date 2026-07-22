@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -217,7 +218,19 @@ func (h *MailboxHandler) CheckAddress(w http.ResponseWriter, r *http.Request) {
 
 	var mailbox models.Mailbox
 	if err := h.db.Where("address = ? AND active = ?", address, true).First(&mailbox).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "mailbox_not_found", "No mailbox found with address "+address)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// "Not local" is a valid answer to this query, not an error. The
+			// SMTP gateway's apiclient (and its tests) expect 200 + exists=false
+			// so authenticated submission can route external recipients to the
+			// outbound queue — a 404 here surfaced as a client error and made
+			// every external recipient temp-fail with 451 at RCPT.
+			respond.Data(w, http.StatusOK, map[string]interface{}{
+				"exists":  false,
+				"address": address,
+			})
+			return
+		}
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check address")
 		return
 	}
 
