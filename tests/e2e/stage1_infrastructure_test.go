@@ -16,9 +16,14 @@ func testStage1Infrastructure(t *testing.T) {
 	})
 
 	t.Run("PostgresConnectivity", func(t *testing.T) {
-		resp, err := httpClient.Get(apiBaseURL + "/api/test/db/domains")
+		// /api/health pings the database and reports it in the body — the
+		// /api/test/db/domains route this used to probe never existed.
+		resp, err := httpClient.Get(apiBaseURL + "/api/health")
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
+		if body := readBody(resp); !strings.Contains(body, `"db":"connected"`) {
+			t.Fatalf("health did not report db connected: %s", body)
+		}
 	})
 
 	t.Run("SmtpReachable_Mail1", func(t *testing.T) {

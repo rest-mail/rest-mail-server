@@ -12,7 +12,7 @@ import (
 
 func testStage11QueueRetry(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@restmail.test", adminPassword); err != nil {
+	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 

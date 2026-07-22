@@ -14,19 +14,28 @@ import (
 
 // ── Configuration ────────────────────────────────────────────────────
 
+// The suite runs as a user ON the simulated internet: `task test:e2e` executes
+// it in a container attached to the testbed mailnet with the testbed dnsmasq
+// as its only resolver, so mail hosts are addressed by their DNS names.
+// Exceptions addressed by infra IP, documented inline:
+//   - the API (10.99.0.20 is the testbed contract; it has no bare DNS name)
+//   - the reference servers' IMAP/POP3: their DNS models a unified host
+//     (SRV → mail1.test:143 = postfix's IP) but dovecot is a separate
+//     container — until the reference fragments grow imap./pop3. subdomain
+//     records, the suite dials dovecot's static IP directly.
 var (
-	apiBaseURL      = envOr("API_BASE_URL", "http://localhost:8080")
-	mail1SMTPAddr   = envOr("MAIL1_SMTP_ADDR", "10.99.0.11:25")
-	mail2SMTPAddr   = envOr("MAIL2_SMTP_ADDR", "10.99.0.12:25")
-	restmailSMTPAddr   = envOr("RESTMAIL_SMTP_ADDR", "10.99.0.13:25")
-	mail1IMAPAddr   = envOr("MAIL1_IMAP_ADDR", "10.99.0.14:143")
-	mail2IMAPAddr   = envOr("MAIL2_IMAP_ADDR", "10.99.0.15:143")
-	restmailIMAPAddr   = envOr("RESTMAIL_IMAP_ADDR", "10.99.0.13:143")
-	mail1POP3Addr   = envOr("MAIL1_POP3_ADDR", "10.99.0.14:110")
-	restmailPOP3Addr   = envOr("RESTMAIL_POP3_ADDR", "10.99.0.13:110")
-	mail1SubmitAddr = envOr("MAIL1_SUBMIT_ADDR", "10.99.0.11:587")
-	restmailSubmitAddr = envOr("RESTMAIL_SUBMIT_ADDR", "10.99.0.13:587")
-	adminPassword   = envOr("ADMIN_PASSWORD", "password123")
+	apiBaseURL         = envOr("API_BASE_URL", "http://10.99.0.20:8080")
+	mail1SMTPAddr      = envOr("MAIL1_SMTP_ADDR", "mail1.test:25")
+	mail2SMTPAddr      = envOr("MAIL2_SMTP_ADDR", "mail2.test:25")
+	restmailSMTPAddr   = envOr("RESTMAIL_SMTP_ADDR", "restmail.test:25")
+	mail1IMAPAddr      = envOr("MAIL1_IMAP_ADDR", "10.99.0.111:143")
+	mail2IMAPAddr      = envOr("MAIL2_IMAP_ADDR", "10.99.0.112:143")
+	restmailIMAPAddr   = envOr("RESTMAIL_IMAP_ADDR", "imap.restmail.test:143")
+	mail1POP3Addr      = envOr("MAIL1_POP3_ADDR", "10.99.0.111:110")
+	restmailPOP3Addr   = envOr("RESTMAIL_POP3_ADDR", "pop3.restmail.test:110")
+	mail1SubmitAddr    = envOr("MAIL1_SUBMIT_ADDR", "mail1.test:587")
+	restmailSubmitAddr = envOr("RESTMAIL_SUBMIT_ADDR", "restmail.test:587")
+	adminPassword      = envOr("ADMIN_PASSWORD", "password123")
 )
 
 func envOr(key, fallback string) string {
@@ -108,6 +117,35 @@ func (c *apiClient) delete(path string) (*http.Response, error) {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	return httpClient.Do(req)
+}
+
+// loginAdmin authenticates as an RBAC admin user (admin_users table — the
+// seeded `admin` account) and stores the access token. The same endpoint
+// serves both flows: `username` selects the admin path, `email` the mailbox
+// path.
+func (c *apiClient) loginAdmin(username, password string) error {
+	resp, err := c.post("/api/v1/auth/login", map[string]string{
+		"username": username,
+		"password": password,
+	})
+	if err != nil {
+		return fmt.Errorf("admin login request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("admin login failed (%d): %s", resp.StatusCode, body)
+	}
+	var result struct {
+		Data struct {
+			AccessToken string `json:"access_token"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("decode admin login: %w", err)
+	}
+	c.token = result.Data.AccessToken
+	return nil
 }
 
 // login authenticates and stores the access token.
@@ -402,4 +440,90 @@ func TestStages(t *testing.T) {
 	t.Run("Stage11_QueueRetry", testStage11QueueRetry)
 	t.Run("Stage12_BounceDSN", testStage12BounceDSN)
 	t.Run("Stage13_ImapIdle", testStage13ImapIdle)
+}
+
+// e2eInboundFilters mirrors pipeline.DefaultInboundPipeline exactly, except
+// the greylist delay is zero. Greylisting stays fully active — the first
+// attempt for a new (sender, recipient, ip) triplet is still deferred with
+// 451, exactly like the real internet — but the retry window is instant, so
+// the suite's SMTP helper converges on its immediate retry instead of in
+// five minutes.
+const e2eInboundFilters = `[
+ {"name":"size_check","type":"action","enabled":true,"config":{"max_size_mb":25}},
+ {"name":"spf_check","type":"action","enabled":true,"config":{"fail_action":"tag"}},
+ {"name":"dkim_verify","type":"transform","enabled":true,"config":{"fail_action":"tag"}},
+ {"name":"arc_verify","type":"transform","enabled":true,"config":{}},
+ {"name":"dmarc_check","type":"action","enabled":true,"config":{"fail_action":"quarantine"}},
+ {"name":"domain_allowlist","type":"action","enabled":true,"config":{}},
+ {"name":"contact_whitelist","type":"action","enabled":true,"config":{}},
+ {"name":"greylist","type":"action","enabled":true,"config":{"delay_minutes":0,"ttl_days":36}},
+ {"name":"header_validate","type":"action","enabled":true,"config":{}},
+ {"name":"recipient_check","type":"action","enabled":true,"config":{}},
+ {"name":"extract_attachments","type":"transform","enabled":true,"config":{"storage_dir":"/data/attachments"}},
+ {"name":"sieve","type":"transform","enabled":true,"config":{}}
+]`
+
+// ensureFastGreylist installs (or updates) restmail.test's inbound pipeline
+// with e2eInboundFilters. Idempotent: patches the existing inbound pipeline
+// if one exists, creates it otherwise.
+func ensureFastGreylist(t *testing.T, client *apiClient) {
+	t.Helper()
+
+	resp, err := client.get("/api/v1/admin/domains")
+	requireNoError(t, err)
+	var domResult struct {
+		Data []struct {
+			ID   uint   `json:"id"`
+			Name string `json:"name"`
+		} `json:"data"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&domResult)
+	resp.Body.Close()
+	requireNoError(t, err)
+	var domainID uint
+	for _, d := range domResult.Data {
+		if d.Name == "restmail.test" {
+			domainID = d.ID
+		}
+	}
+	if domainID == 0 {
+		t.Fatal("restmail.test domain not found")
+	}
+
+	filters := json.RawMessage(e2eInboundFilters)
+
+	resp, err = client.get(fmt.Sprintf("/api/v1/admin/pipelines?domain_id=%d", domainID))
+	requireNoError(t, err)
+	var pipeResult struct {
+		Data []struct {
+			ID        uint   `json:"id"`
+			Direction string `json:"direction"`
+		} `json:"data"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&pipeResult)
+	resp.Body.Close()
+	requireNoError(t, err)
+
+	for _, p := range pipeResult.Data {
+		if p.Direction == "inbound" {
+			resp, err := client.patch(fmt.Sprintf("/api/v1/admin/pipelines/%d", p.ID),
+				map[string]interface{}{"filters": filters, "active": true})
+			requireNoError(t, err)
+			body := readBody(resp)
+			if resp.StatusCode >= 300 {
+				t.Fatalf("update e2e inbound pipeline: %d: %s", resp.StatusCode, body)
+			}
+			t.Logf("updated inbound pipeline %d with fast greylist", p.ID)
+			return
+		}
+	}
+
+	resp, err = client.post("/api/v1/admin/pipelines",
+		map[string]interface{}{"domain_id": domainID, "direction": "inbound", "filters": filters, "active": true})
+	requireNoError(t, err)
+	body := readBody(resp)
+	if resp.StatusCode >= 300 {
+		t.Fatalf("create e2e inbound pipeline: %d: %s", resp.StatusCode, body)
+	}
+	t.Log("created inbound pipeline with fast greylist")
 }

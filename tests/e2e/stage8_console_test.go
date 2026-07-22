@@ -12,7 +12,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 	// domain management, user CRUD, inbox browsing, and compose/send.
 
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@mail1.test", adminPassword); err != nil {
+	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 

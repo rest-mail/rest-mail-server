@@ -11,49 +11,46 @@ import (
 func testStage2TraditionalMail(t *testing.T) {
 	client := newAPIClient()
 
-	// Setup: Create admin user and get token.
-	// We need an admin user. Create a bootstrap mailbox.
-	// First, create domains via the test/db endpoint (unauthenticated) or we need
-	// to bootstrap admin access. Let's try creating a first user and logging in.
-	// The admin API requires JWT auth. We need an initial admin user.
-	//
-	// Strategy: The system should have been seeded, or we use the first-created
-	// mailbox as admin. For now, create domains + mailboxes assuming there's
-	// an admin bootstrap mechanism (or the first user is admin).
+	// Decomposed-testbed model: every instance owns its users. The reference
+	// servers (mail1/mail2) seed alice+bob@mail1.test and charlie+diana@
+	// mail2.test in their OWN databases — they are not entities in the product
+	// API, so delivery to them is verified over IMAP, exactly as a user of
+	// that server would. The product API is only authoritative for
+	// restmail.test; its admin surface is exercised with the seeded RBAC
+	// admin below.
 
 	t.Run("Setup", func(t *testing.T) {
-		// Try to create an admin user first - if auth is required, skip setup
-		// For tests, we assume the API dev mode allows some admin ops or
-		// there's an existing admin. Try login with a known admin account.
-		err := client.login("admin@mail1.test", adminPassword)
-		if err != nil {
-			t.Logf("Admin login failed (will try to bootstrap): %v", err)
-			// In dev mode, some admin endpoints might be open.
-			// We'll try direct domain creation.
+		if err := client.loginAdmin("admin", "admin123!@"); err != nil {
+			t.Fatalf("RBAC admin login failed: %v", err)
 		}
 	})
 
-	// Create domains
+	// The admin API can still provision domains — but ONLY restmail-owned
+	// ones. Creating mail1.test/mail2.test here (as the shared-DB era did)
+	// would make the product believe it owns the reference domains and stop
+	// relaying to them. Prove the provisioning path with a throwaway domain
+	// and clean it up.
 	t.Run("CreateDomains", func(t *testing.T) {
 		if client.token == "" {
-			t.Skip("no admin token - need admin bootstrap")
+			t.Skip("no admin token")
 		}
-		createDomain(t, client, "mail1.test", "traditional")
-		createDomain(t, client, "mail2.test", "traditional")
-		createDomain(t, client, "restmail.test", "restmail")
+		d := createDomain(t, client, "e2e-stage2.test", "traditional")
+		resp, err := client.delete(fmt.Sprintf("/api/v1/admin/domains/%d", d.ID))
+		requireNoError(t, err)
+		resp.Body.Close()
+		t.Logf("throwaway domain %d created and deleted", d.ID)
 	})
 
-	// Create test mailboxes
-	var aliceID, bobID uint
+	// Provision a probe mailbox on the product's own domain; the
+	// ApiCreatedUser_* subtests below verify it is visible to the SMTP and
+	// IMAP planes of the product.
+	probeAddr := "e2eprobe@restmail.test"
 	t.Run("CreateMailboxes", func(t *testing.T) {
 		if client.token == "" {
 			t.Skip("no admin token")
 		}
-		alice := createMailbox(t, client, "alice@mail1.test", adminPassword, "Alice")
-		bob := createMailbox(t, client, "bob@mail2.test", adminPassword, "Bob")
-		aliceID = alice.ID
-		bobID = bob.ID
-		t.Logf("alice=%d, bob=%d", aliceID, bobID)
+		probe := createMailbox(t, client, probeAddr, adminPassword, "E2E Probe")
+		t.Logf("probe mailbox %s id=%d", probeAddr, probe.ID)
 	})
 
 	t.Run("Mail1_PostfixAcceptsSmtp", func(t *testing.T) {
@@ -79,7 +76,7 @@ func testStage2TraditionalMail(t *testing.T) {
 		t.Logf("mail2 EHLO capabilities: %v", caps)
 
 		sc.sendExpect(t, "MAIL FROM:<test@test.local>", "250")
-		sc.sendExpect(t, "RCPT TO:<bob@mail2.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<charlie@mail2.test>", "250")
 		sc.sendExpect(t, "RSET", "250")
 		sc.sendExpect(t, "QUIT", "221")
 	})
@@ -99,9 +96,9 @@ func testStage2TraditionalMail(t *testing.T) {
 		ic := dialIMAP(t, mail2IMAPAddr)
 		defer ic.close()
 
-		result, _ := ic.command(t, "LOGIN bob@mail2.test "+adminPassword)
+		result, _ := ic.command(t, "LOGIN charlie@mail2.test "+adminPassword)
 		if !strings.Contains(result, "OK") {
-			t.Fatalf("Dovecot auth failed for bob@mail2.test: %s", result)
+			t.Fatalf("Dovecot auth failed for charlie@mail2.test: %s", result)
 		}
 		ic.command(t, "LOGOUT")
 	})
@@ -109,35 +106,22 @@ func testStage2TraditionalMail(t *testing.T) {
 	subject1to2 := fmt.Sprintf("test-mail1to2-%d", time.Now().UnixNano())
 	t.Run("Mail1_to_Mail2_Delivery", func(t *testing.T) {
 		sendMailViaSMTP(t, mail1SMTPAddr,
-			"alice@mail1.test", "bob@mail2.test",
-			subject1to2, "Hello Bob from Alice via SMTP!")
+			"alice@mail1.test", "charlie@mail2.test",
+			subject1to2, "Hello Charlie from Alice via SMTP!")
 
-		// Login as bob and check for message
-		bobClient := newAPIClient()
-		err := bobClient.login("bob@mail2.test", adminPassword)
-		if err != nil {
-			t.Skipf("Cannot login as bob: %v", err)
-		}
-
-		// We need bob's account ID from the login response - use the mailbox ID
-		msgID := waitForMessage(t, bobClient, bobID, "INBOX", subject1to2, 30*time.Second)
-		t.Logf("Message delivered: id=%d", msgID)
+		// charlie lives on the mail2 reference server — verify over its IMAP.
+		waitForImapMessage(t, mail2IMAPAddr, "charlie@mail2.test", adminPassword, subject1to2, 30*time.Second)
+		t.Log("Message delivered to charlie@mail2.test")
 	})
 
 	subject2to1 := fmt.Sprintf("test-mail2to1-%d", time.Now().UnixNano())
 	t.Run("Mail2_to_Mail1_Delivery", func(t *testing.T) {
 		sendMailViaSMTP(t, mail2SMTPAddr,
-			"bob@mail2.test", "alice@mail1.test",
-			subject2to1, "Hello Alice from Bob via SMTP!")
+			"charlie@mail2.test", "alice@mail1.test",
+			subject2to1, "Hello Alice from Charlie via SMTP!")
 
-		aliceClient := newAPIClient()
-		err := aliceClient.login("alice@mail1.test", adminPassword)
-		if err != nil {
-			t.Skipf("Cannot login as alice: %v", err)
-		}
-
-		msgID := waitForMessage(t, aliceClient, aliceID, "INBOX", subject2to1, 30*time.Second)
-		t.Logf("Message delivered: id=%d", msgID)
+		waitForImapMessage(t, mail1IMAPAddr, "alice@mail1.test", adminPassword, subject2to1, 30*time.Second)
+		t.Log("Message delivered to alice@mail1.test")
 	})
 
 	t.Run("Mail1_ImapReadback", func(t *testing.T) {
@@ -162,7 +146,7 @@ func testStage2TraditionalMail(t *testing.T) {
 		ic := dialIMAP(t, mail2IMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "bob@mail2.test", adminPassword)
+		ic.login(t, "charlie@mail2.test", adminPassword)
 
 		result, lines := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -172,34 +156,34 @@ func testStage2TraditionalMail(t *testing.T) {
 		ic.command(t, "LOGOUT")
 	})
 
+	// In the shared-DB era these proved an API-created user became visible to
+	// postfix/dovecot. The decomposed equivalent: an admin-API-created mailbox
+	// on the product's own domain is visible to the product's SMTP plane
+	// (RCPT accepted — deliberately no DATA, so greylisting never enters the
+	// picture) and to its IMAP gateway (login succeeds).
 	t.Run("ApiCreatedUser_VisibleToPostfix", func(t *testing.T) {
 		if client.token == "" {
 			t.Skip("no admin token")
 		}
-		newUser := createMailbox(t, client, "newuser@mail1.test", adminPassword, "New User")
-		subject := fmt.Sprintf("test-newuser-%d", time.Now().UnixNano())
-
-		sendMailViaSMTP(t, mail2SMTPAddr,
-			"bob@mail2.test", "newuser@mail1.test",
-			subject, "Testing delivery to API-created user")
-
-		newUserClient := newAPIClient()
-		err := newUserClient.login("newuser@mail1.test", adminPassword)
-		if err != nil {
-			t.Skipf("Cannot login as newuser: %v", err)
-		}
-
-		msgID := waitForMessage(t, newUserClient, newUser.ID, "INBOX", subject, 30*time.Second)
-		t.Logf("Delivered to API-created user: id=%d", msgID)
+		sc := dialSMTP(t, restmailSMTPAddr)
+		defer sc.close()
+		sc.ehlo(t, "test.local")
+		sc.sendExpect(t, "MAIL FROM:<charlie@mail2.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<"+probeAddr+">", "250")
+		sc.sendExpect(t, "RSET", "250")
+		sc.sendExpect(t, "QUIT", "221")
+		t.Logf("SMTP plane accepts RCPT for API-created %s", probeAddr)
 	})
 
 	t.Run("ApiCreatedUser_VisibleToDovecot", func(t *testing.T) {
-		ic := dialIMAP(t, mail1IMAPAddr)
+		ic := dialIMAP(t, restmailIMAPAddr)
 		defer ic.close()
 
-		result, _ := ic.command(t, "LOGIN newuser@mail1.test "+adminPassword)
+		// The product's IMAP gateway (correctly) refuses plaintext LOGIN.
+		ic.starttls(t)
+		result, _ := ic.command(t, "LOGIN "+probeAddr+" "+adminPassword)
 		if !strings.Contains(result, "OK") {
-			t.Fatalf("Dovecot cannot auth API-created user: %s", result)
+			t.Fatalf("IMAP gateway cannot auth API-created user: %s", result)
 		}
 		ic.command(t, "LOGOUT")
 	})
@@ -265,17 +249,12 @@ func testStage2TraditionalMail(t *testing.T) {
 		subject := fmt.Sprintf("test-submission-%d", time.Now().UnixNano())
 
 		sendMailViaSubmission(t, mail1SubmitAddr,
-			"alice@mail1.test", "bob@mail2.test",
+			"alice@mail1.test", "charlie@mail2.test",
 			"alice@mail1.test", adminPassword,
 			subject, "Sent via authenticated SMTP submission!")
 
-		bobClient := newAPIClient()
-		if err := bobClient.login("bob@mail2.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as bob: %v", err)
-		}
-
-		msgID := waitForMessage(t, bobClient, bobID, "INBOX", subject, 30*time.Second)
-		t.Logf("Submission delivery verified: id=%d", msgID)
+		waitForImapMessage(t, mail2IMAPAddr, "charlie@mail2.test", adminPassword, subject, 30*time.Second)
+		t.Log("Submission delivery verified via mail2 IMAP")
 	})
 
 	// ── Deep protocol-level verification ─────────────────────────────
@@ -330,22 +309,18 @@ func testStage2TraditionalMail(t *testing.T) {
 		// Step 5: Send a message after authenticating
 		subject := fmt.Sprintf("test-proto-walk-%d", time.Now().UnixNano())
 		sc.sendExpect(t, "MAIL FROM:<alice@mail1.test>", "250")
-		sc.sendExpect(t, "RCPT TO:<bob@mail2.test>", "250")
+		sc.sendExpect(t, "RCPT TO:<charlie@mail2.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
 
-		msg := fmt.Sprintf("From: alice@mail1.test\r\nTo: bob@mail2.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <proto-walk-%d@test.local>\r\n\r\nSent via manual protocol walk.",
+		msg := fmt.Sprintf("From: alice@mail1.test\r\nTo: charlie@mail2.test\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <proto-walk-%d@test.local>\r\n\r\nSent via manual protocol walk.",
 			subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano())
 		sc.send(t, msg)
 		sc.sendExpect(t, ".", "250")
 		sc.sendExpect(t, "QUIT", "221")
 
-		// Verify delivery
-		bobClient := newAPIClient()
-		if err := bobClient.login("bob@mail2.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login as bob: %v", err)
-		}
-		msgID := waitForMessage(t, bobClient, bobID, "INBOX", subject, 30*time.Second)
-		t.Logf("Protocol walk message delivered: id=%d", msgID)
+		// Verify delivery on the mail2 reference server
+		waitForImapMessage(t, mail2IMAPAddr, "charlie@mail2.test", adminPassword, subject, 30*time.Second)
+		t.Log("Protocol walk message delivered")
 	})
 
 	t.Run("Mail1_SmtpSubmission_BadCredentials", func(t *testing.T) {
@@ -373,15 +348,10 @@ func testStage2TraditionalMail(t *testing.T) {
 	subjectForImap := fmt.Sprintf("imap-body-verify-%d", time.Now().UnixNano())
 	t.Run("Mail1_SendKnownMessage_ForImapVerify", func(t *testing.T) {
 		sendMailViaSMTP(t, mail2SMTPAddr,
-			"bob@mail2.test", "alice@mail1.test",
+			"charlie@mail2.test", "alice@mail1.test",
 			subjectForImap, knownBody)
 
-		// Wait for delivery via API to be sure it's there
-		aliceClient := newAPIClient()
-		if err := aliceClient.login("alice@mail1.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login: %v", err)
-		}
-		waitForMessage(t, aliceClient, aliceID, "INBOX", subjectForImap, 30*time.Second)
+		waitForImapMessage(t, mail1IMAPAddr, "alice@mail1.test", adminPassword, subjectForImap, 30*time.Second)
 	})
 
 	t.Run("Mail1_ImapFetchBody_VerifyContent", func(t *testing.T) {
@@ -483,14 +453,10 @@ func testStage2TraditionalMail(t *testing.T) {
 	subjectForPop := fmt.Sprintf("pop3-body-verify-%d", time.Now().UnixNano())
 	t.Run("Mail1_SendKnownMessage_ForPop3Verify", func(t *testing.T) {
 		sendMailViaSMTP(t, mail2SMTPAddr,
-			"bob@mail2.test", "alice@mail1.test",
+			"charlie@mail2.test", "alice@mail1.test",
 			subjectForPop, knownBodyPop)
 
-		aliceClient := newAPIClient()
-		if err := aliceClient.login("alice@mail1.test", adminPassword); err != nil {
-			t.Fatalf("Cannot login: %v", err)
-		}
-		waitForMessage(t, aliceClient, aliceID, "INBOX", subjectForPop, 30*time.Second)
+		waitForImapMessage(t, mail1IMAPAddr, "alice@mail1.test", adminPassword, subjectForPop, 30*time.Second)
 	})
 
 	t.Run("Mail1_Pop3Retr_VerifyContent", func(t *testing.T) {

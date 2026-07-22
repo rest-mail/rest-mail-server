@@ -110,20 +110,37 @@ func hasCapability(lines []string, cap string) bool {
 // sendMail sends a complete email via SMTP.
 func sendMailViaSMTP(t *testing.T, smtpAddr, from, to, subject, body string) {
 	t.Helper()
-	sc := dialSMTP(t, smtpAddr)
-	defer sc.close()
+	// Greylisting defers the first attempt for a new (sender, recipient, ip)
+	// triplet with 451 — exactly like the real internet. The e2e pipeline runs
+	// with a zero-length greylist window (see ensureFastGreylist), so an
+	// immediate retry passes; retry until the deadline for robustness.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		sc := dialSMTP(t, smtpAddr)
+		sc.ehlo(t, "test.local")
+		sc.sendExpect(t, "MAIL FROM:<"+from+">", "250")
+		sc.sendExpect(t, "RCPT TO:<"+to+">", "250")
+		sc.sendExpect(t, "DATA", "354")
 
-	sc.ehlo(t, "test.local")
-	sc.sendExpect(t, "MAIL FROM:<"+from+">", "250")
-	sc.sendExpect(t, "RCPT TO:<"+to+">", "250")
-	sc.sendExpect(t, "DATA", "354")
+		msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <test-%d@test.local>\r\n\r\n%s",
+			from, to, subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano(), body)
 
-	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <test-%d@test.local>\r\n\r\n%s",
-		from, to, subject, time.Now().Format(time.RFC1123Z), time.Now().UnixNano(), body)
+		sc.send(t, msg)
+		sc.send(t, ".")
+		resp := sc.readLine(t)
+		sc.send(t, "QUIT")
+		sc.close()
 
-	sc.send(t, msg)
-	sc.sendExpect(t, ".", "250")
-	sc.sendExpect(t, "QUIT", "221")
+		switch {
+		case strings.HasPrefix(resp, "250"):
+			return
+		case strings.HasPrefix(resp, "451") && time.Now().Before(deadline):
+			t.Logf("greylisted for %s, retrying: %s", to, resp)
+			time.Sleep(1 * time.Second)
+		default:
+			t.Fatalf("SMTP DATA for %s not accepted: %s", to, resp)
+		}
+	}
 }
 
 // starttls upgrades the SMTP connection to TLS.
@@ -421,3 +438,56 @@ func resolveDomain(t *testing.T, domain string) []string {
 	return addrs
 }
 
+
+// waitForImapMessage polls an IMAP server until a message with the given
+// subject is present in INBOX. Reference-server mailboxes live in the
+// reference instances' own databases and are invisible to the product API,
+// so delivery to them is verified over IMAP — the same way a real user of
+// that server would see it.
+func waitForImapMessage(t *testing.T, imapAddr, user, pass, subject string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		found := func() bool {
+			ic := dialIMAP(t, imapAddr)
+			defer ic.close()
+			ic.login(t, user, pass)
+			if result, _ := ic.command(t, "SELECT INBOX"); !strings.Contains(result, "OK") {
+				return false
+			}
+			result, lines := ic.command(t, fmt.Sprintf(`SEARCH SUBJECT "%s"`, subject))
+			if !strings.Contains(result, "OK") {
+				return false
+			}
+			for _, line := range lines {
+				if strings.HasPrefix(line, "* SEARCH") && len(strings.Fields(line)) >= 3 {
+					return true
+				}
+			}
+			return false
+		}()
+		if found {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("message %q not delivered to %s (%s) within %s", subject, user, imapAddr, timeout)
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// dialIMAPTLS dials an IMAP endpoint and immediately upgrades via STARTTLS.
+// The product's IMAP gateway (correctly) refuses plaintext authentication.
+func dialIMAPTLS(t *testing.T, addr string) *imapConn {
+	ic := dialIMAP(t, addr)
+	ic.starttls(t)
+	return ic
+}
+
+// dialPOP3TLS dials a POP3 endpoint and immediately upgrades via STLS.
+// The product's POP3 gateway (correctly) refuses plaintext authentication.
+func dialPOP3TLS(t *testing.T, addr string) *pop3Conn {
+	pc := dialPOP3(t, addr)
+	pc.stls(t)
+	return pc
+}

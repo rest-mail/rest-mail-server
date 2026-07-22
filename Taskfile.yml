@@ -262,37 +262,14 @@ includes:
       PROJECT: testbed
       IMAGE_TAG: 2026.04.28
 
-  mailserver:mail1:
-    taskfile: .workspace/reference-mailserver/Taskfile.yml
-    dir: .workspace/reference-mailserver
-    optional: true
-    vars:
-      CONFIG: mail1
-      HOSTNAME: mail1.test
-      MAILNET_NAME: '{{.RESTMAIL_NETWORK}}'
-      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
-      IMAGE_TAG: 2026.04.28
-      POSTGRES_IP: 10.99.0.41
-      POSTFIX_IP: 10.99.0.11
-      DOVECOT_IP: 10.99.0.111
-      RSPAMD_IP: 10.99.0.17
-      FAIL2BAN_IP: 10.99.0.14
-
-  mailserver:mail2:
-    taskfile: .workspace/reference-mailserver/Taskfile.yml
-    dir: .workspace/reference-mailserver
-    optional: true
-    vars:
-      CONFIG: mail2
-      HOSTNAME: mail2.test
-      MAILNET_NAME: '{{.RESTMAIL_NETWORK}}'
-      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
-      IMAGE_TAG: 2026.04.28
-      POSTGRES_IP: 10.99.0.42
-      POSTFIX_IP: 10.99.0.12
-      DOVECOT_IP: 10.99.0.112
-      RSPAMD_IP: 10.99.0.23
-      FAIL2BAN_IP: 10.99.0.24
+  # NOTE: the reference mail servers are deliberately NOT included here.
+  # Including .workspace/reference-mailserver/Taskfile.yml flattens its vars
+  # into this file's shared namespace, where they collide with ours — most
+  # dangerously, the reference postgres resolved its container name to
+  # "rest-mail-postgres" and a `mailserver:mailN:down` would docker-rm the
+  # PRODUCT's database. Drive the reference composer directly instead:
+  #   task -d .workspace/reference-mailserver up CONFIG=mail1
+  # (mail2 needs its per-instance IP/hostname overrides — see e2e:up).
 
 tasks:
 
@@ -491,7 +468,23 @@ tasks:
   test:e2e:
     desc: 'Run e2e tests against an already-running topology (use `task e2e` to also bring it up + tear down)'
     cmds:
-      - go test -race -count=1 -v -timeout 5m ./tests/e2e/...
+      # The suite must run ON the simulated internet: the host can neither
+      # route to mailnet IPs (Docker Desktop) nor resolve *.test. Run it in a
+      # golang container attached to the mailnet with the testbed dnsmasq as
+      # its only resolver — the suite is then just another internet user.
+      # The host Go module cache is mounted read-only to avoid re-downloading.
+      - |
+        mkdir -p {{.ROOT_DIR}}/.cache
+        printf 'nameserver %s\n' "{{.RESTMAIL_TESTBED_DNS_IP | default "10.99.0.10"}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
+        docker run --rm \
+          --network {{.RESTMAIL_NETWORK | default "testbed_mailnet"}} \
+          -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
+          -v {{.ROOT_DIR}}:/src -w /src \
+          -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+          -v rest-mail-e2e-gocache:/root/.cache/go-build \
+          -e GOFLAGS=-buildvcs=false \
+          golang:1.25 \
+          go test -race -count=1 -v -timeout 8m ./tests/e2e/...
 
   e2e:
     desc: 'Full e2e run: bring up the topology, run the tests, tear it down'
@@ -503,12 +496,18 @@ tasks:
   e2e:up:
     desc: 'Bring up the e2e topology: testbed + reference mail1/mail2 + restmail.test'
     cmds:
-      # Reference mail1/mail2 (postfix/dovecot/…) need the reference-* images:
-      # clone + build the reference daemon repos, or have registry access, first.
       - task: testbed:up
       - task: mailserver:init
-      - task: mailserver:mail1:up
-      - task: mailserver:mail2:up
+      - task: mailserver:certs:issue
+      # Reference servers are driven DIRECTLY (not via includes — see the note
+      # above `tasks:` about the var-flatten hazard). mail1 uses the reference
+      # repo's defaults; mail2 supplies its per-instance identity + IPs.
+      - task -d .workspace/reference-mailserver up CONFIG=mail1
+      - >-
+        task -d .workspace/reference-mailserver up CONFIG=mail2
+        HOSTNAME=mail2.test
+        POSTGRES_IP=10.99.0.42 POSTFIX_IP=10.99.0.12 DOVECOT_IP=10.99.0.112
+        RSPAMD_IP=10.99.0.23 FAIL2BAN_IP=10.99.0.24
       # restmail.test (the rest-mail instance) — config is testbed-owned.
       - INSTANCE=restmail.test task instance:certs:issue
       - INSTANCE=restmail.test task instance:dns:register
@@ -519,8 +518,8 @@ tasks:
     desc: 'Tear down the e2e topology (preserves data volumes)'
     cmds:
       - INSTANCE=restmail.test task instance:down
-      - task: mailserver:mail1:down
-      - task: mailserver:mail2:down
+      - task -d .workspace/reference-mailserver down CONFIG=mail1
+      - task -d .workspace/reference-mailserver down CONFIG=mail2
 
   test:all:
     desc: Run all tests (unit + e2e)
@@ -885,6 +884,23 @@ tasks:
     cmds:
       - mkdir -p .workspace
       - git clone git@github.com:rest-mail/reference-mailserver.git .workspace/reference-mailserver
+
+  mailserver:certs:issue:
+    desc: Issue TLS certs for the reference mail1/mail2 servers into the shared testbed certs volume
+    vars:
+      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
+      CERTGEN_IMAGE: '{{.CERTGEN_IMAGE | default "ghcr.io/rest-mail/reference-certgen"}}'
+      CERTGEN_TAG: '{{.CERTGEN_TAG | default "2026.04.28"}}'
+    cmds:
+      # Idempotent + CA-preserving: certgen reuses the existing CA and skips
+      # domains whose certs are already present. The reference dovecot/postfix
+      # crash-loop without /certs/mailN.test.{crt,key}, so this must run
+      # before their first bring-up.
+      - |
+        docker run --rm \
+          -v "{{.CERTS_VOLUME}}:/certs" \
+          -e CERTGEN_DOMAINS="mail1.test mail2.test" \
+          {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
 
   website:init:
     desc: First-run only — clone rest-mail/website into .workspace/website

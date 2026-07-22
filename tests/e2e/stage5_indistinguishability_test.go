@@ -153,7 +153,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		ic1.command(t, "LOGOUT")
 
 		// restmail (gateway)
-		ic3 := dialIMAP(t, restmailIMAPAddr)
+		ic3 := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic3.close()
 		ic3.login(t, "testuser@restmail.test", adminPassword)
 
@@ -176,7 +176,7 @@ func testStage5Indistinguishability(t *testing.T) {
 
 	t.Run("Pop3Behaviour_MatchTraditional", func(t *testing.T) {
 		// POP3 on restmail gateway
-		pc := dialPOP3(t, restmailPOP3Addr)
+		pc := dialPOP3TLS(t, restmailPOP3Addr)
 		defer pc.close()
 
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
@@ -302,7 +302,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("ImapStarttls_Mail3", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		// Check CAPABILITY for STARTTLS
@@ -332,7 +332,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("Pop3Stls_Mail3", func(t *testing.T) {
-		pc := dialPOP3(t, restmailPOP3Addr)
+		pc := dialPOP3TLS(t, restmailPOP3Addr)
 		defer pc.close()
 
 		caps := pc.capa(t)
@@ -447,7 +447,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("ImapLoginAfterStarttls_Mail3", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		_, lines := ic.command(t, "CAPABILITY")
@@ -475,7 +475,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("ImapBadLoginAfterStarttls_Mail3", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		_, lines := ic.command(t, "CAPABILITY")
@@ -500,7 +500,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	})
 
 	t.Run("Pop3BadAuthAfterStls_Mail3", func(t *testing.T) {
-		pc := dialPOP3(t, restmailPOP3Addr)
+		pc := dialPOP3TLS(t, restmailPOP3Addr)
 		defer pc.close()
 
 		caps := pc.capa(t)

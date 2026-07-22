@@ -4,38 +4,38 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"net/smtp"
 	"strings"
 	"testing"
 	"time"
 )
 
 var (
-	imapsGWAddr = envOr("IMAPS_GW_ADDR", "10.99.0.15:993")
+	imapsGWAddr = envOr("IMAPS_GW_ADDR", "imap.restmail.test:993")
 )
 
 func testStage10Verification(t *testing.T) {
 	client := newAPIClient()
-	requireNoError(t, client.login("admin@restmail.test", adminPassword))
+	requireNoError(t, client.loginAdmin("admin", "admin123!@"))
 
-	// Ensure domains and mailboxes exist
-	createDomain(t, client, "mail1.test", "traditional")
+	// Product-owned mailboxes only: mail1.test belongs to the mail1 reference
+	// server (its users are seeded there — alice/bob), and creating it in the
+	// product DB would make restmail stop relaying to it.
 	createDomain(t, client, "restmail.test", "restmail")
-	createMailbox(t, client, "verify-sender@mail1.test", "password123", "Verify Sender")
 	createMailbox(t, client, "verify-recv@restmail.test", "password123", "Verify Receiver")
 	createMailbox(t, client, "verify-out@restmail.test", "password123", "Verify Outbound")
 	createMailbox(t, client, "verify-rm1@restmail.test", "password123", "Verify RM1")
 	createMailbox(t, client, "verify-rm2@restmail.test", "password123", "Verify RM2")
-	createMailbox(t, client, "smtp-auth-user@mail1.test", "password123", "SMTP Auth")
-	createMailbox(t, client, "imap-test@mail1.test", "password123", "IMAP Test")
+	ensureFastGreylist(t, client)
 
 	t.Run("Mail1_to_Mail3_Inbound", func(t *testing.T) {
 		subject := fmt.Sprintf("E2E-inbound-%d", time.Now().UnixNano())
 
-		// Send via SMTP from mail1 to restmail
-		msg := fmt.Sprintf("From: verify-sender@mail1.test\r\nTo: verify-recv@restmail.test\r\nSubject: %s\r\n\r\nInbound test body\r\n", subject)
-		err := smtp.SendMail(mail1SMTPAddr, nil, "verify-sender@mail1.test", []string{"verify-recv@restmail.test"}, []byte(msg))
-		requireNoError(t, err)
+		// Relay from the mail1 reference server into restmail — with proper
+		// RFC 5322 headers (restmail's header_validate rejects date-less mail),
+		// via the greylist-aware helper.
+		sendMailViaSMTP(t, mail1SMTPAddr,
+			"alice@mail1.test", "verify-recv@restmail.test",
+			subject, "Inbound test body")
 
 		// Login as receiver and check via API
 		recvClient := newAPIClient()
@@ -90,20 +90,17 @@ func testStage10Verification(t *testing.T) {
 		// Send via API
 		resp, err := sendClient.post("/api/v1/messages/send", map[string]any{
 			"from":      "verify-out@restmail.test",
-			"to":        []string{"verify-sender@mail1.test"},
+			"to":        []string{"alice@mail1.test"},
 			"subject":   subject,
 			"body_text": "Outbound test body",
 		})
 		requireNoError(t, err)
 		requireStatus(t, resp, 200)
 
-		// Verify via SMTP that mail1 received it (check via the API as admin)
-		adminClient := newAPIClient()
-		requireNoError(t, adminClient.login("admin@restmail.test", adminPassword))
-
-		// We can't easily check mail1's mailbox via our API since it's traditional.
-		// Instead verify the message was queued successfully (200 response is sufficient).
-		t.Log("Outbound message accepted for delivery")
+		// Verify actual arrival on the mail1 reference server over its IMAP —
+		// this exercises the full outbound path: queue → MX → postfix → LMTP.
+		waitForImapMessage(t, mail1IMAPAddr, "alice@mail1.test", adminPassword, subject, 60*time.Second)
+		t.Log("Outbound message delivered to the reference server")
 	})
 
 	t.Run("Mail3_to_Mail3_RestmailUpgrade", func(t *testing.T) {
@@ -240,7 +237,7 @@ func testStage10Verification(t *testing.T) {
 		}
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN imap-test@mail1.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN verify-recv@restmail.test password123\r\n")
 		n, err = conn.Read(buf)
 		requireNoError(t, err)
 		loginResp := string(buf[:n])

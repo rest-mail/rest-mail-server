@@ -13,13 +13,16 @@ import (
 
 func testStage3GatewayInbound(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.login("admin@mail1.test", adminPassword); err != nil {
+	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
 		t.Skipf("Cannot get admin token: %v", err)
 	}
 
-	// Setup: Ensure restmail.test domain and a test user exist
+	// Setup: Ensure restmail.test domain and a test user exist, and switch the
+	// inbound pipeline to the instant-greylist e2e configuration (greylisting
+	// stays active; only its retry window collapses to zero).
 	createDomain(t, adminClient, "restmail.test", "restmail")
 	gwUser := createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
+	ensureFastGreylist(t, adminClient)
 
 	t.Run("Mail1_to_Mail3_SmtpDelivery", func(t *testing.T) {
 		subject := fmt.Sprintf("test-m1-to-m3-%d", time.Now().UnixNano())
@@ -166,7 +169,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_ImapFetchContent", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		ic.login(t, "testuser@restmail.test", adminPassword)
@@ -198,7 +201,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_Pop3RetrMessage", func(t *testing.T) {
-		pc := dialPOP3(t, restmailPOP3Addr)
+		pc := dialPOP3TLS(t, restmailPOP3Addr)
 		defer pc.close()
 
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
@@ -219,7 +222,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("IMAP_GetQuota", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		ic.login(t, "testuser@restmail.test", adminPassword)
@@ -382,7 +385,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_ImapFetchSections", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
 		ic.login(t, "testuser@restmail.test", adminPassword)
@@ -422,7 +425,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_Pop3Operations", func(t *testing.T) {
-		pc := dialPOP3(t, restmailPOP3Addr)
+		pc := dialPOP3TLS(t, restmailPOP3Addr)
 		defer pc.close()
 
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
