@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/restmail/restmail/internal/dkim"
 	"github.com/restmail/restmail/internal/instance"
 )
 
@@ -32,6 +33,8 @@ func main() {
 		scaffoldCmd(os.Args[2:])
 	case "dns-env":
 		dnsEnvCmd(os.Args[2:])
+	case "dkim-keygen":
+		dkimKeygenCmd(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "instance: unknown subcommand %q\n\n", os.Args[1])
 		usage()
@@ -54,6 +57,10 @@ usage:
 
   instance dns-env [-o out.env] <manifest.yml>
       Render the dns.env consumed by reference-dnsmasq render-fragment.
+
+  instance dkim-keygen [-selector default] [-bits 2048] <domain>
+      Generate a DKIM keypair; print the private key (stdout) + the DNS
+      record to publish (stderr).
 `)
 }
 
@@ -176,6 +183,36 @@ func renderCmd(args []string) {
 		fatal("write %s: %v", target, err)
 	}
 	fmt.Fprintf(os.Stderr, "wrote %s\n", target)
+}
+
+func dkimKeygenCmd(args []string) {
+	fs := flag.NewFlagSet("dkim-keygen", flag.ExitOnError)
+	selector := fs.String("selector", dkim.DefaultSelector, "DKIM selector")
+	bits := fs.Int("bits", 2048, "RSA key size in bits")
+	_ = fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "instance dkim-keygen: exactly one <domain> is required")
+		os.Exit(2)
+	}
+	domain := fs.Arg(0)
+
+	priv, pub, err := dkim.GenerateKey(*bits)
+	if err != nil {
+		fatal("dkim-keygen: %v", err)
+	}
+	rec, err := dkim.RecordValue(pub)
+	if err != nil {
+		fatal("dkim-keygen: %v", err)
+	}
+
+	// Private key → stdout (install via PUT /api/v1/admin/dkim/{id}); the DNS
+	// record → stderr so `... > dkim.key` captures only the key.
+	fmt.Print(priv)
+	fmt.Fprintf(os.Stderr, "\n# DKIM setup for %s (selector %q):\n", domain, *selector)
+	fmt.Fprintln(os.Stderr, "#   1. install the private key above via the admin API")
+	fmt.Fprintf(os.Stderr, "#   2. publish DNS TXT  %s\n", dkim.RecordName(*selector, domain))
+	fmt.Fprintf(os.Stderr, "#        \"%s\"\n", rec)
 }
 
 func fatal(format string, args ...any) {
