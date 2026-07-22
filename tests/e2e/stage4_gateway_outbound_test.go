@@ -30,10 +30,11 @@ func testStage4GatewayOutbound(t *testing.T) {
 	t.Run("Mail3_to_Mail1_SmtpRelay", func(t *testing.T) {
 		subject := fmt.Sprintf("test-m3-to-m1-%d", time.Now().UnixNano())
 
-		// Send via API (which enqueues in outbound queue, gateway relays via SMTP)
-		resp, err := gwClient.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "alice@mail1.test",
-			"sender":    "testuser@restmail.test",
+		// /messages/send is the OUTBOUND path (enqueues to outbound_queue; the
+		// worker relays via SMTP). /messages/deliver is inbound-only.
+		resp, err := gwClient.post("/api/v1/messages/send", map[string]any{
+			"from":      "testuser@restmail.test",
+			"to":        []string{"alice@mail1.test"},
 			"subject":   subject,
 			"body_text": "Hello Alice from restmail via gateway relay!",
 		})
@@ -49,11 +50,11 @@ func testStage4GatewayOutbound(t *testing.T) {
 	t.Run("Mail3_to_Mail2_SmtpRelay", func(t *testing.T) {
 		subject := fmt.Sprintf("test-m3-to-m2-%d", time.Now().UnixNano())
 
-		resp, err := gwClient.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "charlie@mail2.test",
-			"sender":    "testuser@restmail.test",
+		resp, err := gwClient.post("/api/v1/messages/send", map[string]any{
+			"from":      "testuser@restmail.test",
+			"to":        []string{"charlie@mail2.test"},
 			"subject":   subject,
-			"body_text": "Hello Bob from restmail via gateway relay!",
+			"body_text": "Hello Charlie from restmail via gateway relay!",
 		})
 		requireNoError(t, err)
 		resp.Body.Close()
