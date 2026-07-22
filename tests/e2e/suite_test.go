@@ -557,11 +557,3 @@ func restmailInbox(t *testing.T, address, password string) (*apiClient, uint) {
 	t.Fatalf("no webmail account for %s", address)
 	return nil, 0
 }
-
-// waitForRestmailMessage logs in as a restmail user and polls their INBOX (via
-// the product API) until a message with the subject appears.
-func waitForRestmailMessage(t *testing.T, address, password, subject string, timeout time.Duration) uint {
-	t.Helper()
-	c, acctID := restmailInbox(t, address, password)
-	return waitForMessage(t, c, acctID, "INBOX", subject, timeout)
-}
