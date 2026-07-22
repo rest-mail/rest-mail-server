@@ -74,6 +74,25 @@ func testStage10Verification(t *testing.T) {
 			t.Fatal("message not delivered")
 		}
 		t.Logf("Inbound message delivered: ID=%d", msgID)
+
+		// The mail1 reference server DKIM-signs its outbound mail (provisioned
+		// by `task dkim:provision`), so restmail must verify that signature
+		// end-to-end: it resolves mail1's key via the testbed DNS and records
+		// the verdict as an Authentication-Results header on the delivered
+		// message. dkim=pass here proves the whole loop — reference signing +
+		// product verification over the simulated internet.
+		rawResp, err := recvClient.get(fmt.Sprintf("/api/v1/messages/%d/raw", msgID))
+		requireNoError(t, err)
+		raw := readBody(rawResp)
+		if strings.Contains(raw, "dkim=pass") {
+			t.Log("DKIM verified end-to-end: Authentication-Results shows dkim=pass")
+		} else {
+			hdr := raw
+			if i := strings.Index(hdr, "\n\n"); i > 0 {
+				hdr = hdr[:i]
+			}
+			t.Errorf("expected dkim=pass in Authentication-Results; got headers:\n%s", hdr)
+		}
 	})
 
 	t.Run("Mail3_to_Mail1_Outbound", func(t *testing.T) {
