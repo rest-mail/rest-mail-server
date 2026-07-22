@@ -32,7 +32,7 @@ func TestMtaStsIDStable(t *testing.T) {
 }
 
 func TestDNSEnvFromMail3Manifest(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "instances", "mail3.test", "manifest.yml"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "manifest.yml"))
 	if err != nil {
 		t.Fatalf("read manifest: %v", err)
 	}

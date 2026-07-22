@@ -12,7 +12,9 @@ import (
 // edits the manifest without re-running `task instance:render` (or edits the
 // generated config.env by hand), this fails — which is the whole point.
 func TestRenderMatchesCommittedConfig(t *testing.T) {
-	dir := filepath.Join("..", "..", "instances", "mail3.test")
+	// Hermetic fixture (a committed copy), so this doesn't depend on any live
+	// instance config — those are testbed-owned now, not shipped in this repo.
+	dir := "testdata"
 
 	raw, err := os.ReadFile(filepath.Join(dir, "manifest.yml"))
 	if err != nil {
