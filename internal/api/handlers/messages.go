@@ -1695,6 +1695,17 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		}
 	}
 
+	// The gateway extracts Subject/Message-ID but not Date, so pull it from the
+	// raw message. Without this, inbound pipeline filters (e.g. header_validate)
+	// see an empty Date on every message and reject well-formed mail that does
+	// carry a Date header. Absent/unparseable RawMessage leaves Date empty, so a
+	// genuinely date-less message is still correctly flagged.
+	if params.RawMessage != "" {
+		if parsed, perr := mail.ReadMessage(strings.NewReader(params.RawMessage)); perr == nil {
+			emailJSON.Headers.Date = parsed.Header.Get("Date")
+		}
+	}
+
 	// ── Run inbound pipeline ─────────────────────────────────────────
 	if h.engine != nil {
 		var pipelineCfg *pipeline.PipelineConfig
