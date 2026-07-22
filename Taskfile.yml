@@ -996,23 +996,27 @@ tasks:
       - task: status
 
   instance:new:
-    desc: 'Scaffold a new instance + print next steps: task instance:new DOMAIN=mail4.test'
+    desc: 'Spin up a new instance end-to-end (scaffold → cert → DNS → up): task instance:new DOMAIN=mail4.test'
     cmds:
+      - |
+        if [ -z "{{.DOMAIN}}" ]; then
+          echo "usage: task instance:new DOMAIN=<domain>" >&2
+          exit 2
+        fi
       - task: instance:scaffold
         vars: { DOMAIN: '{{.DOMAIN}}' }
+      # Re-invoke with INSTANCE set so the freshly-scaffolded config.env loads.
+      - INSTANCE={{.DOMAIN}} task instance:certs:issue
+      - INSTANCE={{.DOMAIN}} task instance:dns:register
+      - INSTANCE={{.DOMAIN}} task instance:up
       - |
         cat <<BANNER
 
-          {{.DOMAIN}} scaffolded. Next steps:
+          {{.DOMAIN}} is up — scaffolded, cert issued, DNS registered, seeded, running.
+          Reachable on the mailnet; secondary instances are mailnet-only.
 
-            INSTANCE={{.DOMAIN}} task instance:dns:register   # publish DNS (needs the testbed running)
-            INSTANCE={{.DOMAIN}} task instance:up             # bring up the stack
-
-          Not yet automated (see docs/plans/2026-07-21-parameterization.md):
-            - TLS cert issuance for {{.DOMAIN}}
-            - DKIM key generation + DNS publication
-            - admin bootstrap (create platform admin + register the domain)
-            - instance-aware DB seeding (cmd/seed is currently mail3.test-specific)
+            DKIM (optional):  INSTANCE={{.DOMAIN}} task instance:dkim
+            Tear down:        INSTANCE={{.DOMAIN}} task instance:down
 
         BANNER
 
