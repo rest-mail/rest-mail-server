@@ -32,8 +32,8 @@ vars:
   SMTP_GATEWAY_IMAGE: '{{.SMTP_GATEWAY_REGISTRY}}/smtp-gateway:{{.SMTP_GATEWAY_IMAGE_TAG}}'
   SMTP_GATEWAY_CONTAINER_NAME: '{{.SMTP_GATEWAY_PROJECT}}-smtp-gateway'
   SMTP_GATEWAY_LOGS_VOLUME: '{{.SMTP_GATEWAY_PROJECT}}-gateway-logs'
-  SMTP_GATEWAY_API_BASE_URL: '{{.SMTP_GATEWAY_API_BASE_URL | default "http://rest-mail-api:8080"}}'
-  SMTP_GATEWAY_DB_HOST: '{{.SMTP_GATEWAY_DB_HOST | default "rest-mail-postgres"}}'
+  SMTP_GATEWAY_API_BASE_URL: '{{.SMTP_GATEWAY_API_BASE_URL | default "http://10.99.0.20:8080"}}'
+  SMTP_GATEWAY_DB_HOST: '{{.SMTP_GATEWAY_DB_HOST | default "10.99.0.43"}}'
   SMTP_GATEWAY_DB_PORT: '{{.SMTP_GATEWAY_DB_PORT | default "5432"}}'
   SMTP_GATEWAY_DB_NAME: '{{.SMTP_GATEWAY_DB_NAME | default "restmail"}}'
   SMTP_GATEWAY_DB_USER: '{{.SMTP_GATEWAY_DB_USER | default "restmail"}}'
@@ -95,12 +95,17 @@ tasks:
         # can run beside the primary (reachable on the mailnet like the refs).
         PUBLISH="-p {{.SMTP_GATEWAY_PORT_INBOUND}}:{{.SMTP_GATEWAY_PORT_INBOUND}} -p {{.SMTP_GATEWAY_PORT_SUBMISSION}}:{{.SMTP_GATEWAY_PORT_SUBMISSION}} -p {{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}:{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}"
         [ "{{.SMTP_GATEWAY_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
+        # Testbed dnsmasq as the ONLY resolver (see tasks/api.yml for rationale):
+        # outbound MX lookups must see the simulated internet, not Docker's
+        # embedded DNS. Peer services are addressed by static mailnet IPs.
+        mkdir -p {{.ROOT_DIR}}/.cache
+        printf 'nameserver %s\n' "{{.SMTP_GATEWAY_DNS_IP}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
         docker run -d --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
           --hostname {{.SMTP_GATEWAY_MAIL3_HOSTNAME}} \
           --restart unless-stopped \
           --network {{.SMTP_GATEWAY_NETWORK}} \
           --ip {{.SMTP_GATEWAY_IP}} \
-          --dns {{.SMTP_GATEWAY_DNS_IP}} \
+          -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
           $PUBLISH \
           -v {{.SMTP_GATEWAY_CERTS_VOLUME}}:/certs:ro \
           -v {{.SMTP_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
