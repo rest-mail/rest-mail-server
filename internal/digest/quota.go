@@ -80,7 +80,7 @@ func (q *QuotaReconciler) reconcile() {
 		var attachmentUsage int64
 		q.db.Model(&models.Attachment{}).
 			Joins("JOIN messages ON messages.id = attachments.message_id").
-			Where("messages.mailbox_id = ? AND messages.deleted = ?", mb.ID, false).
+			Where("messages.mailbox_id = ? AND messages.is_deleted = ?", mb.ID, false).
 			Select("COALESCE(SUM(attachments.size_bytes), 0)").
 			Scan(&attachmentUsage)
 
