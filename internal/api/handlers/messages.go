@@ -1659,51 +1659,67 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		}
 	}
 
-	emailJSON := &pipeline.EmailJSON{
-		Envelope: pipeline.Envelope{
-			MailFrom:  params.Sender,
-			RcptTo:    []string{mailbox.Address},
-			ClientIP:  params.ClientIP,
-			Helo:      params.HeloName,
-			Direction: "inbound",
-		},
-		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Name: params.SenderName, Address: params.Sender}},
-			To:        toAddrs,
-			Cc:        ccAddrs,
-			Subject:   params.Subject,
-			MessageID: params.MessageID,
-			InReplyTo: params.InReplyTo,
-		},
-		Body: pipeline.Body{
-			ContentType: "text/plain",
-			Content:     params.BodyText,
-		},
-	}
-	if params.BodyText != "" && params.BodyHTML != "" {
-		emailJSON.Body = pipeline.Body{
-			ContentType: "multipart/alternative",
-			Parts: []pipeline.Body{
-				{ContentType: "text/plain; charset=utf-8", Content: params.BodyText},
-				{ContentType: "text/html; charset=utf-8", Content: params.BodyHTML},
-			},
+	// The raw MIME message is the authoritative source for body, attachments,
+	// inline parts, calendar events, and headers (Date/Subject/Message-ID).
+	// Build the pipeline message by PARSING it — the gateway only forwards a few
+	// cherry-picked params, so constructing solely from those silently dropped
+	// every attachment (and the Date header, which header_validate then rejected
+	// on). Fall back to the params only when there is no parseable raw message.
+	var emailJSON *pipeline.EmailJSON
+	if params.RawMessage != "" {
+		if parsed, perr := rmime.Parse([]byte(params.RawMessage)); perr == nil {
+			emailJSON = parsed
 		}
-	} else if params.BodyHTML != "" {
-		emailJSON.Body = pipeline.Body{
-			ContentType: "text/html",
-			Content:     params.BodyHTML,
+	}
+	if emailJSON == nil {
+		emailJSON = &pipeline.EmailJSON{
+			Headers: pipeline.Headers{
+				Subject:   params.Subject,
+				MessageID: params.MessageID,
+				InReplyTo: params.InReplyTo,
+			},
+			Body: pipeline.Body{ContentType: "text/plain", Content: params.BodyText},
+		}
+		if params.BodyText != "" && params.BodyHTML != "" {
+			emailJSON.Body = pipeline.Body{
+				ContentType: "multipart/alternative",
+				Parts: []pipeline.Body{
+					{ContentType: "text/plain; charset=utf-8", Content: params.BodyText},
+					{ContentType: "text/html; charset=utf-8", Content: params.BodyHTML},
+				},
+			}
+		} else if params.BodyHTML != "" {
+			emailJSON.Body = pipeline.Body{ContentType: "text/html", Content: params.BodyHTML}
 		}
 	}
 
-	// The gateway extracts Subject/Message-ID but not Date, so pull it from the
-	// raw message. Without this, inbound pipeline filters (e.g. header_validate)
-	// see an empty Date on every message and reject well-formed mail that does
-	// carry a Date header. Absent/unparseable RawMessage leaves Date empty, so a
-	// genuinely date-less message is still correctly flagged.
-	if params.RawMessage != "" {
-		if parsed, perr := mail.ReadMessage(strings.NewReader(params.RawMessage)); perr == nil {
-			emailJSON.Headers.Date = parsed.Header.Get("Date")
-		}
+	// The SMTP envelope is not part of the message body — always set it from the
+	// delivery params, with the resolved mailbox as the authoritative recipient.
+	emailJSON.Envelope = pipeline.Envelope{
+		MailFrom:  params.Sender,
+		RcptTo:    []string{mailbox.Address},
+		ClientIP:  params.ClientIP,
+		Helo:      params.HeloName,
+		Direction: "inbound",
+	}
+	// Fill any header the parse didn't populate from the gateway-extracted params.
+	if len(emailJSON.Headers.From) == 0 {
+		emailJSON.Headers.From = []pipeline.Address{{Name: params.SenderName, Address: params.Sender}}
+	}
+	if len(emailJSON.Headers.To) == 0 {
+		emailJSON.Headers.To = toAddrs
+	}
+	if len(emailJSON.Headers.Cc) == 0 {
+		emailJSON.Headers.Cc = ccAddrs
+	}
+	if emailJSON.Headers.Subject == "" {
+		emailJSON.Headers.Subject = params.Subject
+	}
+	if emailJSON.Headers.MessageID == "" {
+		emailJSON.Headers.MessageID = params.MessageID
+	}
+	if emailJSON.Headers.InReplyTo == "" {
+		emailJSON.Headers.InReplyTo = params.InReplyTo
 	}
 
 	// ── Run inbound pipeline ─────────────────────────────────────────
