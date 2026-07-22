@@ -557,3 +557,11 @@ func restmailInbox(t *testing.T, address, password string) (*apiClient, uint) {
 	t.Fatalf("no webmail account for %s", address)
 	return nil, 0
 }
+
+// requireSuccess accepts any 2xx (e.g. /messages/send returns 201 Created).
+func requireSuccess(t *testing.T, resp *http.Response) {
+	t.Helper()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		t.Fatalf("expected 2xx, got %d: %s", resp.StatusCode, readBody(resp))
+	}
+}

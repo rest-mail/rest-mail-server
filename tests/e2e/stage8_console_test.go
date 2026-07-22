@@ -133,18 +133,19 @@ func testStage8ConsoleFlows(t *testing.T) {
 	})
 
 	t.Run("ConsoleComposeMail", func(t *testing.T) {
-		// Compose and send (same API the console uses)
-		resp, err := adminClient.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "eve@restmail.test",
-			"sender":    "consoleuser@restmail.test",
+		// Compose = the OUTBOUND path. Authenticate as a seeded sender (eve)
+		// and send via /messages/send — the API a webmail/console compose uses.
+		// (/messages/deliver is inbound-only and DMARC-rejects same-domain injects.)
+		sender := newAPIClient()
+		requireNoError(t, sender.login("eve@restmail.test", "password123"))
+		resp, err := sender.post("/api/v1/messages/send", map[string]any{
+			"from":      "eve@restmail.test",
+			"to":        []string{"consoleuser@restmail.test"},
 			"subject":   "Console compose test",
 			"body_text": "Sent from console test",
 		})
 		requireNoError(t, err)
-		if resp.StatusCode >= 400 {
-			body := readBody(resp)
-			t.Fatalf("compose failed (%d): %s", resp.StatusCode, body)
-		}
+		requireSuccess(t, resp)
 		resp.Body.Close()
 		t.Log("Console compose/send successful")
 	})

@@ -107,14 +107,16 @@ func testStage7WebmailFlows(t *testing.T) {
 		client := newAPIClient()
 		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
-		// Send via deliver endpoint
-		resp, err := client.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "bob@restmail.test",
-			"sender":    "alice@restmail.test",
+		// Compose = the OUTBOUND path (/messages/send). /messages/deliver is
+		// inbound-only and DMARC-rejects a same-domain injected sender.
+		resp, err := client.post("/api/v1/messages/send", map[string]any{
+			"from":      "alice@restmail.test",
+			"to":        []string{"bob@restmail.test"},
 			"subject":   subject,
 			"body_text": "Composed from webmail!",
 		})
 		requireNoError(t, err)
+		requireSuccess(t, resp)
 		resp.Body.Close()
 
 		// Verify delivery
@@ -161,15 +163,16 @@ func testStage7WebmailFlows(t *testing.T) {
 		client := newAPIClient()
 		requireNoError(t, client.login("alice@restmail.test", adminPassword))
 
-		// First deliver a throwaway message
+		// First create a throwaway message via a self-send (outbound path).
 		subject := fmt.Sprintf("delete-me-%d", time.Now().UnixNano())
-		resp, err := client.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "alice@restmail.test",
-			"sender":    "deletesender@test.local",
+		resp, err := client.post("/api/v1/messages/send", map[string]any{
+			"from":      "alice@restmail.test",
+			"to":        []string{"alice@restmail.test"},
 			"subject":   subject,
 			"body_text": "This will be deleted",
 		})
 		requireNoError(t, err)
+		requireSuccess(t, resp)
 		resp.Body.Close()
 
 		msgID := waitForMessage(t, client, aliceAcct, "INBOX", subject, 15*time.Second)

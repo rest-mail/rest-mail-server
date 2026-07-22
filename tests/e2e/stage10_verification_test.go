@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"bufio"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -95,7 +96,7 @@ func testStage10Verification(t *testing.T) {
 			"body_text": "Outbound test body",
 		})
 		requireNoError(t, err)
-		requireStatus(t, resp, 200)
+		requireSuccess(t, resp)
 
 		// Verify actual arrival on the mail1 reference server over its IMAP —
 		// this exercises the full outbound path: queue → MX → postfix → LMTP.
@@ -121,7 +122,7 @@ func testStage10Verification(t *testing.T) {
 			"body_text": "Restmail fast delivery test",
 		})
 		requireNoError(t, err)
-		requireStatus(t, resp, 200)
+		requireSuccess(t, resp)
 
 		// Login as receiver and verify fast delivery
 		recvClient := newAPIClient()
@@ -227,30 +228,25 @@ func testStage10Verification(t *testing.T) {
 		}
 		defer func() { _ = conn.Close() }()
 
-		// Read server greeting
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
-		requireNoError(t, err)
-		greeting := string(buf[:n])
+		// A single Read grabs only the first packet; IMAP tagged responses
+		// (esp. SELECT's untagged * lines + the tagged OK) arrive across
+		// several — read until the tag.
+		reader := bufio.NewReader(conn)
+		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+		greeting, _ := reader.ReadString('\n')
 		if !strings.Contains(greeting, "OK") {
 			t.Fatalf("unexpected IMAP greeting: %s", greeting)
 		}
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN verify-recv@restmail.test password123\r\n")
-		n, err = conn.Read(buf)
-		requireNoError(t, err)
-		loginResp := string(buf[:n])
-		if !strings.Contains(loginResp, "A001 OK") {
+		if loginResp := readUntilTagRaw(t, reader, "A001"); !strings.Contains(loginResp, "A001 OK") {
 			t.Skipf("IMAP LOGIN failed (may need setup): %s", loginResp)
 		}
 
 		// SELECT INBOX
 		fmt.Fprintf(conn, "A002 SELECT INBOX\r\n")
-		n, err = conn.Read(buf)
-		requireNoError(t, err)
-		selectResp := string(buf[:n])
-		if !strings.Contains(selectResp, "A002 OK") {
+		if selectResp := readUntilTagRaw(t, reader, "A002"); !strings.Contains(selectResp, "A002 OK") {
 			t.Fatalf("SELECT INBOX failed: %s", selectResp)
 		}
 

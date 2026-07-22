@@ -62,11 +62,13 @@ func testStage6RestmailUpgrade(t *testing.T) {
 	t.Run("RestmailEndpoint_DirectDelivery", func(t *testing.T) {
 		subject := fmt.Sprintf("restmail-direct-%d", time.Now().UnixNano())
 
+		// The RESTMAIL direct-delivery endpoint takes from + to[] (the shape the
+		// RESTMAIL queue worker posts), not address/sender.
 		resp, err := httpClient.Post(apiBaseURL+"/restmail/messages",
 			"application/json",
 			strings.NewReader(fmt.Sprintf(`{
-				"address": "other@restmail.test",
-				"sender": "testuser@restmail.test",
+				"from": "testuser@restmail.test",
+				"to": ["other@restmail.test"],
 				"subject": %q,
 				"body_text": "Direct REST delivery test"
 			}`, subject)))
@@ -87,19 +89,20 @@ func testStage6RestmailUpgrade(t *testing.T) {
 	t.Run("Mail3_to_Mail3_UpgradePath", func(t *testing.T) {
 		subject := fmt.Sprintf("restmail-upgrade-%d", time.Now().UnixNano())
 
-		// Deliver from testuser to other, both on restmail
+		// Send testuser -> other (both restmail) via the outbound compose path.
 		gwClient := newAPIClient()
 		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
 			t.Skipf("Cannot login: %v", err)
 		}
 
-		resp, err := gwClient.post("/api/v1/messages/deliver", map[string]string{
-			"address":   "other@restmail.test",
-			"sender":    "testuser@restmail.test",
+		resp, err := gwClient.post("/api/v1/messages/send", map[string]any{
+			"from":      "testuser@restmail.test",
+			"to":        []string{"other@restmail.test"},
 			"subject":   subject,
 			"body_text": "restmail to restmail upgrade test",
 		})
 		requireNoError(t, err)
+		requireSuccess(t, resp)
 		resp.Body.Close()
 
 		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", adminPassword)
