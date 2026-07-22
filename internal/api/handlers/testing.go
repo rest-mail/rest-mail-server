@@ -521,7 +521,7 @@ func seedTestData(database *gorm.DB) error {
 	domains := []models.Domain{
 		{Name: "mail1.test", ServerType: "traditional", Active: true, DefaultQuotaBytes: 1073741824},
 		{Name: "mail2.test", ServerType: "traditional", Active: true, DefaultQuotaBytes: 1073741824},
-		{Name: "mail3.test", ServerType: "restmail", Active: true, DefaultQuotaBytes: 1073741824},
+		{Name: "restmail.test", ServerType: "restmail", Active: true, DefaultQuotaBytes: 1073741824},
 	}
 	for i := range domains {
 		database.Where("name = ?", domains[i].Name).FirstOrCreate(&domains[i])
@@ -534,9 +534,9 @@ func seedTestData(database *gorm.DB) error {
 		{DomainID: domains[1].ID, LocalPart: "charlie", Address: "charlie@mail2.test", Password: defaultPassword, DisplayName: "Charlie Brown", QuotaBytes: 1073741824, Active: true},
 		{DomainID: domains[1].ID, LocalPart: "diana", Address: "diana@mail2.test", Password: defaultPassword, DisplayName: "Diana Prince", QuotaBytes: 1073741824, Active: true},
 		{DomainID: domains[1].ID, LocalPart: "postmaster", Address: "postmaster@mail2.test", Password: defaultPassword, DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[2].ID, LocalPart: "eve", Address: "eve@mail3.test", Password: defaultPassword, DisplayName: "Eve Wilson", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[2].ID, LocalPart: "frank", Address: "frank@mail3.test", Password: defaultPassword, DisplayName: "Frank Miller", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[2].ID, LocalPart: "postmaster", Address: "postmaster@mail3.test", Password: defaultPassword, DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[2].ID, LocalPart: "eve", Address: "eve@restmail.test", Password: defaultPassword, DisplayName: "Eve Wilson", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[2].ID, LocalPart: "frank", Address: "frank@restmail.test", Password: defaultPassword, DisplayName: "Frank Miller", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[2].ID, LocalPart: "postmaster", Address: "postmaster@restmail.test", Password: defaultPassword, DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
 	}
 	for i := range mailboxes {
 		database.Where("address = ?", mailboxes[i].Address).FirstOrCreate(&mailboxes[i])
@@ -546,14 +546,14 @@ func seedTestData(database *gorm.DB) error {
 	aliases := []models.Alias{
 		{DomainID: domains[0].ID, SourceAddress: "info@mail1.test", DestinationAddress: "alice@mail1.test", Active: true},
 		{DomainID: domains[1].ID, SourceAddress: "info@mail2.test", DestinationAddress: "charlie@mail2.test", Active: true},
-		{DomainID: domains[2].ID, SourceAddress: "info@mail3.test", DestinationAddress: "eve@mail3.test", Active: true},
-		{DomainID: domains[2].ID, SourceAddress: "admin@mail3.test", DestinationAddress: "eve@mail3.test", Active: true},
+		{DomainID: domains[2].ID, SourceAddress: "info@restmail.test", DestinationAddress: "eve@restmail.test", Active: true},
+		{DomainID: domains[2].ID, SourceAddress: "admin@restmail.test", DestinationAddress: "eve@restmail.test", Active: true},
 	}
 	for i := range aliases {
 		database.Where("source_address = ? AND destination_address = ?", aliases[i].SourceAddress, aliases[i].DestinationAddress).FirstOrCreate(&aliases[i])
 	}
 
-	for _, addr := range []string{"eve@mail3.test", "frank@mail3.test"} {
+	for _, addr := range []string{"eve@restmail.test", "frank@restmail.test"} {
 		var mailbox models.Mailbox
 		database.Where("address = ?", addr).First(&mailbox)
 		var account models.WebmailAccount
