@@ -489,9 +489,38 @@ tasks:
       - echo "Coverage report written to coverage.html"
 
   test:e2e:
-    desc: Run e2e tests (requires running containers)
+    desc: 'Run e2e tests against an already-running topology (use `task e2e` to also bring it up + tear down)'
     cmds:
       - go test -race -count=1 -v -timeout 5m ./tests/e2e/...
+
+  e2e:
+    desc: 'Full e2e run: bring up the topology, run the tests, tear it down'
+    cmds:
+      - task: e2e:up
+      - defer: { task: e2e:down }
+      - task: test:e2e
+
+  e2e:up:
+    desc: 'Bring up the e2e topology: testbed + reference mail1/mail2 + restmail.test'
+    cmds:
+      # Reference mail1/mail2 (postfix/dovecot/…) need the reference-* images:
+      # clone + build the reference daemon repos, or have registry access, first.
+      - task: testbed:up
+      - task: mailserver:init
+      - task: mailserver:mail1:up
+      - task: mailserver:mail2:up
+      # restmail.test (the rest-mail instance) — config is testbed-owned.
+      - INSTANCE=restmail.test task instance:certs:issue
+      - INSTANCE=restmail.test task instance:dns:register
+      - INSTANCE=restmail.test task instance:up
+      - INSTANCE=restmail.test task instance:dkim
+
+  e2e:down:
+    desc: 'Tear down the e2e topology (preserves data volumes)'
+    cmds:
+      - INSTANCE=restmail.test task instance:down
+      - task: mailserver:mail1:down
+      - task: mailserver:mail2:down
 
   test:all:
     desc: Run all tests (unit + e2e)
