@@ -508,6 +508,10 @@ tasks:
         HOSTNAME=mail2.test
         POSTGRES_IP=10.99.0.42 POSTFIX_IP=10.99.0.12 DOVECOT_IP=10.99.0.112
         RSPAMD_IP=10.99.0.23 FAIL2BAN_IP=10.99.0.24
+      # Provision DKIM signing for the reference servers so they sign outbound
+      # mail — restmail then verifies it (dkim=pass) over the simulated internet.
+      - task -d .workspace/reference-mailserver dkim:provision CONFIG=mail1
+      - task -d .workspace/reference-mailserver dkim:provision CONFIG=mail2 HOSTNAME=mail2.test
       # restmail.test (the rest-mail instance) — config is testbed-owned.
       - INSTANCE=restmail.test task instance:certs:issue
       - INSTANCE=restmail.test task instance:dns:register
