@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -93,6 +92,28 @@ func parseSMTPError(err error) *SMTPError {
 		}
 	}
 	return &SMTPError{Code: 0, Message: msg}
+}
+
+// computeBackoff returns the retry delay for the Nth delivery attempt:
+// exponential (1m, 2m, 4m, 8m, ...) capped at 4 hours.
+//
+// The exponent MUST be guarded. The obvious `2^attempts * time.Minute`
+// overflows int64 once attempts is large and wraps to a NEGATIVE duration
+// that slips under a naive `> 4h` cap, scheduling the retry in the past so it
+// fires immediately forever. 2^8 minutes (~4.3h) already exceeds the cap, so
+// anything at or beyond attempt 8 is clamped.
+func computeBackoff(attempts int) time.Duration {
+	const maxBackoff = 4 * time.Hour
+	if attempts < 0 {
+		attempts = 0
+	}
+	if attempts >= 8 {
+		return maxBackoff
+	}
+	if b := time.Duration(1<<uint(attempts)) * time.Minute; b < maxBackoff {
+		return b
+	}
+	return maxBackoff
 }
 
 // Worker processes outbound mail queue entries.
@@ -251,11 +272,7 @@ func (w *Worker) processOne(workerID int) {
 		return
 	}
 
-	// Exponential backoff: 1min, 2min, 4min, 8min, ... up to 4 hours
-	backoff := time.Duration(math.Pow(2, float64(item.Attempts))) * time.Minute
-	if backoff > 4*time.Hour {
-		backoff = 4 * time.Hour
-	}
+	backoff := computeBackoff(item.Attempts)
 
 	w.db.Model(&item).Updates(map[string]interface{}{
 		"status":          "deferred",
