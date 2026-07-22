@@ -67,7 +67,7 @@ func (q *QuotaReconciler) reconcile() {
 		// Calculate actual usage from message sizes (excluding deleted)
 		var actualUsage int64
 		err := q.db.Model(&models.Message{}).
-			Where("mailbox_id = ? AND deleted = ?", mb.ID, false).
+			Where("mailbox_id = ? AND is_deleted = ?", mb.ID, false).
 			Select("COALESCE(SUM(size_bytes), 0)").
 			Scan(&actualUsage).Error
 		if err != nil {
