@@ -490,3 +490,21 @@ func dialPOP3TLS(t *testing.T, addr string) *pop3Conn {
 	pc.stls(t)
 	return pc
 }
+
+// rawIMAPStartTLS issues STARTTLS on a raw IMAP net.Conn and upgrades it to
+// TLS. The IDLE stage uses a raw connection (the imapConn helper doesn't model
+// a long-lived IDLE session), and the product IMAP gateway requires TLS before
+// LOGIN. Returns the upgraded conn + a fresh reader over it.
+func rawIMAPStartTLS(t *testing.T, conn net.Conn, reader *bufio.Reader) (net.Conn, *bufio.Reader) {
+	t.Helper()
+	fmt.Fprintf(conn, "S001 STARTTLS\r\n")
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	if resp := readUntilTagRaw(t, reader, "S001"); !strings.Contains(resp, "OK") {
+		t.Fatalf("STARTTLS failed: %s", resp)
+	}
+	tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+	if err := tlsConn.Handshake(); err != nil {
+		t.Fatalf("IMAP TLS handshake failed: %v", err)
+	}
+	return tlsConn, bufio.NewReader(tlsConn)
+}

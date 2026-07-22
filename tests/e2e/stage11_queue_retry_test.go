@@ -3,7 +3,6 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -147,10 +146,19 @@ func testStage11QueueRetry(t *testing.T) {
 	t.Run("ExponentialBackoff_Calculation", func(t *testing.T) {
 		// Verify the backoff formula: 2^attempt minutes, capped at 4 hours.
 		// This is a logic verification test -- does not require network.
-		for attempt := 0; attempt < 35; attempt++ {
-			backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Minute
-			if backoff > 4*time.Hour {
+		for attempt := 0; attempt < 64; attempt++ {
+			// Mirror internal/gateway/queue.computeBackoff: the exponent MUST be
+			// guarded — 2^attempt * time.Minute overflows int64 and wraps to a
+			// negative duration (the product bug this stage exists to catch), so
+			// don't reintroduce it in the expectation.
+			var backoff time.Duration
+			if attempt >= 8 {
 				backoff = 4 * time.Hour
+			} else {
+				backoff = time.Duration(1<<uint(attempt)) * time.Minute
+				if backoff > 4*time.Hour {
+					backoff = 4 * time.Hour
+				}
 			}
 
 			if attempt == 0 && backoff != 1*time.Minute {
