@@ -1,8 +1,11 @@
 # Prepared upstream PR: go-smtp custom EHLO capabilities
 
-**Status:** ready to submit — awaiting human review. Do not merge rest-mail onto
-upstream until this (or an equivalent) lands; until then we consume the fork via
-a `replace` directive in `go.mod`.
+**Status:** **SUBMITTED** upstream as
+[emersion/go-smtp#303](https://github.com/emersion/go-smtp/pull/303) (2026-07-23).
+Until it (or an equivalent) merges, rest-mail keeps consuming the fork via the
+`replace` directive in `go.mod` — do not drop the fork or merge rest-mail onto
+upstream go-smtp until then. The preparation notes below are retained for
+reference (the "Submit with" and PR title/body sections describe what was filed).
 
 - **Upstream repo:** `emersion/go-smtp`
 - **Fork:** `rest-mail/go-smtp`, branch `custom-ehlo-capabilities`
