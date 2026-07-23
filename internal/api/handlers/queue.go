@@ -240,10 +240,15 @@ func (h *QueueHandler) BulkBounce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result := h.buildBulkQuery(req).Updates(map[string]interface{}{
-		"status":     "bounced",
-		"last_error": "manually bounced by admin (bulk)",
-	})
+	// Only bounce mail that is still in flight. Without this guard a bulk bounce
+	// by filter would also flip already-delivered (or expired/bounced) rows to
+	// "bounced", corrupting their final state.
+	result := h.buildBulkQuery(req).
+		Where("status IN ?", []string{"pending", "deferred", "delivering"}).
+		Updates(map[string]interface{}{
+			"status":     "bounced",
+			"last_error": "manually bounced by admin (bulk)",
+		})
 
 	respond.Data(w, http.StatusOK, map[string]int64{"affected": result.RowsAffected})
 }
