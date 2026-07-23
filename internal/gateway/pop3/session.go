@@ -317,6 +317,19 @@ func (s *Session) handleUidl(arg string) {
 	s.sendLine(".")
 }
 
+// rawMessage returns the full-fidelity RFC 2822 form of a message: the pristine
+// stored original when the server has one, otherwise a best-effort reconstruction
+// from the structured detail (for locally-composed items that have no stored raw).
+// Serving the stored original preserves attachments, To/Cc, custom headers and any
+// DKIM-Signature verbatim, instead of the lossy rebuild that buildRawMessage
+// produces from a handful of fields.
+func (s *Session) rawMessage(detail apiclient.MessageDetail) string {
+	if raw, err := s.api.GetRawMessage(s.auth.token, detail.ID); err == nil && raw != "" {
+		return raw
+	}
+	return buildRawMessage(detail)
+}
+
 func (s *Session) handleRetr(arg string) {
 	if !s.auth.authenticated {
 		s.err("Not authenticated")
@@ -342,7 +355,7 @@ func (s *Session) handleRetr(arg string) {
 		return
 	}
 
-	raw := buildRawMessage(detail.Data)
+	raw := s.rawMessage(detail.Data)
 
 	s.ok("%d octets", len(raw))
 	// Send message, byte-stuffing lines starting with "."
@@ -397,7 +410,7 @@ func (s *Session) handleTop(arg string) {
 		return
 	}
 
-	raw := buildRawMessage(detail.Data)
+	raw := s.rawMessage(detail.Data)
 
 	// Split into headers and body
 	headerEnd := strings.Index(raw, "\r\n\r\n")
