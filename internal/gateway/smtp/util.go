@@ -7,46 +7,6 @@ import (
 	"strings"
 )
 
-// parseCommand splits an SMTP command line into command and argument.
-func parseCommand(line string) (string, string) {
-	parts := strings.SplitN(line, " ", 2)
-	cmd := strings.ToUpper(parts[0])
-	arg := ""
-	if len(parts) > 1 {
-		arg = parts[1]
-	}
-	return cmd, arg
-}
-
-// extractAddress extracts the email address from MAIL FROM:<addr> or RCPT TO:<addr>.
-func extractAddress(arg, prefix string) string {
-	upper := strings.ToUpper(arg)
-	prefixStr := strings.ToUpper(prefix) + ":"
-	idx := strings.Index(upper, prefixStr)
-	if idx == -1 {
-		return ""
-	}
-
-	rest := arg[idx+len(prefixStr):]
-	rest = strings.TrimSpace(rest)
-
-	// Extract from angle brackets
-	if strings.HasPrefix(rest, "<") {
-		end := strings.Index(rest, ">")
-		if end == -1 {
-			return ""
-		}
-		return rest[1:end]
-	}
-
-	// No brackets: take up to the first space or end of string
-	parts := strings.Fields(rest)
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[0]
-}
-
 // extractIP extracts the IP address from a remote address string (host:port).
 func extractIP(addr string) string {
 	host, _, err := splitHostPort(addr)
@@ -76,11 +36,6 @@ func splitHostPort(addr string) (string, string, error) {
 		return addr, "", nil
 	}
 	return addr[:last], addr[last+1:], nil
-}
-
-// decodeBase64 decodes a base64-encoded string.
-func decodeBase64(s string) ([]byte, error) {
-	return base64.StdEncoding.DecodeString(s)
 }
 
 // parseRawMessage parses an RFC 2822 message to extract key headers and body parts.
