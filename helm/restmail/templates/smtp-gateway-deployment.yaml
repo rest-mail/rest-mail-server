@@ -58,6 +58,18 @@ spec:
             - name: SMTP_MAX_MESSAGE_SIZE
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.smtpGateway.minTransferRate }}
+            - name: SMTP_MIN_TRANSFER_RATE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtpGateway.transferGracePeriod }}
+            - name: SMTP_TRANSFER_GRACE_PERIOD
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.smtpGateway.transferStallTimeout }}
+            - name: SMTP_TRANSFER_STALL_TIMEOUT
+              value: {{ . | quote }}
+            {{- end }}
             - name: QUEUE_WORKERS
               value: {{ .Values.smtpGateway.queueWorkers | quote }}
             - name: LOG_LEVEL

@@ -21,6 +21,7 @@ var allEnvKeys = []string{
 	"GATEWAY_HOSTNAME", "API_BASE_URL",
 	"SMTP_PORT_INBOUND", "SMTP_PORT_SUBMISSION", "SMTP_PORT_SUBMISSION_TLS",
 	"SMTP_MAX_MESSAGE_SIZE",
+	"SMTP_MIN_TRANSFER_RATE", "SMTP_TRANSFER_GRACE_PERIOD", "SMTP_TRANSFER_STALL_TIMEOUT",
 	"IMAP_PORT", "IMAP_TLS_PORT",
 	"POP3_PORT", "POP3_TLS_PORT",
 	"QUEUE_WORKERS", "QUEUE_POLL_INTERVAL",
@@ -360,6 +361,103 @@ func TestSMTPMaxMessageSizeWarning(t *testing.T) {
 	cfg := &Config{SMTPMaxMessageSize: SMTPMaxMessageSizeWarnThreshold + 1}
 	if w := cfg.SMTPMaxMessageSizeWarning(); w == "" {
 		t.Error("SMTPMaxMessageSizeWarning() above threshold should be non-empty")
+	}
+}
+
+// ── SMTP anti-slowloris transfer policy ────────────────────────────────
+
+func TestLoad_SMTPTransferRate_Defaults(t *testing.T) {
+	clearEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if cfg.SMTPMinTransferRate != 16384 {
+		t.Errorf("SMTPMinTransferRate = %d, want default 16384", cfg.SMTPMinTransferRate)
+	}
+	if cfg.SMTPTransferGracePeriod != 60*time.Second {
+		t.Errorf("SMTPTransferGracePeriod = %v, want default 60s", cfg.SMTPTransferGracePeriod)
+	}
+	if cfg.SMTPTransferStallTimeout != 300*time.Second {
+		t.Errorf("SMTPTransferStallTimeout = %v, want default 300s", cfg.SMTPTransferStallTimeout)
+	}
+
+	// Empty strings behave like unset (env files commonly render KEY=).
+	t.Setenv("SMTP_MIN_TRANSFER_RATE", "")
+	t.Setenv("SMTP_TRANSFER_GRACE_PERIOD", "")
+	t.Setenv("SMTP_TRANSFER_STALL_TIMEOUT", "")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() with empty transfer-policy envs errored: %v", err)
+	}
+	if cfg.SMTPMinTransferRate != 16384 || cfg.SMTPTransferGracePeriod != 60*time.Second || cfg.SMTPTransferStallTimeout != 300*time.Second {
+		t.Errorf("empty envs = (%d, %v, %v), want defaults (16384, 60s, 300s)",
+			cfg.SMTPMinTransferRate, cfg.SMTPTransferGracePeriod, cfg.SMTPTransferStallTimeout)
+	}
+}
+
+func TestLoad_SMTPTransferRate_Overrides(t *testing.T) {
+	clearEnv(t)
+
+	t.Setenv("SMTP_MIN_TRANSFER_RATE", "32768")
+	t.Setenv("SMTP_TRANSFER_GRACE_PERIOD", "10")
+	t.Setenv("SMTP_TRANSFER_STALL_TIMEOUT", "120")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if cfg.SMTPMinTransferRate != 32768 {
+		t.Errorf("SMTPMinTransferRate = %d, want 32768", cfg.SMTPMinTransferRate)
+	}
+	if cfg.SMTPTransferGracePeriod != 10*time.Second {
+		t.Errorf("SMTPTransferGracePeriod = %v, want 10s", cfg.SMTPTransferGracePeriod)
+	}
+	if cfg.SMTPTransferStallTimeout != 120*time.Second {
+		t.Errorf("SMTPTransferStallTimeout = %v, want 120s", cfg.SMTPTransferStallTimeout)
+	}
+}
+
+func TestLoad_SMTPTransferRate_ZeroDisablesFloor(t *testing.T) {
+	clearEnv(t)
+
+	// Explicit 0 disables the average-rate floor (the stall timeout still
+	// applies at runtime) — it must load cleanly, not error.
+	t.Setenv("SMTP_MIN_TRANSFER_RATE", "0")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() with SMTP_MIN_TRANSFER_RATE=0 errored: %v", err)
+	}
+	if cfg.SMTPMinTransferRate != 0 {
+		t.Errorf("SMTPMinTransferRate = %d, want 0 (floor disabled)", cfg.SMTPMinTransferRate)
+	}
+}
+
+func TestLoad_SMTPTransferRate_Invalid(t *testing.T) {
+	clearEnv(t)
+
+	// Negative or malformed rate → startup error (never a silent fallback).
+	for _, bad := range []string{"-1", "16k", "banana"} {
+		clearEnv(t)
+		t.Setenv("SMTP_MIN_TRANSFER_RATE", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load() with SMTP_MIN_TRANSFER_RATE=%q should fail", bad)
+		}
+	}
+	// Grace period and stall timeout must always exist: zero, negative, and
+	// malformed (including duration syntax — the unit is seconds) all fail.
+	for _, bad := range []string{"0", "-5", "1m", "abc"} {
+		clearEnv(t)
+		t.Setenv("SMTP_TRANSFER_GRACE_PERIOD", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load() with SMTP_TRANSFER_GRACE_PERIOD=%q should fail", bad)
+		}
+		clearEnv(t)
+		t.Setenv("SMTP_TRANSFER_STALL_TIMEOUT", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load() with SMTP_TRANSFER_STALL_TIMEOUT=%q should fail", bad)
+		}
 	}
 }
 

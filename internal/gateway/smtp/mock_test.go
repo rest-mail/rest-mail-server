@@ -152,7 +152,9 @@ func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmiss
 	}
 	srv := s.newSMTPServer(isSubmission)
 
-	listener := newOneConnListener(server)
+	// Wrap the served conn exactly as the production accept path does, so the
+	// anti-slowloris machinery is in the loop under test too.
+	listener := newOneConnListener(newTransferRateConn(server, s.transferPolicy))
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

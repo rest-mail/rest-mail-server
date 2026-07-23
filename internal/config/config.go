@@ -19,6 +19,21 @@ const DefaultSMTPMaxMessageSize = 10 * 1024 * 1024
 // per-connection memory and parse cost.
 const SMTPMaxMessageSizeWarnThreshold = 100 * 1024 * 1024
 
+// DefaultSMTPMinTransferRate is the anti-slowloris average transfer-rate
+// floor, in bytes per second, applied to SMTP message-body transfers when
+// SMTP_MIN_TRANSFER_RATE is unset: 16 KiB/s. A trickling client that keeps a
+// DATA transfer below this average (after the grace period) is dropped.
+const DefaultSMTPMinTransferRate = 16 * 1024
+
+// DefaultSMTPTransferGracePeriod is the window at the start of each
+// message-body transfer during which the rate floor is not enforced, so slow
+// TLS handshakes and slow-start senders are unaffected.
+const DefaultSMTPTransferGracePeriod = 60 * time.Second
+
+// DefaultSMTPTransferStallTimeout is how long a message-body transfer may
+// deliver zero bytes before the connection is dropped.
+const DefaultSMTPTransferStallTimeout = 300 * time.Second
+
 type Config struct {
 	// Database
 	DBHost            string
@@ -60,16 +75,28 @@ type Config struct {
 	// negative values are a startup configuration error (a maximum must
 	// always exist; "unlimited" is not an option).
 	SMTPMaxMessageSize int64
-	SMTPPortInbound    int
-	SMTPPortSubmission int
-	SMTPPortSubmissionTLS int
-	IMAPPort        int
-	IMAPTLSPort     int
-	POP3Port        int
-	POP3TLSPort     int
-	QueueWorkers    int
-	QueuePollInterval time.Duration
-	MTASTSEnforce bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
+	// SMTPMinTransferRate is the anti-slowloris average transfer-rate floor in
+	// bytes per second, enforced only while a message body is being
+	// transferred (DATA/BDAT) and only after SMTPTransferGracePeriod. Zero
+	// disables the rate floor (the stall timeout still applies); negative
+	// values are a startup configuration error.
+	SMTPMinTransferRate int64
+	// SMTPTransferGracePeriod is the window at the start of each message-body
+	// transfer during which the rate floor is not enforced. Always positive.
+	SMTPTransferGracePeriod time.Duration
+	// SMTPTransferStallTimeout is how long a message-body transfer may deliver
+	// zero bytes before the connection is dropped. Always positive.
+	SMTPTransferStallTimeout time.Duration
+	SMTPPortInbound          int
+	SMTPPortSubmission       int
+	SMTPPortSubmissionTLS    int
+	IMAPPort                 int
+	IMAPTLSPort              int
+	POP3Port                 int
+	POP3TLSPort              int
+	QueueWorkers             int
+	QueuePollInterval        time.Duration
+	MTASTSEnforce            bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
 
 	// PROXY protocol
 	ProxyProtocolTrustedCIDRs []string
@@ -152,7 +179,7 @@ func Load() (*Config, error) {
 	// pattern, a malformed or non-positive value here is a hard startup error —
 	// silently falling back on a size limit the admin explicitly set would make
 	// the knob a lie.
-	smtpMax, err := getEnvInt64Strict("SMTP_MAX_MESSAGE_SIZE", DefaultSMTPMaxMessageSize)
+	smtpMax, err := getEnvInt64Strict("SMTP_MAX_MESSAGE_SIZE", DefaultSMTPMaxMessageSize, "bytes")
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +187,38 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("SMTP_MAX_MESSAGE_SIZE must be a positive number of bytes (a maximum message size must always exist), got %d", smtpMax)
 	}
 	cfg.SMTPMaxMessageSize = smtpMax
+
+	// Anti-slowloris message-transfer policy. Same strictness rationale as the
+	// max message size: these are security knobs, so a malformed value is a
+	// startup error, never a silent fallback. The rate floor may be explicitly
+	// disabled with 0 (the stall timeout still applies); the grace period and
+	// stall timeout must always exist.
+	minRate, err := getEnvInt64Strict("SMTP_MIN_TRANSFER_RATE", DefaultSMTPMinTransferRate, "bytes per second")
+	if err != nil {
+		return nil, err
+	}
+	if minRate < 0 {
+		return nil, fmt.Errorf("SMTP_MIN_TRANSFER_RATE must be a non-negative number of bytes per second (0 disables the rate floor), got %d", minRate)
+	}
+	cfg.SMTPMinTransferRate = minRate
+
+	graceSecs, err := getEnvInt64Strict("SMTP_TRANSFER_GRACE_PERIOD", int64(DefaultSMTPTransferGracePeriod/time.Second), "seconds")
+	if err != nil {
+		return nil, err
+	}
+	if graceSecs <= 0 {
+		return nil, fmt.Errorf("SMTP_TRANSFER_GRACE_PERIOD must be a positive number of seconds, got %d", graceSecs)
+	}
+	cfg.SMTPTransferGracePeriod = time.Duration(graceSecs) * time.Second
+
+	stallSecs, err := getEnvInt64Strict("SMTP_TRANSFER_STALL_TIMEOUT", int64(DefaultSMTPTransferStallTimeout/time.Second), "seconds")
+	if err != nil {
+		return nil, err
+	}
+	if stallSecs <= 0 {
+		return nil, fmt.Errorf("SMTP_TRANSFER_STALL_TIMEOUT must be a positive number of seconds, got %d", stallSecs)
+	}
+	cfg.SMTPTransferStallTimeout = time.Duration(stallSecs) * time.Second
 
 	return cfg, nil
 }
@@ -207,14 +266,15 @@ func getEnvInt(key string, fallback int) int {
 // getEnvInt64Strict returns fallback when key is unset or empty, and errors on
 // a malformed value instead of silently falling back. Used for settings where
 // ignoring an explicitly configured value would be worse than failing startup.
-func getEnvInt64Strict(key string, fallback int64) (int64, error) {
+// unit names what the integer counts (e.g. "bytes", "seconds") in the error.
+func getEnvInt64Strict(key string, fallback int64, unit string) (int64, error) {
 	val, ok := os.LookupEnv(key)
 	if !ok || strings.TrimSpace(val) == "" {
 		return fallback, nil
 	}
 	i, err := strconv.ParseInt(strings.TrimSpace(val), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("%s must be an integer number of bytes, got %q", key, val)
+		return 0, fmt.Errorf("%s must be an integer number of %s, got %q", key, unit, val)
 	}
 	return i, nil
 }

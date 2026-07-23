@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -128,6 +129,16 @@ func main() {
 	if warn := cfg.SMTPMaxMessageSizeWarning(); warn != "" {
 		slog.Warn(warn, "max_message_size", cfg.SMTPMaxMessageSize)
 	}
+	smtpServer.SetTransferRatePolicy(cfg.SMTPMinTransferRate, cfg.SMTPTransferGracePeriod, cfg.SMTPTransferStallTimeout)
+	rateFloor := "disabled"
+	if cfg.SMTPMinTransferRate > 0 {
+		rateFloor = fmt.Sprintf("%d bytes/sec", cfg.SMTPMinTransferRate)
+	}
+	slog.Info("SMTP transfer-rate policy configured: message-body transfers must keep data flowing (slow senders get the grace period; a transfer below the rate floor or stalled past the timeout is dropped)",
+		"rate_floor", rateFloor,
+		"grace_period", cfg.SMTPTransferGracePeriod.String(),
+		"stall_timeout", cfg.SMTPTransferStallTimeout.String(),
+	)
 	if len(cfg.ProxyProtocolTrustedCIDRs) > 0 {
 		smtpServer.SetProxyProtocol(cfg.ProxyProtocolTrustedCIDRs)
 		slog.Info("PROXY protocol configured", "trusted_cidrs", cfg.ProxyProtocolTrustedCIDRs)

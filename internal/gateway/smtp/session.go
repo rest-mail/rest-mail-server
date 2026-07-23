@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,6 +55,28 @@ var _ gosmtp.AuthSession = (*session)(nil)
 // listener when it is in play.
 func (s *session) remoteAddr() string {
 	return s.conn.Conn().RemoteAddr().String()
+}
+
+// transferConn digs the anti-slowloris tracker out of the session's network
+// connection so Data can arm it around the message-body transfer. go-smtp
+// hands back either the accepted conn directly or, when TLS is active
+// (implicit on 465, or after STARTTLS replaced the conn), the *tls.Conn
+// wrapped around it — NetConn unwraps that one layer to reach the tracker the
+// accept path installed. If the unwrap still doesn't find the tracker
+// (unexpected wrapping), fail OPEN: returning nil skips enforcement — never
+// break mail because introspection failed.
+func (s *session) transferConn() *transferRateConn {
+	conn := s.conn.Conn()
+	if tc, ok := conn.(*tls.Conn); ok {
+		conn = tc.NetConn()
+	}
+	rc, ok := conn.(*transferRateConn)
+	if !ok {
+		slog.Debug("smtp: transfer-rate enforcement unavailable: unexpected connection wrapping",
+			"remote", s.remoteAddr(), "conn_type", fmt.Sprintf("%T", conn))
+		return nil
+	}
+	return rc
 }
 
 // AuthMechanisms advertises AUTH only on submission ports. go-smtp
@@ -228,6 +251,15 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 // returning an error after some recipients were already delivered/queued
 // makes the client retry the entire message, duplicating those recipients.
 func (s *session) Data(r io.Reader) error {
+	// Message-body transfer begins here (go-smtp calls Data for both DATA and
+	// BDAT): arm the anti-slowloris tracker for the duration of the body read
+	// and disarm the moment it ends, so between-command idling is never
+	// subject to the rate policy.
+	if tc := s.transferConn(); tc != nil {
+		tc.arm()
+		defer tc.disarm()
+	}
+
 	data, err := io.ReadAll(r)
 	if err != nil {
 		var smtpErr *gosmtp.SMTPError
