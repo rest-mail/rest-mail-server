@@ -77,6 +77,11 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Pipeline{},
 		&models.CustomFilter{},
 		&models.PipelineLog{},
+		// Per-message observability trace (PR3): supersedes PipelineLog as the
+		// write target; the composite (outcome, created_at) index is created via
+		// its GORM tags above, alongside standalone indexes for correlation and
+		// PR4 pruning.
+		&models.MessageTrace{},
 		&models.Contact{},
 		&models.DomainSenderRule{},
 		&models.GreylistEntry{},

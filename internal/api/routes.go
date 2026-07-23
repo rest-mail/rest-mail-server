@@ -20,6 +20,7 @@ import (
 	pipelineobs "github.com/restmail/restmail/internal/metrics/observer"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
+	"github.com/restmail/restmail/internal/trace"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +33,21 @@ import (
 type Routers struct {
 	Public   http.Handler
 	Internal http.Handler
+
+	// Recorder is the async per-message trace sink shared by the delivery
+	// handlers. It owns a background goroutine; callers that manage a server
+	// lifecycle (cmd/api) must call Routers.Close on shutdown to flush it.
+	Recorder *trace.Recorder
+}
+
+// Close releases background resources owned by the routers — currently the trace
+// recorder, whose buffered traces are flushed and whose goroutine is stopped.
+// Safe to call on a zero/never-started recorder.
+func (rt *Routers) Close() {
+	if rt == nil {
+		return
+	}
+	rt.Recorder.Shutdown()
 }
 
 // NewRouter creates and configures the chi router with all API routes and
@@ -106,9 +122,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// runs never pollute the aggregate metrics.
 	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default(), pipelineobs.New())
 	previewEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
-	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey)
+
+	// Async per-message trace recorder: durable MessageTrace rows are written off
+	// the hot path by one background goroutine, so a slow/failed DB drops traces
+	// (drop-on-full) but never blocks or fails message processing. Injected into
+	// the delivery handlers; stopped/flushed via Routers.Close on shutdown.
+	traceRecorder := trace.NewRecorder(db)
+	traceRecorder.Start()
+
+	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
 	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
-	restmailH := handlers.NewRestmailHandler(db, pipelineEngine)
+	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder)
 
 	// ═══════════════════════════════════════════════════════════════
 	// API root — version and discovery (no auth)
@@ -415,7 +439,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
 	})
 
-	routers := &Routers{Public: r}
+	routers := &Routers{Public: r, Recorder: traceRecorder}
 
 	// Dedicated internal mTLS handler. Only built when enabled; served on a
 	// separate listener whose TLS layer requires a verified gateway client

@@ -210,6 +210,8 @@ func main() {
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()
 	digestWorker.Shutdown()
+	// Flush buffered per-message traces and stop the recorder goroutine.
+	routers.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

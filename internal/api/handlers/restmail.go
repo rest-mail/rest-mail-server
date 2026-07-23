@@ -19,12 +19,21 @@ import (
 // These are unauthenticated (like SMTP — any server can deliver to you).
 // Authentication is via DKIM/SPF/DMARC verification, not API keys.
 type RestmailHandler struct {
-	db     *gorm.DB
-	engine *pipeline.Engine
+	db       *gorm.DB
+	engine   *pipeline.Engine
+	recorder traceRecorder
 }
 
-func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine) *RestmailHandler {
-	return &RestmailHandler{db: db, engine: engine}
+func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceRecorder) *RestmailHandler {
+	return &RestmailHandler{db: db, engine: engine, recorder: recorder}
+}
+
+// recordTrace hands a MessageTrace to the async recorder when configured. Never
+// blocks or errors — trace persistence must not delay or fail delivery.
+func (h *RestmailHandler) recordTrace(t models.MessageTrace) {
+	if h.recorder != nil {
+		h.recorder.Record(t)
+	}
 }
 
 // Capabilities returns the RESTMAIL server capabilities.
@@ -222,28 +231,34 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Run the inbound pipeline
+	// Run the inbound pipeline.
+	// deliveredTrace, set when the pipeline permits delivery, is recorded after
+	// the delivery loop so its message_id points at the first delivered row. A
+	// RESTMAIL delivery has no TLS/IP envelope, so transport stays "".
+	var deliveredTrace *traceInputs
 	if pipelineCfg != nil && h.engine != nil {
 		result, err := h.engine.Execute(context.Background(), pipelineCfg, emailJSON)
 		if err != nil {
 			slog.Error("restmail: pipeline error", "error", err)
 			// Continue delivery on pipeline error (fail-open)
 		} else {
-			// Persist pipeline execution log
-			stepsJSON, _ := json.Marshal(result.Steps)
-			h.db.Create(&models.PipelineLog{
-				PipelineID: pipelineCfg.ID,
-				Direction:  "inbound",
-				Action:     string(result.FinalAction),
-				Steps:      stepsJSON,
-				DurationMS: result.Duration.Milliseconds(),
-			})
+			rmTrace := traceInputs{
+				PipelineID:   pipelineCfg.ID,
+				Direction:    "inbound",
+				Result:       result,
+				Envelope:     emailJSON.Envelope,
+				RFCMessageID: req.MessageID,
+			}
 
 			switch result.FinalAction {
 			case pipeline.ActionReject:
+				rmTrace.Outcome = outcomeRejected
+				h.recordTrace(buildTrace(rmTrace))
 				respond.Error(w, http.StatusForbidden, "rejected", "Message rejected by policy")
 				return
 			case pipeline.ActionDiscard:
+				rmTrace.Outcome = outcomeDiscarded
+				h.recordTrace(buildTrace(rmTrace))
 				respond.Data(w, http.StatusCreated, map[string]interface{}{
 					"delivered": req.To,
 					"failed":    []string{},
@@ -266,12 +281,18 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 						})
 					}
 				}
+				rmTrace.Outcome = outcomeQuarantined
+				h.recordTrace(buildTrace(rmTrace))
 				respond.Data(w, http.StatusCreated, map[string]interface{}{
 					"delivered": []string{},
 					"failed":    req.To,
 				})
 				return
 			}
+			// Fall-through (continue / any non-terminal action): the message will
+			// be delivered — stash the trace to record post-loop with message_id.
+			base := rmTrace
+			deliveredTrace = &base
 			// Carry the pipeline's Authentication-Results forward so the message
 			// stored below records the dkim/spf/dmarc/arc verdicts (they are
 			// otherwise computed and thrown away).
@@ -341,6 +362,13 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
+		// The trace links to the first delivered recipient row (one trace per
+		// pipeline run; a RESTMAIL delivery may fan out to several mailboxes).
+		if deliveredTrace != nil && deliveredTrace.MessageID == nil {
+			mid := msg.ID
+			deliveredTrace.MessageID = &mid
+		}
+
 		// Update quota
 		h.db.Model(&mailbox).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes))
 		h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
@@ -350,6 +378,14 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		})
 
 		delivered = append(delivered, rcpt)
+	}
+
+	// Record the delivered trace once, after the fan-out loop. message_id points
+	// at the first delivered row (nil if every recipient failed); the outcome is
+	// delivered because the pipeline permitted delivery.
+	if deliveredTrace != nil {
+		deliveredTrace.Outcome = outcomeDelivered
+		h.recordTrace(buildTrace(*deliveredTrace))
 	}
 
 	status := http.StatusCreated

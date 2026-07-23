@@ -52,6 +52,69 @@ type PipelineLog struct {
 
 func (PipelineLog) TableName() string { return "pipeline_logs" }
 
+// MessageTrace is the durable per-message observability record: exactly one row
+// per message that traversed a pipeline, recording what happened to THIS
+// message. It supersedes PipelineLog as the write target (PR3); PipelineLog is
+// retained only for the legacy read handler until PR5 repoints it here. A new
+// table (message_traces) rather than an in-place rename because the schema is a
+// near-total superset with renamed columns and the old rows carry no true trace
+// (no backfill — their real forensic detail is unknown).
+//
+// Trace-only raw PII (mail_from, rcpt_to, client_ip) is stored raw by resolved
+// decision: full forensics while a row is hot, pruned at the retention horizon
+// (PR4). These columns must NEVER be promoted to a metric label.
+type MessageTrace struct {
+	ID uint `gorm:"primaryKey" json:"id"`
+
+	// MessageID links to the delivered messages row. Set ONLY on the delivered
+	// path (non-nil after the Message is created); nil for every non-delivered
+	// outcome (rejected/quarantined/discarded/deferred), where correlation is via
+	// RFCMessageID instead. Not a GORM association — the column is an indexed
+	// nullable FK the reader joins explicitly.
+	MessageID *uint `gorm:"index" json:"message_id"`
+
+	// RFCMessageID is the RFC 5322 Message-ID header — the stable correlation key
+	// for mail that never became a Message row (rejected/quarantined/discarded).
+	RFCMessageID string `gorm:"size:255;index" json:"rfc_message_id"`
+
+	Direction string `gorm:"size:20" json:"direction"` // inbound | outbound
+	Transport string `gorm:"size:20" json:"transport"` // tls | plaintext | "" (unknown / not applicable)
+
+	// Trace-only raw PII — see type doc. Never a metric label.
+	MailFrom string `gorm:"size:255" json:"mail_from"`
+	RcptTo   string `gorm:"size:255" json:"rcpt_to"` // first recipient
+	ClientIP string `gorm:"size:64" json:"client_ip"`
+
+	PipelineID  uint   `gorm:"index" json:"pipeline_id"`
+	FinalAction string `gorm:"size:20" json:"final_action"`
+
+	// Outcome is the bounded terminal disposition; the leading column of the
+	// (outcome, created_at) composite index that PR5 analytics scans.
+	Outcome string `gorm:"size:20;index:idx_message_traces_outcome_created,priority:1" json:"outcome"` // delivered|queued|rejected|quarantined|discarded|deferred
+
+	// ReasonCode is the bounded WHY of a non-continue terminal, derived once via
+	// pipeline.ReasonForStep. Empty for a delivered/queued (continue) outcome.
+	ReasonCode string `gorm:"size:32;index" json:"reason_code"`
+
+	SpamScore  *float32        `json:"spam_score,omitempty"`
+	DurationMS int64           `json:"duration_ms"`
+	Stages     json.RawMessage `gorm:"type:jsonb" json:"stages"` // []pipeline.StepResult
+
+	// Sampled records whether this row survived the sampling gate. PR3 captures
+	// all (always true); the sampling logic that can set it false is PR4.
+	Sampled bool `gorm:"default:true" json:"sampled"`
+
+	// CreatedAt drives PR4 pruning (standalone index) and is the second column of
+	// the (outcome, created_at) analytics composite.
+	CreatedAt time.Time `gorm:"index;index:idx_message_traces_outcome_created,priority:2" json:"created_at"`
+
+	// ExpiresAt is the retention horizon. The column exists now (indexed for the
+	// PR4 pruner); PR3 leaves it NULL — no horizon is computed until PR4.
+	ExpiresAt *time.Time `gorm:"index" json:"expires_at,omitempty"`
+}
+
+func (MessageTrace) TableName() string { return "message_traces" }
+
 // Contact represents a known sender in a recipient's contact list.
 type Contact struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
