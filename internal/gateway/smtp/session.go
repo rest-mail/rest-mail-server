@@ -10,11 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	rmail "github.com/restmail/restmail/internal/mail"
-	"gorm.io/gorm"
 )
 
 // Session represents a single SMTP conversation with a client.
@@ -26,11 +24,11 @@ type Session struct {
 	conn       net.Conn
 	reader     *bufio.Reader
 	writer     *bufio.Writer
-	api        *apiclient.Client
+	api        Backend
 	hostname   string
 	remoteAddr string
 	tlsConfig  *tls.Config
-	db         *gorm.DB
+	store      Store
 	limiter    *connlimiter.Limiter
 
 	// Session state
@@ -51,7 +49,7 @@ type authState struct {
 }
 
 // NewSession creates a new SMTP session.
-func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, db *gorm.DB, isSubmission bool, limiter *connlimiter.Limiter) *Session {
+func NewSession(conn net.Conn, api Backend, hostname string, tlsConfig *tls.Config, store Store, isSubmission bool, limiter *connlimiter.Limiter) *Session {
 	return &Session{
 		conn:         conn,
 		reader:       bufio.NewReader(conn),
@@ -60,7 +58,7 @@ func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig
 		hostname:     hostname,
 		remoteAddr:   conn.RemoteAddr().String(),
 		tlsConfig:    tlsConfig,
-		db:           db,
+		store:        store,
 		limiter:      limiter,
 		isSubmission: isSubmission,
 		auth:         &authState{},
@@ -344,14 +342,11 @@ func (s *Session) handleMAIL(arg string) {
 	// On submission port, verify sender matches authenticated user or a linked account
 	if s.isSubmission && s.auth.authenticated {
 		if from != s.auth.email {
-			// Check linked accounts
-			var count int64
-			s.db.Table("linked_accounts").
-				Joins("JOIN mailboxes ON mailboxes.id = linked_accounts.mailbox_id").
-				Where("linked_accounts.webmail_account_id = ? AND mailboxes.address = ?", s.auth.accountID, from).
-				Count(&count)
-			if count == 0 {
-				slog.Warn("smtp: sender not authorized", "auth_user", s.auth.email, "mail_from", from)
+			// Check linked accounts. A lookup error is treated as "not authorized",
+			// matching the prior inline behavior (which left the count at zero).
+			authorized, err := s.store.SenderAuthorized(s.auth.accountID, from)
+			if err != nil || !authorized {
+				slog.Warn("smtp: sender not authorized", "auth_user", s.auth.email, "mail_from", from, "error", err)
 				s.reply(553, "5.7.1 Sender address not authorized for this account")
 				return
 			}
@@ -470,21 +465,17 @@ func (s *Session) handleDATA() {
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
 				recipientDomain = rcpt[idx+1:]
 			}
-			queueEntry := models.OutboundQueue{
+			if err := s.store.EnqueueOutbound(OutboundMessage{
 				Sender:     s.mailFrom,
 				Recipient:  rcpt,
 				Domain:     recipientDomain,
 				RawMessage: string(data),
-				Status:     "pending",
-				MaxRetries: 30,
-				ExpiresAt:  time.Now().Add(72 * time.Hour),
-			}
-			if err := s.db.Create(&queueEntry).Error; err != nil {
+			}); err != nil {
 				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
 				failed++
 				continue
 			}
-			slog.Info("smtp: queued for outbound delivery", "from", s.mailFrom, "to", rcpt, "queue_id", queueEntry.ID)
+			slog.Info("smtp: queued for outbound delivery", "from", s.mailFrom, "to", rcpt)
 			accepted++
 			continue
 		}

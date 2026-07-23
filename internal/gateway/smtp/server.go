@@ -7,31 +7,29 @@ import (
 	"net"
 	"sync"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
-	"gorm.io/gorm"
 )
 
 // Server listens for SMTP connections and spawns session handlers.
 type Server struct {
-	hostname              string
-	api                   *apiclient.Client
-	tlsConfig             *tls.Config
-	db                    *gorm.DB
-	limiter               *connlimiter.Limiter
-	proxyProtocolCIDRs    []string
-	listeners             []net.Listener
-	wg                    sync.WaitGroup
-	shutdown              chan struct{}
+	hostname           string
+	api                Backend
+	tlsConfig          *tls.Config
+	store              Store
+	limiter            *connlimiter.Limiter
+	proxyProtocolCIDRs []string
+	listeners          []net.Listener
+	wg                 sync.WaitGroup
+	shutdown           chan struct{}
 }
 
 // NewServer creates a new SMTP server.
-func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config, db *gorm.DB, limiter *connlimiter.Limiter) *Server {
+func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store, limiter *connlimiter.Limiter) *Server {
 	return &Server{
 		hostname:  hostname,
 		api:       api,
 		tlsConfig: tlsConfig,
-		db:        db,
+		store:     store,
 		limiter:   limiter,
 		shutdown:  make(chan struct{}),
 	}
@@ -134,7 +132,7 @@ func (s *Server) acceptLoop(listener net.Listener, isSubmission, implicitTLS boo
 
 		go func() {
 			defer s.limiter.Release(ip)
-			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.db, isSubmission, s.limiter)
+			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.store, isSubmission, s.limiter)
 			if implicitTLS {
 				session.usingTLS = true
 			}
