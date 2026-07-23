@@ -232,7 +232,7 @@ historical and, once fully processed + captured here, can be deleted.
 - The codex trio (`codex-security-review-2026-04-23.md` + board + summary) remains
   **fully resolved** (struck in #77 / #80); OSI-1 and OSI-2 carry forward from it.
 
-### Resolved in this pass (2026-07-23 — not carried as open items)
+### Resolved in this pass (2026-07-23 — PR #87 — not carried as open items)
 
 - **Webhook/duplicate SSRF** — `internal/pipeline/filters/ssrf.go` guarded dialer
   refuses loopback/link-local (incl. cloud metadata) at dial time (rebind-safe);
