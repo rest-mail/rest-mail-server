@@ -2027,23 +2027,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 }
 
 func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
-	var account models.WebmailAccount
-	if err := h.db.First(&account, accountID).Error; err == nil {
-		if account.ID == webmailAccountID {
-			return account.PrimaryMailboxID, nil
-		}
-	}
-
-	// Check if user has a linked account whose mailbox matches the target account
-	var targetAccount models.WebmailAccount
-	if err := h.db.First(&targetAccount, accountID).Error; err == nil {
-		var linked models.LinkedAccount
-		if err := h.db.Where("webmail_account_id = ? AND mailbox_id = ?", webmailAccountID, targetAccount.PrimaryMailboxID).First(&linked).Error; err == nil {
-			return linked.MailboxID, nil
-		}
-	}
-
-	return 0, fmt.Errorf("account not found or access denied")
+	return resolveAccountMailbox(h.db, accountID, webmailAccountID)
 }
 
 // ListCalendarEvents returns calendar event versions for a mailbox,

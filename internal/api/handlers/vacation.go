@@ -47,20 +47,7 @@ func (h *VacationHandler) resolveMailboxID(r *http.Request, accountIDStr string)
 	if err != nil {
 		return 0, err
 	}
-
-	var account models.WebmailAccount
-	if err := h.db.First(&account, accountID).Error; err == nil {
-		if account.ID == claims.WebmailAccountID {
-			return account.PrimaryMailboxID, nil
-		}
-	}
-
-	var linked models.LinkedAccount
-	if err := h.db.Where("webmail_account_id = ? AND id = ?", claims.WebmailAccountID, accountID).First(&linked).Error; err == nil {
-		return linked.MailboxID, nil
-	}
-
-	return 0, fmt.Errorf("access denied")
+	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
 }
 
 // GetVacation returns the vacation auto-reply configuration for a mailbox.
