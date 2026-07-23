@@ -201,11 +201,22 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	}
 
 	// ═══════════════════════════════════════════════════════════════
-	// Auth (no auth)
+	// Auth (no JWT). Login (credential verification) and refresh (token
+	// minting) are throttled per client IP to blunt brute-force /
+	// credential-stuffing; logout carries no such risk. The limiter is a
+	// dependency-free per-IP token bucket (see middleware.RateLimit) and is
+	// bounded so ordinary interactive use is unaffected.
 	// ═══════════════════════════════════════════════════════════════
-	r.Post("/api/v1/auth/login", authH.Login)
+	authThrottle := func(next http.Handler) http.Handler { return next }
+	if cfg.AuthRateLimitEnabled {
+		authThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+			RPS:   cfg.AuthRateLimitRPS,
+			Burst: cfg.AuthRateLimitBurst,
+		})
+	}
+	r.With(authThrottle).Post("/api/v1/auth/login", authH.Login)
 	r.Post("/api/v1/auth/logout", authH.Logout)
-	r.Post("/api/v1/auth/refresh", authH.Refresh)
+	r.With(authThrottle).Post("/api/v1/auth/refresh", authH.Refresh)
 
 	// ═══════════════════════════════════════════════════════════════
 	// Inbound delivery — machine-to-machine, called by the protocol
