@@ -4,9 +4,59 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
+
+// maxFolderNameLen bounds an IMAP folder (mailbox) name. The messages.folder
+// column is size:255, so a longer name can never match a stored row anyway;
+// rejecting it at the gateway keeps oversized, attacker-chosen names out of the
+// downstream API request entirely.
+const maxFolderNameLen = 255
+
+// validateFolder is the gateway's object-level authorization guard for
+// folder-scoped IMAP operations (OSI-9). Every folder name a client supplies —
+// on SELECT/STATUS (Messages), COPY/MOVE and APPEND destinations — passes
+// through here before it is used to build an API request path or JSON body.
+//
+// The backend already scopes each folder query to the authenticated account's
+// mailbox (resolveAccountMailbox), so this is defense in depth: it rejects
+// names that could smuggle control characters or CR/LF into the downstream
+// request (header/JSON injection), traverse outside the intended path, or blow
+// past the storage column width. It mirrors the control-character/newline
+// rejection already applied to operator-supplied identifiers elsewhere in the
+// codebase (e.g. the dnsmasq record writer).
+//
+// The check is an allow-by-shape rule: a non-empty name, no longer than
+// maxFolderNameLen bytes, valid UTF-8, with no control characters (which
+// includes NUL, TAB, CR and LF) and no NUL or path-traversal ("..") sequence.
+// Ordinary hierarchical names ("INBOX", "Sent", "Work/Projects",
+// "[Gmail]/All Mail") are accepted; only structurally dangerous names are
+// refused.
+func validateFolder(folder string) error {
+	if folder == "" {
+		return fmt.Errorf("imap: empty folder name")
+	}
+	if len(folder) > maxFolderNameLen {
+		return fmt.Errorf("imap: folder name too long (%d > %d bytes)", len(folder), maxFolderNameLen)
+	}
+	if !utf8.ValidString(folder) {
+		return fmt.Errorf("imap: folder name is not valid UTF-8")
+	}
+	for _, r := range folder {
+		// Reject C0/C1 control characters and DEL. This covers NUL, TAB, CR and
+		// LF, the characters usable to inject into the downstream HTTP request
+		// line or JSON body.
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return fmt.Errorf("imap: folder name contains a control character")
+		}
+	}
+	if strings.Contains(folder, "..") {
+		return fmt.Errorf("imap: folder name contains a path-traversal sequence")
+	}
+	return nil
+}
 
 // toUID converts a rest-mail message ID to an IMAP UID. rest-mail's message ID is
 // the message's IMAP UID (a global message-ID-as-UID model). The ID is a uint,

@@ -105,7 +105,23 @@ type Worker struct {
 	sts          *mtasts.Resolver
 	shutdown     chan struct{}
 	wg           sync.WaitGroup
+
+	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
+	// may be delivered into a single recipient mailbox within bounceWindow;
+	// bounceMax <= 0 disables the cap. See generateBounce.
+	bounceMax    int
+	bounceWindow time.Duration
 }
+
+const (
+	// defaultBounceMaxPerRecipient bounds DSNs delivered into one mailbox per
+	// window when the caller has not configured a limit (OSI-25). It is generous
+	// enough never to drop a legitimate low-volume bounce stream while still
+	// capping a spoofed-sender mail-bombing amplification.
+	defaultBounceMaxPerRecipient = 20
+	// defaultBounceWindow is the sliding window over which bounceMax is counted.
+	defaultBounceWindow = time.Hour
+)
 
 // NewWorker creates a new queue worker.
 func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.Duration) *Worker {
@@ -117,6 +133,8 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 		tlsInsecure:  false,
 		stsEnforce:   true,
 		shutdown:     make(chan struct{}),
+		bounceMax:    defaultBounceMaxPerRecipient,
+		bounceWindow: defaultBounceWindow,
 	}
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
 	// verification tracks the worker's tlsInsecure flag at call time.
@@ -139,6 +157,17 @@ func (w *Worker) SetTLSInsecure(insecure bool) {
 // not blocked.
 func (w *Worker) SetMTASTSEnforce(enforce bool) {
 	w.stsEnforce = enforce
+}
+
+// SetBounceRateLimit configures the per-recipient DSN cap (OSI-25): at most max
+// bounce messages are delivered into any one mailbox within window. A max <= 0
+// disables the cap; a non-positive window falls back to the default window.
+func (w *Worker) SetBounceRateLimit(max int, window time.Duration) {
+	w.bounceMax = max
+	if window <= 0 {
+		window = defaultBounceWindow
+	}
+	w.bounceWindow = window
 }
 
 // Start begins processing the outbound queue.
@@ -321,10 +350,15 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 
 	firstHost := strings.TrimSuffix(mxRecords[0].Host, ".")
 
-	// Check capability cache before EHLO probe
+	// Check capability cache before EHLO probe. The cached entry is bound to the
+	// MX host that advertised it (OSI-20): a hit requires the stored row to be
+	// for THIS domain's current primary MX host and still within its TTL. If the
+	// primary MX has changed since the entry was learned, capabilityApplies
+	// returns false and we re-probe rather than trusting a capability advertised
+	// by a different (possibly rogue) host.
 	var cap models.RESTMAILCapability
-	cacheHit := w.db.Where("domain = ? AND expires_at > ?", item.Domain, time.Now()).
-		First(&cap).Error == nil
+	found := w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
+	cacheHit := found && capabilityApplies(cap, item.Domain, firstHost, time.Now())
 
 	if cacheHit {
 		if cap.Supported {
@@ -399,8 +433,21 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	return fmt.Errorf("all MX hosts failed: %w", lastErr)
 }
 
-// cacheCapability stores a RESTMAIL capability probe result in the database.
-func (w *Worker) cacheCapability(domain string, supported bool, endpointURL string) {
+// capabilityApplies reports whether a cached RESTMAIL capability row may be
+// reused for a delivery to domain whose current primary MX is mxHost, as of now
+// (OSI-20). A cached capability is bound to the exact MX host that advertised it:
+// reuse requires the same domain, the same primary MX host, and an unexpired TTL.
+// If the domain's primary MX has rotated — or a different/rogue host has started
+// answering on a shared relay — the entry no longer applies and the caller must
+// re-probe rather than trust a capability learned from another host.
+func capabilityApplies(c models.RESTMAILCapability, domain, mxHost string, now time.Time) bool {
+	return c.Domain == domain && c.MXHost == mxHost && c.ExpiresAt.After(now)
+}
+
+// cacheCapability stores a RESTMAIL capability probe result in the database,
+// bound to the MX host that advertised it (OSI-20). Only one row is kept per
+// domain; probing a new primary MX replaces the previous host's entry.
+func (w *Worker) cacheCapability(domain, mxHost string, supported bool, endpointURL string) {
 	now := time.Now()
 	ttl := 15 * time.Minute
 	if supported {
@@ -409,6 +456,7 @@ func (w *Worker) cacheCapability(domain string, supported bool, endpointURL stri
 
 	cap := models.RESTMAILCapability{
 		Domain:      domain,
+		MXHost:      mxHost,
 		Supported:   supported,
 		EndpointURL: endpointURL,
 		LastProbed:  now,
@@ -417,7 +465,7 @@ func (w *Worker) cacheCapability(domain string, supported bool, endpointURL stri
 
 	w.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "domain"}},
-		DoUpdates: clause.AssignmentColumns([]string{"supported", "endpoint_url", "last_probed", "expires_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"mx_host", "supported", "endpoint_url", "last_probed", "expires_at"}),
 	}).Create(&cap)
 }
 
@@ -484,18 +532,54 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 	_ = client.Close()
 
 	if !ok || restmailURL == "" {
-		w.cacheCapability(item.Domain, false, "")
+		w.cacheCapability(item.Domain, host, false, "")
 		return false, nil // No RESTMAIL support
 	}
 
 	slog.Info("queue: RESTMAIL capability detected", "host", host, "url", restmailURL)
-	w.cacheCapability(item.Domain, true, restmailURL)
+	w.cacheCapability(item.Domain, host, true, restmailURL)
 
 	err = w.deliverRESTMAILHTTPS(restmailURL, item)
 	if err != nil {
 		return true, err
 	}
 	return true, nil
+}
+
+// bounceSenderAuthorized reports whether a DSN for a failed outbound item may be
+// delivered into the sender's local mailbox (OSI-25). A bounce is only trustworthy
+// if the queue row's Sender genuinely belongs to the account that submitted the
+// message.
+//
+// When the queue row is linked to a stored sent message (hasMessage — the
+// authenticated webmail/API send path sets OutboundQueue.MessageID), that
+// message MUST belong to the same mailbox the bounce would land in
+// (messageMailboxID == senderMailboxID). A mismatch is positive evidence that
+// the row's Sender was forged relative to the real submission, so the DSN is
+// suppressed — this is the anti mail-bombing check.
+//
+// When there is no linked message (hasMessage false: a message row that no
+// longer exists, or a system-generated report / SMTP submission that carries no
+// message id) there is nothing to contradict the sender, so the bounce proceeds
+// — still subject to the per-recipient rate limit. This deliberately fails toward
+// delivering legitimate DSNs (only a proven forgery is dropped), honoring the
+// rule that bounces are how legitimate mail flow signals failure.
+func bounceSenderAuthorized(hasMessage bool, messageMailboxID, senderMailboxID uint) bool {
+	if !hasMessage {
+		return true
+	}
+	return messageMailboxID == senderMailboxID
+}
+
+// withinDSNRateLimit reports whether delivering one more DSN into a recipient
+// mailbox stays within the configured per-window cap (OSI-25). recentCount is how
+// many DSNs have already been delivered into that mailbox within the window. A
+// maxPerWindow <= 0 disables the limit.
+func withinDSNRateLimit(recentCount, maxPerWindow int) bool {
+	if maxPerWindow <= 0 {
+		return true
+	}
+	return recentCount < maxPerWindow
 }
 
 // generateBounce creates an RFC 3464 DSN (Delivery Status Notification)
@@ -510,6 +594,37 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	if result.Error != nil || result.RowsAffected == 0 {
 		slog.Debug("queue: bounce sender not local, discarding DSN", "sender", item.Sender)
 		return
+	}
+
+	// Sender authentication (OSI-25): when the queue row is linked to a sent
+	// message, that message must belong to the mailbox we would deliver the DSN
+	// into. A mismatch means the row's Sender was spoofed relative to the actual
+	// submission, so we refuse to bounce into that mailbox (anti mail-bombing).
+	if item.MessageID != nil {
+		var msgMailbox struct{ MailboxID uint }
+		mres := w.db.Raw("SELECT mailbox_id FROM messages WHERE id = ? LIMIT 1", *item.MessageID).Scan(&msgMailbox)
+		msgFound := mres.Error == nil && mres.RowsAffected > 0
+		if !bounceSenderAuthorized(msgFound, msgMailbox.MailboxID, senderMailbox.ID) {
+			slog.Warn("queue: bounce sender not authorized for submitted message, suppressing DSN",
+				"sender", item.Sender, "message_id", *item.MessageID)
+			return
+		}
+	}
+
+	// Per-recipient DSN rate limit (OSI-25): cap how many bounces may land in one
+	// mailbox within the window, bounding a spoofed-sender mail-bombing regardless
+	// of the authentication check above.
+	if w.bounceMax > 0 {
+		var recent int64
+		w.db.Table("messages").
+			Where("mailbox_id = ? AND sender = ? AND created_at > ?",
+				senderMailbox.ID, "mailer-daemon@"+w.hostname, time.Now().Add(-w.bounceWindow)).
+			Count(&recent)
+		if !withinDSNRateLimit(int(recent), w.bounceMax) {
+			slog.Warn("queue: DSN rate limit exceeded for recipient, suppressing DSN",
+				"sender", item.Sender, "recent", recent, "max", w.bounceMax, "window", w.bounceWindow)
+			return
+		}
 	}
 
 	now := time.Now()

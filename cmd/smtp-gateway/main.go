@@ -190,6 +190,7 @@ func main() {
 
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
 	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
+	queueWorker.SetBounceRateLimit(cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
 	if cfg.Environment == "development" || os.Getenv("QUEUE_TLS_INSECURE") == "true" {
 		queueWorker.SetTLSInsecure(true)
 		// MTA-STS enforce requires real certificate verification, which is

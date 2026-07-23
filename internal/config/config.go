@@ -225,6 +225,14 @@ type Config struct {
 
 	// Environment
 	Environment string // "development", "production", "test"
+
+	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
+	// BounceDSNMaxPerRecipient caps how many bounce (DSN) messages the queue
+	// worker will deliver into any single recipient mailbox within
+	// BounceDSNRateWindow. <= 0 disables the cap. These bound a spoofed-sender
+	// mail-bombing amplification without dropping legitimate low-volume bounces.
+	BounceDSNMaxPerRecipient int
+	BounceDSNRateWindow      time.Duration
 }
 
 // DefaultTraceRetentionDays is the per-message trace hot window when
@@ -530,6 +538,10 @@ func Load() (*Config, error) {
 		}
 	}
 	cfg.AuthRateLimitRPS = authRPS
+
+	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
+	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)
+	cfg.BounceDSNRateWindow = getEnvDuration("BOUNCE_DSN_RATE_WINDOW", time.Hour)
 
 	return cfg, nil
 }
