@@ -32,10 +32,17 @@ package middleware
 //	queue:manage retry/bounce/delete (single and bulk)
 //	bans:*       IP ban listing/creation/removal
 //	messages:read delivery log (read)
+//	observability:read  pipeline analytics funnel + per-message trace read
 //
 // The dashboard stats endpoint and the non-production test endpoints remain
 // behind AdminOnly without a finer capability: every admin role may see the
 // dashboard, and the test endpoints already refuse to run in production.
+// The pipeline-execution trace read surface (analytics funnel + per-message
+// trace) is gated by the dedicated observability:read capability, seeded into
+// the admin and readonly roles (both already carry pipelines:read, so this is
+// purely additive to existing admin flows) and satisfied by superadmin's "*".
+// GetDashboardStats stays ungated (a known gap noted in the observability
+// design) — it is deliberately NOT moved behind this capability here.
 const (
 	CapDomainsRead    = "domains:read"
 	CapDomainsWrite   = "domains:write"
@@ -55,4 +62,12 @@ const (
 	CapBansWrite      = "bans:write"
 	CapBansDelete     = "bans:delete"
 	CapMessagesRead   = "messages:read"
+
+	// CapObservabilityRead gates the pipeline-observability read surface added in
+	// PR5: the aggregate analytics funnel (GET /admin/pipelines/analytics) and the
+	// per-message trace read (GET /admin/messages/{id}/trace). It is a dedicated
+	// capability rather than a reuse of pipelines:read so the funnel/trace surface
+	// — which exposes per-message forensic detail including trace-only PII — can be
+	// granted or withheld independently of pipeline configuration access.
+	CapObservabilityRead = "observability:read"
 )
