@@ -94,7 +94,21 @@ func main() {
 		slog.Warn("no TLS certificate configured — running without TLS")
 	}
 
-	api := apiclient.New(cfg.APIBaseURL)
+	// Internal mTLS (gateway → API machine auth): when enabled, present the
+	// gateway's client certificate to the API's dedicated internal listener
+	// (cfg.APIBaseURL must point at that https listener). Disabled → plain
+	// client, unchanged.
+	var apiOpts []apiclient.Option
+	if cfg.InternalMTLSEnabled {
+		clientTLS, err := cfg.InternalMTLSClientTLS()
+		if err != nil {
+			slog.Error("internal mTLS enabled but client TLS config is invalid", "error", err)
+			os.Exit(1)
+		}
+		apiOpts = append(apiOpts, apiclient.WithTLSConfig(clientTLS))
+		slog.Info("internal mTLS enabled — presenting gateway client certificate on internal API calls")
+	}
+	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
 
 	// SMTP gateway needs DB access for the outbound queue worker

@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,14 +17,37 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// New creates a new API client pointing at the given base URL.
-func New(baseURL string) *Client {
-	return &Client{
+// Option configures a Client at construction time.
+type Option func(*Client)
+
+// WithTLSConfig makes the client use tlsCfg for its HTTPS transport. The
+// gateways use this to present their internal mTLS client certificate (and to
+// verify the API's server certificate against the internal CA) when calling the
+// API's dedicated internal listener. With no option the client keeps the
+// default transport, so plain-HTTP (non-mTLS) deployments are unchanged.
+func WithTLSConfig(tlsCfg *tls.Config) Option {
+	return func(c *Client) {
+		// Clone the default transport so connection-pooling/timeout defaults are
+		// preserved; only the TLS config is overridden.
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsCfg
+		c.httpClient.Transport = transport
+	}
+}
+
+// New creates a new API client pointing at the given base URL. Options may
+// supply an mTLS TLS configuration for internal endpoints.
+func New(baseURL string, opts ...Option) *Client {
+	c := &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────

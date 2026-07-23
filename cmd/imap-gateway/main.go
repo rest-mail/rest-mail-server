@@ -95,7 +95,21 @@ func main() {
 		slog.Info("DB-backed SNI certificate loading enabled")
 	}
 
-	api := apiclient.New(cfg.APIBaseURL)
+	// Internal mTLS (gateway → API machine auth): when enabled, present the
+	// gateway's client certificate to the API's dedicated internal listener
+	// (cfg.APIBaseURL must point at that https listener). Disabled → plain
+	// client, unchanged.
+	var apiOpts []apiclient.Option
+	if cfg.InternalMTLSEnabled {
+		clientTLS, err := cfg.InternalMTLSClientTLS()
+		if err != nil {
+			slog.Error("internal mTLS enabled but client TLS config is invalid", "error", err)
+			os.Exit(1)
+		}
+		apiOpts = append(apiOpts, apiclient.WithTLSConfig(clientTLS))
+		slog.Info("internal mTLS enabled — presenting gateway client certificate on internal API calls")
+	}
+	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
