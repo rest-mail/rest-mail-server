@@ -1157,3 +1157,61 @@ func TestRequestBody_Roundtrip(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// ── WireSize ─────────────────────────────────────────────────────────
+
+// TestMessageSummary_WireSize_PrefersRawSize proves the size a gateway reports
+// on the wire (IMAP RFC822.SIZE, POP3 STAT/LIST) is the exact stored-raw octet
+// count whenever the server recorded one, even when the quota-oriented
+// size_bytes disagrees.
+func TestMessageSummary_WireSize_PrefersRawSize(t *testing.T) {
+	m := MessageSummary{SizeBytes: 120, RawSize: 4096}
+	if got := m.WireSize(); got != 4096 {
+		t.Fatalf("WireSize() = %d, want 4096 (raw_size must win over size_bytes)", got)
+	}
+}
+
+// TestMessageSummary_WireSize_FallsBackToSizeBytes proves messages without a
+// stored raw form (raw_size 0) keep reporting the legacy size_bytes value.
+func TestMessageSummary_WireSize_FallsBackToSizeBytes(t *testing.T) {
+	m := MessageSummary{SizeBytes: 120, RawSize: 0}
+	if got := m.WireSize(); got != 120 {
+		t.Fatalf("WireSize() = %d, want 120 (fallback to size_bytes)", got)
+	}
+	empty := MessageSummary{}
+	if got := empty.WireSize(); got != 0 {
+		t.Fatalf("WireSize() on zero summary = %d, want 0", got)
+	}
+}
+
+// TestListMessages_DecodesRawSize verifies the raw_size field the API now
+// emits survives the client decode alongside size_bytes, and that its absence
+// (older API) decodes to 0 so WireSize falls back.
+func TestListMessages_DecodesRawSize(t *testing.T) {
+	srv, mux := newTestServer(t)
+	mux.HandleFunc("/api/v1/accounts/7/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// The API pages newest-first; ListMessages reverses to oldest-first.
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]interface{}{
+				{"id": 2, "subject": "no raw", "size_bytes": 33},
+				{"id": 1, "subject": "with raw", "size_bytes": 10, "raw_size": 2222},
+			},
+			"pagination": map[string]interface{}{"cursor": "", "has_more": false, "total": 2},
+		})
+	})
+
+	resp, err := New(srv.URL).ListMessages("tok", 7, "INBOX")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(resp.Data))
+	}
+	if resp.Data[0].RawSize != 2222 || resp.Data[0].SizeBytes != 10 {
+		t.Errorf("message 1: raw_size=%d size_bytes=%d, want 2222/10", resp.Data[0].RawSize, resp.Data[0].SizeBytes)
+	}
+	if resp.Data[1].RawSize != 0 || resp.Data[1].SizeBytes != 33 {
+		t.Errorf("message 2: raw_size=%d size_bytes=%d, want 0/33 (absent field decodes to 0)", resp.Data[1].RawSize, resp.Data[1].SizeBytes)
+	}
+}

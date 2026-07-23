@@ -1905,6 +1905,10 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		BodyHTML:     params.BodyHTML,
 		RawMessage:   params.RawMessage,
 		SizeBytes:    sizeBytes,
+		// Exact octet count of the stored raw (IMAP RFC822.SIZE / POP3 LIST
+		// report this; it must equal the bytes served verbatim). Zero when no
+		// raw was provided — consumers fall back to SizeBytes.
+		RawSize:      len(params.RawMessage),
 	}
 
 	if err := h.db.Create(&msg).Error; err != nil {

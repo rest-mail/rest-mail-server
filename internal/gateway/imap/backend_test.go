@@ -118,3 +118,24 @@ func TestRawMessage_FallsBackWhenNoStoredRaw(t *testing.T) {
 		t.Errorf("fallback missing reconstructed From header: %s", got)
 	}
 }
+
+// TestToMessage_SizePrefersRawSize proves RFC822.SIZE reports the exact octet
+// count of the stored raw message when the server recorded one — RFC 3501
+// requires the size to match the transmitted bytes exactly, and size_bytes is
+// a quota heuristic that does not.
+func TestToMessage_SizePrefersRawSize(t *testing.T) {
+	msg := toMessage(apiclient.MessageSummary{ID: 7, SizeBytes: 55, RawSize: len(storedRawWithAttachment)})
+	if msg.Size != len(storedRawWithAttachment) {
+		t.Fatalf("Size = %d, want %d (raw_size must win over size_bytes)", msg.Size, len(storedRawWithAttachment))
+	}
+}
+
+// TestToMessage_SizeFallsBackToSizeBytes proves messages the server has no
+// stored raw for (raw_size 0, e.g. locally-composed items served via the
+// rebuilt fallback) keep reporting the legacy size_bytes value.
+func TestToMessage_SizeFallsBackToSizeBytes(t *testing.T) {
+	msg := toMessage(apiclient.MessageSummary{ID: 8, SizeBytes: 55})
+	if msg.Size != 55 {
+		t.Fatalf("Size = %d, want 55 (fallback to size_bytes when raw_size absent)", msg.Size)
+	}
+}

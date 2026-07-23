@@ -530,6 +530,7 @@ func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Reque
 		BodyHTML:   bodyHTML,
 		RawMessage: item.RawMessage,
 		SizeBytes:  len(item.RawMessage),
+		RawSize:    len(item.RawMessage), // exact stored-raw octet count for IMAP/POP3 size reporting
 	}
 	if err := h.db.Create(&msg).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to deliver released message")

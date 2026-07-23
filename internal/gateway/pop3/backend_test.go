@@ -114,3 +114,39 @@ func TestRawMessage_FallsBackWhenNoStoredRaw(t *testing.T) {
 		t.Errorf("fallback missing reconstructed From header: %s", got)
 	}
 }
+
+// TestMessages_SizePrefersRawSizeWithSizeBytesFallback proves the maildrop
+// listing (which drives POP3 STAT/LIST octet counts) reports the exact
+// stored-raw size when the server recorded one, and falls back to the legacy
+// size_bytes for messages without a stored raw.
+func TestMessages_SizePrefersRawSizeWithSizeBytesFallback(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/accounts/3/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// The API pages newest-first; the client reverses to oldest-first.
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{"id": 2, "subject": "no raw", "size_bytes": 44},
+				{"id": 1, "subject": "with raw", "size_bytes": 10, "raw_size": 3210}
+			],
+			"pagination": {"cursor": "", "has_more": false, "total": 2}
+		}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	m := &mailbox{api: apiclient.New(srv.URL), token: "tok", accountID: 3}
+	msgs, err := m.Messages()
+	if err != nil {
+		t.Fatalf("Messages() error: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[0].Size != 3210 {
+		t.Errorf("message 1 Size = %d, want 3210 (raw_size must win over size_bytes)", msgs[0].Size)
+	}
+	if msgs[1].Size != 44 {
+		t.Errorf("message 2 Size = %d, want 44 (fallback to size_bytes when raw_size absent)", msgs[1].Size)
+	}
+}

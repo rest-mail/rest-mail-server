@@ -3008,6 +3008,13 @@ components:
             - type: "null"
         size_bytes:
           type: integer
+        raw_size:
+          type: integer
+          description: >-
+            Exact octet count of the stored raw RFC 2822 message (the size a
+            protocol client receives when the raw form is served verbatim,
+            e.g. IMAP RFC822.SIZE / POP3 LIST). 0 when the server holds no
+            stored raw form; consumers should fall back to size_bytes.
         has_attachments:
           type: boolean
         is_read:

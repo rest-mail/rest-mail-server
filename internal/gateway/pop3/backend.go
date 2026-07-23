@@ -58,8 +58,11 @@ func (m *mailbox) Messages() ([]pop3srv.Message, error) {
 	out := make([]pop3srv.Message, 0, len(resp.Data))
 	for _, msg := range resp.Data {
 		out = append(out, pop3srv.Message{
-			UID:  strconv.FormatUint(uint64(msg.ID), 10),
-			Size: msg.SizeBytes,
+			UID: strconv.FormatUint(uint64(msg.ID), 10),
+			// WireSize: exact stored-raw octet count when the server has one
+			// (POP3 STAT/LIST must report the transmitted size exactly),
+			// falling back to size_bytes for messages without a stored raw.
+			Size: msg.WireSize(),
 			Seen: msg.IsRead,
 		})
 	}
