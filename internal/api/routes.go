@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/metrics"
+	pipelineobs "github.com/restmail/restmail/internal/metrics/observer"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
 	"gorm.io/gorm"
@@ -99,9 +100,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db, cfg.MasterKey))
 	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
 
-	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
+	// The message-processing engine carries the metrics observer so real
+	// inbound/outbound message flow emits pipeline metrics. The pipeline
+	// preview/test handler uses a plain engine so admin "try this pipeline"
+	// runs never pollute the aggregate metrics.
+	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default(), pipelineobs.New())
+	previewEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey)
-	pipelineH := handlers.NewPipelineHandler(db, pipelineEngine)
+	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine)
 
 	// ═══════════════════════════════════════════════════════════════

@@ -11,16 +11,27 @@ import (
 type Engine struct {
 	registry *Registry
 	logger   *slog.Logger
+	observer Observer
 }
 
 // NewEngine creates a pipeline execution engine.
-func NewEngine(registry *Registry, logger *slog.Logger) *Engine {
+//
+// An optional Observer may be supplied to receive per-step and terminal
+// observations (used for metrics). When omitted, a no-op Observer is used so
+// existing callers and tests carry zero observation overhead. Only the first
+// supplied Observer is used; nil entries fall back to the no-op.
+func NewEngine(registry *Registry, logger *slog.Logger, observer ...Observer) *Engine {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	var obs Observer = NopObserver{}
+	if len(observer) > 0 && observer[0] != nil {
+		obs = observer[0]
 	}
 	return &Engine{
 		registry: registry,
 		logger:   logger,
+		observer: obs,
 	}
 }
 
@@ -57,6 +68,15 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 	// Build the list of active filters
 	skipSet := make(map[string]bool)
 
+	// recordStep finalizes a step: it appends it to the result and hands it to
+	// the observer. Observation happens for every step (including skipped and
+	// errored ones), in execution order, at step finalize.
+	recordStep := func(s StepResult) {
+		result.Steps = append(result.Steps, s)
+		e.observer.ObserveStep(s)
+	}
+
+Loop:
 	for _, fc := range pipeline.Filters {
 		if !fc.Enabled {
 			continue
@@ -74,7 +94,7 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 			step.SkipReason = "skipped by upstream filter"
 			step.Action = ActionContinue
 			step.Duration = time.Since(stepStart)
-			result.Steps = append(result.Steps, step)
+			recordStep(step)
 			e.logger.Debug("filter skipped", "filter", fc.Name, "reason", step.SkipReason)
 			continue
 		}
@@ -84,7 +104,7 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 		if err != nil {
 			step.Error = fmt.Sprintf("create filter: %v", err)
 			step.Duration = time.Since(stepStart)
-			result.Steps = append(result.Steps, step)
+			recordStep(step)
 			e.logger.Error("failed to create filter", "filter", fc.Name, "error", err)
 			continue // Skip filters that fail to instantiate
 		}
@@ -94,7 +114,7 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 		if err != nil {
 			step.Error = fmt.Sprintf("execute: %v", err)
 			step.Duration = time.Since(stepStart)
-			result.Steps = append(result.Steps, step)
+			recordStep(step)
 			e.logger.Error("filter execution failed", "filter", fc.Name, "error", err)
 			continue
 		}
@@ -102,7 +122,7 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 		step.Action = filterResult.Action
 		step.Log = filterResult.Log
 		step.Duration = time.Since(stepStart)
-		result.Steps = append(result.Steps, step)
+		recordStep(step)
 
 		e.logger.Debug("filter executed",
 			"filter", fc.Name,
@@ -115,28 +135,25 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 			skipSet[skipName] = true
 		}
 
-		// Handle action results
+		// Handle action results. A terminal action breaks out of the loop so
+		// that the single terminal observation below runs exactly once.
 		switch filterResult.Action {
 		case ActionReject:
 			result.FinalAction = ActionReject
 			result.RejectMsg = filterResult.RejectMsg
-			result.Duration = time.Since(start)
-			return result, nil
+			break Loop
 
 		case ActionQuarantine:
 			result.FinalAction = ActionQuarantine
-			result.Duration = time.Since(start)
-			return result, nil
+			break Loop
 
 		case ActionDiscard:
 			result.FinalAction = ActionDiscard
-			result.Duration = time.Since(start)
-			return result, nil
+			break Loop
 
 		case ActionDefer:
 			result.FinalAction = ActionDefer
-			result.Duration = time.Since(start)
-			return result, nil
+			break Loop
 
 		case ActionContinue:
 			// If transform filter, replace the email
@@ -146,8 +163,9 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 		}
 	}
 
-	result.FinalAction = ActionContinue
 	result.Duration = time.Since(start)
+	// One terminal observation per message, once the final action is known.
+	e.observer.ObserveTerminal(pipeline.Direction, result.FinalAction)
 	return result, nil
 }
 

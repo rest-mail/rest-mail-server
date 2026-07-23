@@ -18,6 +18,7 @@ import (
 
 	"github.com/rest-mail/mtasts"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/metrics"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -232,6 +233,10 @@ func (w *Worker) processOne(workerID int) {
 		w.db.Model(&item).Updates(map[string]interface{}{
 			"status": "delivered",
 		})
+		// Always-on outbound aggregate metrics (atomic, lock-free). This runs in
+		// the gateway process; the counter surfaces on that process's /metrics.
+		metrics.MessagesSent.Inc()
+		metrics.PipelineTerminal.WithLabelValues("outbound", "delivered").Inc()
 		slog.Info("queue: delivered", "id", item.ID, "recipient", item.Recipient)
 		return
 	}
