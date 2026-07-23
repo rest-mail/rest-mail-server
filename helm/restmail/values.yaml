@@ -153,6 +153,16 @@ smtpGateway:
   # advertisement and DATA enforcement). Empty = server default (10 MiB).
   # Must be positive when set; the gateway refuses to start on 0/negative.
   maxMessageSize: ""
+  # Anti-slowloris message-transfer policy, enforced only while a message
+  # body is being transferred (DATA/BDAT). Empty = server defaults.
+  # minTransferRate: average rate floor in bytes/sec after the grace period
+  # (default 16384); quote "0" (string, not int) to disable the floor.
+  # transferGracePeriod: seconds of no enforcement at transfer start
+  # (default 60). transferStallTimeout: seconds of zero bytes before the
+  # connection is dropped (default 300).
+  minTransferRate: ""
+  transferGracePeriod: ""
+  transferStallTimeout: ""
   logLevel: info
   environment: production
   service:

@@ -24,6 +24,7 @@ type Server struct {
 	limiter            *connlimiter.Limiter
 	proxyProtocolCIDRs []string
 	maxMessageBytes    int64
+	transferPolicy     transferRatePolicy
 	servers            []*gosmtp.Server
 }
 
@@ -36,6 +37,7 @@ func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store,
 		store:           store,
 		limiter:         limiter,
 		maxMessageBytes: defaultMaxMessageSize,
+		transferPolicy:  defaultTransferRatePolicy(),
 	}
 }
 
@@ -56,6 +58,29 @@ func (s *Server) SetMaxMessageSize(maxBytes int64) {
 		return
 	}
 	s.maxMessageBytes = maxBytes
+}
+
+// SetTransferRatePolicy sets the anti-slowloris policy applied to message-body
+// transfers: a minimum average rate in bytes/sec (0 disables the rate floor),
+// a grace period before the floor applies, and a stall timeout after which a
+// transfer delivering zero bytes is dropped. Enforcement must always exist, so
+// invalid values (negative rate, non-positive durations) are ignored and the
+// current policy is kept; config validation rejects them before this is ever
+// called in production. Call before ListenAndServe — the policy is copied into
+// each listener's connection wrapper at accept time.
+func (s *Server) SetTransferRatePolicy(minRateBytesPerSec int64, gracePeriod, stallTimeout time.Duration) {
+	if minRateBytesPerSec < 0 || gracePeriod <= 0 || stallTimeout <= 0 {
+		slog.Warn("smtp: ignoring invalid transfer-rate policy",
+			"min_rate_bytes_per_sec", minRateBytesPerSec,
+			"grace_period", gracePeriod.String(),
+			"stall_timeout", stallTimeout.String())
+		return
+	}
+	s.transferPolicy = transferRatePolicy{
+		minRate: minRateBytesPerSec,
+		grace:   gracePeriod,
+		stall:   stallTimeout,
+	}
 }
 
 // ListenAndServe starts SMTP listeners on the specified ports.
@@ -145,7 +170,10 @@ func (s *Server) listen(port int, isSubmission, implicitTLS bool) error {
 	}
 
 	// Connection limiting happens at accept level, before any SMTP handling.
-	listener = &limitListener{Listener: listener, limiter: s.limiter}
+	// The same layer wraps each accepted conn with the anti-slowloris transfer
+	// tracker, kept under any TLS layer so the session can reach it via a
+	// single tls.Conn unwrap.
+	listener = &limitListener{Listener: listener, limiter: s.limiter, transferPolicy: s.transferPolicy}
 
 	// Implicit TLS (465) wraps last so go-smtp sees a *tls.Conn and treats
 	// the connection as TLS from the first byte.
@@ -177,10 +205,13 @@ func (s *Server) Shutdown() {
 
 // limitListener enforces the connection limiter at accept level: connections
 // over the per-IP or global limit are closed before any SMTP handling, and
-// the slot is released when the connection closes.
+// the slot is released when the connection closes. Accepted connections are
+// additionally wrapped with the anti-slowloris transfer-rate tracker (armed
+// by the session only during message-body transfer).
 type limitListener struct {
 	net.Listener
-	limiter *connlimiter.Limiter
+	limiter        *connlimiter.Limiter
+	transferPolicy transferRatePolicy
 }
 
 func (l *limitListener) Accept() (net.Conn, error) {
@@ -197,7 +228,9 @@ func (l *limitListener) Accept() (net.Conn, error) {
 		}
 		lc := &limitedConn{Conn: conn}
 		lc.release = func() { l.limiter.Release(ip) }
-		return lc, nil
+		// Rate tracker outermost so a policy drop closes through limitedConn
+		// and releases the limiter slot.
+		return newTransferRateConn(lc, l.transferPolicy), nil
 	}
 }
 
