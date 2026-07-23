@@ -156,6 +156,10 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 
 	var delivered []string
 	var failed []string
+	// Authentication-Results the inbound pipeline produced (dkim/spf/dmarc/arc),
+	// prepended onto the stored raw message so the verdicts are visible — the
+	// same surfacing the SMTP delivery path does.
+	var authResults []string
 
 	// Build pipeline EmailJSON from the request for inbound filtering
 	emailJSON := &pipeline.EmailJSON{
@@ -268,12 +272,28 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 				})
 				return
 			}
-			// NOTE: pipeline-modified email (result.FinalEmail) is intentionally
-			// not propagated into the message stored below — the message is built
-			// from req.* fields. If pipeline output should drive storage, plumb
-			// it through the loop's models.Message{} construction below.
-			_ = result.FinalEmail
+			// Carry the pipeline's Authentication-Results forward so the message
+			// stored below records the dkim/spf/dmarc/arc verdicts (they are
+			// otherwise computed and thrown away).
+			if result.FinalEmail != nil {
+				authResults = result.FinalEmail.Headers.Raw["Authentication-Results"]
+			}
 		}
+	}
+
+	// Store the original raw message (with the pipeline's Authentication-Results
+	// prepended). Previously the stored message had no raw form at all, so
+	// RESTMAIL-delivered mail lost its full MIME (attachments, headers) over
+	// IMAP/POP3 and couldn't be re-verified.
+	rawMessage := req.RawMessage
+	if rawMessage != "" && len(authResults) > 0 {
+		var b strings.Builder
+		for _, ar := range authResults {
+			b.WriteString("Authentication-Results: ")
+			b.WriteString(ar)
+			b.WriteString("\r\n")
+		}
+		rawMessage = b.String() + rawMessage
 	}
 
 	for _, rcpt := range req.To {
@@ -311,6 +331,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			BodyText:     req.BodyText,
 			BodyHTML:     req.BodyHTML,
 			Headers:      models.JSONB(req.Headers),
+			RawMessage:   rawMessage,
 			SizeBytes:    sizeBytes,
 		}
 
