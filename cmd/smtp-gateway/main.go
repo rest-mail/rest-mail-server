@@ -16,6 +16,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/bancheck"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/restmail/restmail/internal/gateway/metricsrv"
 	"github.com/restmail/restmail/internal/gateway/queue"
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
@@ -65,6 +66,11 @@ func main() {
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
 		slog.SetDefault(slog.New(logHandler))
 	}
+
+	// Prometheus /metrics endpoint for this gateway process. Serves the process
+	// registry the outbound queue worker and connection limiter increment into.
+	metricsServer := metricsrv.New(cfg.SMTPMetricsPort)
+	metricsServer.Start()
 
 	var tlsConfig *tls.Config
 	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
@@ -141,6 +147,7 @@ func main() {
 	}
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
+	limiter.SetProtocol("smtp")
 	bancheck.Wire(limiter, database, "smtp")
 	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, smtpgw.NewStore(database), limiter)
 	smtpServer.SetMaxMessageSize(cfg.SMTPMaxMessageSize)
@@ -194,5 +201,6 @@ func main() {
 	slog.Info("shutting down SMTP gateway...")
 	queueWorker.Shutdown()
 	smtpServer.Shutdown()
+	metricsServer.Shutdown()
 	slog.Info("SMTP gateway stopped")
 }

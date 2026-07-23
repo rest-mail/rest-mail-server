@@ -4,6 +4,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/restmail/restmail/internal/metrics"
 )
 
 // Config holds connection limiter settings.
@@ -46,12 +48,12 @@ type BanChecker func(ip, protocol string) bool
 
 // Limiter tracks per-IP connection counts and auth failures.
 type Limiter struct {
-	cfg          Config
-	global       atomic.Int32
-	perIP        sync.Map // string → *atomic.Int32
-	authFails    sync.Map // string → *failRecord
-	banChecker   BanChecker
-	protocol     string
+	cfg        Config
+	global     atomic.Int32
+	perIP      sync.Map // string → *atomic.Int32
+	authFails  sync.Map // string → *failRecord
+	banChecker BanChecker
+	protocol   string
 }
 
 // New creates a Limiter with the given config (defaults applied for zero values).
@@ -62,6 +64,15 @@ func New(cfg Config) *Limiter {
 // SetBanChecker sets an optional function to check persistent bans (e.g. from DB).
 func (l *Limiter) SetBanChecker(checker BanChecker, protocol string) {
 	l.banChecker = checker
+	l.protocol = protocol
+}
+
+// SetProtocol tags this limiter with the protocol it fronts ("smtp"/"imap"/
+// "pop3"). It is the label used for the active_connections and auth_failures
+// metrics, and is applied independently of SetBanChecker so metrics carry the
+// protocol even when no DB-backed ban checker is wired. When unset, those
+// metrics are not emitted (avoids an empty-label series in tests/tooling).
+func (l *Limiter) SetProtocol(protocol string) {
 	l.protocol = protocol
 }
 
@@ -82,12 +93,20 @@ func (l *Limiter) Accept(ip string) bool {
 	}
 	counter.Add(1)
 	l.global.Add(1)
+	if l.protocol != "" {
+		metrics.ActiveConnections.WithLabelValues(l.protocol).Inc()
+	}
 	return true
 }
 
-// Release decrements connection counters for an IP.
+// Release decrements connection counters for an IP. It mirrors a prior
+// successful Accept, so the active_connections gauge is decremented in lockstep
+// with the global counter.
 func (l *Limiter) Release(ip string) {
 	l.global.Add(-1)
+	if l.protocol != "" {
+		metrics.ActiveConnections.WithLabelValues(l.protocol).Dec()
+	}
 	if val, ok := l.perIP.Load(ip); ok {
 		counter := val.(*atomic.Int32)
 		counter.Add(-1)
@@ -96,6 +115,9 @@ func (l *Limiter) Release(ip string) {
 
 // RecordAuthFail records an authentication failure for an IP.
 func (l *Limiter) RecordAuthFail(ip string) {
+	if l.protocol != "" {
+		metrics.AuthFailures.WithLabelValues(l.protocol).Inc()
+	}
 	val, _ := l.authFails.LoadOrStore(ip, &failRecord{})
 	rec := val.(*failRecord)
 	rec.mu.Lock()
