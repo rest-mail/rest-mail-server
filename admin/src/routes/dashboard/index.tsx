@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useAuthStore } from '../../lib/stores/authStore'
 import { useDashboardStore } from '../../lib/stores/dashboardStore'
-import { Server, Mail, Clock, AlertCircle, Activity, RefreshCw } from 'lucide-react'
+import { Server, Mail, Clock, AlertCircle, Activity, RefreshCw, Lock, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { AppShell } from '../../components/layout/AppShell'
 
 export const Route = createFileRoute('/dashboard/')({
@@ -224,8 +224,133 @@ function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Inbound Transport Security */}
+        <InboundTransportSecurityPanel its={stats?.inboundTransportSecurity} />
       </div>
     </AppShell>
+  )
+}
+
+interface InboundTransportSecurity {
+  totalInboundMX: number
+  overTLS: number
+  plaintext: number
+  tlsPercent: number
+  plaintextPercent: number
+  plaintextAuthPass: number
+  plaintextAuthFail: number
+}
+
+// InboundTransportSecurityPanel surfaces the always-on inbound-MX transport
+// metrics: how much inbound mail arrived encrypted vs plaintext, and — for the
+// plaintext slice — how much carried a passing SPF/DKIM result (a legitimacy
+// signal) vs none.
+function InboundTransportSecurityPanel({ its }: { its?: InboundTransportSecurity }) {
+  const total = its?.totalInboundMX ?? 0
+  const overTLS = its?.overTLS ?? 0
+  const plaintext = its?.plaintext ?? 0
+  const tlsPercent = its?.tlsPercent ?? 0
+  const plaintextPercent = its?.plaintextPercent ?? 0
+  const authPass = its?.plaintextAuthPass ?? 0
+  const authFail = its?.plaintextAuthFail ?? 0
+
+  return (
+    <div className="mt-8 p-6 rounded-lg" style={{ border: '1px solid var(--gray-border)' }}>
+      <div className="mb-6">
+        <h2
+          style={{ fontFamily: 'Space Grotesk, sans-serif', color: 'var(--black-soft)' }}
+          className="text-xl font-semibold"
+        >
+          Inbound Transport Security
+        </h2>
+        <p style={{ color: 'var(--gray-secondary)' }} className="text-sm mt-1">
+          Encryption of inbound MX mail — always monitored ({total.toLocaleString()} deliveries)
+        </p>
+      </div>
+
+      {total === 0 ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <Lock className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--gray-secondary)' }} />
+            <p style={{ color: 'var(--gray-secondary)' }} className="text-sm">
+              No inbound MX mail received yet
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <TransportTile
+            icon={<ShieldCheck className="w-6 h-6" />}
+            label="Encrypted (TLS)"
+            value={overTLS}
+            sub={`${tlsPercent}% of inbound`}
+            color="var(--black-soft)"
+          />
+          <TransportTile
+            icon={<ShieldAlert className="w-6 h-6" />}
+            label="Plaintext"
+            value={plaintext}
+            sub={`${plaintextPercent}% of inbound`}
+            color={plaintext > 0 ? 'var(--red-primary)' : 'var(--gray-secondary)'}
+            isHighlight={plaintext > 0}
+          />
+          <TransportTile
+            icon={<ShieldCheck className="w-6 h-6" />}
+            label="Plaintext, auth pass"
+            value={authPass}
+            sub="SPF or DKIM passed"
+            color="var(--black-soft)"
+          />
+          <TransportTile
+            icon={<ShieldAlert className="w-6 h-6" />}
+            label="Plaintext, auth fail"
+            value={authFail}
+            sub="no passing auth"
+            color={authFail > 0 ? 'var(--red-primary)' : 'var(--gray-secondary)'}
+            isHighlight={authFail > 0}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface TransportTileProps {
+  icon: React.ReactNode
+  label: string
+  value: number
+  sub: string
+  color: string
+  isHighlight?: boolean
+}
+
+function TransportTile({ icon, label, value, sub, color, isHighlight }: TransportTileProps) {
+  return (
+    <div className="p-6 rounded-lg" style={{ border: '1px solid var(--gray-border)' }}>
+      <div className="flex items-start justify-between mb-4">
+        <div
+          className="p-2 rounded-lg"
+          style={{ backgroundColor: isHighlight ? 'rgba(228, 35, 19, 0.1)' : 'var(--bg-surface)' }}
+        >
+          <div style={{ color }}>{icon}</div>
+        </div>
+      </div>
+      <div>
+        <p
+          style={{ fontFamily: 'Space Grotesk, sans-serif', color }}
+          className="text-3xl font-bold mb-1"
+        >
+          {value.toLocaleString()}
+        </p>
+        <p style={{ color: 'var(--black-soft)' }} className="text-sm font-medium">
+          {label}
+        </p>
+        <p style={{ color: 'var(--gray-secondary)' }} className="text-xs mt-0.5">
+          {sub}
+        </p>
+      </div>
+    </div>
   )
 }
 

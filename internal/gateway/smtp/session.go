@@ -79,6 +79,48 @@ func (s *session) transferConn() *transferRateConn {
 	return rc
 }
 
+// tlsVersionName maps a crypto/tls version constant to a stable, human-readable
+// label for the transport-security metrics. Unknown versions yield "" so the
+// stored value never encodes an internal constant.
+func tlsVersionName(v uint16) string {
+	switch v {
+	case tls.VersionTLS13:
+		return "TLS1.3"
+	case tls.VersionTLS12:
+		return "TLS1.2"
+	case tls.VersionTLS11:
+		return "TLS1.1"
+	case tls.VersionTLS10:
+		return "TLS1.0"
+	default:
+		return ""
+	}
+}
+
+// inboundTransportSecurity derives the inbound transport-security fields for a
+// DeliverRequest from the connection's TLS state. This monitoring is scoped to
+// inbound-MX (port 25) mail — the plaintext-capable path from the public
+// internet — so on the authenticated submission path (587/465) it returns
+// (nil, "", ""): submission is authenticated client traffic tracked separately,
+// and a nil ReceivedTLS is persisted as NULL ("not applicable").
+//
+// On the inbound-MX path it ALWAYS returns a non-nil encrypted flag so the
+// message joins the inbound-MX denominator, regardless of whether the peer used
+// TLS — the whole point is to count plaintext arrivals. TLS version/cipher are
+// best-effort: populated when encrypted, empty otherwise.
+func inboundTransportSecurity(isSubmission bool, state tls.ConnectionState, isTLS bool) (received *bool, version, cipher string) {
+	if isSubmission {
+		return nil, "", ""
+	}
+	encrypted := isTLS
+	received = &encrypted
+	if isTLS {
+		version = tlsVersionName(state.Version)
+		cipher = tls.CipherSuiteName(state.CipherSuite)
+	}
+	return received, version, cipher
+}
+
 // AuthMechanisms advertises AUTH only on submission ports. go-smtp
 // additionally withholds AUTH until after STARTTLS when a TLS config is set
 // (AllowInsecureAuth is enabled only for TLS-less deployments).
@@ -283,6 +325,14 @@ func (s *session) Data(r io.Reader) error {
 		messageID = rmail.GenerateMessageID(rmail.DomainFromAddress(s.mailFrom))
 	}
 
+	// Capture inbound transport-security at DATA time: was this connection
+	// encrypted (implicit TLS on 465, or STARTTLS-upgraded), and with what
+	// version/cipher. go-smtp reports the live TLS state off the underlying
+	// conn (a *tls.Conn when TLS is active). Only the inbound-MX path records
+	// it; on submission these stay nil/empty (see inboundTransportSecurity).
+	tlsState, isTLS := s.conn.TLSConnectionState()
+	receivedTLS, tlsVersion, tlsCipher := inboundTransportSecurity(s.isSubmission, tlsState, isTLS)
+
 	accepted := 0
 	failed := 0
 	failCode, failEnhanced, failMsg := 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
@@ -324,6 +374,10 @@ func (s *session) Data(r io.Reader) error {
 			RawMessage: string(data),
 			ClientIP:   extractIP(s.remoteAddr()),
 			HeloName:   s.conn.Hostname(),
+			// Always-on inbound transport-security metrics (inbound-MX only).
+			ReceivedTLS: receivedTLS,
+			TLSVersion:  tlsVersion,
+			TLSCipher:   tlsCipher,
 		}
 		if len(toList) > 0 {
 			toJSON, _ := json.Marshal(toList)

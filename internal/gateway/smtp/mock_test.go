@@ -28,7 +28,8 @@ type mockBackend struct {
 	checkErr    map[string]bool // addresses where CheckMailbox errors (temp fail)
 	deliverFail map[string]bool // local addresses whose DeliverMessage errors
 
-	delivered []string // recorded successful local deliveries (by Address)
+	delivered   []string                    // recorded successful local deliveries (by Address)
+	deliverReqs []*apiclient.DeliverRequest // full deliver requests, for asserting captured fields
 }
 
 func newMockBackend() *mockBackend {
@@ -72,6 +73,7 @@ func (m *mockBackend) DeliverMessage(req *apiclient.DeliverRequest) (*apiclient.
 	if m.deliverFail[req.Address] {
 		return nil, &apiclient.APIError{StatusCode: 451, Body: "temporary local failure"}
 	}
+	m.deliverReqs = append(m.deliverReqs, req)
 	m.delivered = append(m.delivered, req.Address)
 	resp := &apiclient.DeliverResponse{}
 	resp.Data.ID = 1000 + uint(len(m.delivered))
@@ -82,6 +84,18 @@ func (m *mockBackend) deliveredTo() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]string(nil), m.delivered...)
+}
+
+// lastDeliverReq returns the most recent DeliverRequest the backend received, or
+// nil if none. Used to assert the SMTP session captured inbound transport
+// security onto the deliver call.
+func (m *mockBackend) lastDeliverReq() *apiclient.DeliverRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.deliverReqs) == 0 {
+		return nil
+	}
+	return m.deliverReqs[len(m.deliverReqs)-1]
 }
 
 // mockStore is an in-memory Store: it decides sender authorization and records
