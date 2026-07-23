@@ -33,7 +33,10 @@ coverage.html
 # Instance domain dirs end in ".test", which the "*.test" rule above would
 # otherwise ignore whole — re-include instance dirs so manifests/config commit...
 !instances/*.test/
-# ...but never commit per-instance secrets or generated dns.env.
+# ...except restmail.test, which is a generated symlink into the testbed-owned
+# config (created by `task testbed:init`) and must never be committed.
+instances/restmail.test
+# ...and never commit per-instance secrets or generated dns.env.
 instances/*/secrets.env
 instances/*/dns.env
 instances/*/dkim.conf

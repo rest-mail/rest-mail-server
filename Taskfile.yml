@@ -31,17 +31,19 @@ env:
 vars:
   GO_MODULE: github.com/restmail/restmail
 
-  # Which instance to drive. Its manifest lives at instances/<INSTANCE>/
-  # manifest.yml; `task instance:render` regenerates config.env from it. The
-  # RESTMAIL_*/MAIL3_* config + secrets are loaded via dotenv (below), not
-  # hardcoded here.
+  # Which instance to drive. Its config lives at instances/<INSTANCE>/
+  # (manifest.yml, config.env, secrets.env); `task instance:render` regenerates
+  # config.env from the manifest. The RESTMAIL_*/MAIL3_* config + secrets are
+  # loaded via dotenv (below), not hardcoded here.
   INSTANCE: '{{.INSTANCE | default "restmail.test"}}'
-  # Where this instance's config (manifest.yml, config.env, secrets.env) lives.
-  # The primary test instance (restmail.test) is owned by the testbed
-  # (configs/restmail) — the product ships no committed instance; scaffolded
-  # instances live under instances/<INSTANCE>. Override INSTANCE_DIR to point
+  # One authoritative layout: EVERY instance — scaffolded or testbed-owned —
+  # resolves under instances/<INSTANCE>/. The product ships no committed
+  # instance. The primary test instance (restmail.test) is owned by the testbed;
+  # `task testbed:init` links instances/restmail.test → the testbed's
+  # configs/restmail so it participates in the same convention (the link is
+  # generated + gitignored, never committed). Override INSTANCE_DIR to point
   # anywhere relative to the repo root.
-  INSTANCE_DIR: '{{if .INSTANCE_DIR}}{{.INSTANCE_DIR}}{{else if eq .INSTANCE "restmail.test"}}.workspace/testbed/configs/restmail{{else}}instances/{{.INSTANCE}}{{end}}'
+  INSTANCE_DIR: '{{if .INSTANCE_DIR}}{{.INSTANCE_DIR}}{{else}}instances/{{.INSTANCE}}{{end}}'
 
   # Adjacent testbed services that are NOT part of the mail instance proper,
   # so they stay here rather than in the instance manifest: the marketing
@@ -908,12 +910,17 @@ tasks:
   # ════════════════════════════════════════════════════════
 
   testbed:init:
-    desc: First-run only — clone rest-mail/testbed into .workspace/testbed
-    status:
-      - test -d .workspace/testbed/.git
+    desc: First-run only — clone rest-mail/testbed and link its restmail.test config under instances/
     cmds:
-      - mkdir -p .workspace
-      - git clone git@github.com:rest-mail/testbed.git .workspace/testbed
+      # Clone the testbed if absent (idempotent — safe to re-run) …
+      - mkdir -p .workspace instances
+      - test -d .workspace/testbed/.git || git clone git@github.com:rest-mail/testbed.git .workspace/testbed
+      # … then map its testbed-owned restmail.test config into the ONE
+      # authoritative instances/<domain>/ layout via a generated symlink. This is
+      # how INSTANCE=restmail.test resolves to instances/restmail.test/config.env
+      # for the dotenv load. The link is gitignored (see .gitignore); re-run this
+      # task if you upgraded from an older layout and the link is missing.
+      - ln -sfn ../.workspace/testbed/configs/restmail instances/restmail.test
 
   mailserver:init:
     desc: First-run only — clone rest-mail/reference-mailserver into .workspace/reference-mailserver

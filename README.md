@@ -115,7 +115,7 @@ HTTP services are routed by a reverse proxy on `:80` reading `docker-proxy.*` co
 
 ### Test Domains
 
-This repo ships no committed instance — the primary test instance (**restmail.test**) is owned by the testbed (`configs/restmail`), and further instances are scaffolded on demand (see [Instances](#instances)). For traditional reference instances (mail1.test, mail2.test, ...) running Postfix + Dovecot, see [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver). Reference instances are launched one at a time, directly against that repo's Taskfile — you decide how many to run:
+This repo ships no committed instance — the primary test instance (**restmail.test**) is owned by the testbed (`configs/restmail`, linked in under `instances/restmail.test` by `task testbed:init`), and further instances are scaffolded on demand under the same `instances/<domain>/` layout (see [Instances](#instances)). For traditional reference instances (mail1.test, mail2.test, ...) running Postfix + Dovecot, see [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver). Reference instances are launched one at a time, directly against that repo's Taskfile — you decide how many to run:
 
 ```bash
 task mailserver:init                                    # first run only — clone it
@@ -304,7 +304,7 @@ tests/e2e/          End-to-end test suite (13 stages)
 
 ## Instances
 
-Everything about a running RESTMAIL deployment — hostname, IPs, ports, credentials — comes from an instance manifest, not from hardcoded config. `INSTANCE` selects which one to drive (default `restmail.test`, whose config is owned by the testbed); `INSTANCE_DIR` can point anywhere. Scaffolded instances live under `instances/<domain>/`.
+Everything about a running RESTMAIL deployment — hostname, IPs, ports, credentials — comes from an instance manifest, not from hardcoded config. Every instance — scaffolded or testbed-owned — resolves under one authoritative layout, `instances/<domain>/`. `INSTANCE` selects which one to drive (default `restmail.test`, whose config is owned by the testbed and linked in under `instances/restmail.test` by `task testbed:init`); `INSTANCE_DIR` can point anywhere.
 
 New instances are **secure-by-default**: the scaffolded manifest sets
 `internal_mtls: true` and `instance:new` provisions the gateway→API mTLS certs
