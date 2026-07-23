@@ -170,7 +170,8 @@ func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, sende
 
 // parseMultipartBody extracts text/plain and text/html parts from a multipart body.
 func parseMultipartBody(contentType, body string) (text, html string) {
-	mediaType, params, err := mime.ParseMediaType(contentType)
+	// ParseMediaType also validates the header; we only need the boundary param.
+	_, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return body, ""
 	}
@@ -206,7 +207,6 @@ func parseMultipartBody(contentType, body string) (text, html string) {
 		}
 	}
 
-	_ = mediaType // used for validation above
 	return
 }
 
@@ -302,4 +302,3 @@ func extractEmailFromHeader(s string) string {
 	}
 	return ""
 }
-

@@ -136,7 +136,7 @@ func (s *Server) acceptLoop(listener net.Listener, isSubmission, implicitTLS boo
 			defer s.limiter.Release(ip)
 			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.db, isSubmission, s.limiter)
 			if implicitTLS {
-				session.tls_ = true
+				session.usingTLS = true
 			}
 			session.Handle()
 		}()

@@ -25,10 +25,10 @@ type Session struct {
 	limiter   *connlimiter.Limiter
 
 	// Session state
-	tls_      bool
-	auth      *authState
-	messages  []apiclient.MessageSummary
-	deleted   map[int]bool // sequence numbers marked for deletion
+	usingTLS bool
+	auth     *authState
+	messages []apiclient.MessageSummary
+	deleted  map[int]bool // sequence numbers marked for deletion
 }
 
 type authState struct {
@@ -120,7 +120,7 @@ func (s *Session) Handle() {
 func (s *Session) handleCapa() {
 	s.ok("Capability list follows")
 	s.sendLine("USER")
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		s.sendLine("STLS")
 	}
 	s.sendLine("TOP")
@@ -131,7 +131,7 @@ func (s *Session) handleCapa() {
 }
 
 func (s *Session) handleSTLS() bool {
-	if s.tls_ {
+	if s.usingTLS {
 		s.err("Already using TLS")
 		return false
 	}
@@ -151,7 +151,7 @@ func (s *Session) handleSTLS() bool {
 	s.conn = tlsConn
 	s.reader = bufio.NewReader(tlsConn)
 	s.writer = bufio.NewWriter(tlsConn)
-	s.tls_ = true
+	s.usingTLS = true
 
 	slog.Info("pop3: TLS established", "remote", s.conn.RemoteAddr())
 	return false
@@ -162,7 +162,7 @@ func (s *Session) handleUser(arg string) {
 		s.err("Already authenticated")
 		return
 	}
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		s.err("TLS required")
 		return
 	}
@@ -360,11 +360,7 @@ func (s *Session) handleRetr(arg string) {
 	s.ok("%d octets", len(raw))
 	// Send message, byte-stuffing lines starting with "."
 	for _, line := range strings.Split(raw, "\r\n") {
-		if strings.HasPrefix(line, ".") {
-			s.sendLine(".%s", line)
-		} else {
-			s.sendLine("%s", line)
-		}
+		s.sendStuffed(line)
 	}
 	s.sendLine(".")
 
@@ -422,11 +418,7 @@ func (s *Session) handleTop(arg string) {
 	// Send headers
 	headers := raw[:headerEnd]
 	for _, line := range strings.Split(headers, "\r\n") {
-		if strings.HasPrefix(line, ".") {
-			s.sendLine(".%s", line)
-		} else {
-			s.sendLine("%s", line)
-		}
+		s.sendStuffed(line)
 	}
 	s.sendLine("") // blank line separating headers from body
 
@@ -438,11 +430,7 @@ func (s *Session) handleTop(arg string) {
 			lines = len(bodyLines)
 		}
 		for i := 0; i < lines; i++ {
-			if strings.HasPrefix(bodyLines[i], ".") {
-				s.sendLine(".%s", bodyLines[i])
-			} else {
-				s.sendLine("%s", bodyLines[i])
-			}
+			s.sendStuffed(bodyLines[i])
 		}
 	}
 	s.sendLine(".")
@@ -509,4 +497,15 @@ func (s *Session) sendLine(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(s.writer, "%s\r\n", msg)
 	s.writer.Flush()
+}
+
+// sendStuffed writes one line of message content with POP3 byte-stuffing
+// (RFC 1939): a line beginning with "." gets an extra leading "." so it is not
+// mistaken for the "." terminator.
+func (s *Session) sendStuffed(line string) {
+	if strings.HasPrefix(line, ".") {
+		s.sendLine(".%s", line)
+	} else {
+		s.sendLine("%s", line)
+	}
 }
