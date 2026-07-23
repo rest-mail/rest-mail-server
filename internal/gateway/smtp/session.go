@@ -18,6 +18,10 @@ import (
 )
 
 // Session represents a single SMTP conversation with a client.
+// maxMessageSize is the maximum accepted message size, in bytes. It is both
+// advertised in EHLO (SIZE) and enforced during DATA — keep them from drifting.
+const maxMessageSize = 10 * 1024 * 1024 // 10 MiB
+
 type Session struct {
 	conn       net.Conn
 	reader     *bufio.Reader
@@ -143,7 +147,7 @@ func (s *Session) handleEHLO(arg string) {
 	caps := []string{
 		fmt.Sprintf("250-%s", s.hostname),
 		"250-PIPELINING",
-		"250-SIZE 10240000",
+		fmt.Sprintf("250-SIZE %d", maxMessageSize),
 		"250-8BITMIME",
 		"250-ENHANCEDSTATUSCODES",
 	}
@@ -433,8 +437,8 @@ func (s *Session) handleDATA() {
 
 		data = append(data, line...)
 
-		// Enforce SIZE limit (10MB as advertised in EHLO)
-		if len(data) > 10*1024*1024 {
+		// Enforce the same SIZE limit advertised in EHLO.
+		if len(data) > maxMessageSize {
 			slog.Warn("smtp: message exceeds size limit", "remote", s.remoteAddr, "size", len(data))
 			s.reply(552, "Message exceeds maximum size")
 			return
