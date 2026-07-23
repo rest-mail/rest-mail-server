@@ -166,6 +166,7 @@ function MailboxDetailsPage() {
   }, [id, accessToken])
 
   const fetchMailbox = async () => {
+    if (!accessToken) return
     setIsLoading(true)
     setError(null)
 

@@ -11,7 +11,7 @@ export const Route = createFileRoute('/settings/dkim')({
 
 function DkimPage() {
   const navigate = useNavigate()
-  const { entries, fetchDkimKeys, setDkimKey, deleteDkimKey, isLoading, error, clearError } =
+  const { entries, fetchDkimKeys, deleteDkimKey, isLoading, error, clearError } =
     useDkimStore()
   const { domains, fetchDomains } = useDomainStore()
   const { accessToken, isAuthenticated } = useAuthStore()
@@ -233,7 +233,7 @@ interface DkimCreateModalProps {
 }
 
 function DkimCreateModal({ domains, onClose, onSuccess }: DkimCreateModalProps) {
-  const { setDkimKey, isLoading, error, clearError } = useDkimStore()
+  const { setDkimKey, isLoading, error } = useDkimStore()
   const { accessToken } = useAuthStore()
   const [domainId, setDomainId] = useState<string>('')
   const [selector, setSelector] = useState('mail')

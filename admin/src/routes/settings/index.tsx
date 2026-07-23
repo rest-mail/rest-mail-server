@@ -10,7 +10,7 @@ export const Route = createFileRoute('/settings/')({
 
 function SettingsPage() {
   const { accessToken } = useAuthStore()
-  const { certificates, getExpiringCertificates, fetchCertificates } = useCertificateStore()
+  const { getExpiringCertificates, fetchCertificates } = useCertificateStore()
 
   useEffect(() => {
     if (accessToken) {

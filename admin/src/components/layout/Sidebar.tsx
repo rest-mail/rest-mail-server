@@ -11,8 +11,8 @@ import {
   Filter,
   Code,
 } from 'lucide-react';
-import { useUIStore } from '#/lib/stores/uiStore';
-import { useAuthStore } from '#/lib/stores/authStore';
+import { useUIStore } from '../../lib/stores/uiStore';
+import { useAuthStore } from '../../lib/stores/authStore';
 
 interface NavItem {
   to: string;

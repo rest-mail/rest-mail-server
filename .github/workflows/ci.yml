@@ -137,3 +137,34 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  admin:
+    name: Admin Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # admin is on Vite 7 / React 19, which require Node ^20.19 || >=22.12
+          # (unlike webmail's Vite 5, which still runs on Node 18).
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test

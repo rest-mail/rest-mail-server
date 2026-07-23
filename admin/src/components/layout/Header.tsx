@@ -1,13 +1,14 @@
-import { LogOut, Menu } from 'lucide-react';
-import { useNavigate } from '@tanstack/react-router';
-import { useAuthStore } from '#/lib/stores/authStore';
-import { useUIStore } from '#/lib/stores/uiStore';
+import { ArrowLeft, LogOut, Menu } from 'lucide-react';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { useAuthStore } from '../../lib/stores/authStore';
+import { useUIStore } from '../../lib/stores/uiStore';
 
 interface HeaderProps {
   title?: string;
+  backLink?: string;
 }
 
-export function Header({ title }: HeaderProps) {
+export function Header({ title, backLink }: HeaderProps) {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
@@ -29,6 +30,15 @@ export function Header({ title }: HeaderProps) {
         >
           <Menu className="w-5 h-5 text-[var(--black-soft)]" />
         </button>
+        {backLink && (
+          <Link
+            to={backLink}
+            className="p-2 hover:bg-[var(--bg-surface)] rounded-lg transition-colors"
+            aria-label="Back"
+          >
+            <ArrowLeft className="w-5 h-5 text-[var(--black-soft)]" />
+          </Link>
+        )}
         {title && (
           <h2
             className="text-xl font-semibold text-[var(--black-soft)]"
@@ -46,9 +56,6 @@ export function Header({ title }: HeaderProps) {
             <div className="text-right">
               <p className="text-sm font-medium text-[var(--black-soft)]">
                 {user.username}
-              </p>
-              <p className="text-xs text-[var(--gray-secondary)]">
-                {user.role}
               </p>
             </div>
           </div>

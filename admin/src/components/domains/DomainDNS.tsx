@@ -18,11 +18,10 @@ interface DNSCheckResponse {
 
 interface DomainDNSProps {
   domainId: number
-  domainName: string
   accessToken: string
 }
 
-export function DomainDNS({ domainId, domainName, accessToken }: DomainDNSProps) {
+export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
   const [dnsData, setDnsData] = useState<DNSCheckResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

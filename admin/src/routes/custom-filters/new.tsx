@@ -5,7 +5,6 @@ import { useDomainStore } from '../../lib/stores/domainStore'
 import { useAuthStore } from '../../lib/stores/authStore'
 import { useUIStore } from '../../lib/stores/uiStore'
 import { AppShell } from '../../components/layout/AppShell'
-import { Play } from 'lucide-react'
 
 export const Route = createFileRoute('/custom-filters/new')({
   component: NewCustomFilterPage,
