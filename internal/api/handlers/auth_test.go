@@ -56,7 +56,7 @@ func TestRefresh_PreservesAdminSession(t *testing.T) {
 
 func TestRefresh_PreservesMailboxSession(t *testing.T) {
 	jwt := auth.NewJWTService("test-secret", 15*time.Minute, 7*24*time.Hour)
-	pair, err := jwt.GenerateTokenPair(42, "user@example.test", 3, false)
+	pair, err := jwt.GenerateTokenPair(42, "user@example.test", 3)
 	if err != nil {
 		t.Fatal(err)
 	}

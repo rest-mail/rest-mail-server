@@ -33,6 +33,7 @@ var allEnvKeys = []string{
 	"INTERNAL_MTLS_CLIENT_CERT", "INTERNAL_MTLS_CLIENT_KEY",
 	"TRACE_RETENTION_DAYS", "TRACE_SAMPLE_RATE", "TRACE_MAX_ROWS", "ROLLUP_INTERVAL",
 	"ENVIRONMENT",
+	"SECURITY_HEADERS_ENABLED", "HSTS_MAX_AGE_SECONDS",
 }
 
 // clearEnv ensures every config-related env var is truly unset for the test.
@@ -172,6 +173,60 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Environment != "development" {
 		t.Errorf("Environment = %q, want %q", cfg.Environment, "development")
 	}
+
+	// Security headers (OSI-11): on by default with the 2-year HSTS max-age.
+	if !cfg.SecurityHeadersEnabled {
+		t.Error("SecurityHeadersEnabled = false, want true (default on)")
+	}
+	if cfg.HSTSMaxAgeSeconds != DefaultHSTSMaxAgeSeconds {
+		t.Errorf("HSTSMaxAgeSeconds = %d, want default %d", cfg.HSTSMaxAgeSeconds, DefaultHSTSMaxAgeSeconds)
+	}
+}
+
+func TestLoad_SecurityHeaders(t *testing.T) {
+	t.Run("disabled and custom max-age", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("SECURITY_HEADERS_ENABLED", "false")
+		t.Setenv("HSTS_MAX_AGE_SECONDS", "31536000")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+		if cfg.SecurityHeadersEnabled {
+			t.Error("SecurityHeadersEnabled = true, want false")
+		}
+		if cfg.HSTSMaxAgeSeconds != 31536000 {
+			t.Errorf("HSTSMaxAgeSeconds = %d, want 31536000", cfg.HSTSMaxAgeSeconds)
+		}
+	})
+
+	t.Run("zero max-age allowed (HSTS omitted)", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("HSTS_MAX_AGE_SECONDS", "0")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+		if cfg.HSTSMaxAgeSeconds != 0 {
+			t.Errorf("HSTSMaxAgeSeconds = %d, want 0", cfg.HSTSMaxAgeSeconds)
+		}
+	})
+
+	t.Run("negative max-age is a startup error", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("HSTS_MAX_AGE_SECONDS", "-1")
+		if _, err := Load(); err == nil {
+			t.Fatal("Load() = nil error, want error for negative HSTS max-age")
+		}
+	})
+
+	t.Run("malformed max-age is a startup error", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("HSTS_MAX_AGE_SECONDS", "abc")
+		if _, err := Load(); err == nil {
+			t.Fatal("Load() = nil error, want error for malformed HSTS max-age")
+		}
+	})
 }
 
 func TestLoad_GatewayMetricsPorts(t *testing.T) {

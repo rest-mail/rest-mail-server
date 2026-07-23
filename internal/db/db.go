@@ -124,6 +124,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Capability{},
 		&models.UserRole{},
 		&models.RoleCapability{},
+		// Refresh-token rotation/revocation ledger (OSI-10): one row per issued
+		// refresh token, keyed by jti, tracking active/rotated/revoked state.
+		&models.RefreshToken{},
 		// DMARC aggregate (rua) reporting
 		&models.DMARCAggregateRecord{},
 	)

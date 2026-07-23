@@ -8,8 +8,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/restmail/restmail/internal/auth"
 )
+
+// signRawToken signs an arbitrary claim set with the given HS256 secret. Used to
+// forge tokens the JWTService would never mint — notably a mailbox token still
+// carrying a stale is_admin payload — to prove the middleware ignores it
+// (OSI-14).
+func signRawToken(t *testing.T, secret string, claims jwt.MapClaims) string {
+	t.Helper()
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	s, err := tok.SignedString([]byte(secret))
+	if err != nil {
+		t.Fatalf("failed to sign raw token: %v", err)
+	}
+	return s
+}
+
+// legacyIsAdminMailboxClaims is a mailbox access token that still carries the
+// deprecated is_admin flag, as tokens issued before OSI-14 did.
+func legacyIsAdminMailboxClaims() jwt.MapClaims {
+	return jwt.MapClaims{
+		"sub":        "mailbox:10",
+		"iss":        "restmail",
+		"exp":        time.Now().Add(5 * time.Minute).Unix(),
+		"user_type":  "mailbox",
+		"token_type": "access",
+		"is_admin":   true,
+		"mailbox_id": 10,
+	}
+}
 
 // newTestJWTService creates a JWTService with a test secret and short expiry durations.
 func newTestJWTService(accessExpiry time.Duration) *auth.JWTService {
@@ -34,7 +63,7 @@ func parseErrorResponse(t *testing.T, rr *httptest.ResponseRecorder) ErrorRespon
 
 func TestJWTMiddleware_ValidToken(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7, false)
+	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7)
 	if err != nil {
 		t.Fatalf("failed to generate token pair: %v", err)
 	}
@@ -142,7 +171,7 @@ func TestJWTMiddleware_InvalidToken(t *testing.T) {
 
 func TestJWTMiddleware_RefreshTokenRejected(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7, false)
+	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7)
 	if err != nil {
 		t.Fatalf("failed to generate token pair: %v", err)
 	}
@@ -169,7 +198,7 @@ func TestJWTMiddleware_RefreshTokenRejected(t *testing.T) {
 func TestJWTMiddleware_ExpiredToken(t *testing.T) {
 	// Create a JWTService with a negative access expiry so the token is immediately expired.
 	jwtSvc := newTestJWTService(-1 * time.Second)
-	pair, err := jwtSvc.GenerateTokenPair(1, "expired@example.com", 1, false)
+	pair, err := jwtSvc.GenerateTokenPair(1, "expired@example.com", 1)
 	if err != nil {
 		t.Fatalf("failed to generate token pair: %v", err)
 	}
@@ -206,12 +235,12 @@ func TestGetClaims_NoClaims(t *testing.T) {
 }
 
 func TestAdminOnly_Authenticated(t *testing.T) {
-	// Simulate an authenticated request by injecting claims into the context.
+	// Simulate an authenticated admin request by injecting admin claims into the
+	// context. AdminOnly now keys solely on UserType == "admin" (OSI-14).
 	claims := &auth.Claims{
-		Email:            "admin@example.com",
-		WebmailAccountID: 1,
-		MailboxID:        10,
-		IsAdmin:          true,
+		UserType:    "admin",
+		AdminUserID: 1,
+		Username:    "admin",
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
@@ -352,23 +381,49 @@ func TestRequireCapability_MailboxTokenDenied(t *testing.T) {
 	}
 }
 
-func TestRequireCapability_LegacyIsAdminMailboxAllowed(t *testing.T) {
-	// Mailbox tokens carrying the deprecated IsAdmin flag had full admin
-	// access under AdminOnly; RequireCapability must preserve that so
-	// already-issued tokens keep working.
-	claims := &auth.Claims{
-		Email:            "legacy-admin@example.com",
-		WebmailAccountID: 1,
-		MailboxID:        10,
-		UserType:         "mailbox",
-		IsAdmin:          true,
-	}
+func TestRequireCapability_LegacyIsAdminClaimIgnored(t *testing.T) {
+	// A mailbox token that still carries a stale is_admin payload (issued before
+	// OSI-14) must NOT be treated as a wildcard admin. Sign such a token and run
+	// it through the real JWTMiddleware → RequireCapability chain; it is denied
+	// like any other mailbox token, proving the escalation path is gone.
+	const secret = "test-secret-key-for-middleware"
+	jwtSvc := auth.NewJWTService(secret, 5*time.Minute, 24*time.Hour)
+	raw := signRawToken(t, secret, legacyIsAdminMailboxClaims())
+
+	handler := JWTMiddleware(jwtSvc)(RequireCapability("queue:manage")(okHandler))
+	req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
 	rr := httptest.NewRecorder()
 
-	RequireCapability("queue:manage")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	handler.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403 (is_admin escalation blocked), got %d", rr.Code)
+	}
+	if msg := parseErrorResponse(t, rr).Error.Message; msg != "Admin access required" {
+		t.Errorf("expected message %q, got %q", "Admin access required", msg)
+	}
+}
+
+func TestAdminOnly_LegacyIsAdminClaimIgnored(t *testing.T) {
+	// The AdminOnly counterpart: a stale is_admin mailbox token is refused at the
+	// admin-group gate (OSI-14 self-escalation blocked).
+	const secret = "test-secret-key-for-middleware"
+	jwtSvc := auth.NewJWTService(secret, 5*time.Minute, 24*time.Hour)
+	raw := signRawToken(t, secret, legacyIsAdminMailboxClaims())
+
+	handler := JWTMiddleware(jwtSvc)(AdminOnly(okHandler))
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403 (is_admin escalation blocked), got %d", rr.Code)
+	}
+	if msg := parseErrorResponse(t, rr).Error.Message; msg != "Admin access required" {
+		t.Errorf("expected message %q, got %q", "Admin access required", msg)
 	}
 }
 

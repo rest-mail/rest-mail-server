@@ -43,14 +43,15 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 	query := h.db.Joins("JOIN messages ON messages.id = attachments.message_id").
 		Joins("JOIN mailboxes ON mailboxes.id = messages.mailbox_id")
 
-	if !claims.IsAdmin {
-		mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
-		if len(mailboxIDs) == 0 {
-			respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
-			return
-		}
-		query = query.Where("mailboxes.id IN ?", mailboxIDs)
+	// Mailbox-scoped: restrict to the authenticated account's mailboxes. There is
+	// no cross-mailbox admin bypass — the deprecated IsAdmin claim was removed
+	// (OSI-14).
+	mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
+	if len(mailboxIDs) == 0 {
+		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
+		return
 	}
+	query = query.Where("mailboxes.id IN ?", mailboxIDs)
 
 	if err := query.First(&att, id).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
@@ -109,19 +110,20 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 		respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
 		return
 	}
-	if !claims.IsAdmin {
-		mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
-		owned := false
-		for _, mid := range mailboxIDs {
-			if msg.MailboxID == mid {
-				owned = true
-				break
-			}
+	// Mailbox-scoped: the message must belong to the authenticated account. No
+	// cross-mailbox admin bypass — the deprecated IsAdmin claim was removed
+	// (OSI-14).
+	mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
+	owned := false
+	for _, mid := range mailboxIDs {
+		if msg.MailboxID == mid {
+			owned = true
+			break
 		}
-		if !owned {
-			respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
-			return
-		}
+	}
+	if !owned {
+		respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
+		return
 	}
 
 	var attachments []models.Attachment

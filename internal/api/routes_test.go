@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
@@ -19,6 +20,10 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// routerTestSecret is the HS256 secret newTestRouter's JWTService is built with;
+// tests that forge raw tokens (e.g. a stale is_admin payload) sign with it.
+const routerTestSecret = "router-test-secret"
 
 // ── Test harness ──────────────────────────────────────────────────────
 //
@@ -48,9 +53,11 @@ func (failConnector) Connect(context.Context) (driver.Conn, error) {
 
 func (failConnector) Driver() driver.Driver { return failDriver{} }
 
-func newTestRouter(t *testing.T) (http.Handler, *auth.JWTService) {
+// newFailingGormDB opens a gorm DB whose connections always fail, so handlers
+// that touch the DB error out and DENY assertions stay exact (the middleware
+// rejects before any DB access).
+func newFailingGormDB(t *testing.T) *gorm.DB {
 	t.Helper()
-
 	gdb, err := gorm.Open(postgres.New(postgres.Config{
 		Conn: sql.OpenDB(failConnector{}),
 	}), &gorm.Config{
@@ -60,13 +67,18 @@ func newTestRouter(t *testing.T) (http.Handler, *auth.JWTService) {
 	if err != nil {
 		t.Fatalf("failed to open gorm with failing connector: %v", err)
 	}
+	return gdb
+}
 
-	jwtSvc := auth.NewJWTService("router-test-secret", 5*time.Minute, 24*time.Hour)
+func newTestRouter(t *testing.T) (http.Handler, *auth.JWTService) {
+	t.Helper()
+
+	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
 	cfg := &config.Config{
 		CORSAllowedOrigins: []string{"http://localhost:3000"},
 		Environment:        "test",
 	}
-	return NewRouter(gdb, jwtSvc, cfg, nil), jwtSvc
+	return NewRouter(newFailingGormDB(t), jwtSvc, cfg, nil), jwtSvc
 }
 
 // Capability sets mirroring the roles seeded by cmd/seed (seedRBAC).
@@ -89,20 +101,33 @@ var (
 
 func mailboxToken(t *testing.T, jwtSvc *auth.JWTService) string {
 	t.Helper()
-	pair, err := jwtSvc.GenerateTokenPair(10, "user@example.com", 1, false)
+	pair, err := jwtSvc.GenerateTokenPair(10, "user@example.com", 1)
 	if err != nil {
 		t.Fatalf("failed to generate mailbox token: %v", err)
 	}
 	return pair.AccessToken
 }
 
-func legacyAdminMailboxToken(t *testing.T, jwtSvc *auth.JWTService) string {
+// legacyAdminMailboxToken forges a mailbox access token that still carries a
+// stale is_admin payload, as tokens issued before OSI-14 did. The JWTService no
+// longer mints such a token, so it is signed directly with the router test
+// secret to prove the admin surface refuses it.
+func legacyAdminMailboxToken(t *testing.T) string {
 	t.Helper()
-	pair, err := jwtSvc.GenerateTokenPair(10, "legacy-admin@example.com", 1, true)
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":        "mailbox:10",
+		"iss":        "restmail",
+		"exp":        time.Now().Add(5 * time.Minute).Unix(),
+		"user_type":  "mailbox",
+		"token_type": "access",
+		"is_admin":   true,
+		"mailbox_id": 10,
+	})
+	s, err := tok.SignedString([]byte(routerTestSecret))
 	if err != nil {
-		t.Fatalf("failed to generate legacy admin mailbox token: %v", err)
+		t.Fatalf("failed to sign legacy admin mailbox token: %v", err)
 	}
-	return pair.AccessToken
+	return s
 }
 
 func adminToken(t *testing.T, jwtSvc *auth.JWTService, caps []string) string {
@@ -408,11 +433,12 @@ func TestAdminRoutes_SuperadminWildcardAllowedEverywhere(t *testing.T) {
 	}
 }
 
-func TestAdminRoutes_LegacyIsAdminMailboxRetainsAccess(t *testing.T) {
-	// Mailbox tokens with the deprecated IsAdmin flag had full admin access
-	// before capability wiring; they must keep it (pre-RBAC compatibility).
-	router, jwtSvc := newTestRouter(t)
-	token := legacyAdminMailboxToken(t, jwtSvc)
+func TestAdminRoutes_LegacyIsAdminMailboxDenied(t *testing.T) {
+	// OSI-14: the deprecated mailbox is_admin escalation is removed. A mailbox
+	// token still carrying a stale is_admin payload must now be REFUSED on the
+	// admin surface (previously it retained full admin access).
+	router, _ := newTestRouter(t)
+	token := legacyAdminMailboxToken(t)
 
 	routes := []struct {
 		method, path, body string
@@ -425,7 +451,7 @@ func TestAdminRoutes_LegacyIsAdminMailboxRetainsAccess(t *testing.T) {
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
 			rr := doRequest(router, rt.method, rt.path, token, rt.body)
-			assertReachedHandler(t, rr)
+			assertMiddlewareDenied(t, rr, http.StatusForbidden, "Admin access required")
 		})
 	}
 }
@@ -566,44 +592,32 @@ func refreshWithCookie(router http.Handler, refreshToken string) *httptest.Respo
 	return rr
 }
 
-func decodeAccessToken(t *testing.T, rr *httptest.ResponseRecorder) string {
-	t.Helper()
-	var resp struct {
-		Data struct {
-			AccessToken string `json:"access_token"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode refresh response: %v", err)
-	}
-	return resp.Data.AccessToken
-}
+// The router harness runs against a deliberately-failing DB, so the OSI-10
+// rotation ledger is unreachable here. Refresh is now ledger-gated: it must fail
+// CLOSED (401) rather than mint tokens without checking rotation/revocation, and
+// the route must still be wired (not a chi 404). The happy-path rotation,
+// revocation, and session-type-preservation behavior is covered DB-free by the
+// handler tests (handlers.TestRefresh_RotationInvalidatesOldToken,
+// TestRefresh_RevokedTokenBlocked, TestRefresh_PreservesTypeWithRotation) and by
+// handlers.TestRefresh_Preserves{Admin,Mailbox}Session.
 
-func TestRefresh_MailboxToken(t *testing.T) {
+func TestRefresh_MailboxTokenFailsClosedWithoutLedger(t *testing.T) {
 	router, jwtSvc := newTestRouter(t)
-	pair, err := jwtSvc.GenerateTokenPair(10, "user@example.com", 1, false)
+	pair, err := jwtSvc.GenerateTokenPair(10, "user@example.com", 1)
 	if err != nil {
 		t.Fatalf("failed to generate mailbox pair: %v", err)
 	}
 
 	rr := refreshWithCookie(router, pair.RefreshToken)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d (body %s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 fail-closed, got %d (body %s)", rr.Code, rr.Body.String())
 	}
-
-	claims, err := jwtSvc.ValidateAccessToken(decodeAccessToken(t, rr))
-	if err != nil {
-		t.Fatalf("refreshed access token invalid: %v", err)
-	}
-	if claims.UserType != "mailbox" {
-		t.Errorf("expected UserType mailbox, got %q", claims.UserType)
-	}
-	if claims.MailboxID != 10 {
-		t.Errorf("expected MailboxID 10, got %d", claims.MailboxID)
+	if strings.Contains(rr.Body.String(), "404 page not found") {
+		t.Fatal("refresh route not wired (chi 404)")
 	}
 }
 
-func TestRefresh_AdminTokenPreservesCapabilities(t *testing.T) {
+func TestRefresh_AdminTokenFailsClosedWithoutLedger(t *testing.T) {
 	router, jwtSvc := newTestRouter(t)
 	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin", []string{"domains:read", "queue:read"})
 	if err != nil {
@@ -611,18 +625,57 @@ func TestRefresh_AdminTokenPreservesCapabilities(t *testing.T) {
 	}
 
 	rr := refreshWithCookie(router, pair.RefreshToken)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d (body %s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 fail-closed, got %d (body %s)", rr.Code, rr.Body.String())
 	}
+}
 
-	claims, err := jwtSvc.ValidateAccessToken(decodeAccessToken(t, rr))
-	if err != nil {
-		t.Fatalf("refreshed access token invalid: %v", err)
+// ── OSI-11: security headers wired on the router ──────────────────────
+
+func TestSecurityHeaders_WiredOnRouter(t *testing.T) {
+	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
+	cfg := &config.Config{
+		CORSAllowedOrigins:     []string{"http://localhost:3000"},
+		Environment:            "test",
+		SecurityHeadersEnabled: true,
+		HSTSMaxAgeSeconds:      63072000,
 	}
-	if claims.UserType != "admin" {
-		t.Errorf("expected UserType admin, got %q", claims.UserType)
+	router := NewRouter(newFailingGormDB(t), jwtSvc, cfg, nil)
+
+	// A no-auth endpoint is enough to see the global middleware's headers.
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	h := rr.Result().Header
+	if h.Get("X-Frame-Options") != "DENY" {
+		t.Errorf("X-Frame-Options = %q, want DENY", h.Get("X-Frame-Options"))
 	}
-	if len(claims.Capabilities) != 2 || claims.Capabilities[0] != "domains:read" {
-		t.Errorf("expected capabilities preserved, got %v", claims.Capabilities)
+	if h.Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", h.Get("X-Content-Type-Options"))
+	}
+	if !strings.Contains(h.Get("Strict-Transport-Security"), "max-age=63072000") {
+		t.Errorf("Strict-Transport-Security = %q, want max-age=63072000", h.Get("Strict-Transport-Security"))
+	}
+	if !strings.Contains(h.Get("Content-Security-Policy"), "default-src 'none'") {
+		t.Errorf("Content-Security-Policy = %q, want strict API policy", h.Get("Content-Security-Policy"))
+	}
+}
+
+func TestSecurityHeaders_DisabledByConfig(t *testing.T) {
+	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
+	cfg := &config.Config{
+		CORSAllowedOrigins:     []string{"http://localhost:3000"},
+		Environment:            "test",
+		SecurityHeadersEnabled: false,
+	}
+	router := NewRouter(newFailingGormDB(t), jwtSvc, cfg, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if got := rr.Result().Header.Get("X-Frame-Options"); got != "" {
+		t.Errorf("expected no security headers when disabled, got X-Frame-Options=%q", got)
 	}
 }

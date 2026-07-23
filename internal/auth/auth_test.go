@@ -24,7 +24,7 @@ func newTestService() *JWTService {
 func TestGenerateTokenPair(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestGenerateTokenPair(t *testing.T) {
 func TestValidateToken(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestValidateToken(t *testing.T) {
 
 func TestValidateAccessToken(t *testing.T) {
 	svc := newTestService()
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestValidateAccessToken(t *testing.T) {
 
 func TestValidateRefreshToken(t *testing.T) {
 	svc := newTestService()
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestValidateToken_Expired(t *testing.T) {
 	// Use negative durations so the token is already expired at creation time.
 	svc := NewJWTService(testSecret, -1*time.Second, -1*time.Second)
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestValidateToken_Expired(t *testing.T) {
 func TestValidateToken_WrongSecret(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID, false)
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
 	if err != nil {
 		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
 	}
@@ -243,6 +243,66 @@ func TestCheckPassword_Wrong(t *testing.T) {
 	err = CheckPassword("wrong-password", hash)
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Errorf("CheckPassword(wrong) error = %v; want %v", err, ErrInvalidCredentials)
+	}
+}
+
+// ---------- OSI-10 refresh-token jti tests ----------
+
+func TestRefreshToken_HasUniqueRoundTrippingJTI(t *testing.T) {
+	svc := newTestService()
+
+	p1, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	if err != nil {
+		t.Fatalf("GenerateTokenPair: %v", err)
+	}
+	p2, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	if err != nil {
+		t.Fatalf("GenerateTokenPair: %v", err)
+	}
+
+	if p1.RefreshJTI == "" {
+		t.Error("refresh JTI is empty; rotation ledger has nothing to key on")
+	}
+	if p1.RefreshJTI == p2.RefreshJTI {
+		t.Errorf("refresh JTIs must be unique per issuance, both = %q", p1.RefreshJTI)
+	}
+	if p1.RefreshExpiresAt.IsZero() {
+		t.Error("RefreshExpiresAt is zero; ledger row would have no expiry")
+	}
+
+	// The jti round-trips into the refresh token's ID claim, so the handler can
+	// recover it from the presented token on refresh/logout.
+	rc, err := svc.ValidateRefreshToken(p1.RefreshToken)
+	if err != nil {
+		t.Fatalf("ValidateRefreshToken: %v", err)
+	}
+	if rc.ID != p1.RefreshJTI {
+		t.Errorf("refresh token ID claim = %q, want %q", rc.ID, p1.RefreshJTI)
+	}
+
+	// Admin pairs carry a jti too.
+	ap, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	if err != nil {
+		t.Fatalf("GenerateAdminTokenPair: %v", err)
+	}
+	if ap.RefreshJTI == "" || ap.RefreshExpiresAt.IsZero() {
+		t.Errorf("admin refresh pair missing jti/expiry: jti=%q expiry=%v", ap.RefreshJTI, ap.RefreshExpiresAt)
+	}
+}
+
+func TestDummyPasswordHash_ValidAndNeverMatches(t *testing.T) {
+	// The dummy hash must be a well-formed {BLF-CRYPT} bcrypt hash so the login
+	// not-found branch runs a real bcrypt comparison against it (the OSI-24
+	// constant-time burn) instead of erroring early on a malformed hash.
+	if !strings.HasPrefix(DummyPasswordHash, "{BLF-CRYPT}$2a$") &&
+		!strings.HasPrefix(DummyPasswordHash, "{BLF-CRYPT}$2b$") {
+		t.Fatalf("DummyPasswordHash %q is not a {BLF-CRYPT} bcrypt hash", DummyPasswordHash)
+	}
+	// It must never validate any caller-supplied password.
+	for _, pw := range []string{"", "password", "restmail-constant-time-dummy-password-x", testEmail} {
+		if err := CheckPassword(pw, DummyPasswordHash); !errors.Is(err, ErrInvalidCredentials) {
+			t.Errorf("CheckPassword(%q, dummy) = %v, want ErrInvalidCredentials", pw, err)
+		}
 	}
 }
 
