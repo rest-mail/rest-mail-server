@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline/filters"
@@ -22,12 +24,30 @@ func NewSieveHandler(db *gorm.DB) *SieveHandler {
 	return &SieveHandler{db: db}
 }
 
+// resolveMailboxID resolves the account ID from the URL to a mailbox ID,
+// verifying that the authenticated user owns the account (either as their
+// primary account or a linked account). Without this check the {id} path
+// segment was trusted as a raw mailbox ID, letting any authenticated caller
+// read/overwrite/delete another mailbox's Sieve script (IDOR).
+func (h *SieveHandler) resolveMailboxID(r *http.Request, accountIDStr string) (uint, error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return 0, fmt.Errorf("no claims")
+	}
+
+	accountID, err := strconv.ParseUint(accountIDStr, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
+}
+
 // GetScript returns the Sieve script for a mailbox.
 // GET /api/v1/accounts/{id}/sieve
 func (h *SieveHandler) GetScript(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -48,9 +68,9 @@ func (h *SieveHandler) GetScript(w http.ResponseWriter, r *http.Request) {
 // PutScript creates or updates the Sieve script for a mailbox.
 // PUT /api/v1/accounts/{id}/sieve
 func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
@@ -110,9 +130,9 @@ func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
 // DeleteScript removes the Sieve script for a mailbox.
 // DELETE /api/v1/accounts/{id}/sieve
 func (h *SieveHandler) DeleteScript(w http.ResponseWriter, r *http.Request) {
-	mailboxID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
