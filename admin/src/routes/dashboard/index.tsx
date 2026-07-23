@@ -5,6 +5,7 @@ import { useAuthStore } from '../../lib/stores/authStore'
 import { useDashboardStore } from '../../lib/stores/dashboardStore'
 import { Server, Mail, Clock, AlertCircle, Activity, RefreshCw, Lock, ShieldCheck, ShieldAlert } from 'lucide-react'
 import { AppShell } from '../../components/layout/AppShell'
+import { PipelineFunnel } from '../../components/dashboard/PipelineFunnel'
 
 export const Route = createFileRoute('/dashboard/')({
   component: Dashboard,
@@ -227,6 +228,9 @@ function Dashboard() {
 
         {/* Inbound Transport Security */}
         <InboundTransportSecurityPanel its={stats?.inboundTransportSecurity} />
+
+        {/* Pipeline Funnel (observability) */}
+        <PipelineFunnel accessToken={accessToken} />
       </div>
     </AppShell>
   )

@@ -39,6 +39,7 @@ import { Route as AliasesNewRouteImport } from './routes/aliases/new'
 import { Route as AliasesIdRouteImport } from './routes/aliases/$id'
 import { Route as AdminUsersNewRouteImport } from './routes/admin-users/new'
 import { Route as AdminUsersIdRouteImport } from './routes/admin-users/$id'
+import { Route as MessagesIdTraceRouteImport } from './routes/messages/$id/trace'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -190,6 +191,11 @@ const AdminUsersIdRoute = AdminUsersIdRouteImport.update({
   path: '/admin-users/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MessagesIdTraceRoute = MessagesIdTraceRouteImport.update({
+  id: '/messages/$id/trace',
+  path: '/messages/$id/trace',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -222,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/pipelines/': typeof PipelinesIndexRoute
   '/queue/': typeof QueueIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/messages/$id/trace': typeof MessagesIdTraceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -254,6 +261,7 @@ export interface FileRoutesByTo {
   '/pipelines': typeof PipelinesIndexRoute
   '/queue': typeof QueueIndexRoute
   '/settings': typeof SettingsIndexRoute
+  '/messages/$id/trace': typeof MessagesIdTraceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -287,6 +295,7 @@ export interface FileRoutesById {
   '/pipelines/': typeof PipelinesIndexRoute
   '/queue/': typeof QueueIndexRoute
   '/settings/': typeof SettingsIndexRoute
+  '/messages/$id/trace': typeof MessagesIdTraceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -321,6 +330,7 @@ export interface FileRouteTypes {
     | '/pipelines/'
     | '/queue/'
     | '/settings/'
+    | '/messages/$id/trace'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -353,6 +363,7 @@ export interface FileRouteTypes {
     | '/pipelines'
     | '/queue'
     | '/settings'
+    | '/messages/$id/trace'
   id:
     | '__root__'
     | '/'
@@ -385,6 +396,7 @@ export interface FileRouteTypes {
     | '/pipelines/'
     | '/queue/'
     | '/settings/'
+    | '/messages/$id/trace'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -418,6 +430,7 @@ export interface RootRouteChildren {
   PipelinesIndexRoute: typeof PipelinesIndexRoute
   QueueIndexRoute: typeof QueueIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
+  MessagesIdTraceRoute: typeof MessagesIdTraceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -632,6 +645,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminUsersIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/messages/$id/trace': {
+      id: '/messages/$id/trace'
+      path: '/messages/$id/trace'
+      fullPath: '/messages/$id/trace'
+      preLoaderRoute: typeof MessagesIdTraceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -666,6 +686,7 @@ const rootRouteChildren: RootRouteChildren = {
   PipelinesIndexRoute: PipelinesIndexRoute,
   QueueIndexRoute: QueueIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
+  MessagesIdTraceRoute: MessagesIdTraceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
