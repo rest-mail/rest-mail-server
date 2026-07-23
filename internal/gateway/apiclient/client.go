@@ -151,6 +151,16 @@ type DeliverRequest struct {
 	RawMessage   string          `json:"raw_message,omitempty"`
 	ClientIP     string          `json:"client_ip,omitempty"`
 	HeloName     string          `json:"helo_name,omitempty"`
+
+	// Inbound transport-security metrics, populated only by the inbound-MX
+	// (port 25) SMTP path so the operator can always see how much mail arrives
+	// encrypted vs plaintext. Pointer/empty so they are additive and omitted by
+	// callers that never set them (IMAP APPEND, local webmail send, authenticated
+	// submission): a nil ReceivedTLS means "not an inbound-MX delivery — not
+	// applicable", which the API persists as NULL (distinct from plaintext).
+	ReceivedTLS *bool  `json:"received_tls,omitempty"`
+	TLSVersion  string `json:"tls_version,omitempty"`
+	TLSCipher   string `json:"tls_cipher,omitempty"`
 }
 
 type DeliverResponse struct {

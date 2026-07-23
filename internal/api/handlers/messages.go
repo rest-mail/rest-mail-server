@@ -331,15 +331,15 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		From           string                 `json:"from"`
-		To             []string               `json:"to"`
-		Cc             []string               `json:"cc"`
-		Bcc            []string               `json:"bcc"`
-		Subject        string                 `json:"subject"`
-		BodyText       string                 `json:"body_text"`
-		BodyHTML       string                 `json:"body_html"`
-		InReplyTo      string                 `json:"in_reply_to"`
-		CalendarEvent  *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
+		From          string                  `json:"from"`
+		To            []string                `json:"to"`
+		Cc            []string                `json:"cc"`
+		Bcc           []string                `json:"bcc"`
+		Subject       string                  `json:"subject"`
+		BodyText      string                  `json:"body_text"`
+		BodyHTML      string                  `json:"body_html"`
+		InReplyTo     string                  `json:"in_reply_to"`
+		CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -769,6 +769,13 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		RawMessage   string          `json:"raw_message"`
 		ClientIP     string          `json:"client_ip"`
 		HeloName     string          `json:"helo_name"`
+		// Inbound transport-security metrics (always-on, inbound-MX only). A nil
+		// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
+		// NULL. TLSCipher is accepted for wire completeness but only the version is
+		// persisted on the message.
+		ReceivedTLS *bool  `json:"received_tls"`
+		TLSVersion  string `json:"tls_version"`
+		TLSCipher   string `json:"tls_cipher"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -808,6 +815,8 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		RawMessage:   req.RawMessage,
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
+		ReceivedTLS:  req.ReceivedTLS,
+		TLSVersion:   req.TLSVersion,
 	})
 	if err != nil {
 		errStr := err.Error()
@@ -1689,6 +1698,11 @@ type localDeliveryParams struct {
 	RawMessage   string
 	ClientIP     string
 	HeloName     string
+	// Inbound transport-security (always-on, inbound-MX only). Nil ReceivedTLS =
+	// not an inbound-MX delivery (local send / IMAP APPEND / submission) →
+	// persisted as NULL, never counted as a plaintext arrival.
+	ReceivedTLS *bool
+	TLSVersion  string
 }
 
 // deliverToLocal runs the inbound pipeline and delivers a message to a local mailbox.
@@ -1908,7 +1922,12 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		// Exact octet count of the stored raw (IMAP RFC822.SIZE / POP3 LIST
 		// report this; it must equal the bytes served verbatim). Zero when no
 		// raw was provided — consumers fall back to SizeBytes.
-		RawSize:      len(params.RawMessage),
+		RawSize: len(params.RawMessage),
+		// Always-on inbound transport-security metrics. Nil/empty for non
+		// inbound-MX deliveries (persisted as NULL / "" = unknown), correlatable
+		// with the Authentication-Results prepended above.
+		ReceivedTLS: params.ReceivedTLS,
+		TLSVersion:  params.TLSVersion,
 	}
 
 	if err := h.db.Create(&msg).Error; err != nil {

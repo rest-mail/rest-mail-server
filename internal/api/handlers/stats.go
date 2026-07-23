@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -36,12 +37,32 @@ type RecentActivity struct {
 	Timestamp   time.Time `json:"timestamp"`
 }
 
+// InboundTransportSecurity summarizes, over all inbound-MX (port 25) mail, how
+// much arrived encrypted vs plaintext and — for the plaintext slice — how much
+// carried a passing sender-authentication result (SPF or DKIM). It answers the
+// operator's standing question: "how much of my inbound is encrypted, and is my
+// plaintext inbound legit or junk?". Collection is always on; there is no toggle.
+//
+// The denominator counts inbound-MX deliveries (one row per local recipient),
+// identified by received_tls IS NOT NULL — the column is left NULL for local
+// webmail sends, IMAP APPEND, authenticated submission, and pre-existing rows.
+type InboundTransportSecurity struct {
+	TotalInboundMX    int     `json:"totalInboundMX"`
+	OverTLS           int     `json:"overTLS"`
+	Plaintext         int     `json:"plaintext"`
+	TLSPercent        float64 `json:"tlsPercent"`
+	PlaintextPercent  float64 `json:"plaintextPercent"`
+	PlaintextAuthPass int     `json:"plaintextAuthPass"`
+	PlaintextAuthFail int     `json:"plaintextAuthFail"`
+}
+
 type DashboardStats struct {
-	DomainCount    int                 `json:"domainCount"`
-	MailboxCount   int                 `json:"mailboxCount"`
-	QueueStats     QueueStats          `json:"queueStats"`
-	MessageVolume  []MessageVolumeData `json:"messageVolume"`
-	RecentActivity []RecentActivity    `json:"recentActivity"`
+	DomainCount              int                      `json:"domainCount"`
+	MailboxCount             int                      `json:"mailboxCount"`
+	QueueStats               QueueStats               `json:"queueStats"`
+	MessageVolume            []MessageVolumeData      `json:"messageVolume"`
+	RecentActivity           []RecentActivity         `json:"recentActivity"`
+	InboundTransportSecurity InboundTransportSecurity `json:"inboundTransportSecurity"`
 }
 
 // GetDashboardStats returns statistics for the admin dashboard
@@ -100,7 +121,73 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 	}
 	stats.RecentActivity = recentActivity
 
+	// Inbound transport-security (always-on). Never fail the whole dashboard on
+	// an aggregate error — fall back to the zero value, as the other panels do.
+	if its, err := h.getInboundTransportSecurity(); err == nil {
+		stats.InboundTransportSecurity = its
+	}
+
 	respond.Data(w, http.StatusOK, stats)
+}
+
+// inboundTransportSecuritySQL is a single DB aggregate over inbound-MX mail.
+// The predicates are deliberately portable (SUM(CASE ...) rather than the
+// Postgres-only COUNT(*) FILTER) so the exact query the server runs is also
+// exercisable against a lightweight test database.
+//
+// "Auth pass" is defined as a stored Authentication-Results carrying spf=pass or
+// dkim=pass — the tokens the SPF and DKIM filters actually persist onto the raw
+// message (the dmarc verdict is computed but not written to the header). These
+// are precisely DMARC's inputs, so the split answers "did this plaintext message
+// carry a passing sender authentication result, or none at all?".
+const inboundTransportSecuritySQL = `SELECT
+	COUNT(*) AS total_inbound_mx,
+	COALESCE(SUM(CASE WHEN received_tls THEN 1 ELSE 0 END), 0) AS over_tls,
+	COALESCE(SUM(CASE WHEN NOT received_tls THEN 1 ELSE 0 END), 0) AS plaintext,
+	COALESCE(SUM(CASE WHEN NOT received_tls AND (raw_message LIKE '%spf=pass%' OR raw_message LIKE '%dkim=pass%') THEN 1 ELSE 0 END), 0) AS plaintext_auth_pass,
+	COALESCE(SUM(CASE WHEN NOT received_tls AND NOT (raw_message LIKE '%spf=pass%' OR raw_message LIKE '%dkim=pass%') THEN 1 ELSE 0 END), 0) AS plaintext_auth_fail
+FROM messages
+WHERE received_tls IS NOT NULL`
+
+// inboundTLSCounts holds the raw aggregate row before percentages are derived.
+type inboundTLSCounts struct {
+	TotalInboundMX    int
+	OverTLS           int
+	Plaintext         int
+	PlaintextAuthPass int
+	PlaintextAuthFail int
+}
+
+// getInboundTransportSecurity runs the aggregate and assembles the response DTO.
+func (h *StatsHandler) getInboundTransportSecurity() (InboundTransportSecurity, error) {
+	var c inboundTLSCounts
+	if err := h.db.Raw(inboundTransportSecuritySQL).Scan(&c).Error; err != nil {
+		return InboundTransportSecurity{}, err
+	}
+	return buildInboundTransportSecurity(c), nil
+}
+
+// buildInboundTransportSecurity derives the encrypted/plaintext percentages from
+// the raw aggregate counts. Pure (no I/O) so it is unit-testable directly, and
+// guards the zero-denominator case (no inbound-MX mail yet → 0% rather than NaN).
+func buildInboundTransportSecurity(c inboundTLSCounts) InboundTransportSecurity {
+	its := InboundTransportSecurity{
+		TotalInboundMX:    c.TotalInboundMX,
+		OverTLS:           c.OverTLS,
+		Plaintext:         c.Plaintext,
+		PlaintextAuthPass: c.PlaintextAuthPass,
+		PlaintextAuthFail: c.PlaintextAuthFail,
+	}
+	if c.TotalInboundMX > 0 {
+		its.TLSPercent = round1(float64(c.OverTLS) * 100 / float64(c.TotalInboundMX))
+		its.PlaintextPercent = round1(float64(c.Plaintext) * 100 / float64(c.TotalInboundMX))
+	}
+	return its
+}
+
+// round1 rounds a percentage to one decimal place.
+func round1(v float64) float64 {
+	return math.Round(v*10) / 10
 }
 
 // bucketQueueStatuses folds raw outbound_queue status counts into the three

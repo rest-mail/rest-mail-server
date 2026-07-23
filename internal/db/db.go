@@ -120,6 +120,14 @@ func AutoMigrate(db *gorm.DB) error {
 		slog.Warn("failed to backfill messages.raw_size", "error", err)
 	}
 
+	// messages.received_tls / messages.tls_version (inbound transport-security
+	// monitoring) are added by AutoMigrate above and deliberately NOT backfilled:
+	// the true transport security of a message that arrived before the column
+	// existed is genuinely unknown, and received_tls is nullable so NULL encodes
+	// exactly that. Defaulting old rows to false would misreport them as
+	// plaintext inbound-MX arrivals and skew the dashboard aggregate, so they are
+	// left NULL ("not applicable / unknown") — the honest, non-breaking default.
+
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {
 		err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_mailboxes_domain_localpart ON mailboxes(domain_id, local_part)").Error

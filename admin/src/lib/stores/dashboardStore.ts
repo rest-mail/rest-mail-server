@@ -19,12 +19,23 @@ interface RecentActivity {
   timestamp: string
 }
 
+interface InboundTransportSecurity {
+  totalInboundMX: number
+  overTLS: number
+  plaintext: number
+  tlsPercent: number
+  plaintextPercent: number
+  plaintextAuthPass: number
+  plaintextAuthFail: number
+}
+
 interface DashboardStats {
   domainCount: number
   mailboxCount: number
   queueStats: QueueStats
   messageVolume: MessageVolumeData[]
   recentActivity: RecentActivity[]
+  inboundTransportSecurity: InboundTransportSecurity
 }
 
 interface DashboardState {
