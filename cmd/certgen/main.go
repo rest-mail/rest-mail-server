@@ -326,10 +326,6 @@ func loadOrCreateInternalCA(outputDir string) (*x509.Certificate, *ecdsa.Private
 func ensureInternalServerCert(outputDir string, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, serverDNS, serverIPs string) error {
 	certPath := filepath.Join(outputDir, internalServerCertFile)
 	keyPath := filepath.Join(outputDir, internalServerKeyFile)
-	if fileExists(certPath) && fileExists(keyPath) {
-		slog.Info("internal mTLS server cert already present, skipping", "cert", certPath)
-		return nil
-	}
 
 	dnsNames := splitDomains(serverDNS)
 	var ips []net.IP
@@ -342,6 +338,19 @@ func ensureInternalServerCert(outputDir string, caCert *x509.Certificate, caKey 
 	}
 	if len(dnsNames) == 0 && len(ips) == 0 {
 		return fmt.Errorf("internal mTLS server cert needs at least one --server-dns or --server-ip SAN")
+	}
+
+	// Skip ONLY when an existing server cert already covers the requested SAN
+	// set exactly. If the SANs drifted — e.g. the api container IP changed on a
+	// persistent certs volume — re-mint the leaf (the CA is untouched, so
+	// already-issued client certs keep verifying) to avoid a stale SAN causing a
+	// later TLS name mismatch.
+	if fileExists(certPath) && fileExists(keyPath) {
+		if serverCertSANsMatch(certPath, dnsNames, ips) {
+			slog.Info("internal mTLS server cert already present with matching SANs, skipping", "cert", certPath)
+			return nil
+		}
+		slog.Info("internal mTLS server cert SANs changed, re-minting leaf", "cert", certPath, "dns", dnsNames, "ips", serverIPs)
 	}
 
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -461,6 +470,58 @@ func loadCAFrom(certPath, keyPath string) (*x509.Certificate, *ecdsa.PrivateKey,
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// serverCertSANsMatch reports whether the cert at certPath has EXACTLY the
+// requested DNS + IP SAN sets. A parse failure counts as "no match" so a
+// corrupt/unreadable existing cert is safely re-minted.
+func serverCertSANsMatch(certPath string, dnsNames []string, ips []net.IP) bool {
+	data, err := os.ReadFile(certPath)
+	if err != nil {
+		return false
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return false
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return false
+	}
+	if !sameStringSet(cert.DNSNames, dnsNames) {
+		return false
+	}
+	haveIPs := make([]string, len(cert.IPAddresses))
+	for i, ip := range cert.IPAddresses {
+		haveIPs[i] = ip.String()
+	}
+	wantIPs := make([]string, len(ips))
+	for i, ip := range ips {
+		wantIPs[i] = ip.String()
+	}
+	return sameStringSet(haveIPs, wantIPs)
+}
+
+// sameStringSet reports whether a and b contain the same elements (ignoring
+// order and multiplicity).
+func sameStringSet(a, b []string) bool {
+	set := make(map[string]struct{}, len(a))
+	for _, s := range a {
+		set[s] = struct{}{}
+	}
+	other := make(map[string]struct{}, len(b))
+	for _, s := range b {
+		other[s] = struct{}{}
+	}
+	if len(set) != len(other) {
+		return false
+	}
+	for s := range set {
+		if _, ok := other[s]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func generateDKIM(outputDir, domain string) error {

@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/x509"
 	"encoding/pem"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -98,6 +99,71 @@ func TestGenerateInternalMTLS_Idempotent(t *testing.T) {
 	}
 	if string(clientBefore) != string(clientAfter) {
 		t.Error("client cert changed on re-run — not idempotent")
+	}
+}
+
+// TestGenerateInternalMTLS_RegeneratesServerOnSANDrift covers the hazard where
+// the api container IP changes on a persistent certs volume: the server leaf
+// must be re-minted with the new SAN (so TLS names still match) while the CA
+// and client cert are preserved.
+func TestGenerateInternalMTLS_RegeneratesServerOnSANDrift(t *testing.T) {
+	dir := t.TempDir()
+	if err := generateInternalMTLS(dir, "api", "127.0.0.1", "gw"); err != nil {
+		t.Fatalf("first generate: %v", err)
+	}
+	caBefore, _ := os.ReadFile(filepath.Join(dir, internalCACertFile))
+	serverBefore, _ := os.ReadFile(filepath.Join(dir, internalServerCertFile))
+	clientBefore, _ := os.ReadFile(filepath.Join(dir, internalClientCertFile))
+
+	// Re-run with an added IP SAN (simulating MAIL3_API_IP appearing/changing).
+	if err := generateInternalMTLS(dir, "api", "127.0.0.1,10.99.0.99", "gw"); err != nil {
+		t.Fatalf("drift generate: %v", err)
+	}
+	caAfter, _ := os.ReadFile(filepath.Join(dir, internalCACertFile))
+	serverAfter, _ := os.ReadFile(filepath.Join(dir, internalServerCertFile))
+	clientAfter, _ := os.ReadFile(filepath.Join(dir, internalClientCertFile))
+
+	if string(serverBefore) == string(serverAfter) {
+		t.Error("server cert NOT re-minted after SAN drift — stale SAN would cause TLS name mismatch")
+	}
+	if string(caBefore) != string(caAfter) {
+		t.Error("CA changed on SAN drift — must be preserved so client certs keep verifying")
+	}
+	if string(clientBefore) != string(clientAfter) {
+		t.Error("client cert changed on SAN drift — should be untouched")
+	}
+
+	// The re-minted server cert must carry the new IP SAN.
+	server := parseCertFile(t, filepath.Join(dir, internalServerCertFile))
+	found := false
+	for _, ip := range server.IPAddresses {
+		if ip.String() == "10.99.0.99" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("re-minted server cert missing new IP SAN 10.99.0.99, got %v", server.IPAddresses)
+	}
+}
+
+func TestServerCertSANsMatch(t *testing.T) {
+	dir := t.TempDir()
+	if err := generateInternalMTLS(dir, "api,localhost", "127.0.0.1,10.99.0.20", "gw"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	certPath := filepath.Join(dir, internalServerCertFile)
+
+	// Same set (order-independent) → match.
+	if !serverCertSANsMatch(certPath, []string{"localhost", "api"}, []net.IP{net.ParseIP("10.99.0.20"), net.ParseIP("127.0.0.1")}) {
+		t.Error("expected SAN match for the same set in different order")
+	}
+	// Missing an IP → no match.
+	if serverCertSANsMatch(certPath, []string{"api", "localhost"}, []net.IP{net.ParseIP("127.0.0.1")}) {
+		t.Error("expected no match when an IP SAN is missing")
+	}
+	// Extra DNS → no match.
+	if serverCertSANsMatch(certPath, []string{"api", "localhost", "extra"}, []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("10.99.0.20")}) {
+		t.Error("expected no match when a DNS SAN is added")
 	}
 }
 
