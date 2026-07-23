@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	imapsrv "github.com/rest-mail/imap"
+	imapsrv "github.com/rest-mail/go-imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )

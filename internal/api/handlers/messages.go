@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rest-mail/dkim"
+	"github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	restcrypto "github.com/restmail/restmail/internal/crypto"

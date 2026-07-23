@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/rest-mail/arc"
+	"github.com/rest-mail/go-arc"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -15,7 +15,7 @@ import (
 // messages per RFC 8617. It validates chain structure (instance numbering, cv
 // values, header set completeness) and, when the raw message is available,
 // cryptographically verifies the chain (most recent ARC-Message-Signature over
-// the message plus every ARC-Seal over the header chain, via github.com/rest-mail/arc),
+// the message plus every ARC-Seal over the header chain, via github.com/rest-mail/go-arc),
 // adding arc=pass/fail/none to Authentication-Results.
 type arcVerifyFilter struct{}
 

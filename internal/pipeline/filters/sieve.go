@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rest-mail/sieve"
+	"github.com/rest-mail/go-sieve"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -18,7 +18,7 @@ type sieveConfig struct {
 }
 
 // sieveFilter runs a Sieve (RFC 5228) script against each message. The parser
-// and interpreter live in github.com/rest-mail/sieve; this filter adapts
+// and interpreter live in github.com/rest-mail/go-sieve; this filter adapts
 // pipeline.EmailJSON to the library's neutral Message, implements its Executor
 // by recording the selected actions as message metadata (the contract the
 // delivery path consumes), and maps the terminal outcome onto pipeline results.

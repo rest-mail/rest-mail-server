@@ -16,13 +16,13 @@ require (
 	github.com/pires/go-proxyproto v0.11.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
-	github.com/rest-mail/arc v0.1.0
-	github.com/rest-mail/dkim v0.1.0
-	github.com/rest-mail/dmarc v0.1.0
-	github.com/rest-mail/imap v0.2.0
-	github.com/rest-mail/mtasts v0.1.0
-	github.com/rest-mail/pop3 v0.1.0
-	github.com/rest-mail/sieve v0.1.0
+	github.com/rest-mail/go-arc v0.1.1
+	github.com/rest-mail/go-dkim v0.1.1
+	github.com/rest-mail/go-dmarc v0.1.1
+	github.com/rest-mail/go-imap v0.2.1
+	github.com/rest-mail/go-mtasts v0.1.1
+	github.com/rest-mail/go-pop3 v0.1.1
+	github.com/rest-mail/go-sieve v0.1.1
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.50.0
 	gorm.io/driver/postgres v1.6.0

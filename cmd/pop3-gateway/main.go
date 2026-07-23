@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	pop3srv "github.com/rest-mail/pop3"
+	pop3srv "github.com/rest-mail/go-pop3"
 
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
