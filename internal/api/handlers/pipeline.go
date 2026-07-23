@@ -44,7 +44,16 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	respond.List(w, pipelines, nil)
 }
 
-// ListPipelineLogs returns recent pipeline execution logs, optionally filtered by pipeline_id.
+// ListPipelineLogs returns recent per-message pipeline traces, newest first.
+//
+// PR5 repoint: the write path moved to message_traces (PR3), and the legacy
+// pipeline_logs table is no longer written, so this READ now reads
+// message_traces. The response is the richer trace shape (outcome, reason_code,
+// transport, mail_from/rcpt_to/client_ip, stages timeline, duration) rather than
+// the old {steps, action} log. The original pagination and the pipeline_id /
+// direction / action filters are preserved (action now matches the trace's
+// final_action column), and rfc_message_id / outcome / reason_code filters are
+// added to support message-lifecycle drill-down.
 func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
@@ -55,26 +64,60 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 		offset = o
 	}
 
-	query := h.db.Model(&models.PipelineLog{})
+	query := h.db.Model(&models.MessageTrace{})
 	if pipelineID := r.URL.Query().Get("pipeline_id"); pipelineID != "" {
 		query = query.Where("pipeline_id = ?", pipelineID)
 	}
 	if direction := r.URL.Query().Get("direction"); direction != "" {
 		query = query.Where("direction = ?", direction)
 	}
+	// action filters on the pipeline's final_action (the old PipelineLog.Action
+	// column's successor), preserving the existing query contract.
 	if action := r.URL.Query().Get("action"); action != "" {
-		query = query.Where("action = ?", action)
+		query = query.Where("final_action = ?", action)
+	}
+	if rfcMessageID := r.URL.Query().Get("rfc_message_id"); rfcMessageID != "" {
+		query = query.Where("rfc_message_id = ?", rfcMessageID)
+	}
+	if outcome := r.URL.Query().Get("outcome"); outcome != "" {
+		query = query.Where("outcome = ?", outcome)
+	}
+	if reasonCode := r.URL.Query().Get("reason_code"); reasonCode != "" {
+		query = query.Where("reason_code = ?", reasonCode)
 	}
 
 	var total int64
 	query.Count(&total)
 
-	var logs []models.PipelineLog
-	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&logs).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list pipeline logs")
+	var traces []models.MessageTrace
+	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&traces).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list pipeline traces")
 		return
 	}
-	respond.List(w, logs, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	respond.List(w, traces, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+}
+
+// GetMessageTrace returns the ordered pipeline stage timeline for a delivered
+// message — the delivered-message case of the trace read surface.
+// GET /api/v1/admin/messages/{id}/trace
+//
+// It joins message_traces on message_id (set ONLY on the delivered/queued path;
+// nil for rejected/quarantined/discarded/deferred mail, which never became a
+// Message row and is instead correlated via rfc_message_id on ListPipelineLogs).
+// A non-delivered or unknown id therefore has no trace here → 404.
+func (h *PipelineHandler) GetMessageTrace(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
+		return
+	}
+
+	var trace models.MessageTrace
+	if err := h.db.Where("message_id = ?", uint(id)).Order("created_at DESC").First(&trace).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "No pipeline trace for this message")
+		return
+	}
+	respond.Data(w, http.StatusOK, trace)
 }
 
 // CreatePipeline creates a new pipeline.

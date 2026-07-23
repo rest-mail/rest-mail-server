@@ -78,10 +78,12 @@ var (
 		"users:read", "messages:read",
 		"queue:read", "queue:manage",
 		"bans:read", "bans:write", "bans:delete",
+		"observability:read",
 	}
 	readonlyRoleCaps = []string{
 		"domains:read", "mailboxes:read", "pipelines:read",
 		"users:read", "messages:read", "queue:read", "bans:read",
+		"observability:read",
 	}
 )
 
@@ -201,6 +203,8 @@ func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 		{http.MethodGet, "/api/v1/admin/aliases"},
 		{http.MethodGet, "/api/v1/admin/webmail-accounts"},
 		{http.MethodGet, "/api/v1/admin/pipelines"},
+		{http.MethodGet, "/api/v1/admin/pipelines/analytics"},
+		{http.MethodGet, "/api/v1/admin/messages/1/trace"},
 		{http.MethodGet, "/api/v1/admin/custom-filters"},
 		{http.MethodGet, "/api/v1/admin/queue"},
 		{http.MethodGet, "/api/v1/admin/queue/stats"},
@@ -327,6 +331,8 @@ func TestAdminRoutes_ReadonlyRoleAllowedOnReads(t *testing.T) {
 		"/api/v1/admin/aliases",
 		"/api/v1/admin/webmail-accounts",
 		"/api/v1/admin/pipelines",
+		"/api/v1/admin/pipelines/analytics",
+		"/api/v1/admin/messages/1/trace",
 		"/api/v1/admin/custom-filters",
 		"/api/v1/admin/queue",
 		"/api/v1/admin/queue/stats",
@@ -419,6 +425,52 @@ func TestAdminRoutes_LegacyIsAdminMailboxRetainsAccess(t *testing.T) {
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
 			rr := doRequest(router, rt.method, rt.path, token, rt.body)
+			assertReachedHandler(t, rr)
+		})
+	}
+}
+
+// ── Observability read surface: dedicated capability gate (PR5) ───────
+
+func TestObservabilityRoutes_CapabilityGate(t *testing.T) {
+	router, jwtSvc := newTestRouter(t)
+
+	obsRoutes := []string{
+		"/api/v1/admin/pipelines/analytics",
+		"/api/v1/admin/messages/1/trace",
+	}
+
+	// A token carrying observability:read reaches the handlers.
+	withCap := adminToken(t, jwtSvc, []string{"observability:read"})
+	for _, path := range obsRoutes {
+		t.Run("allow "+path, func(t *testing.T) {
+			rr := doRequest(router, http.MethodGet, path, withCap, "")
+			assertReachedHandler(t, rr)
+		})
+	}
+
+	// A token WITHOUT it — even one holding pipelines:read — is denied on the
+	// observability surface, proving the dedicated capability is what gates it.
+	withoutCap := adminToken(t, jwtSvc, []string{"pipelines:read"})
+	for _, path := range obsRoutes {
+		t.Run("deny "+path, func(t *testing.T) {
+			rr := doRequest(router, http.MethodGet, path, withoutCap, "")
+			assertMiddlewareDenied(t, rr, http.StatusForbidden, "Insufficient permissions")
+		})
+	}
+
+	// That same pipelines:read token STILL reaches the repointed pipelines/logs
+	// read — its gate is unchanged (only its data source moved to message_traces).
+	t.Run("pipelines:read still reaches pipelines/logs", func(t *testing.T) {
+		rr := doRequest(router, http.MethodGet, "/api/v1/admin/pipelines/logs", withoutCap, "")
+		assertReachedHandler(t, rr)
+	})
+
+	// Superadmin wildcard reaches the observability surface.
+	super := adminToken(t, jwtSvc, []string{"*"})
+	for _, path := range obsRoutes {
+		t.Run("superadmin "+path, func(t *testing.T) {
+			rr := doRequest(router, http.MethodGet, path, super, "")
 			assertReachedHandler(t, rr)
 		})
 	}
