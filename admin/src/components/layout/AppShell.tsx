@@ -1,16 +1,15 @@
-import { ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
-import { useUIStore } from '#/lib/stores/uiStore';
+import { useUIStore } from '../../lib/stores/uiStore';
 
 interface AppShellProps {
   children: ReactNode;
   title?: string;
+  backLink?: string;
 }
 
-export function AppShell({ children, title }: AppShellProps) {
-  const sidebarOpen = useUIStore((state) => state.sidebarOpen);
-
+export function AppShell({ children, title, backLink }: AppShellProps) {
   return (
     <div className="flex h-screen bg-[var(--bg-page)] overflow-hidden">
       {/* Sidebar */}
@@ -19,7 +18,7 @@ export function AppShell({ children, title }: AppShellProps) {
       {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <Header title={title} />
+        <Header title={title} backLink={backLink} />
 
         {/* Page content */}
         <main className="flex-1 overflow-auto">

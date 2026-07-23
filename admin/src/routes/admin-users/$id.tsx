@@ -118,7 +118,7 @@ function AdminUserDetailsPage() {
   if (adminUser?.roles) {
     roles
       .filter(role => formData.role_ids.includes(role.id))
-      .forEach(role => {
+      .forEach(() => {
         capabilities.forEach(cap => {
           // This is a simplification - in reality, we'd need to fetch role capabilities
           userCapabilities.add(cap.name)

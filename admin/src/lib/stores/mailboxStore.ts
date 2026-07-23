@@ -128,7 +128,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     }
   },
 
-  updateMailbox: async (token: string, id: string, data) => {
+  updateMailbox: async (token: string, id: number, data) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -157,7 +157,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     }
   },
 
-  deleteMailbox: async (token: string, id: string) => {
+  deleteMailbox: async (token: string, id: number) => {
     set({ isLoading: true, error: null })
 
     try {

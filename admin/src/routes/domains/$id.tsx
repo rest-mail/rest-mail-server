@@ -73,14 +73,6 @@ function DomainDetailsPage() {
     }
   }
 
-  const getDnsRecordIcon = (verified: boolean) => {
-    return verified ? '✓' : '✗'
-  }
-
-  const getDnsRecordColor = (verified: boolean) => {
-    return verified ? 'var(--success)' : '#EF4444'
-  }
-
   if (isLoading && !currentDomain) {
     return (
       <AppShell title="Loading...">
@@ -344,7 +336,6 @@ function DomainDetailsPage() {
             {accessToken && (
               <DomainDNS
                 domainId={currentDomain.id}
-                domainName={currentDomain.name}
                 accessToken={accessToken}
               />
             )}

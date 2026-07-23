@@ -47,7 +47,7 @@ interface BanState {
   clearError: () => void
 }
 
-export const useBanStore = create<BanState>((set, get) => ({
+export const useBanStore = create<BanState>((set) => ({
   bans: [],
   isLoading: false,
   error: null,

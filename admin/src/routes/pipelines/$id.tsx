@@ -6,7 +6,7 @@ import { useAuthStore } from '../../lib/stores/authStore'
 import { useUIStore } from '../../lib/stores/uiStore'
 import { AppShell } from '../../components/layout/AppShell'
 import { getFiltersByDirection, getFilterDefinition } from '../../lib/stores/filterRegistryStore'
-import { X, GripVertical, Lock, Plus } from 'lucide-react'
+import { X, Lock, Plus } from 'lucide-react'
 
 export const Route = createFileRoute('/pipelines/$id')({
   component: PipelineEditorPage,
