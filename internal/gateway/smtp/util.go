@@ -7,6 +7,35 @@ import (
 	"strings"
 )
 
+// maskEmail redacts the local-part of an email address for logging (OSI-5):
+// "alice@example.com" -> "a***@example.com". The domain is preserved for
+// operational triage while the individual identity is not written in the clear —
+// important on the failed-auth / not-authorized paths, which log attacker-
+// supplied, high-volume, often non-customer addresses (credential-stuffing and
+// enumeration probes). An empty value maps to "" and a value without "@" is
+// masked whole.
+func maskEmail(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
+	at := strings.LastIndex(addr, "@")
+	if at <= 0 {
+		// No usable local-part/domain split: reveal only the first rune.
+		return firstRune(addr) + "***"
+	}
+	return firstRune(addr[:at]) + "***" + addr[at:]
+}
+
+// firstRune returns the first rune of s (or "" if empty), used to keep a minimal
+// non-identifying prefix in masked log values.
+func firstRune(s string) string {
+	for _, r := range s {
+		return string(r)
+	}
+	return ""
+}
+
 // extractIP extracts the IP address from a remote address string (host:port).
 func extractIP(addr string) string {
 	host, _, err := splitHostPort(addr)
