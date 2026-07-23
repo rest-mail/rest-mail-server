@@ -363,11 +363,45 @@ func TestListMessages_Success(t *testing.T) {
 	if resp.Data[0].Subject != "Test Message" {
 		t.Fatalf("expected subject 'Test Message', got %q", resp.Data[0].Subject)
 	}
-	if resp.Pagination == nil {
-		t.Fatal("expected pagination to be present")
+	// NOTE: ListMessages now aggregates the whole folder and no longer exposes a
+	// pagination cursor to callers (the gateways need the complete, oldest-first
+	// list). The previous assertions that resp.Pagination was present + Total==1
+	// were removed because the method deliberately consumes pagination internally.
+}
+
+// TestListMessages_PaginatesAndOrders verifies the gateway follows the API's
+// cursor to assemble the FULL folder and returns it oldest-first (fixing the
+// newest-100-only visibility bug and the UID `*` mis-resolution).
+func TestListMessages_PaginatesAndOrders(t *testing.T) {
+	srv, mux := newTestServer(t)
+	mux.HandleFunc("/api/v1/accounts/5/folders/INBOX/messages", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		page := func(msgs []map[string]any, cursor string, more bool) {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data":       msgs,
+				"pagination": map[string]any{"cursor": cursor, "has_more": more, "total": 3},
+			})
+		}
+		if r.URL.Query().Get("cursor") == "" {
+			// API pages newest-first.
+			page([]map[string]any{{"id": 3, "subject": "third"}, {"id": 2, "subject": "second"}}, "c1", true)
+		} else {
+			page([]map[string]any{{"id": 1, "subject": "first"}}, "", false)
+		}
+	})
+
+	resp, err := New(srv.URL).ListMessages("tok", 5, "INBOX")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if resp.Pagination.Total != 1 {
-		t.Fatalf("expected pagination total 1, got %d", resp.Pagination.Total)
+	if len(resp.Data) != 3 {
+		t.Fatalf("expected all 3 messages across pages, got %d", len(resp.Data))
+	}
+	// Oldest-first: ids ascending 1,2,3.
+	for i, wantID := range []uint{1, 2, 3} {
+		if resp.Data[i].ID != wantID {
+			t.Errorf("position %d: got id %d, want %d (oldest-first)", i, resp.Data[i].ID, wantID)
+		}
 	}
 }
 
