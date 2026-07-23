@@ -65,6 +65,18 @@ jobs:
           task testbed:init
           task mailserver:init
 
+      - name: Pin reference-dnsmasq to a render-fragment-capable build
+        # The testbed / reference-mailserver / rest-mail Taskfiles all pin
+        # reference-dnsmasq:2026.04.28 — the INITIAL release, which predates the
+        # `render-fragment` / `remove-fragment` subcommands that dns:register
+        # needs (added in 2026.04.28.2 / latest). On a clean pull that stale pin
+        # makes dns:register fail with "dnsmasq: bad command line options". Seed
+        # the pinned tag locally with the capable digest so `docker run` resolves
+        # it without re-pulling. (Follow-up: bump the pins in those three repos.)
+        run: |
+          docker pull ghcr.io/rest-mail/reference-dnsmasq:2026.04.28.2
+          docker tag ghcr.io/rest-mail/reference-dnsmasq:2026.04.28.2 ghcr.io/rest-mail/reference-dnsmasq:2026.04.28
+
       - name: Bring up e2e topology
         run: task e2e:up
 
