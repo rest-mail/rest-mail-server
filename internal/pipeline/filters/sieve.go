@@ -5,12 +5,32 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
 	"github.com/rest-mail/go-sieve"
 	"github.com/restmail/restmail/internal/pipeline"
 )
+
+// SieveRedirectPolicy governs where a Sieve `redirect` action may send mail
+// (OSI-13). A redirect to one of the recipient's own domains is always allowed;
+// this policy governs EXTERNAL targets. The zero value denies every external
+// redirect — the secure default — so a mailbox owner (or an attacker abusing a
+// script) cannot silently exfiltrate mail to an arbitrary domain.
+type SieveRedirectPolicy struct {
+	// AllowExternal permits redirect to any domain (legacy behavior); the
+	// redirect is still logged. Default false.
+	AllowExternal bool
+	// AllowedDomains are external domains explicitly permitted as redirect
+	// targets even when AllowExternal is false (exact, case-insensitive match).
+	AllowedDomains []string
+}
+
+// defaultSieveRedirectPolicy is the deny-external default bound by the init()
+// registration. routes.go re-registers "sieve" via NewSieveWithPolicy with the
+// deployment's configured policy, overriding this.
+var defaultSieveRedirectPolicy = SieveRedirectPolicy{}
 
 // sieveConfig holds the Sieve script for this filter.
 type sieveConfig struct {
@@ -23,14 +43,31 @@ type sieveConfig struct {
 // by recording the selected actions as message metadata (the contract the
 // delivery path consumes), and maps the terminal outcome onto pipeline results.
 type sieveFilter struct {
-	script *sieve.Script
+	script   *sieve.Script
+	redirect SieveRedirectPolicy
 }
 
 func init() {
 	pipeline.DefaultRegistry.Register("sieve", NewSieve)
 }
 
+// NewSieve builds a sieve filter with the deny-external default redirect policy
+// (OSI-13). Deployments override the policy by re-registering the filter with
+// NewSieveWithPolicy.
 func NewSieve(config []byte) (pipeline.Filter, error) {
+	return newSieveFilter(config, defaultSieveRedirectPolicy)
+}
+
+// NewSieveWithPolicy returns a sieve FilterFactory bound to the given redirect
+// policy (OSI-13). routes.go registers it with the deployment's configured
+// allowlist so the runtime policy overrides the deny-external default.
+func NewSieveWithPolicy(policy SieveRedirectPolicy) pipeline.FilterFactory {
+	return func(config []byte) (pipeline.Filter, error) {
+		return newSieveFilter(config, policy)
+	}
+}
+
+func newSieveFilter(config []byte, policy SieveRedirectPolicy) (pipeline.Filter, error) {
 	var cfg sieveConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -38,7 +75,7 @@ func NewSieve(config []byte) (pipeline.Filter, error) {
 		}
 	}
 	if cfg.Script == "" {
-		return &sieveFilter{}, nil
+		return &sieveFilter{redirect: policy}, nil
 	}
 
 	script, err := sieve.Parse(cfg.Script)
@@ -46,7 +83,7 @@ func NewSieve(config []byte) (pipeline.Filter, error) {
 		return nil, fmt.Errorf("parse sieve: %w", err)
 	}
 
-	return &sieveFilter{script: script}, nil
+	return &sieveFilter{script: script, redirect: policy}, nil
 }
 
 func (f *sieveFilter) Name() string              { return "sieve" }
@@ -77,7 +114,11 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 		modified.Metadata = m
 	}
 
-	exec := &metadataExecutor{email: &modified}
+	exec := &metadataExecutor{
+		email:        &modified,
+		redirect:     f.redirect,
+		localDomains: recipientDomains(&modified),
+	}
 	outcome := f.script.Evaluate(sieveMessage(&modified), exec)
 
 	switch outcome.Disposition {
@@ -186,6 +227,12 @@ func sieveBody(b pipeline.Body) sieve.Body {
 type metadataExecutor struct {
 	email   *pipeline.EmailJSON
 	applied []string
+
+	// redirect / localDomains gate the `redirect` action (OSI-13): a redirect to
+	// one of localDomains (the recipient's own domain(s)) is always allowed;
+	// external targets are governed by the policy (deny by default).
+	redirect     SieveRedirectPolicy
+	localDomains []string
 }
 
 func (e *metadataExecutor) Keep() { e.applied = append(e.applied, "keep") }
@@ -200,9 +247,86 @@ func (e *metadataExecutor) FileInto(folder string, create bool) {
 }
 
 func (e *metadataExecutor) Redirect(addr string) {
+	if !e.redirectAllowed(addr) {
+		// Deny: do NOT record redirect_to, so the delivery path never forwards the
+		// message off-domain. This is the OSI-13 exfiltration guard.
+		slog.Warn("sieve: redirect to disallowed external domain denied (OSI-13)",
+			"target_domain", domainOf(addr),
+			"recipient_domains", strings.Join(e.localDomains, ","),
+		)
+		e.applied = append(e.applied, "redirect-denied:"+addr)
+		return
+	}
 	ensureMetadata(e.email)
 	e.email.Metadata["redirect_to"] = addr
 	e.applied = append(e.applied, "redirect:"+addr)
+}
+
+// redirectAllowed reports whether a sieve redirect to addr is permitted under
+// the OSI-13 policy: always to one of the recipient's own domains; to any domain
+// when AllowExternal is set (logged); otherwise only to an explicitly
+// allowlisted external domain. An unparseable target is denied.
+func (e *metadataExecutor) redirectAllowed(addr string) bool {
+	target := domainOf(addr)
+	if target == "" {
+		return false
+	}
+	for _, d := range e.localDomains {
+		if d == target {
+			return true
+		}
+	}
+	if e.redirect.AllowExternal {
+		slog.Warn("sieve: redirect to external domain permitted by policy (SIEVE_REDIRECT_ALLOW_EXTERNAL)",
+			"target_domain", target)
+		return true
+	}
+	for _, d := range e.redirect.AllowedDomains {
+		if strings.EqualFold(strings.TrimSpace(d), target) {
+			return true
+		}
+	}
+	return false
+}
+
+// recipientDomains returns the lower-cased domains of the message recipients —
+// the mailbox owner's own domain(s) — used to classify a redirect target as
+// internal (always allowed). It prefers the SMTP envelope recipients (which the
+// inbound delivery path sets to the resolved mailbox address) and falls back to
+// the To/Cc header addresses.
+func recipientDomains(email *pipeline.EmailJSON) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	add := func(addr string) {
+		if d := domainOf(addr); d != "" {
+			if _, ok := seen[d]; !ok {
+				seen[d] = struct{}{}
+				out = append(out, d)
+			}
+		}
+	}
+	for _, r := range email.Envelope.RcptTo {
+		add(r)
+	}
+	if len(out) == 0 {
+		for _, a := range email.Headers.To {
+			add(a.Address)
+		}
+		for _, a := range email.Headers.Cc {
+			add(a.Address)
+		}
+	}
+	return out
+}
+
+// domainOf returns the lower-cased domain part of an email address, or "" if
+// there is none. A trailing root dot (FQDN form) is stripped.
+func domainOf(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if i := strings.LastIndex(addr, "@"); i >= 0 && i < len(addr)-1 {
+		return strings.ToLower(strings.TrimSuffix(addr[i+1:], "."))
+	}
+	return ""
 }
 
 func (e *metadataExecutor) Flag(op string, flags []string) {
