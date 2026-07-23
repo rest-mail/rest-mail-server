@@ -341,14 +341,33 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// mediaType returns the lower-cased media type of a Content-Type value with any
+// parameters (charset, boundary, ...) stripped: "text/plain; charset=utf-8" ->
+// "text/plain".
+func mediaType(contentType string) string {
+	if i := strings.IndexByte(contentType, ';'); i >= 0 {
+		contentType = contentType[:i]
+	}
+	return strings.ToLower(strings.TrimSpace(contentType))
+}
+
 // extractBodyParts walks a potentially nested Body structure and returns the
 // first text/plain and text/html content found.
+//
+// The comparison is on the media type alone: a part's ContentType frequently
+// carries parameters (e.g. "text/plain; charset=utf-8", as the outbound
+// pipeline emits), and an exact-string match against "text/plain" would miss
+// those and silently drop the body a transform produced.
 func extractBodyParts(body pipeline.Body) (text, html string) {
-	if body.ContentType == "text/plain" && body.Content != "" {
-		text = body.Content
-	}
-	if body.ContentType == "text/html" && body.Content != "" {
-		html = body.Content
+	switch mediaType(body.ContentType) {
+	case "text/plain":
+		if body.Content != "" {
+			text = body.Content
+		}
+	case "text/html":
+		if body.Content != "" {
+			html = body.Content
+		}
 	}
 	for _, part := range body.Parts {
 		t, h := extractBodyParts(part)
