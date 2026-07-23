@@ -683,3 +683,98 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 	}
 	return fallback
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN inbound-path security hardening (OSI-3 / OSI-13 / OSI-18)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. It deliberately touches neither the Config struct, Load(),
+// nor the import list — every setting is read lazily through a *Config accessor
+// using the accessors already defined above. Malformed values fall back to the
+// SECURE default (fail-closed) rather than hard-failing startup, which is the
+// safe posture for each of these knobs (deny external redirect / defer on
+// filter error / require delivery auth).
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultPipelineFilterErrorAction is the pipeline's action when a filter fails
+// to instantiate or execute (OSI-18). "defer" is fail-closed: the message is
+// temp-failed and the sender retries, so a renamed/broken security filter can
+// never silently pass mail. Override with PIPELINE_FILTER_ERROR_ACTION.
+const DefaultPipelineFilterErrorAction = "defer"
+
+// RestmailDeliverAuthSettings configures server-to-server authentication on the
+// RESTMAIL inbound-delivery endpoint POST /restmail/messages (OSI-3). Without
+// it any host can inject a spoofed-From message into a local mailbox
+// (BEC/CEO-fraud). See RestmailDeliverAuth for the field semantics.
+type RestmailDeliverAuthSettings struct {
+	// Enabled turns the delivery-auth gate on (default true). When false the
+	// endpoint reverts to legacy behavior (accept any well-formed delivery).
+	Enabled bool
+	// Strict requires EVERY delivery to originate from a trusted peer OR carry a
+	// DKIM signature that verifies and aligns with the From domain. Default false
+	// (open federation): only deliveries claiming a LOCALLY-hosted From domain
+	// must authenticate — which is exactly the internal-spoofing / BEC vector —
+	// while ordinary external inbound is untouched.
+	Strict bool
+	// TrustedCIDRs are source networks whose deliveries bypass the DKIM check
+	// (known federated peers, or a front proxy on the internal network). The
+	// client IP is taken from RemoteAddr as resolved by the RealIP middleware.
+	TrustedCIDRs []string
+}
+
+// RestmailDeliverAuth returns the OSI-3 delivery-authentication settings.
+// RESTMAIL_DELIVER_AUTH_ENABLED (default true), RESTMAIL_DELIVER_STRICT
+// (default false), RESTMAIL_DELIVER_TRUSTED_CIDRS (comma-separated, default
+// none).
+func (c *Config) RestmailDeliverAuth() RestmailDeliverAuthSettings {
+	return RestmailDeliverAuthSettings{
+		Enabled:      getEnvBool("RESTMAIL_DELIVER_AUTH_ENABLED", true),
+		Strict:       getEnvBool("RESTMAIL_DELIVER_STRICT", false),
+		TrustedCIDRs: getEnvSlice("RESTMAIL_DELIVER_TRUSTED_CIDRS", nil),
+	}
+}
+
+// SieveRedirectSettings configures where a Sieve `redirect` action may send
+// mail (OSI-13). Redirect to an arbitrary external domain is a mail-exfiltration
+// vector, so the secure default denies it.
+type SieveRedirectSettings struct {
+	// AllowExternal, when true, permits redirect to ANY domain (legacy behavior);
+	// the redirect is still logged. Default false: a redirect target must be the
+	// recipient's own domain or an explicitly allowlisted domain.
+	AllowExternal bool
+	// AllowedDomains are external domains explicitly permitted as redirect targets
+	// even when AllowExternal is false.
+	AllowedDomains []string
+}
+
+// SieveRedirect returns the OSI-13 sieve-redirect allowlist settings.
+// SIEVE_REDIRECT_ALLOW_EXTERNAL (default false — deny external redirects) and
+// SIEVE_REDIRECT_ALLOWED_DOMAINS (comma-separated, default none).
+func (c *Config) SieveRedirect() SieveRedirectSettings {
+	return SieveRedirectSettings{
+		AllowExternal:  getEnvBool("SIEVE_REDIRECT_ALLOW_EXTERNAL", false),
+		AllowedDomains: getEnvSlice("SIEVE_REDIRECT_ALLOWED_DOMAINS", nil),
+	}
+}
+
+// PipelineFilterErrorAction returns the OSI-18 fail-closed action applied when a
+// pipeline filter cannot be instantiated or errors during execution. One of
+// "continue" (legacy fail-open), "defer" (default, fail-closed temp-fail), or
+// "reject". A malformed value falls back to the secure default rather than
+// failing startup — an unparseable knob must never weaken the fail-closed
+// posture. Set with PIPELINE_FILTER_ERROR_ACTION.
+func (c *Config) PipelineFilterErrorAction() string {
+	switch strings.ToLower(strings.TrimSpace(getEnv("PIPELINE_FILTER_ERROR_ACTION", DefaultPipelineFilterErrorAction))) {
+	case "continue":
+		return "continue"
+	case "reject":
+		return "reject"
+	case "defer":
+		return "defer"
+	default:
+		return DefaultPipelineFilterErrorAction
+	}
+}
+
+// END inbound-path security hardening
+// ══════════════════════════════════════════════════════════════════════════
