@@ -454,6 +454,13 @@ func (s *Session) handleDATA() {
 		messageID = rmail.GenerateMessageID(rmail.DomainFromAddress(s.mailFrom))
 	}
 
+	// DATA gets a SINGLE reply for the whole message. Handle every recipient and
+	// aggregate: only fail the transaction (4xx/5xx) if NOTHING was committed —
+	// returning an error after some recipients were already delivered/queued
+	// makes the client retry the entire message, duplicating those recipients.
+	accepted := 0
+	failed := 0
+	failCode, failMsg := 451, "Temporary delivery failure"
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient
 		check, err := s.api.CheckMailbox(rcpt)
@@ -474,10 +481,11 @@ func (s *Session) handleDATA() {
 			}
 			if err := s.db.Create(&queueEntry).Error; err != nil {
 				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
-				s.reply(451, "Temporary delivery failure")
-				return
+				failed++
+				continue
 			}
 			slog.Info("smtp: queued for outbound delivery", "from", s.mailFrom, "to", rcpt, "queue_id", queueEntry.ID)
+			accepted++
 			continue
 		}
 
@@ -508,25 +516,36 @@ func (s *Session) handleDATA() {
 		_, err = s.api.DeliverMessage(deliverReq)
 		if err != nil {
 			slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
-			// Map API error codes to SMTP reply codes
+			// Remember a representative reply for the all-failed case.
 			if apiErr, ok := err.(*apiclient.APIError); ok {
 				switch {
 				case apiErr.StatusCode == 403 || apiErr.StatusCode == 550:
-					s.reply(550, "Rejected by policy")
+					failCode, failMsg = 550, "Rejected by policy"
 				case apiErr.StatusCode == 503 || apiErr.StatusCode == 451:
-					s.reply(451, "Try again later")
+					failCode, failMsg = 451, "Try again later"
 				default:
-					s.reply(451, "Temporary delivery failure")
+					failCode, failMsg = 451, "Temporary delivery failure"
 				}
 			} else {
-				s.reply(451, "Temporary delivery failure")
+				failCode, failMsg = 451, "Temporary delivery failure"
 			}
-			return
+			failed++
+			continue
 		}
 
 		slog.Info("smtp: message delivered", "from", s.mailFrom, "to", rcpt, "subject", subject)
+		accepted++
 	}
 
+	// Single transaction reply: fail only if NOTHING was committed.
+	if accepted == 0 {
+		s.reply(failCode, "%s", failMsg)
+		return
+	}
+	if failed > 0 {
+		slog.Warn("smtp: partial delivery accepted to avoid duplicate retry",
+			"from", s.mailFrom, "accepted", accepted, "failed", failed)
+	}
 	s.reply(250, "OK: message accepted for delivery")
 
 	// Reset session for next message
