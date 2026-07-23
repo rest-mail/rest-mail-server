@@ -52,6 +52,7 @@ type Config struct {
 	POP3TLSPort     int
 	QueueWorkers    int
 	QueuePollInterval time.Duration
+	MTASTSEnforce bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
 
 	// PROXY protocol
 	ProxyProtocolTrustedCIDRs []string
@@ -107,6 +108,7 @@ func Load() (*Config, error) {
 		POP3TLSPort:           getEnvInt("POP3_TLS_PORT", 995),
 		QueueWorkers:          getEnvInt("QUEUE_WORKERS", 4),
 		QueuePollInterval:     getEnvDuration("QUEUE_POLL_INTERVAL", 5*time.Second),
+		MTASTSEnforce:         getEnvBool("MTASTS_ENFORCE", true),
 
 		ProxyProtocolTrustedCIDRs: getEnvSlice("PROXY_PROTOCOL_TRUSTED_CIDRS", nil),
 

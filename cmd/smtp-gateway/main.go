@@ -137,9 +137,13 @@ func main() {
 	}
 
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
+	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
 	if cfg.Environment == "development" || os.Getenv("QUEUE_TLS_INSECURE") == "true" {
 		queueWorker.SetTLSInsecure(true)
-		slog.Info("queue worker TLS verification disabled", "environment", cfg.Environment)
+		// MTA-STS enforce requires real certificate verification, which is
+		// disabled here; downgrade enforcement so dev/test delivery still works.
+		queueWorker.SetMTASTSEnforce(false)
+		slog.Info("queue worker TLS verification disabled; MTA-STS enforcement off", "environment", cfg.Environment)
 	}
 	queueWorker.Start()
 
