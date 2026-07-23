@@ -97,16 +97,16 @@ func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 		}
 	}
 
-	// Extract DKIM authenticated domain from auth-results
+	// DMARC DKIM alignment: the signature's d= domain (recorded as header.d= in
+	// Authentication-Results by dkim_verify) must match — or organizationally
+	// align with — the From domain. A DKIM pass with no identifiable signing
+	// domain does NOT establish alignment: assuming it would let a signature
+	// valid for an unrelated domain satisfy DMARC for this one. The real verifier
+	// always emits header.d= on pass, so this never rejects legitimately-aligned
+	// mail; it only removes the old stub-era "assume aligned" shortcut.
 	dkimAligned := false
 	if dkimPass {
-		// For DKIM, the d= domain is in the DKIM-Signature header
-		// but we simplified by checking the auth-results domain
-		dkimDomain := extractAuthDomain(authResults, "header.d=")
-		if dkimDomain == "" {
-			// Fallback: if DKIM passed, assume alignment (conservative for our stub verifier)
-			dkimAligned = true
-		} else {
+		if dkimDomain := extractAuthDomain(authResults, "header.d="); dkimDomain != "" {
 			dkimAligned = domainsAlign(dkimDomain, domain)
 		}
 	}
@@ -184,7 +184,10 @@ func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 	}
 }
 
-func lookupDMARC(domain string) (string, error) {
+// lookupDMARC is a package var so tests can stub DNS.
+var lookupDMARC = realLookupDMARC
+
+func realLookupDMARC(domain string) (string, error) {
 	records, err := net.LookupTXT("_dmarc." + domain)
 	if err != nil {
 		return "", err
