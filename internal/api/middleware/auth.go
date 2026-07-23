@@ -71,6 +71,12 @@ func AdminOnly(next http.Handler) http.Handler {
 
 // RequireCapability restricts access to users with a specific capability.
 // The wildcard "*" capability grants access to all endpoints.
+//
+// Capability derivation mirrors AdminOnly for backwards compatibility:
+// admin tokens are checked against the Capabilities claim issued at login,
+// while legacy mailbox tokens carrying the deprecated IsAdmin flag are
+// treated as wildcard admins (they had unrestricted admin access before
+// capabilities were wired). Plain mailbox tokens are always denied.
 func RequireCapability(capability string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,8 +86,13 @@ func RequireCapability(capability string) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Admin users have capabilities, mailbox users don't
+			// Legacy mailbox-admin tokens (deprecated IsAdmin flag) keep the
+			// full access AdminOnly always granted them.
 			if claims.UserType != "admin" {
+				if claims.IsAdmin {
+					next.ServeHTTP(w, r)
+					return
+				}
 				writeError(w, http.StatusForbidden, "forbidden", "Admin access required")
 				return
 			}

@@ -243,119 +243,126 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 
 	// ═══════════════════════════════════════════════════════════════
 	// Admin routes
+	//
+	// AdminOnly gates the whole group (mailbox tokens → 403), then each
+	// route requires the capability for its resource/action. Capability
+	// names are the seeded admin_capabilities names (see
+	// middleware/capabilities.go for the taxonomy); superadmin's "*"
+	// wildcard satisfies all of them.
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
 		r.Use(middleware.AdminOnly)
+		needs := middleware.RequireCapability
 
-		// Dashboard stats
+		// Dashboard stats — visible to every admin role
 		r.Get("/api/v1/admin/stats", statsH.GetDashboardStats)
 
 		// Admin user management
 		adminUserH := handlers.NewAdminUserHandler(db)
-		r.Get("/api/v1/admin/admin-users", adminUserH.ListAdminUsers)
-		r.Post("/api/v1/admin/admin-users", adminUserH.CreateAdminUser)
-		r.Get("/api/v1/admin/admin-users/{id}", adminUserH.GetAdminUser)
-		r.Put("/api/v1/admin/admin-users/{id}", adminUserH.UpdateAdminUser)
-		r.Delete("/api/v1/admin/admin-users/{id}", adminUserH.DeleteAdminUser)
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/admin-users", adminUserH.ListAdminUsers)
+		r.With(needs(middleware.CapUsersWrite)).Post("/api/v1/admin/admin-users", adminUserH.CreateAdminUser)
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/admin-users/{id}", adminUserH.GetAdminUser)
+		r.With(needs(middleware.CapUsersWrite)).Put("/api/v1/admin/admin-users/{id}", adminUserH.UpdateAdminUser)
+		r.With(needs(middleware.CapUsersDelete)).Delete("/api/v1/admin/admin-users/{id}", adminUserH.DeleteAdminUser)
 
 		// Role and capability management
-		r.Get("/api/v1/admin/roles", adminUserH.ListRoles)
-		r.Get("/api/v1/admin/capabilities", adminUserH.ListCapabilities)
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", adminUserH.ListRoles)
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", adminUserH.ListCapabilities)
 
 		// Domains
-		r.Get("/api/v1/admin/domains", domainH.List)
-		r.Post("/api/v1/admin/domains", domainH.Create)
-		r.Get("/api/v1/admin/domains/{id}", domainH.Get)
-		r.Patch("/api/v1/admin/domains/{id}", domainH.Update)
-		r.Delete("/api/v1/admin/domains/{id}", domainH.Delete)
-		r.Get("/api/v1/admin/domains/{id}/dns", domainH.DNSCheck)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains", domainH.List)
+		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains", domainH.Create)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}", domainH.Get)
+		r.With(needs(middleware.CapDomainsWrite)).Patch("/api/v1/admin/domains/{id}", domainH.Update)
+		r.With(needs(middleware.CapDomainsDelete)).Delete("/api/v1/admin/domains/{id}", domainH.Delete)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/dns", domainH.DNSCheck)
 
 		// Mailboxes
-		r.Get("/api/v1/admin/mailboxes", mailboxH.List)
-		r.Post("/api/v1/admin/mailboxes", mailboxH.Create)
-		r.Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
-		r.Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
-		r.Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
+		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
+		r.With(needs(middleware.CapMailboxesWrite)).Post("/api/v1/admin/mailboxes", mailboxH.Create)
+		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
+		r.With(needs(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
+		r.With(needs(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
 
-		// Aliases
-		r.Get("/api/v1/admin/aliases", aliasH.List)
-		r.Post("/api/v1/admin/aliases", aliasH.Create)
-		r.Get("/api/v1/admin/aliases/{id}", aliasH.Get)
-		r.Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
-		r.Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
+		// Aliases (mailbox routing config → mailboxes:* capabilities)
+		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)
+		r.With(needs(middleware.CapMailboxesWrite)).Post("/api/v1/admin/aliases", aliasH.Create)
+		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases/{id}", aliasH.Get)
+		r.With(needs(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
+		r.With(needs(middleware.CapMailboxesDel)).Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
 
-		// Webmail accounts
-		r.Get("/api/v1/admin/webmail-accounts", webmailH.List)
-		r.Post("/api/v1/admin/webmail-accounts", webmailH.Create)
-		r.Get("/api/v1/admin/webmail-accounts/{id}", webmailH.Get)
-		r.Delete("/api/v1/admin/webmail-accounts/{id}", webmailH.Delete)
+		// Webmail accounts (mailbox-scoped → mailboxes:* capabilities)
+		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/webmail-accounts", webmailH.List)
+		r.With(needs(middleware.CapMailboxesWrite)).Post("/api/v1/admin/webmail-accounts", webmailH.Create)
+		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/webmail-accounts/{id}", webmailH.Get)
+		r.With(needs(middleware.CapMailboxesDel)).Delete("/api/v1/admin/webmail-accounts/{id}", webmailH.Delete)
 
 		// Pipelines
-		r.Get("/api/v1/admin/pipelines", pipelineH.ListPipelines)
-		r.Post("/api/v1/admin/pipelines", pipelineH.CreatePipeline)
-		r.Patch("/api/v1/admin/pipelines/{id}", pipelineH.UpdatePipeline)
-		r.Delete("/api/v1/admin/pipelines/{id}", pipelineH.DeletePipeline)
-		r.Post("/api/v1/admin/pipelines/test", pipelineH.TestPipeline)
-		r.Post("/api/v1/admin/pipelines/test-filter", pipelineH.TestFilter)
-		r.Get("/api/v1/admin/pipelines/logs", pipelineH.ListPipelineLogs)
+		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines", pipelineH.ListPipelines)
+		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines", pipelineH.CreatePipeline)
+		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/pipelines/{id}", pipelineH.UpdatePipeline)
+		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/pipelines/{id}", pipelineH.DeletePipeline)
+		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines/test", pipelineH.TestPipeline)
+		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines/test-filter", pipelineH.TestFilter)
+		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines/logs", pipelineH.ListPipelineLogs)
 
-		// Custom filters
-		r.Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
-		r.Post("/api/v1/admin/custom-filters", pipelineH.CreateCustomFilter)
-		r.Post("/api/v1/admin/custom-filters/validate", pipelineH.ValidateCustomFilter)
-		r.Get("/api/v1/admin/custom-filters/{id}", pipelineH.GetCustomFilter)
-		r.Patch("/api/v1/admin/custom-filters/{id}", pipelineH.UpdateCustomFilter)
-		r.Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
-		r.Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
+		// Custom filters (pipeline building blocks → pipelines:* capabilities)
+		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
+		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters", pipelineH.CreateCustomFilter)
+		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters/validate", pipelineH.ValidateCustomFilter)
+		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/custom-filters/{id}", pipelineH.GetCustomFilter)
+		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/custom-filters/{id}", pipelineH.UpdateCustomFilter)
+		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
+		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
 
 		// Queue management
-		r.Get("/api/v1/admin/queue", queueH.ListQueue)
-		r.Get("/api/v1/admin/queue/stats", queueH.QueueStats)
-		r.Post("/api/v1/admin/queue/bulk-retry", queueH.BulkRetry)
-		r.Post("/api/v1/admin/queue/bulk-bounce", queueH.BulkBounce)
-		r.Delete("/api/v1/admin/queue/bulk-delete", queueH.BulkDelete)
-		r.Get("/api/v1/admin/queue/{id}", queueH.GetQueueEntry)
-		r.Post("/api/v1/admin/queue/{id}/retry", queueH.RetryQueueEntry)
-		r.Post("/api/v1/admin/queue/{id}/bounce", queueH.BounceQueueEntry)
-		r.Delete("/api/v1/admin/queue/{id}", queueH.DeleteQueueEntry)
+		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue", queueH.ListQueue)
+		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/stats", queueH.QueueStats)
+		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-retry", queueH.BulkRetry)
+		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-bounce", queueH.BulkBounce)
+		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/bulk-delete", queueH.BulkDelete)
+		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/{id}", queueH.GetQueueEntry)
+		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/retry", queueH.RetryQueueEntry)
+		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/bounce", queueH.BounceQueueEntry)
+		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/{id}", queueH.DeleteQueueEntry)
 
-		// Sender allowlist/blocklist
-		r.Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
-		r.Post("/api/v1/admin/domains/{id}/allowlist", senderRuleH.AddToAllowlist)
-		r.Delete("/api/v1/admin/domains/{id}/allowlist/{eid}", senderRuleH.RemoveFromAllowlist)
-		r.Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
-		r.Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
-		r.Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
+		// Sender allowlist/blocklist (domain-scoped → domains:* capabilities)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
+		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/allowlist", senderRuleH.AddToAllowlist)
+		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/allowlist/{eid}", senderRuleH.RemoveFromAllowlist)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
+		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
+		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
 
-		// MTA-STS policy management
-		r.Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
-		r.Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
-		r.Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
+		// MTA-STS policy management (domain-scoped → domains:* capabilities)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
+		r.With(needs(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
+		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
 
-		// TLS-RPT reports
-		r.Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)
+		// TLS-RPT reports (domain deliverability telemetry → domains:read)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)
 
-		// DKIM key management
-		r.Get("/api/v1/admin/dkim", dkimH.ListKeys)
-		r.Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
-		r.Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
+		// DKIM key management (domain signing material → domains:* capabilities)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/dkim", dkimH.ListKeys)
+		r.With(needs(middleware.CapDomainsWrite)).Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
+		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
 
-		// Certificate management
-		r.Get("/api/v1/admin/certificates", certH.ListCertificates)
-		r.Get("/api/v1/admin/certificates/{id}", certH.GetCertificate)
-		r.Post("/api/v1/admin/certificates", certH.CreateCertificate)
-		r.Delete("/api/v1/admin/certificates/{id}", certH.DeleteCertificate)
+		// Certificate management (domain TLS material → domains:* capabilities)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/certificates", certH.ListCertificates)
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/certificates/{id}", certH.GetCertificate)
+		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/certificates", certH.CreateCertificate)
+		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/certificates/{id}", certH.DeleteCertificate)
 
 		// Ban management
-		r.Get("/api/v1/admin/bans", banH.ListBans)
-		r.Post("/api/v1/admin/bans", banH.CreateBan)
-		r.Delete("/api/v1/admin/bans/{id}", banH.DeleteBan)
-		r.Delete("/api/v1/admin/bans/ip/{ip}", banH.UnbanIP)
+		r.With(needs(middleware.CapBansRead)).Get("/api/v1/admin/bans", banH.ListBans)
+		r.With(needs(middleware.CapBansWrite)).Post("/api/v1/admin/bans", banH.CreateBan)
+		r.With(needs(middleware.CapBansDelete)).Delete("/api/v1/admin/bans/{id}", banH.DeleteBan)
+		r.With(needs(middleware.CapBansDelete)).Delete("/api/v1/admin/bans/ip/{ip}", banH.UnbanIP)
 
 		// Logs
-		r.Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
-		r.Get("/api/v1/admin/logs/activity", logH.ActivityLog)
+		r.With(needs(middleware.CapMessagesRead)).Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/logs/activity", logH.ActivityLog)
 
 		// Test endpoints (non-production only)
 		r.Post("/api/v1/admin/test/send", testH.SendTestEmail)

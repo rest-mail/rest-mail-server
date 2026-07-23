@@ -249,3 +249,155 @@ func TestAdminOnly_Unauthenticated(t *testing.T) {
 		t.Errorf("expected message %q, got %q", "Authentication required", errResp.Error.Message)
 	}
 }
+
+func TestAdminOnly_MailboxTokenDenied(t *testing.T) {
+	// A plain mailbox token (no admin markers) must be rejected with 403.
+	claims := &auth.Claims{
+		Email:            "user@example.com",
+		WebmailAccountID: 1,
+		MailboxID:        10,
+		UserType:         "mailbox",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	req = req.WithContext(context.WithValue(req.Context(), ClaimsKey, claims))
+	rr := httptest.NewRecorder()
+
+	AdminOnly(okHandler).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d", rr.Code)
+	}
+	errResp := parseErrorResponse(t, rr)
+	if errResp.Error.Message != "Admin access required" {
+		t.Errorf("expected message %q, got %q", "Admin access required", errResp.Error.Message)
+	}
+}
+
+// requestWithClaims builds a request carrying the given claims in its context.
+func requestWithClaims(claims *auth.Claims) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+	return req.WithContext(context.WithValue(req.Context(), ClaimsKey, claims))
+}
+
+func TestRequireCapability_AdminWithCapability(t *testing.T) {
+	claims := &auth.Claims{
+		UserType:     "admin",
+		AdminUserID:  1,
+		Username:     "ops",
+		Capabilities: []string{"domains:read", "queue:read"},
+	}
+	rr := httptest.NewRecorder()
+
+	RequireCapability("queue:read")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestRequireCapability_AdminWithWildcard(t *testing.T) {
+	claims := &auth.Claims{
+		UserType:     "admin",
+		AdminUserID:  1,
+		Username:     "root",
+		Capabilities: []string{"*"},
+	}
+	rr := httptest.NewRecorder()
+
+	RequireCapability("users:delete")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestRequireCapability_AdminMissingCapability(t *testing.T) {
+	claims := &auth.Claims{
+		UserType:     "admin",
+		AdminUserID:  2,
+		Username:     "viewer",
+		Capabilities: []string{"domains:read", "mailboxes:read"},
+	}
+	rr := httptest.NewRecorder()
+
+	RequireCapability("domains:delete")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d", rr.Code)
+	}
+	errResp := parseErrorResponse(t, rr)
+	if errResp.Error.Message != "Insufficient permissions" {
+		t.Errorf("expected message %q, got %q", "Insufficient permissions", errResp.Error.Message)
+	}
+}
+
+func TestRequireCapability_MailboxTokenDenied(t *testing.T) {
+	claims := &auth.Claims{
+		Email:            "user@example.com",
+		WebmailAccountID: 1,
+		MailboxID:        10,
+		UserType:         "mailbox",
+	}
+	rr := httptest.NewRecorder()
+
+	RequireCapability("domains:read")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d", rr.Code)
+	}
+	errResp := parseErrorResponse(t, rr)
+	if errResp.Error.Message != "Admin access required" {
+		t.Errorf("expected message %q, got %q", "Admin access required", errResp.Error.Message)
+	}
+}
+
+func TestRequireCapability_LegacyIsAdminMailboxAllowed(t *testing.T) {
+	// Mailbox tokens carrying the deprecated IsAdmin flag had full admin
+	// access under AdminOnly; RequireCapability must preserve that so
+	// already-issued tokens keep working.
+	claims := &auth.Claims{
+		Email:            "legacy-admin@example.com",
+		WebmailAccountID: 1,
+		MailboxID:        10,
+		UserType:         "mailbox",
+		IsAdmin:          true,
+	}
+	rr := httptest.NewRecorder()
+
+	RequireCapability("queue:manage")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+}
+
+func TestRequireCapability_NoClaims(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+	rr := httptest.NewRecorder()
+
+	RequireCapability("domains:read")(okHandler).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d", rr.Code)
+	}
+	errResp := parseErrorResponse(t, rr)
+	if errResp.Error.Message != "Authentication required" {
+		t.Errorf("expected message %q, got %q", "Authentication required", errResp.Error.Message)
+	}
+}
+
+func TestRequireCapability_EmptyCapabilityListDenied(t *testing.T) {
+	claims := &auth.Claims{
+		UserType:    "admin",
+		AdminUserID: 3,
+		Username:    "no-caps",
+	}
+	rr := httptest.NewRecorder()
+
+	RequireCapability("bans:read")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected status 403, got %d", rr.Code)
+	}
+}
