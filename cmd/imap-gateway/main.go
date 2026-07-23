@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	imapsrv "github.com/rest-mail/imap"
+
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
@@ -98,8 +100,10 @@ func main() {
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	bancheck.Wire(limiter, database, "imap")
-	imapServer := imap.NewServer(cfg.GatewayHostname, api, tlsConfig, limiter)
-	if err := imapServer.ListenAndServe(imap.IMAPPorts{
+	// The shared connlimiter satisfies the library's structural Limiter interface;
+	// the rest-mail Backend adapter maps API responses onto the library's types.
+	imapServer := imapsrv.NewServer(cfg.GatewayHostname, imap.NewBackend(api), tlsConfig, limiter)
+	if err := imapServer.ListenAndServe(imapsrv.Ports{
 		IMAP:    cfg.IMAPPort,
 		IMAPTLS: cfg.IMAPTLSPort,
 	}); err != nil {
