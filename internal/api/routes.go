@@ -78,7 +78,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
 
 	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
-	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine)
+	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey)
 	pipelineH := handlers.NewPipelineHandler(db, pipelineEngine)
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine)
 
