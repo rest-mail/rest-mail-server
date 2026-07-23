@@ -6,8 +6,48 @@ info:
     RestMail is a modern email platform with REST API access, supporting traditional
     SMTP/IMAP/POP3 gateways and the RESTMAIL server-to-server protocol. This spec
     covers all user-facing, admin, internal gateway, and RESTMAIL endpoints.
+
+
+    ## Authentication & authorization
+
+
+    The API uses five distinct auth modes; each operation's `security` block and,
+    for admin routes, its `x-required-capability` field state which applies.
+
+
+    * **JWT bearer** (`BearerAuth`) — the default for all mail-user and admin
+      operations. Obtain an access token from `POST /api/v1/auth/login`. Admin
+      operations additionally require the caller's token to carry the admin role
+      (mailbox-only tokens get `403`).
+
+    * **RBAC capability** — admin operations are gated by a named capability in
+      addition to the admin role. The required capability is given per operation as
+      `x-required-capability` (e.g. `domains:read`, `queue:manage`). Capability
+      names are the seeded `admin_capabilities` (resource:action); the superadmin
+      wildcard `*` satisfies every one. A caller missing the capability gets `403`.
+      A few admin operations (dashboard stats, the non-production test endpoints)
+      require only the admin role and carry no `x-required-capability`.
+
+    * **Internal mTLS** — the machine-to-machine gateway routes (`GET /api/mailboxes`,
+      `POST /api/v1/messages/deliver`), marked `x-internal-mtls`. When internal mTLS
+      is enabled (server `InternalMTLSEnabled`) these are withheld from the public
+      listener and served ONLY on a dedicated internal listener that requires a
+      verified gateway client certificate. When it is disabled they are served
+      unauthenticated on the public listener (network-trust deployments). Either
+      way they never accept a user JWT.
+
+    * **DKIM/SPF-verified** — the RESTMAIL server-to-server routes under `/restmail`.
+      Unauthenticated at the HTTP layer; authenticity is established out-of-band from
+      the DKIM signature and SPF result of the submitted message.
+
+    * **Unauthenticated by design** — health, Prometheus metrics, API discovery,
+      Swagger UI, client autoconfiguration, the MTA-STS policy file, TLS-RPT report
+      ingestion, and ACME HTTP-01 challenges. The SSE stream is a special case: it
+      is outside the JWT middleware and instead authenticates the access token
+      supplied as the `token` query parameter.
   license:
     name: MIT
+    identifier: MIT
 
 servers:
   - url: /
@@ -42,12 +82,18 @@ tags:
     description: Sieve filter scripts (JWT)
   - name: Quarantine
     description: Quarantined messages (JWT)
+  - name: Calendar
+    description: Calendar events and invitation replies (JWT)
   - name: SSE
-    description: Server-Sent Events (query param auth)
+    description: Server-Sent Events (access token via query param)
+  - name: System
+    description: Discovery, docs, metrics, autoconfig and well-known endpoints (no auth)
   - name: Inbound
-    description: Internal gateway delivery
+    description: >-
+      Internal gateway delivery (machine-to-machine). Internal mTLS when enabled,
+      otherwise tokenless on the public listener.
   - name: RESTMAIL
-    description: RESTMAIL server-to-server protocol (unauthenticated)
+    description: RESTMAIL server-to-server protocol (HTTP-unauthenticated; DKIM/SPF verified)
   - name: "Admin: Domains"
     description: Domain management (JWT + admin)
   - name: "Admin: Mailboxes"
@@ -72,7 +118,21 @@ tags:
     description: IP ban management (JWT + admin)
   - name: "Admin: Logs"
     description: Delivery and activity logs (JWT + admin)
+  - name: "Admin: Stats"
+    description: Dashboard statistics (JWT + admin; admin role only, no capability)
+  - name: "Admin: Users & Roles"
+    description: Admin user, role and capability management (JWT + admin; users:* capabilities)
+  - name: "Admin: Observability"
+    description: Pipeline analytics funnel and per-message traces (JWT + admin; observability:read)
+  - name: "Admin: MTA-STS"
+    description: Per-domain MTA-STS policy management (JWT + admin; domains:* capabilities)
+  - name: "Admin: TLS Reports"
+    description: Received TLS-RPT reports (JWT + admin; domains:read)
+  - name: "Admin: Testing"
+    description: Non-production test/debug helpers (JWT + admin; admin role only, disabled in production)
 
+# Default: JWT bearer. Operations override with `security: []` (no auth) and admin
+# operations additionally carry an `x-required-capability` (see info.description).
 security:
   - BearerAuth: []
 
@@ -1142,7 +1202,9 @@ paths:
                         type: string
                         example: released
                       message_id:
-                        type: integer
+                        type: string
+                        description: ID of the newly delivered INBOX message (decimal string)
+                        example: "4210"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1211,7 +1273,13 @@ paths:
       operationId: checkMailboxAddress
       tags: [Inbound]
       summary: Check if a mailbox address exists (used by SMTP gateway)
+      description: >-
+        Machine-to-machine recipient check. When internal mTLS is enabled this route
+        is served ONLY on the dedicated internal listener (verified gateway client
+        certificate required) and is absent from the public listener; when disabled
+        it is unauthenticated on the public listener. Never accepts a user JWT.
       security: []
+      x-internal-mtls: true
       parameters:
         - name: address
           in: query
@@ -1236,7 +1304,13 @@ paths:
       operationId: deliverMessage
       tags: [Inbound]
       summary: Deliver a message from the SMTP gateway
+      description: >-
+        Machine-to-machine inbound delivery. When internal mTLS is enabled this route
+        is served ONLY on the dedicated internal listener (verified gateway client
+        certificate required) and is absent from the public listener; when disabled
+        it is unauthenticated on the public listener. Never accepts a user JWT.
       security: []
+      x-internal-mtls: true
       requestBody:
         required: true
         content:
@@ -1308,6 +1382,10 @@ paths:
       operationId: restmailDeliver
       tags: [RESTMAIL]
       summary: Deliver a message via RESTMAIL protocol
+      description: >-
+        Server-to-server delivery. Unauthenticated at the HTTP layer; the message's
+        authenticity is verified out-of-band from its DKIM signature and the SPF
+        result of the sending host.
       security: []
       requestBody:
         required: true
@@ -1336,6 +1414,7 @@ paths:
     get:
       operationId: listDomains
       tags: ["Admin: Domains"]
+      x-required-capability: domains:read
       summary: List all domains
       responses:
         "200":
@@ -1353,6 +1432,7 @@ paths:
     post:
       operationId: createDomain
       tags: ["Admin: Domains"]
+      x-required-capability: domains:write
       summary: Create a new domain
       requestBody:
         required: true
@@ -1382,6 +1462,7 @@ paths:
     get:
       operationId: getDomain
       tags: ["Admin: Domains"]
+      x-required-capability: domains:read
       summary: Get a domain by ID
       responses:
         "200":
@@ -1399,6 +1480,7 @@ paths:
     patch:
       operationId: updateDomain
       tags: ["Admin: Domains"]
+      x-required-capability: domains:write
       summary: Update a domain
       requestBody:
         required: true
@@ -1422,6 +1504,7 @@ paths:
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]
+      x-required-capability: domains:delete
       summary: Delete a domain
       responses:
         "204":
@@ -1436,6 +1519,7 @@ paths:
     get:
       operationId: listMailboxes
       tags: ["Admin: Mailboxes"]
+      x-required-capability: mailboxes:read
       summary: List mailboxes, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -1458,6 +1542,7 @@ paths:
     post:
       operationId: createMailbox
       tags: ["Admin: Mailboxes"]
+      x-required-capability: mailboxes:write
       summary: Create a new mailbox
       requestBody:
         required: true
@@ -1487,6 +1572,7 @@ paths:
     get:
       operationId: getMailbox
       tags: ["Admin: Mailboxes"]
+      x-required-capability: mailboxes:read
       summary: Get a mailbox by ID
       responses:
         "200":
@@ -1504,6 +1590,7 @@ paths:
     patch:
       operationId: updateMailbox
       tags: ["Admin: Mailboxes"]
+      x-required-capability: mailboxes:write
       summary: Update a mailbox
       requestBody:
         required: true
@@ -1527,6 +1614,7 @@ paths:
     delete:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
+      x-required-capability: mailboxes:delete
       summary: Delete a mailbox
       responses:
         "204":
@@ -1541,6 +1629,7 @@ paths:
     get:
       operationId: listAliases
       tags: ["Admin: Aliases"]
+      x-required-capability: mailboxes:read
       summary: List aliases, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -1563,6 +1652,7 @@ paths:
     post:
       operationId: createAlias
       tags: ["Admin: Aliases"]
+      x-required-capability: mailboxes:write
       summary: Create a new alias
       requestBody:
         required: true
@@ -1590,6 +1680,7 @@ paths:
     get:
       operationId: getAlias
       tags: ["Admin: Aliases"]
+      x-required-capability: mailboxes:read
       summary: Get an alias by ID
       responses:
         "200":
@@ -1607,6 +1698,7 @@ paths:
     patch:
       operationId: updateAlias
       tags: ["Admin: Aliases"]
+      x-required-capability: mailboxes:write
       summary: Update an alias
       requestBody:
         required: true
@@ -1630,6 +1722,7 @@ paths:
     delete:
       operationId: deleteAlias
       tags: ["Admin: Aliases"]
+      x-required-capability: mailboxes:delete
       summary: Delete an alias
       responses:
         "204":
@@ -1644,6 +1737,7 @@ paths:
     get:
       operationId: listWebmailAccounts
       tags: ["Admin: Webmail Accounts"]
+      x-required-capability: mailboxes:read
       summary: List webmail accounts
       responses:
         "200":
@@ -1661,6 +1755,7 @@ paths:
     post:
       operationId: createWebmailAccount
       tags: ["Admin: Webmail Accounts"]
+      x-required-capability: mailboxes:write
       summary: Create a webmail account
       requestBody:
         required: true
@@ -1692,6 +1787,7 @@ paths:
     get:
       operationId: getWebmailAccount
       tags: ["Admin: Webmail Accounts"]
+      x-required-capability: mailboxes:read
       summary: Get a webmail account by ID
       responses:
         "200":
@@ -1709,6 +1805,7 @@ paths:
     delete:
       operationId: deleteWebmailAccount
       tags: ["Admin: Webmail Accounts"]
+      x-required-capability: mailboxes:delete
       summary: Delete a webmail account
       responses:
         "204":
@@ -1723,6 +1820,7 @@ paths:
     get:
       operationId: listPipelines
       tags: ["Admin: Pipelines"]
+      x-required-capability: pipelines:read
       summary: List pipelines, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -1745,6 +1843,7 @@ paths:
     post:
       operationId: createPipeline
       tags: ["Admin: Pipelines"]
+      x-required-capability: pipelines:write
       summary: Create a new pipeline
       requestBody:
         required: true
@@ -1772,6 +1871,7 @@ paths:
     patch:
       operationId: updatePipeline
       tags: ["Admin: Pipelines"]
+      x-required-capability: pipelines:write
       summary: Update a pipeline
       requestBody:
         required: true
@@ -1795,6 +1895,7 @@ paths:
     delete:
       operationId: deletePipeline
       tags: ["Admin: Pipelines"]
+      x-required-capability: pipelines:delete
       summary: Delete a pipeline
       responses:
         "200":
@@ -1817,6 +1918,7 @@ paths:
     post:
       operationId: testPipeline
       tags: ["Admin: Pipelines"]
+      x-required-capability: pipelines:write
       summary: Test a pipeline against a sample email
       requestBody:
         required: true
@@ -1840,6 +1942,7 @@ paths:
     post:
       operationId: testFilter
       tags: ["Admin: Pipelines"]
+      x-required-capability: pipelines:write
       summary: Test a single filter against a sample email
       requestBody:
         required: true
@@ -1863,7 +1966,13 @@ paths:
     get:
       operationId: listPipelineLogs
       tags: ["Admin: Pipelines"]
-      summary: List pipeline execution logs
+      x-required-capability: pipelines:read
+      summary: List recent per-message pipeline traces
+      description: >-
+        Newest-first list of per-message pipeline traces. The read source moved from
+        the legacy pipeline_logs table to message_traces, so each row is the richer
+        MessageTrace shape (outcome, reason_code, transport, envelope, stage timeline,
+        duration). The `action` filter matches the trace's final_action.
       parameters:
         - name: pipeline_id
           in: query
@@ -1876,14 +1985,30 @@ paths:
             enum: [inbound, outbound]
         - name: action
           in: query
+          description: Matches MessageTrace.final_action
           schema:
             type: string
-            enum: [continue, reject, quarantine, discard]
+            enum: [continue, reject, quarantine, discard, defer]
+        - name: rfc_message_id
+          in: query
+          description: RFC 5322 Message-ID correlation key
+          schema:
+            type: string
+        - name: outcome
+          in: query
+          schema:
+            type: string
+            enum: [delivered, queued, rejected, quarantined, discarded, deferred]
+        - name: reason_code
+          in: query
+          schema:
+            type: string
         - name: limit
           in: query
           schema:
             type: integer
             default: 50
+            maximum: 200
         - name: offset
           in: query
           schema:
@@ -1891,7 +2016,7 @@ paths:
             default: 0
       responses:
         "200":
-          description: Pipeline logs
+          description: Pipeline message traces
           content:
             application/json:
               schema:
@@ -1901,7 +2026,7 @@ paths:
                   data:
                     type: array
                     items:
-                      $ref: "#/components/schemas/PipelineLog"
+                      $ref: "#/components/schemas/MessageTrace"
                   pagination:
                     $ref: "#/components/schemas/Pagination"
 
@@ -1912,6 +2037,7 @@ paths:
     get:
       operationId: listCustomFilters
       tags: ["Admin: Custom Filters"]
+      x-required-capability: pipelines:read
       summary: List custom filters, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -1934,6 +2060,7 @@ paths:
     post:
       operationId: createCustomFilter
       tags: ["Admin: Custom Filters"]
+      x-required-capability: pipelines:write
       summary: Create a custom filter
       requestBody:
         required: true
@@ -1955,12 +2082,94 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
 
+  /api/v1/admin/custom-filters/validate:
+    post:
+      operationId: validateCustomFilter
+      tags: ["Admin: Custom Filters"]
+      x-required-capability: pipelines:write
+      summary: Syntax-check a JavaScript filter script via the sidecar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [script]
+              properties:
+                script:
+                  type: string
+                  description: JavaScript filter source to validate
+                email:
+                  type: object
+                  description: Optional sample email passed through to the sidecar
+      responses:
+        "200":
+          description: >-
+            Raw validation result proxied verbatim from the JS filter sidecar
+            (shape determined by the sidecar).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          description: JS filter sidecar unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/admin/custom-filters/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getCustomFilter
+      tags: ["Admin: Custom Filters"]
+      x-required-capability: pipelines:read
+      summary: Get a custom filter by ID
+      responses:
+        "200":
+          description: Custom filter details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFilter"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateCustomFilter
+      tags: ["Admin: Custom Filters"]
+      x-required-capability: pipelines:write
+      summary: Update a custom filter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomFilterRequest"
+      responses:
+        "200":
+          description: Custom filter updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CustomFilter"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteCustomFilter
       tags: ["Admin: Custom Filters"]
+      x-required-capability: pipelines:delete
       summary: Delete a custom filter
       responses:
         "200":
@@ -1979,6 +2188,51 @@ paths:
                         type: string
                         example: deleted
 
+  /api/v1/admin/custom-filters/{id}/test:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: testCustomFilter
+      tags: ["Admin: Custom Filters"]
+      x-required-capability: pipelines:write
+      summary: Run a stored custom filter's script against a sample email via the sidecar
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: object
+                  description: >-
+                    Optional sample email. When omitted a minimal built-in sample
+                    is used.
+      responses:
+        "200":
+          description: >-
+            Raw execution result proxied verbatim from the JS filter sidecar
+            (status and shape determined by the sidecar).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Filter config contains no script, or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: JS filter sidecar unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ═══════════════════════════════════════════════════════════════
   # Admin: Queue
   # ═══════════════════════════════════════════════════════════════
@@ -1986,6 +2240,7 @@ paths:
     get:
       operationId: listQueue
       tags: ["Admin: Queue"]
+      x-required-capability: queue:read
       summary: List outbound queue entries
       parameters:
         - name: status
@@ -2039,6 +2294,7 @@ paths:
     get:
       operationId: getQueueStats
       tags: ["Admin: Queue"]
+      x-required-capability: queue:read
       summary: Get queue status counts
       responses:
         "200":
@@ -2056,6 +2312,7 @@ paths:
     post:
       operationId: bulkRetryQueue
       tags: ["Admin: Queue"]
+      x-required-capability: queue:manage
       summary: Retry multiple queue entries
       requestBody:
         required: true
@@ -2079,6 +2336,7 @@ paths:
     post:
       operationId: bulkBounceQueue
       tags: ["Admin: Queue"]
+      x-required-capability: queue:manage
       summary: Bounce multiple queue entries
       requestBody:
         required: true
@@ -2102,6 +2360,7 @@ paths:
     delete:
       operationId: bulkDeleteQueue
       tags: ["Admin: Queue"]
+      x-required-capability: queue:manage
       summary: Delete multiple queue entries
       requestBody:
         required: true
@@ -2127,6 +2386,7 @@ paths:
     get:
       operationId: getQueueEntry
       tags: ["Admin: Queue"]
+      x-required-capability: queue:read
       summary: Get a single queue entry
       responses:
         "200":
@@ -2144,6 +2404,7 @@ paths:
     delete:
       operationId: deleteQueueEntry
       tags: ["Admin: Queue"]
+      x-required-capability: queue:manage
       summary: Delete a queue entry
       responses:
         "204":
@@ -2157,6 +2418,7 @@ paths:
     post:
       operationId: retryQueueEntry
       tags: ["Admin: Queue"]
+      x-required-capability: queue:manage
       summary: Retry a single queue entry
       responses:
         "200":
@@ -2183,6 +2445,7 @@ paths:
     post:
       operationId: bounceQueueEntry
       tags: ["Admin: Queue"]
+      x-required-capability: queue:manage
       summary: Bounce a single queue entry
       responses:
         "200":
@@ -2212,6 +2475,7 @@ paths:
     get:
       operationId: listAllowlist
       tags: ["Admin: Sender Rules"]
+      x-required-capability: domains:read
       summary: List allowlist entries for a domain
       responses:
         "200":
@@ -2229,6 +2493,7 @@ paths:
     post:
       operationId: addToAllowlist
       tags: ["Admin: Sender Rules"]
+      x-required-capability: domains:write
       summary: Add an allowlist entry
       requestBody:
         required: true
@@ -2260,6 +2525,7 @@ paths:
     delete:
       operationId: removeFromAllowlist
       tags: ["Admin: Sender Rules"]
+      x-required-capability: domains:write
       summary: Remove an allowlist entry
       responses:
         "204":
@@ -2273,6 +2539,7 @@ paths:
     get:
       operationId: listBlocklist
       tags: ["Admin: Sender Rules"]
+      x-required-capability: domains:read
       summary: List blocklist entries for a domain
       responses:
         "200":
@@ -2290,6 +2557,7 @@ paths:
     post:
       operationId: addToBlocklist
       tags: ["Admin: Sender Rules"]
+      x-required-capability: domains:write
       summary: Add a blocklist entry
       requestBody:
         required: true
@@ -2321,6 +2589,7 @@ paths:
     delete:
       operationId: removeFromBlocklist
       tags: ["Admin: Sender Rules"]
+      x-required-capability: domains:write
       summary: Remove a blocklist entry
       responses:
         "204":
@@ -2335,6 +2604,7 @@ paths:
     get:
       operationId: listDKIMKeys
       tags: ["Admin: DKIM"]
+      x-required-capability: domains:read
       summary: List DKIM key entries for all domains
       responses:
         "200":
@@ -2356,6 +2626,7 @@ paths:
     put:
       operationId: setDKIMKey
       tags: ["Admin: DKIM"]
+      x-required-capability: domains:write
       summary: Set or replace DKIM key for a domain
       requestBody:
         required: true
@@ -2377,6 +2648,7 @@ paths:
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
+      x-required-capability: domains:write
       summary: Delete DKIM key for a domain
       responses:
         "204":
@@ -2391,6 +2663,7 @@ paths:
     get:
       operationId: listCertificates
       tags: ["Admin: Certificates"]
+      x-required-capability: domains:read
       summary: List TLS certificates
       responses:
         "200":
@@ -2408,6 +2681,7 @@ paths:
     post:
       operationId: createCertificate
       tags: ["Admin: Certificates"]
+      x-required-capability: domains:write
       summary: Upload a new TLS certificate
       requestBody:
         required: true
@@ -2435,6 +2709,7 @@ paths:
     get:
       operationId: getCertificate
       tags: ["Admin: Certificates"]
+      x-required-capability: domains:read
       summary: Get certificate details (includes cert_pem)
       responses:
         "200":
@@ -2452,6 +2727,7 @@ paths:
     delete:
       operationId: deleteCertificate
       tags: ["Admin: Certificates"]
+      x-required-capability: domains:write
       summary: Delete a certificate
       responses:
         "204":
@@ -2466,6 +2742,7 @@ paths:
     get:
       operationId: listBans
       tags: ["Admin: Bans"]
+      x-required-capability: bans:read
       summary: List IP bans
       parameters:
         - name: protocol
@@ -2509,6 +2786,7 @@ paths:
     post:
       operationId: createBan
       tags: ["Admin: Bans"]
+      x-required-capability: bans:write
       summary: Create an IP ban
       requestBody:
         required: true
@@ -2536,6 +2814,7 @@ paths:
     delete:
       operationId: deleteBan
       tags: ["Admin: Bans"]
+      x-required-capability: bans:delete
       summary: Delete a ban by ID
       responses:
         "204":
@@ -2554,6 +2833,7 @@ paths:
     delete:
       operationId: unbanIP
       tags: ["Admin: Bans"]
+      x-required-capability: bans:delete
       summary: Remove all bans for a specific IP
       responses:
         "204":
@@ -2568,6 +2848,7 @@ paths:
     get:
       operationId: getDeliveryLogs
       tags: ["Admin: Logs"]
+      x-required-capability: messages:read
       summary: Query delivery log (outbound queue history)
       parameters:
         - name: status
@@ -2627,6 +2908,7 @@ paths:
     get:
       operationId: getActivityLogs
       tags: ["Admin: Logs"]
+      x-required-capability: users:read
       summary: Query activity audit log
       parameters:
         - name: actor
@@ -2676,6 +2958,893 @@ paths:
                       $ref: "#/components/schemas/ActivityLog"
                   pagination:
                     $ref: "#/components/schemas/Pagination"
+
+  # ═══════════════════════════════════════════════════════════════
+  # System / Discovery (no auth)
+  # ═══════════════════════════════════════════════════════════════
+  /api:
+    get:
+      operationId: apiRoot
+      tags: [System]
+      summary: API discovery — name, version and key links
+      security: []
+      responses:
+        "200":
+          description: API metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: restmail
+                      version:
+                        type: string
+                      commit:
+                        type: string
+                      build_date:
+                        type: string
+                      links:
+                        type: object
+                        additionalProperties:
+                          type: string
+
+  /api/docs:
+    get:
+      operationId: swaggerUI
+      tags: [System]
+      summary: Swagger UI documentation page
+      security: []
+      responses:
+        "200":
+          description: HTML Swagger UI page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/docs/openapi.yaml:
+    get:
+      operationId: openapiSpec
+      tags: [System]
+      summary: This OpenAPI specification document
+      security: []
+      responses:
+        "200":
+          description: The raw OpenAPI YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /metrics:
+    get:
+      operationId: prometheusMetrics
+      tags: [System]
+      summary: Prometheus metrics exposition
+      security: []
+      responses:
+        "200":
+          description: Metrics in Prometheus text exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /mail/config-v1.1.xml:
+    get:
+      operationId: mozillaAutoconfig
+      tags: [System]
+      summary: Mozilla/Thunderbird autoconfiguration
+      security: []
+      parameters:
+        - name: emailaddress
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: Autoconfig XML document
+          content:
+            application/xml:
+              schema:
+                type: string
+        "404":
+          description: Domain not found
+
+  /.well-known/autoconfig/mail/config-v1.1.xml:
+    get:
+      operationId: mozillaAutoconfigWellKnown
+      tags: [System]
+      summary: Mozilla/Thunderbird autoconfiguration (well-known path)
+      security: []
+      parameters:
+        - name: emailaddress
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        "200":
+          description: Autoconfig XML document
+          content:
+            application/xml:
+              schema:
+                type: string
+        "404":
+          description: Domain not found
+
+  /autodiscover/autodiscover.xml:
+    post:
+      operationId: microsoftAutodiscover
+      tags: [System]
+      summary: Microsoft Outlook autodiscover
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/xml:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Autodiscover XML response
+          content:
+            application/xml:
+              schema:
+                type: string
+
+  /.well-known/mta-sts.txt:
+    get:
+      operationId: mtaStsPolicyFile
+      tags: [System]
+      summary: MTA-STS policy file (RFC 8461)
+      description: Served to external MTAs. The domain is resolved from the Host header.
+      security: []
+      responses:
+        "200":
+          description: MTA-STS policy in text/plain
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Domain unknown or no active policy
+
+  /.well-known/smtp-tlsrpt:
+    post:
+      operationId: receiveTlsReport
+      tags: [System]
+      summary: TLS-RPT report ingestion (RFC 8460)
+      description: Receives JSON TLS-RPT reports from external MTAs. No auth by design.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TLSRPTReport"
+      responses:
+        "201":
+          description: Report stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      stored:
+                        type: integer
+                        description: Number of policy entries persisted
+        "400":
+          description: Malformed report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /.well-known/acme-challenge/{token}:
+    get:
+      operationId: acmeChallenge
+      tags: [System]
+      summary: ACME HTTP-01 challenge response
+      description: >-
+        Registered only when ACME is enabled. Served to the ACME CA for domain
+        validation. No auth by design.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Key authorization for the challenge token
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Unknown challenge token
+
+  # ═══════════════════════════════════════════════════════════════
+  # Calendar (JWT)
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/messages/{id}/calendar-reply:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    post:
+      operationId: respondToCalendar
+      tags: [Calendar]
+      summary: Send an iMIP reply to a calendar invitation in a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response, from]
+              properties:
+                response:
+                  type: string
+                  enum: [ACCEPTED, DECLINED, TENTATIVE]
+                from:
+                  type: string
+                  format: email
+                  description: Sender address for the reply; must belong to the caller
+      responses:
+        "200":
+          description: Reply sent
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: sent
+                      response:
+                        type: string
+                        example: ACCEPTED
+        "400":
+          description: Message has no calendar event, or invalid response value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Caller does not own the message or the from address
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/accounts/{id}/calendar-events:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listCalendarEvents
+      tags: [Calendar]
+      summary: List calendar events (grouped by UID, latest version) for the mailbox
+      responses:
+        "200":
+          description: Calendar event summaries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CalendarEventSummary"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Stats
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/stats:
+    get:
+      operationId: getDashboardStats
+      tags: ["Admin: Stats"]
+      summary: Dashboard statistics
+      description: Visible to any admin role; requires no specific capability.
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DashboardStats"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Users & Roles
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/admin-users:
+    get:
+      operationId: listAdminUsers
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:read
+      summary: List admin users
+      responses:
+        "200":
+          description: Admin users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminUser"
+    post:
+      operationId: createAdminUser
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:write
+      summary: Create an admin user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdminUserRequest"
+      responses:
+        "201":
+          description: Admin user created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminUser"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/admin-users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getAdminUser
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:read
+      summary: Get an admin user by ID
+      responses:
+        "200":
+          description: Admin user
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AdminUser"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateAdminUser
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:write
+      summary: Update an admin user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminUserRequest"
+      responses:
+        "200":
+          description: Update acknowledgement
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Admin user updated successfully
+    delete:
+      operationId: deleteAdminUser
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:delete
+      summary: Delete an admin user
+      responses:
+        "204":
+          description: Admin user deleted
+
+  /api/v1/admin/roles:
+    get:
+      operationId: listRoles
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:read
+      summary: List roles
+      responses:
+        "200":
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Role"
+
+  /api/v1/admin/capabilities:
+    get:
+      operationId: listCapabilities
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:read
+      summary: List capabilities
+      responses:
+        "200":
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Capability"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Domains — DNS check
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/domains/{id}/dns:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: domainDNSCheck
+      tags: ["Admin: Domains"]
+      x-required-capability: domains:read
+      summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain
+      responses:
+        "200":
+          description: DNS check result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DNSCheckResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: MTA-STS
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/domains/{id}/mta-sts:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getMtaStsPolicy
+      tags: ["Admin: MTA-STS"]
+      x-required-capability: domains:read
+      summary: Get the MTA-STS policy for a domain
+      responses:
+        "200":
+          description: MTA-STS policy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MTASTSPolicy"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: setMtaStsPolicy
+      tags: ["Admin: MTA-STS"]
+      x-required-capability: domains:write
+      summary: Create or update the MTA-STS policy for a domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMTASTSPolicyRequest"
+      responses:
+        "200":
+          description: Policy updated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MTASTSPolicy"
+        "201":
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MTASTSPolicy"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteMtaStsPolicy
+      tags: ["Admin: MTA-STS"]
+      x-required-capability: domains:write
+      summary: Delete the MTA-STS policy for a domain
+      responses:
+        "204":
+          description: Policy deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: TLS Reports
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/tls-reports:
+    get:
+      operationId: listTlsReports
+      tags: ["Admin: TLS Reports"]
+      x-required-capability: domains:read
+      summary: List received TLS-RPT reports
+      parameters:
+        - name: domain_id
+          in: query
+          schema:
+            type: integer
+        - name: policy_type
+          in: query
+          schema:
+            type: string
+            enum: [sts, tlsa, no-policy]
+        - name: reporting_org
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: TLS-RPT reports
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TLSReport"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Observability (PR5)
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/pipelines/analytics:
+    get:
+      operationId: getPipelineAnalytics
+      tags: ["Admin: Observability"]
+      x-required-capability: observability:read
+      summary: Windowed message-lifecycle funnel from pipeline_rollups
+      parameters:
+        - name: window
+          in: query
+          description: Look-back as a Go duration (e.g. 24h). Ignored when `since` is given.
+          schema:
+            type: string
+            default: 24h
+        - name: since
+          in: query
+          description: RFC3339 lower bound; takes precedence over `window`.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Pipeline analytics funnel
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PipelineAnalyticsResponse"
+
+  /api/v1/admin/messages/{id}/trace:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    get:
+      operationId: getMessageTrace
+      tags: ["Admin: Observability"]
+      x-required-capability: observability:read
+      summary: Get the pipeline trace for a delivered message
+      description: >-
+        Returns the trace joined on message_id, which is set only on the
+        delivered/queued path. Non-delivered or unknown ids yield 404 (correlate
+        those via rfc_message_id on the pipeline logs endpoint instead).
+      responses:
+        "200":
+          description: Message trace
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/MessageTrace"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
+  # Admin: Testing (non-production only; admin role, no capability)
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/test/send:
+    post:
+      operationId: sendTestEmail
+      tags: ["Admin: Testing"]
+      summary: Inject a test email directly into a recipient mailbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from:
+                  type: string
+                  format: email
+                to:
+                  type: string
+                  format: email
+                subject:
+                  type: string
+                body:
+                  type: string
+      responses:
+        "201":
+          description: Test message created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message_id:
+                        type: integer
+                      msg_id:
+                        type: string
+                      from:
+                        type: string
+                      to:
+                        type: string
+                      subject:
+                        type: string
+        "403":
+          description: Disabled in production
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/test/verify:
+    get:
+      operationId: verifyDelivery
+      tags: ["Admin: Testing"]
+      summary: Poll for a delivered message matching the given criteria
+      parameters:
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+        - name: subject
+          in: query
+          schema:
+            type: string
+        - name: message_id
+          in: query
+          schema:
+            type: string
+        - name: timeout
+          in: query
+          description: Go duration, capped at 30s
+          schema:
+            type: string
+            default: 5s
+      responses:
+        "200":
+          description: Verification result (found true/false)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      found:
+                        type: boolean
+        "403":
+          description: Disabled in production
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/test/probe:
+    post:
+      operationId: probeServices
+      tags: ["Admin: Testing"]
+      summary: Probe connectivity to SMTP/IMAP/POP3/DNS/DB
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                services:
+                  type: array
+                  items:
+                    type: string
+                    enum: [smtp, smtp_submission, imap, pop3, dns, db]
+                host:
+                  type: string
+                timeout:
+                  type: string
+      responses:
+        "200":
+          description: Per-service probe results
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      additionalProperties: true
+        "403":
+          description: Disabled in production
+
+  /api/v1/admin/test/reset:
+    post:
+      operationId: resetTestData
+      tags: ["Admin: Testing"]
+      summary: Wipe all data and re-seed default test data
+      responses:
+        "200":
+          description: Reset complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "403":
+          description: Disabled in production
+
+  /api/v1/admin/test/seed:
+    post:
+      operationId: seedTestData
+      tags: ["Admin: Testing"]
+      summary: Seed default test domains, mailboxes, aliases and accounts
+      responses:
+        "200":
+          description: Seed complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "403":
+          description: Disabled in production
+
+  /api/v1/admin/test/snapshot:
+    post:
+      operationId: snapshotTestData
+      tags: ["Admin: Testing"]
+      summary: Capture the current database state as JSON
+      responses:
+        "200":
+          description: Snapshot payload (restore via /snapshot/restore)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        "403":
+          description: Disabled in production
+
+  /api/v1/admin/test/snapshot/restore:
+    post:
+      operationId: restoreTestSnapshot
+      tags: ["Admin: Testing"]
+      summary: Restore database state from a previously captured snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: A snapshot payload previously returned by /snapshot
+      responses:
+        "200":
+          description: Restore complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          description: Malformed snapshot data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Disabled in production
 
 components:
   securitySchemes:
@@ -3031,9 +4200,8 @@ components:
           type: string
           format: date-time
         date_header:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         created_at:
           type: string
           format: date-time
@@ -3283,13 +4451,11 @@ components:
         body:
           type: string
         start_date:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         end_date:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
 
     # ─────────────────────────────────────────────────────────────
     # Sieve
@@ -3340,9 +4506,8 @@ components:
         body_preview:
           type: string
         spam_score:
-          type: number
+          type: [number, "null"]
           format: float
-          nullable: true
         quarantine_reason:
           type: string
         received_at:
@@ -3573,9 +4738,8 @@ components:
         active:
           type: boolean
         last_login_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         created_at:
           type: string
           format: date-time
@@ -3746,35 +4910,6 @@ components:
         active:
           type: boolean
 
-    PipelineLog:
-      type: object
-      required: [id, pipeline_id, direction, action, steps, duration_ms, created_at]
-      properties:
-        id:
-          type: integer
-        pipeline_id:
-          type: integer
-        message_id:
-          type: integer
-          nullable: true
-        direction:
-          type: string
-          enum: [inbound, outbound]
-        action:
-          type: string
-          enum: [continue, reject, quarantine, discard]
-        steps:
-          type: array
-          items:
-            type: object
-            description: Individual filter execution step
-        duration_ms:
-          type: integer
-          format: int64
-        created_at:
-          type: string
-          format: date-time
-
     TestPipelineRequest:
       type: object
       required: [pipeline_id, email]
@@ -3892,8 +5027,7 @@ components:
         id:
           type: integer
         message_id:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         sender:
           type: string
         recipient:
@@ -3906,9 +5040,8 @@ components:
         attempts:
           type: integer
         last_attempt:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         next_attempt:
           type: string
           format: date-time
@@ -3987,8 +5120,7 @@ components:
         reason:
           type: string
         created_by:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         created_at:
           type: string
           format: date-time
@@ -4101,9 +5233,8 @@ components:
         created_by:
           type: string
         expires_at:
-          type: string
+          type: [string, "null"]
           format: date-time
-          nullable: true
         created_at:
           type: string
           format: date-time
@@ -4141,15 +5272,550 @@ components:
         resource_type:
           type: string
         resource_id:
-          type: integer
-          nullable: true
+          type: [integer, "null"]
         detail:
           type: string
         metadata:
-          type: object
-          nullable: true
+          type: [object, "null"]
         ip:
           type: string
         created_at:
           type: string
           format: date-time
+
+    # ─────────────────────────────────────────────────────────────
+    # Generic helpers
+    # ─────────────────────────────────────────────────────────────
+    StatusResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              example: reset_complete
+
+    # ─────────────────────────────────────────────────────────────
+    # Calendar
+    # ─────────────────────────────────────────────────────────────
+    CalendarEventSummary:
+      type: object
+      required: [uid, method, status, summary, sequence, is_cancelled, versions]
+      properties:
+        uid:
+          type: string
+        method:
+          type: string
+          description: iCalendar METHOD (REQUEST, REPLY, CANCEL, ...)
+        status:
+          type: string
+        summary:
+          type: string
+        sequence:
+          type: integer
+        is_cancelled:
+          type: boolean
+        message_id:
+          type: [integer, "null"]
+        versions:
+          type: integer
+          description: Number of stored versions for this UID
+
+    # ─────────────────────────────────────────────────────────────
+    # Admin: Dashboard stats
+    # ─────────────────────────────────────────────────────────────
+    DashboardStats:
+      type: object
+      required: [domainCount, mailboxCount, queueStats, messageVolume, recentActivity, inboundTransportSecurity]
+      properties:
+        domainCount:
+          type: integer
+        mailboxCount:
+          type: integer
+        queueStats:
+          type: object
+          required: [pending, processing, failed]
+          properties:
+            pending:
+              type: integer
+            processing:
+              type: integer
+            failed:
+              type: integer
+        messageVolume:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                example: Jul 23
+              count:
+                type: integer
+        recentActivity:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+              description:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+        inboundTransportSecurity:
+          type: object
+          properties:
+            totalInboundMX:
+              type: integer
+            overTLS:
+              type: integer
+            plaintext:
+              type: integer
+            tlsPercent:
+              type: number
+            plaintextPercent:
+              type: number
+            plaintextAuthPass:
+              type: integer
+            plaintextAuthFail:
+              type: integer
+
+    # ─────────────────────────────────────────────────────────────
+    # Admin: Users, roles, capabilities
+    # ─────────────────────────────────────────────────────────────
+    AdminUser:
+      type: object
+      required: [id, username, active, password_change_required, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: [string, "null"]
+        active:
+          type: boolean
+        password_change_required:
+          type: boolean
+        last_password_change:
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Role"
+
+    Role:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        system_role:
+          type: boolean
+
+    Capability:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: domains:read
+        description:
+          type: string
+        resource:
+          type: string
+          example: domains
+        action:
+          type: string
+          example: read
+
+    CreateAdminUserRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        email:
+          type: [string, "null"]
+        password:
+          type: string
+        role_ids:
+          type: array
+          items:
+            type: integer
+
+    UpdateAdminUserRequest:
+      type: object
+      properties:
+        email:
+          type: [string, "null"]
+        password:
+          type: string
+        active:
+          type: boolean
+        password_change_required:
+          type: boolean
+        role_ids:
+          type: array
+          items:
+            type: integer
+
+    # ─────────────────────────────────────────────────────────────
+    # Admin: DNS check
+    # ─────────────────────────────────────────────────────────────
+    DNSCheckResult:
+      type: object
+      required: [domain, records, summary]
+      properties:
+        domain:
+          type: string
+        summary:
+          type: string
+          example: 4/5 records verified
+        records:
+          type: array
+          items:
+            type: object
+            required: [type, name, status]
+            properties:
+              type:
+                type: string
+                example: MX
+              name:
+                type: string
+              status:
+                type: string
+                enum: [ok, missing, error]
+              value:
+                type: string
+              message:
+                type: string
+
+    # ─────────────────────────────────────────────────────────────
+    # Admin: MTA-STS
+    # ─────────────────────────────────────────────────────────────
+    MTASTSPolicy:
+      type: object
+      required: [id, domain_id, mode, max_age, active]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        mode:
+          type: string
+          enum: [none, testing, enforce]
+        mx_hosts:
+          type: string
+          description: Comma-separated MX host patterns
+        max_age:
+          type: integer
+          description: Policy lifetime in seconds
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SetMTASTSPolicyRequest:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [none, testing, enforce]
+        mx_hosts:
+          type: string
+          description: Comma-separated MX host patterns
+        max_age:
+          type: integer
+          minimum: 0
+        active:
+          type: boolean
+
+    # ─────────────────────────────────────────────────────────────
+    # Admin: TLS-RPT
+    # ─────────────────────────────────────────────────────────────
+    TLSReport:
+      type: object
+      required: [id, domain_id, reporting_org, start_date, end_date, policy_type, policy_domain, received_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+        reporting_org:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        policy_type:
+          type: string
+          enum: [sts, tlsa, no-policy]
+        policy_domain:
+          type: string
+        total_successful:
+          type: integer
+          format: int64
+        total_failure:
+          type: integer
+          format: int64
+        failure_details:
+          description: Raw failure-details JSON from the report
+          oneOf:
+            - type: object
+            - type: array
+            - type: "null"
+        raw_report:
+          type: string
+        received_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    TLSRPTReport:
+      type: object
+      description: Inbound TLS-RPT report (RFC 8460 §4)
+      required: [organization-name, date-range, policies]
+      properties:
+        organization-name:
+          type: string
+        contact-info:
+          type: string
+        report-id:
+          type: string
+        date-range:
+          type: object
+          required: [start-datetime, end-datetime]
+          properties:
+            start-datetime:
+              type: string
+              format: date-time
+            end-datetime:
+              type: string
+              format: date-time
+        policies:
+          type: array
+          items:
+            type: object
+            properties:
+              policy:
+                type: object
+                properties:
+                  policy-type:
+                    type: string
+                  policy-string:
+                    type: array
+                    items:
+                      type: string
+                  policy-domain:
+                    type: string
+                  mx-host:
+                    type: array
+                    items:
+                      type: string
+              summary:
+                type: object
+                properties:
+                  total-successful-session-count:
+                    type: integer
+                    format: int64
+                  total-failure-session-count:
+                    type: integer
+                    format: int64
+              failure-details:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+
+    # ─────────────────────────────────────────────────────────────
+    # Admin: Observability (traces + analytics)
+    # ─────────────────────────────────────────────────────────────
+    MessageTrace:
+      type: object
+      required: [id, direction, transport, pipeline_id, final_action, outcome, duration_ms, sampled, created_at]
+      properties:
+        id:
+          type: integer
+        message_id:
+          type: [integer, "null"]
+          description: Set only on the delivered/queued path; null otherwise
+        rfc_message_id:
+          type: string
+          description: RFC 5322 Message-ID correlation key
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        transport:
+          type: string
+          enum: ["", tls, plaintext]
+          description: Empty when transport is not applicable
+        mail_from:
+          type: string
+        rcpt_to:
+          type: string
+          description: First envelope recipient
+        client_ip:
+          type: string
+        pipeline_id:
+          type: integer
+        final_action:
+          type: string
+          enum: [continue, reject, quarantine, discard, defer]
+        outcome:
+          type: string
+          enum: [delivered, queued, rejected, quarantined, discarded, deferred]
+        reason_code:
+          type: string
+          description: Bounded reason for a non-continue terminal; empty otherwise
+        spam_score:
+          type: [number, "null"]
+        duration_ms:
+          type: integer
+          format: int64
+        stages:
+          description: Serialized []StepResult timeline
+          oneOf:
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+            - type: "null"
+        sampled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+
+    PipelineFunnel:
+      type: object
+      properties:
+        received:
+          type: array
+          items:
+            type: object
+            properties:
+              transport:
+                type: string
+              count:
+                type: number
+        auth_verdicts:
+          type: array
+          items:
+            type: object
+            properties:
+              mechanism:
+                type: string
+              result:
+                type: string
+              count:
+                type: number
+        stage_decisions:
+          type: array
+          items:
+            type: object
+            properties:
+              filter:
+                type: string
+              action:
+                type: string
+              count:
+                type: number
+        terminal_outcomes:
+          type: array
+          items:
+            type: object
+            properties:
+              direction:
+                type: string
+              outcome:
+                type: string
+              count:
+                type: number
+        top_reject_reasons:
+          type: array
+          items:
+            type: object
+            properties:
+              reason_code:
+                type: string
+              count:
+                type: number
+
+    PipelineAnalyticsResponse:
+      type: object
+      required: [window, funnel]
+      properties:
+        window:
+          type: object
+          required: [since, until]
+          properties:
+            since:
+              type: string
+              format: date-time
+            until:
+              type: string
+              format: date-time
+            label:
+              type: string
+              description: Echoes the ?window value; empty when ?since was used
+        funnel:
+          $ref: "#/components/schemas/PipelineFunnel"
+        live_totals:
+          allOf:
+            - $ref: "#/components/schemas/PipelineFunnel"
+          description: >-
+            Cumulative-since-process-start snapshot from the in-process registry
+            (NOT windowed); absent if the registry could not be gathered.
+
+    # ─────────────────────────────────────────────────────────────
+    # Admin: Custom filters (update)
+    # ─────────────────────────────────────────────────────────────
+    UpdateCustomFilterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        filter_type:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        config:
+          type: object
+          description: Filter configuration (opaque JSON)
+        enabled:
+          type: boolean
