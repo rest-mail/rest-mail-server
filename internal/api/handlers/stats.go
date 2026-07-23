@@ -78,17 +78,11 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	stats.QueueStats = QueueStats{}
+	byStatus := make(map[string]int, len(queueCounts))
 	for _, qc := range queueCounts {
-		switch qc.Status {
-		case "pending":
-			stats.QueueStats.Pending = qc.Count
-		case "processing":
-			stats.QueueStats.Processing = qc.Count
-		case "failed":
-			stats.QueueStats.Failed = qc.Count
-		}
+		byStatus[qc.Status] += qc.Count
 	}
+	stats.QueueStats = bucketQueueStatuses(byStatus)
 
 	// Message volume (last 7 days)
 	messageVolume, err := h.getMessageVolume()
@@ -109,6 +103,26 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 	respond.Data(w, http.StatusOK, stats)
 }
 
+// bucketQueueStatuses folds raw outbound_queue status counts into the three
+// dashboard buckets. The queue worker only ever writes pending, deferred,
+// delivering, delivered and bounced (expired is reserved). The dashboard used
+// to look for "processing"/"failed", which are never written, so the in-flight
+// and failed counters were permanently stuck at zero.
+func bucketQueueStatuses(byStatus map[string]int) QueueStats {
+	var qs QueueStats
+	for status, n := range byStatus {
+		switch status {
+		case "pending", "deferred":
+			qs.Pending += n
+		case "delivering":
+			qs.Processing += n
+		case "bounced", "expired":
+			qs.Failed += n
+		}
+	}
+	return qs
+}
+
 // getMessageVolume returns message counts for the last 7 days
 func (h *StatsHandler) getMessageVolume() ([]MessageVolumeData, error) {
 	var results []struct {
@@ -116,14 +130,17 @@ func (h *StatsHandler) getMessageVolume() ([]MessageVolumeData, error) {
 		Count int
 	}
 
-	// Query to get message counts grouped by day for the last 7 days
+	// Query to get message counts grouped by day for the last 7 days.
+	// PostgreSQL syntax: DATE_SUB()/`INTERVAL 7 DAY` and DATE() are MySQL-isms
+	// that error on Postgres, so this query used to fail on every call and the
+	// dashboard silently fell back to all-zero volume.
 	err := h.db.Raw(`
 		SELECT
-			DATE(created_at) as date,
+			created_at::date as date,
 			COUNT(*) as count
 		FROM outbound_queue
-		WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-		GROUP BY DATE(created_at)
+		WHERE created_at >= NOW() - INTERVAL '7 days'
+		GROUP BY created_at::date
 		ORDER BY date ASC
 	`).Scan(&results).Error
 
@@ -189,9 +206,11 @@ func (h *StatsHandler) getRecentActivity() ([]RecentActivity, error) {
 		}
 	}
 
-	// Query recent messages sent
+	// Query recent messages sent. The queue worker marks successful deliveries
+	// "delivered" (never "sent"), so the old filter matched nothing and no sent
+	// activity ever appeared on the dashboard.
 	var messages []models.OutboundQueue
-	if err := h.db.Where("status = ?", "sent").
+	if err := h.db.Where("status = ?", "delivered").
 		Order("created_at DESC").
 		Limit(4).
 		Find(&messages).Error; err == nil {
