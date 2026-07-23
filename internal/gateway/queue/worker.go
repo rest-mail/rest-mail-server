@@ -67,6 +67,10 @@ func parseSMTPError(err error) *SMTPError {
 	return &SMTPError{Code: 0, Message: msg}
 }
 
+// staleDeliveringTimeout is how long a row may sit in "delivering" before the
+// worker treats it as orphaned by a crashed worker and reclaims it.
+const staleDeliveringTimeout = 15 * time.Minute
+
 // computeBackoff returns the retry delay for the Nth delivery attempt:
 // exponential (1m, 2m, 4m, 8m, ...) capped at 4 hours.
 //
@@ -174,13 +178,21 @@ func (w *Worker) processOne(workerID int) {
 	// Claim a pending item using raw SQL with FOR UPDATE SKIP LOCKED
 	var item models.OutboundQueue
 	now := time.Now()
+	// Rows that have been "delivering" longer than this were almost certainly
+	// orphaned by a worker that crashed mid-send: no attempt takes minutes, and a
+	// live send holds the row's transaction lock. Reclaim them so mail isn't
+	// stranded forever (the claim below only re-selects pending/deferred).
+	staleDelivering := now.Add(-staleDeliveringTimeout)
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Raw(
 			`SELECT * FROM outbound_queue
-			 WHERE status IN ('pending', 'deferred') AND next_attempt <= ? AND expires_at > ?
+			 WHERE (
+			     (status IN ('pending', 'deferred') AND next_attempt <= ?)
+			     OR (status = 'delivering' AND last_attempt < ?)
+			 ) AND expires_at > ?
 			 ORDER BY next_attempt ASC
 			 LIMIT 1
-			 FOR UPDATE SKIP LOCKED`, now, now,
+			 FOR UPDATE SKIP LOCKED`, now, staleDelivering, now,
 		).Scan(&item)
 
 		if result.Error != nil {
