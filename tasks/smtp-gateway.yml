@@ -55,6 +55,12 @@ vars:
   SMTP_GATEWAY_LOG_LEVEL: '{{.SMTP_GATEWAY_LOG_LEVEL | default "debug"}}'
   SMTP_GATEWAY_ENVIRONMENT: '{{.SMTP_GATEWAY_ENVIRONMENT | default "development"}}'
   SMTP_GATEWAY_MAILNET_ONLY: '{{.SMTP_GATEWAY_MAILNET_ONLY | default "false"}}'
+  # Internal mTLS (gateway → API). Off by default; when "true" the gateway
+  # presents /certs/internal-client.* on the two machine routes and sends them
+  # to SMTP_GATEWAY_API_INTERNAL_BASE_URL (the API's https internal listener);
+  # all other routes keep using SMTP_GATEWAY_API_BASE_URL (public).
+  SMTP_GATEWAY_INTERNAL_MTLS: '{{.SMTP_GATEWAY_INTERNAL_MTLS | default "false"}}'
+  SMTP_GATEWAY_API_INTERNAL_BASE_URL: '{{.SMTP_GATEWAY_API_INTERNAL_BASE_URL | default ""}}'
 
 tasks:
 
@@ -141,6 +147,11 @@ tasks:
           -e QUEUE_WORKERS={{.SMTP_GATEWAY_QUEUE_WORKERS}} \
           -e LOG_LEVEL={{.SMTP_GATEWAY_LOG_LEVEL}} \
           -e ENVIRONMENT={{.SMTP_GATEWAY_ENVIRONMENT}} \
+          -e INTERNAL_MTLS_ENABLED={{.SMTP_GATEWAY_INTERNAL_MTLS}} \
+          -e API_INTERNAL_BASE_URL={{.SMTP_GATEWAY_API_INTERNAL_BASE_URL}} \
+          -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
+          -e INTERNAL_MTLS_CLIENT_CERT=/certs/internal-client.crt \
+          -e INTERNAL_MTLS_CLIENT_KEY=/certs/internal-client.key \
           {{.SMTP_GATEWAY_IMAGE}} >$OUTPUT 2>&1
 
   down:

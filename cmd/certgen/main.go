@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -22,23 +23,39 @@ func main() {
 	slog.SetDefault(slog.New(logHandler))
 
 	var (
-		outputDir string
-		genCA     bool
-		genDKIM   bool
-		domain    string
-		domains   string
+		outputDir   string
+		genCA       bool
+		genDKIM     bool
+		genInternal bool
+		domain      string
+		domains     string
+		serverDNS   string
+		serverIPs   string
+		clientCN    string
 	)
 
 	flag.StringVar(&outputDir, "out", "projects/certs/output", "Output directory for certificates")
 	flag.BoolVar(&genCA, "ca", false, "Generate CA certificate")
 	flag.BoolVar(&genDKIM, "dkim", false, "Generate DKIM key pair")
+	flag.BoolVar(&genInternal, "internal-mtls", false, "Generate a dedicated internal-mTLS CA + API server cert + gateway client cert")
 	flag.StringVar(&domain, "domain", "", "Domain name for certificate or DKIM key")
 	flag.StringVar(&domains, "domains", "mail1.test,mail2.test,mail3.test", "Comma-separated list of domains to generate certs for")
+	flag.StringVar(&serverDNS, "server-dns", "api,localhost", "Comma-separated DNS SANs for the internal mTLS API server cert")
+	flag.StringVar(&serverIPs, "server-ip", "127.0.0.1", "Comma-separated IP SANs for the internal mTLS API server cert")
+	flag.StringVar(&clientCN, "client-cn", "rest-mail-gateway", "Common Name (machine identity) for the internal mTLS gateway client cert")
 	flag.Parse()
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		slog.Error("failed to create output directory", "error", err)
 		os.Exit(1)
+	}
+
+	if genInternal {
+		if err := generateInternalMTLS(outputDir, serverDNS, serverIPs, clientCN); err != nil {
+			slog.Error("internal mTLS generation failed", "error", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	if genDKIM {
@@ -73,6 +90,8 @@ func main() {
 	fmt.Println("  certgen --ca                        Generate CA + server certs")
 	fmt.Println("  certgen --ca --domains=a.test,b.test Generate CA + specific domain certs")
 	fmt.Println("  certgen --dkim --domain=mail1.test   Generate DKIM key pair")
+	fmt.Println("  certgen --internal-mtls --server-ip=10.99.0.20 --out=/certs")
+	fmt.Println("                                       Generate internal-mTLS CA + API server + gateway client certs")
 	flag.PrintDefaults()
 }
 
@@ -216,6 +235,293 @@ func generateServerCert(outputDir, domain string) error {
 
 	slog.Info("server certificate generated", "domain", domain, "cert", certPath, "key", keyPath)
 	return nil
+}
+
+// ── Internal mTLS (gateway → API machine authentication) ─────────────────
+//
+// A DEDICATED CA, distinct from the public/testbed CA, so only certificates
+// this CA signs can authenticate as a gateway on the API's internal listener.
+
+const (
+	internalCACertFile     = "internal-ca.crt"
+	internalCAKeyFile      = "internal-ca.key"
+	internalServerCertFile = "internal-server.crt"
+	internalServerKeyFile  = "internal-server.key"
+	internalClientCertFile = "internal-client.crt"
+	internalClientKeyFile  = "internal-client.key"
+)
+
+// generateInternalMTLS mints the material for the gateway→API internal mTLS
+// channel under outputDir: a dedicated internal CA, an API server cert for the
+// internal listener (ServerAuth, with the given DNS/IP SANs), and a gateway
+// client cert (ClientAuth, machine identity clientCN).
+//
+// It is idempotent and CA-preserving: an existing internal CA is reused so
+// client certs already deployed to gateways keep verifying, and existing leaf
+// certs are left untouched. This mirrors the reference-certgen behavior the
+// testbed relies on, so the provisioning task is safe to re-run.
+func generateInternalMTLS(outputDir, serverDNS, serverIPs, clientCN string) error {
+	caCert, caKey, err := loadOrCreateInternalCA(outputDir)
+	if err != nil {
+		return err
+	}
+	if err := ensureInternalServerCert(outputDir, caCert, caKey, serverDNS, serverIPs); err != nil {
+		return err
+	}
+	return ensureInternalClientCert(outputDir, caCert, caKey, clientCN)
+}
+
+func loadOrCreateInternalCA(outputDir string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+	certPath := filepath.Join(outputDir, internalCACertFile)
+	keyPath := filepath.Join(outputDir, internalCAKeyFile)
+	if fileExists(certPath) && fileExists(keyPath) {
+		slog.Info("reusing existing internal mTLS CA", "cert", certPath)
+		return loadCAFrom(certPath, keyPath)
+	}
+
+	slog.Info("generating internal mTLS CA")
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate internal CA key: %w", err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, err
+	}
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject: pkix.Name{
+			Organization: []string{"RestMail Internal"},
+			CommonName:   "RestMail Internal mTLS CA",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create internal CA certificate: %w", err)
+	}
+	if err := writePEM(certPath, "CERTIFICATE", der); err != nil {
+		return nil, nil, err
+	}
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal internal CA key: %w", err)
+	}
+	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
+		return nil, nil, err
+	}
+	_ = os.Chmod(keyPath, 0600)
+	caCert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, nil, err
+	}
+	slog.Info("internal mTLS CA generated", "cert", certPath, "key", keyPath)
+	return caCert, key, nil
+}
+
+func ensureInternalServerCert(outputDir string, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, serverDNS, serverIPs string) error {
+	certPath := filepath.Join(outputDir, internalServerCertFile)
+	keyPath := filepath.Join(outputDir, internalServerKeyFile)
+
+	dnsNames := splitDomains(serverDNS)
+	var ips []net.IP
+	for _, s := range splitDomains(serverIPs) {
+		ip := net.ParseIP(s)
+		if ip == nil {
+			return fmt.Errorf("invalid --server-ip %q", s)
+		}
+		ips = append(ips, ip)
+	}
+	if len(dnsNames) == 0 && len(ips) == 0 {
+		return fmt.Errorf("internal mTLS server cert needs at least one --server-dns or --server-ip SAN")
+	}
+
+	// Skip ONLY when an existing server cert already covers the requested SAN
+	// set exactly. If the SANs drifted — e.g. the api container IP changed on a
+	// persistent certs volume — re-mint the leaf (the CA is untouched, so
+	// already-issued client certs keep verifying) to avoid a stale SAN causing a
+	// later TLS name mismatch.
+	if fileExists(certPath) && fileExists(keyPath) {
+		if serverCertSANsMatch(certPath, dnsNames, ips) {
+			slog.Info("internal mTLS server cert already present with matching SANs, skipping", "cert", certPath)
+			return nil
+		}
+		slog.Info("internal mTLS server cert SANs changed, re-minting leaf", "cert", certPath, "dns", dnsNames, "ips", serverIPs)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("failed to generate internal server key: %w", err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return err
+	}
+	cn := "rest-mail-internal-api"
+	if len(dnsNames) > 0 {
+		cn = dnsNames[0]
+	}
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{Organization: []string{"RestMail Internal"}, CommonName: cn},
+		DNSNames:     dnsNames,
+		IPAddresses:  ips,
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(825 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	if err := signAndWriteLeaf(certPath, keyPath, template, caCert, caKey, key); err != nil {
+		return err
+	}
+	slog.Info("internal mTLS server certificate generated", "cert", certPath, "dns", dnsNames, "ips", serverIPs)
+	return nil
+}
+
+func ensureInternalClientCert(outputDir string, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, clientCN string) error {
+	certPath := filepath.Join(outputDir, internalClientCertFile)
+	keyPath := filepath.Join(outputDir, internalClientKeyFile)
+	if fileExists(certPath) && fileExists(keyPath) {
+		slog.Info("internal mTLS client cert already present, skipping", "cert", certPath)
+		return nil
+	}
+	if clientCN == "" {
+		return fmt.Errorf("internal mTLS client cert needs a non-empty --client-cn")
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("failed to generate internal client key: %w", err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return err
+	}
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{Organization: []string{"RestMail Internal"}, CommonName: clientCN},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(825 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	if err := signAndWriteLeaf(certPath, keyPath, template, caCert, caKey, key); err != nil {
+		return err
+	}
+	slog.Info("internal mTLS gateway client certificate generated", "cert", certPath, "cn", clientCN)
+	return nil
+}
+
+// signAndWriteLeaf signs template with the CA and writes the resulting cert +
+// its EC private key (0600) to disk.
+func signAndWriteLeaf(certPath, keyPath string, template, caCert *x509.Certificate, caKey, leafKey *ecdsa.PrivateKey) error {
+	der, err := x509.CreateCertificate(rand.Reader, template, caCert, &leafKey.PublicKey, caKey)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate: %w", err)
+	}
+	if err := writePEM(certPath, "CERTIFICATE", der); err != nil {
+		return err
+	}
+	keyBytes, err := x509.MarshalECPrivateKey(leafKey)
+	if err != nil {
+		return fmt.Errorf("failed to marshal key: %w", err)
+	}
+	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
+		return err
+	}
+	_ = os.Chmod(keyPath, 0600)
+	return nil
+}
+
+// loadCAFrom parses a CA cert + EC key pair from explicit paths (nil-checked,
+// unlike the fixed-path loadCA used by the public server-cert path).
+func loadCAFrom(certPath, keyPath string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, nil, fmt.Errorf("no PEM certificate in %s", certPath)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	block, _ = pem.Decode(keyPEM)
+	if block == nil {
+		return nil, nil, fmt.Errorf("no PEM key in %s", keyPath)
+	}
+	key, err := x509.ParseECPrivateKey(block.Bytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cert, key, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// serverCertSANsMatch reports whether the cert at certPath has EXACTLY the
+// requested DNS + IP SAN sets. A parse failure counts as "no match" so a
+// corrupt/unreadable existing cert is safely re-minted.
+func serverCertSANsMatch(certPath string, dnsNames []string, ips []net.IP) bool {
+	data, err := os.ReadFile(certPath)
+	if err != nil {
+		return false
+	}
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return false
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return false
+	}
+	if !sameStringSet(cert.DNSNames, dnsNames) {
+		return false
+	}
+	haveIPs := make([]string, len(cert.IPAddresses))
+	for i, ip := range cert.IPAddresses {
+		haveIPs[i] = ip.String()
+	}
+	wantIPs := make([]string, len(ips))
+	for i, ip := range ips {
+		wantIPs[i] = ip.String()
+	}
+	return sameStringSet(haveIPs, wantIPs)
+}
+
+// sameStringSet reports whether a and b contain the same elements (ignoring
+// order and multiplicity).
+func sameStringSet(a, b []string) bool {
+	set := make(map[string]struct{}, len(a))
+	for _, s := range a {
+		set[s] = struct{}{}
+	}
+	other := make(map[string]struct{}, len(b))
+	for _, s := range b {
+		other[s] = struct{}{}
+	}
+	if len(set) != len(other) {
+		return false
+	}
+	for s := range set {
+		if _, ok := other[s]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func generateDKIM(outputDir, domain string) error {

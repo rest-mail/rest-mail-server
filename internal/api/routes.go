@@ -22,9 +22,31 @@ import (
 	"gorm.io/gorm"
 )
 
-// NewRouter creates and configures the chi router with all API routes.
+// Routers bundles the HTTP handlers a running API exposes. Public is always
+// present. Internal is non-nil only when internal mTLS is enabled: it serves
+// the gateway-facing machine-to-machine routes (recipient checks + inbound
+// delivery) and is meant to be served on a dedicated listener that requires a
+// verified gateway client certificate. When internal mTLS is disabled those
+// routes live on Public (tokenless), preserving pre-mTLS behavior.
+type Routers struct {
+	Public   http.Handler
+	Internal http.Handler
+}
+
+// NewRouter creates and configures the chi router with all API routes and
+// returns the public handler. It is the backward-compatible entry point for
+// callers that do not run a separate internal mTLS listener (tests, tooling).
 // The acmeClient parameter is optional; pass nil when ACME is disabled.
 func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) http.Handler {
+	return NewRouters(db, jwtService, cfg, dnsProvider, acmeClient...).Public
+}
+
+// NewRouters builds the public handler and, when cfg.InternalMTLSEnabled is
+// true, the internal mTLS handler. Both share the same handler instances — most
+// importantly the same SSE broker and pipeline engine — so inbound deliveries
+// arriving on the internal listener still publish real-time events to webmail
+// clients subscribed on the public listener.
+func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) *Routers {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -148,10 +170,23 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 	r.Post("/api/v1/auth/refresh", authH.Refresh)
 
 	// ═══════════════════════════════════════════════════════════════
-	// Inbound delivery (used by gateway, internal auth)
+	// Inbound delivery — machine-to-machine, called by the protocol
+	// gateways with no user token.
+	//
+	// registerInternal wires the two gateway-facing routes onto a router.
+	// When internal mTLS is DISABLED they go on the public router here, exactly
+	// as before (network-trust deployments unchanged). When ENABLED they are
+	// withheld from the public router and served only on the dedicated internal
+	// mTLS listener built below, so an unauthenticated public caller can no
+	// longer reach them.
 	// ═══════════════════════════════════════════════════════════════
-	r.Get("/api/mailboxes", mailboxH.CheckAddress)
-	r.Post("/api/v1/messages/deliver", messageH.DeliverMessage)
+	registerInternal := func(rt chi.Router) {
+		rt.Get("/api/mailboxes", mailboxH.CheckAddress)
+		rt.Post("/api/v1/messages/deliver", messageH.DeliverMessage)
+	}
+	if !cfg.InternalMTLSEnabled {
+		registerInternal(r)
+	}
 
 	// ═══════════════════════════════════════════════════════════════
 	// RESTMAIL server-to-server (unauthenticated, verified by DKIM/SPF)
@@ -374,5 +409,24 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 		r.Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
 	})
 
-	return r
+	routers := &Routers{Public: r}
+
+	// Dedicated internal mTLS handler. Only built when enabled; served on a
+	// separate listener whose TLS layer requires a verified gateway client
+	// certificate (see cmd/api). RequireClientCert is defense-in-depth on top of
+	// that TLS enforcement. It reuses the same handler instances as the public
+	// router, so delivery-side SSE/pipeline behavior is identical.
+	if cfg.InternalMTLSEnabled {
+		ir := chi.NewRouter()
+		ir.Use(chimw.RequestID)
+		ir.Use(chimw.RealIP)
+		ir.Use(chimw.Logger)
+		ir.Use(chimw.Recoverer)
+		ir.Use(metrics.HTTPMetrics)
+		ir.Use(middleware.RequireClientCert)
+		registerInternal(ir)
+		routers.Internal = ir
+	}
+
+	return routers
 }

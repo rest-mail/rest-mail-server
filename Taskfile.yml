@@ -121,6 +121,10 @@ includes:
       API_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
       API_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
       API_MAILNET_ONLY: '{{.MAIL3_MAILNET_ONLY}}'
+      # Internal mTLS: driven by the per-instance MAIL3_INTERNAL_MTLS switch
+      # (manifest `internal_mtls: true`). Defaults off — unchanged behavior.
+      API_INTERNAL_MTLS: '{{.MAIL3_INTERNAL_MTLS | default "false"}}'
+      API_INTERNAL_MTLS_PORT: '{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}'
 
   smtp-gateway:
     taskfile: ./tasks/smtp-gateway.yml
@@ -135,7 +139,12 @@ includes:
       SMTP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       SMTP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       SMTP_GATEWAY_DB_HOST: '{{.MAIL3_POSTGRES_IP}}'
+      # API_BASE_URL always targets the PUBLIC listener (token/credential + user
+      # routes). With internal mTLS on, only the two machine routes use the
+      # separate API_INTERNAL_BASE_URL (the https internal listener).
       SMTP_GATEWAY_API_BASE_URL: 'http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}'
+      SMTP_GATEWAY_INTERNAL_MTLS: '{{.MAIL3_INTERNAL_MTLS | default "false"}}'
+      SMTP_GATEWAY_API_INTERNAL_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{end}}'
       SMTP_GATEWAY_TLS_CERT_PATH: '/certs/{{.MAIL3_HOSTNAME}}.crt'
       SMTP_GATEWAY_TLS_KEY_PATH: '/certs/{{.MAIL3_HOSTNAME}}.key'
       SMTP_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
@@ -161,7 +170,10 @@ includes:
       IMAP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       IMAP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       IMAP_GATEWAY_DB_HOST: '{{.MAIL3_POSTGRES_IP}}'
+      # Public listener for token/user routes; machine routes use the internal one.
       IMAP_GATEWAY_API_BASE_URL: 'http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}'
+      IMAP_GATEWAY_INTERNAL_MTLS: '{{.MAIL3_INTERNAL_MTLS | default "false"}}'
+      IMAP_GATEWAY_API_INTERNAL_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{end}}'
       IMAP_GATEWAY_TLS_CERT_PATH: '/certs/{{.MAIL3_HOSTNAME}}.crt'
       IMAP_GATEWAY_TLS_KEY_PATH: '/certs/{{.MAIL3_HOSTNAME}}.key'
       IMAP_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
@@ -187,7 +199,10 @@ includes:
       POP3_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       POP3_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       POP3_GATEWAY_DB_HOST: '{{.MAIL3_POSTGRES_IP}}'
+      # Public listener for token/user routes; machine routes use the internal one.
       POP3_GATEWAY_API_BASE_URL: 'http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}'
+      POP3_GATEWAY_INTERNAL_MTLS: '{{.MAIL3_INTERNAL_MTLS | default "false"}}'
+      POP3_GATEWAY_API_INTERNAL_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{end}}'
       POP3_GATEWAY_TLS_CERT_PATH: '/certs/{{.MAIL3_HOSTNAME}}.crt'
       POP3_GATEWAY_TLS_KEY_PATH: '/certs/{{.MAIL3_HOSTNAME}}.key'
       POP3_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
@@ -514,6 +529,9 @@ tasks:
       - task -d .workspace/reference-mailserver dkim:provision CONFIG=mail2 HOSTNAME=mail2.test
       # restmail.test (the rest-mail instance) — config is testbed-owned.
       - INSTANCE=restmail.test task instance:certs:issue
+      # Provision internal-mTLS material (idempotent; unused unless the instance
+      # enables internal_mtls).
+      - INSTANCE=restmail.test task instance:mtls:issue
       - INSTANCE=restmail.test task instance:dns:register
       - INSTANCE=restmail.test task instance:up
       - INSTANCE=restmail.test task instance:dkim
@@ -957,6 +975,30 @@ tasks:
           -v "{{.CERTS_VOLUME}}:/certs" \
           -e CERTGEN_DOMAINS="{{.MAIL3_HOSTNAME}}" \
           {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
+
+  instance:mtls:issue:
+    desc: "Provision internal-mTLS certs (dedicated CA + API server + gateway client) for INSTANCE into the certs volume"
+    vars:
+      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
+    cmds:
+      # Mints a DEDICATED internal CA + an API server cert (SANs cover the api
+      # container IP + localhost + the instance hostname) + a gateway client
+      # cert into /certs, using the in-repo certgen (built inside a golang
+      # container so it is arch-correct for the volume). Idempotent: an existing
+      # internal CA is reused and leaves already present are skipped, so it is
+      # safe to re-run and safe to run even when the instance has not enabled
+      # internal mTLS (the certs simply go unused).
+      - |
+        docker run --rm \
+          -v "{{.CERTS_VOLUME}}:/certs" \
+          -v "{{.ROOT_DIR}}:/src" -w /src \
+          -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+          -v rest-mail-e2e-gocache:/root/.cache/go-build \
+          -e GOFLAGS=-buildvcs=false \
+          golang:1.25 \
+          go run ./cmd/certgen --internal-mtls --out /certs \
+            --server-ip 127.0.0.1,{{.MAIL3_API_IP}} \
+            --server-dns api,localhost,{{.MAIL3_HOSTNAME}}
 
   instance:dns:register:
     desc: "Publish <INSTANCE>'s DNS to the testbed dnsmasq (requires the testbed running)"

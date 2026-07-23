@@ -115,8 +115,35 @@ func main() {
 	}
 	slog.Info("DNS provider initialized", "provider", cfg.DNSProvider)
 
-	// Create router
-	router := api.NewRouter(database, jwtService, cfg, dnsProvider, acmeClientPtr)
+	// Create routers. When internal mTLS is enabled, routers.Internal carries
+	// the gateway-facing routes for the dedicated mTLS listener and they are
+	// withheld from the public handler; otherwise those routes live on Public
+	// (tokenless), preserving pre-mTLS behavior.
+	routers := api.NewRouters(database, jwtService, cfg, dnsProvider, acmeClientPtr)
+	router := routers.Public
+
+	// Build the internal mTLS listener up front (before serving) so a
+	// half-configured deployment fails closed at startup rather than after the
+	// public listener is already accepting traffic.
+	var internalSrv *http.Server
+	if cfg.InternalMTLSEnabled {
+		internalTLS, err := cfg.InternalMTLSServerTLS()
+		if err != nil {
+			slog.Error("internal mTLS enabled but server TLS config is invalid", "error", err)
+			os.Exit(1)
+		}
+		internalSrv = &http.Server{
+			Addr:         cfg.InternalMTLSAddr(),
+			Handler:      routers.Internal,
+			TLSConfig:    internalTLS,
+			ReadTimeout:  15 * time.Second,
+			WriteTimeout: 15 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+		slog.Info("internal mTLS listener configured (gateway-facing routes require a verified client certificate)",
+			"addr", cfg.InternalMTLSAddr(),
+		)
+	}
 
 	// Start ACME renewal manager (if enabled)
 	if acmeManager != nil {
@@ -158,6 +185,19 @@ func main() {
 		}
 	}()
 
+	// Start the internal mTLS listener in a goroutine. Certificates come from
+	// the server's TLSConfig, so the cert/key file args to ListenAndServeTLS are
+	// empty.
+	if internalSrv != nil {
+		go func() {
+			slog.Info("internal mTLS server listening", "addr", internalSrv.Addr)
+			if err := internalSrv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				slog.Error("internal mTLS server error", "error", err)
+				os.Exit(1)
+			}
+		}()
+	}
+
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -176,6 +216,11 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Error("server forced to shutdown", "error", err)
+	}
+	if internalSrv != nil {
+		if err := internalSrv.Shutdown(ctx); err != nil {
+			slog.Error("internal mTLS server forced to shutdown", "error", err)
+		}
 	}
 
 	slog.Info("server stopped")

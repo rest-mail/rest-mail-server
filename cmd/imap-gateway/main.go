@@ -95,7 +95,26 @@ func main() {
 		slog.Info("DB-backed SNI certificate loading enabled")
 	}
 
-	api := apiclient.New(cfg.APIBaseURL)
+	// Internal mTLS (gateway → API machine auth): when enabled, the two
+	// tokenless machine routes (recipient check + inbound delivery) go to the
+	// API's dedicated internal listener (API_INTERNAL_BASE_URL) presenting the
+	// gateway client certificate; all token/credential routes keep using the
+	// public API_BASE_URL. Disabled → single plain client, unchanged.
+	var apiOpts []apiclient.Option
+	if cfg.InternalMTLSEnabled {
+		if cfg.APIInternalBaseURL == "" {
+			slog.Error("internal mTLS enabled but API_INTERNAL_BASE_URL is not set (must point at the API's internal mTLS listener, e.g. https://api:8443)")
+			os.Exit(1)
+		}
+		clientTLS, err := cfg.InternalMTLSClientTLS()
+		if err != nil {
+			slog.Error("internal mTLS enabled but client TLS config is invalid", "error", err)
+			os.Exit(1)
+		}
+		apiOpts = append(apiOpts, apiclient.WithInternalMTLS(cfg.APIInternalBaseURL, clientTLS))
+		slog.Info("internal mTLS enabled — machine routes use the internal listener with the gateway client certificate", "internal_base_url", cfg.APIInternalBaseURL)
+	}
+	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})

@@ -44,6 +44,12 @@ vars:
   IMAP_GATEWAY_ENVIRONMENT: '{{.IMAP_GATEWAY_ENVIRONMENT | default "development"}}'
   IMAP_GATEWAY_MAILNET_ONLY: '{{.IMAP_GATEWAY_MAILNET_ONLY | default "false"}}'
   IMAP_GATEWAY_PROXY_HOST: '{{.IMAP_GATEWAY_PROXY_HOST | default "restmail.localhost"}}'
+  # Internal mTLS (gateway → API). Off by default; when "true" the gateway
+  # presents /certs/internal-client.* on the two machine routes and sends them
+  # to IMAP_GATEWAY_API_INTERNAL_BASE_URL (the API's https internal listener);
+  # all other routes keep using IMAP_GATEWAY_API_BASE_URL (public).
+  IMAP_GATEWAY_INTERNAL_MTLS: '{{.IMAP_GATEWAY_INTERNAL_MTLS | default "false"}}'
+  IMAP_GATEWAY_API_INTERNAL_BASE_URL: '{{.IMAP_GATEWAY_API_INTERNAL_BASE_URL | default ""}}'
 
 tasks:
 
@@ -102,6 +108,11 @@ tasks:
           -e IMAP_TLS_PORT={{.IMAP_GATEWAY_TLS_PORT}} \
           -e LOG_LEVEL={{.IMAP_GATEWAY_LOG_LEVEL}} \
           -e ENVIRONMENT={{.IMAP_GATEWAY_ENVIRONMENT}} \
+          -e INTERNAL_MTLS_ENABLED={{.IMAP_GATEWAY_INTERNAL_MTLS}} \
+          -e API_INTERNAL_BASE_URL={{.IMAP_GATEWAY_API_INTERNAL_BASE_URL}} \
+          -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
+          -e INTERNAL_MTLS_CLIENT_CERT=/certs/internal-client.crt \
+          -e INTERNAL_MTLS_CLIENT_KEY=/certs/internal-client.key \
           -v {{.IMAP_GATEWAY_CERTS_VOLUME}}:/certs:ro \
           -v {{.IMAP_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
           $DEV_MOUNTS \

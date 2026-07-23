@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,19 +12,70 @@ import (
 )
 
 // Client is the REST API client used by all gateway protocol handlers.
+//
+// It holds TWO destinations, because the API can expose two listeners:
+//
+//   - the public client (baseURL/httpClient) serves every token/credential
+//     route — Login and all Bearer-token user routes (folders, messages, quota,
+//     …). These are authenticated by JWT or user credentials, so they do NOT
+//     use mTLS and are served on the public listener.
+//   - the internal client (internalBaseURL/internalHTTPClient) serves ONLY the
+//     two tokenless machine-to-machine routes, CheckMailbox and DeliverMessage.
+//     When internal mTLS is configured this points at the API's dedicated mTLS
+//     listener and presents the gateway client certificate.
+//
+// Routing is therefore PER-ENDPOINT, not per-client: switching the whole base
+// URL to the internal listener would 404 every user route (breaking IMAP/POP3
+// retrieval and SMTP submission). When internal mTLS is NOT configured, the
+// internal client is the same as the public client, so behavior is byte-for-
+// byte unchanged.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+
+	internalBaseURL    string
+	internalHTTPClient *http.Client
 }
 
-// New creates a new API client pointing at the given base URL.
-func New(baseURL string) *Client {
-	return &Client{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+// Option configures a Client at construction time.
+type Option func(*Client)
+
+// WithInternalMTLS routes the two tokenless machine calls (CheckMailbox,
+// DeliverMessage) to a separate internal base URL over a transport that
+// presents the gateway client certificate (and verifies the API server cert
+// against the internal CA in tlsCfg). Every other method keeps using the public
+// base URL/transport unchanged. With no option the internal client equals the
+// public client, so plain-HTTP (non-mTLS) deployments are unaffected.
+func WithInternalMTLS(internalBaseURL string, tlsCfg *tls.Config) Option {
+	return func(c *Client) {
+		// Clone the default transport so connection-pooling/timeout defaults are
+		// preserved; only the TLS config is overridden.
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = tlsCfg
+		c.internalBaseURL = internalBaseURL
+		c.internalHTTPClient = &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: transport,
+		}
 	}
+}
+
+// New creates a new API client pointing at the given (public) base URL. Options
+// may add a separate internal mTLS destination for the two machine routes.
+func New(baseURL string, opts ...Option) *Client {
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	c := &Client{
+		baseURL:    baseURL,
+		httpClient: httpClient,
+		// Default: the two machine routes share the public client/base URL, so
+		// default-off behavior is exactly as before.
+		internalBaseURL:    baseURL,
+		internalHTTPClient: httpClient,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────
@@ -70,10 +122,12 @@ type MailboxCheckResponse struct {
 	} `json:"data"`
 }
 
-// CheckMailbox verifies a recipient address exists.
+// CheckMailbox verifies a recipient address exists. This is a tokenless
+// machine-to-machine call, so it goes to the internal (mTLS, when configured)
+// destination rather than the public listener.
 func (c *Client) CheckMailbox(address string) (*MailboxCheckResponse, error) {
 	var resp MailboxCheckResponse
-	if err := c.get("/api/mailboxes?address="+url.QueryEscape(address), &resp); err != nil {
+	if err := c.getInternal("/api/mailboxes?address="+url.QueryEscape(address), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -107,10 +161,12 @@ type DeliverResponse struct {
 	} `json:"data"`
 }
 
-// DeliverMessage delivers a message to a local mailbox.
+// DeliverMessage delivers a message to a local mailbox. This is a tokenless
+// machine-to-machine call, so it goes to the internal (mTLS, when configured)
+// destination rather than the public listener.
 func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
 	var resp DeliverResponse
-	if err := c.post("/api/v1/messages/deliver", req, &resp); err != nil {
+	if err := c.postInternal("/api/v1/messages/deliver", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -490,10 +546,37 @@ func (c *Client) ListBans(token string) (*BanListResponse, error) {
 
 // ── HTTP helpers ──────────────────────────────────────────────────────
 
+// get performs a tokenless GET against the public destination.
 func (c *Client) get(path string, out interface{}) error {
 	resp, err := c.httpClient.Get(c.baseURL + path)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	return c.decodeResponse(resp, out)
+}
+
+// getInternal performs a tokenless GET against the internal destination
+// (the mTLS listener when configured, else the public client — see Client).
+func (c *Client) getInternal(path string, out interface{}) error {
+	resp, err := c.internalHTTPClient.Get(c.internalBaseURL + path)
+	if err != nil {
+		return fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	return c.decodeResponse(resp, out)
+}
+
+// postInternal performs a tokenless POST against the internal destination
+// (the mTLS listener when configured, else the public client — see Client).
+func (c *Client) postInternal(path string, body interface{}, out interface{}) error {
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	resp, err := c.internalHTTPClient.Post(c.internalBaseURL+path, "application/json", bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("POST %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 	return c.decodeResponse(resp, out)

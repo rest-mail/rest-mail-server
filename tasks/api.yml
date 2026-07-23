@@ -39,6 +39,12 @@ vars:
   API_ENVIRONMENT: '{{.API_ENVIRONMENT | default "development"}}'
   API_MAILNET_ONLY: '{{.API_MAILNET_ONLY | default "false"}}'
   API_PROXY_HOST: '{{.API_PROXY_HOST | default "restmail.localhost"}}'
+  # Internal mTLS (gateway → API). Off by default; when "true" the API serves
+  # the gateway-facing routes on API_INTERNAL_MTLS_PORT requiring a client cert
+  # from the internal CA. Certs are provisioned into the certs volume by
+  # `task instance:mtls:issue` at the fixed /certs/internal-* paths.
+  API_INTERNAL_MTLS: '{{.API_INTERNAL_MTLS | default "false"}}'
+  API_INTERNAL_MTLS_PORT: '{{.API_INTERNAL_MTLS_PORT | default "8443"}}'
 
 tasks:
 
@@ -108,6 +114,11 @@ tasks:
           -e MASTER_KEY={{.API_MASTER_KEY}} \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
           -e LOG_LEVEL={{.API_LOG_LEVEL}} \
+          -e INTERNAL_MTLS_ENABLED={{.API_INTERNAL_MTLS}} \
+          -e INTERNAL_MTLS_PORT={{.API_INTERNAL_MTLS_PORT}} \
+          -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
+          -e INTERNAL_MTLS_SERVER_CERT=/certs/internal-server.crt \
+          -e INTERNAL_MTLS_SERVER_KEY=/certs/internal-server.key \
           {{.API_IMAGE}} >$OUTPUT 2>&1
 
   down:
