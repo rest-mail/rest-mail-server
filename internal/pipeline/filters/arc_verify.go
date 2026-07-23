@@ -7,14 +7,16 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/restmail/restmail/internal/dkim"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
 // arcVerifyFilter verifies ARC (Authenticated Received Chain) headers on inbound
-// messages per RFC 8617. It validates chain structure (instance numbering, cv values,
-// header set completeness) and adds arc=pass/fail/none to Authentication-Results.
-// Full cryptographic signature verification is noted as neutral since it requires
-// DNS lookups for public keys (similar to DKIM).
+// messages per RFC 8617. It validates chain structure (instance numbering, cv
+// values, header set completeness) and, when the raw message is available,
+// cryptographically verifies the chain (most recent ARC-Message-Signature over
+// the message plus every ARC-Seal over the header chain, via internal/dkim),
+// adding arc=pass/fail/none to Authentication-Results.
 type arcVerifyFilter struct{}
 
 func init() {
@@ -43,7 +45,7 @@ var instanceRe = regexp.MustCompile(`\bi=(\d+)\b`)
 // cvRe matches the cv= tag in ARC-Seal headers.
 var cvRe = regexp.MustCompile(`\bcv=(none|pass|fail)\b`)
 
-func (f *arcVerifyFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
 
 	// Ensure maps are initialised
@@ -136,8 +138,23 @@ func (f *arcVerifyFilter) Execute(_ context.Context, email *pipeline.EmailJSON) 
 	}
 	sort.Ints(instances)
 
-	// Validate chain
+	// Validate chain structure first (instance continuity, cv values).
 	result, detail := validateARCChain(instances, sets)
+
+	// If the structure is sound and we have the raw source, verify the chain
+	// cryptographically: the most recent ARC-Message-Signature over the message
+	// plus every ARC-Seal over the header chain (RFC 8617 §5.2). Signing a
+	// reconstructed EmailJSON can't reproduce the signed bytes, so — as with
+	// dkim_verify — real verification requires the raw message threaded through
+	// the pipeline as metadata.
+	if result == "pass" {
+		if raw := email.Metadata["raw_message"]; raw != "" {
+			cv, reason := dkim.VerifyARC(ctx, []byte(raw), nil)
+			result, detail = cv, reason
+		} else {
+			detail = "chain structure valid; cryptographic verification skipped (no raw message)"
+		}
+	}
 
 	addARCAuthResult(&modified, result)
 	modified.Metadata["arc_status"] = result
@@ -211,9 +228,9 @@ func validateARCChain(instances []int, sets map[int]*arcHeaderSet) (string, stri
 		return "fail", fmt.Sprintf("most recent ARC-Seal (i=%d) cv=%s (expected pass)", instances[n-1], lastCV)
 	}
 
-	// Structural validation passed. Cryptographic verification is not performed
-	// because it requires DNS lookups for public keys (like DKIM verification).
-	return "pass", fmt.Sprintf("chain valid: %d set(s), structure verified (crypto verification neutral — requires DNS key lookup)", n)
+	// Structure is sound. The caller performs cryptographic verification when the
+	// raw message is available (see Execute).
+	return "pass", fmt.Sprintf("chain structure valid: %d set(s)", n)
 }
 
 // parseInstance extracts the i= value from an ARC header.
