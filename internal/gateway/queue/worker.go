@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rest-mail/mtasts"
 	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/mtasts"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

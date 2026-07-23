@@ -17,7 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/digest"
-	"github.com/restmail/restmail/internal/dmarc"
+	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
 )
 
@@ -137,7 +137,7 @@ func main() {
 
 	// Start DMARC aggregate (rua) reporter — emits RFC 7489 reports for the
 	// per-message evaluations captured by dmarc_check.
-	dmarcReporter := dmarc.NewReporter(database, digestInterval, cfg.GatewayHostname)
+	dmarcReporter := dmarcreport.NewReporter(database, digestInterval, cfg.GatewayHostname)
 	dmarcReporter.Start()
 
 	// Create HTTP server

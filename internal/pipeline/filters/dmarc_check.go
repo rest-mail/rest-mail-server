@@ -3,9 +3,9 @@ package filters
 import (
 	"context"
 	"fmt"
-	"net"
 	"strings"
 
+	"github.com/rest-mail/dmarc"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 )
@@ -54,7 +54,7 @@ func NewDMARCCheck(_ []byte) (pipeline.Filter, error) {
 	return &dmarcCheckFilter{}, nil
 }
 
-func (f *dmarcCheckFilter) Name() string             { return "dmarc_check" }
+func (f *dmarcCheckFilter) Name() string              { return "dmarc_check" }
 func (f *dmarcCheckFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
@@ -101,7 +101,7 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}
 
 	// Parse DMARC policy
-	policy := parseDMARCPolicy(dmarcRecord)
+	policy := dmarc.ParsePolicy(dmarcRecord)
 
 	// Check Authentication-Results from both Extra and Raw maps
 	authResults := ""
@@ -127,7 +127,7 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		// Look for smtp.mailfrom= in auth results
 		spfDomain := extractAuthDomain(authResults, "smtp.mailfrom=")
 		if spfDomain != "" {
-			spfAligned = domainsAlign(spfDomain, domain)
+			spfAligned = dmarc.Aligned(spfDomain, domain)
 		}
 	}
 
@@ -141,7 +141,7 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	dkimAligned := false
 	if dkimPass {
 		if dkimDomain := extractAuthDomain(authResults, "header.d="); dkimDomain != "" {
-			dkimAligned = domainsAlign(dkimDomain, domain)
+			dkimAligned = dmarc.Aligned(dkimDomain, domain)
 		}
 	}
 
@@ -226,30 +226,10 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}
 }
 
-// lookupDMARC is a package var so tests can stub DNS.
-var lookupDMARC = realLookupDMARC
-
-func realLookupDMARC(domain string) (string, error) {
-	records, err := net.LookupTXT("_dmarc." + domain)
-	if err != nil {
-		return "", err
-	}
-	for _, r := range records {
-		if strings.HasPrefix(r, "v=DMARC1") {
-			return r, nil
-		}
-	}
-	return "", nil
-}
-
-func parseDMARCPolicy(record string) string {
-	for _, part := range strings.Split(record, ";") {
-		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "p=") {
-			return strings.TrimPrefix(part, "p=")
-		}
-	}
-	return "none"
+// lookupDMARC is a package var so tests can stub DNS. It fetches the domain's
+// DMARC record via the dmarc library using system DNS.
+var lookupDMARC = func(domain string) (string, error) {
+	return dmarc.Lookup(domain, nil)
 }
 
 // extractAuthDomain extracts a domain from Authentication-Results for a given key.
@@ -270,20 +250,4 @@ func extractAuthDomain(authResults, key string) string {
 		return rest[atIdx+1:]
 	}
 	return rest
-}
-
-// domainsAlign checks if two domains are aligned per DMARC relaxed alignment.
-// Relaxed alignment: the organizational domains must match.
-// For simplicity, we check if one domain is a suffix of the other or they're equal.
-func domainsAlign(authDomain, fromDomain string) bool {
-	authDomain = strings.ToLower(authDomain)
-	fromDomain = strings.ToLower(fromDomain)
-	if authDomain == fromDomain {
-		return true
-	}
-	// Relaxed: check organizational domain (simple: check if one is subdomain of other)
-	if strings.HasSuffix(authDomain, "."+fromDomain) || strings.HasSuffix(fromDomain, "."+authDomain) {
-		return true
-	}
-	return false
 }

@@ -1,4 +1,10 @@
-package dmarc
+// Package dmarcreport runs the periodic worker that emits RFC 7489 DMARC
+// aggregate (rua) reports for the per-message evaluations captured by the
+// dmarc_check filter. Report XML generation and DMARC record parsing live in
+// github.com/rest-mail/dmarc; this package owns the scheduling, persistence,
+// and delivery wiring (reading captured evaluations, finding the rua address,
+// and queueing the report email for outbound delivery).
+package dmarcreport
 
 import (
 	"encoding/base64"
@@ -8,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rest-mail/dmarc"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -99,19 +106,19 @@ func (r *Reporter) reportDomain(domain string, now time.Time) error {
 	begin := records[0].CreatedAt.Unix()
 	end := now.Unix()
 	reportID := fmt.Sprintf("%d.%s@%s", begin, domain, r.orgDomain)
-	meta := ReportMetadata{
+	meta := dmarc.ReportMetadata{
 		OrgName:   r.orgDomain,
 		Email:     "dmarc-reports@" + r.orgDomain,
 		ReportID:  reportID,
-		DateRange: DateRange{Begin: begin, End: end},
+		DateRange: dmarc.DateRange{Begin: begin, End: end},
 	}
-	policy := PolicyPublished{Domain: domain, ADKIM: "r", ASPF: "r", P: records[0].Policy, PCT: 100}
+	policy := dmarc.PolicyPublished{Domain: domain, ADKIM: "r", ASPF: "r", P: records[0].Policy, PCT: 100}
 
-	xmlBytes, err := BuildReport(meta, policy, records)
+	xmlBytes, err := dmarc.BuildReport(meta, policy, aggregateRecords(records))
 	if err != nil {
 		return err
 	}
-	gz, err := Gzip(xmlBytes)
+	gz, err := dmarc.Gzip(xmlBytes)
 	if err != nil {
 		return err
 	}
@@ -129,6 +136,24 @@ func (r *Reporter) reportDomain(domain string, now time.Time) error {
 	}
 	slog.Info("dmarc reporter: queued aggregate report", "domain", domain, "rua", rua, "records", len(records))
 	return markReported()
+}
+
+// aggregateRecords converts stored evaluations into the library's neutral input.
+func aggregateRecords(records []models.DMARCAggregateRecord) []dmarc.AggregateRecord {
+	out := make([]dmarc.AggregateRecord, len(records))
+	for i, r := range records {
+		out[i] = dmarc.AggregateRecord{
+			Domain:      r.Domain,
+			SourceIP:    r.SourceIP,
+			HeaderFrom:  r.HeaderFrom,
+			Disposition: r.Disposition,
+			DKIMResult:  r.DKIMResult,
+			DKIMAligned: r.DKIMAligned,
+			SPFResult:   r.SPFResult,
+			SPFAligned:  r.SPFAligned,
+		}
+	}
+	return out
 }
 
 func (r *Reporter) lookupRUA(domain string) string {

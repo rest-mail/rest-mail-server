@@ -1,4 +1,4 @@
-package dmarc
+package dmarcreport
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rest-mail/dmarc"
 )
 
 func TestParseRUA(t *testing.T) {
@@ -28,7 +30,7 @@ func TestParseRUA(t *testing.T) {
 func TestBuildReportEmail_AttachmentDecodes(t *testing.T) {
 	// The gzipped report must survive the MIME/base64 wrapping.
 	original := []byte("<?xml version=\"1.0\"?><feedback>report</feedback>")
-	gz, err := Gzip(original)
+	gz, err := dmarc.Gzip(original)
 	if err != nil {
 		t.Fatal(err)
 	}

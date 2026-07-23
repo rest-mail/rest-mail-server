@@ -1,9 +1,14 @@
 package filters
 
+// The Sieve parser and interpreter live in github.com/rest-mail/sieve, together
+// with the full evaluation-semantics test suite. The tests here cover what this
+// filter owns: the pipeline wiring (NewSieve/Execute, FilterResult mapping for
+// discard/reject), the metadata mapping of each action, and the app-specific
+// vacation de-duplication.
+
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/restmail/restmail/internal/pipeline"
@@ -45,7 +50,15 @@ func runSieve(t *testing.T, script string, email *pipeline.EmailJSON) *pipeline.
 	return result
 }
 
-// ── Existing feature regression tests ────────────────────────────────
+// folderOf returns the fileinto target recorded on a filter result, or "".
+func folderOf(r *pipeline.FilterResult) string {
+	if r == nil || r.Message == nil {
+		return ""
+	}
+	return r.Message.Metadata["deliver_to_folder"]
+}
+
+// ── Filter wiring ────────────────────────────────────────────────────
 
 func TestSieve_NoScript(t *testing.T) {
 	f, err := NewSieve(nil)
@@ -115,253 +128,58 @@ func TestSieve_Redirect(t *testing.T) {
 	}
 }
 
-// ── Body extension tests ─────────────────────────────────────────────
+// ── fileinto :create ─────────────────────────────────────────────────
 
-func TestSieve_BodyContains(t *testing.T) {
-	script := `require "body";
-if body :contains "test message" {
-  fileinto "BodyMatch";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Action != pipeline.ActionContinue {
-		t.Fatalf("expected ActionContinue, got %q", result.Action)
+func TestSieve_FileintoCreate(t *testing.T) {
+	script := `require ["fileinto", "mailbox"];
+if header :contains "Subject" "test" { fileinto :create "Archive/2026"; }`
+	r := runSieve(t, script, sieveEmail())
+	if folderOf(r) != "Archive/2026" {
+		t.Errorf("expected folder Archive/2026, got %q", folderOf(r))
 	}
-	if result.Message.Metadata["deliver_to_folder"] != "BodyMatch" {
-		t.Errorf("expected deliver_to_folder=BodyMatch, got %q", result.Message.Metadata["deliver_to_folder"])
+	if r.Message.Metadata["deliver_to_folder_create"] != "true" {
+		t.Errorf("expected deliver_to_folder_create=true, got %q", r.Message.Metadata["deliver_to_folder_create"])
 	}
 }
 
-func TestSieve_BodyContains_NoMatch(t *testing.T) {
-	script := `require "body";
-if body :contains "nonexistent phrase" {
-  fileinto "ShouldNotMatch";
+// ── imap4flags ───────────────────────────────────────────────────────
+
+func TestSieve_SetAndAddFlag(t *testing.T) {
+	script := `require "imap4flags";
+if true {
+  setflag "work";
+  addflag "urgent";
+  addflag "work";
 }`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message != nil && result.Message.Metadata["deliver_to_folder"] == "ShouldNotMatch" {
-		t.Error("body :contains should not have matched")
+	r := runSieve(t, script, sieveEmail())
+	if got := r.Message.Metadata["imap_flags"]; got != "work urgent" {
+		t.Errorf("expected flags 'work urgent' (deduped), got %q", got)
 	}
 }
 
-func TestSieve_BodyContains_HTMLStripped(t *testing.T) {
-	script := `require "body";
-if body :contains "important" {
-  fileinto "HTMLMatch";
+func TestSieve_RemoveFlag(t *testing.T) {
+	script := `require "imap4flags";
+if true {
+  setflag ["a", "b", "c"];
+  removeflag "b";
 }`
-	email := sieveEmail()
-	email.Body.ContentType = "text/html"
-	email.Body.Content = "<html><body><b>This is important</b> content.</body></html>"
-
-	result := runSieve(t, script, email)
-	if result.Action != pipeline.ActionContinue {
-		t.Fatalf("expected ActionContinue, got %q", result.Action)
-	}
-	if result.Message.Metadata["deliver_to_folder"] != "HTMLMatch" {
-		t.Errorf("expected deliver_to_folder=HTMLMatch, got %q", result.Message.Metadata["deliver_to_folder"])
+	r := runSieve(t, script, sieveEmail())
+	if got := r.Message.Metadata["imap_flags"]; got != "a c" {
+		t.Errorf("expected flags 'a c' after removeflag, got %q", got)
 	}
 }
 
-func TestSieve_BodyContains_MultipartPlainPreferred(t *testing.T) {
-	script := `require "body";
-if body :contains "plain text content" {
-  fileinto "PlainMatch";
-}`
-	email := sieveEmail()
-	email.Body.ContentType = "multipart/alternative"
-	email.Body.Content = ""
-	email.Body.Parts = []pipeline.Body{
-		{ContentType: "text/plain", Content: "This is plain text content."},
-		{ContentType: "text/html", Content: "<p>This is HTML content.</p>"},
-	}
-
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "PlainMatch" {
-		t.Errorf("expected body match on text/plain part, got folder=%q", result.Message.Metadata["deliver_to_folder"])
+func TestSieve_SetFlagEscaped(t *testing.T) {
+	// "\\Seen" in source is the IMAP system flag \Seen.
+	script := `require "imap4flags";
+if true { setflag "\\Seen"; }`
+	r := runSieve(t, script, sieveEmail())
+	if got := r.Message.Metadata["imap_flags"]; got != `\Seen` {
+		t.Errorf(`expected flag '\Seen', got %q`, got)
 	}
 }
 
-func TestSieve_BodyIs(t *testing.T) {
-	script := `require "body";
-if body :is "Hello, this is a test message body." {
-  fileinto "ExactMatch";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "ExactMatch" {
-		t.Errorf("expected deliver_to_folder=ExactMatch, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-// ── Regex extension tests ────────────────────────────────────────────
-
-func TestSieve_HeaderRegex(t *testing.T) {
-	script := `require "regex";
-if header :regex "Subject" ".*[Tt]est.*" {
-  fileinto "RegexMatch";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "RegexMatch" {
-		t.Errorf("expected deliver_to_folder=RegexMatch, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_HeaderRegex_NoMatch(t *testing.T) {
-	script := `require "regex";
-if header :regex "Subject" "^URGENT:.*" {
-  fileinto "UrgentFolder";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message != nil && result.Message.Metadata["deliver_to_folder"] == "UrgentFolder" {
-		t.Error("regex should not have matched")
-	}
-}
-
-func TestSieve_HeaderRegex_CaseInsensitive(t *testing.T) {
-	script := `require "regex";
-if header :regex "Subject" "^test message$" {
-  fileinto "CaseInsensitive";
-}`
-	email := sieveEmail()
-	email.Headers.Subject = "Test Message"
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "CaseInsensitive" {
-		t.Errorf("expected case-insensitive regex match, got folder=%q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_BodyRegex(t *testing.T) {
-	script := `require ["body", "regex"];
-if body :regex "test.*body" {
-  fileinto "BodyRegex";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "BodyRegex" {
-		t.Errorf("expected deliver_to_folder=BodyRegex, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_AddressRegex(t *testing.T) {
-	script := `require "regex";
-if address :regex "From" "sender@.*\.com" {
-  fileinto "AddressRegex";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "AddressRegex" {
-		t.Errorf("expected deliver_to_folder=AddressRegex, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_InvalidRegex_Skipped(t *testing.T) {
-	script := `require "regex";
-if header :regex "Subject" "[invalid" {
-  fileinto "ShouldNotMatch";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	// Invalid regex should not cause an error, just not match.
-	if result.Message != nil && result.Message.Metadata["deliver_to_folder"] == "ShouldNotMatch" {
-		t.Error("invalid regex should not match")
-	}
-}
-
-// ── Envelope extension tests ─────────────────────────────────────────
-
-func TestSieve_EnvelopeFrom_Is(t *testing.T) {
-	script := `require "envelope";
-if envelope :is "from" "sender@example.com" {
-  fileinto "EnvelopeMatch";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "EnvelopeMatch" {
-		t.Errorf("expected deliver_to_folder=EnvelopeMatch, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_EnvelopeTo_Is(t *testing.T) {
-	script := `require "envelope";
-if envelope :is "to" "recipient@example.com" {
-  fileinto "EnvelopeTo";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "EnvelopeTo" {
-		t.Errorf("expected deliver_to_folder=EnvelopeTo, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_EnvelopeFrom_Contains(t *testing.T) {
-	script := `require "envelope";
-if envelope :contains "from" "example.com" {
-  fileinto "EnvelopeDomain";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "EnvelopeDomain" {
-		t.Errorf("expected deliver_to_folder=EnvelopeDomain, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_EnvelopeFrom_NoMatch(t *testing.T) {
-	script := `require "envelope";
-if envelope :is "from" "other@example.com" {
-  fileinto "ShouldNotMatch";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message != nil && result.Message.Metadata["deliver_to_folder"] == "ShouldNotMatch" {
-		t.Error("envelope :is should not have matched")
-	}
-}
-
-func TestSieve_EnvelopeFrom_Metadata(t *testing.T) {
-	script := `require "envelope";
-if envelope :is "from" "gateway-sender@example.com" {
-  fileinto "MetadataEnvelope";
-}`
-	email := sieveEmail()
-	email.Metadata = map[string]string{
-		"envelope_from": "gateway-sender@example.com",
-	}
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "MetadataEnvelope" {
-		t.Errorf("expected deliver_to_folder=MetadataEnvelope, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_EnvelopeTo_Metadata(t *testing.T) {
-	script := `require "envelope";
-if envelope :is "to" "special-rcpt@example.com" {
-  fileinto "MetadataEnvelopeTo";
-}`
-	email := sieveEmail()
-	email.Metadata = map[string]string{
-		"envelope_to": "special-rcpt@example.com",
-	}
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "MetadataEnvelopeTo" {
-		t.Errorf("expected deliver_to_folder=MetadataEnvelopeTo, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-func TestSieve_EnvelopeRegex(t *testing.T) {
-	script := `require ["envelope", "regex"];
-if envelope :regex "from" ".*@example\.com" {
-  fileinto "EnvelopeRegex";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "EnvelopeRegex" {
-		t.Errorf("expected deliver_to_folder=EnvelopeRegex, got %q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-// ── Vacation extension tests ─────────────────────────────────────────
+// ── Vacation metadata mapping and de-duplication ─────────────────────
 
 func TestSieve_Vacation_Basic(t *testing.T) {
 	script := `require "vacation";
@@ -387,37 +205,6 @@ vacation :days 7 :subject "Out of Office" "I am currently on vacation.";`
 	}
 	if m["vacation_days"] != "7" {
 		t.Errorf("expected vacation_days=7, got %q", m["vacation_days"])
-	}
-}
-
-func TestSieve_Vacation_DefaultDays(t *testing.T) {
-	script := `require "vacation";
-vacation :subject "Away" "Gone fishing.";`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	m := result.Message.Metadata
-	if m["vacation_days"] != "7" {
-		t.Errorf("expected default vacation_days=7, got %q", m["vacation_days"])
-	}
-}
-
-func TestSieve_Vacation_Conditional(t *testing.T) {
-	script := `require "vacation";
-if header :contains "Subject" "Test" {
-  vacation :days 3 :subject "Auto-reply" "Got your test message.";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-
-	if result.Message == nil {
-		t.Fatal("expected non-nil message")
-	}
-	m := result.Message.Metadata
-	if m["vacation_reply_body"] != "Got your test message." {
-		t.Errorf("expected vacation body, got %q", m["vacation_reply_body"])
-	}
-	if m["vacation_days"] != "3" {
-		t.Errorf("expected vacation_days=3, got %q", m["vacation_days"])
 	}
 }
 
@@ -451,26 +238,7 @@ vacation :subject "Out" "Away.";`
 	}
 }
 
-func TestSieve_Vacation_MultiLine(t *testing.T) {
-	script := `require "vacation";
-vacation :days 14
-  :subject "On Leave"
-  "I will be out of office until March 1st.";`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	m := result.Message.Metadata
-	if m["vacation_reply_subject"] != "On Leave" {
-		t.Errorf("expected subject 'On Leave', got %q", m["vacation_reply_subject"])
-	}
-	if m["vacation_reply_body"] != "I will be out of office until March 1st." {
-		t.Errorf("expected body about March, got %q", m["vacation_reply_body"])
-	}
-	if m["vacation_days"] != "14" {
-		t.Errorf("expected vacation_days=14, got %q", m["vacation_days"])
-	}
-}
-
-// ── Notify extension tests ───────────────────────────────────────────
+// ── Notify metadata mapping ──────────────────────────────────────────
 
 func TestSieve_Notify_Basic(t *testing.T) {
 	script := `require "notify";
@@ -493,178 +261,7 @@ notify :method "mailto:admin@example.com" :message "New mail received";`
 	}
 }
 
-func TestSieve_Notify_Conditional(t *testing.T) {
-	script := `require "notify";
-if header :contains "Subject" "URGENT" {
-  notify :method "mailto:oncall@example.com" :message "Urgent mail arrived";
-}`
-	email := sieveEmail()
-	email.Headers.Subject = "URGENT: Server down"
-	result := runSieve(t, script, email)
-
-	m := result.Message.Metadata
-	if m["notify_method"] != "mailto:oncall@example.com" {
-		t.Errorf("expected notify for urgent, got %q", m["notify_method"])
-	}
-}
-
-func TestSieve_Notify_NoMatch(t *testing.T) {
-	script := `require "notify";
-if header :contains "Subject" "URGENT" {
-  notify :method "mailto:oncall@example.com" :message "Urgent mail arrived";
-}`
-	email := sieveEmail() // Subject is "Test message", no match
-	result := runSieve(t, script, email)
-
-	if result.Message != nil && result.Message.Metadata["notify_method"] != "" {
-		t.Error("notify should not have been set for non-matching condition")
-	}
-}
-
-func TestSieve_Notify_MultiLine(t *testing.T) {
-	script := `require "notify";
-notify :method "mailto:alerts@example.com"
-  :message "Alert: new message arrived";`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	m := result.Message.Metadata
-	if m["notify_method"] != "mailto:alerts@example.com" {
-		t.Errorf("expected notify_method from multi-line, got %q", m["notify_method"])
-	}
-	if m["notify_message"] != "Alert: new message arrived" {
-		t.Errorf("expected notify_message from multi-line, got %q", m["notify_message"])
-	}
-}
-
-// ── Combined extension tests ─────────────────────────────────────────
-
-func TestSieve_CombinedExtensions(t *testing.T) {
-	script := `require ["vacation", "notify", "body", "envelope"];
-if body :contains "urgent" {
-  notify :method "mailto:admin@example.com" :message "Urgent body detected";
-}
-if envelope :is "from" "vip@important.com" {
-  fileinto "VIP";
-}
-vacation :days 5 :subject "Away" "On vacation.";`
-
-	email := sieveEmail()
-	email.Body.Content = "This is an urgent request."
-	email.Envelope.MailFrom = "vip@important.com"
-
-	result := runSieve(t, script, email)
-	m := result.Message.Metadata
-
-	// Notify should be set from body match.
-	if m["notify_method"] != "mailto:admin@example.com" {
-		t.Errorf("expected notify from body match, got %q", m["notify_method"])
-	}
-	// Fileinto should be set from envelope match.
-	if m["deliver_to_folder"] != "VIP" {
-		t.Errorf("expected fileinto VIP from envelope, got %q", m["deliver_to_folder"])
-	}
-	// Vacation should be set.
-	if m["vacation_reply_to"] != "vip@important.com" {
-		t.Errorf("expected vacation_reply_to, got %q", m["vacation_reply_to"])
-	}
-}
-
-func TestSieve_Stop(t *testing.T) {
-	script := `require "body";
-if body :contains "test" {
-  fileinto "First";
-  stop;
-}
-if body :contains "test" {
-  fileinto "Second";
-}`
-	email := sieveEmail()
-	result := runSieve(t, script, email)
-	if result.Message.Metadata["deliver_to_folder"] != "First" {
-		t.Errorf("expected stop to prevent second rule, got folder=%q", result.Message.Metadata["deliver_to_folder"])
-	}
-}
-
-// ── extractBodyText tests ────────────────────────────────────────────
-
-func TestExtractBodyText_PlainText(t *testing.T) {
-	email := &pipeline.EmailJSON{
-		Body: pipeline.Body{
-			ContentType: "text/plain",
-			Content:     "Hello world",
-		},
-	}
-	got := extractBodyText(email)
-	if got != "Hello world" {
-		t.Errorf("expected 'Hello world', got %q", got)
-	}
-}
-
-func TestExtractBodyText_HTML(t *testing.T) {
-	email := &pipeline.EmailJSON{
-		Body: pipeline.Body{
-			ContentType: "text/html",
-			Content:     "<p>Hello <b>world</b></p>",
-		},
-	}
-	got := extractBodyText(email)
-	if !strings.Contains(got, "Hello") || !strings.Contains(got, "world") {
-		t.Errorf("expected stripped HTML to contain 'Hello' and 'world', got %q", got)
-	}
-}
-
-func TestExtractBodyText_Multipart(t *testing.T) {
-	email := &pipeline.EmailJSON{
-		Body: pipeline.Body{
-			ContentType: "multipart/alternative",
-			Parts: []pipeline.Body{
-				{ContentType: "text/plain", Content: "Plain version"},
-				{ContentType: "text/html", Content: "<p>HTML version</p>"},
-			},
-		},
-	}
-	got := extractBodyText(email)
-	if got != "Plain version" {
-		t.Errorf("expected 'Plain version' (prefer text/plain), got %q", got)
-	}
-}
-
-func TestExtractBodyText_MultipartHTMLOnly(t *testing.T) {
-	email := &pipeline.EmailJSON{
-		Body: pipeline.Body{
-			ContentType: "multipart/alternative",
-			Parts: []pipeline.Body{
-				{ContentType: "text/html", Content: "<p>Only HTML</p>"},
-			},
-		},
-	}
-	got := extractBodyText(email)
-	if !strings.Contains(got, "Only HTML") {
-		t.Errorf("expected stripped HTML content, got %q", got)
-	}
-}
-
-// ── stripHTMLTags tests ──────────────────────────────────────────────
-
-func TestStripHTMLTags(t *testing.T) {
-	tests := []struct {
-		input    string
-		contains string
-	}{
-		{"<p>Hello</p>", "Hello"},
-		{"<b>Bold</b> and <i>italic</i>", "Bold"},
-		{"No tags at all", "No tags at all"},
-		{"<div><span>Nested</span></div>", "Nested"},
-	}
-	for _, tc := range tests {
-		got := stripHTMLTags(tc.input)
-		if !strings.Contains(got, tc.contains) {
-			t.Errorf("stripHTMLTags(%q) = %q, expected to contain %q", tc.input, got, tc.contains)
-		}
-	}
-}
-
-// ── Validation tests ─────────────────────────────────────────────────
+// ── Validation wrapper ───────────────────────────────────────────────
 
 func TestValidateSieve_Valid(t *testing.T) {
 	scripts := []string{
@@ -689,6 +286,12 @@ if envelope :is "from" "a@b.com" {
 		if err := ValidateSieve(s); err != nil {
 			t.Errorf("ValidateSieve should accept valid script, got error: %v\nScript: %s", err, s)
 		}
+	}
+}
+
+func TestValidateSieve_Invalid(t *testing.T) {
+	if err := ValidateSieve(`if true { keep;`); err == nil {
+		t.Error("expected ValidateSieve to reject an unterminated block")
 	}
 }
 
@@ -717,4 +320,3 @@ func TestVacationDedupKey_Different(t *testing.T) {
 		t.Error("expected different dedup keys for different senders")
 	}
 }
-
