@@ -2,6 +2,8 @@
 
 A full-featured mail server platform that exposes email functionality through a REST API while maintaining protocol-level indistinguishability from traditional Postfix/Dovecot mail servers. Built in Go with a React webmail frontend, RESTMAIL gives you programmatic control over every aspect of email delivery, filtering, and administration.
 
+The application itself is deliberately thin: the protocol engines and email-authentication logic live in a family of focused, standalone Go libraries (published under the [`rest-mail`](https://github.com/rest-mail) org), and this repo composes them — implementing each library's `Backend` interface on top of the REST API.
+
 ## Features
 
 **Core Email**
@@ -13,19 +15,20 @@ A full-featured mail server platform that exposes email functionality through a 
 
 **Security and Authentication**
 - TLS with SNI support and DB-backed certificate management
-- DKIM signing, SPF verification, DMARC policy enforcement
+- DKIM signing, SPF verification, DMARC policy enforcement with rua aggregate reporting
 - ARC sealing for forwarded messages
-- MTA-STS and TLS-RPT (RFC 8460/8461)
+- MTA-STS and TLS-RPT (RFC 8460/8461), including outbound MTA-STS policy enforcement
 - ACME/Let's Encrypt auto-renewal
 - JWT authentication with bcrypt passwords (Dovecot-compatible `{BLF-CRYPT}` format)
+- Capability-based RBAC enforced on every admin route
 - PROXY protocol support for reverse proxies (HAProxy, nginx)
 - Connection rate limiting, auth ban tracking, fail2ban integration
 
 **Pipeline Engine**
-- 16+ built-in filters: spam scoring, virus scanning, greylisting, DKIM signing, attachment dedup, header rewriting, recipient verification, sender allow/blocklists, vacation responder, and more
+- 20+ built-in filters: email authentication (SPF/DKIM/DMARC/ARC), greylisting, rate and size limits, sender/recipient verification, allow/blocklists, header validation, vacation responder, and more
 - Custom filter support via JavaScript (Node.js sidecar) and Sieve scripts
 - Configurable inbound and outbound pipelines per domain
-- Quarantine with release/delete management
+- Quarantine with release/delete management and periodic digest emails
 
 **Administration**
 - Domain, mailbox, and alias CRUD via REST API
@@ -37,6 +40,27 @@ A full-featured mail server platform that exposes email functionality through a 
 - React webmail with rich text editor, contacts, vacation settings
 - Prometheus metrics endpoint with Grafana dashboards
 - Email client auto-configuration (Mozilla, Microsoft, Apple)
+
+## The Library Family
+
+RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is seven focused libraries (all MIT, tagged `v0.1.0`), each usable entirely on its own:
+
+| Library | What it is |
+|---------|------------|
+| [`rest-mail/pop3`](https://github.com/rest-mail/pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
+| [`rest-mail/imap`](https://github.com/rest-mail/imap) | IMAP server engine with the same bring-a-`Backend` design |
+| [`rest-mail/dkim`](https://github.com/rest-mail/dkim) | RFC 6376 DKIM signing + verification, zero external deps |
+| [`rest-mail/arc`](https://github.com/rest-mail/arc) | RFC 8617 ARC chain verification and sealing |
+| [`rest-mail/dmarc`](https://github.com/rest-mail/dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
+| [`rest-mail/mtasts`](https://github.com/rest-mail/mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
+| [`rest-mail/sieve`](https://github.com/rest-mail/sieve) | RFC 5228 Sieve parser/interpreter |
+
+Where the ecosystem already has a good answer, we use it:
+
+- **SMTP** runs on [`emersion/go-smtp`](https://github.com/emersion/go-smtp), via the [`rest-mail/go-smtp`](https://github.com/rest-mail/go-smtp) fork which adds an `ExtraCaps` hook so the gateway can advertise the custom `RESTMAIL` EHLO capability. The same change is submitted upstream ([emersion/go-smtp#303](https://github.com/emersion/go-smtp/pull/303)); when accepted, the fork retires.
+- **MIME** parsing is [`emersion/go-message`](https://github.com/emersion/go-message); **SASL** is [`emersion/go-sasl`](https://github.com/emersion/go-sasl).
+
+This repo's gateways are thin adapters: `internal/gateway/pop3` and `internal/gateway/imap` implement each library's `Backend`/`Mailbox` interfaces by mapping REST API responses onto the library's neutral types, and `internal/gateway/smtp` provides go-smtp's backend/session over the same API.
 
 ## Quick Start
 
@@ -56,68 +80,76 @@ task testbed:init
 # 2. Bring up the testbed substrate (network, certs volume, dnsmasq)
 task testbed:up
 
-# 3. Start the restmail (mail3.test) product stack
-task dev   # alias for restmail:mail3:up
+# 3. Start the restmail.test product stack
+task dev   # alias for restmail:up (= instance:up)
 ```
 
-`task dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, admin UI, and the project website. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`Taskfile.yml`](Taskfile.yml).
+`task dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `task status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`Taskfile.yml`](Taskfile.yml).
 
 ### Seed Test Data
 
-```bash
-# Run migrations and seed sample domains, mailboxes, and messages
-task db:reset
+Seeding happens automatically during `instance:up`. To re-run or reset:
 
-# Or without Task
-go run ./cmd/migrate && go run ./cmd/seed
+```bash
+task db:seed    # idempotent — seed sample mailboxes and RBAC (inside the api container)
+task db:reset   # destructive — drop the postgres volume, recreate, re-seed
 ```
 
 ### Access Services
 
-| Service        | URL / Port                          |
-|----------------|-------------------------------------|
-| REST API       | http://localhost:8080               |
-| Swagger UI     | http://localhost:8080/api/docs      |
-| Webmail        | http://localhost:3000               |
-| Website        | http://localhost:8090               |
-| SMTP           | localhost:25 / 587 / 465            |
-| IMAP           | localhost:143 / 993                 |
-| POP3           | localhost:110 / 995                 |
-| Health check   | http://localhost:8080/api/health    |
-| Metrics        | http://localhost:8080/metrics       |
+HTTP services are routed by a reverse proxy on `:80` reading `docker-proxy.*` container labels — [`ddt`](https://github.com/antimatter-studios/docker-dev-tools) provides that proxy plus `*.localhost` DNS (`task project:proxy:help` covers the setup, `task project:check` verifies it). Mail protocol ports are published directly on the host.
+
+| Service        | URL / Port                                |
+|----------------|-------------------------------------------|
+| REST API       | http://restmail.localhost/api (direct: http://localhost:8080) |
+| Swagger UI     | http://localhost:8080/api/docs            |
+| Webmail        | http://restmail.localhost/webmail         |
+| Admin UI       | http://restmail.localhost/admin           |
+| SMTP           | localhost:25 / 587 / 465                  |
+| IMAP           | localhost:143 / 993                       |
+| POP3           | localhost:110 / 995                       |
+| Health check   | http://localhost:8080/api/health          |
+| Metrics        | http://localhost:8080/metrics             |
+
+`task status` prints the authoritative table for your machine.
 
 ### Test Domains
 
-This repo only ships **mail3.test** (the RESTMAIL product). For traditional reference instances (mail1.test, mail2.test, ...) running Postfix + Dovecot, see [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver). Reference instances are launched one at a time — `task mailserver:mail1:up`, `task mailserver:mail2:up`, etc. — and you decide how many to run.
+This repo ships no committed instance — the primary test instance (**restmail.test**) is owned by the testbed (`configs/restmail`), and further instances are scaffolded on demand (see [Instances](#instances)). For traditional reference instances (mail1.test, mail2.test, ...) running Postfix + Dovecot, see [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver). Reference instances are launched one at a time, directly against that repo's Taskfile — you decide how many to run:
 
-| Domain       | Type        | Description                        |
-|--------------|-------------|------------------------------------|
-| mail3.test   | RESTMAIL    | Go gateways backed by REST API     |
+```bash
+task mailserver:init                                    # first run only — clone it
+task -d .workspace/reference-mailserver up CONFIG=mail1
+```
+
+| Domain         | Type        | Description                        |
+|----------------|-------------|------------------------------------|
+| restmail.test  | RESTMAIL    | Go gateways backed by REST API     |
 
 ### Test Accounts
 
-After running `task db:seed`, the following accounts are available:
+After seeding, the following accounts are available:
 
 **Admin User (for Console tool):**
 - Username: `admin`
 - Password: `admin123!@`
 - Role: `superadmin` (full access)
 
-**Mail3.test Mailboxes:**
+**restmail.test Mailboxes:**
 | Email | Password | Display Name |
 |-------|----------|--------------|
-| `eve@mail3.test` | `password123` | Eve Wilson |
-| `frank@mail3.test` | `password123` | Frank Miller |
-| `postmaster@mail3.test` | `password123` | Postmaster |
+| `eve@restmail.test` | `password123` | Eve Wilson |
+| `frank@restmail.test` | `password123` | Frank Miller |
+| `postmaster@restmail.test` | `password123` | Postmaster |
 
-**Mail3.test Aliases:**
-- `info@mail3.test` → `eve@mail3.test`
-- `admin@mail3.test` → `eve@mail3.test`
+**restmail.test Aliases:**
+- `info@restmail.test` → `eve@restmail.test`
+- `admin@restmail.test` → `eve@restmail.test`
 
 **RBAC System:**
 The seed command also creates a complete Role-Based Access Control system:
 - **Roles**: `superadmin`, `admin`, `readonly`
-- **Capabilities**: 19 permissions covering domains, mailboxes, users, pipelines, messages, queue, and bans
+- **Capabilities**: 20 permissions covering domains, mailboxes, users, pipelines, messages, queue, and bans — enforced per-route on the admin API
 - See [cmd/seed/main.go](cmd/seed/main.go) for the complete capability list
 
 ## Admin Tools
@@ -171,7 +203,9 @@ See the [upstream README](https://github.com/rest-mail/instantmailcheck#readme) 
 
 ## Architecture
 
-This repo ships **mail3.test only** — the RESTMAIL product. Postfix/Dovecot reference instances live in [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver) and dnsmasq lives in [`rest-mail/testbed`](https://github.com/rest-mail/testbed). All three projects share the `mailnet` Docker network and the `certs` volume that the testbed provides.
+This repo ships the RESTMAIL product only. Postfix/Dovecot reference instances live in [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver) and dnsmasq lives in [`rest-mail/testbed`](https://github.com/rest-mail/testbed). All three projects share the `mailnet` Docker network and the `certs` volume that the testbed provides.
+
+The gateways contain no protocol code of their own — each is a `Backend` implementation handed to an external server library, which speaks the wire protocol:
 
 ```
                           Clients
@@ -181,27 +215,29 @@ This repo ships **mail3.test only** — the RESTMAIL product. Postfix/Dovecot re
               |              |              |
          SMTP:25/587    IMAP:143/993   POP3:110/995
               |              |              |
-     +--------+--------+     |    +--------+--------+
-     | SMTP Gateway    |     |    | POP3 Gateway    |
-     | (Go, mail3.test)|     |    | (Go, mail3.test)|
-     +--------+--------+     |    +--------+--------+
-              |         +----+----+         |
-              |         | IMAP GW |         |
-              |         | (Go)    |         |
-              |         +----+----+         |
+     +--------+-------+ +----+---------+ +--+-------------+
+     | go-smtp engine | | rest-mail/   | | rest-mail/     |
+     | (rest-mail     | | imap engine  | | pop3 engine    |
+     |  fork)         | |              | |                |
+     +--------+-------+ +----+---------+ +--+-------------+
+     | Backend        | | Backend      | | Backend        |
+     | adapter (this  | | adapter      | | adapter        |
+     | repo)          | |              | |                |
+     +--------+-------+ +----+---------+ +--+-------------+
               |              |              |
               +------+-------+------+-------+
                             |
                             v
                      +------+------+
                      | REST API    |
-                     | :8080 (Go)  |
+                     | :8080 (Go,  |
+                     | chi + gorm) |
                      +------+------+
                             |
                      +------+------+
-                     | Pipeline    |
-                     | Engine      |
-                     +------+------+
+                     | Pipeline    |     filters use rest-mail/
+                     | Engine      | --- dkim, arc, dmarc,
+                     +------+------+     mtasts, sieve
                             |
                      +------+------+
                      | PostgreSQL  |
@@ -214,11 +250,14 @@ This repo ships **mail3.test only** — the RESTMAIL product. Postfix/Dovecot re
      +-------------+    +-----------+    +-----------+
 
   External (separate repos, joined via mailnet):
-     [testbed]              [reference-mailserver]
-     - dnsmasq DNS          - Postfix + Dovecot (mail1.test, mail2.test, ...)
-     - certs volume         - rspamd, fail2ban
-     - mailnet network      - postgres
+     [testbed]              [reference-mailserver]      [website]
+     - dnsmasq DNS          - Postfix + Dovecot         - marketing site
+     - certs volume           (mail1.test, mail2.test)    (clone-on-demand)
+     - mailnet network      - rspamd, fail2ban
+                            - postgres
 ```
+
+Inbound mail flows through the pipeline engine (authentication, policy, and action filters) before delivery; outbound mail is queued and delivered by SMTP queue workers, which upgrade to the RESTMAIL HTTP protocol when the peer advertises it. The API pushes real-time changes to clients over SSE (per-account event streams, access-token authenticated).
 
 ### Directory Layout
 
@@ -229,39 +268,65 @@ cmd/
   imap-gateway/     IMAP protocol gateway
   pop3-gateway/     POP3 protocol gateway
   console/          Terminal admin UI (bubbletea) with RBAC
+  instance/         Instance manifest renderer/scaffolder (see Instances)
   migrate/          Database migration runner
   certgen/          TLS/DKIM certificate generator
+  rotate-key/       MASTER_KEY rotation tool
   seed/             Test data and RBAC seeder (domains, mailboxes, admin user)
   website/          Project website server
 internal/
-  mailcheck/        Mail server diagnostic checks (DNS, SMTP, IMAP, security, deliverability)
+  acme/             ACME (Let's Encrypt) certificate auto-provisioning
   api/              Handlers, middleware, routes, SSE, response helpers
   auth/             JWT + bcrypt authentication
   config/           Environment variable loading
   crypto/           AES-256-GCM encryption helpers
   db/models/        GORM model structs (30+ models)
+  digest/           Quarantine digest emails + quota reconciliation workers
+  dmarcreport/      Periodic DMARC rua aggregate report worker
   dns/              Pluggable DNS providers (dnsmasq, externaldns, manual)
-  gateway/          SMTP, IMAP, POP3 implementations + queue worker
+  gateway/          Backend adapters for the protocol libraries + queue worker
+  instance/         Instance manifest loading and rendering
   mail/             Message-ID generation
   metrics/          Prometheus instrumentation
-  mime/             MIME parser, iCalendar support
-  pipeline/         Processing engine, filter registry, 16+ built-in filters
+  mime/             MIME handling over go-message, iCalendar support
+  pipeline/         Processing engine, filter registry, 20+ built-in filters
+  seed/             Seed fixture definitions
   console/          Console screens and components
 webmail/            React frontend (Vite + TypeScript + Tailwind + shadcn/ui)
 admin/              Admin UI (React)
-projects/           Dockerfiles for the API, gateways, webmail, admin, website
-helm/               Helm chart for restmail (mail3 only)
+projects/           Dockerfiles for the gateways, js-filter sidecar, dnsmasq fragments
+helm/               Helm chart for restmail
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
 tasks/              Per-service Taskfiles (one per container) included from root Taskfile.yml
-tests/e2e/          End-to-end test suite (10 stages)
-.workspace/         Sibling repos cloned on demand (testbed, reference-mailserver) — gitignored
+tests/e2e/          End-to-end test suite (13 stages)
+.workspace/         Sibling repos cloned on demand (testbed, reference-mailserver, website) — gitignored
 ```
+
+## Instances
+
+Everything about a running RESTMAIL deployment — hostname, IPs, ports, credentials — comes from an instance manifest, not from hardcoded config. `INSTANCE` selects which one to drive (default `restmail.test`, whose config is owned by the testbed); `INSTANCE_DIR` can point anywhere. Scaffolded instances live under `instances/<domain>/`.
+
+```bash
+# Spin up a second RESTMAIL instance end-to-end
+# (scaffold → cert → DNS → up → DKIM):
+task instance:new DOMAIN=mail4.test
+
+# Drive an existing instance
+INSTANCE=mail4.test task instance:up
+INSTANCE=mail4.test task instance:down
+
+# Manifest workflow
+task instance:render     # manifest.yml → config.env (after editing a manifest)
+task instance:check      # fail if config.env drifted from its manifest
+```
+
+`restmail:up` / `restmail:down` / `task dev` are aliases for `instance:up` / `instance:down` with the default instance.
 
 ## Development
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.25+
 - Node.js 18+ and npm
 - Docker
 - [Task](https://taskfile.dev/)
@@ -273,7 +338,7 @@ tests/e2e/          End-to-end test suite (10 stages)
 task setup
 ```
 
-TLS certificates are provisioned on demand by the gateway containers (their dev-target images run `certgen` against the shared `testbed_certs` volume). To pull the dev CA out of the testbed for browser/IMAP-client trust:
+TLS certificates are provisioned per instance into the shared `testbed_certs` volume (`task instance:certs:issue`, run automatically by `instance:new`). To pull the dev CA out of the testbed for browser/IMAP-client trust:
 
 ```bash
 cd .workspace/testbed && task ca:fetch    # writes ./ca.crt
@@ -303,18 +368,24 @@ task test
 # Unit tests with coverage report
 task test:coverage
 
-# End-to-end tests (requires running containers)
+# Full e2e run: bring up the topology (testbed + reference mail1/mail2 +
+# restmail.test), run the 13-stage suite, tear it down
+task e2e
+
+# e2e against an already-running topology
 task test:e2e
 
 # All tests
 task test:all
 ```
 
+The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 13 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, and IMAP IDLE.
+
 ### Local Development
 
 ```bash
-# Start the full restmail (mail3.test) product stack
-task dev                       # alias for restmail:mail3:up
+# Start the full restmail.test product stack
+task dev                       # alias for restmail:up
 
 # Drive a single container
 task api:up                    # build + run the API
@@ -328,7 +399,7 @@ task api:logs
 task smtp-gateway:logs
 
 # Tear it all down
-task restmail:mail3:down
+task restmail:down
 ```
 
 Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
@@ -344,7 +415,7 @@ task tidy      # Tidy and verify Go modules
 
 ## Configuration
 
-All configuration is done via environment variables. The API, gateways, and tools all share the same config loader.
+All configuration is done via environment variables. The API, gateways, and tools all share the same config loader. In the containerized stack these are populated from the instance manifest (see [Instances](#instances)).
 
 ### Core Variables
 
@@ -377,17 +448,19 @@ All configuration is done via environment variables. The API, gateways, and tool
 
 | Variable                      | Default           | Description                   |
 |-------------------------------|--------------------|-------------------------------|
-| `GATEWAY_HOSTNAME`            | `mail3.test`       | Hostname announced by gateways |
+| `GATEWAY_HOSTNAME`            | `localhost`        | Hostname announced by gateways |
 | `API_BASE_URL`                | `http://localhost:8080` | Internal API URL for gateways |
 | `SMTP_PORT_INBOUND`           | `25`               | SMTP inbound port             |
 | `SMTP_PORT_SUBMISSION`        | `587`              | SMTP submission port          |
 | `SMTP_PORT_SUBMISSION_TLS`    | `465`              | SMTP implicit TLS port        |
+| `SMTP_MAX_MESSAGE_SIZE`       | `10485760` (10 MiB) | Maximum accepted message size in bytes — drives both the EHLO `SIZE` advertisement and DATA enforcement. A maximum always exists: zero/negative values are a startup error, and values over 100 MiB log a startup warning (messages are buffered and parsed in memory) |
 | `IMAP_PORT`                   | `143`              | IMAP port                     |
 | `IMAP_TLS_PORT`               | `993`              | IMAP implicit TLS port        |
 | `POP3_PORT`                   | `110`              | POP3 port                     |
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
 | `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `MTASTS_ENFORCE`              | `true`             | Enforce recipient MTA-STS policies on outbound delivery |
 | `CORS_ALLOWED_ORIGINS`        | `http://localhost:3000` | Comma-separated CORS origins |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Comma-separated CIDRs for PROXY protocol |
 | `DNS_PROVIDER`                | `dnsmasq`          | DNS provider (`dnsmasq`, `externaldns`, `manual`) |
@@ -423,6 +496,8 @@ The REST API exposes 108 operations across these resource groups:
 - **Health** -- `GET /api/health`
 - **Metrics** -- `GET /metrics` (Prometheus)
 
+Admin routes are guarded by capability-based RBAC — each route requires the matching capability (e.g. `domains:write`) on the caller's role.
+
 ### Documentation
 
 - **Swagger UI**: http://localhost:8080/api/docs
@@ -434,7 +509,7 @@ The REST API exposes 108 operations across these resource groups:
 # Login
 curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "admin@mail1.test", "password": "password"}'
+  -d '{"email": "eve@restmail.test", "password": "password123"}'
 
 # Use the returned access token
 curl http://localhost:8080/api/v1/accounts \
@@ -445,34 +520,35 @@ curl http://localhost:8080/api/v1/accounts \
 
 The pipeline engine processes emails through configurable filter chains. Built-in filters:
 
-| Filter | Type | Description |
-|--------|------|-------------|
-| `spf_check` | Check | SPF record validation |
-| `dkim_verify` | Check | DKIM signature verification |
-| `dkim_sign` | Transform | DKIM signature generation |
-| `dmarc_check` | Check | DMARC policy enforcement |
-| `arc_verify` | Check | ARC chain verification |
-| `arc_seal` | Transform | ARC seal generation |
-| `spam_score` | Check | Spam scoring with configurable thresholds |
-| `rate_limit` | Check | Per-sender/domain rate limiting |
-| `size_limit` | Check | Message size enforcement |
-| `attachment_check` | Check | Blocked file type/extension checking |
-| `greylist` | Check | Greylisting with DB-backed tracking |
-| `recipient_check` | Check | Verify recipient exists |
-| `sender_verify` | Check | Sender domain verification |
-| `domain_allowlist` | Check | Domain-level allow/blocklist |
-| `contact_whitelist` | Check | Per-user contact allowlist |
-| `vacation` | Action | Auto-reply responder |
-| `sieve` | Action | Sieve script execution |
-| `webhook` | Action | HTTP webhook notifications |
-| `duplicate` | Action | Fork message to webhook/queue |
-| `javascript` | Action | Custom JS filter via Node.js sidecar |
-| `rspamd` | Adapter | Rspamd spam scanning |
-| `clamav` | Adapter | ClamAV virus scanning |
+| Filter | Description |
+|--------|-------------|
+| `spf_check` | SPF record validation |
+| `dkim_verify` | DKIM signature verification (via `rest-mail/dkim`) |
+| `dkim_sign` | DKIM signature generation (via `rest-mail/dkim`) |
+| `dmarc_check` | DMARC policy enforcement (via `rest-mail/dmarc`) |
+| `arc_verify` | ARC chain verification (via `rest-mail/arc`) |
+| `arc_seal` | ARC seal generation (via `rest-mail/arc`) |
+| `greylist` | Greylisting with DB-backed tracking |
+| `rate_limit` | Per-sender/domain rate limiting |
+| `size_check` | Message size enforcement |
+| `recipient_check` | Verify recipient exists |
+| `sender_verify` | Sender domain verification |
+| `domain_allowlist` | Domain-level allow/blocklist |
+| `contact_whitelist` | Per-user contact allowlist |
+| `header_validate` | Structural header validation |
+| `header_cleanup` | Strip/rewrite internal headers |
+| `extract_attachments` | Extract and store attachments |
+| `vacation` | Auto-reply responder |
+| `sieve` | Sieve script execution (via `rest-mail/sieve`) |
+| `webhook` | HTTP webhook notifications |
+| `duplicate` | Fork message to webhook/queue |
+| `javascript` | Custom JS filter via Node.js sidecar |
+| `rspamd` | Rspamd spam scanning (adapter) |
+| `clamav` | ClamAV virus scanning (adapter) |
 
 ## Optional Capabilities
 
-Spam/virus scanning, fail2ban, and rspamd come from the reference mail server stack ([`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver)) — bring up a reference instance to get them. Monitoring lives in this repo:
+Spam/virus scanning (rspamd) and fail2ban come from the reference mail server stack ([`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver)) — bring up a reference instance to get them (`task -d .workspace/reference-mailserver up CONFIG=mail1`). Monitoring lives in this repo:
 
 ```bash
 task monitoring:up      # Prometheus + Grafana + postgres-exporter
@@ -482,11 +558,11 @@ task monitoring:down
 | Stack         | Comes From                  | Tasks                            |
 |---------------|-----------------------------|----------------------------------|
 | Monitoring    | this repo                   | `task monitoring:up\|down\|logs` |
-| rspamd, fail2ban | `rest-mail/reference-mailserver` | `task mailserver:mail1:up` (etc.) |
+| rspamd, fail2ban | `rest-mail/reference-mailserver` | `task -d .workspace/reference-mailserver up CONFIG=mail1` |
 
 ## RESTMAIL Protocol
 
-RESTMAIL introduces an SMTP extension for HTTP-based mail delivery between RESTMAIL-capable servers. When an outbound queue worker detects RESTMAIL support via EHLO, it upgrades the connection to HTTPS POST delivery, bypassing traditional SMTP data transfer. The protocol endpoints are:
+RESTMAIL introduces an SMTP extension for HTTP-based mail delivery between RESTMAIL-capable servers. The SMTP gateway advertises `RESTMAIL https://<host>/restmail` in its EHLO response; when an outbound queue worker sees that capability on a peer, it upgrades the connection to HTTPS POST delivery, bypassing traditional SMTP data transfer. The protocol endpoints are:
 
 - `GET /restmail/capabilities` -- Advertise RESTMAIL support
 - `GET /restmail/mailboxes` -- Verify recipient mailbox exists
