@@ -169,10 +169,12 @@ func (s *Server) listen(port int, isSubmission, implicitTLS bool) error {
 		listener = wrapped
 	}
 
-	// Connection limiting happens at accept level, before any SMTP handling.
-	// The same layer wraps each accepted conn with the anti-slowloris transfer
-	// tracker, kept under any TLS layer so the session can reach it via a
-	// single tls.Conn unwrap.
+	// Connection limiting is applied per connection, before any SMTP handling.
+	// Admission (peer-IP resolution + limiter check) runs on each connection's
+	// own goroutine rather than in the accept loop — see limitListener. The same
+	// layer wraps each accepted conn with the anti-slowloris transfer tracker,
+	// kept under any TLS layer so the session can reach it via a single tls.Conn
+	// unwrap.
 	listener = &limitListener{Listener: listener, limiter: s.limiter, transferPolicy: s.transferPolicy}
 
 	// Implicit TLS (465) wraps last so go-smtp sees a *tls.Conn and treats
@@ -203,11 +205,19 @@ func (s *Server) Shutdown() {
 	slog.Info("smtp: server stopped")
 }
 
-// limitListener enforces the connection limiter at accept level: connections
-// over the per-IP or global limit are closed before any SMTP handling, and
-// the slot is released when the connection closes. Accepted connections are
-// additionally wrapped with the anti-slowloris transfer-rate tracker (armed
-// by the session only during message-body transfer).
+// limitListener enforces the connection limiter per connection: connections
+// over the per-IP or global limit are closed before any SMTP handling, and the
+// slot is released when the connection closes. Accepted connections are
+// additionally wrapped with the anti-slowloris transfer-rate tracker (armed by
+// the session only during message-body transfer).
+//
+// Admission is deliberately NOT performed in Accept. Resolving the peer IP
+// requires RemoteAddr(), which behind PROXY protocol blocks until the PROXY
+// header is read (go-proxyproto waits up to its header timeout, 10s by
+// default). Doing that in the accept loop would serialize every slow or
+// malicious client through it, stalling acceptance of all new connections — a
+// DoS. Instead Accept hands off promptly and limitedConn admits the connection
+// lazily on its own goroutine, at the first read/write.
 type limitListener struct {
 	net.Listener
 	limiter        *connlimiter.Limiter
@@ -215,34 +225,98 @@ type limitListener struct {
 }
 
 func (l *limitListener) Accept() (net.Conn, error) {
-	for {
-		conn, err := l.Listener.Accept()
-		if err != nil {
-			return nil, err
-		}
-		ip := extractIP(conn.RemoteAddr().String())
-		if !l.limiter.Accept(ip) {
-			slog.Warn("smtp: connection rejected by limiter", "ip", ip)
-			conn.Close()
-			continue
-		}
-		lc := &limitedConn{Conn: conn}
-		lc.release = func() { l.limiter.Release(ip) }
-		// Rate tracker outermost so a policy drop closes through limitedConn
-		// and releases the limiter slot.
-		return newTransferRateConn(lc, l.transferPolicy), nil
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
 	}
+	lc := &limitedConn{Conn: conn, limiter: l.limiter}
+	// Rate tracker outermost so a policy drop closes through limitedConn
+	// and releases the limiter slot.
+	return newTransferRateConn(lc, l.transferPolicy), nil
 }
 
-// limitedConn releases its limiter slot exactly once on Close.
+// limitedConn defers connection-limiter admission to the connection's own
+// goroutine and releases its slot exactly once on Close. Admission resolves the
+// peer IP — which, behind PROXY protocol, blocks until the PROXY header is read
+// — and then applies the limiter. A rejected connection is closed and every I/O
+// returns net.ErrClosed, so go-smtp drops it without a greeting, exactly as the
+// old accept-time rejection did. Because the blocking IP resolution runs here
+// (first read/write) and never on the accept loop, one slow client cannot stall
+// acceptance of other connections.
 type limitedConn struct {
 	net.Conn
-	releaseOnce sync.Once
-	release     func()
+	limiter *connlimiter.Limiter
+
+	admitOnce sync.Once
+
+	mu       sync.Mutex
+	ip       string // resolved peer IP, set by admit
+	admitErr error  // non-nil once admission rejected the connection
+	slotHeld bool   // a limiter slot is currently held
+	released bool   // the held slot has been released
+	closed   bool   // Close has been called
+}
+
+// admit resolves the peer IP and applies the connection limiter exactly once,
+// on the first read/write (the connection's own goroutine). It returns a
+// non-nil error when the connection was rejected. The blocking RemoteAddr call
+// is made without the mutex held so a concurrent Close never waits on the PROXY
+// header read.
+func (c *limitedConn) admit() error {
+	c.admitOnce.Do(func() {
+		ip := extractIP(c.Conn.RemoteAddr().String())
+		granted := c.limiter.Accept(ip)
+
+		c.mu.Lock()
+		c.ip = ip
+		switch {
+		case !granted:
+			c.admitErr = net.ErrClosed
+			c.mu.Unlock()
+			slog.Warn("smtp: connection rejected by limiter", "ip", ip)
+			_ = c.Conn.Close()
+		case c.closed:
+			// Close raced ahead of admission; release the slot we just took so
+			// it is not leaked (Close saw slotHeld=false and released nothing).
+			c.released = true
+			c.mu.Unlock()
+			c.limiter.Release(ip)
+		default:
+			c.slotHeld = true
+			c.mu.Unlock()
+		}
+	})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.admitErr
+}
+
+func (c *limitedConn) Read(b []byte) (int, error) {
+	if err := c.admit(); err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *limitedConn) Write(b []byte) (int, error) {
+	if err := c.admit(); err != nil {
+		return 0, err
+	}
+	return c.Conn.Write(b)
 }
 
 func (c *limitedConn) Close() error {
-	c.releaseOnce.Do(c.release)
+	c.mu.Lock()
+	c.closed = true
+	release := c.slotHeld && !c.released
+	if release {
+		c.released = true
+	}
+	ip := c.ip
+	c.mu.Unlock()
+	if release {
+		c.limiter.Release(ip)
+	}
 	return c.Conn.Close()
 }
 
