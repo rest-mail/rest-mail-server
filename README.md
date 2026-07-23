@@ -465,6 +465,55 @@ All configuration is done via environment variables. The API, gateways, and tool
 | `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Comma-separated CIDRs for PROXY protocol |
 | `DNS_PROVIDER`                | `dnsmasq`          | DNS provider (`dnsmasq`, `externaldns`, `manual`) |
 
+### Internal mTLS (gateway → API)
+
+A few API routes are called by the protocol gateways with no user token —
+recipient existence checks (`GET /api/mailboxes`) and inbound message delivery
+(`POST /api/v1/messages/deliver`). These are machine-to-machine calls,
+historically protected only by network isolation. Internal mTLS hardens that
+trust boundary: an internal CA issues a client certificate to the gateways, and
+the API verifies that certificate instead of a token — the cert is, in effect,
+the gateway's password. It authenticates the gateway *service* (a machine
+identity), separate from user JWTs and admin RBAC.
+
+**Off by default** (`INTERNAL_MTLS_ENABLED=false`): the routes stay on the
+public listener, tokenless — no change for existing network-trust deployments.
+
+When **enabled**, the API serves those routes ONLY on a dedicated listener
+(`INTERNAL_MTLS_PORT`, default `8443`) that requires
+`tls.RequireAndVerifyClientCert` against the internal CA, and withholds them
+from the public listener. A missing / wrong-CA / expired client certificate is
+rejected at the TLS handshake, before any HTTP handler runs.
+
+| Variable                    | Default   | Side    | Description                              |
+|-----------------------------|-----------|---------|------------------------------------------|
+| `INTERNAL_MTLS_ENABLED`     | `false`   | both    | Master switch                            |
+| `INTERNAL_MTLS_PORT`        | `8443`    | API     | Dedicated internal listener port         |
+| `INTERNAL_MTLS_CA_CERT`     | *(empty)* | both    | Internal CA (anchors the trust domain)   |
+| `INTERNAL_MTLS_SERVER_CERT` | *(empty)* | API     | Server cert for the internal listener    |
+| `INTERNAL_MTLS_SERVER_KEY`  | *(empty)* | API     | Server key                               |
+| `INTERNAL_MTLS_CLIENT_CERT` | *(empty)* | gateway | Gateway client cert (machine identity)   |
+| `INTERNAL_MTLS_CLIENT_KEY`  | *(empty)* | gateway | Gateway client key                       |
+
+Mint the material (dedicated CA + API server cert + gateway client cert) with
+the in-repo certgen — idempotent and CA-preserving:
+
+```
+go run ./cmd/certgen --internal-mtls --out /certs \
+  --server-ip 127.0.0.1,<api-ip> --server-dns api,localhost,<hostname>
+```
+
+When enabled, point the gateways' `API_BASE_URL` at the https internal listener
+(e.g. `https://<api-host>:8443`). Enabling it is fail-closed: if the feature is
+on but a cert path is unset or unreadable, the binary refuses to start; if the
+API has it on but a gateway does not, the gateway's tokenless calls to the old
+public route return 404 and delivery fails visibly rather than silently
+bypassing the check.
+
+**Testbed**: an instance opts in by setting `internal_mtls: true` in its
+`manifest.yml`; `task instance:mtls:issue` (run automatically by `task e2e:up`)
+provisions the certs into the shared certs volume.
+
 ## API Overview
 
 The REST API exposes 108 operations across these resource groups:

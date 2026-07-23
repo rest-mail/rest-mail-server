@@ -42,7 +42,14 @@ type Manifest struct {
 	// Lets a secondary instance run alongside the primary without host-port
 	// collisions. Defaults false (publish), preserving mail3.test behavior.
 	MailnetOnly bool `yaml:"mailnet_only"`
-	DB          struct {
+	// InternalMTLS true turns on gateway→API mutual-TLS for this instance: the
+	// API serves the gateway-facing routes on a dedicated client-cert-verified
+	// listener and the gateways present a client cert. Requires the internal
+	// mTLS certs to be provisioned into the certs volume (task
+	// instance:mtls:issue). Defaults false, so existing instances are unchanged
+	// and their rendered config.env does not gain a line.
+	InternalMTLS bool `yaml:"internal_mtls"`
+	DB           struct {
 		Name string `yaml:"name"`
 		User string `yaml:"user"`
 	} `yaml:"db"`
@@ -93,6 +100,11 @@ func Render(m *Manifest) ([]byte, error) {
 	kv("MAIL3_LOG_LEVEL", m.LogLevel)
 	kv("MAIL3_ENVIRONMENT", m.Environment)
 	kv("MAIL3_MAILNET_ONLY", strconv.FormatBool(m.MailnetOnly))
+	// Emit the internal-mTLS switch only when enabled, so instances that don't
+	// opt in render byte-for-byte as before (no drift against committed config).
+	if m.InternalMTLS {
+		kv("MAIL3_INTERNAL_MTLS", "true")
+	}
 	b.WriteString("\n")
 
 	// Component IPs and ports (binding-derived). Each component maps to the
