@@ -6,6 +6,75 @@
 
 ---
 
+> ## Re-evaluated 2026-07-23 against `main` @ `3567df1`
+>
+> The codebase changed enormously since this 2026-04-23 review (go-smtp adoption,
+> RBAC #58, internal mTLS #65, SSE access-token fix #46, auth rate-limiting + IDOR
+> fixes #77, gateway `/metrics` #83, and removal of all Docker Compose files in the
+> repo decomposition), so the cited paths/line numbers are stale — **every finding
+> was re-verified against current code**. Struck-through findings are resolved
+> (FIXED / ALREADY-FIXED / OBSOLETE / DUPLICATE / NOT-A-BUG); the rest are genuinely
+> open and captured in `2026-07-23-open-security-items.md` (OSI-N).
+>
+> **Collision note:** findings whose fix would land in `internal/gateway/smtp/**`,
+> `internal/api/handlers/restmail.go`, or `internal/config/config.go` are left open
+> and marked **deferred** — that surface is under concurrent in-flight work (tarpit)
+> and must not be double-edited here.
+>
+> | # | Verdict |
+> |---|---------|
+> | 1 | OBSOLETE |
+> | 2 | NOT-A-BUG |
+> | 3 | ALREADY-FIXED |
+> | 4 | STILL-OPEN |
+> | 5 | DUPLICATE |
+> | 6 | NOT-A-BUG |
+> | 7 | STILL-OPEN (deferred) |
+> | 8 | NOT-A-BUG |
+> | 9 | FIXED |
+> | 10 | STILL-OPEN |
+> | 11 | ALREADY-FIXED |
+> | 12 | NOT-A-BUG |
+> | 13 | NOT-A-BUG |
+> | 14 | STILL-OPEN (deferred) |
+> | 15 | NOT-A-BUG |
+> | 16 | NOT-A-BUG |
+> | 17 | ALREADY-FIXED |
+> | 18 | NOT-A-BUG |
+> | 19 | NOT-A-BUG |
+> | 20 | NOT-A-BUG |
+> | 21 | ALREADY-FIXED |
+> | 22 | NOT-A-BUG |
+> | 23 | NOT-A-BUG |
+> | 24 | NOT-A-BUG |
+> | 25 | NOT-A-BUG |
+> | 26 | NOT-A-BUG |
+> | 27 | NOT-A-BUG |
+> | 28 | DUPLICATE |
+> | 29 | NOT-A-BUG |
+> | 30 | NOT-A-BUG |
+> | 31 | STILL-OPEN (deferred) |
+> | 32 | STILL-OPEN |
+> | 33 | NOT-A-BUG |
+> | 34 | STILL-OPEN (deferred) |
+> | 35 | NOT-A-BUG |
+> | 36 | NOT-A-BUG |
+> | 37 | STILL-OPEN |
+> | 38 | STILL-OPEN |
+> | 39 | NOT-A-BUG |
+> | 40 | ALREADY-FIXED |
+> | 41 | NOT-A-BUG |
+> | 42 | ALREADY-FIXED |
+> | 43 | NOT-A-BUG |
+> | 44 | NOT-A-BUG |
+> | 45 | NOT-A-BUG |
+> | 46 | STILL-OPEN |
+> | 47 | NOT-A-BUG |
+> | 48 | NOT-A-BUG |
+> | 49 | DUPLICATE |
+> | 50 | NOT-A-BUG |
+
+
 ## Executive Summary
 
 **Overall Risk Level:** HIGH  
@@ -21,7 +90,9 @@ This comprehensive security review identified **13 critical**, **18 high**, and 
 
 ## Critical Severity Issues
 
-### 1. HARDCODED DEFAULT CREDENTIALS IN DOCKER COMPOSE [CRITICAL]
+### ~~1. HARDCODED DEFAULT CREDENTIALS IN DOCKER COMPOSE [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — OBSOLETE — all Docker Compose files were removed in the repo decomposition; no `docker-compose.yml` exists. App-level production guards for `JWT_SECRET`/`MASTER_KEY` remain in `internal/config/config.go`.]**
 
 **Location:** `docker-compose.yml:43,64,85,129,132,165,207,245,276,298,321,343`
 
@@ -47,7 +118,9 @@ environment:
 
 ---
 
-### 2. SEED DATA CREATES WEAK DEFAULT ACCOUNTS [CRITICAL]
+### ~~2. SEED DATA CREATES WEAK DEFAULT ACCOUNTS [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — `cmd/seed` is dev-only tooling; it sets `PasswordChangeRequired` and is never run in production (the seed/test endpoints are prod-locked). Not a shipped credential.]**
 
 **Location:** `cmd/seed/main.go:66,234-245`
 
@@ -65,7 +138,9 @@ environment:
 
 ---
 
-### 3. MISSING AUTHORIZATION CHECKS IN MAILBOX HANDLER [CRITICAL]
+### ~~3. MISSING AUTHORIZATION CHECKS IN MAILBOX HANDLER [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (RBAC #58) — mailbox List/Get/Create/Update/Delete are the `/api/v1/admin/mailboxes` routes, gated by `AdminOnly` + `RequireCapability(CapMailboxes*)` in `routes.go`. Mailbox tokens get 403.]**
 
 **Location:** `internal/api/handlers/mailboxes.go`
 
@@ -88,6 +163,8 @@ func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
 ---
 
 ### 4. JAVASCRIPT FILTER ALLOWS ARBITRARY CODE EXECUTION [CRITICAL]
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — the JS filter sidecar still executes admin-supplied scripts without a real sandbox. Duplicate of opus C-7/H-10; tracked once as **OSI-6**.]**
 
 **Location:** `internal/pipeline/filters/javascript.go`, `projects/js-filter-sidecar/`
 
@@ -113,7 +190,9 @@ reqBody := sidecarRequest{
 
 ---
 
-### 5. UNAUTHENTICATED MAILBOX ENUMERATION [CRITICAL]
+### ~~5. UNAUTHENTICATED MAILBOX ENUMERATION [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — DUPLICATE of codex SR-004 / **OSI-1**+**OSI-2** — `/api/mailboxes` is now the mTLS-gated internal route (#65); `/restmail/mailboxes` is the accepted-by-design SMTP-`RCPT` equivalent.]**
 
 **Location:** `internal/api/handlers/mailboxes.go:210-229`
 
@@ -134,7 +213,9 @@ func (h *MailboxHandler) CheckAddress(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-### 6. PATH TRAVERSAL IN ATTACHMENT HANDLER [CRITICAL]
+### ~~6. PATH TRAVERSAL IN ATTACHMENT HANDLER [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — `filepath.Clean("/attachments/../../etc/passwd")` = `/etc/passwd`, which FAILS the `HasPrefix("/attachments/")` check (the finding's premise is wrong). `StorageRef` is server-generated at ingestion, not request-controlled, and the row is ownership-scoped.]**
 
 **Location:** `internal/api/handlers/attachments.go:66-70`
 
@@ -160,6 +241,8 @@ if !strings.HasPrefix(cleanPath, "/attachments/") || strings.Contains(cleanPath,
 
 ### 7. RESTMAIL PROTOCOL UNAUTHENTICATED MESSAGE INJECTION [CRITICAL]
 
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — `/restmail/messages` accepts unauthenticated deliveries with no DKIM/SPF verification in code. Duplicate of opus C-1. **Deferred**: the fix lands in `internal/api/handlers/restmail.go` (in-flight tarpit collision). Tracked as **OSI-3**.]**
+
 **Location:** `internal/api/handlers/restmail.go:68-142`
 
 **Issue:** The RESTMAIL protocol endpoints (`/restmail/messages`) accept messages without authentication. While the comments state "verified by DKIM/SPF", the actual handler does not perform these verifications.
@@ -182,7 +265,9 @@ if !strings.HasPrefix(cleanPath, "/attachments/") || strings.Contains(cleanPath,
 
 ---
 
-### 8. SQL INJECTION VIA UNSANITIZED USER INPUT [CRITICAL]
+### ~~8. SQL INJECTION VIA UNSANITIZED USER INPUT [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — GORM parameterizes every query (`plainto_tsquery(?, )`, `ILIKE ?`); user input is never concatenated into SQL. `%`/`_` behaving as LIKE wildcards is a minor functional quirk, not injection.]**
 
 **Location:** `internal/api/handlers/search.go`, `internal/api/handlers/testing.go:167`
 
@@ -203,7 +288,9 @@ While GORM uses parameterized queries for the pattern, the search functionality 
 
 ---
 
-### 9. SERVER-SIDE REQUEST FORGERY (SSRF) IN WEBHOOK FILTER [CRITICAL]
+### ~~9. SERVER-SIDE REQUEST FORGERY (SSRF) IN WEBHOOK FILTER [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — STILL-VALID → FIXED (this PR) — the webhook filter now dials via `newGuardedHTTPClient` (`internal/pipeline/filters/ssrf.go`), which refuses loopback/link-local (incl. cloud-metadata) targets at dial time. Test: `ssrf_test.go`.]**
 
 **Location:** `internal/pipeline/filters/webhook.go:30-67`
 
@@ -270,6 +357,8 @@ func validateWebhookURL(urlStr string) error {
 
 ### 10. JAVASCRIPT SIDECAR RCE VIA TEST ENDPOINTS [CRITICAL]
 
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — custom-filter test endpoints forward admin JS to the sidecar; same sandbox gap as #4. Now capability-gated (`CapPipelinesWrite`). Duplicate of opus C-7/H-10; tracked as **OSI-6**.]**
+
 **Location:** `internal/api/handlers/pipeline.go:371-474`
 
 **Issue:** The `TestCustomFilter` and `ValidateCustomFilter` endpoints allow ANY authenticated admin to execute arbitrary JavaScript code by forwarding it directly to the JS sidecar at `http://js-filter:3100`.
@@ -319,7 +408,9 @@ const isolate = new ivm.Isolate({ memoryLimit: 128, timeout: 5000 });
 
 ---
 
-### 11. HARDCODED INTERNAL SERVICE URL [CRITICAL]
+### ~~11. HARDCODED INTERNAL SERVICE URL [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (partial) — the sidecar URL is now configurable (`javascript.go` `cfg.URL`), not hardcoded. The residual (no TLS/auth to the sidecar) folds into the JS-sandbox item **OSI-6**.]**
 
 **Location:** `internal/pipeline/filters/javascript.go:16`, `internal/api/handlers/pipeline.go:416,454`
 
@@ -338,7 +429,9 @@ const isolate = new ivm.Isolate({ memoryLimit: 128, timeout: 5000 });
 
 ---
 
-### 12. SIEVE SCRIPT FILE OPERATIONS [CRITICAL]
+### ~~12. SIEVE SCRIPT FILE OPERATIONS [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — sieve `fileinto` records a logical folder label (`e.applied = append(..., "fileinto:"+folder)`); `sieve.go` performs no filesystem operations. Folders are DB rows, not paths — no traversal.]**
 
 **Location:** `internal/pipeline/filters/sieve.go`
 
@@ -371,7 +464,9 @@ func sanitizeFolderName(folder string) (string, error) {
 
 ---
 
-### 13. PIPELINE HANDLER MISSING DOMAIN AUTHORIZATION [CRITICAL]
+### ~~13. PIPELINE HANDLER MISSING DOMAIN AUTHORIZATION [CRITICAL]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (by design) — the RBAC model (#58) is capability-based global administration, not per-domain multi-tenancy; a `pipelines:*` admin legitimately manages all domains' pipelines (opus §7.11 confirms this is intended).]**
 
 **Location:** `internal/api/handlers/pipeline.go:28-42,242-256`
 
@@ -418,6 +513,8 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 
 ### 14. JWT SECRET VALIDATION INSUFFICIENT [HIGH]
 
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — `JWT_SECRET` is rejected only when it equals the legacy default in production; there is no min-length/entropy floor. **Deferred**: the fix lands in `internal/config/config.go` (collision). Tracked as **OSI-4**.]**
+
 **Location:** `internal/config/config.go:123-129`
 
 **Issue:** The validation only checks for the exact default string `dev-secret-change-in-production`. It doesn't enforce minimum length or entropy requirements.
@@ -435,7 +532,9 @@ if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.Environment == "pro
 
 ---
 
-### 15. NO CSRF PROTECTION [HIGH]
+### ~~15. NO CSRF PROTECTION [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — state-changing API calls authenticate via `Authorization: Bearer` (not an ambient cookie); the only cookie is the refresh token, HttpOnly + `SameSite=Strict`, scoped to `/api/v1/auth`. CSRF does not apply.]**
 
 **Location:** All frontend applications (`webmail/`, `admin/`)
 
@@ -447,7 +546,9 @@ if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.Environment == "pro
 
 ---
 
-### 16. CORS CONFIGURATION ALLOWS CREDENTIALS WITH DYNAMIC ORIGINS [HIGH]
+### ~~16. CORS CONFIGURATION ALLOWS CREDENTIALS WITH DYNAMIC ORIGINS [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — CORS uses the configured `cfg.CORSAllowedOrigins` allowlist, never a reflected/echoed origin. Duplicate of opus M-10.]**
 
 **Location:** `internal/api/routes.go:35-41`
 
@@ -468,7 +569,9 @@ cors.Handler(cors.Options{
 
 ---
 
-### 17. RATE LIMITING MISSING ON AUTH ENDPOINTS [HIGH]
+### ~~17. RATE LIMITING MISSING ON AUTH ENDPOINTS [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (codex #7 / #77) — per-IP token-bucket limiter (`middleware.RateLimit`) on `/api/v1/auth/login` and `/refresh`.]**
 
 **Location:** `internal/api/handlers/auth.go:43-67`
 
@@ -480,7 +583,9 @@ cors.Handler(cors.Options{
 
 ---
 
-### 18. PASSWORD MINIMUM LENGTH TOO SHORT [HIGH]
+### ~~18. PASSWORD MINIMUM LENGTH TOO SHORT [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (policy) — an 8-char bcrypt minimum is an acceptable baseline; length/complexity policy is a product decision, not a vulnerability.]**
 
 **Location:** `internal/api/handlers/mailboxes.go:59,157`
 
@@ -497,7 +602,9 @@ if len(req.Password) < 8 {
 
 ---
 
-### 19. SENSITIVE DATA IN LOGS [HIGH]
+### ~~19. SENSITIVE DATA IN LOGS [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — `chimw.Logger` logs method/path/status/latency only; it does not log request headers or bodies, so tokens/passwords are not written.]**
 
 **Location:** Multiple locations
 
@@ -515,7 +622,9 @@ r.Use(chimw.Logger)  // Logs full request details
 
 ---
 
-### 20. NO INPUT VALIDATION ON EMAIL ADDRESSES [HIGH]
+### ~~20. NO INPUT VALIDATION ON EMAIL ADDRESSES [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — the address is split on `@` and stored; no security impact. Full RFC validation is a robustness nicety.]**
 
 **Location:** `internal/api/handlers/mailboxes.go:67-73`
 
@@ -536,7 +645,9 @@ if len(parts) != 2 {
 
 ---
 
-### 21. MESSAGE SIZE LIMITS NOT ENFORCED CONSISTENTLY [HIGH]
+### ~~21. MESSAGE SIZE LIMITS NOT ENFORCED CONSISTENTLY [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (partial) — the SMTP `SIZE` advert now matches enforcement (#46) and the `size_check` filter caps pipeline input. Residual REST-body caps are the same open item as #46 (**OSI-7**).]**
 
 **Location:** `internal/api/handlers/messages.go`, `internal/gateway/smtp/`
 
@@ -548,7 +659,9 @@ if len(parts) != 2 {
 
 ---
 
-### 22. BCC EXPOSURE IN MESSAGE SENDING [HIGH]
+### ~~22. BCC EXPOSURE IN MESSAGE SENDING [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — `messages.go` uses BCC only for envelope routing and explicitly does not store it in headers/metadata (`// BCC recipients are not stored ...`).]**
 
 **Location:** `internal/api/handlers/messages.go` (SendMessage function)
 
@@ -558,7 +671,9 @@ if len(parts) != 2 {
 
 ---
 
-### 23. ATTACHMENT SIZE AND TYPE VALIDATION MISSING [HIGH]
+### ~~23. ATTACHMENT SIZE AND TYPE VALIDATION MISSING [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — attachments are stored/served as opaque blobs with no server-side execution. Type/size policy is a product choice.]**
 
 **Location:** `internal/api/handlers/messages.go`
 
@@ -568,7 +683,9 @@ if len(parts) != 2 {
 
 ---
 
-### 24. API CLIENT DOES NOT VERIFY SERVER CERTIFICATE [HIGH]
+### ~~24. API CLIENT DOES NOT VERIFY SERVER CERTIFICATE [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — the apiclient uses the default `http.Client`, which verifies TLS by default; no `InsecureSkipVerify` is set. (The only `InsecureSkipVerify` is opportunistic MTA STARTTLS in the queue worker, which verifies under enforce mode.)]**
 
 **Location:** `internal/gateway/apiclient/client.go:20-26`
 
@@ -592,7 +709,9 @@ func New(baseURL string) *Client {
 
 ---
 
-### 25. QUARANTINE RELEASE PARSES RAW EMAIL UNSAFELY [HIGH]
+### ~~25. QUARANTINE RELEASE PARSES RAW EMAIL UNSAFELY [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (robustness) — quarantine-release body extraction via header-delimiter split is fragile but not a security flaw; the IDOR on these endpoints was closed by codex #2.]**
 
 **Location:** `internal/api/handlers/pipeline.go:514-521`
 
@@ -613,7 +732,9 @@ if item.RawMessage != "" {
 
 ---
 
-### 26. NO RATE LIMITING ON TEST FILTER ENDPOINTS [HIGH]
+### ~~26. NO RATE LIMITING ON TEST FILTER ENDPOINTS [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — the test-filter endpoints are admin-only (`CapPipelinesWrite`); admin-driven DoS is low priority. Duplicate of opus M-14.]**
 
 **Location:** `internal/api/handlers/pipeline.go:165-238`
 
@@ -633,7 +754,9 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-### 27. PIPELINE LOGS EXPOSE FILTER CONFIGURATION [HIGH]
+### ~~27. PIPELINE LOGS EXPOSE FILTER CONFIGURATION [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — pipeline logs are an admin-only endpoint (`CapPipelinesRead`); filter config is visible to holders of that capability by design.]**
 
 **Location:** `internal/api/handlers/pipeline.go:45-76`
 
@@ -643,7 +766,9 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-### 28. DKIM PRIVATE KEY EXPOSURE [HIGH]
+### ~~28. DKIM PRIVATE KEY EXPOSURE [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — DUPLICATE of opus C-15 — DKIM keys are encrypted at rest with `MASTER_KEY` and the endpoints are `CapDomains*`-gated; the residual plaintext-fallback-on-decrypt is tracked as **OSI-8**.]**
 
 **Location:** `internal/db/models/dkim.go`
 
@@ -656,7 +781,9 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-### 29. CERTIFICATE PRIVATE KEY HANDLING [HIGH]
+### ~~29. CERTIFICATE PRIVATE KEY HANDLING [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (defense-in-depth) — secure-memory wiping (memguard) for short-lived decrypted TLS keys is hardening beyond this scope, not an exploitable flaw.]**
 
 **Location:** `internal/gateway/tlsutil/dbcert.go:74-86`
 
@@ -669,7 +796,9 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-### 30. IMAP SESSION AUTHENTICATION BYPASS POTENTIAL [HIGH]
+### ~~30. IMAP SESSION AUTHENTICATION BYPASS POTENTIAL [HIGH]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — the IMAP session requires authenticated state before mailbox commands. Folder-name/DELETE ownership hardening is tracked separately as opus H-4/H-16 (**OSI-9**).]**
 
 **Location:** `internal/gateway/imap/session.go`
 
@@ -684,6 +813,8 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 
 ### 31. SMTP AUTH PLAIN WITHOUT TLS ENFORCEMENT [HIGH]
 
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — verify AUTH PLAIN is refused pre-STARTTLS on cleartext ports. **Deferred**: lands in `internal/gateway/smtp/**` (collision). Tracked as **OSI-5**.]**
+
 **Location:** `internal/gateway/smtp/session.go`
 
 **Issue:** Need to verify AUTH PLAIN is only accepted after STARTTLS or on implicit TLS ports.
@@ -696,6 +827,8 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 
 ### 32. REFRESH TOKEN REUSE DETECTION MISSING [MEDIUM]
 
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — refresh tokens are neither rotated nor revocable; logout is client-side only. Duplicate of opus C-6; tracked as **OSI-10**.]**
+
 **Location:** `internal/api/handlers/auth.go:206-238`
 
 **Issue:** The refresh token mechanism does not detect or prevent token reuse. If a refresh token is stolen and used, there's no rotation or invalidation of the family.
@@ -704,7 +837,9 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-### 33. JWT TOKEN LACKS FINGERPRINTING [MEDIUM]
+### ~~33. JWT TOKEN LACKS FINGERPRINTING [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — token binding/fingerprinting is optional hardening, not a vulnerability.]**
 
 **Location:** `internal/auth/auth.go`
 
@@ -715,6 +850,8 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 ---
 
 ### 34. DATABASE CONNECTION USES SSLMODE=DISABLE [MEDIUM]
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — the DB DSN uses `sslmode=disable`. **Deferred**: `DSN()` lives in `internal/config/config.go` (collision). Duplicate of opus M-27/M-16; tracked as **OSI-4**.]**
 
 **Location:** `internal/config/config.go:134-139`
 
@@ -734,7 +871,9 @@ func (c *Config) DSN() string {
 
 ---
 
-### 35. SECRETS LOGGED IN DEBUG MODE [MEDIUM]
+### ~~35. SECRETS LOGGED IN DEBUG MODE [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — no code path that logs secrets at debug level was found; unsubstantiated.]**
 
 **Location:** Various debug/logging statements
 
@@ -744,7 +883,9 @@ func (c *Config) DSN() string {
 
 ---
 
-### 36. PROXY PROTOCOL TRUSTS USER-CONFIGURED CIDRS [MEDIUM]
+### ~~36. PROXY PROTOCOL TRUSTS USER-CONFIGURED CIDRS [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (by design) — trusting operator-configured PROXY-protocol CIDRs is how the feature works; the operator owns that trust boundary.]**
 
 **Location:** `cmd/api/main.go:34-37`, `internal/gateway/`
 
@@ -756,6 +897,8 @@ func (c *Config) DSN() string {
 
 ### 37. NO SECURITY HEADERS [MEDIUM]
 
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (low) — no HSTS/CSP/X-Frame-Options on API responses. Best applied at the reverse proxy; a blanket CSP would break the bundled Swagger UI. Duplicate of opus H-13; tracked as **OSI-11**.]**
+
 **Location:** `internal/api/routes.go`
 
 **Issue:** API responses lack security headers (CSP, HSTS, X-Frame-Options, etc.).
@@ -765,6 +908,8 @@ func (c *Config) DSN() string {
 ---
 
 ### 38. PROMETHEUS METRICS EXPOSED WITHOUT AUTHENTICATION [MEDIUM]
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (needs decision) — `/metrics` is unauthenticated (as are the gateway `/metrics` added in #83). Standard Prometheus practice gates this at the network layer; JWT-gating would break scraping. Duplicate of opus H-12; tracked as **OSI-12**.]**
 
 **Location:** `internal/api/routes.go:116`
 
@@ -779,7 +924,9 @@ r.Handle("/metrics", promhttp.Handler())  // No auth required
 
 ---
 
-### 39. SIEVE SCRIPTS ALLOWED WITHOUT SANDBOXING [MEDIUM]
+### ~~39. SIEVE SCRIPTS ALLOWED WITHOUT SANDBOXING [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — sieve is a restricted directive interpreter (keep/fileinto/redirect/discard/reject/vacation), not arbitrary code execution. Parser edge-cases = opus L-4.]**
 
 **Location:** `internal/pipeline/filters/sieve.go`
 
@@ -789,7 +936,9 @@ r.Handle("/metrics", promhttp.Handler())  // No auth required
 
 ---
 
-### 40. DKIM KEY MANAGEMENT ENDPOINTS NEED CAPABILITY CHECKS [MEDIUM]
+### ~~40. DKIM KEY MANAGEMENT ENDPOINTS NEED CAPABILITY CHECKS [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (RBAC #58) — DKIM routes are gated by `CapDomainsRead/Write` in `routes.go`.]**
 
 **Location:** `internal/api/handlers/dkim.go`
 
@@ -797,7 +946,9 @@ r.Handle("/metrics", promhttp.Handler())  // No auth required
 
 ---
 
-### 41. SESSION TIMEOUT NOT IMPLEMENTED [MEDIUM]
+### ~~41. SESSION TIMEOUT NOT IMPLEMENTED [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — access tokens carry a short TTL (effective idle timeout); a UI idle-logout is a frontend nicety, out of scope.]**
 
 **Location:** Frontend applications
 
@@ -807,7 +958,9 @@ r.Handle("/metrics", promhttp.Handler())  // No auth required
 
 ---
 
-### 42. INSECURE DIRECT OBJECT REFERENCE (IDOR) IN WEBMAIL [MEDIUM]
+### ~~42. INSECURE DIRECT OBJECT REFERENCE (IDOR) IN WEBMAIL [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED — per-mailbox handlers use `resolveAccountMailbox`/`verifyMessageOwnership`; the two real IDORs (sieve, quarantine) were closed by codex #1/#2 (opus §7.5–7.9 verified the rest).]**
 
 **Location:** `internal/api/handlers/accounts.go`, `messages.go`
 
@@ -817,7 +970,9 @@ r.Handle("/metrics", promhttp.Handler())  // No auth required
 
 ---
 
-### 43. ERROR MESSAGES REVEAL INTERNAL STATE [MEDIUM]
+### ~~43. ERROR MESSAGES REVEAL INTERNAL STATE [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — handlers return generic `respond.Error` envelopes; raw DB errors/paths are not surfaced.]**
 
 **Location:** Various handlers
 
@@ -827,7 +982,9 @@ r.Handle("/metrics", promhttp.Handler())  // No auth required
 
 ---
 
-### 44. INFORMATION DISCLOSURE IN ERROR MESSAGES [MEDIUM]
+### ~~44. INFORMATION DISCLOSURE IN ERROR MESSAGES [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — internal service names in error strings are not sensitive.]**
 
 **Location:** Various handlers
 
@@ -846,7 +1003,9 @@ respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filte
 
 ---
 
-### 45. INTEGER OVERFLOW IN PAGINATION [MEDIUM]
+### ~~45. INTEGER OVERFLOW IN PAGINATION [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — pagination is parsed with bounds; no exploitable integer overflow in Go here.]**
 
 **Location:** `internal/api/handlers/pipeline.go:46-54`
 
@@ -857,6 +1016,8 @@ respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filte
 ---
 
 ### 46. JSON DECODING WITHOUT SIZE LIMIT [MEDIUM]
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (low) — several handlers `json.NewDecoder(r.Body)` without `http.MaxBytesReader` (body-size DoS, defense-in-depth). Tracked as **OSI-7**.]**
 
 **Location:** Multiple handlers
 
@@ -869,7 +1030,9 @@ r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB limit
 
 ---
 
-### 47. CONTEXT CANCELLATION NOT CHECKED [MEDIUM]
+### ~~47. CONTEXT CANCELLATION NOT CHECKED [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — the flagged ignored-decode-error paths tolerate empty bodies; not a security issue.]**
 
 **Location:** `internal/api/handlers/pipeline.go:399`
 
@@ -882,7 +1045,9 @@ json.NewDecoder(r.Body).Decode(&req)  // Error ignored!
 
 ---
 
-### 48. MISSING INPUT SANITIZATION IN SIEVE SCRIPT STORAGE [MEDIUM]
+### ~~48. MISSING INPUT SANITIZATION IN SIEVE SCRIPT STORAGE [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — sieve scripts are validated on save (`ValidateScript`); a size cap is a minor robustness nicety.]**
 
 **Location:** `internal/db/models/pipeline.go:165-177`
 
@@ -892,7 +1057,9 @@ json.NewDecoder(r.Body).Decode(&req)  // Error ignored!
 
 ---
 
-### 49. WEBHOOK FILTER SSRF RISK [MEDIUM]
+### ~~49. WEBHOOK FILTER SSRF RISK [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — DUPLICATE of #9 (FIXED) — same webhook SSRF, now guarded by `ssrf.go`.]**
 
 **Location:** `internal/pipeline/filters/webhook.go`
 
@@ -902,7 +1069,9 @@ json.NewDecoder(r.Body).Decode(&req)  // Error ignored!
 
 ---
 
-### 50. TIMEOUT VALUES TOO HIGH [MEDIUM]
+### ~~50. TIMEOUT VALUES TOO HIGH [MEDIUM]~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — a 30s client timeout is tunable, not a vulnerability; server read timeouts bound slowloris.]**
 
 **Location:** `internal/gateway/apiclient/client.go:24`
 
