@@ -68,6 +68,13 @@ type Message struct {
 	RawMessage        string    `gorm:"type:text" json:"-"`
 	CalendarEventsRaw JSONB     `gorm:"column:calendar_events;type:jsonb" json:"calendar_events,omitempty"`
 	SizeBytes         int       `gorm:"not null;default:0" json:"size_bytes"`
+	// RawSize is the exact octet count of RawMessage as stored — the size a
+	// protocol client receives when the raw is served verbatim. IMAP
+	// RFC822.SIZE (RFC 3501) and POP3 STAT/LIST must report the transmitted
+	// octet count exactly, which SizeBytes (a quota heuristic over
+	// subject/body lengths) does not guarantee. Zero means "no stored raw";
+	// consumers fall back to SizeBytes.
+	RawSize           int       `gorm:"not null;default:0" json:"raw_size"`
 	HasAttachments    bool      `gorm:"default:false" json:"has_attachments"`
 	IsRead         bool      `gorm:"default:false" json:"is_read"`
 	IsFlagged      bool      `gorm:"default:false" json:"is_flagged"`

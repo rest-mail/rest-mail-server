@@ -333,6 +333,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			Headers:      models.JSONB(req.Headers),
 			RawMessage:   rawMessage,
 			SizeBytes:    sizeBytes,
+			RawSize:      len(rawMessage), // exact stored-raw octet count for IMAP/POP3 size reporting
 		}
 
 		if err := h.db.Create(&msg).Error; err != nil {

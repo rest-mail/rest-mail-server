@@ -45,6 +45,19 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
+// backfillRawSizeSQL populates messages.raw_size for pre-existing rows:
+// the exact octet count of the stored raw message when one exists
+// (octet_length counts bytes, matching len(raw) at write time), else the
+// legacy size_bytes value so gateways report an unchanged size for
+// messages that never had a stored raw. Guarded on raw_size = 0 so the
+// statement is idempotent across restarts and never overwrites a value a
+// writer recorded.
+const backfillRawSizeSQL = `UPDATE messages SET raw_size = CASE
+	WHEN raw_message IS NOT NULL AND raw_message <> '' THEN octet_length(raw_message)
+	ELSE size_bytes
+END
+WHERE raw_size = 0 AND (COALESCE(raw_message, '') <> '' OR size_bytes <> 0)`
+
 // AutoMigrate runs GORM's auto-migration for all models.
 func AutoMigrate(db *gorm.DB) error {
 	slog.Info("running database auto-migration")
@@ -94,6 +107,17 @@ func AutoMigrate(db *gorm.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)
+	}
+
+	// Backfill messages.raw_size for rows created before the column existed.
+	// octet_length (not length) matches Go's len() over the stored text: it
+	// counts bytes in the database encoding, which is exactly what the writer
+	// would have recorded. Rows without a stored raw fall back to size_bytes so
+	// protocol gateways keep reporting the same size they always did for them.
+	// The raw_size = 0 guard makes the backfill idempotent and cheap on
+	// subsequent startups.
+	if err := db.Exec(backfillRawSizeSQL).Error; err != nil {
+		slog.Warn("failed to backfill messages.raw_size", "error", err)
 	}
 
 	// Create composite unique index for mailboxes (domain_id, local_part)

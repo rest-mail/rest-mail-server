@@ -167,12 +167,25 @@ type MessageSummary struct {
 	RecipientsTo   json.RawMessage `json:"recipients_to"`
 	Subject        string          `json:"subject"`
 	SizeBytes      int             `json:"size_bytes"`
+	RawSize        int             `json:"raw_size"`
 	HasAttachments bool            `json:"has_attachments"`
 	IsRead         bool            `json:"is_read"`
 	IsFlagged      bool            `json:"is_flagged"`
 	IsStarred      bool            `json:"is_starred"`
 	IsDraft        bool            `json:"is_draft"`
 	ReceivedAt     time.Time       `json:"received_at"`
+}
+
+// WireSize returns the octet count a protocol gateway must report for this
+// message (IMAP RFC822.SIZE, POP3 STAT/LIST): the exact size of the stored
+// raw message when the server recorded one (raw_size > 0), else the legacy
+// size_bytes approximation for messages that have no stored raw form and are
+// served via a rebuilt fallback.
+func (m MessageSummary) WireSize() int {
+	if m.RawSize > 0 {
+		return m.RawSize
+	}
+	return m.SizeBytes
 }
 
 type MessageDetail struct {

@@ -77,10 +77,13 @@ func (m *mailbox) Messages(folder string) ([]imapsrv.Message, error) {
 
 // toMessage maps an apiclient summary onto the library's neutral Message.
 // Starred folds into \Flagged, matching the previous gateway's flag mapping.
+// Size uses WireSize: the exact stored-raw octet count when the server has
+// one (RFC 3501 requires RFC822.SIZE to be the transmitted size exactly),
+// falling back to size_bytes for messages without a stored raw.
 func toMessage(msg apiclient.MessageSummary) imapsrv.Message {
 	return imapsrv.Message{
 		UID:     uint32(msg.ID),
-		Size:    msg.SizeBytes,
+		Size:    msg.WireSize(),
 		Seen:    msg.IsRead,
 		Flagged: msg.IsFlagged || msg.IsStarred,
 		Draft:   msg.IsDraft,
