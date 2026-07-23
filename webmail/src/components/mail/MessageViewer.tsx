@@ -12,9 +12,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Mail, Paperclip, MessageSquare, Reply, Forward, Trash2, Archive, MoreHorizontal, Image, FileText as FileTextIcon, File } from 'lucide-react';
 import { toast } from 'sonner';
-import DOMPurify from 'dompurify';
 import type { Attachment, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
+import { HtmlMessageBody } from './HtmlMessageBody';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -395,19 +395,9 @@ export function MessageViewer() {
             <CalendarInvite events={msg.calendar_events} messageId={msg.id} />
           )}
 
-          {/* Body */}
+          {/* Body — untrusted HTML rendered in a sandboxed, CSP-locked iframe */}
           {msg.body_html ? (
-            <div
-              className="prose prose-sm dark:prose-invert max-w-none font-mono text-[13px] leading-relaxed [&_img]:max-w-full [&_img]:h-auto"
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(msg.body_html, {
-                  ALLOWED_TAGS: ['p', 'br', 'b', 'i', 'u', 'strong', 'em', 'a', 'ul', 'ol', 'li',
-                    'h1', 'h2', 'h3', 'h4', 'blockquote', 'pre', 'code', 'img', 'hr', 'table',
-                    'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div'],
-                  ALLOWED_ATTR: ['href', 'src', 'alt', 'style', 'class', 'target'],
-                }),
-              }}
-            />
+            <HtmlMessageBody html={msg.body_html} />
           ) : (
             <pre className="font-mono text-[13px] whitespace-pre-wrap text-foreground leading-relaxed">
               {msg.body_text}
