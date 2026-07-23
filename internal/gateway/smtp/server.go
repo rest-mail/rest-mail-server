@@ -90,6 +90,12 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 	srv.TLSConfig = s.tlsConfig
 	srv.MaxMessageBytes = maxMessageSize
 	srv.MaxRecipients = maxRecipients
+	// go-smtp defaults MaxLineLength to 2000 and keeps the limit active during
+	// DATA, which would reject real-world messages with unwrapped long lines
+	// (8-bit text, HTML) that the previous engine accepted — Postfix wraps
+	// rather than rejects these. Disable it for old-engine parity; total input
+	// stays bounded by MaxMessageBytes.
+	srv.MaxLineLength = 0
 	srv.ReadTimeout = 5 * time.Minute
 	srv.WriteTimeout = 5 * time.Minute
 	// Without a TLS config there is nothing to upgrade to; otherwise AUTH is

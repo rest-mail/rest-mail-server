@@ -10,6 +10,17 @@ a `replace` directive in `go.mod`.
 - **Submit with:** open a PR from `rest-mail:custom-ehlo-capabilities` against
   `emersion:master` with the title and body below, verbatim.
 
+## What the pinned module actually contains
+
+The `replace` in rest-mail's `go.mod` pins
+`github.com/rest-mail/go-smtp v0.24.1-0.20260723074705-1df43ece562e`, which is
+**not** "v0.24.0 plus our 26 lines". It is upstream **master** at fork time —
+i.e. v0.24.0 plus emersion's own post-release commit `24034bd9` ("client:
+Autodetect need for SMTPUTF8, and use it") — plus our 26-line ExtraCaps commit
+on top. The extra upstream commit touches only the go-smtp *client*; rest-mail
+imports only the server side (`gosmtp.Server`/`Session`), never the client, so
+it has zero runtime impact on rest-mail.
+
 ---
 
 ## PR title
