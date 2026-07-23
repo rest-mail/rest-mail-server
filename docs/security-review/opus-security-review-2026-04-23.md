@@ -8,6 +8,54 @@
 
 ---
 
+> ## Re-evaluated 2026-07-23 against `main` @ `3567df1`
+>
+> The codebase changed substantially since this 2026-04-23 review (go-smtp,
+> RBAC #58, internal mTLS #65, SSE fix #46, auth rate-limiting + IDOR fixes #77,
+> gateway `/metrics` #83, compose files removed in the decomposition), so cited
+> paths/lines are stale — **every finding was re-verified against current code**.
+> Struck-through = resolved (FIXED / ALREADY-FIXED / OBSOLETE / DUPLICATE /
+> NOT-A-BUG). Genuinely-open items are captured in
+> `2026-07-23-open-security-items.md` (OSI-N).
+>
+> **Collision note:** fixes landing in `internal/gateway/smtp/**`,
+> `internal/api/handlers/restmail.go`, or `internal/config/config.go` are left
+> open and marked **deferred** (concurrent in-flight tarpit work).
+>
+> **Fixed in this PR:** C-8 (webhook/duplicate SSRF guard), C-10 (dnsmasq
+> injection), C-13 (test-endpoint prod gate fail-closed).
+>
+> | # | Verdict | | # | Verdict |
+> |---|---------|-|---|---------|
+> | C-1 | STILL-OPEN (deferred) | | H-1 | ALREADY-FIXED |
+> | C-2 | ALREADY-FIXED | | H-2 | ALREADY-FIXED |
+> | C-3 | STILL-OPEN | | H-3 | STILL-OPEN |
+> | C-4 | DUPLICATE | | H-4 | STILL-OPEN |
+> | C-5 | STILL-OPEN | | H-5 | STILL-OPEN |
+> | C-6 | STILL-OPEN | | H-6 | STILL-OPEN |
+> | C-7 | STILL-OPEN | | H-7 | STILL-OPEN (deferred) |
+> | C-8 | FIXED | | H-8 | STILL-OPEN |
+> | C-9 | STILL-OPEN | | H-9 | STILL-OPEN |
+> | C-10 | FIXED | | H-10 | STILL-OPEN |
+> | C-11 | OBSOLETE + deferred | | H-11 | STILL-OPEN (deployment) |
+> | C-12 | NOT-A-BUG | | H-12 | STILL-OPEN |
+> | C-13 | FIXED | | H-13 | STILL-OPEN |
+> | C-14 | NOT-A-BUG | | H-14 | STILL-OPEN |
+> | C-15 | STILL-OPEN | | H-15 | NOT-A-BUG |
+> | C-16 | STILL-OPEN | | H-16 | STILL-OPEN |
+> | C-17 | STILL-OPEN (infra) | | H-17 | STILL-OPEN (infra) |
+> |  |  | | H-18 | STILL-OPEN (infra) |
+> |  |  | | H-19 | STILL-OPEN (infra) |
+> |  |  | | H-20 | STILL-OPEN |
+> |  |  | | H-21 | STILL-OPEN |
+> |  |  | | H-22 | ALREADY-FIXED |
+> |  |  | | H-23 | STILL-OPEN (CI) |
+> |  |  | | H-24 | NOT-A-BUG |
+>
+> **Medium (§5) & Low (§6):** dispositions are annotated in a note under each of
+> those section headers below.
+
+
 ## Table of contents
 
 1. [Executive summary](#1-executive-summary)
@@ -153,6 +201,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 ## 3. Critical (17)
 
 ### C-1. `POST /restmail/messages` accepts unauthenticated messages from any sender
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — `/restmail/messages` is unauthenticated with no DKIM/SPF verification in code. **Deferred**: fix lands in `internal/api/handlers/restmail.go` (in-flight tarpit collision). Tracked as **OSI-3**.]**
 **CWE:** CWE-306 (Missing Authentication) · CWE-345 (Insufficient Verification of Data Authenticity)
 **Location:** [internal/api/handlers/restmail.go:66-142](../internal/api/handlers/restmail.go#L66), routed in [internal/api/routes.go:161](../internal/api/routes.go#L161)
 **What:** Endpoint is unauthenticated. Handler comment says "verified via DKIM/SPF/DMARC" but there is no verification code — request body (`from`, `to`, raw message) is passed directly into the pipeline for delivery.
@@ -160,7 +210,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Implement one or more of: (a) DKIM signature verification against sender's published DKIM pubkey before acceptance; (b) mTLS with pinned CA between RESTMAIL peers; (c) shared-secret HMAC header signed with per-peer keys. Until any of these lands, disable the endpoint or restrict via reverse proxy to a known-peer allowlist.
 **Detection:** Alert on any POST to `/restmail/messages` that isn't from a known peer IP. Audit-log every acceptance with sender domain + source IP.
 
-### C-2. Sieve filter endpoints have no ownership check (IDOR)
+### ~~C-2. Sieve filter endpoints have no ownership check (IDOR)~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (codex #1) — all three Sieve handlers now call `resolveMailboxID` (ownership via `resolveAccountMailbox`); non-owner → 403. Regression test `TestSieveIDOR_OwnershipEnforced`.]**
 **CWE:** CWE-639 (Authorization Bypass Through User-Controlled Key) · OWASP A01
 **Location:** [internal/api/handlers/sieve.go:27](../internal/api/handlers/sieve.go#L27) (`GET`), [:50](../internal/api/handlers/sieve.go#L50) (`PUT`), [:112](../internal/api/handlers/sieve.go#L112) (`DELETE`)
 **What:** All three handlers take `{id}` from the URL path and use it as `mailbox_id` with no call to `resolveMailboxID()` (the helper every other per-mailbox handler uses).
@@ -169,6 +221,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on any PUT/DELETE to `/sieve` where the mailbox in the URL isn't linked to the JWT's account.
 
 ### C-3. Sieve `redirect` action has no recipient domain validation
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — Sieve `redirect` has no external-domain allowlist/approval; a compromised mailbox owner can silently exfiltrate mail. Product decision. Tracked as **OSI-13**.]**
 **CWE:** CWE-601 (Open Redirect — applied to mail domain)
 **Location:** [internal/pipeline/filters/sieve.go:674-676, :116-122](../internal/pipeline/filters/sieve.go#L674)
 **What:** `redirect` stores target address in metadata with no allowlist, no admin approval, no confirmation flow.
@@ -176,7 +230,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Require targets within the user's own domain unless admin-approved. Log every redirect install. Send confirmation to the redirect address before enabling. Cap redirects per mailbox.
 **Detection:** Log + alert on all Sieve redirect-to-external-domain installs.
 
-### C-4. `/api/mailboxes?address=` and `/restmail/mailboxes?address=` enumerate valid emails
+### ~~C-4. `/api/mailboxes?address=` and `/restmail/mailboxes?address=` enumerate valid emails~~
+
+> **[RESOLVED 2026-07-23 — DUPLICATE of codex SR-004 / **OSI-1**+**OSI-2** — `/api/mailboxes` is now the mTLS-gated internal route (#65); `/restmail/mailboxes` is the accepted-by-design SMTP-`RCPT` equivalent.]**
 **CWE:** CWE-204 (Observable Response Discrepancy) · CWE-200 (Information Exposure)
 **Location:** [internal/api/handlers/mailboxes.go:211](../internal/api/handlers/mailboxes.go#L211); [internal/api/handlers/restmail.go:45](../internal/api/handlers/restmail.go#L45)
 **What:** Unauthenticated endpoints returning `{"exists": true|false}`.
@@ -185,6 +241,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on repeated requests to these endpoints from a single source IP.
 
 ### C-5. `IsAdmin` flag self-escalation path
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (latent) — `IsAdmin` is copied into mailbox claims and `AdminOnly` accepts it. Not presently exploitable (no self-update path exists for `WebmailAccount.IsAdmin`), but the deprecated field should be removed and `AdminOnly` should key on `UserType=="admin"` only. Tracked as **OSI-14**.]**
 **CWE:** CWE-269 (Improper Privilege Management)
 **Location:** [internal/api/handlers/auth.go:137-165](../internal/api/handlers/auth.go#L137)
 **What:** JWT copies `account.IsAdmin` into claims. `IsAdmin` is a mutable boolean on `WebmailAccount`. `AdminOnly` middleware accepts `claims.UserType == "admin" OR claims.IsAdmin`.
@@ -193,6 +251,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Audit-log every change to `webmail_accounts.is_admin` (should be zero changes post-fix). Alert on non-zero.
 
 ### C-6. Refresh tokens not rotated on use; no revocation on logout
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — refresh tokens are not rotated and there is no revocation table; logout is client-side only. Tracked as **OSI-10**.]**
 **CWE:** CWE-613 (Insufficient Session Expiration) · CWE-384 (Session Fixation)
 **Location:** [internal/api/handlers/auth.go:219](../internal/api/handlers/auth.go#L219)
 **What:** Refresh endpoint issues new access but leaves old refresh valid. No revocation table. Logout deletes cookie client-side only. Each refresh adds 7 days.
@@ -201,6 +261,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Log every refresh. Alert when same `jti` is seen twice (replay = stolen).
 
 ### C-7. JavaScript filter sandbox is not a security boundary
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — the JS sidecar uses `vm.runInNewContext`, not a real sandbox; an admin-uploaded filter escapes to Node. Requires replacing the sandbox (isolated-vm/WASM) or removing user JS. Tracked as **OSI-6**.]**
 **CWE:** CWE-693 (Protection Mechanism Failure) · CWE-501 (Trust Boundary Violation) · CWE-1336
 **Location:** [projects/js-filter-sidecar/server.js:119-132](../projects/js-filter-sidecar/server.js#L119), driver at [internal/pipeline/filters/javascript.go:34-56](../internal/pipeline/filters/javascript.go#L34)
 **What:** Sidecar uses Node.js `vm.runInNewContext()` with whitelisted globals. Node docs explicitly state this is **not a sandbox**. `(function(){}).constructor("return process")()` escapes; `Object.prototype` is mutable (`Object.freeze` not applied); prototype pollution escapes are trivial.
@@ -208,7 +270,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Abandon `vm.runInNewContext`. Use `isolated-vm` (V8 isolates with memory + CPU caps), Firecracker microVMs, WebAssembly, or remove user-defined JavaScript filters entirely. Harden container: read-only FS, drop all capabilities, no egress except to API, non-root user, seccomp restricting `execve`.
 **Detection:** Monitor sidecar outbound connections (should be ~zero). Alert on any connection from sidecar to the internet or internal non-API services.
 
-### C-8. Webhook filter has no URL allowlist — SSRF
+### ~~C-8. Webhook filter has no URL allowlist — SSRF~~
+
+> **[RESOLVED 2026-07-23 — STILL-VALID → FIXED (this PR) — the `webhook` and `duplicate` filters now dial via `newGuardedHTTPClient` (`internal/pipeline/filters/ssrf.go`), refusing loopback/link-local (incl. cloud-metadata) targets at dial time (rebind-safe). Tests in `ssrf_test.go`.]**
 **CWE:** CWE-918 (Server-Side Request Forgery) · OWASP A10
 **Location:** [internal/pipeline/filters/webhook.go:30-40, :45-121](../internal/pipeline/filters/webhook.go#L30); [internal/pipeline/filters/duplicate.go:38-82](../internal/pipeline/filters/duplicate.go#L38)
 **What:** Both filters POST to arbitrary configured URL with no validation.
@@ -217,6 +281,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Log every webhook invocation with URL. Alert on any webhook to RFC1918 / 127.x / 169.254.x.
 
 ### C-9. rspamd/ClamAV adapters trust unsigned HTTP responses
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — rspamd/ClamAV verdicts are trusted over plain HTTP with no mTLS/HMAC, and `fallback_action: continue` fails open. Needs mTLS/HMAC + default `defer`. Tracked as **OSI-15**.]**
 **CWE:** CWE-345 (Insufficient Verification of Data Authenticity) · CWE-295
 **Location:** [internal/pipeline/filters/rspamd.go:98-183](../internal/pipeline/filters/rspamd.go#L98), [internal/pipeline/filters/clamav.go:88-155](../internal/pipeline/filters/clamav.go#L88), [internal/pipeline/filters/adapter.go:19-75](../internal/pipeline/filters/adapter.go#L19)
 **What:** Adapters POST to configured URL, parse JSON verdict. No mTLS, no signature, no cert pinning. `fallback_action: continue` means transient unreachability silently passes.
@@ -224,7 +290,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** mTLS with pinned peer cert between mail-server and scanner, OR HMAC-sign responses with pre-shared key, OR run scanners as network-namespace sidecars (no L2 exposure). Change default `fallback_action` to `defer`.
 **Detection:** Track scanner verdict distribution; alert on sudden drop in spam/virus detection rate.
 
-### C-10. dnsmasq provider writes unescaped user input to config file
+### ~~C-10. dnsmasq provider writes unescaped user input to config file~~
+
+> **[RESOLVED 2026-07-23 — STILL-VALID → FIXED (this PR) — `DnsmasqProvider.EnsureRecords` now rejects any domain/record name/value containing control characters/newlines before writing, preventing config-directive injection. Test `TestDnsmasqRejectsInjection`.]**
 **CWE:** CWE-74 (Injection) · CWE-78
 **Location:** [internal/dns/dnsmasq.go:25-56](../internal/dns/dnsmasq.go#L25)
 **What:** `fmt.Sprintf("address=/%s/%s", r.Name, r.Value)` with no validation; dnsmasq config is line-oriented.
@@ -233,6 +301,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** dnsmasq config file should only contain expected directives — monitor with integrity check on every write.
 
 ### C-11. Hardcoded default secrets baked into repo
+
+> **[STILL-OPEN 2026-07-23 — OBSOLETE (compose/Grafana secrets removed in decomposition) for the file-based secrets; the residual — `config.go` production guard is a string-match with no min-length/entropy floor — is **deferred** (config.go collision) and tracked as **OSI-4**.]**
 **CWE:** CWE-798 (Use of Hard-coded Credentials) · CWE-532 (Sensitive Info in Log)
 **Locations:**
 - `.env` and [docker-compose.yml:131-132](../docker-compose.yml#L131) — `JWT_SECRET`, `MASTER_KEY`
@@ -244,7 +314,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Remove every secret from tracked files. Ship `.env.example` with placeholder values. Startup must fail if any critical secret is unset, equals legacy default, or shorter than 32 bytes. Use Docker secrets / K8s Secrets / Vault in production. Postgres exporter DSN must use `sslmode=require` + unique password.
 **Detection:** Startup log should show which secrets are "custom" without revealing them. CI linter should block any PR containing secrets.
 
-### C-12. Attachment `Content-Disposition` header concatenates filename (CRLF injection)
+### ~~C-12. Attachment `Content-Disposition` header concatenates filename (CRLF injection)~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — Go's `net/http` replaces CR/LF in header values with spaces (`headerNewlineToSpace`) before writing, so the `Content-Disposition` filename cannot split the response. (`Filename` is MIME-parsed/DB-derived, not request-controlled.)]**
 **CWE:** CWE-93 (CRLF Injection) · CWE-113 (HTTP Response Splitting)
 **Location:** [internal/api/handlers/attachments.go:86](../internal/api/handlers/attachments.go#L86)
 **What:** `w.Header().Set("Content-Disposition", "attachment; filename=\""+att.Filename+"\"")`. `sanitizeFilename()` at [internal/mime/parser.go:171](../internal/mime/parser.go#L171) strips `/`, `\`, null — but not `\r\n`.
@@ -252,7 +324,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Reject filenames containing any control character. Use RFC 6266 `filename*=UTF-8''<pct-encoded>`.
 **Detection:** Log + reject any attachment with `\r` or `\n` in filename at ingestion time as well.
 
-### C-13. Test endpoints gated only by string match on `ENVIRONMENT == "production"`
+### ~~C-13. Test endpoints gated only by string match on `ENVIRONMENT == "production"`~~
+
+> **[RESOLVED 2026-07-23 — STILL-VALID → FIXED (this PR) — the test-endpoint gate now fails CLOSED on any production-like `ENVIRONMENT` (case-insensitive, whole `prod*` family) via `TestHandler.productionLocked()`. Test `TestProductionLockedFailsClosed`.]**
 **CWE:** CWE-489 (Active Debug Code) · CWE-269
 **Location:** [internal/api/handlers/testing.go:35-38, :252-293](../internal/api/handlers/testing.go#L35), [internal/api/routes.go:364-367](../internal/api/routes.go#L364)
 **What:** `if cfg.Environment == "production"` — typos (`prod`, `PROD`, `production-eu`) disable the gate. Within the gate, any admin with any capability (H-1) can wipe the DB.
@@ -260,7 +334,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Build-tag-gate test handlers (`//go:build !production`); do not compile into prod binaries. If runtime gate stays, require TWO signals: `ENVIRONMENT != "production"` (case-insensitive allowlist) AND `ENABLE_TEST_ENDPOINTS=yes`.
 **Detection:** Alert on any call to `/api/v1/admin/test/*` in production logs.
 
-### C-14. Attachment dedup uses checksum alone; cross-user file linking
+### ~~C-14. Attachment dedup uses checksum alone; cross-user file linking~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — the dedup key is the SHA-256 of the actual attachment bytes; you cannot reference a `storage_ref` without already possessing identical content, and retrieval is ownership-scoped (`attachments` JOIN `messages` JOIN `mailboxes`). No cross-user disclosure.]**
 **CWE:** CWE-639 · CWE-345
 **Location:** [internal/pipeline/filters/extract_attachments.go:115-154](../internal/pipeline/filters/extract_attachments.go#L115)
 **What:** `SELECT storage_ref FROM attachments WHERE checksum = ? AND storage_type = ?` — attacker with a known checksum reuses storage_ref.
@@ -269,6 +345,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Audit attachment dedup reuses across mailbox boundaries.
 
 ### C-15. DKIM private keys silently fall back to plaintext on decryption failure
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — `dkim_sign` silently falls back to using the stored key as plaintext when `DecryptString` fails; legacy plaintext-at-rest keys remain. Needs a data migration + fail-closed. Tracked as **OSI-8**.]**
 **CWE:** CWE-325 (Missing Cryptographic Step) · CWE-311
 **Location:** [internal/pipeline/filters/dkim.go:131-154](../internal/pipeline/filters/dkim.go#L131)
 **What:** If `MASTER_KEY` empty OR `DecryptString` errors, code uses `domain.DKIMPrivateKey` as-is. Comment: "Fall back to plaintext in case key was stored before encryption was enabled."
@@ -277,6 +355,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Log every DKIM decryption failure at ERROR level. Alert on >0/day.
 
 ### C-16. Webmail DOMPurify allows `style` attribute — CSS exfiltration
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (frontend) — webmail DOMPurify keeps `style` in `ALLOWED_ATTR` (CSS/`@font-face` exfiltration) and renders email in the main document (no iframe, L-2). Tracked as **OSI-16**.]**
 **CWE:** CWE-79 (XSS) · OWASP A03
 **Location:** [webmail/src/components/mail/MessageViewer.tsx:401-411](../webmail/src/components/mail/MessageViewer.tsx#L401)
 **What:** `ALLOWED_ATTR` includes `style` and `class`. DOMPurify strips JS but not CSS.
@@ -285,6 +365,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Browser CSP violation reports if CSP is added first.
 
 ### C-17. Postfix/Dovecot/Nginx containers run as root
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (deployment) — protocol/frontend containers run as root; add non-root `USER`. Deployment hardening (compose evidence partly OBSOLETE post-decompose). Tracked as **OSI-17**.]**
 **CWE:** CWE-250 (Execution with Unnecessary Privileges) · OWASP A05
 **Location:** [docker/postfix/Dockerfile](../docker/postfix/Dockerfile), [docker/dovecot/Dockerfile](../docker/dovecot/Dockerfile), [admin/Dockerfile](../admin/Dockerfile), [webmail/Dockerfile](../webmail/Dockerfile) — no `USER` directive
 **What:** Containers run as root. Combined with a Postfix/Dovecot/Nginx parsing RCE (historically common) → immediate root inside container → read `/certs/*`, env vars, pivot across the mailnet.
@@ -296,7 +378,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 
 ## 4. High (24)
 
-### H-1. `/api/v1/admin/*` routes gated by `AdminOnly` but no capability check
+### ~~H-1. `/api/v1/admin/*` routes gated by `AdminOnly` but no capability check~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (RBAC #58) — every `/api/v1/admin/*` route now carries `RequireCapability(Cap…)` after `AdminOnly` (see `routes.go`); superadmin `*` satisfies all.]**
 **CWE:** CWE-285 (Improper Authorization) · CWE-269
 **Location:** [internal/api/routes.go:247-349](../internal/api/routes.go#L247)
 **What:** `RequireCapability` middleware exists at [internal/api/middleware/auth.go:74-106](../internal/api/middleware/auth.go#L74) but isn't applied per route.
@@ -304,7 +388,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Add `RequireCapability("<action>:<resource>")` per route. Audit every admin handler for defense-in-depth: handler itself checks capabilities from `middleware.GetClaims(r)`.
 **Detection:** Audit log every admin action with `actor`, `capability_exercised`. Alert on "admin used capability not in their granted set".
 
-### H-2. No rate limiting on `/api/v1/auth/login`
+### ~~H-2. No rate limiting on `/api/v1/auth/login`~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (codex #7 / #77) — per-IP token-bucket limiter on `/auth/login` + `/refresh`.]**
 **CWE:** CWE-307 · OWASP A07
 **Location:** [internal/api/routes.go:146](../internal/api/routes.go#L146)
 **What:** No per-IP, per-account, or global rate limit on login. Connection limiter is gateway-only.
@@ -313,6 +399,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on >N failed logins per IP per minute.
 
 ### H-3. Login timing leak — user enumeration
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (low) — login early-returns without bcrypt on unknown user (timing enumeration). Substantially mitigated by the new rate limiter; a constant-time always-bcrypt path would close it. Tracked as **OSI-24**.]**
 **CWE:** CWE-208 (Observable Timing Discrepancy) · CWE-204
 **Location:** [internal/api/handlers/auth.go:137-149](../internal/api/handlers/auth.go#L137)
 **What:** "No such user" early-returns in ~10 ms. Password-mismatch runs bcrypt in ~70 ms. Diff trivially measurable.
@@ -320,6 +408,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Hard to detect attacks; mitigated by H-2 rate limit.
 
 ### H-4. IMAP folder names not server-validated — potential traversal
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — IMAP folder names aren't gateway-validated; ownership must be enforced API-side. Tracked as **OSI-9**.]**
 **CWE:** CWE-22 (Path Traversal)
 **Location:** [internal/gateway/imap/session.go:307-355](../internal/gateway/imap/session.go#L307)
 **What:** Gateway passes folder name to API without sanitization. If API doesn't enforce account_id filter strictly, attacker reads foreign folders.
@@ -327,6 +417,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on SELECT/LIST commands containing `..` or unusual characters.
 
 ### H-5. MIME header RFC 2047 decode without CRLF rejection
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — RFC 2047 header decode isn't CRLF-checked before any re-serialization. Tracked as **OSI-23**.]**
 **CWE:** CWE-93
 **Location:** [internal/mime/parser.go:49-101, :259-266](../internal/mime/parser.go#L49)
 **What:** `mime.WordDecoder.DecodeHeader` output is not CRLF-checked; decoded Subject could be `ok\nBcc: attacker@`.
@@ -335,6 +427,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Log + reject messages with control chars in headers.
 
 ### H-6. SMTP bounce-loop / mail bombing via spoofed sender
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — DSN/bounce inserted without verifying the bounce recipient matches the authenticated session; needs sender-auth + DSN rate-limit. (queue worker — not a collision path, but blast-radius; not fixed here.) Tracked as **OSI-25**.]**
 **CWE:** CWE-400 (Uncontrolled Resource Consumption)
 **Location:** [internal/gateway/queue/worker.go:458-573](../internal/gateway/queue/worker.go#L458)
 **What:** DSN inserted into sender mailbox with no check that sender was the authenticated user.
@@ -342,6 +436,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on >N DSNs to a single mailbox per hour.
 
 ### H-7. SMTP line-ending handling (SMTP smuggling adjacency)
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — non-strict `\r\n` handling (SMTP-smuggling adjacency). **Deferred**: `internal/gateway/smtp/**` collision. Tracked as **OSI-5**.]**
 **CWE:** CWE-74 · CVE-2023-51766 class
 **Location:** [internal/gateway/smtp/session.go:413-442](../internal/gateway/smtp/session.go#L413)
 **What:** DATA phase reads with `ReadBytes('\n')` trimming `\r\n`. Non-strict `\r\n` enforcement enables ambiguous end-of-data → smuggled second message.
@@ -349,6 +445,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Log + reject any DATA with non-CRLF line endings.
 
 ### H-8. Pipeline filter name typo → silent skip → filter bypass
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — unknown/failed filter instantiation is logged and `continue`d (fail-open); a renamed security filter is silently skipped. Needs fail-closed (defer/reject) + save-time validation. Tracked as **OSI-18**.]**
 **CWE:** CWE-391 (Unchecked Error Condition)
 **Location:** [internal/pipeline/engine.go:82-90](../internal/pipeline/engine.go#L82)
 **What:** Unknown filter name logged + `continue`. Message proceeds unfiltered.
@@ -357,6 +455,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on "failed to create filter" logs.
 
 ### H-9. Sidecar hardcoded URL + silent fail-open
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — sidecar URL is now configurable but plaintext, and unreachable-sidecar fails open (`ActionContinue`). Folds into **OSI-6**.]**
 **CWE:** CWE-755 · CWE-345
 **Location:** [internal/pipeline/filters/javascript.go:16, :87, :454](../internal/pipeline/filters/javascript.go#L16)
 **What:** URL `http://js-filter:3100` hardcoded, plaintext. Unreachable sidecar → `ActionContinue`.
@@ -364,6 +464,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert if sidecar health check fails; message queue should drain not accept new inbound until restored.
 
 ### H-10. Custom filter upload grants RCE via JS sidecar
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — custom-filter upload → sidecar execution; RCE while C-7 stands. Now `CapPipelinesWrite`-gated. Folds into **OSI-6**.]**
 **CWE:** CWE-94 (Code Injection)
 **Location:** [internal/api/handlers/pipeline.go](../internal/api/handlers/pipeline.go) — `/api/v1/admin/filters` CRUD
 **What:** Admin uploads JS filter body → runs in sidecar. Combined with C-7, any admin = RCE.
@@ -371,6 +473,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on any POST/PUT to `/api/v1/admin/filters` containing inline code.
 
 ### H-11. Admin UI reachable from internet with only login as gate
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — admin UI internet-reachable with only login; no IP allowlist/VPN/2FA. Deployment + 2FA feature. Tracked as **OSI-19**.]**
 **CWE:** CWE-284 · OWASP A01
 **Location:** reverse-proxy config + [internal/api/routes.go:247](../internal/api/routes.go#L247)
 **What:** `/admin` and `/api/v1/admin/*` exposed wherever the proxy listens. No IP allowlist, VPN, or 2FA.
@@ -378,6 +482,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Alert on admin login from a new source IP.
 
 ### H-12. Prometheus `/metrics` endpoint unauthenticated
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (needs decision) — `/metrics` is unauthenticated (as are gateway `/metrics` in #83); network-gate vs JWT is a deployment decision (JWT would break scraping). Tracked as **OSI-12**.]**
 **CWE:** CWE-200 · CWE-552
 **Location:** [internal/api/routes.go:116](../internal/api/routes.go#L116)
 **What:** Top-level unauth'd `promhttp.Handler()`.
@@ -386,6 +492,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Log all `/metrics` requests in prod.
 
 ### H-13. Security headers missing on API + frontends
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (low) — no HSTS/CSP/X-Frame/nosniff/Referrer-Policy; best at the reverse proxy (a blanket API CSP breaks Swagger UI). Tracked as **OSI-11**.]**
 **CWE:** CWE-1021 · CWE-346
 **Location:** [internal/api/routes.go](../internal/api/routes.go), [webmail/nginx.conf](../webmail/nginx.conf), [admin/Dockerfile:22-29](../admin/Dockerfile#L22)
 **What:** No HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy.
@@ -393,21 +501,29 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** External scanner (SSL Labs, securityheaders.com) confirms headers.
 
 ### H-14. POP3 USER command enables blind enumeration
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN (low) — POP3 `USER` timing enumeration; same class as H-3, folds into **OSI-24**.]**
 **CWE:** CWE-204 · CWE-208
 **Location:** [internal/gateway/pop3/session.go:160-175](../internal/gateway/pop3/session.go#L160)
 **Fix:** Always run bcrypt; constant-time identical error; fixed delay regardless of outcome.
 
-### H-15. Quota increment missing upper bound
+### ~~H-15. Quota increment missing upper bound~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG (low) — per-message max size is far below any 64-bit quota-counter overflow; quota is advisory. A `LEAST(...)` clamp is a minor robustness nicety.]**
 **CWE:** CWE-190 (Integer Overflow or Wraparound)
 **Location:** [internal/api/handlers/messages.go](../internal/api/handlers/messages.go)
 **Fix:** `LEAST(quota_used_bytes + ?, quota_bytes)` on increment, or `SELECT FOR UPDATE` in a transaction. Application-level single-message max size far below overflow risk.
 
 ### H-16. IMAP DELETE/EXPUNGE trusts gateway-cached message list for ownership
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — IMAP DELETE/EXPUNGE ownership must be re-verified backend-side, not trusted from the gateway's cached list. Tracked as **OSI-9**.]**
 **CWE:** CWE-639
 **Location:** [internal/gateway/imap/session.go:142-151, :760-780](../internal/gateway/imap/session.go#L142)
 **Fix:** Gateway only issues deletes for IDs present in the session's most-recent LIST. Backend `DeleteMessage` must also verify the message's mailbox is linked to the JWT's account.
 
 ### H-17. Dovecot plaintext authentication enabled (`disable_plaintext_auth = no`)
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — Dovecot `disable_plaintext_auth = no`. Infra config. Tracked as **OSI-17**.]**
 **CWE:** CWE-522 (Insufficiently Protected Credentials) · OWASP A02
 **Location:** [docker/dovecot/conf/dovecot.conf.tmpl:23](../docker/dovecot/conf/dovecot.conf.tmpl#L23)
 **What:** Dovecot accepts unencrypted IMAP/POP3 AUTH. Opportunistic STARTTLS can be MITM-downgraded.
@@ -416,6 +532,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** `doveadm log` showing successful plaintext auth in prod.
 
 ### H-18. Dovecot SASL auth exposed unencrypted to all mailnet containers
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — Dovecot SASL listener unencrypted on the mailnet. Infra config. Tracked as **OSI-17**.]**
 **CWE:** CWE-522
 **Location:** [docker/dovecot/conf/dovecot.conf.tmpl:78-81](../docker/dovecot/conf/dovecot.conf.tmpl#L78)
 **What:** `inet_listener` on `0.0.0.0:12345` without TLS. Postfix authenticates to Dovecot via plaintext TCP on mailnet.
@@ -424,6 +542,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** `netstat -tlnp` in dovecot container should not show `0.0.0.0:12345` in prod.
 
 ### H-19. Certificate private keys readable by all mailnet containers
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — certificate private keys readable by every container mounting `/certs`. Infra/secrets. Tracked as **OSI-17**.]**
 **CWE:** CWE-276 (Incorrect Default Permissions)
 **Location:** [docker-compose.yml](../docker-compose.yml) — many services bind `certs:/certs:ro`
 **What:** `/certs/*.key` readable inside every container that mounts the volume. Any container RCE extracts the CA key + domain keys.
@@ -432,6 +552,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** File permission audit in every container that mounts `/certs`.
 
 ### H-20. RESTMAIL capability cache URL hijack potential
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — RESTMAIL capability cache should be keyed by MX identity/cert, and only trusted for allowlisted peers. Tracked as **OSI-20**.]**
 **CWE:** CWE-295 · CWE-345
 **Location:** [internal/gateway/queue/worker.go:285-300](../internal/gateway/queue/worker.go#L285)
 **What:** Cache stores `{domain: recipient_domain, url: <from_EHLO>}`. Attacker-controlled MX publishes `RESTMAIL https://attacker/evil`; on multi-tenant relays or shared-MX setups, poisoned cache entries can redirect outbound for legitimate domains.
@@ -439,6 +561,8 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Detection:** Log every RESTMAIL capability cache entry creation/use.
 
 ### H-21. Account-linking TOCTOU + no single-mailbox-per-link constraint
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — account-linking has no transaction/`SELECT FOR UPDATE` and no single-link-per-mailbox constraint. Tracked as **OSI-21**.]**
 **CWE:** CWE-362 / CWE-363 (Race Condition) · CWE-639
 **Location:** [internal/api/handlers/accounts.go:129-185](../internal/api/handlers/accounts.go#L129)
 **What:** No transaction between mailbox lookup and linked_accounts insert. Unique constraint is on `(webmail_account_id, mailbox_id)` — two different webmail accounts can link the same mailbox.
@@ -446,13 +570,17 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Wrap link operation in a transaction with `SELECT FOR UPDATE` on the mailbox. Add unique constraint on `mailbox_id` alone (one link per mailbox). Handlers must re-verify linkage on every request, not trust the JWT.
 **Detection:** Alert if any mailbox appears in more than one `linked_accounts` row.
 
-### H-22. Refresh endpoint issues mailbox-type token for admin refresh
+### ~~H-22. Refresh endpoint issues mailbox-type token for admin refresh~~
+
+> **[RESOLVED 2026-07-23 — ALREADY-FIXED (#45) — `Refresh()` now branches on `claims.UserType` and mints an admin token pair for admin refresh.]**
 **CWE:** CWE-287 (Improper Authentication)
 **Location:** [internal/api/handlers/auth.go:219](../internal/api/handlers/auth.go#L219), [internal/auth/auth.go](../internal/auth/auth.go)
 **What:** `Refresh()` calls `GenerateTokenPair()` unconditionally, ignoring `claims.UserType`. Admin refresh returns a mailbox token, which may lose admin caps (minor availability issue) but hints at missing type-awareness that could be exploited by future claim-confusion bugs.
 **Fix:** Branch on `claims.UserType`; call `GenerateAdminTokenPair` for admin refresh, `GenerateTokenPair` for mailbox. Reject any token whose `UserType` doesn't match the endpoint it was used on.
 
 ### H-23. CI/CD uses `StrictHostKeyChecking=no` on deploy SSH
+
+> **[STILL-OPEN 2026-07-23 — STILL-OPEN — deploy workflow uses `StrictHostKeyChecking=no`. `.github/workflows` is out of scope to edit here. Tracked as **OSI-22**.]**
 **CWE:** CWE-295
 **Location:** [.github/workflows/deploy.yml:53](../.github/workflows/deploy.yml#L53)
 **What:** SSH-based deployment accepts unknown host keys.
@@ -460,7 +588,9 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 **Fix:** Store target host's SSH key in GitHub Secrets as `DEPLOY_HOST_KEY`; use `-o UserKnownHostsFile=~/.ssh/known_hosts` with key pre-populated.
 **Detection:** Audit `/var/log/auth.log` on deploy host for ssh connections from unexpected IPs.
 
-### H-24. JWT `alg` not explicitly pinned to HS256
+### ~~H-24. JWT `alg` not explicitly pinned to HS256~~
+
+> **[RESOLVED 2026-07-23 — NOT-A-BUG — the keyfunc already asserts `*jwt.SigningMethodHMAC`, rejecting `alg:none` and asymmetric-key (RS256-pubkey) confusion; an exact-`HS256` pin is cosmetic hardening only.]**
 **CWE:** CWE-347 (Improper Verification of Cryptographic Signature)
 **Location:** [internal/auth/auth.go:165-171](../internal/auth/auth.go#L165)
 **What:** Validator checks `*jwt.SigningMethodHMAC` (accepts HS256/HS384/HS512 interchangeably). No explicit pin. No `typ: JWT` check. No `kid` handling (fine, nothing uses JWKS today — but silent future migration to RS256 without explicit rejection of HS+pubkey substitution is a latent risk).
@@ -470,6 +600,12 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 ---
 
 ## 5. Medium (27)
+
+> **[Re-evaluated 2026-07-23 — dispositions]**
+> - **OBSOLETE** (Docker Compose / monitoring stack removed in the decomposition): M-15 (Grafana), M-19 (unversioned images), M-20 (flat mailnet), M-21 (fail2ban caps), M-27 (exporter `sslmode`).
+> - **NOT-A-BUG / by-design:** M-3 (IMAP UIDs enumerable — design), M-7 (in-handler defense-in-depth — style), M-8 (in-memory rate-limit state — single-node by design), M-10 (CORS uses configured allowlist, not reflected origin), M-13 (search excludes linked accounts — functional gap, not a security issue).
+> - **DEFERRED (collision — smtp/config):** M-1 (TLS ciphers), M-4 (banner recon), M-16 (`0.0.0.0` bind), M-24 (SMTP auth logs email) → folded into **OSI-5** (smtp) / **OSI-4** (config).
+> - **STILL-OPEN (tracked):** M-2 connlimiter race, M-5 attachment symlink, M-6 mass-assignment fragility, M-9 DKIM header coverage, M-11 fail2ban regex, M-12 autodiscover XXE, M-14 test-endpoint rate-limit, M-17 test/send (now prod-locked, low), M-18 Postfix submission TLS `may`, M-22/M-23 ACME limits/path, M-25 unlinked-JWT TTL (→ **OSI-10**), M-26 no password reset → captured under **OSI-26 (residual medium/low backlog)**; infra items (M-11/M-18) → **OSI-17**.
 
 | # | Finding | CWE | Location | Detection |
 |---|---------|-----|----------|-----------|
@@ -504,6 +640,11 @@ Isolated findings are easier to dismiss ("who'd find that?"). These end-to-end w
 ---
 
 ## 6. Low / Info (11)
+
+> **[Re-evaluated 2026-07-23 — dispositions]**
+> - **OBSOLETE:** L-1 (`docker-compose.override.yml` removed in the decomposition).
+> - **NOT-A-BUG:** L-10 (Message-ID has 128-bit entropy; format predictability is not a weakness).
+> - **STILL-OPEN (tracked):** L-2 iframe isolation (→ **OSI-16**), L-9 2FA (→ **OSI-19**), L-6 SMTP pipelining cap (→ **OSI-5**), L-3 admin DevTools (frontend/`admin/` — out of scope to edit here), L-4 Sieve-parser edge cases, L-5 Authentication-Results not DKIM-covered, L-7 sparse gateway auth logs, L-8 run `govulncheck`/`pnpm audit`, L-11 Dovecot quota plugin → captured under **OSI-26 (residual medium/low backlog)**.
 
 | # | Finding | CWE | Location |
 |---|---------|-----|----------|

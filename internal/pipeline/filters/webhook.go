@@ -49,10 +49,9 @@ func (f *webhookFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) 
 		return nil, fmt.Errorf("marshal email: %w", err)
 	}
 
-	// Send the webhook
-	client := &http.Client{
-		Timeout: time.Duration(f.cfg.TimeoutMS) * time.Millisecond,
-	}
+	// Send the webhook. The URL is operator-supplied (pipelines:write), so the
+	// client refuses loopback/link-local targets to blunt SSRF (see ssrf.go).
+	client := newGuardedHTTPClient(time.Duration(f.cfg.TimeoutMS) * time.Millisecond)
 
 	req, err := http.NewRequestWithContext(ctx, f.cfg.Method, f.cfg.URL, bytes.NewReader(payload))
 	if err != nil {

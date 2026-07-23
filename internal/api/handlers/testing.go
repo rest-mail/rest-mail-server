@@ -29,10 +29,25 @@ func NewTestHandler(db *gorm.DB, cfg *config.Config) *TestHandler {
 	return &TestHandler{db: db, cfg: cfg}
 }
 
+// productionLocked reports whether the destructive/abusable test endpoints
+// (reset, seed, snapshot/restore, send, probe, verify) must be refused.
+//
+// The gate fails CLOSED on any production-like ENVIRONMENT value:
+// case-insensitive and matching the whole "prod…" family ("prod", "PROD",
+// "Production", "production-eu", …). Previously it compared against the exact
+// string "production", so a rebranded or mistyped value (e.g. ENVIRONMENT=prod)
+// would silently leave these endpoints ENABLED on a production deployment
+// (CWE-489). Non-production environments (development/test/staging) are
+// unaffected.
+func (h *TestHandler) productionLocked() bool {
+	env := strings.ToLower(strings.TrimSpace(h.cfg.Environment))
+	return strings.HasPrefix(env, "prod")
+}
+
 // SendTestEmail sends a test email from one mailbox to another.
 // POST /api/v1/admin/test/send
 func (h *TestHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Environment == "production" {
+	if h.productionLocked() {
 		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 		return
 	}
@@ -128,7 +143,7 @@ func (h *TestHandler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 // VerifyDelivery checks whether a message matching the given criteria was delivered.
 // GET /api/v1/admin/test/verify?to=alice@mail1.test&subject=Test&timeout=5s
 func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Environment == "production" {
+	if h.productionLocked() {
 		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 		return
 	}
@@ -196,7 +211,7 @@ func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
 // ProbeServices checks connectivity to SMTP, IMAP, POP3, and DNS services.
 // POST /api/v1/admin/test/probe
 func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Environment == "production" {
+	if h.productionLocked() {
 		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 		return
 	}
@@ -250,7 +265,7 @@ func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
 // ResetTestData wipes all data and re-seeds with default test data.
 // POST /api/v1/admin/test/reset
 func (h *TestHandler) ResetTestData(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Environment == "production" {
+	if h.productionLocked() {
 		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 		return
 	}
@@ -295,7 +310,7 @@ func (h *TestHandler) ResetTestData(w http.ResponseWriter, r *http.Request) {
 // SeedTestData creates default test domains, mailboxes, aliases, and accounts.
 // POST /api/v1/admin/test/seed
 func (h *TestHandler) SeedTestData(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Environment == "production" {
+	if h.productionLocked() {
 		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 		return
 	}
@@ -311,7 +326,7 @@ func (h *TestHandler) SeedTestData(w http.ResponseWriter, r *http.Request) {
 // Snapshot captures the current database state as JSON.
 // POST /api/v1/admin/test/snapshot
 func (h *TestHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Environment == "production" {
+	if h.productionLocked() {
 		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 		return
 	}
@@ -358,7 +373,7 @@ func (h *TestHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 // RestoreSnapshot restores database state from a previously captured snapshot.
 // POST /api/v1/admin/test/snapshot/restore
 func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
-	if h.cfg.Environment == "production" {
+	if h.productionLocked() {
 		respond.Error(w, http.StatusForbidden, "forbidden", "test endpoints disabled in production")
 		return
 	}

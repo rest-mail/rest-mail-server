@@ -112,9 +112,9 @@ func (f *duplicateFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 // sendWebhook posts the email JSON payload to the configured webhook URL.
 // It runs in a goroutine and logs errors instead of returning them.
 func (f *duplicateFilter) sendWebhook(payload []byte) {
-	client := &http.Client{
-		Timeout: f.timeout,
-	}
+	// The webhook URL is operator-supplied (pipelines:write), so the client
+	// refuses loopback/link-local targets to blunt SSRF (see ssrf.go).
+	client := newGuardedHTTPClient(f.timeout)
 
 	req, err := http.NewRequestWithContext(context.Background(), f.method, f.webhookURL, bytes.NewReader(payload))
 	if err != nil {
