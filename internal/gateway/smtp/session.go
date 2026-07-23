@@ -225,9 +225,13 @@ func (s *session) login(username, password string) error {
 
 	resp, err := s.api.Login(username, password)
 	if err != nil {
+		// OSI-5: the attempted username is attacker-controlled and high-volume on
+		// this path (credential-stuffing / user-enumeration probes), so it is
+		// masked rather than logged in the clear. The authenticated (success) path
+		// below still logs the real user for audit.
 		slog.Warn("smtp: auth failed",
 			"remote", s.remoteAddr(),
-			"user", username,
+			"user", maskEmail(username),
 			"event", "smtp_auth_failed",
 			"ip", ip,
 		)
@@ -276,7 +280,9 @@ func (s *session) Mail(from string, _ *gosmtp.MailOptions) error {
 		// matching the prior behavior (which left the count at zero).
 		authorized, err := s.store.SenderAuthorized(s.accountID, from)
 		if err != nil || !authorized {
-			slog.Warn("smtp: sender not authorized", "auth_user", s.authEmail, "mail_from", from, "error", err)
+			// OSI-5: mask the addresses — a mismatching MAIL FROM is a spoofing
+			// attempt and both values are logged in the clear otherwise.
+			slog.Warn("smtp: sender not authorized", "auth_user", maskEmail(s.authEmail), "mail_from", maskEmail(from), "error", err)
 			return &gosmtp.SMTPError{
 				Code:         553,
 				EnhancedCode: gosmtp.EnhancedCode{5, 7, 1},

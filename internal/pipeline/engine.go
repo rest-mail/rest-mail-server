@@ -12,6 +12,13 @@ type Engine struct {
 	registry *Registry
 	logger   *slog.Logger
 	observer Observer
+	// filterErrorAction is applied when a filter cannot be instantiated
+	// (unknown/renamed filter) or errors during execution (OSI-18). It defaults
+	// to ActionDefer — fail-CLOSED — so a broken or removed security filter
+	// temp-fails the message (sender retries) rather than being silently skipped
+	// while the rest of the pipeline continues. Override via SetFilterErrorAction
+	// (ActionContinue restores the legacy fail-open behavior).
+	filterErrorAction Action
 }
 
 // NewEngine creates a pipeline execution engine.
@@ -29,18 +36,31 @@ func NewEngine(registry *Registry, logger *slog.Logger, observer ...Observer) *E
 		obs = observer[0]
 	}
 	return &Engine{
-		registry: registry,
-		logger:   logger,
-		observer: obs,
+		registry:          registry,
+		logger:            logger,
+		observer:          obs,
+		filterErrorAction: ActionDefer, // fail-closed by default (OSI-18)
+	}
+}
+
+// SetFilterErrorAction overrides the action taken when a filter fails to
+// instantiate or execute (OSI-18). Valid values are ActionContinue (legacy
+// fail-open), ActionDefer (default, fail-closed temp-fail), and ActionReject;
+// any other value is ignored, leaving the secure default in place. Call once at
+// wiring time — it is not safe to change while Execute is running.
+func (e *Engine) SetFilterErrorAction(a Action) {
+	switch a {
+	case ActionContinue, ActionDefer, ActionReject:
+		e.filterErrorAction = a
 	}
 }
 
 // ExecutionResult holds the outcome of running a full pipeline.
 type ExecutionResult struct {
-	FinalAction Action      `json:"final_action"`
-	FinalEmail  *EmailJSON  `json:"final_email"`
-	Steps       []StepResult `json:"steps"`
-	RejectMsg   string      `json:"reject_message,omitempty"`
+	FinalAction Action        `json:"final_action"`
+	FinalEmail  *EmailJSON    `json:"final_email"`
+	Steps       []StepResult  `json:"steps"`
+	RejectMsg   string        `json:"reject_message,omitempty"`
 	Duration    time.Duration `json:"duration_ms"`
 }
 
@@ -99,24 +119,40 @@ Loop:
 			continue
 		}
 
-		// Create the filter instance
+		// Create the filter instance. A create failure means an unknown, renamed,
+		// or removed filter (OSI-18): under the default fail-closed policy this
+		// defers the message rather than silently skipping what may be a security
+		// filter. Only ActionContinue (legacy fail-open) skips and moves on.
 		filter, err := e.registry.Create(fc.Name, fc.Config)
 		if err != nil {
 			step.Error = fmt.Sprintf("create filter: %v", err)
+			step.Action = e.filterErrorAction
 			step.Duration = time.Since(stepStart)
 			recordStep(step)
-			e.logger.Error("failed to create filter", "filter", fc.Name, "error", err)
-			continue // Skip filters that fail to instantiate
+			e.logger.Error("failed to create filter", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
+			if e.filterErrorAction == ActionContinue {
+				continue // legacy fail-open: skip filters that fail to instantiate
+			}
+			result.FinalAction = e.filterErrorAction
+			result.RejectMsg = fmt.Sprintf("filter %q unavailable", fc.Name)
+			break Loop
 		}
 
-		// Execute the filter
+		// Execute the filter. Same fail-closed policy for a runtime error: a filter
+		// that errors out is not silently ignored under the default (OSI-18).
 		filterResult, err := filter.Execute(ctx, result.FinalEmail)
 		if err != nil {
 			step.Error = fmt.Sprintf("execute: %v", err)
+			step.Action = e.filterErrorAction
 			step.Duration = time.Since(stepStart)
 			recordStep(step)
-			e.logger.Error("filter execution failed", "filter", fc.Name, "error", err)
-			continue
+			e.logger.Error("filter execution failed", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
+			if e.filterErrorAction == ActionContinue {
+				continue // legacy fail-open
+			}
+			result.FinalAction = e.filterErrorAction
+			result.RejectMsg = fmt.Sprintf("filter %q failed", fc.Name)
+			break Loop
 		}
 
 		step.Action = filterResult.Action
