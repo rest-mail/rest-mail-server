@@ -33,9 +33,17 @@ func (metricsObserver) ObserveStep(step pipeline.StepResult) {
 	}
 }
 
-// ObserveTerminal records the terminal outcome for one message.
-func (metricsObserver) ObserveTerminal(direction string, action pipeline.Action) {
+// ObserveTerminal records the terminal outcome for one message: always the
+// terminal counter, plus — for a non-continue outcome — one reject_reason
+// increment classified from the terminal step. The reason mapping lives in
+// internal/pipeline (ReasonForStep) so the same deterministic classification
+// backs this metric and the PR3 trace column. A continue outcome (delivered/
+// queued) has no reject reason.
+func (metricsObserver) ObserveTerminal(direction string, action pipeline.Action, terminal *pipeline.StepResult) {
 	metrics.PipelineTerminal.WithLabelValues(directionLabel(direction), terminalOutcome(direction, action)).Inc()
+	if action != pipeline.ActionContinue && terminal != nil {
+		metrics.PipelineRejectReason.WithLabelValues(string(pipeline.ReasonForStep(*terminal))).Inc()
+	}
 }
 
 // builtinFilters is the bounded allowlist of built-in filter names. It mirrors
