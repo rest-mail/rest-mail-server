@@ -1,0 +1,65 @@
+# Fixture: a manifest that DOES set the optional `smtp:` and `dkim:` blocks.
+# Paired with config_policy.env — proves the policy knobs render to MAIL3_* lines.
+# The no-blocks fixture (manifest.yml → config.env) proves omitting the blocks
+# renders byte-for-byte as before.
+
+# ── envelope ────────────────────────────────────────────────────────────
+domain:     mail3.test
+hostname:   mail3.test
+proxy_host: restmail.localhost
+
+# ── substrate placement (testbed) ───────────────────────────────────────
+project:        rest-mail
+network:        testbed_mailnet
+certs_volume:   testbed_certs
+testbed_dns_ip: 10.99.0.10
+dns_provider:   testbed-dnsmasq
+cert_provider:  testbed-certgen
+
+# ── image source ────────────────────────────────────────────────────────
+registry:  ghcr.io/rest-mail
+image_tag: dev
+
+# ── runtime ─────────────────────────────────────────────────────────────
+log_level:    debug
+environment:  development
+mailnet_only: false
+
+db:
+  name: restmail
+  user: restmail
+
+# ── SMTP/queue policy knobs (optional) ──────────────────────────────────
+smtp:
+  max_message_size:       52428800   # 50 MiB
+  min_transfer_rate:      0           # 0 disables the rate floor
+  transfer_grace_period:  90          # seconds
+  transfer_stall_timeout: 600         # seconds
+  queue_workers:          8
+  queue_poll_interval:    10s
+  mtasts_enforce:         false
+
+# ── DKIM signing parameters (optional) ──────────────────────────────────
+# The private key is never in the manifest — provisioned at runtime.
+dkim:
+  selector: s2026
+  bits:     4096
+
+# ── binding: components on the substrate ────────────────────────────────
+components:
+  - { name: postgres, ip: 10.99.0.43 }
+  - name: api
+    ip: 10.99.0.20
+    port: 8080
+  - name: smtp-gateway
+    ip: 10.99.0.13
+    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+  - name: imap-gateway
+    ip: 10.99.0.15
+    ports: { plain: 143, tls: 993 }
+  - name: pop3-gateway
+    ip: 10.99.0.16
+    ports: { plain: 110, tls: 995 }
+  - { name: js-filter, ip: 10.99.0.22 }
+  - { name: webmail,   ip: 10.99.0.21 }
+  - { name: admin,     ip: 10.99.0.27 }

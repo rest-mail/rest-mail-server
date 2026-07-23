@@ -53,6 +53,32 @@ type Manifest struct {
 		Name string `yaml:"name"`
 		User string `yaml:"user"`
 	} `yaml:"db"`
+	// SMTP holds optional SMTP/queue policy knobs. Every field is optional:
+	// a nil/empty field emits no MAIL3_* line, so the Taskfile catalog
+	// `| default` and the config.go fallback apply and existing manifests (no
+	// `smtp:` block) render byte-for-byte as before. Pointers (not zero values)
+	// distinguish "unset" from a meaningful zero — e.g. MinTransferRate 0
+	// disables the rate floor, MTASTSEnforce false differs from the default
+	// true. Each field maps 1:1 to a config.go env var.
+	SMTP struct {
+		MaxMessageSize       *int64 `yaml:"max_message_size"`       // SMTP_MAX_MESSAGE_SIZE (bytes)
+		MinTransferRate      *int64 `yaml:"min_transfer_rate"`      // SMTP_MIN_TRANSFER_RATE (bytes/sec; 0 disables the floor)
+		TransferGracePeriod  *int   `yaml:"transfer_grace_period"`  // SMTP_TRANSFER_GRACE_PERIOD (seconds)
+		TransferStallTimeout *int   `yaml:"transfer_stall_timeout"` // SMTP_TRANSFER_STALL_TIMEOUT (seconds)
+		QueueWorkers         *int   `yaml:"queue_workers"`          // QUEUE_WORKERS
+		QueuePollInterval    string `yaml:"queue_poll_interval"`    // QUEUE_POLL_INTERVAL (Go duration, e.g. "5s")
+		MTASTSEnforce        *bool  `yaml:"mtasts_enforce"`         // MTASTS_ENFORCE
+	} `yaml:"smtp"`
+	// DKIM holds optional DKIM signing parameters. Only the public selector and
+	// key size are declarative. The DKIM PRIVATE KEY is NEVER stored in the
+	// manifest — it stays a runtime secret, generated and installed on the
+	// instance via `task instance:dkim` (dkim-provision → admin API). Omitted
+	// fields emit no line, so `task instance:dkim` keeps its defaults
+	// (selector "default", 2048 bits) and existing manifests are unchanged.
+	DKIM struct {
+		Selector string `yaml:"selector"` // MAIL3_DKIM_SELECTOR (dkim-provision --selector)
+		Bits     *int   `yaml:"bits"`     // MAIL3_DKIM_BITS (dkim-provision -bits)
+	} `yaml:"dkim"`
 	// binding
 	Components []Component `yaml:"components"`
 }
@@ -104,6 +130,43 @@ func Render(m *Manifest) ([]byte, error) {
 	// opt in render byte-for-byte as before (no drift against committed config).
 	if m.InternalMTLS {
 		kv("MAIL3_INTERNAL_MTLS", "true")
+	}
+
+	// SMTP/queue policy knobs (manifest `smtp:` block). Each is emitted only
+	// when set; an omitted knob renders no line, so the Taskfile catalog
+	// `| default` and the config.go fallback apply — a manifest with no `smtp:`
+	// block renders byte-for-byte as before.
+	if v := m.SMTP.MaxMessageSize; v != nil {
+		kv("MAIL3_SMTP_MAX_MESSAGE_SIZE", strconv.FormatInt(*v, 10))
+	}
+	if v := m.SMTP.MinTransferRate; v != nil {
+		kv("MAIL3_SMTP_MIN_TRANSFER_RATE", strconv.FormatInt(*v, 10))
+	}
+	if v := m.SMTP.TransferGracePeriod; v != nil {
+		kv("MAIL3_SMTP_TRANSFER_GRACE_PERIOD", strconv.Itoa(*v))
+	}
+	if v := m.SMTP.TransferStallTimeout; v != nil {
+		kv("MAIL3_SMTP_TRANSFER_STALL_TIMEOUT", strconv.Itoa(*v))
+	}
+	if v := m.SMTP.QueueWorkers; v != nil {
+		kv("MAIL3_SMTP_QUEUE_WORKERS", strconv.Itoa(*v))
+	}
+	if m.SMTP.QueuePollInterval != "" {
+		kv("MAIL3_SMTP_QUEUE_POLL_INTERVAL", m.SMTP.QueuePollInterval)
+	}
+	if v := m.SMTP.MTASTSEnforce; v != nil {
+		kv("MAIL3_SMTP_MTASTS_ENFORCE", strconv.FormatBool(*v))
+	}
+
+	// DKIM signing parameters (manifest `dkim:` block). Only the public
+	// selector and key size are rendered; the DKIM PRIVATE KEY is never in the
+	// manifest — it stays a runtime secret provisioned via `task instance:dkim`.
+	// Omitted fields emit no line, so dkim-provision's defaults apply.
+	if m.DKIM.Selector != "" {
+		kv("MAIL3_DKIM_SELECTOR", m.DKIM.Selector)
+	}
+	if v := m.DKIM.Bits; v != nil {
+		kv("MAIL3_DKIM_BITS", strconv.Itoa(*v))
 	}
 	b.WriteString("\n")
 

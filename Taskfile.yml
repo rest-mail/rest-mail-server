@@ -156,6 +156,17 @@ includes:
       SMTP_GATEWAY_LOG_LEVEL: '{{.MAIL3_LOG_LEVEL}}'
       SMTP_GATEWAY_ENVIRONMENT: '{{.MAIL3_ENVIRONMENT}}'
       SMTP_GATEWAY_MAILNET_ONLY: '{{.MAIL3_MAILNET_ONLY}}'
+      # SMTP/queue policy knobs (manifest `smtp:` block). Each is optional:
+      # unset in the manifest → the MAIL3_SMTP_* var is absent → this renders
+      # empty → the catalog `| default` + config.go fallback apply, so instances
+      # without an `smtp:` block behave exactly as before.
+      SMTP_GATEWAY_MAX_MESSAGE_SIZE: '{{.MAIL3_SMTP_MAX_MESSAGE_SIZE | default ""}}'
+      SMTP_GATEWAY_MIN_TRANSFER_RATE: '{{.MAIL3_SMTP_MIN_TRANSFER_RATE | default ""}}'
+      SMTP_GATEWAY_TRANSFER_GRACE_PERIOD: '{{.MAIL3_SMTP_TRANSFER_GRACE_PERIOD | default ""}}'
+      SMTP_GATEWAY_TRANSFER_STALL_TIMEOUT: '{{.MAIL3_SMTP_TRANSFER_STALL_TIMEOUT | default ""}}'
+      SMTP_GATEWAY_QUEUE_WORKERS: '{{.MAIL3_SMTP_QUEUE_WORKERS | default ""}}'
+      SMTP_GATEWAY_QUEUE_POLL_INTERVAL: '{{.MAIL3_SMTP_QUEUE_POLL_INTERVAL | default ""}}'
+      SMTP_GATEWAY_MTASTS_ENFORCE: '{{.MAIL3_SMTP_MTASTS_ENFORCE | default ""}}'
 
   imap-gateway:
     taskfile: ./tasks/imap-gateway.yml
@@ -1057,10 +1068,18 @@ tasks:
         # redirect it to a host file (the repo is Docker-shared), then copy that
         # into the fragments volume and reload. Avoids docker-stdin/quoted-env,
         # which Task's embedded shell doesn't pass through cleanly.
+        # --selector/-bits come from the manifest `dkim:` block (rendered as
+        # MAIL3_DKIM_SELECTOR/MAIL3_DKIM_BITS). Each flag is passed only when set,
+        # so an unset knob falls through to dkim-provision's own default
+        # (selector "default", 2048 bits). The DKIM PRIVATE KEY is never in the
+        # manifest — dkim-provision generates it and installs it via the admin
+        # API here at runtime.
         docker exec {{.RESTMAIL_PROJECT}}-api \
           go run ./cmd/instance dkim-provision \
             --domain {{.MAIL3_HOSTNAME}} \
             --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
+            {{if .MAIL3_DKIM_SELECTOR}}--selector {{.MAIL3_DKIM_SELECTOR}}{{end}} \
+            {{if .MAIL3_DKIM_BITS}}-bits {{.MAIL3_DKIM_BITS}}{{end}} \
           2>/dev/null | tail -1 > "{{.INSTANCE_DIR}}/dkim.conf"
         docker run --rm \
           -v "{{.ROOT_DIR}}/{{.INSTANCE_DIR}}:/src:ro" \
