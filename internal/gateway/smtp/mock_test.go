@@ -137,13 +137,20 @@ type smtpHarness struct {
 	done  chan struct{}
 }
 
-func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmission bool) *smtpHarness {
+// newSMTPHarness builds a transcript harness. Optional configure funcs run on
+// the *Server before the go-smtp server is built, mirroring how production
+// applies settings (e.g. SetMaxMessageSize) between NewServer and listen.
+func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmission bool, configure ...func(*Server)) *smtpHarness {
 	t.Helper()
 	client, server := net.Pipe()
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 1000})
 	// Build the go-smtp server exactly as production does (same construction
 	// path), then serve the pipe's server end as a single connection.
-	srv := NewServer("smtp.test", back, nil, store, limiter).newSMTPServer(isSubmission)
+	s := NewServer("smtp.test", back, nil, store, limiter)
+	for _, fn := range configure {
+		fn(s)
+	}
+	srv := s.newSMTPServer(isSubmission)
 
 	listener := newOneConnListener(server)
 	done := make(chan struct{})

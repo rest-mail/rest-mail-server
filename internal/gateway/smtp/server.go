@@ -23,23 +23,39 @@ type Server struct {
 	store              Store
 	limiter            *connlimiter.Limiter
 	proxyProtocolCIDRs []string
+	maxMessageBytes    int64
 	servers            []*gosmtp.Server
 }
 
 // NewServer creates a new SMTP server.
 func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store, limiter *connlimiter.Limiter) *Server {
 	return &Server{
-		hostname:  hostname,
-		api:       api,
-		tlsConfig: tlsConfig,
-		store:     store,
-		limiter:   limiter,
+		hostname:        hostname,
+		api:             api,
+		tlsConfig:       tlsConfig,
+		store:           store,
+		limiter:         limiter,
+		maxMessageBytes: defaultMaxMessageSize,
 	}
 }
 
 // SetProxyProtocol configures PROXY protocol support with the given trusted CIDRs.
 func (s *Server) SetProxyProtocol(trustedCIDRs []string) {
 	s.proxyProtocolCIDRs = trustedCIDRs
+}
+
+// SetMaxMessageSize sets the maximum accepted message size in bytes, driving
+// the EHLO SIZE advertisement, the MAIL SIZE= parameter check, and DATA
+// enforcement together. A max must always exist, so non-positive values are
+// ignored and the current limit (default 10 MiB) is kept; config validation
+// rejects them before this is ever called in production. Call before
+// ListenAndServe — the value is copied into each go-smtp server at listen time.
+func (s *Server) SetMaxMessageSize(maxBytes int64) {
+	if maxBytes <= 0 {
+		slog.Warn("smtp: ignoring non-positive max message size", "max_bytes", maxBytes, "kept", s.maxMessageBytes)
+		return
+	}
+	s.maxMessageBytes = maxBytes
 }
 
 // ListenAndServe starts SMTP listeners on the specified ports.
@@ -88,7 +104,7 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 	}))
 	srv.Domain = s.hostname
 	srv.TLSConfig = s.tlsConfig
-	srv.MaxMessageBytes = maxMessageSize
+	srv.MaxMessageBytes = s.maxMessageBytes
 	srv.MaxRecipients = maxRecipients
 	// go-smtp defaults MaxLineLength to 2000 and keeps the limit active during
 	// DATA, which would reject real-world messages with unwrapped long lines

@@ -54,6 +54,10 @@ spec:
               value: {{ .Values.smtpGateway.ports.submission | quote }}
             - name: SMTP_PORT_SUBMISSION_TLS
               value: {{ .Values.smtpGateway.ports.submissionTLS | quote }}
+            {{- with .Values.smtpGateway.maxMessageSize }}
+            - name: SMTP_MAX_MESSAGE_SIZE
+              value: {{ . | quote }}
+            {{- end }}
             - name: QUEUE_WORKERS
               value: {{ .Values.smtpGateway.queueWorkers | quote }}
             - name: LOG_LEVEL

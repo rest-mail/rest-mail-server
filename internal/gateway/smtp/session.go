@@ -16,10 +16,12 @@ import (
 	rmail "github.com/restmail/restmail/internal/mail"
 )
 
-// maxMessageSize is the maximum accepted message size, in bytes. It is both
-// advertised in EHLO (SIZE) and enforced during DATA — go-smtp derives both
-// from Server.MaxMessageBytes, so they cannot drift.
-const maxMessageSize = 10 * 1024 * 1024 // 10 MiB
+// defaultMaxMessageSize is the maximum accepted message size, in bytes, when
+// the deployment does not configure one (SMTP_MAX_MESSAGE_SIZE). The value is
+// both advertised in EHLO (SIZE) and enforced during MAIL (SIZE= parameter)
+// and DATA — go-smtp derives all three from Server.MaxMessageBytes, so they
+// cannot drift.
+const defaultMaxMessageSize int64 = 10 * 1024 * 1024 // 10 MiB
 
 // maxRecipients caps the number of RCPT TO commands per transaction. Enforced
 // by go-smtp (452 reply beyond the limit).

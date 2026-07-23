@@ -10,7 +10,13 @@ import (
 )
 
 type sizeCheckConfig struct {
+	// MaxSizeBytes wins when both keys are present. MaxSizeMB is honored
+	// because the default inbound pipeline template (and therefore every
+	// seeded pipeline row) configures this filter as {"max_size_mb": 25};
+	// before it was recognised here, admin edits to that value were silently
+	// ignored and the compiled-in 25 MB default applied regardless.
 	MaxSizeBytes int64 `json:"max_size_bytes"`
+	MaxSizeMB    int64 `json:"max_size_mb"`
 }
 
 type sizeCheckFilter struct {
@@ -22,13 +28,20 @@ func init() {
 }
 
 func NewSizeCheck(config []byte) (pipeline.Filter, error) {
-	cfg := sizeCheckConfig{MaxSizeBytes: 25 * 1024 * 1024} // 25MB default
+	var cfg sizeCheckConfig
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
 			return nil, err
 		}
 	}
-	return &sizeCheckFilter{maxSize: cfg.MaxSizeBytes}, nil
+	maxSize := cfg.MaxSizeBytes
+	if maxSize <= 0 && cfg.MaxSizeMB > 0 {
+		maxSize = cfg.MaxSizeMB * 1024 * 1024
+	}
+	if maxSize <= 0 {
+		maxSize = 25 * 1024 * 1024 // 25MB default
+	}
+	return &sizeCheckFilter{maxSize: maxSize}, nil
 }
 
 func (f *sizeCheckFilter) Name() string               { return "size_check" }

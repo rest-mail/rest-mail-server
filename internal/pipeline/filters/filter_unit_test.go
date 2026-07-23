@@ -86,6 +86,41 @@ func TestUnitSizeCheck_RejectsOversizedBody(t *testing.T) {
 	}
 }
 
+// TestUnitSizeCheck_MaxSizeMBKeyHonored guards the config key the default
+// inbound pipeline template actually seeds ({"max_size_mb": 25}): before the
+// filter recognised max_size_mb, that seeded value — and any admin edit to it —
+// was silently ignored in favor of the compiled-in 25 MB default.
+func TestUnitSizeCheck_MaxSizeMBKeyHonored(t *testing.T) {
+	// 1 MB via the template's key: a 2 MB body must be rejected (under the old
+	// behavior the ignored key left the limit at 25 MB and this passed).
+	f, err := NewSizeCheck(json.RawMessage(`{"max_size_mb": 1}`))
+	if err != nil {
+		t.Fatalf("NewSizeCheck: %v", err)
+	}
+	email := unitEmail()
+	email.Body.Content = strings.Repeat("X", 2*1024*1024)
+	result, err := f.Execute(context.Background(), email)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Action != pipeline.ActionReject {
+		t.Errorf("2 MB body with max_size_mb=1 should be rejected, got %q", result.Action)
+	}
+
+	// When both keys are present, the explicit byte count wins.
+	f, err = NewSizeCheck(json.RawMessage(`{"max_size_bytes": 10485760, "max_size_mb": 1}`))
+	if err != nil {
+		t.Fatalf("NewSizeCheck: %v", err)
+	}
+	result, err = f.Execute(context.Background(), email)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Action != pipeline.ActionContinue {
+		t.Errorf("2 MB body with max_size_bytes=10MiB should pass regardless of max_size_mb, got %q", result.Action)
+	}
+}
+
 func TestUnitSizeCheck_RejectsOversizedAttachment(t *testing.T) {
 	cfg := json.RawMessage(`{"max_size_bytes": 100}`)
 	f, err := NewSizeCheck(cfg)
