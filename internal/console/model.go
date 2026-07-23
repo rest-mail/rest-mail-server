@@ -309,14 +309,6 @@ func (m Model) renderMainMenu(height int) string {
 	return s
 }
 
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (m Model) renderStatusBar() string {
 	colWidth := m.width / 3
 	if colWidth < 20 {
