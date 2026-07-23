@@ -69,7 +69,7 @@ function NewPipelinePage() {
     const definition = getFilterDefinition(filterName)
     if (!definition) return
 
-    const defaultConfig: Record<string, any> = {}
+    const defaultConfig: Record<string, unknown> = {}
     if (definition.configSchema) {
       Object.entries(definition.configSchema).forEach(([key, field]) => {
         if (field.default !== undefined) {
@@ -119,7 +119,7 @@ function NewPipelinePage() {
     )
   }
 
-  const handleUpdateFilterConfig = (index: number, config: Record<string, any>) => {
+  const handleUpdateFilterConfig = (index: number, config: Record<string, unknown>) => {
     setFilters(
       filters.map((f, i) => (i === index ? { ...f, config } : f))
     )
@@ -407,7 +407,7 @@ function NewPipelinePage() {
                                   </label>
                                   {field.type === 'select' ? (
                                     <select
-                                      value={filter.config?.[key] || field.default}
+                                      value={String(filter.config?.[key] || field.default || '')}
                                       onChange={(e) => {
                                         const newConfig = { ...filter.config, [key]: e.target.value }
                                         handleUpdateFilterConfig(index, newConfig)
@@ -424,7 +424,7 @@ function NewPipelinePage() {
                                   ) : field.type === 'number' ? (
                                     <input
                                       type="number"
-                                      value={filter.config?.[key] || field.default}
+                                      value={String(filter.config?.[key] || field.default || '')}
                                       onChange={(e) => {
                                         const newConfig = { ...filter.config, [key]: parseInt(e.target.value) }
                                         handleUpdateFilterConfig(index, newConfig)
@@ -437,7 +437,7 @@ function NewPipelinePage() {
                                   ) : (
                                     <input
                                       type="text"
-                                      value={filter.config?.[key] || field.default}
+                                      value={String(filter.config?.[key] || field.default || '')}
                                       onChange={(e) => {
                                         const newConfig = { ...filter.config, [key]: e.target.value }
                                         handleUpdateFilterConfig(index, newConfig)

@@ -53,7 +53,7 @@ function MTASTSPage() {
 
     try {
       await fetchPolicy(parseInt(selectedDomainId), accessToken)
-    } catch (err) {
+    } catch {
       // Policy doesn't exist - that's OK, we'll show empty form
       console.log('No policy exists for this domain')
     }
@@ -194,7 +194,7 @@ function MTASTSPage() {
                       type="radio"
                       value="none"
                       checked={mode === 'none'}
-                      onChange={(e) => setMode(e.target.value as any)}
+                      onChange={(e) => setMode(e.target.value as 'none' | 'testing' | 'enforce')}
                       className="h-4 w-4"
                     />
                     <span className="text-sm" style={{ color: 'var(--black-soft)' }}>
@@ -206,7 +206,7 @@ function MTASTSPage() {
                       type="radio"
                       value="testing"
                       checked={mode === 'testing'}
-                      onChange={(e) => setMode(e.target.value as any)}
+                      onChange={(e) => setMode(e.target.value as 'none' | 'testing' | 'enforce')}
                       className="h-4 w-4"
                     />
                     <span className="text-sm" style={{ color: 'var(--black-soft)' }}>
@@ -218,7 +218,7 @@ function MTASTSPage() {
                       type="radio"
                       value="enforce"
                       checked={mode === 'enforce'}
-                      onChange={(e) => setMode(e.target.value as any)}
+                      onChange={(e) => setMode(e.target.value as 'none' | 'testing' | 'enforce')}
                       className="h-4 w-4"
                     />
                     <span className="text-sm" style={{ color: 'var(--black-soft)' }}>

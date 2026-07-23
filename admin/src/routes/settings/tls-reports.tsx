@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { useTLSReportStore } from '../../lib/stores/tlsReportStore'
+import { useTLSReportStore, type TLSFailureDetail } from '../../lib/stores/tlsReportStore'
 import { useDomainStore } from '../../lib/stores/domainStore'
 import { useAuthStore } from '../../lib/stores/authStore'
 import { AppShell } from '../../components/layout/AppShell'
@@ -209,7 +209,7 @@ interface ReportDetailModalProps {
     policy_domain: string
     total_successful: number
     total_failure: number
-    failure_details: any
+    failure_details: TLSFailureDetail[] | TLSFailureDetail | null
     raw_report: string
   }
   onClose: () => void
@@ -339,7 +339,7 @@ function ReportDetailModal({ report, onClose }: ReportDetailModalProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {failureDetails.map((detail: any, idx: number) => (
+                  {failureDetails.map((detail: TLSFailureDetail, idx: number) => (
                     <tr
                       key={idx}
                       className="border-t"
