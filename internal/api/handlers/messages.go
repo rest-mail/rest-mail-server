@@ -540,11 +540,14 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
 
-	// Compute thread ID for sent message
+	// Compute thread ID for sent message. Canonicalize so it matches — byte for
+	// byte — the bracketed Message-IDs used everywhere else (thread grouping is
+	// an equality match on thread_id).
 	threadID := messageID
 	if req.InReplyTo != "" {
 		threadID = req.InReplyTo
 	}
+	threadID = rmail.CanonicalID(threadID)
 
 	// Create message in sender's Sent folder
 	sentMsg := models.Message{
@@ -1876,11 +1879,14 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	if params.References != "" {
 		refs := strings.Fields(params.References)
 		if len(refs) > 0 {
-			threadID = strings.Trim(refs[0], "<>")
+			threadID = refs[0]
 		}
 	} else if params.InReplyTo != "" {
 		threadID = params.InReplyTo
 	}
+	// Canonicalize to the bracketed form so a References-derived thread ID matches
+	// the root message's Message-ID (thread grouping is an equality match).
+	threadID = rmail.CanonicalID(threadID)
 
 	// ── Create message ───────────────────────────────────────────────
 	msg := models.Message{

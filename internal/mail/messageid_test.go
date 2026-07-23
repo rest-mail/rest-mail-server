@@ -26,6 +26,27 @@ func TestGenerateMessageID_Uniqueness(t *testing.T) {
 	}
 }
 
+func TestCanonicalID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"<abc@example.com>", "<abc@example.com>"},
+		{"abc@example.com", "<abc@example.com>"}, // bare -> bracketed (the thread-match fix)
+		{"  <abc@example.com> ", "<abc@example.com>"},
+		{"<abc@example.com", "<abc@example.com>"},
+		{"abc@example.com>", "<abc@example.com>"},
+		{"", ""},
+		{"<>", ""},
+		{"   ", ""},
+	}
+	for _, tt := range tests {
+		if got := CanonicalID(tt.input); got != tt.want {
+			t.Errorf("CanonicalID(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestDomainFromAddress(t *testing.T) {
 	tests := []struct {
 		input string
