@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/restmail/restmail/internal/pipeline"
@@ -16,43 +17,24 @@ type sieveConfig struct {
 	Script string `json:"script"`
 }
 
-// sieveFilter implements a basic Sieve interpreter for email filtering.
-// Supports: keep, fileinto, redirect, discard, reject, vacation, notify,
-// and conditionals on header, address, size, body, and envelope.
-// Match types: :contains, :is, :matches (glob), :regex.
+// sieveFilter implements a Sieve interpreter for email filtering.
+//
+// Control commands: if / elsif / else, require, stop.
+//
+// Tests: address, header, envelope, exists, size (:over/:under), body, allof,
+// anyof, not, true/false.
+//
+// Match types: :is, :contains, :matches (glob with * and ?), and a
+// non-standard :regex extension. Comparators i;ascii-casemap (default),
+// i;octet and i;ascii-numeric. Address parts :all/:localpart/:domain.
+//
+// Actions: keep, discard, fileinto (+ :create), redirect, reject, stop,
+// setflag/addflag/removeflag (imap4flags), vacation, notify.
+//
+// The parser and AST live in sieve_parser.go; this file evaluates the AST
+// against an email and records the resulting actions as message metadata.
 type sieveFilter struct {
-	script string
-	rules  []sieveRule
-}
-
-type sieveRule struct {
-	condition sieveCondition
-	actions   []sieveAction
-	stop      bool
-}
-
-type sieveCondition struct {
-	test     string // "header", "address", "size", "body", "envelope", "true"
-	header   string
-	match    string // ":contains", ":is", ":matches", ":regex"
-	values   []string
-	sizeOp   string // ":over", ":under"
-	sizeVal  int64
-	negate   bool
-}
-
-type sieveAction struct {
-	command string // "keep", "fileinto", "redirect", "discard", "reject", "vacation", "notify"
-	arg     string // general argument (folder, address, reject reason)
-
-	// vacation-specific fields
-	vacationDays    int
-	vacationSubject string
-	vacationBody    string
-
-	// notify-specific fields
-	notifyMethod  string
-	notifyMessage string
+	script *sieveScript
 }
 
 func init() {
@@ -70,19 +52,19 @@ func NewSieve(config []byte) (pipeline.Filter, error) {
 		return &sieveFilter{}, nil
 	}
 
-	rules, err := parseSieve(cfg.Script)
+	script, err := parseSieveScript(cfg.Script)
 	if err != nil {
 		return nil, fmt.Errorf("parse sieve: %w", err)
 	}
 
-	return &sieveFilter{script: cfg.Script, rules: rules}, nil
+	return &sieveFilter{script: script}, nil
 }
 
-func (f *sieveFilter) Name() string             { return "sieve" }
+func (f *sieveFilter) Name() string              { return "sieve" }
 func (f *sieveFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
 func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
-	if len(f.rules) == 0 {
+	if f.script == nil || len(f.script.commands) == 0 {
 		return &pipeline.FilterResult{
 			Type:    pipeline.FilterTypeTransform,
 			Action:  pipeline.ActionContinue,
@@ -95,98 +77,26 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 		}, nil
 	}
 
+	// Work on a copy so the input is not mutated; clone the metadata map so
+	// action side-effects do not leak back to the caller's message.
 	modified := *email
-	var appliedActions []string
-
-	for _, rule := range f.rules {
-		if !evaluateCondition(rule.condition, &modified) {
-			continue
+	if email.Metadata != nil {
+		m := make(map[string]string, len(email.Metadata))
+		for k, v := range email.Metadata {
+			m[k] = v
 		}
+		modified.Metadata = m
+	}
 
-		for _, action := range rule.actions {
-			switch action.command {
-			case "keep":
-				appliedActions = append(appliedActions, "keep")
-			case "fileinto":
-				if modified.Metadata == nil {
-					modified.Metadata = make(map[string]string)
-				}
-				modified.Metadata["deliver_to_folder"] = action.arg
-				appliedActions = append(appliedActions, "fileinto:"+action.arg)
-			case "redirect":
-				if modified.Metadata == nil {
-					modified.Metadata = make(map[string]string)
-				}
-				modified.Metadata["redirect_to"] = action.arg
-				appliedActions = append(appliedActions, "redirect:"+action.arg)
-			case "discard":
-				return &pipeline.FilterResult{
-					Type:   pipeline.FilterTypeTransform,
-					Action: pipeline.ActionDiscard,
-					Log: pipeline.FilterLog{
-						Filter: "sieve",
-						Result: "discard",
-						Detail: "sieve discard action",
-					},
-				}, nil
-			case "reject":
-				return &pipeline.FilterResult{
-					Type:      pipeline.FilterTypeTransform,
-					Action:    pipeline.ActionReject,
-					RejectMsg: "550 " + action.arg,
-					Log: pipeline.FilterLog{
-						Filter: "sieve",
-						Result: "reject",
-						Detail: "sieve reject: " + action.arg,
-					},
-				}, nil
-			case "vacation":
-				if modified.Metadata == nil {
-					modified.Metadata = make(map[string]string)
-				}
-				// Determine the sender to reply to.
-				replyTo := modified.Envelope.MailFrom
-				if replyTo == "" && len(modified.Headers.From) > 0 {
-					replyTo = modified.Headers.From[0].Address
-				}
-
-				// Dedup key: hash of the recipient+sender pair.
-				dedupKey := vacationDedupKey(replyTo)
-
-				// Check if we already sent a vacation reply recently.
-				// The dedup is tracked via metadata; the downstream vacation
-				// filter or delivery agent checks the timestamp.
-				lastSentKey := "vacation_last_sent_" + dedupKey
-				if _, alreadySent := modified.Metadata[lastSentKey]; !alreadySent {
-					modified.Metadata["vacation_reply_to"] = replyTo
-					modified.Metadata["vacation_reply_subject"] = action.vacationSubject
-					modified.Metadata["vacation_reply_body"] = action.vacationBody
-					if action.vacationDays > 0 {
-						modified.Metadata["vacation_days"] = fmt.Sprintf("%d", action.vacationDays)
-					}
-					modified.Metadata[lastSentKey] = "pending"
-					appliedActions = append(appliedActions, "vacation:"+replyTo)
-				} else {
-					appliedActions = append(appliedActions, "vacation:dedup-suppressed")
-				}
-			case "notify":
-				if modified.Metadata == nil {
-					modified.Metadata = make(map[string]string)
-				}
-				modified.Metadata["notify_method"] = action.notifyMethod
-				modified.Metadata["notify_message"] = action.notifyMessage
-				appliedActions = append(appliedActions, "notify:"+action.notifyMethod)
-			}
-		}
-
-		if rule.stop {
-			break
-		}
+	ev := &sieveEval{email: &modified}
+	outcome := f.runBlock(f.script.commands, ev)
+	if outcome.terminal != nil {
+		return outcome.terminal, nil
 	}
 
 	detail := "no rules matched"
-	if len(appliedActions) > 0 {
-		detail = "applied: " + strings.Join(appliedActions, ", ")
+	if len(ev.applied) > 0 {
+		detail = "applied: " + strings.Join(ev.applied, ", ")
 	}
 
 	return &pipeline.FilterResult{
@@ -201,49 +111,529 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 	}, nil
 }
 
+// sieveEval carries mutable state while walking a script's commands.
+type sieveEval struct {
+	email   *pipeline.EmailJSON
+	applied []string
+}
+
+// execOutcome reports how a block finished: a non-nil terminal short-circuits
+// the whole pipeline (discard/reject), while stop halts further Sieve commands
+// but still delivers according to the actions taken so far.
+type execOutcome struct {
+	terminal *pipeline.FilterResult
+	stop     bool
+}
+
+func (f *sieveFilter) runBlock(cmds []sieveCmd, ev *sieveEval) execOutcome {
+	for _, c := range cmds {
+		out := f.runCmd(c, ev)
+		if out.terminal != nil || out.stop {
+			return out
+		}
+	}
+	return execOutcome{}
+}
+
+func (f *sieveFilter) runCmd(c sieveCmd, ev *sieveEval) execOutcome {
+	switch cmd := c.(type) {
+	case *ifCmd:
+		for _, br := range cmd.branches {
+			if br.test == nil || evalTest(br.test, ev.email) {
+				return f.runBlock(br.block, ev)
+			}
+		}
+		return execOutcome{}
+
+	case *stopCmd:
+		return execOutcome{stop: true}
+
+	case *keepCmd:
+		ev.applied = append(ev.applied, "keep")
+
+	case *discardCmd:
+		return execOutcome{terminal: &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeTransform,
+			Action: pipeline.ActionDiscard,
+			Log: pipeline.FilterLog{
+				Filter: "sieve",
+				Result: "discard",
+				Detail: "sieve discard action",
+			},
+		}}
+
+	case *rejectCmd:
+		return execOutcome{terminal: &pipeline.FilterResult{
+			Type:      pipeline.FilterTypeTransform,
+			Action:    pipeline.ActionReject,
+			RejectMsg: "550 " + cmd.reason,
+			Log: pipeline.FilterLog{
+				Filter: "sieve",
+				Result: "reject",
+				Detail: "sieve reject: " + cmd.reason,
+			},
+		}}
+
+	case *fileintoCmd:
+		ensureMetadata(ev.email)
+		ev.email.Metadata["deliver_to_folder"] = cmd.folder
+		if cmd.create {
+			ev.email.Metadata["deliver_to_folder_create"] = "true"
+		}
+		ev.applied = append(ev.applied, "fileinto:"+cmd.folder)
+
+	case *redirectCmd:
+		ensureMetadata(ev.email)
+		ev.email.Metadata["redirect_to"] = cmd.addr
+		ev.applied = append(ev.applied, "redirect:"+cmd.addr)
+
+	case *flagCmd:
+		applyFlags(ev.email, cmd.op, cmd.flags)
+		ev.applied = append(ev.applied, cmd.op+":"+strings.Join(cmd.flags, " "))
+
+	case *vacationCmd:
+		f.applyVacation(cmd, ev)
+
+	case *notifyCmd:
+		ensureMetadata(ev.email)
+		ev.email.Metadata["notify_method"] = cmd.method
+		ev.email.Metadata["notify_message"] = cmd.message
+		ev.applied = append(ev.applied, "notify:"+cmd.method)
+	}
+
+	return execOutcome{}
+}
+
+func (f *sieveFilter) applyVacation(cmd *vacationCmd, ev *sieveEval) {
+	ensureMetadata(ev.email)
+
+	// Determine the sender to reply to.
+	replyTo := ev.email.Envelope.MailFrom
+	if replyTo == "" && len(ev.email.Headers.From) > 0 {
+		replyTo = ev.email.Headers.From[0].Address
+	}
+
+	// Dedup key: hash of the sender address. The downstream vacation filter or
+	// delivery agent enforces the actual time window.
+	dedupKey := vacationDedupKey(replyTo)
+	lastSentKey := "vacation_last_sent_" + dedupKey
+	if _, alreadySent := ev.email.Metadata[lastSentKey]; alreadySent {
+		ev.applied = append(ev.applied, "vacation:dedup-suppressed")
+		return
+	}
+
+	ev.email.Metadata["vacation_reply_to"] = replyTo
+	ev.email.Metadata["vacation_reply_subject"] = cmd.subject
+	ev.email.Metadata["vacation_reply_body"] = cmd.body
+	if cmd.days > 0 {
+		ev.email.Metadata["vacation_days"] = strconv.Itoa(cmd.days)
+	}
+	ev.email.Metadata[lastSentKey] = "pending"
+	ev.applied = append(ev.applied, "vacation:"+replyTo)
+}
+
+func ensureMetadata(email *pipeline.EmailJSON) {
+	if email.Metadata == nil {
+		email.Metadata = make(map[string]string)
+	}
+}
+
+// applyFlags updates the imap4flags flag set stored in metadata.
+func applyFlags(email *pipeline.EmailJSON, op string, flags []string) {
+	ensureMetadata(email)
+	var current []string
+	if existing := strings.TrimSpace(email.Metadata["imap_flags"]); existing != "" {
+		current = strings.Fields(existing)
+	}
+
+	switch op {
+	case "setflag":
+		current = uniqueStrings(flags)
+	case "addflag":
+		current = uniqueStrings(append(current, flags...))
+	case "removeflag":
+		remove := make(map[string]struct{}, len(flags))
+		for _, fl := range flags {
+			remove[fl] = struct{}{}
+		}
+		kept := current[:0]
+		for _, fl := range current {
+			if _, drop := remove[fl]; !drop {
+				kept = append(kept, fl)
+			}
+		}
+		current = kept
+	}
+
+	email.Metadata["imap_flags"] = strings.Join(current, " ")
+}
+
+func uniqueStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
 // vacationDedupKey returns a short hash for deduplication keyed on the sender address.
 func vacationDedupKey(sender string) string {
 	h := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(sender))))
 	return fmt.Sprintf("%x", h[:8])
 }
 
-func evaluateCondition(cond sieveCondition, email *pipeline.EmailJSON) bool {
-	result := false
+// ── Test evaluation ──────────────────────────────────────────────────
 
-	switch cond.test {
-	case "true", "":
-		result = true
-	case "header":
-		headerVal := getHeaderValue(email, cond.header)
-		result = matchString(headerVal, cond.match, cond.values)
-	case "address":
-		addrVal := getAddressValue(email, cond.header)
-		result = matchString(addrVal, cond.match, cond.values)
-	case "size":
-		// Simplified: use body length as proxy
-		size := int64(len(email.Body.Content))
-		for _, p := range email.Body.Parts {
-			size += int64(len(p.Content))
+func evalTest(t sieveTest, email *pipeline.EmailJSON) bool {
+	switch tt := t.(type) {
+	case *allofTest:
+		for _, sub := range tt.tests {
+			if !evalTest(sub, email) {
+				return false
+			}
 		}
-		switch cond.sizeOp {
-		case ":over":
-			result = size > cond.sizeVal
-		case ":under":
-			result = size < cond.sizeVal
+		return true
+	case *anyofTest:
+		for _, sub := range tt.tests {
+			if evalTest(sub, email) {
+				return true
+			}
 		}
-	case "body":
-		bodyText := extractBodyText(email)
-		result = matchString(bodyText, cond.match, cond.values)
-	case "envelope":
-		envVal := getEnvelopeValue(email, cond.header)
-		result = matchString(envVal, cond.match, cond.values)
+		return false
+	case *notTest:
+		return !evalTest(tt.inner, email)
+	case *boolTest:
+		return tt.val
+	case *existsTest:
+		for _, h := range tt.headers {
+			if len(headerValues(email, h)) == 0 {
+				return false
+			}
+		}
+		return true
+	case *sizeTest:
+		size := messageSize(email)
+		if tt.over {
+			return size > tt.limit
+		}
+		return size < tt.limit
+	case *headerTest:
+		values := gatherHeaderValues(email, tt.headers)
+		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
+	case *addressTest:
+		values := gatherAddressValues(email, tt.headers, tt.addressPart)
+		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
+	case *envelopeTest:
+		values := gatherEnvelopeValues(email, tt.parts, tt.addressPart)
+		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
+	case *bodyTest:
+		return matchAny([]string{extractBodyText(email)}, tt.matchType, tt.comparator, tt.keys)
 	}
-
-	if cond.negate {
-		return !result
-	}
-	return result
+	return false
 }
+
+// messageSize approximates the octet size of the message: body content, nested
+// part content, and known attachment sizes.
+func messageSize(email *pipeline.EmailJSON) int64 {
+	var size int64
+	size += bodySize(email.Body)
+	for _, a := range email.Attachments {
+		size += a.Size
+	}
+	return size
+}
+
+func bodySize(b pipeline.Body) int64 {
+	size := int64(len(b.Content))
+	for _, p := range b.Parts {
+		size += bodySize(p)
+	}
+	return size
+}
+
+// ── Value extraction ─────────────────────────────────────────────────
+
+func gatherHeaderValues(email *pipeline.EmailJSON, names []string) []string {
+	var out []string
+	for _, n := range names {
+		out = append(out, headerValues(email, n)...)
+	}
+	return out
+}
+
+// headerValues returns every value of the named header, drawing from both the
+// structured Headers fields and the raw header map (matched case-insensitively).
+func headerValues(email *pipeline.EmailJSON, name string) []string {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	var out []string
+	switch lower {
+	case "subject":
+		if email.Headers.Subject != "" {
+			out = append(out, email.Headers.Subject)
+		}
+	case "from":
+		out = append(out, formatAddresses(email.Headers.From)...)
+	case "to":
+		out = append(out, formatAddresses(email.Headers.To)...)
+	case "cc":
+		out = append(out, formatAddresses(email.Headers.Cc)...)
+	case "bcc":
+		out = append(out, formatAddresses(email.Headers.Bcc)...)
+	case "message-id":
+		if email.Headers.MessageID != "" {
+			out = append(out, email.Headers.MessageID)
+		}
+	case "in-reply-to":
+		if email.Headers.InReplyTo != "" {
+			out = append(out, email.Headers.InReplyTo)
+		}
+	case "date":
+		if email.Headers.Date != "" {
+			out = append(out, email.Headers.Date)
+		}
+	case "references":
+		out = append(out, email.Headers.References...)
+	}
+	for k, vals := range email.Headers.Raw {
+		if strings.EqualFold(k, lower) {
+			out = append(out, vals...)
+		}
+	}
+	return out
+}
+
+// formatAddresses renders structured addresses as header-style values.
+func formatAddresses(addrs []pipeline.Address) []string {
+	var out []string
+	for _, a := range addrs {
+		switch {
+		case a.Name != "" && a.Address != "":
+			out = append(out, a.Name+" <"+a.Address+">")
+		case a.Address != "":
+			out = append(out, a.Address)
+		case a.Name != "":
+			out = append(out, a.Name)
+		}
+	}
+	return out
+}
+
+func gatherAddressValues(email *pipeline.EmailJSON, names []string, part string) []string {
+	var out []string
+	for _, n := range names {
+		for _, addr := range addressList(email, n) {
+			out = append(out, addressPartOf(addr, part))
+		}
+	}
+	return out
+}
+
+// addressList returns the bare addr-specs of a header (no display name).
+func addressList(email *pipeline.EmailJSON, name string) []string {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	switch lower {
+	case "from":
+		return addressSpecs(email.Headers.From)
+	case "to":
+		return addressSpecs(email.Headers.To)
+	case "cc":
+		return addressSpecs(email.Headers.Cc)
+	case "bcc":
+		return addressSpecs(email.Headers.Bcc)
+	}
+	var out []string
+	for k, vals := range email.Headers.Raw {
+		if strings.EqualFold(k, lower) {
+			out = append(out, vals...)
+		}
+	}
+	return out
+}
+
+func addressSpecs(addrs []pipeline.Address) []string {
+	var out []string
+	for _, a := range addrs {
+		if a.Address != "" {
+			out = append(out, a.Address)
+		}
+	}
+	return out
+}
+
+func gatherEnvelopeValues(email *pipeline.EmailJSON, parts []string, part string) []string {
+	var out []string
+	for _, name := range parts {
+		for _, v := range envelopeValues(email, name) {
+			out = append(out, addressPartOf(v, part))
+		}
+	}
+	return out
+}
+
+func envelopeValues(email *pipeline.EmailJSON, name string) []string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "from":
+		if email.Metadata != nil {
+			if v := email.Metadata["envelope_from"]; v != "" {
+				return []string{v}
+			}
+		}
+		if email.Envelope.MailFrom != "" {
+			return []string{email.Envelope.MailFrom}
+		}
+	case "to":
+		if email.Metadata != nil {
+			if v := email.Metadata["envelope_to"]; v != "" {
+				return []string{v}
+			}
+		}
+		return email.Envelope.RcptTo
+	}
+	return nil
+}
+
+// addressPartOf extracts the requested part (:all/:localpart/:domain) from an
+// address. For an address without an "@", the whole string is the local part
+// and the domain is empty.
+func addressPartOf(addr, part string) string {
+	switch part {
+	case ":localpart":
+		if i := strings.LastIndex(addr, "@"); i >= 0 {
+			return addr[:i]
+		}
+		return addr
+	case ":domain":
+		if i := strings.LastIndex(addr, "@"); i >= 0 {
+			return addr[i+1:]
+		}
+		return ""
+	default: // :all
+		return addr
+	}
+}
+
+// ── Matching ─────────────────────────────────────────────────────────
+
+// matchAny reports whether any value matches any key under the given match
+// type and comparator.
+func matchAny(values []string, matchType, comparator string, keys []string) bool {
+	for _, v := range values {
+		for _, k := range keys {
+			if matchOne(v, k, matchType, comparator) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func matchOne(value, key, matchType, comparator string) bool {
+	switch matchType {
+	case ":is":
+		return compareIs(value, key, comparator)
+	case ":contains":
+		if comparator == "i;octet" {
+			return strings.Contains(value, key)
+		}
+		return strings.Contains(strings.ToLower(value), strings.ToLower(key))
+	case ":matches":
+		return wildcardMatch(foldForComparator(value, comparator), foldForComparator(key, comparator))
+	case ":regex":
+		prefix := "(?i)"
+		if comparator == "i;octet" {
+			prefix = ""
+		}
+		re, err := regexp.Compile(prefix + key)
+		if err != nil {
+			return false // skip invalid regex
+		}
+		return re.MatchString(value)
+	default:
+		return strings.Contains(strings.ToLower(value), strings.ToLower(key))
+	}
+}
+
+func compareIs(value, key, comparator string) bool {
+	switch comparator {
+	case "i;octet":
+		return value == key
+	case "i;ascii-numeric":
+		nv, okv := asciiNumeric(value)
+		nk, okk := asciiNumeric(key)
+		if !okv || !okk {
+			// Non-numbers are all equal to one another and unequal to numbers.
+			return !okv && !okk
+		}
+		return nv == nk
+	default: // i;ascii-casemap
+		return strings.EqualFold(value, key)
+	}
+}
+
+// asciiNumeric parses a leading run of digits per the i;ascii-numeric
+// comparator (RFC 4790 §9.1). Returns false when the value does not begin with
+// a digit.
+func asciiNumeric(s string) (uint64, bool) {
+	s = strings.TrimSpace(s)
+	end := 0
+	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(s[:end], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+func foldForComparator(s, comparator string) string {
+	if comparator == "i;octet" {
+		return s
+	}
+	return strings.ToLower(s)
+}
+
+// wildcardMatch implements Sieve :matches semantics: '*' matches zero or more
+// characters, '?' matches exactly one, and a backslash escapes the next
+// character. It compiles the pattern to an anchored regular expression.
+func wildcardMatch(value, pattern string) bool {
+	var b strings.Builder
+	b.WriteString(`\A`)
+	runes := []rune(pattern)
+	for i := 0; i < len(runes); i++ {
+		switch runes[i] {
+		case '\\':
+			if i+1 < len(runes) {
+				b.WriteString(regexp.QuoteMeta(string(runes[i+1])))
+				i++
+			} else {
+				b.WriteString(regexp.QuoteMeta(`\`))
+			}
+		case '*':
+			b.WriteString(`(?s:.*)`)
+		case '?':
+			b.WriteString(`(?s:.)`)
+		default:
+			b.WriteString(regexp.QuoteMeta(string(runes[i])))
+		}
+	}
+	b.WriteString(`\z`)
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return false
+	}
+	return re.MatchString(value)
+}
+
+// ── Body text extraction ─────────────────────────────────────────────
 
 // extractBodyText returns the plain text content of the email body.
 // It prefers text/plain parts; falls back to stripping HTML tags from text/html.
@@ -304,543 +694,12 @@ func stripHTMLTags(s string) string {
 	return b.String()
 }
 
-// getEnvelopeValue returns the envelope sender or recipient from metadata or
-// the Envelope struct fields.
-func getEnvelopeValue(email *pipeline.EmailJSON, field string) string {
-	switch strings.ToLower(field) {
-	case "from":
-		// Prefer metadata if set by the SMTP gateway.
-		if email.Metadata != nil {
-			if v, ok := email.Metadata["envelope_from"]; ok && v != "" {
-				return v
-			}
-		}
-		return email.Envelope.MailFrom
-	case "to":
-		// Prefer metadata if set by the SMTP gateway.
-		if email.Metadata != nil {
-			if v, ok := email.Metadata["envelope_to"]; ok && v != "" {
-				return v
-			}
-		}
-		if len(email.Envelope.RcptTo) > 0 {
-			return email.Envelope.RcptTo[0]
-		}
-	}
-	return ""
-}
-
-func getHeaderValue(email *pipeline.EmailJSON, header string) string {
-	switch strings.ToLower(header) {
-	case "subject":
-		return email.Headers.Subject
-	case "from":
-		if len(email.Headers.From) > 0 {
-			return email.Headers.From[0].Address
-		}
-	case "to":
-		if len(email.Headers.To) > 0 {
-			return email.Headers.To[0].Address
-		}
-	default:
-		if email.Headers.Raw != nil {
-			if vals, ok := email.Headers.Raw[header]; ok && len(vals) > 0 {
-				return vals[0]
-			}
-		}
-	}
-	return ""
-}
-
-func getAddressValue(email *pipeline.EmailJSON, header string) string {
-	switch strings.ToLower(header) {
-	case "from":
-		if len(email.Headers.From) > 0 {
-			return email.Headers.From[0].Address
-		}
-	case "to":
-		if len(email.Headers.To) > 0 {
-			return email.Headers.To[0].Address
-		}
-	}
-	return ""
-}
-
-func matchString(value, matchType string, patterns []string) bool {
-	valueLower := strings.ToLower(value)
-	for _, pattern := range patterns {
-		switch matchType {
-		case ":is":
-			if valueLower == strings.ToLower(pattern) {
-				return true
-			}
-		case ":contains":
-			if strings.Contains(valueLower, strings.ToLower(pattern)) {
-				return true
-			}
-		case ":matches":
-			// Simple glob matching
-			if globMatch(valueLower, strings.ToLower(pattern)) {
-				return true
-			}
-		case ":regex":
-			// Regex matching (case-insensitive via (?i) prefix).
-			re, err := regexp.Compile("(?i)" + pattern)
-			if err != nil {
-				continue // skip invalid regex
-			}
-			if re.MatchString(value) {
-				return true
-			}
-		default:
-			// Default to contains
-			if strings.Contains(valueLower, strings.ToLower(pattern)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func globMatch(value, pattern string) bool {
-	// Simple glob: * matches any sequence of characters
-	parts := strings.Split(pattern, "*")
-	if len(parts) == 1 {
-		return value == pattern
-	}
-
-	// Check prefix
-	if !strings.HasPrefix(value, parts[0]) {
-		return false
-	}
-	value = value[len(parts[0]):]
-
-	// Check middle parts
-	for i := 1; i < len(parts)-1; i++ {
-		idx := strings.Index(value, parts[i])
-		if idx < 0 {
-			return false
-		}
-		value = value[idx+len(parts[i]):]
-	}
-
-	// Check suffix
-	return strings.HasSuffix(value, parts[len(parts)-1])
-}
-
-// parseSieve is a simplified Sieve parser that handles common patterns.
-func parseSieve(script string) ([]sieveRule, error) {
-	var rules []sieveRule
-
-	lines := strings.Split(script, "\n")
-	i := 0
-	for i < len(lines) {
-		line := strings.TrimSpace(lines[i])
-		i++
-
-		// Skip comments and blank lines
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "require") {
-			continue
-		}
-
-		// Parse "if" statements
-		if strings.HasPrefix(line, "if ") {
-			rule, newI, err := parseSieveIf(lines, i-1)
-			if err != nil {
-				return nil, err
-			}
-			rules = append(rules, rule)
-			i = newI
-			continue
-		}
-
-		// Top-level actions (including multi-line vacation/notify)
-		action, consumed, err := parseSieveActionMultiLine(lines, i-1)
-		if err == nil {
-			rules = append(rules, sieveRule{
-				condition: sieveCondition{test: "true"},
-				actions:   []sieveAction{action},
-			})
-			i = consumed
-		}
-	}
-
-	return rules, nil
-}
-
-func parseSieveIf(lines []string, startLine int) (sieveRule, int, error) {
-	rule := sieveRule{}
-	line := strings.TrimSpace(lines[startLine])
-
-	// Parse condition from "if <condition> {"
-	condStr := strings.TrimPrefix(line, "if ")
-	condStr = strings.TrimSuffix(condStr, "{")
-	condStr = strings.TrimSpace(condStr)
-
-	rule.condition = parseSieveCondition(condStr)
-
-	// Parse actions inside the block
-	i := startLine + 1
-	for i < len(lines) {
-		actionLine := strings.TrimSpace(lines[i])
-
-		if actionLine == "}" {
-			i++
-			break
-		}
-
-		if strings.TrimSpace(actionLine) == "stop;" {
-			rule.stop = true
-			i++
-			continue
-		}
-
-		action, consumed, err := parseSieveActionMultiLine(lines, i)
-		if err == nil {
-			rule.actions = append(rule.actions, action)
-			i = consumed
-		} else {
-			i++
-		}
-	}
-
-	return rule, i, nil
-}
-
-func parseSieveCondition(cond string) sieveCondition {
-	cond = strings.TrimSpace(cond)
-
-	if strings.HasPrefix(cond, "header ") {
-		return parseHeaderCondition(cond)
-	}
-	if strings.HasPrefix(cond, "address ") {
-		return parseAddressCondition(cond)
-	}
-	if strings.HasPrefix(cond, "size ") {
-		return parseSizeCondition(cond)
-	}
-	if strings.HasPrefix(cond, "body ") {
-		return parseBodyCondition(cond)
-	}
-	if strings.HasPrefix(cond, "envelope ") {
-		return parseEnvelopeCondition(cond)
-	}
-	if strings.HasPrefix(cond, "not ") {
-		inner := parseSieveCondition(strings.TrimPrefix(cond, "not "))
-		inner.negate = true
-		return inner
-	}
-
-	return sieveCondition{test: "true"}
-}
-
-// parseMatchType extracts the match comparator from a condition string.
-// Supports :contains, :is, :matches, and :regex.
-func parseMatchType(cond string) string {
-	if strings.Contains(cond, ":regex") {
-		return ":regex"
-	}
-	if strings.Contains(cond, ":contains") {
-		return ":contains"
-	}
-	if strings.Contains(cond, ":is") {
-		return ":is"
-	}
-	if strings.Contains(cond, ":matches") {
-		return ":matches"
-	}
-	return ":contains" // default
-}
-
-func parseHeaderCondition(cond string) sieveCondition {
-	sc := sieveCondition{test: "header"}
-	sc.match = parseMatchType(cond)
-
-	// Extract header name and values (simplified parsing)
-	// Format: header :contains "HeaderName" ["val1", "val2"]
-	parts := extractQuotedStrings(cond)
-	if len(parts) > 0 {
-		sc.header = parts[0]
-	}
-	if len(parts) > 1 {
-		sc.values = parts[1:]
-	}
-
-	return sc
-}
-
-func parseAddressCondition(cond string) sieveCondition {
-	sc := sieveCondition{test: "address"}
-	sc.match = parseMatchType(cond)
-
-	parts := extractQuotedStrings(cond)
-	if len(parts) > 0 {
-		sc.header = parts[0]
-	}
-	if len(parts) > 1 {
-		sc.values = parts[1:]
-	}
-
-	return sc
-}
-
-// parseBodyCondition parses: body :contains "text"
-func parseBodyCondition(cond string) sieveCondition {
-	sc := sieveCondition{test: "body"}
-	sc.match = parseMatchType(cond)
-
-	parts := extractQuotedStrings(cond)
-	if len(parts) > 0 {
-		sc.values = parts
-	}
-
-	return sc
-}
-
-// parseEnvelopeCondition parses: envelope :is "from" "sender@example.com"
-func parseEnvelopeCondition(cond string) sieveCondition {
-	sc := sieveCondition{test: "envelope"}
-	sc.match = parseMatchType(cond)
-
-	parts := extractQuotedStrings(cond)
-	if len(parts) > 0 {
-		sc.header = parts[0] // "from" or "to"
-	}
-	if len(parts) > 1 {
-		sc.values = parts[1:]
-	}
-
-	return sc
-}
-
-func parseSizeCondition(cond string) sieveCondition {
-	sc := sieveCondition{test: "size"}
-
-	if strings.Contains(cond, ":over") {
-		sc.sizeOp = ":over"
-	} else if strings.Contains(cond, ":under") {
-		sc.sizeOp = ":under"
-	}
-
-	// Parse size value (simplified: look for number with optional suffix)
-	for _, word := range strings.Fields(cond) {
-		var val int64
-		if n, err := fmt.Sscanf(word, "%dM", &val); err == nil && n == 1 {
-			sc.sizeVal = val * 1024 * 1024
-		} else if n, err := fmt.Sscanf(word, "%dK", &val); err == nil && n == 1 {
-			sc.sizeVal = val * 1024
-		} else if n, err := fmt.Sscanf(word, "%d", &val); err == nil && n == 1 {
-			sc.sizeVal = val
-		}
-	}
-
-	return sc
-}
-
-// parseSieveActionMultiLine parses a Sieve action starting at lines[startLine].
-// It handles multi-line actions like vacation and notify that span multiple lines.
-// Returns the parsed action, the next line index to process, and any error.
-func parseSieveActionMultiLine(lines []string, startLine int) (sieveAction, int, error) {
-	line := strings.TrimSpace(lines[startLine])
-
-	// Check for vacation action (may span multiple lines).
-	if strings.HasPrefix(line, "vacation") {
-		return parseVacationAction(lines, startLine)
-	}
-
-	// Check for notify action (may span multiple lines).
-	if strings.HasPrefix(line, "notify") {
-		return parseNotifyAction(lines, startLine)
-	}
-
-	// Fall back to single-line action parser.
-	action, err := parseSieveAction(line)
-	return action, startLine + 1, err
-}
-
-func parseSieveAction(line string) (sieveAction, error) {
-	line = strings.TrimSuffix(strings.TrimSpace(line), ";")
-
-	if line == "keep" {
-		return sieveAction{command: "keep"}, nil
-	}
-	if line == "discard" {
-		return sieveAction{command: "discard"}, nil
-	}
-	if strings.HasPrefix(line, "fileinto ") {
-		arg := extractFirstQuoted(strings.TrimPrefix(line, "fileinto "))
-		return sieveAction{command: "fileinto", arg: arg}, nil
-	}
-	if strings.HasPrefix(line, "redirect ") {
-		arg := extractFirstQuoted(strings.TrimPrefix(line, "redirect "))
-		return sieveAction{command: "redirect", arg: arg}, nil
-	}
-	if strings.HasPrefix(line, "reject ") {
-		arg := extractFirstQuoted(strings.TrimPrefix(line, "reject "))
-		return sieveAction{command: "reject", arg: arg}, nil
-	}
-
-	return sieveAction{}, fmt.Errorf("unknown action: %s", line)
-}
-
-// parseVacationAction parses a vacation action which may span multiple lines.
-// Format: vacation :days 7 :subject "Out of Office" "I am on vacation.";
-// The message body is the final quoted string (or the last quoted string
-// after :subject). The action may be on a single line or spread across lines
-// ending with a semicolon.
-func parseVacationAction(lines []string, startLine int) (sieveAction, int, error) {
-	// Collect the full statement up to the semicolon.
-	full, endLine := collectStatement(lines, startLine)
-
-	action := sieveAction{
-		command:      "vacation",
-		vacationDays: 7, // default per RFC 5230
-	}
-
-	// Parse :days N
-	if idx := strings.Index(full, ":days"); idx >= 0 {
-		rest := full[idx+len(":days"):]
-		rest = strings.TrimSpace(rest)
-		var days int
-		if _, err := fmt.Sscanf(rest, "%d", &days); err == nil && days > 0 {
-			action.vacationDays = days
-		}
-	}
-
-	// Extract all quoted strings.
-	quoted := extractQuotedStrings(full)
-
-	// Parse :subject - the quoted string immediately after :subject is the subject.
-	if idx := strings.Index(full, ":subject"); idx >= 0 {
-		// Find which quoted string follows :subject.
-		afterSubject := full[idx+len(":subject"):]
-		subjectQuoted := extractQuotedStrings(afterSubject)
-		if len(subjectQuoted) > 0 {
-			action.vacationSubject = subjectQuoted[0]
-		}
-	}
-
-	// The vacation message body is the last quoted string that is not the subject.
-	if len(quoted) > 0 {
-		lastQuoted := quoted[len(quoted)-1]
-		if lastQuoted != action.vacationSubject || len(quoted) == 1 {
-			action.vacationBody = lastQuoted
-		} else if len(quoted) > 1 {
-			// If the last quoted string equals the subject (unlikely),
-			// use the one before it if available.
-			action.vacationBody = quoted[len(quoted)-1]
-		}
-	}
-
-	// Handle the case where subject and body are both quoted:
-	// vacation :subject "subj" "body";
-	// quoted = ["subj", "body"], subject = "subj", body should be "body"
-	if action.vacationSubject != "" && len(quoted) >= 2 {
-		action.vacationBody = quoted[len(quoted)-1]
-	}
-
-	return action, endLine, nil
-}
-
-// parseNotifyAction parses a notify action.
-// Format: notify :method "mailto:admin@example.com" :message "New mail from ${from}";
-func parseNotifyAction(lines []string, startLine int) (sieveAction, int, error) {
-	full, endLine := collectStatement(lines, startLine)
-
-	action := sieveAction{command: "notify"}
-
-	// Parse :method
-	if idx := strings.Index(full, ":method"); idx >= 0 {
-		afterMethod := full[idx+len(":method"):]
-		methodQuoted := extractQuotedStrings(afterMethod)
-		if len(methodQuoted) > 0 {
-			action.notifyMethod = methodQuoted[0]
-		}
-	}
-
-	// Parse :message
-	if idx := strings.Index(full, ":message"); idx >= 0 {
-		afterMessage := full[idx+len(":message"):]
-		messageQuoted := extractQuotedStrings(afterMessage)
-		if len(messageQuoted) > 0 {
-			action.notifyMessage = messageQuoted[0]
-		}
-	}
-
-	// Variable substitution in notify message.
-	// Replace ${from}, ${to}, ${subject} with actual header values.
-	// This is deferred to execution time via metadata, but we store the
-	// template as-is. The downstream notify handler expands variables.
-
-	return action, endLine, nil
-}
-
-// collectStatement collects a Sieve statement that may span multiple lines,
-// terminated by a semicolon. Returns the full statement (without the trailing
-// semicolon) and the next line index to process.
-func collectStatement(lines []string, startLine int) (string, int) {
-	var b strings.Builder
-	i := startLine
-	for i < len(lines) {
-		line := strings.TrimSpace(lines[i])
-		i++
-		b.WriteString(line)
-		b.WriteByte(' ')
-		if strings.HasSuffix(line, ";") {
-			break
-		}
-	}
-	full := strings.TrimSpace(b.String())
-	full = strings.TrimSuffix(full, ";")
-	full = strings.TrimSpace(full)
-	return full, i
-}
-
-func extractQuotedStrings(s string) []string {
-	var result []string
-	inQuote := false
-	current := strings.Builder{}
-	inBracket := false
-
-	for _, ch := range s {
-		switch {
-		case ch == '"' && !inQuote:
-			inQuote = true
-		case ch == '"' && inQuote:
-			inQuote = false
-			result = append(result, current.String())
-			current.Reset()
-		case inQuote:
-			current.WriteRune(ch)
-		case ch == '[':
-			inBracket = true
-		case ch == ']':
-			inBracket = false
-		default:
-			_ = inBracket
-		}
-	}
-
-	return result
-}
+// ── Validation ───────────────────────────────────────────────────────
 
 // ValidateSieve checks if a Sieve script is syntactically valid.
 func ValidateSieve(script string) error {
-	_, err := parseSieve(script)
-	if err != nil {
+	if _, err := parseSieveScript(script); err != nil {
 		return fmt.Errorf("invalid sieve script: %w", err)
 	}
 	return nil
-}
-
-func extractFirstQuoted(s string) string {
-	start := strings.IndexByte(s, '"')
-	if start < 0 {
-		return strings.TrimSpace(s)
-	}
-	end := strings.IndexByte(s[start+1:], '"')
-	if end < 0 {
-		return s[start+1:]
-	}
-	return s[start+1 : start+1+end]
 }
