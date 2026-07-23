@@ -19,6 +19,8 @@ import (
 	"github.com/restmail/restmail/internal/digest"
 	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/rollup"
+	"github.com/restmail/restmail/internal/trace"
 )
 
 func loadCACert() {
@@ -167,6 +169,22 @@ func main() {
 	dmarcReporter := dmarcreport.NewReporter(database, digestInterval, cfg.GatewayHostname)
 	dmarcReporter.Start()
 
+	// Start the rollup worker: it snapshots the always-on, 100%-accurate Prometheus
+	// pipeline counters into time-bucketed DB aggregates (pipeline_rollups), giving
+	// the in-app dashboard durable windowed history without an external Prometheus.
+	// The inbound funnel counters live in this API process's registry and are fully
+	// covered; the outbound queue counters run in the smtp-gateway process (no
+	// /metrics endpoint there yet — the known gateway-scraping gap) so they are not
+	// rolled up yet. Aggregate accuracy is independent of trace sampling/pruning.
+	rollupWorker := rollup.NewWorker(database, cfg.RollupInterval)
+	rollupWorker.Start()
+
+	// Start the trace retention pruner (hourly): deletes per-message traces past
+	// their expires_at horizon and enforces the TRACE_MAX_ROWS backstop. It never
+	// touches pipeline_rollups — aggregate history is long-lived.
+	tracePruner := trace.NewPruner(database, time.Hour, cfg.TraceMaxRows)
+	tracePruner.Start()
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         cfg.APIAddr(),
@@ -209,6 +227,10 @@ func main() {
 	}
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()
+	// Stop the rollup worker (takes a final snapshot to capture the partial
+	// interval) and the trace pruner.
+	rollupWorker.Shutdown()
+	tracePruner.Shutdown()
 	digestWorker.Shutdown()
 	// Flush buffered per-message traces and stop the recorder goroutine.
 	routers.Close()

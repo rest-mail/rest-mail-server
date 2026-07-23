@@ -28,6 +28,7 @@ var allEnvKeys = []string{
 	"INTERNAL_MTLS_ENABLED", "INTERNAL_MTLS_PORT",
 	"INTERNAL_MTLS_CA_CERT", "INTERNAL_MTLS_SERVER_CERT", "INTERNAL_MTLS_SERVER_KEY",
 	"INTERNAL_MTLS_CLIENT_CERT", "INTERNAL_MTLS_CLIENT_KEY",
+	"TRACE_RETENTION_DAYS", "TRACE_SAMPLE_RATE", "TRACE_MAX_ROWS", "ROLLUP_INTERVAL",
 	"ENVIRONMENT",
 }
 
@@ -489,5 +490,115 @@ func TestLoad_DurationParsing(t *testing.T) {
 
 	if cfg.JWTAccessExpiry != 15*time.Minute {
 		t.Errorf("JWTAccessExpiry = %v, want fallback %v after invalid duration", cfg.JWTAccessExpiry, 15*time.Minute)
+	}
+}
+
+// ── PR4 observability retention/rollup knobs ─────────────────────────
+
+// TestLoad_ObservabilityDefaults verifies the trace/rollup knobs fall back to
+// their documented defaults when unset.
+func TestLoad_ObservabilityDefaults(t *testing.T) {
+	clearEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if cfg.TraceRetentionDays != DefaultTraceRetentionDays {
+		t.Errorf("TraceRetentionDays = %d, want %d", cfg.TraceRetentionDays, DefaultTraceRetentionDays)
+	}
+	if cfg.TraceSampleRate != DefaultTraceSampleRate {
+		t.Errorf("TraceSampleRate = %v, want %v", cfg.TraceSampleRate, DefaultTraceSampleRate)
+	}
+	if cfg.TraceMaxRows != DefaultTraceMaxRows {
+		t.Errorf("TraceMaxRows = %d, want %d", cfg.TraceMaxRows, DefaultTraceMaxRows)
+	}
+	if cfg.RollupInterval != DefaultRollupInterval {
+		t.Errorf("RollupInterval = %v, want %v", cfg.RollupInterval, DefaultRollupInterval)
+	}
+	// TraceRetention() converts the day count to a duration horizon.
+	if got := cfg.TraceRetention(); got != time.Duration(DefaultTraceRetentionDays)*24*time.Hour {
+		t.Errorf("TraceRetention() = %v, want %v", got, time.Duration(DefaultTraceRetentionDays)*24*time.Hour)
+	}
+}
+
+// TestLoad_ObservabilityOverrides verifies valid explicit values are honored.
+func TestLoad_ObservabilityOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("TRACE_RETENTION_DAYS", "14")
+	t.Setenv("TRACE_SAMPLE_RATE", "0.25")
+	t.Setenv("TRACE_MAX_ROWS", "500000")
+	t.Setenv("ROLLUP_INTERVAL", "10m")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if cfg.TraceRetentionDays != 14 {
+		t.Errorf("TraceRetentionDays = %d, want 14", cfg.TraceRetentionDays)
+	}
+	if cfg.TraceSampleRate != 0.25 {
+		t.Errorf("TraceSampleRate = %v, want 0.25", cfg.TraceSampleRate)
+	}
+	if cfg.TraceMaxRows != 500000 {
+		t.Errorf("TraceMaxRows = %d, want 500000", cfg.TraceMaxRows)
+	}
+	if cfg.RollupInterval != 10*time.Minute {
+		t.Errorf("RollupInterval = %v, want 10m", cfg.RollupInterval)
+	}
+}
+
+// TestLoad_ObservabilityValidation rejects out-of-range / malformed values —
+// these are hard startup errors, not silent fallbacks.
+func TestLoad_ObservabilityValidation(t *testing.T) {
+	cases := []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{"sample rate above 1", "TRACE_SAMPLE_RATE", "1.5"},
+		{"sample rate negative", "TRACE_SAMPLE_RATE", "-0.1"},
+		{"sample rate malformed", "TRACE_SAMPLE_RATE", "abc"},
+		{"retention zero", "TRACE_RETENTION_DAYS", "0"},
+		{"retention negative", "TRACE_RETENTION_DAYS", "-3"},
+		{"retention malformed", "TRACE_RETENTION_DAYS", "seven"},
+		{"max rows negative", "TRACE_MAX_ROWS", "-1"},
+		{"max rows malformed", "TRACE_MAX_ROWS", "lots"},
+		{"rollup interval zero", "ROLLUP_INTERVAL", "0s"},
+		{"rollup interval negative", "ROLLUP_INTERVAL", "-5m"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv(tc.key, tc.val)
+			if _, err := Load(); err == nil {
+				t.Errorf("Load() with %s=%q: expected error, got nil", tc.key, tc.val)
+			}
+		})
+	}
+}
+
+// TestLoad_SampleRateBoundaries confirms the inclusive [0,1] endpoints are valid
+// (0.0 = keep only anomalies; 1.0 = keep every trace).
+func TestLoad_SampleRateBoundaries(t *testing.T) {
+	for _, rate := range []string{"0", "0.0", "1", "1.0"} {
+		clearEnv(t)
+		t.Setenv("TRACE_SAMPLE_RATE", rate)
+		if _, err := Load(); err != nil {
+			t.Errorf("Load() with TRACE_SAMPLE_RATE=%q: unexpected error %v", rate, err)
+		}
+	}
+}
+
+// TestLoad_MaxRowsZeroDisablesBackstop confirms 0 is accepted (disables the cap).
+func TestLoad_MaxRowsZeroDisablesBackstop(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("TRACE_MAX_ROWS", "0")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() with TRACE_MAX_ROWS=0 errored: %v", err)
+	}
+	if cfg.TraceMaxRows != 0 {
+		t.Errorf("TraceMaxRows = %d, want 0 (backstop disabled)", cfg.TraceMaxRows)
 	}
 }

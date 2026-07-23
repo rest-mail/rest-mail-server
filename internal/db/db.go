@@ -82,6 +82,11 @@ func AutoMigrate(db *gorm.DB) error {
 		// its GORM tags above, alongside standalone indexes for correlation and
 		// PR4 pruning.
 		&models.MessageTrace{},
+		// Time-bucketed aggregate rollups (PR4): the rollup worker snapshots the
+		// always-on pipeline counters into these long-lived rows. Separate from
+		// message_traces (which are sampled + pruned) so aggregate history is
+		// never affected by trace sampling or pruning.
+		&models.PipelineRollup{},
 		&models.Contact{},
 		&models.DomainSenderRule{},
 		&models.GreylistEntry{},

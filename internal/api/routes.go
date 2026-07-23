@@ -127,7 +127,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// the hot path by one background goroutine, so a slow/failed DB drops traces
 	// (drop-on-full) but never blocks or fails message processing. Injected into
 	// the delivery handlers; stopped/flushed via Routers.Close on shutdown.
-	traceRecorder := trace.NewRecorder(db)
+	//
+	// PR4 sampling/retention: happy-path traces are kept at cfg.TraceSampleRate
+	// (anomalies always 100%); recorded traces get an expires_at horizon
+	// (cfg.TraceRetention) for the pruner. Aggregate counts are unaffected — they
+	// come from the always-on metrics, not these sampled rows.
+	traceRecorder := trace.NewRecorder(db, trace.Config{
+		SampleRate: cfg.TraceSampleRate,
+		Retention:  cfg.TraceRetention(),
+	})
 	traceRecorder.Start()
 
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)

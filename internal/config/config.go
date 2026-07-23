@@ -59,9 +59,9 @@ type Config struct {
 	TLSCertDir  string // directory containing per-domain cert/key pairs for SNI
 
 	// JWT
-	JWTSecret            string
-	JWTAccessExpiry      time.Duration
-	JWTRefreshExpiry     time.Duration
+	JWTSecret        string
+	JWTAccessExpiry  time.Duration
+	JWTRefreshExpiry time.Duration
 
 	// Master key for encrypting private keys at rest
 	MasterKey string
@@ -143,8 +143,56 @@ type Config struct {
 	InternalMTLSClientCert string // gateway client cert (gateway side)
 	InternalMTLSClientKey  string // gateway client key (gateway side)
 
+	// Observability retention/rollup (PR4). These are volume/cost knobs, NOT
+	// security controls: they bound how much per-message trace detail is stored
+	// and how often aggregate rollups are snapshotted. Aggregate accuracy is
+	// unaffected by any of them — rollups snapshot the always-on Prometheus
+	// counters (100% accurate), so sampling and pruning never lose aggregate
+	// history.
+	//
+	// TraceRetentionDays  is the per-message trace hot window; a trace's
+	//   expires_at is stamped created_at + this many days and the pruner deletes
+	//   past it. Always positive.
+	// TraceSampleRate     is the probability a happy-path (delivered/queued) trace
+	//   is persisted; non-continue outcomes (rejected/quarantined/discarded/
+	//   deferred) are always kept 100%. Must be in [0.0, 1.0]. Small deployments
+	//   set 1.0 to keep every trace.
+	// TraceMaxRows        is the hard row-count backstop on message_traces; when
+	//   exceeded the pruner deletes the oldest rows beyond it. 0 disables the cap.
+	// RollupInterval      is the rollup worker's snapshot cadence (also the rollup
+	//   bucket width). Always positive.
+	TraceRetentionDays int
+	TraceSampleRate    float64
+	TraceMaxRows       int64
+	RollupInterval     time.Duration
+
 	// Environment
 	Environment string // "development", "production", "test"
+}
+
+// DefaultTraceRetentionDays is the per-message trace hot window when
+// TRACE_RETENTION_DAYS is unset.
+const DefaultTraceRetentionDays = 7
+
+// DefaultTraceSampleRate is the happy-path trace sampling probability when
+// TRACE_SAMPLE_RATE is unset.
+const DefaultTraceSampleRate = 0.1
+
+// DefaultTraceMaxRows is the message_traces hard row-count backstop when
+// TRACE_MAX_ROWS is unset. Sized for the 100k–1M/day target: at ~2 GB/7d the
+// row count sits well under this ceiling, so the backstop only engages if
+// sampling is disabled or volume spikes far above target.
+const DefaultTraceMaxRows = 2_000_000
+
+// DefaultRollupInterval is the rollup worker snapshot cadence when
+// ROLLUP_INTERVAL is unset.
+const DefaultRollupInterval = 5 * time.Minute
+
+// TraceRetention returns the per-message trace retention window as a Duration
+// (TraceRetentionDays × 24h) — what the recorder stamps as each trace's
+// expires_at horizon.
+func (c *Config) TraceRetention() time.Duration {
+	return time.Duration(c.TraceRetentionDays) * 24 * time.Hour
 }
 
 // DefaultInternalMTLSPort is the internal mTLS listener port used when
@@ -208,6 +256,8 @@ func Load() (*Config, error) {
 		InternalMTLSServerKey:  getEnv("INTERNAL_MTLS_SERVER_KEY", ""),
 		InternalMTLSClientCert: getEnv("INTERNAL_MTLS_CLIENT_CERT", ""),
 		InternalMTLSClientKey:  getEnv("INTERNAL_MTLS_CLIENT_KEY", ""),
+
+		RollupInterval: getEnvDuration("ROLLUP_INTERVAL", DefaultRollupInterval),
 
 		Environment: getEnv("ENVIRONMENT", "development"),
 	}
@@ -273,6 +323,41 @@ func Load() (*Config, error) {
 	// material), so Load cannot know which half is required.
 	if cfg.InternalMTLSEnabled && (cfg.InternalMTLSPort <= 0 || cfg.InternalMTLSPort > 65535) {
 		return nil, fmt.Errorf("INTERNAL_MTLS_PORT must be a valid TCP port (1-65535) when INTERNAL_MTLS_ENABLED is true, got %d", cfg.InternalMTLSPort)
+	}
+
+	// Observability retention/rollup knobs (PR4). These are volume/cost dials,
+	// but a malformed value is still a hard startup error rather than a silent
+	// fallback: an admin who set a value meant it, and quietly ignoring it would
+	// make the knob a lie (same rationale as the SMTP size/rate strictness).
+	retentionDays, err := getEnvInt64Strict("TRACE_RETENTION_DAYS", DefaultTraceRetentionDays, "days")
+	if err != nil {
+		return nil, err
+	}
+	if retentionDays <= 0 {
+		return nil, fmt.Errorf("TRACE_RETENTION_DAYS must be a positive number of days, got %d", retentionDays)
+	}
+	cfg.TraceRetentionDays = int(retentionDays)
+
+	sampleRate, err := getEnvFloatStrict("TRACE_SAMPLE_RATE", DefaultTraceSampleRate)
+	if err != nil {
+		return nil, err
+	}
+	if sampleRate < 0 || sampleRate > 1 {
+		return nil, fmt.Errorf("TRACE_SAMPLE_RATE must be between 0.0 and 1.0, got %v", sampleRate)
+	}
+	cfg.TraceSampleRate = sampleRate
+
+	maxRows, err := getEnvInt64Strict("TRACE_MAX_ROWS", DefaultTraceMaxRows, "rows")
+	if err != nil {
+		return nil, err
+	}
+	if maxRows < 0 {
+		return nil, fmt.Errorf("TRACE_MAX_ROWS must be a non-negative number of rows (0 disables the backstop), got %d", maxRows)
+	}
+	cfg.TraceMaxRows = maxRows
+
+	if cfg.RollupInterval <= 0 {
+		return nil, fmt.Errorf("ROLLUP_INTERVAL must be a positive duration, got %v", cfg.RollupInterval)
 	}
 
 	return cfg, nil
@@ -356,6 +441,22 @@ func getEnvInt64Strict(key string, fallback int64, unit string) (int64, error) {
 		return 0, fmt.Errorf("%s must be an integer number of %s, got %q", key, unit, val)
 	}
 	return i, nil
+}
+
+// getEnvFloatStrict returns fallback when key is unset or empty, and errors on a
+// malformed value instead of silently falling back — used for settings (e.g. a
+// sampling probability) where ignoring an explicitly configured value would be
+// worse than failing startup. Range validation is the caller's responsibility.
+func getEnvFloatStrict(key string, fallback float64) (float64, error) {
+	val, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(val) == "" {
+		return fallback, nil
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a decimal number, got %q", key, val)
+	}
+	return f, nil
 }
 
 func getEnvSlice(key string, fallback []string) []string {
