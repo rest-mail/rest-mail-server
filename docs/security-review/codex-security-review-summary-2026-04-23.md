@@ -1,8 +1,10 @@
 # Codex Security Review — Executive Summary (2026-04-23)
 
+> **Re-evaluated 2026-07-23 against `main` (post-#77) — RESOLVED.** All Critical/High access-control issues are fixed or obsolete; one protocol-inherent enumeration path (`/restmail`) is accepted by design. See the board register + deep-dive for per-finding detail.
+
 ## Overall Risk Snapshot
 
-Current risk is **High** due to multiple access-control issues that can allow authenticated users to access or modify other users’ data, plus externally exposed services that are not sufficiently hardened for internet-facing deployment.
+~~Current risk is **High** due to multiple access-control issues that can allow authenticated users to access or modify other users’ data, plus externally exposed services that are not sufficiently hardened for internet-facing deployment.~~ **[RESOLVED 2026-07-23]** The Sieve/Quarantine IDORs are fixed and regression-tested (#77); the exposed-service concerns are addressed by internal mTLS (#65) or obsolete (monitoring compose removed).
 
 ## Top Risks (Non-Technical)
 
@@ -21,14 +23,16 @@ If exploited, these issues can lead to:
 - Operational and telemetry data leakage
 - Reputational damage and incident response overhead
 
-## Most Urgent Actions (Do First)
+## Most Urgent Actions (Do First) — ALL RESOLVED
 
-1. **Fix access-control bugs** in Sieve and Quarantine handlers (Critical).
-2. **Require strong service-to-service auth** on inbound delivery endpoint.
-3. **Restrict/disable unauthenticated mailbox existence checks** or apply strict anti-enumeration controls.
-4. **Lock down monitoring** (no public exposure by default, rotate credentials, enforce auth gateway).
+1. ~~**Fix access-control bugs** in Sieve and Quarantine handlers (Critical).~~ ✅ #77
+2. ~~**Require strong service-to-service auth** on inbound delivery endpoint.~~ ✅ internal mTLS (#65; default-off → made mandatory in the secure-by-construction epic)
+3. ~~**Restrict/disable unauthenticated mailbox existence checks** or apply strict anti-enumeration controls.~~ ✅ `/api/mailboxes` via mTLS; `/restmail` accepted by design (protocol-inherent)
+4. ~~**Lock down monitoring** (no public exposure by default, rotate credentials, enforce auth gateway).~~ ⊘ Obsolete — monitoring compose removed
 
-## 30-Day Remediation Plan
+## 30-Day Remediation Plan — COMPLETED 2026-07-23
+
+_Delivered ahead of plan (#46, #65, #77). Retained below for the record._
 
 ### Week 1
 - Patch Critical IDOR issues in Sieve and Quarantine handlers.
@@ -48,10 +52,10 @@ If exploited, these issues can lead to:
 
 ## Leadership Recommendation
 
-Treat this as a **priority security hardening sprint** before wider external exposure. The fixes are straightforward and should materially reduce risk once implemented and tested.
+~~Treat this as a **priority security hardening sprint** before wider external exposure.~~ **[RESOLVED 2026-07-23]** The fixes were straightforward and are now implemented and tested (#46, #65, #77). Only the `/restmail` enumeration remains, as an accepted-by-design item (protocol-inherent).
 
 ## Reference
 
 Detailed technical findings are documented in:
 
-- `docs/codex-security-review-2026-04-23.md`
+- `docs/security-review/codex-security-review-2026-04-23.md`
