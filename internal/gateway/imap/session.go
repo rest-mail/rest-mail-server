@@ -20,7 +20,7 @@ type Session struct {
 	conn      net.Conn
 	reader    *bufio.Reader
 	writer    *bufio.Writer
-	api       *apiclient.Client
+	api       Backend
 	hostname  string
 	tlsConfig *tls.Config
 	limiter   *connlimiter.Limiter
@@ -47,7 +47,7 @@ type selectedMailbox struct {
 }
 
 // NewSession creates a new IMAP session.
-func NewSession(conn net.Conn, api *apiclient.Client, hostname string, tlsConfig *tls.Config, limiter *connlimiter.Limiter) *Session {
+func NewSession(conn net.Conn, api Backend, hostname string, tlsConfig *tls.Config, limiter *connlimiter.Limiter) *Session {
 	return &Session{
 		conn:      conn,
 		reader:    bufio.NewReader(conn),

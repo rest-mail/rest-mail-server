@@ -7,14 +7,13 @@ import (
 	"net"
 	"sync"
 
-	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
 
 // Server listens for IMAP connections and spawns session handlers.
 type Server struct {
 	hostname  string
-	api       *apiclient.Client
+	api       Backend
 	tlsConfig *tls.Config
 	limiter   *connlimiter.Limiter
 	listeners []net.Listener
@@ -23,7 +22,7 @@ type Server struct {
 }
 
 // NewServer creates a new IMAP server.
-func NewServer(hostname string, api *apiclient.Client, tlsConfig *tls.Config, limiter *connlimiter.Limiter) *Server {
+func NewServer(hostname string, api Backend, tlsConfig *tls.Config, limiter *connlimiter.Limiter) *Server {
 	return &Server{
 		hostname:  hostname,
 		api:       api,
