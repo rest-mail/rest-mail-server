@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -519,15 +521,35 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 // ── Quarantine ───────────────────────────────────────────────────────
 
 // ListQuarantine returns quarantined messages for a mailbox.
-func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+// resolveMailboxID resolves the account ID from the URL to a mailbox ID,
+// verifying that the authenticated user owns the account (either as their
+// primary account or a linked account). Quarantine rows are per-mailbox
+// confidential mail; without this check the {id} path segment was trusted as a
+// raw mailbox ID and quarantine rows were released/deleted by row ID with no
+// owner check, letting any authenticated caller view/release/delete another
+// mailbox's quarantined mail (IDOR).
+func (h *PipelineHandler) resolveMailboxID(r *http.Request, accountIDStr string) (uint, error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return 0, fmt.Errorf("no claims")
+	}
+
+	accountID, err := strconv.ParseUint(accountIDStr, 10, 32)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
+		return 0, err
+	}
+	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
+}
+
+func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request) {
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
 	var items []models.Quarantine
-	h.db.Where("mailbox_id = ? AND released = false", accountID).
+	h.db.Where("mailbox_id = ? AND released = false", mailboxID).
 		Order("received_at DESC").
 		Find(&items)
 
@@ -536,14 +558,22 @@ func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request)
 
 // ReleaseQuarantine releases a quarantined message to the inbox.
 func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Request) {
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	mid, err := strconv.ParseUint(chi.URLParam(r, "mid"), 10, 32)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
 		return
 	}
 
+	// Scope the lookup to the caller's mailbox so a quarantine row belonging to
+	// another mailbox is indistinguishable from a non-existent one (404, no leak).
 	var item models.Quarantine
-	if err := h.db.First(&item, mid).Error; err != nil {
+	if err := h.db.Where("id = ? AND mailbox_id = ?", mid, mailboxID).First(&item).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Quarantined message not found")
 		return
 	}
@@ -589,14 +619,27 @@ func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Reque
 
 // DeleteQuarantine permanently deletes a quarantined message.
 func (h *PipelineHandler) DeleteQuarantine(w http.ResponseWriter, r *http.Request) {
+	mailboxID, err := h.resolveMailboxID(r, chi.URLParam(r, "id"))
+	if err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	mid, err := strconv.ParseUint(chi.URLParam(r, "mid"), 10, 32)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
 		return
 	}
 
-	if err := h.db.Delete(&models.Quarantine{}, mid).Error; err != nil {
+	// Delete only when the row belongs to the caller's mailbox; a mismatch
+	// affects zero rows and returns 404 rather than deleting another user's mail.
+	res := h.db.Where("id = ? AND mailbox_id = ?", mid, mailboxID).Delete(&models.Quarantine{})
+	if res.Error != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete")
+		return
+	}
+	if res.RowsAffected == 0 {
+		respond.Error(w, http.StatusNotFound, "not_found", "Quarantined message not found")
 		return
 	}
 

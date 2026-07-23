@@ -63,6 +63,13 @@ type Config struct {
 	JWTAccessExpiry  time.Duration
 	JWTRefreshExpiry time.Duration
 
+	// Auth rate limiting: a per-client-IP token bucket applied to the
+	// auth-sensitive HTTP routes (login/refresh) to blunt brute-force and
+	// credential-stuffing. Bounded so legitimate interactive use is unaffected.
+	AuthRateLimitEnabled bool
+	AuthRateLimitRPS     float64 // sustained requests/sec per client IP
+	AuthRateLimitBurst   int     // bucket capacity (max short burst) per client IP
+
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
@@ -188,6 +195,16 @@ const DefaultTraceMaxRows = 2_000_000
 // ROLLUP_INTERVAL is unset.
 const DefaultRollupInterval = 5 * time.Minute
 
+// DefaultAuthRateLimitRPS / DefaultAuthRateLimitBurst are the per-client-IP
+// auth-route throttle defaults when AUTH_RATE_LIMIT_RPS / AUTH_RATE_LIMIT_BURST
+// are unset: 1 sustained request/sec with a burst of 15 gives ordinary
+// interactive login/refresh ample headroom while capping automated
+// brute-force/credential-stuffing to a trickle.
+const (
+	DefaultAuthRateLimitRPS   = 1.0
+	DefaultAuthRateLimitBurst = 15
+)
+
 // TraceRetention returns the per-message trace retention window as a Duration
 // (TraceRetentionDays × 24h) — what the recorder stamps as each trace's
 // expires_at horizon.
@@ -221,6 +238,9 @@ func Load() (*Config, error) {
 		JWTSecret:        getEnv("JWT_SECRET", "dev-secret-change-in-production"),
 		JWTAccessExpiry:  getEnvDuration("JWT_ACCESS_EXPIRY", 15*time.Minute),
 		JWTRefreshExpiry: getEnvDuration("JWT_REFRESH_EXPIRY", 7*24*time.Hour),
+
+		AuthRateLimitEnabled: getEnvBool("AUTH_RATE_LIMIT_ENABLED", true),
+		AuthRateLimitBurst:   getEnvInt("AUTH_RATE_LIMIT_BURST", DefaultAuthRateLimitBurst),
 
 		MasterKey: getEnv("MASTER_KEY", ""),
 
@@ -359,6 +379,23 @@ func Load() (*Config, error) {
 	if cfg.RollupInterval <= 0 {
 		return nil, fmt.Errorf("ROLLUP_INTERVAL must be a positive duration, got %v", cfg.RollupInterval)
 	}
+
+	// Auth rate limit: strict parse so a malformed RPS is a hard startup error
+	// rather than a silently-ignored knob. Positivity is enforced only when the
+	// limiter is enabled, so a disabled deployment need not tune the values.
+	authRPS, err := getEnvFloatStrict("AUTH_RATE_LIMIT_RPS", DefaultAuthRateLimitRPS)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.AuthRateLimitEnabled {
+		if authRPS <= 0 {
+			return nil, fmt.Errorf("AUTH_RATE_LIMIT_RPS must be positive, got %v", authRPS)
+		}
+		if cfg.AuthRateLimitBurst <= 0 {
+			return nil, fmt.Errorf("AUTH_RATE_LIMIT_BURST must be positive, got %d", cfg.AuthRateLimitBurst)
+		}
+	}
+	cfg.AuthRateLimitRPS = authRPS
 
 	return cfg, nil
 }
