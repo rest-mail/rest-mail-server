@@ -72,6 +72,9 @@ func (m *mailbox) Folders() ([]imapsrv.Folder, error) {
 // Messages returns a folder's messages oldest-first, mapped onto the library's
 // neutral Message type. The message ID doubles as the IMAP UID.
 func (m *mailbox) Messages(folder string) ([]imapsrv.Message, error) {
+	if err := validateFolder(folder); err != nil {
+		return nil, err
+	}
 	resp, err := m.api.ListMessages(m.token, m.accountID, folder)
 	if err != nil {
 		return nil, err
@@ -154,6 +157,9 @@ func (m *mailbox) Move(uid uint32, dest string) error {
 // so the message keeps its UID; that UID is what the atomic MOVE's COPYUID
 // response code reports.
 func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
+	if err := validateFolder(dest); err != nil {
+		return 0, err
+	}
 	if err := m.api.UpdateMessage(m.token, uint(uid), map[string]interface{}{"folder": dest}); err != nil {
 		return 0, err
 	}
@@ -178,6 +184,9 @@ func (m *mailbox) Copy(uid uint32, dest string) error {
 // the delivery assigned, which is rest-mail's UID for the copy — for the COPYUID
 // response code.
 func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
+	if err := validateFolder(dest); err != nil {
+		return 0, err
+	}
 	detail, err := m.api.GetMessage(m.token, uint(uid))
 	if err != nil {
 		return 0, err
@@ -225,6 +234,9 @@ func (m *mailbox) Append(dest string, f imapsrv.FlagUpdate, raw []byte) error {
 // (UIDPLUS, RFC 4315) — the ID the delivery assigned, which is rest-mail's UID —
 // for the APPENDUID response code.
 func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint32, error) {
+	if err := validateFolder(dest); err != nil {
+		return 0, err
+	}
 	// Parse basic headers from raw message for the structured delivery fields.
 	subject, bodyText, bodyHTML, messageID, senderName := parseBasicHeaders(raw)
 
