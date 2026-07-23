@@ -117,6 +117,37 @@ func TestSMTP_LocalVsRemoteRouting(t *testing.T) {
 	}
 }
 
+// TestSMTP_LongLineAccepted guards old-engine parity on line length: the
+// hand-rolled engine had no per-line limit, while go-smtp defaults to 2000
+// bytes even during DATA. Real-world unwrapped 8-bit/HTML mail carries longer
+// lines (Postfix wraps rather than rejects them), so a message with a single
+// >2000-byte body line must still be accepted and delivered.
+func TestSMTP_LongLineAccepted(t *testing.T) {
+	back := newMockBackend()
+	back.local["alice@local.test"] = true
+	store := newMockStore()
+
+	h := newSMTPHarness(t, back, store, false) // inbound (port 25)
+	h.ehlo()
+
+	if r := h.cmd("MAIL FROM:<sender@remote.test>"); replyCode(r) != "250" {
+		t.Fatalf("MAIL FROM = %q", r)
+	}
+	if r := h.cmd("RCPT TO:<alice@local.test>"); replyCode(r) != "250" {
+		t.Fatalf("RCPT = %q", r)
+	}
+
+	longLine := strings.Repeat("a", 5000) // well past go-smtp's 2000-byte default
+	body := "Subject: Long\r\nFrom: Sender <sender@remote.test>\r\n\r\n" + longLine + "\r\n"
+	final := h.dataBody(body)
+	if replyCode(final) != "250" {
+		t.Errorf("DATA with >2000-byte line = %q, want 250", final)
+	}
+	if got := back.deliveredTo(); !reflect.DeepEqual(got, []string{"alice@local.test"}) {
+		t.Errorf("delivered = %v, want [alice@local.test]", got)
+	}
+}
+
 // TestSMTP_EhloAdvertisements guards the untouched EHLO capabilities: the SIZE
 // value matches the enforced limit, AUTH is offered on submission, and the
 // RESTMAIL server-to-server upgrade hint is advertised.
