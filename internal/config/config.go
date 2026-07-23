@@ -110,9 +110,19 @@ type Config struct {
 	IMAPTLSPort              int
 	POP3Port                 int
 	POP3TLSPort              int
-	QueueWorkers             int
-	QueuePollInterval        time.Duration
-	MTASTSEnforce            bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
+
+	// Per-gateway Prometheus metrics endpoints. Each gateway runs as its own
+	// process with its own registry, so each exposes /metrics on its own port
+	// (default DefaultGatewayMetricsPort). 0 disables the endpoint. Meant to be
+	// scraped over the internal network — bound inside the container, not
+	// host-published.
+	SMTPMetricsPort int
+	IMAPMetricsPort int
+	POP3MetricsPort int
+
+	QueueWorkers      int
+	QueuePollInterval time.Duration
+	MTASTSEnforce     bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
 
 	// PROXY protocol
 	ProxyProtocolTrustedCIDRs []string
@@ -216,6 +226,11 @@ func (c *Config) TraceRetention() time.Duration {
 // INTERNAL_MTLS_PORT is unset.
 const DefaultInternalMTLSPort = 8443
 
+// DefaultGatewayMetricsPort is the port each protocol gateway exposes its
+// Prometheus /metrics endpoint on when <GATEWAY>_METRICS_PORT is unset. It
+// matches the target the shipped monitoring/prometheus.yml scrapes.
+const DefaultGatewayMetricsPort = 9090
+
 func Load() (*Config, error) {
 	cfg := &Config{
 		DBHost:            getEnv("DB_HOST", "localhost"),
@@ -256,6 +271,9 @@ func Load() (*Config, error) {
 		IMAPTLSPort:           getEnvInt("IMAP_TLS_PORT", 993),
 		POP3Port:              getEnvInt("POP3_PORT", 110),
 		POP3TLSPort:           getEnvInt("POP3_TLS_PORT", 995),
+		SMTPMetricsPort:       getEnvInt("SMTP_METRICS_PORT", DefaultGatewayMetricsPort),
+		IMAPMetricsPort:       getEnvInt("IMAP_METRICS_PORT", DefaultGatewayMetricsPort),
+		POP3MetricsPort:       getEnvInt("POP3_METRICS_PORT", DefaultGatewayMetricsPort),
 		QueueWorkers:          getEnvInt("QUEUE_WORKERS", 4),
 		QueuePollInterval:     getEnvDuration("QUEUE_POLL_INTERVAL", 5*time.Second),
 		MTASTSEnforce:         getEnvBool("MTASTS_ENFORCE", true),
@@ -343,6 +361,22 @@ func Load() (*Config, error) {
 	// material), so Load cannot know which half is required.
 	if cfg.InternalMTLSEnabled && (cfg.InternalMTLSPort <= 0 || cfg.InternalMTLSPort > 65535) {
 		return nil, fmt.Errorf("INTERNAL_MTLS_PORT must be a valid TCP port (1-65535) when INTERNAL_MTLS_ENABLED is true, got %d", cfg.InternalMTLSPort)
+	}
+
+	// Gateway metrics ports: 0 disables the endpoint; any other value must be a
+	// valid TCP port. A malformed value is a hard startup error rather than a
+	// silent fallback, matching the strictness of the other port knobs.
+	for _, mp := range []struct {
+		key  string
+		port int
+	}{
+		{"SMTP_METRICS_PORT", cfg.SMTPMetricsPort},
+		{"IMAP_METRICS_PORT", cfg.IMAPMetricsPort},
+		{"POP3_METRICS_PORT", cfg.POP3MetricsPort},
+	} {
+		if mp.port < 0 || mp.port > 65535 {
+			return nil, fmt.Errorf("%s must be a valid TCP port (0 to disable, 1-65535 to enable), got %d", mp.key, mp.port)
+		}
 	}
 
 	// Observability retention/rollup knobs (PR4). These are volume/cost dials,

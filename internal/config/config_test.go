@@ -24,6 +24,7 @@ var allEnvKeys = []string{
 	"SMTP_MIN_TRANSFER_RATE", "SMTP_TRANSFER_GRACE_PERIOD", "SMTP_TRANSFER_STALL_TIMEOUT",
 	"IMAP_PORT", "IMAP_TLS_PORT",
 	"POP3_PORT", "POP3_TLS_PORT",
+	"SMTP_METRICS_PORT", "IMAP_METRICS_PORT", "POP3_METRICS_PORT",
 	"QUEUE_WORKERS", "QUEUE_POLL_INTERVAL",
 	"INTERNAL_MTLS_ENABLED", "INTERNAL_MTLS_PORT",
 	"INTERNAL_MTLS_CA_CERT", "INTERNAL_MTLS_SERVER_CERT", "INTERNAL_MTLS_SERVER_KEY",
@@ -39,8 +40,8 @@ var allEnvKeys = []string{
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range allEnvKeys {
-		t.Setenv(key, "")   // register cleanup to restore original value
-		_ = os.Unsetenv(key)     // truly unset so LookupEnv sees it as absent
+		t.Setenv(key, "")    // register cleanup to restore original value
+		_ = os.Unsetenv(key) // truly unset so LookupEnv sees it as absent
 	}
 }
 
@@ -146,6 +147,15 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.POP3TLSPort != 995 {
 		t.Errorf("POP3TLSPort = %d, want %d", cfg.POP3TLSPort, 995)
 	}
+	if cfg.SMTPMetricsPort != DefaultGatewayMetricsPort {
+		t.Errorf("SMTPMetricsPort = %d, want %d", cfg.SMTPMetricsPort, DefaultGatewayMetricsPort)
+	}
+	if cfg.IMAPMetricsPort != DefaultGatewayMetricsPort {
+		t.Errorf("IMAPMetricsPort = %d, want %d", cfg.IMAPMetricsPort, DefaultGatewayMetricsPort)
+	}
+	if cfg.POP3MetricsPort != DefaultGatewayMetricsPort {
+		t.Errorf("POP3MetricsPort = %d, want %d", cfg.POP3MetricsPort, DefaultGatewayMetricsPort)
+	}
 	if cfg.QueueWorkers != 4 {
 		t.Errorf("QueueWorkers = %d, want %d", cfg.QueueWorkers, 4)
 	}
@@ -160,6 +170,46 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.Environment != "development" {
 		t.Errorf("Environment = %q, want %q", cfg.Environment, "development")
 	}
+}
+
+func TestLoad_GatewayMetricsPorts(t *testing.T) {
+	t.Run("override", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("SMTP_METRICS_PORT", "19091")
+		t.Setenv("IMAP_METRICS_PORT", "19092")
+		t.Setenv("POP3_METRICS_PORT", "19093")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+		if cfg.SMTPMetricsPort != 19091 || cfg.IMAPMetricsPort != 19092 || cfg.POP3MetricsPort != 19093 {
+			t.Errorf("metrics ports = (%d,%d,%d), want (19091,19092,19093)",
+				cfg.SMTPMetricsPort, cfg.IMAPMetricsPort, cfg.POP3MetricsPort)
+		}
+	})
+
+	t.Run("zero disables", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("SMTP_METRICS_PORT", "0")
+
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+		if cfg.SMTPMetricsPort != 0 {
+			t.Errorf("SMTPMetricsPort = %d, want 0 (disabled)", cfg.SMTPMetricsPort)
+		}
+	})
+
+	t.Run("out of range errors", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("IMAP_METRICS_PORT", "70000")
+
+		if _, err := Load(); err == nil {
+			t.Fatal("Load() = nil error, want error for out-of-range IMAP_METRICS_PORT")
+		}
+	})
 }
 
 func TestLoad_OverrideEnvVars(t *testing.T) {

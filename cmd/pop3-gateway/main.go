@@ -15,6 +15,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/bancheck"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/restmail/restmail/internal/gateway/metricsrv"
 	"github.com/restmail/restmail/internal/gateway/pop3"
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
 )
@@ -44,6 +45,11 @@ func main() {
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
 		slog.SetDefault(slog.New(logHandler))
 	}
+
+	// Prometheus /metrics endpoint for this gateway process. Serves the process
+	// registry the connection limiter increments into.
+	metricsServer := metricsrv.New(cfg.POP3MetricsPort)
+	metricsServer.Start()
 
 	var tlsConfig *tls.Config
 	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
@@ -118,6 +124,7 @@ func main() {
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
+	limiter.SetProtocol("pop3")
 	bancheck.Wire(limiter, database, "pop3")
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
@@ -141,5 +148,6 @@ func main() {
 
 	slog.Info("shutting down POP3 gateway...")
 	pop3Server.Shutdown()
+	metricsServer.Shutdown()
 	slog.Info("POP3 gateway stopped")
 }
