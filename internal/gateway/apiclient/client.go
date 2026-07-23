@@ -217,6 +217,36 @@ func (c *Client) GetMessage(token string, msgID uint) (*MessageDetailResponse, e
 	return &resp, nil
 }
 
+// GetRawMessage returns the pristine stored RFC 2822 bytes for a message, so that
+// IMAP/POP3 clients receive the original message verbatim (attachments, To/Cc,
+// custom headers and any DKIM-Signature preserved). When the server has no stored
+// raw form for the message (e.g. locally-composed items), it responds 404 and this
+// returns an empty string with a nil error, letting callers fall back to a
+// reconstructed message.
+func (c *Client) GetRawMessage(token string, msgID uint) (string, error) {
+	req, err := http.NewRequest("GET", c.baseURL+fmt.Sprintf("/api/v1/messages/%d/raw", msgID), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("GET raw message %d: %w", msgID, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
+	if err := c.checkStatus(resp); err != nil {
+		return "", err
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
 // UpdateMessage updates message flags.
 func (c *Client) UpdateMessage(token string, msgID uint, updates map[string]interface{}) error {
 	return c.patchAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token, updates, nil)

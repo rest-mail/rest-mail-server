@@ -434,6 +434,19 @@ func (s *Session) handleStatus(tag, args string) {
 	s.tagged(tag, "OK", "STATUS completed")
 }
 
+// rawMessage returns the full-fidelity RFC 2822 form of a message: the pristine
+// stored original when the server has one, otherwise a best-effort reconstruction
+// from the structured detail (for locally-composed items that have no stored raw).
+// Serving the stored original preserves attachments, To/Cc, custom headers and any
+// DKIM-Signature verbatim, instead of the lossy rebuild that buildRawMessage
+// produces from a handful of fields.
+func (s *Session) rawMessage(detail apiclient.MessageDetail) string {
+	if raw, err := s.api.GetRawMessage(s.auth.token, detail.ID); err == nil && raw != "" {
+		return raw
+	}
+	return buildRawMessage(detail)
+}
+
 func (s *Session) handleFetch(tag, args string) {
 	if s.selected == nil {
 		s.tagged(tag, "NO", "No mailbox selected")
@@ -467,8 +480,8 @@ func (s *Session) handleFetch(tag, args string) {
 				continue
 			}
 
-			// Build a simplified RFC 2822 message
-			raw := buildRawMessage(detail.Data)
+			// Serve the full-fidelity message (stored original, else rebuilt)
+			raw := s.rawMessage(detail.Data)
 			flags := buildFlags(msg)
 
 			s.send("* %d FETCH (FLAGS (%s) RFC822.SIZE %d BODY[] {%d}", seq, flags, len(raw), len(raw))
@@ -485,7 +498,7 @@ func (s *Session) handleFetch(tag, args string) {
 			if err != nil {
 				continue
 			}
-			raw := buildRawMessage(detail.Data)
+			raw := s.rawMessage(detail.Data)
 			headerEnd := strings.Index(raw, "\r\n\r\n")
 			headers := raw
 			if headerEnd >= 0 {
@@ -500,7 +513,7 @@ func (s *Session) handleFetch(tag, args string) {
 			if err != nil {
 				continue
 			}
-			raw := buildRawMessage(detail.Data)
+			raw := s.rawMessage(detail.Data)
 			headerEnd := strings.Index(raw, "\r\n\r\n")
 			body := ""
 			if headerEnd >= 0 && headerEnd+4 < len(raw) {
@@ -515,7 +528,7 @@ func (s *Session) handleFetch(tag, args string) {
 			if err != nil {
 				continue
 			}
-			raw := buildRawMessage(detail.Data)
+			raw := s.rawMessage(detail.Data)
 			// Extract requested header fields
 			requested := extractHeaderFieldNames(dataItems)
 			headers := filterHeaders(raw, requested)
@@ -885,7 +898,7 @@ func (s *Session) handleCopy(tag, args string) {
 			MessageID:    detail.Data.MessageID,
 			InReplyTo:    detail.Data.InReplyTo,
 			References:   detail.Data.References,
-			RawMessage:   buildRawMessage(detail.Data),
+			RawMessage:   s.rawMessage(detail.Data),
 		}
 
 		resp, deliverErr := s.api.DeliverMessage(deliverReq)
@@ -1432,7 +1445,7 @@ func (s *Session) handleUIDFetch(tag, args string) {
 			if err != nil {
 				continue
 			}
-			raw := buildRawMessage(detail.Data)
+			raw := s.rawMessage(detail.Data)
 			flags := buildFlags(msg)
 			s.send("* %d FETCH (UID %d FLAGS (%s) RFC822.SIZE %d BODY[] {%d}", seq, msg.ID, flags, len(raw), len(raw))
 			fmt.Fprintf(s.writer, "%s)\r\n", raw)
@@ -1447,7 +1460,7 @@ func (s *Session) handleUIDFetch(tag, args string) {
 			if err != nil {
 				continue
 			}
-			raw := buildRawMessage(detail.Data)
+			raw := s.rawMessage(detail.Data)
 			// Extract headers only (up to first blank line)
 			headerEnd := strings.Index(raw, "\r\n\r\n")
 			headers := raw
@@ -1463,7 +1476,7 @@ func (s *Session) handleUIDFetch(tag, args string) {
 			if err != nil {
 				continue
 			}
-			raw := buildRawMessage(detail.Data)
+			raw := s.rawMessage(detail.Data)
 			headerEnd := strings.Index(raw, "\r\n\r\n")
 			body := ""
 			if headerEnd >= 0 && headerEnd+4 < len(raw) {
@@ -1478,7 +1491,7 @@ func (s *Session) handleUIDFetch(tag, args string) {
 			if err != nil {
 				continue
 			}
-			raw := buildRawMessage(detail.Data)
+			raw := s.rawMessage(detail.Data)
 			requested := extractHeaderFieldNames(dataItems)
 			headers := filterHeaders(raw, requested)
 			flags := buildFlags(msg)
@@ -1603,7 +1616,7 @@ func (s *Session) handleUIDCopy(tag, args string) {
 			MessageID:    detail.Data.MessageID,
 			InReplyTo:    detail.Data.InReplyTo,
 			References:   detail.Data.References,
-			RawMessage:   buildRawMessage(detail.Data),
+			RawMessage:   s.rawMessage(detail.Data),
 		}
 
 		resp, deliverErr := s.api.DeliverMessage(deliverReq)

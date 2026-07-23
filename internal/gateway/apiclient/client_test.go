@@ -429,6 +429,74 @@ func TestGetMessage_NotFound(t *testing.T) {
 	}
 }
 
+// ── GetRawMessage ────────────────────────────────────────────────────
+
+func TestGetRawMessage_Success(t *testing.T) {
+	const stored = "From: alice@example.com\r\nTo: bob@example.com\r\n" +
+		"Subject: Hi\r\nContent-Type: text/plain\r\n\r\nbody\r\n"
+
+	srv, mux := newTestServer(t)
+	mux.HandleFunc("/api/v1/messages/42/raw", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if auth := r.Header.Get("Authorization"); auth != "Bearer tok" {
+			t.Errorf("expected 'Bearer tok', got %q", auth)
+		}
+		w.Header().Set("Content-Type", "message/rfc822")
+		_, _ = w.Write([]byte(stored))
+	})
+
+	c := New(srv.URL)
+	raw, err := c.GetRawMessage("tok", 42)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if raw != stored {
+		t.Fatalf("raw mismatch:\n got %q\nwant %q", raw, stored)
+	}
+}
+
+func TestGetRawMessage_NotFoundReturnsEmpty(t *testing.T) {
+	// When the server has no stored raw form (404), GetRawMessage returns an
+	// empty string with a nil error so callers can fall back to a rebuild.
+	srv, mux := newTestServer(t)
+	mux.HandleFunc("/api/v1/messages/7/raw", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not found"}`))
+	})
+
+	c := New(srv.URL)
+	raw, err := c.GetRawMessage("tok", 7)
+	if err != nil {
+		t.Fatalf("expected nil error for 404, got: %v", err)
+	}
+	if raw != "" {
+		t.Fatalf("expected empty raw for 404, got %q", raw)
+	}
+}
+
+func TestGetRawMessage_ServerError(t *testing.T) {
+	srv, mux := newTestServer(t)
+	mux.HandleFunc("/api/v1/messages/9/raw", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	})
+
+	c := New(srv.URL)
+	_, err := c.GetRawMessage("tok", 9)
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 500 {
+		t.Fatalf("expected status 500, got %d", apiErr.StatusCode)
+	}
+}
+
 // ── UpdateMessage ────────────────────────────────────────────────────
 
 func TestUpdateMessage_Success(t *testing.T) {
