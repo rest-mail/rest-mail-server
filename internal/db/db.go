@@ -62,6 +62,18 @@ WHERE raw_size = 0 AND (COALESCE(raw_message, '') <> '' OR size_bytes <> 0)`
 func AutoMigrate(db *gorm.DB) error {
 	slog.Info("running database auto-migration")
 
+	// OSI-21: linked_accounts now carries a standalone unique index on mailbox_id
+	// (a mailbox may be linked to at most one webmail account). On an existing
+	// database that predates the constraint, any duplicate links must be collapsed
+	// first — keep the earliest (lowest id) link per mailbox — or the unique-index
+	// creation inside AutoMigrate would fail. Guarded on HasTable so it is a no-op
+	// on a fresh database where the table does not yet exist.
+	if db.Migrator().HasTable(&models.LinkedAccount{}) {
+		if err := db.Exec(`DELETE FROM linked_accounts a USING linked_accounts b WHERE a.mailbox_id = b.mailbox_id AND a.id > b.id`).Error; err != nil {
+			slog.Warn("failed to deduplicate linked_accounts before unique index", "error", err)
+		}
+	}
+
 	err := db.AutoMigrate(
 		&models.Domain{},
 		&models.Mailbox{},

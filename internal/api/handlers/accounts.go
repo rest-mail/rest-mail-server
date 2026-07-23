@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type AccountHandler struct {
@@ -170,7 +172,31 @@ func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 		DisplayName:      req.DisplayName,
 	}
 
-	if err := h.db.Create(&linked).Error; err != nil {
+	// Link atomically (OSI-21). The earlier existence/password check and this insert
+	// are otherwise a time-of-check/time-of-use gap: two concurrent requests could
+	// both pass the check and both insert, double-linking one mailbox to two accounts.
+	// Inside the transaction we re-select the mailbox FOR UPDATE — serializing
+	// concurrent linkers of the same mailbox on that row — and the standalone unique
+	// index on linked_accounts(mailbox_id) is the backstop that makes the losing
+	// insert conflict instead of creating a duplicate.
+	err := h.db.Transaction(func(tx *gorm.DB) error {
+		var locked models.Mailbox
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND active = ?", mailbox.ID, true).
+			First(&locked).Error; err != nil {
+			return err
+		}
+		return tx.Create(&linked).Error
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// Mailbox was deactivated between the check and the lock.
+			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
+			return
+		}
+		// A unique-constraint violation (the mailbox is already linked) or any other
+		// write failure lands here; the mailbox is already linked from the caller's
+		// perspective, so report the conflict.
 		respond.Error(w, http.StatusConflict, "already_exists", "This mailbox is already linked")
 		return
 	}
