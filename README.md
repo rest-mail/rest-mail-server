@@ -306,9 +306,13 @@ tests/e2e/          End-to-end test suite (13 stages)
 
 Everything about a running RESTMAIL deployment — hostname, IPs, ports, credentials — comes from an instance manifest, not from hardcoded config. `INSTANCE` selects which one to drive (default `restmail.test`, whose config is owned by the testbed); `INSTANCE_DIR` can point anywhere. Scaffolded instances live under `instances/<domain>/`.
 
+New instances are **secure-by-default**: the scaffolded manifest sets
+`internal_mtls: true` and `instance:new` provisions the gateway→API mTLS certs
+automatically (see [Internal mTLS](#internal-mtls-gateway--api)).
+
 ```bash
 # Spin up a second RESTMAIL instance end-to-end
-# (scaffold → cert → DNS → up → DKIM):
+# (scaffold → cert → mTLS → DNS → up → DKIM):
 task instance:new DOMAIN=mail4.test
 
 # Drive an existing instance
@@ -476,8 +480,15 @@ the API verifies that certificate instead of a token — the cert is, in effect,
 the gateway's password. It authenticates the gateway *service* (a machine
 identity), separate from user JWTs and admin RBAC.
 
-**Off by default** (`INTERNAL_MTLS_ENABLED=false`): the routes stay on the
-public listener, tokenless — no change for existing network-trust deployments.
+**Two-layer default, on purpose.** The compiled-in config default is **off**
+(`INTERNAL_MTLS_ENABLED=false`): a bare binary — and any existing,
+non-provisioned deployment — keeps the routes on the public listener, tokenless,
+so an upgrade never hard-breaks. "On by default" is delivered one layer up, at
+the **instance** layer: a freshly scaffolded manifest sets `internal_mtls: true`
+and `task instance:new` auto-provisions the certs, so every NEW instance comes up
+with the gateway→API handshake enforced. Existing manifests that don't set the
+flag are unaffected. This is the secure-by-default-for-new-deployments posture
+without breaking the bare binary.
 
 When **enabled**, the API serves only those two routes on a dedicated listener
 (`INTERNAL_MTLS_PORT`, default `8443`) that requires
@@ -523,9 +534,17 @@ the API has it on but a gateway does not, the gateway's tokenless calls to the
 now-absent public route return 404 and delivery fails visibly rather than
 silently bypassing the check.
 
-**Testbed**: an instance opts in by setting `internal_mtls: true` in its
-`manifest.yml`; `task instance:mtls:issue` (run automatically by `task e2e:up`)
-provisions the certs into the shared certs volume.
+**New instances** get this for free: `task instance:scaffold` writes
+`internal_mtls: true` into the manifest and `task instance:new` runs
+`task instance:mtls:issue` automatically before bring-up, so a fresh instance is
+mTLS-on with its certs already provisioned. An older manifest opts in by adding
+`internal_mtls: true` and re-rendering.
+
+**Testbed**: `task e2e:up` provisions the certs (`task instance:mtls:issue`) and
+brings `restmail.test` up with internal mTLS forced on, so the e2e gate exercises
+the real handshake. The `restmail.test` manifest is testbed-owned (external to
+this repo); its `configs/restmail/manifest.yml` should also carry
+`internal_mtls: true` for parity outside the e2e run.
 
 ## API Overview
 

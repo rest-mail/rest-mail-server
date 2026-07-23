@@ -231,6 +231,11 @@ log_level:    debug
 environment:  development
 mailnet_only: true    # secondary instance — reachable on the mailnet only, no
                       # host-port publishing, so it can run beside the primary
+internal_mtls: true   # secure-by-default for NEW instances: gateways authenticate
+                      # to the API over mutual TLS. ` + "`task instance:new`" + ` provisions
+                      # the certs (instance:mtls:issue) automatically. A bare binary
+                      # stays off (compiled-in INTERNAL_MTLS_ENABLED=false), so
+                      # non-provisioned/upgraded deployments are unaffected.
 
 db:
   name: restmail

@@ -85,6 +85,18 @@ func TestScaffoldEndToEnd(t *testing.T) {
 	if !bytes.Contains(res.Config, []byte("MAIL3_MAILNET_ONLY=true\n")) {
 		t.Error("scaffolded config.env should set MAIL3_MAILNET_ONLY=true")
 	}
+	// Internal mTLS is secure-by-default for NEW instances: the scaffolded
+	// manifest sets internal_mtls: true and its rendered config.env carries the
+	// switch, so `task instance:new` (which auto-provisions the certs) brings the
+	// instance up with the gateway→API handshake enforced. This is the "on by
+	// default at the instance layer" posture — the compiled-in config default
+	// stays off so a bare binary is unaffected.
+	if !bytes.Contains(res.Manifest, []byte("internal_mtls: true")) {
+		t.Error("scaffolded manifest should set internal_mtls: true (secure-by-default for new instances)")
+	}
+	if !bytes.Contains(res.Config, []byte("MAIL3_INTERNAL_MTLS=true\n")) {
+		t.Error("scaffolded config.env should set MAIL3_INTERNAL_MTLS=true")
+	}
 	// Three distinct 64-hex-char secrets.
 	if n := bytes.Count(res.Secrets, []byte("MAIL3_")); n != 3 {
 		t.Errorf("expected 3 secret lines, got %d", n)

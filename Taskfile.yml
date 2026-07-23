@@ -541,11 +541,15 @@ tasks:
       - task -d .workspace/reference-mailserver dkim:provision CONFIG=mail2 HOSTNAME=mail2.test
       # restmail.test (the rest-mail instance) — config is testbed-owned.
       - INSTANCE=restmail.test task instance:certs:issue
-      # Provision internal-mTLS material (idempotent; unused unless the instance
-      # enables internal_mtls).
+      # Provision the internal-mTLS material (dedicated CA + API server + gateway
+      # client cert), then bring the stack up WITH internal mTLS ON so the e2e
+      # gate exercises the real gateway→API handshake. The restmail.test manifest
+      # is testbed-owned (external to this repo), so its `internal_mtls: true` is
+      # forced here as a Task call var (call vars beat dotenv) — the testbed's
+      # configs/restmail/manifest.yml should also carry it for parity outside e2e.
       - INSTANCE=restmail.test task instance:mtls:issue
       - INSTANCE=restmail.test task instance:dns:register
-      - INSTANCE=restmail.test task instance:up
+      - INSTANCE=restmail.test task instance:up MAIL3_INTERNAL_MTLS=true
       - INSTANCE=restmail.test task instance:dkim
 
   e2e:down:
@@ -1140,7 +1144,7 @@ tasks:
       - task: status
 
   instance:new:
-    desc: 'Spin up a new instance end-to-end (scaffold → cert → DNS → up): task instance:new DOMAIN=mail4.test'
+    desc: 'Spin up a new instance end-to-end (scaffold → cert → mTLS → DNS → up → DKIM): task instance:new DOMAIN=mail4.test'
     cmds:
       - |
         if [ -z "{{.DOMAIN}}" ]; then
@@ -1151,6 +1155,11 @@ tasks:
         vars: { DOMAIN: '{{.DOMAIN}}' }
       # Re-invoke with INSTANCE set so the freshly-scaffolded config.env loads.
       - INSTANCE={{.DOMAIN}} task instance:certs:issue
+      # Internal mTLS is secure-by-default for NEW instances (scaffold sets
+      # internal_mtls: true → MAIL3_INTERNAL_MTLS=true), so ALWAYS provision the
+      # dedicated CA + API server + gateway client certs before bring-up. Without
+      # this the api would fail closed (enabled-but-uncertified). Idempotent.
+      - INSTANCE={{.DOMAIN}} task instance:mtls:issue
       - INSTANCE={{.DOMAIN}} task instance:dns:register
       - INSTANCE={{.DOMAIN}} task instance:up
       - INSTANCE={{.DOMAIN}} task instance:dkim
