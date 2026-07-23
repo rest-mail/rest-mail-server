@@ -1282,9 +1282,15 @@ func (s *Session) handleIdle(tag string) {
 
 	s.send("+ idling")
 
-	// Start polling goroutine for new messages
+	// Start polling goroutine for new messages. It owns s.writer and s.messages
+	// for the duration of IDLE; the main goroutine only reads DONE and must not
+	// touch either until the poll goroutine has fully stopped. `stopped` closes
+	// when the goroutine returns — including after any in-flight tick — so the
+	// main goroutine can wait for it before writing the tagged response.
 	done := make(chan struct{})
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		ticker := time.NewTicker(15 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -1306,12 +1312,13 @@ func (s *Session) handleIdle(tag string) {
 		}
 	}()
 
-	// Wait for DONE from client
+	// Wait for DONE from client.
 	_ = s.conn.SetDeadline(time.Now().Add(29 * time.Minute))
 	for {
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
 			close(done)
+			<-stopped // let any in-flight poll finish before we return
 			return
 		}
 		line = strings.TrimRight(line, "\r\n")
@@ -1321,6 +1328,7 @@ func (s *Session) handleIdle(tag string) {
 	}
 
 	close(done)
+	<-stopped // ensure the poll goroutine stopped before we write again
 	s.tagged(tag, "OK", "IDLE terminated")
 }
 
