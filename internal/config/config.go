@@ -1,11 +1,14 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/restmail/restmail/internal/mtls"
 )
 
 // DefaultSMTPMaxMessageSize is the SMTP maximum message size applied when
@@ -110,9 +113,37 @@ type Config struct {
 	ACMEDirectory string // ACME directory URL; defaults to Let's Encrypt production
 	ACMEStaging   bool   // use Let's Encrypt staging directory
 
+	// Internal mTLS (gateway → API machine authentication).
+	//
+	// The protocol gateways call a small set of API endpoints (recipient
+	// existence checks + inbound delivery) with no user token — machine-to-
+	// machine calls historically protected only by network isolation. When
+	// InternalMTLSEnabled is true, the API serves those routes ONLY on a
+	// dedicated listener (InternalMTLSPort) that requires a client certificate
+	// signed by InternalMTLSCACert, and removes them from the public listener;
+	// the gateways present InternalMTLSClientCert/Key to reach them. When false
+	// (the default) behavior is unchanged: the routes stay on the public
+	// listener, tokenless — no break for existing network-trust deployments.
+	//
+	// The Config is shared by every binary, so it carries both the server-side
+	// material (used by cmd/api) and the client-side material (used by the
+	// gateways); each binary validates and loads only the half it needs via the
+	// InternalMTLSServerTLS / InternalMTLSClientTLS helpers.
+	InternalMTLSEnabled    bool
+	InternalMTLSPort       int    // dedicated internal listener port (API side)
+	InternalMTLSCACert     string // CA that anchors the internal trust domain (both sides)
+	InternalMTLSServerCert string // server cert for the internal listener (API side)
+	InternalMTLSServerKey  string // server key for the internal listener (API side)
+	InternalMTLSClientCert string // gateway client cert (gateway side)
+	InternalMTLSClientKey  string // gateway client key (gateway side)
+
 	// Environment
 	Environment string // "development", "production", "test"
 }
+
+// DefaultInternalMTLSPort is the internal mTLS listener port used when
+// INTERNAL_MTLS_PORT is unset.
+const DefaultInternalMTLSPort = 8443
 
 func Load() (*Config, error) {
 	cfg := &Config{
@@ -162,6 +193,14 @@ func Load() (*Config, error) {
 		ACMEEmail:     getEnv("ACME_EMAIL", ""),
 		ACMEDirectory: getEnv("ACME_DIRECTORY", "https://acme-v02.api.letsencrypt.org/directory"),
 		ACMEStaging:   getEnvBool("ACME_STAGING", false),
+
+		InternalMTLSEnabled:    getEnvBool("INTERNAL_MTLS_ENABLED", false),
+		InternalMTLSPort:       getEnvInt("INTERNAL_MTLS_PORT", DefaultInternalMTLSPort),
+		InternalMTLSCACert:     getEnv("INTERNAL_MTLS_CA_CERT", ""),
+		InternalMTLSServerCert: getEnv("INTERNAL_MTLS_SERVER_CERT", ""),
+		InternalMTLSServerKey:  getEnv("INTERNAL_MTLS_SERVER_KEY", ""),
+		InternalMTLSClientCert: getEnv("INTERNAL_MTLS_CLIENT_CERT", ""),
+		InternalMTLSClientKey:  getEnv("INTERNAL_MTLS_CLIENT_KEY", ""),
 
 		Environment: getEnv("ENVIRONMENT", "development"),
 	}
@@ -220,6 +259,15 @@ func Load() (*Config, error) {
 	}
 	cfg.SMTPTransferStallTimeout = time.Duration(stallSecs) * time.Second
 
+	// Internal mTLS: the port must be a valid TCP port when the feature is
+	// enabled. Per-role certificate-path validation happens at the point of use
+	// (InternalMTLSServerTLS / InternalMTLSClientTLS) because the same Config is
+	// shared by the API (needs server material) and the gateways (need client
+	// material), so Load cannot know which half is required.
+	if cfg.InternalMTLSEnabled && (cfg.InternalMTLSPort <= 0 || cfg.InternalMTLSPort > 65535) {
+		return nil, fmt.Errorf("INTERNAL_MTLS_PORT must be a valid TCP port (1-65535) when INTERNAL_MTLS_ENABLED is true, got %d", cfg.InternalMTLSPort)
+	}
+
 	return cfg, nil
 }
 
@@ -245,6 +293,30 @@ func (c *Config) DSN() string {
 
 func (c *Config) APIAddr() string {
 	return fmt.Sprintf("%s:%d", c.APIHost, c.APIPort)
+}
+
+// InternalMTLSAddr is the listen address for the dedicated internal mTLS
+// listener. It reuses APIHost (the bind interface) with InternalMTLSPort.
+func (c *Config) InternalMTLSAddr() string {
+	return fmt.Sprintf("%s:%d", c.APIHost, c.InternalMTLSPort)
+}
+
+// InternalMTLSServerTLS builds the *tls.Config for the API's internal mTLS
+// listener from the configured server-side material. It is the API's validation
+// point: it errors if any of the CA cert, server cert, or server key path is
+// unset or unreadable, so a half-configured deployment fails closed at startup
+// rather than silently serving the internal routes without client-cert
+// enforcement.
+func (c *Config) InternalMTLSServerTLS() (*tls.Config, error) {
+	return mtls.ServerTLSConfig(c.InternalMTLSCACert, c.InternalMTLSServerCert, c.InternalMTLSServerKey)
+}
+
+// InternalMTLSClientTLS builds the *tls.Config the gateways use to present
+// their client certificate to the API's internal listener. It is the gateway's
+// validation point: it errors if any of the CA cert, client cert, or client key
+// path is unset or unreadable.
+func (c *Config) InternalMTLSClientTLS() (*tls.Config, error) {
+	return mtls.ClientTLSConfig(c.InternalMTLSCACert, c.InternalMTLSClientCert, c.InternalMTLSClientKey)
 }
 
 func getEnv(key, fallback string) string {
