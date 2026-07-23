@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log/slog"
@@ -25,11 +26,20 @@ type Server struct {
 	proxyProtocolCIDRs []string
 	maxMessageBytes    int64
 	transferPolicy     transferRatePolicy
-	servers            []*gosmtp.Server
+	tarpit             tarpitPolicy
+	// tarpitSleep is the delay primitive handed to each session; tests swap it
+	// for a fake so escalation is asserted without real multi-second sleeps.
+	tarpitSleep func(context.Context, time.Duration)
+	// ctx is cancelled by Shutdown so in-flight tarpit sleeps abort promptly
+	// instead of holding a goroutine past the server's life.
+	ctx     context.Context
+	cancel  context.CancelFunc
+	servers []*gosmtp.Server
 }
 
 // NewServer creates a new SMTP server.
 func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store, limiter *connlimiter.Limiter) *Server {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
 		hostname:        hostname,
 		api:             api,
@@ -38,6 +48,10 @@ func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store,
 		limiter:         limiter,
 		maxMessageBytes: defaultMaxMessageSize,
 		transferPolicy:  defaultTransferRatePolicy(),
+		tarpit:          defaultTarpitPolicy(),
+		tarpitSleep:     tarpitSleep,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 }
 
@@ -83,6 +97,26 @@ func (s *Server) SetTransferRatePolicy(minRateBytesPerSec int64, gracePeriod, st
 	}
 }
 
+// SetTarpitPolicy sets the anti-abuse escalating-delay policy applied per
+// connection at its rejection points (an invalid inbound RCPT, an AUTH
+// failure). enabled=false disables tarpitting outright (no delays, ever).
+// Invalid values (non-positive base or max, negative soft limit, or max < base)
+// are ignored and the current policy is kept; config validation rejects them
+// before this is ever called in production. Call before ListenAndServe — the
+// policy is copied into each session at accept time.
+func (s *Server) SetTarpitPolicy(enabled bool, base time.Duration, softLimit int, max time.Duration) {
+	if !enabled {
+		s.tarpit = tarpitPolicy{enabled: false}
+		return
+	}
+	if base <= 0 || max <= 0 || softLimit < 0 || max < base {
+		slog.Warn("smtp: ignoring invalid tarpit policy",
+			"base", base.String(), "soft_limit", softLimit, "max", max.String())
+		return
+	}
+	s.tarpit = tarpitPolicy{enabled: true, base: base, softLimit: softLimit, max: max}
+}
+
 // ListenAndServe starts SMTP listeners on the specified ports.
 // - port 25: inbound MTA (STARTTLS)
 // - port 587: submission (STARTTLS + AUTH required)
@@ -125,6 +159,9 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 			store:        s.store,
 			limiter:      s.limiter,
 			isSubmission: isSubmission,
+			ctx:          s.ctx,
+			tarpit:       s.tarpit,
+			sleep:        s.tarpitSleep,
 		}, nil
 	}))
 	srv.Domain = s.hostname
@@ -195,8 +232,13 @@ func (s *Server) listen(port int, isSubmission, implicitTLS bool) error {
 	return nil
 }
 
-// Shutdown stops the SMTP server, closing all listeners and connections.
+// Shutdown stops the SMTP server, closing all listeners and connections. It
+// also cancels the session context so any in-flight tarpit sleep aborts at once
+// rather than holding its goroutine until the delay elapses.
 func (s *Server) Shutdown() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 	for _, srv := range s.servers {
 		if err := srv.Close(); err != nil {
 			slog.Warn("smtp: error closing server", "error", err)

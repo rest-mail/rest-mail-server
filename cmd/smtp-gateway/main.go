@@ -165,6 +165,16 @@ func main() {
 		"grace_period", cfg.SMTPTransferGracePeriod.String(),
 		"stall_timeout", cfg.SMTPTransferStallTimeout.String(),
 	)
+	smtpServer.SetTarpitPolicy(cfg.SMTPTarpitEnabled, cfg.SMTPTarpitBase, cfg.SMTPTarpitSoftLimit, cfg.SMTPTarpitMax)
+	if cfg.SMTPTarpitEnabled {
+		slog.Info("SMTP tarpit configured: an abusive session (invalid inbound RCPT / AUTH failures) is delayed with an escalating, capped sleep once its rejection count crosses the soft limit; legitimate senders are unaffected",
+			"base", cfg.SMTPTarpitBase.String(),
+			"soft_limit", cfg.SMTPTarpitSoftLimit,
+			"max", cfg.SMTPTarpitMax.String(),
+		)
+	} else {
+		slog.Info("SMTP tarpit disabled")
+	}
 	if len(cfg.ProxyProtocolTrustedCIDRs) > 0 {
 		smtpServer.SetProxyProtocol(cfg.ProxyProtocolTrustedCIDRs)
 		slog.Info("PROXY protocol configured", "trusted_cidrs", cfg.ProxyProtocolTrustedCIDRs)
