@@ -1,466 +1,262 @@
 package smtp
 
 import (
-	"bufio"
-	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
-	"net"
 	"strings"
-	"time"
+
+	"github.com/emersion/go-sasl"
+	gosmtp "github.com/emersion/go-smtp"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	rmail "github.com/restmail/restmail/internal/mail"
 )
 
-// Session represents a single SMTP conversation with a client.
 // maxMessageSize is the maximum accepted message size, in bytes. It is both
-// advertised in EHLO (SIZE) and enforced during DATA — keep them from drifting.
+// advertised in EHLO (SIZE) and enforced during DATA — go-smtp derives both
+// from Server.MaxMessageBytes, so they cannot drift.
 const maxMessageSize = 10 * 1024 * 1024 // 10 MiB
 
-type Session struct {
-	conn       net.Conn
-	reader     *bufio.Reader
-	writer     *bufio.Writer
-	api        Backend
-	hostname   string
-	remoteAddr string
-	tlsConfig  *tls.Config
-	store      Store
-	limiter    *connlimiter.Limiter
+// maxRecipients caps the number of RCPT TO commands per transaction. Enforced
+// by go-smtp (452 reply beyond the limit).
+const maxRecipients = 100
 
-	// Session state
-	heloName     string
-	mailFrom     string
-	rcptTo       []string
-	data         []byte
-	usingTLS     bool
-	auth         *authState
+// session implements go-smtp's Session and AuthSession, delegating every
+// policy decision to the package-local Backend and Store interfaces. All
+// protocol mechanics (command parsing, STARTTLS, SASL exchange, DATA
+// dot-reader with SMTP-smuggling hardening) live in go-smtp.
+type session struct {
+	conn         *gosmtp.Conn
+	api          Backend
+	store        Store
+	limiter      *connlimiter.Limiter
 	isSubmission bool // port 587/465 requires AUTH
-}
 
-type authState struct {
+	// Authenticated user state (submission only).
 	authenticated bool
-	email         string
-	token         string
+	authEmail     string
 	accountID     uint
+
+	// Current transaction.
+	mailFrom string
+	rcptTo   []string
 }
 
-// NewSession creates a new SMTP session.
-func NewSession(conn net.Conn, api Backend, hostname string, tlsConfig *tls.Config, store Store, isSubmission bool, limiter *connlimiter.Limiter) *Session {
-	return &Session{
-		conn:         conn,
-		reader:       bufio.NewReader(conn),
-		writer:       bufio.NewWriter(conn),
-		api:          api,
-		hostname:     hostname,
-		remoteAddr:   conn.RemoteAddr().String(),
-		tlsConfig:    tlsConfig,
-		store:        store,
-		limiter:      limiter,
-		isSubmission: isSubmission,
-		auth:         &authState{},
-	}
+var _ gosmtp.AuthSession = (*session)(nil)
+
+// remoteAddr returns the peer address, as rewritten by the PROXY protocol
+// listener when it is in play.
+func (s *session) remoteAddr() string {
+	return s.conn.Conn().RemoteAddr().String()
 }
 
-// Handle runs the SMTP state machine for this session.
-func (s *Session) Handle() {
-	defer s.conn.Close()
-
-	slog.Info("smtp: new connection", "remote", s.remoteAddr, "submission", s.isSubmission)
-
-	// Send greeting
-	s.reply(220, "%s ESMTP RestMail", s.hostname)
-
-	for {
-		_ = s.conn.SetDeadline(time.Now().Add(5 * time.Minute))
-
-		line, err := s.reader.ReadString('\n')
-		if err != nil {
-			slog.Debug("smtp: connection read error", "remote", s.remoteAddr, "error", err)
-			return
-		}
-
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			continue
-		}
-
-		slog.Debug("smtp: recv", "remote", s.remoteAddr, "cmd", line)
-
-		// Parse command and argument
-		cmd, arg := parseCommand(line)
-
-		switch cmd {
-		case "HELO":
-			s.handleHELO(arg)
-		case "EHLO":
-			s.handleEHLO(arg)
-		case "STARTTLS":
-			if s.handleSTARTTLS() {
-				return // TLS upgrade resets session - new Handle() runs on TLS conn
-			}
-		case "AUTH":
-			s.handleAUTH(arg)
-		case "MAIL":
-			s.handleMAIL(arg)
-		case "RCPT":
-			s.handleRCPT(arg)
-		case "DATA":
-			s.handleDATA()
-		case "RSET":
-			s.handleRSET()
-		case "NOOP":
-			s.reply(250, "OK")
-		case "QUIT":
-			s.reply(221, "Bye")
-			return
-		case "VRFY":
-			s.reply(252, "Cannot VRFY user, but will accept message and attempt delivery")
-		default:
-			s.reply(500, "Unrecognised command")
-		}
-	}
-}
-
-func (s *Session) handleHELO(arg string) {
-	if arg == "" {
-		s.reply(501, "HELO requires domain name")
-		return
-	}
-	s.heloName = arg
-	s.reply(250, "%s", s.hostname)
-}
-
-func (s *Session) handleEHLO(arg string) {
-	if arg == "" {
-		s.reply(501, "EHLO requires domain name")
-		return
-	}
-	s.heloName = arg
-
-	// Build capability list
-	caps := []string{
-		fmt.Sprintf("250-%s", s.hostname),
-		"250-PIPELINING",
-		fmt.Sprintf("250-SIZE %d", maxMessageSize),
-		"250-8BITMIME",
-		"250-ENHANCEDSTATUSCODES",
-	}
-
-	// Advertise STARTTLS if not already TLS
-	if !s.usingTLS && s.tlsConfig != nil {
-		caps = append(caps, "250-STARTTLS")
-	}
-
-	// Advertise AUTH on submission ports (only after TLS)
-	if s.isSubmission && (s.usingTLS || s.tlsConfig == nil) {
-		caps = append(caps, "250-AUTH PLAIN LOGIN")
-	}
-
-	// Advertise RESTMAIL capability for server-to-server upgrade
-	caps = append(caps, fmt.Sprintf("250-RESTMAIL https://%s/restmail", s.hostname))
-
-	// Last capability without hyphen
-	caps = append(caps, "250 OK")
-
-	for _, cap := range caps {
-		fmt.Fprintf(s.writer, "%s\r\n", cap)
-	}
-	s.writer.Flush()
-}
-
-func (s *Session) handleSTARTTLS() bool {
-	if s.usingTLS {
-		s.reply(503, "Already in TLS mode")
-		return false
-	}
-	if s.tlsConfig == nil {
-		s.reply(454, "TLS not available")
-		return false
-	}
-
-	s.reply(220, "Ready to start TLS")
-
-	tlsConn := tls.Server(s.conn, s.tlsConfig)
-	if err := tlsConn.Handshake(); err != nil {
-		slog.Warn("smtp: TLS handshake failed", "remote", s.remoteAddr, "error", err)
-		return true // connection is broken
-	}
-
-	// Replace conn with TLS conn and reset session state
-	s.conn = tlsConn
-	s.reader = bufio.NewReader(tlsConn)
-	s.writer = bufio.NewWriter(tlsConn)
-	s.usingTLS = true
-	s.heloName = ""
-	s.mailFrom = ""
-	s.rcptTo = nil
-
-	slog.Info("smtp: TLS established", "remote", s.remoteAddr)
-	return false
-}
-
-func (s *Session) handleAUTH(arg string) {
+// AuthMechanisms advertises AUTH only on submission ports. go-smtp
+// additionally withholds AUTH until after STARTTLS when a TLS config is set
+// (AllowInsecureAuth is enabled only for TLS-less deployments).
+func (s *session) AuthMechanisms() []string {
 	if !s.isSubmission {
-		s.reply(503, "AUTH not available on this port")
-		return
+		return nil
 	}
-	if s.auth.authenticated {
-		s.reply(503, "Already authenticated")
-		return
-	}
-	if !s.usingTLS && s.tlsConfig != nil {
-		s.reply(538, "Encryption required for requested authentication mechanism")
-		return
-	}
-
-	parts := strings.SplitN(arg, " ", 2)
-	mechanism := strings.ToUpper(parts[0])
-
-	switch mechanism {
-	case "PLAIN":
-		s.handleAuthPlain(parts)
-	case "LOGIN":
-		s.handleAuthLogin()
-	default:
-		s.reply(504, "Unrecognised authentication mechanism")
-	}
+	return []string{sasl.Plain, sasl.Login}
 }
 
-func (s *Session) handleAuthPlain(parts []string) {
-	var encoded string
-	if len(parts) > 1 && parts[1] != "" {
-		// Credentials inline: AUTH PLAIN <base64>
-		encoded = parts[1]
-	} else {
-		// Credentials on next line
-		s.reply(334, "")
-		line, err := s.reader.ReadString('\n')
-		if err != nil {
-			return
+// Auth returns a SASL server for the requested mechanism. Both mechanisms
+// authenticate against the REST API via Backend.Login.
+func (s *session) Auth(mech string) (sasl.Server, error) {
+	if !s.isSubmission {
+		return nil, &gosmtp.SMTPError{
+			Code:         503,
+			EnhancedCode: gosmtp.EnhancedCode{5, 5, 1},
+			Message:      "AUTH not available on this port",
 		}
-		encoded = strings.TrimRight(line, "\r\n")
 	}
-
-	// Decode base64: \0user\0password
-	decoded, err := decodeBase64(encoded)
-	if err != nil {
-		s.reply(535, "Authentication failed")
-		return
+	switch mech {
+	case sasl.Plain:
+		return sasl.NewPlainServer(func(identity, username, password string) error {
+			if identity != "" && identity != username {
+				return &gosmtp.SMTPError{
+					Code:         535,
+					EnhancedCode: gosmtp.EnhancedCode{5, 7, 8},
+					Message:      "Authentication failed",
+				}
+			}
+			return s.login(username, password)
+		}), nil
+	case sasl.Login:
+		return &loginSASLServer{authenticate: s.login}, nil
+	default:
+		return nil, gosmtp.ErrAuthUnknownMechanism
 	}
-
-	parts2 := strings.SplitN(string(decoded), "\x00", 3)
-	if len(parts2) != 3 {
-		s.reply(535, "Authentication failed")
-		return
-	}
-
-	// parts2[0] = authorization identity (unused), parts2[1] = username, parts2[2] = password
-	username := parts2[1]
-	password := parts2[2]
-
-	s.doAuth(username, password)
 }
 
-func (s *Session) handleAuthLogin() {
-	// Ask for username
-	s.reply(334, "VXNlcm5hbWU6") // base64("Username:")
-	userLine, err := s.reader.ReadString('\n')
-	if err != nil {
-		return
-	}
-	userBytes, err := decodeBase64(strings.TrimRight(userLine, "\r\n"))
-	if err != nil {
-		s.reply(535, "Authentication failed")
-		return
-	}
-
-	// Ask for password
-	s.reply(334, "UGFzc3dvcmQ6") // base64("Password:")
-	passLine, err := s.reader.ReadString('\n')
-	if err != nil {
-		return
-	}
-	passBytes, err := decodeBase64(strings.TrimRight(passLine, "\r\n"))
-	if err != nil {
-		s.reply(535, "Authentication failed")
-		return
-	}
-
-	s.doAuth(string(userBytes), string(passBytes))
+// loginSASLServer is a server for the obsolete LOGIN mechanism, which go-sasl
+// only ships a client for. Legacy mail clients still use it; the exchange is
+// a base64 "Username:" prompt, then "Password:".
+type loginSASLServer struct {
+	authenticate func(username, password string) error
+	username     string
+	started      bool
+	gotUsername  bool
 }
 
-func (s *Session) doAuth(username, password string) {
-	ip := extractIP(s.remoteAddr)
+// Next implements sasl.Server. A client-provided initial response is accepted
+// as the username, per the LOGIN draft.
+func (l *loginSASLServer) Next(response []byte) (challenge []byte, done bool, err error) {
+	if !l.started {
+		l.started = true
+		if response == nil {
+			return []byte("Username:"), false, nil
+		}
+	}
+	if !l.gotUsername {
+		l.username = string(response)
+		l.gotUsername = true
+		return []byte("Password:"), false, nil
+	}
+	return nil, true, l.authenticate(l.username, string(response))
+}
+
+// login authenticates against the REST API and tracks failures in the
+// connection limiter so repeated bad credentials lead to a ban.
+func (s *session) login(username, password string) error {
+	ip := extractIP(s.remoteAddr())
 
 	resp, err := s.api.Login(username, password)
 	if err != nil {
 		slog.Warn("smtp: auth failed",
-			"remote", s.remoteAddr,
+			"remote", s.remoteAddr(),
 			"user", username,
 			"event", "smtp_auth_failed",
 			"ip", ip,
 		)
 		s.limiter.RecordAuthFail(ip)
 		if s.limiter.IsBanned(ip) {
-			s.reply(421, "Too many authentication failures")
-			return
+			return &gosmtp.SMTPError{
+				Code:         421,
+				EnhancedCode: gosmtp.EnhancedCode{4, 7, 0},
+				Message:      "Too many authentication failures",
+			}
 		}
-		s.reply(535, "Authentication failed")
-		return
+		return &gosmtp.SMTPError{
+			Code:         535,
+			EnhancedCode: gosmtp.EnhancedCode{5, 7, 8},
+			Message:      "Authentication failed",
+		}
 	}
 
 	s.limiter.ResetAuth(ip)
-	s.auth.authenticated = true
-	s.auth.email = username
-	s.auth.token = resp.Data.AccessToken
-	s.auth.accountID = resp.Data.User.ID
+	s.authenticated = true
+	s.authEmail = username
+	s.accountID = resp.Data.User.ID
 
-	slog.Info("smtp: authenticated", "remote", s.remoteAddr, "user", username)
-	s.reply(235, "Authentication successful")
+	slog.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
+	return nil
 }
 
-func (s *Session) handleMAIL(arg string) {
-	if s.heloName == "" {
-		s.reply(503, "EHLO/HELO first")
-		return
-	}
-	if s.isSubmission && !s.auth.authenticated {
-		s.reply(530, "Authentication required")
-		return
-	}
-
-	from := extractAddress(arg, "FROM")
-	if from == "" {
-		s.reply(501, "Syntax: MAIL FROM:<address>")
-		return
+// Mail starts a transaction. On submission ports it requires authentication
+// and verifies the sender is either the authenticated user or one of its
+// linked accounts.
+func (s *session) Mail(from string, _ *gosmtp.MailOptions) error {
+	if s.isSubmission && !s.authenticated {
+		return &gosmtp.SMTPError{
+			Code:         530,
+			EnhancedCode: gosmtp.EnhancedCode{5, 7, 0},
+			Message:      "Authentication required",
+		}
 	}
 
-	// On submission port, verify sender matches authenticated user or a linked account
-	if s.isSubmission && s.auth.authenticated {
-		if from != s.auth.email {
-			// Check linked accounts. A lookup error is treated as "not authorized",
-			// matching the prior inline behavior (which left the count at zero).
-			authorized, err := s.store.SenderAuthorized(s.auth.accountID, from)
-			if err != nil || !authorized {
-				slog.Warn("smtp: sender not authorized", "auth_user", s.auth.email, "mail_from", from, "error", err)
-				s.reply(553, "5.7.1 Sender address not authorized for this account")
-				return
+	if s.isSubmission && s.authenticated && from != s.authEmail {
+		// Check linked accounts. A lookup error is treated as "not authorized",
+		// matching the prior behavior (which left the count at zero).
+		authorized, err := s.store.SenderAuthorized(s.accountID, from)
+		if err != nil || !authorized {
+			slog.Warn("smtp: sender not authorized", "auth_user", s.authEmail, "mail_from", from, "error", err)
+			return &gosmtp.SMTPError{
+				Code:         553,
+				EnhancedCode: gosmtp.EnhancedCode{5, 7, 1},
+				Message:      "Sender address not authorized for this account",
 			}
 		}
 	}
 
 	s.mailFrom = from
 	s.rcptTo = nil
-	s.data = nil
-	s.reply(250, "OK")
+	return nil
 }
 
-func (s *Session) handleRCPT(arg string) {
-	if s.mailFrom == "" {
-		s.reply(503, "MAIL FROM first")
-		return
-	}
-
-	to := extractAddress(arg, "TO")
-	if to == "" {
-		s.reply(501, "Syntax: RCPT TO:<address>")
-		return
-	}
-
-	if len(s.rcptTo) >= 100 {
-		s.reply(452, "Too many recipients")
-		return
-	}
-
-	// Check if recipient is local by querying the API
+// Rcpt accepts a recipient. Local recipients (per Backend.CheckMailbox) are
+// always accepted; unknown recipients are accepted for outbound queueing on
+// authenticated submission and rejected 550 on inbound.
+func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 	resp, err := s.api.CheckMailbox(to)
 	if err != nil {
-		// If API is unreachable, temp fail
+		// If the API is unreachable, temp fail.
 		slog.Error("smtp: API error checking mailbox", "address", to, "error", err)
-		s.reply(451, "Temporary service failure")
-		return
+		return &gosmtp.SMTPError{
+			Code:         451,
+			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
+			Message:      "Temporary service failure",
+		}
 	}
 
-	if !resp.Data.Exists {
-		// Not a local recipient — on inbound we reject, on submission we'll queue for outbound
-		if s.isSubmission && s.auth.authenticated {
-			// Submission: accept for outbound delivery (queue later)
-			s.rcptTo = append(s.rcptTo, to)
-			s.reply(250, "OK")
-			return
+	if !resp.Data.Exists && !(s.isSubmission && s.authenticated) {
+		// Not a local recipient — on inbound we reject; on authenticated
+		// submission we accept and queue for outbound delivery.
+		return &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 1, 1},
+			Message:      fmt.Sprintf("No such user - %s", to),
 		}
-		s.reply(550, "No such user - %s", to)
-		return
 	}
 
 	s.rcptTo = append(s.rcptTo, to)
-	s.reply(250, "OK")
+	return nil
 }
 
-func (s *Session) handleDATA() {
-	if len(s.rcptTo) == 0 {
-		s.reply(503, "RCPT TO first")
-		return
-	}
-
-	s.reply(354, "End data with <CR><LF>.<CR><LF>")
-
-	// Read message data until lone "." on a line
-	var data []byte
-	for {
-		_ = s.conn.SetDeadline(time.Now().Add(10 * time.Minute))
-		line, err := s.reader.ReadBytes('\n')
-		if err != nil {
-			slog.Error("smtp: error reading DATA", "remote", s.remoteAddr, "error", err)
-			return
+// Data receives the message and handles every recipient of the transaction:
+// local recipients are delivered via the API, remote ones are enqueued for
+// the outbound queue worker.
+//
+// DATA gets a SINGLE reply for the whole message. Handle every recipient and
+// aggregate: only fail the transaction (4xx/5xx) if NOTHING was committed —
+// returning an error after some recipients were already delivered/queued
+// makes the client retry the entire message, duplicating those recipients.
+func (s *session) Data(r io.Reader) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		var smtpErr *gosmtp.SMTPError
+		if errors.As(err, &smtpErr) {
+			// e.g. message exceeds MaxMessageBytes (552).
+			slog.Warn("smtp: rejecting DATA", "remote", s.remoteAddr(), "error", err)
+			return smtpErr
 		}
-
-		// Check for end-of-data marker
-		trimmed := strings.TrimRight(string(line), "\r\n")
-		if trimmed == "." {
-			break
-		}
-
-		// Dot-stuffing: if line starts with "..", remove one dot
-		if len(trimmed) > 0 && trimmed[0] == '.' {
-			line = line[1:]
-		}
-
-		data = append(data, line...)
-
-		// Enforce the same SIZE limit advertised in EHLO.
-		if len(data) > maxMessageSize {
-			slog.Warn("smtp: message exceeds size limit", "remote", s.remoteAddr, "size", len(data))
-			s.reply(552, "Message exceeds maximum size")
-			return
+		slog.Error("smtp: error reading DATA", "remote", s.remoteAddr(), "error", err)
+		return &gosmtp.SMTPError{
+			Code:         451,
+			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
+			Message:      "Error reading message data",
 		}
 	}
 
-	s.data = data
-
-	// Parse the message and deliver to each recipient
+	// Parse the message and deliver to each recipient.
 	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList := parseRawMessage(data)
 
 	if messageID == "" {
 		messageID = rmail.GenerateMessageID(rmail.DomainFromAddress(s.mailFrom))
 	}
 
-	// DATA gets a SINGLE reply for the whole message. Handle every recipient and
-	// aggregate: only fail the transaction (4xx/5xx) if NOTHING was committed —
-	// returning an error after some recipients were already delivered/queued
-	// makes the client retry the entire message, duplicating those recipients.
 	accepted := 0
 	failed := 0
-	failCode, failMsg := 451, "Temporary delivery failure"
+	failCode, failEnhanced, failMsg := 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
 	for _, rcpt := range s.rcptTo {
-		// Check if this is a local recipient
+		// Check if this is a local recipient.
 		check, err := s.api.CheckMailbox(rcpt)
 		if err != nil || !check.Data.Exists {
-			// Non-local: insert into outbound queue for the queue worker to deliver
+			// Non-local: insert into the outbound queue for the queue worker.
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
 				recipientDomain = rcpt[idx+1:]
@@ -480,7 +276,7 @@ func (s *Session) handleDATA() {
 			continue
 		}
 
-		// Local delivery via API
+		// Local delivery via API.
 		deliverReq := &apiclient.DeliverRequest{
 			Address:    rcpt,
 			Sender:     s.mailFrom,
@@ -492,8 +288,8 @@ func (s *Session) handleDATA() {
 			InReplyTo:  inReplyTo,
 			References: references,
 			RawMessage: string(data),
-			ClientIP:   extractIP(s.remoteAddr),
-			HeloName:   s.heloName,
+			ClientIP:   extractIP(s.remoteAddr()),
+			HeloName:   s.conn.Hostname(),
 		}
 		if len(toList) > 0 {
 			toJSON, _ := json.Marshal(toList)
@@ -504,21 +300,21 @@ func (s *Session) handleDATA() {
 			deliverReq.RecipientsCc = ccJSON
 		}
 
-		_, err = s.api.DeliverMessage(deliverReq)
-		if err != nil {
+		if _, err := s.api.DeliverMessage(deliverReq); err != nil {
 			slog.Error("smtp: delivery failed", "from", s.mailFrom, "to", rcpt, "error", err)
 			// Remember a representative reply for the all-failed case.
-			if apiErr, ok := err.(*apiclient.APIError); ok {
+			var apiErr *apiclient.APIError
+			if errors.As(err, &apiErr) {
 				switch {
 				case apiErr.StatusCode == 403 || apiErr.StatusCode == 550:
-					failCode, failMsg = 550, "Rejected by policy"
+					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 7, 1}, "Rejected by policy"
 				case apiErr.StatusCode == 503 || apiErr.StatusCode == 451:
-					failCode, failMsg = 451, "Try again later"
+					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Try again later"
 				default:
-					failCode, failMsg = 451, "Temporary delivery failure"
+					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
 				}
 			} else {
-				failCode, failMsg = 451, "Temporary delivery failure"
+				failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
 			}
 			failed++
 			continue
@@ -530,30 +326,22 @@ func (s *Session) handleDATA() {
 
 	// Single transaction reply: fail only if NOTHING was committed.
 	if accepted == 0 {
-		s.reply(failCode, "%s", failMsg)
-		return
+		return &gosmtp.SMTPError{Code: failCode, EnhancedCode: failEnhanced, Message: failMsg}
 	}
 	if failed > 0 {
 		slog.Warn("smtp: partial delivery accepted to avoid duplicate retry",
 			"from", s.mailFrom, "accepted", accepted, "failed", failed)
 	}
-	s.reply(250, "OK: message accepted for delivery")
-
-	// Reset session for next message
-	s.mailFrom = ""
-	s.rcptTo = nil
-	s.data = nil
+	return nil
 }
 
-func (s *Session) handleRSET() {
+// Reset discards the current transaction (RSET, or implicitly after DATA).
+func (s *session) Reset() {
 	s.mailFrom = ""
 	s.rcptTo = nil
-	s.data = nil
-	s.reply(250, "OK")
 }
 
-func (s *Session) reply(code int, format string, args ...interface{}) {
-	msg := fmt.Sprintf(format, args...)
-	fmt.Fprintf(s.writer, "%d %s\r\n", code, msg)
-	s.writer.Flush()
+// Logout is called when the connection is closed.
+func (s *session) Logout() error {
+	return nil
 }

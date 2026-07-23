@@ -141,12 +141,15 @@ func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmiss
 	t.Helper()
 	client, server := net.Pipe()
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 1000})
-	sess := NewSession(server, back, "smtp.test", nil, store, isSubmission, limiter)
+	// Build the go-smtp server exactly as production does (same construction
+	// path), then serve the pipe's server end as a single connection.
+	srv := NewServer("smtp.test", back, nil, store, limiter).newSMTPServer(isSubmission)
 
+	listener := newOneConnListener(server)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		sess.Handle()
+		_ = srv.Serve(listener)
 	}()
 
 	h := &smtpHarness{
@@ -161,6 +164,11 @@ func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmiss
 	t.Cleanup(func() {
 		_ = client.Close()
 		<-h.done
+	})
+	// Registered second so it runs first (LIFO): closing the server unblocks
+	// Serve's Accept, letting h.done complete in the cleanup above.
+	t.Cleanup(func() {
+		_ = srv.Close()
 	})
 
 	// Greeting.
@@ -252,3 +260,45 @@ func (h *smtpHarness) dataBody(body string) string {
 	_, final := h.readReply()
 	return final
 }
+
+// oneConnListener hands a single pre-established connection (the server end of
+// a net.Pipe) to a listener-based server, then blocks until closed.
+type oneConnListener struct {
+	mu     sync.Mutex
+	conn   net.Conn
+	closed chan struct{}
+}
+
+func newOneConnListener(conn net.Conn) *oneConnListener {
+	return &oneConnListener{conn: conn, closed: make(chan struct{})}
+}
+
+func (l *oneConnListener) Accept() (net.Conn, error) {
+	l.mu.Lock()
+	conn := l.conn
+	l.conn = nil
+	l.mu.Unlock()
+	if conn != nil {
+		return conn, nil
+	}
+	<-l.closed
+	return nil, net.ErrClosed
+}
+
+func (l *oneConnListener) Close() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	select {
+	case <-l.closed:
+	default:
+		close(l.closed)
+	}
+	return nil
+}
+
+func (l *oneConnListener) Addr() net.Addr { return oneConnAddr{} }
+
+type oneConnAddr struct{}
+
+func (oneConnAddr) Network() string { return "pipe" }
+func (oneConnAddr) String() string  { return "pipe" }

@@ -6,11 +6,16 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
+
+	gosmtp "github.com/emersion/go-smtp"
 
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
 
-// Server listens for SMTP connections and spawns session handlers.
+// Server listens for SMTP connections and serves them with go-smtp, one
+// underlying go-smtp server per listener so inbound (25) and submission
+// (587/465) get their distinct policies.
 type Server struct {
 	hostname           string
 	api                Backend
@@ -18,9 +23,7 @@ type Server struct {
 	store              Store
 	limiter            *connlimiter.Limiter
 	proxyProtocolCIDRs []string
-	listeners          []net.Listener
-	wg                 sync.WaitGroup
-	shutdown           chan struct{}
+	servers            []*gosmtp.Server
 }
 
 // NewServer creates a new SMTP server.
@@ -31,7 +34,6 @@ func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store,
 		tlsConfig: tlsConfig,
 		store:     store,
 		limiter:   limiter,
-		shutdown:  make(chan struct{}),
 	}
 }
 
@@ -70,26 +72,47 @@ type SMTPPorts struct {
 	SubmissionTLS int // 465
 }
 
+// newSMTPServer builds the go-smtp server used for every listener of the
+// given flavor. The test harness uses it too, so the protocol configuration
+// under test is exactly the production one.
+func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
+	srv := gosmtp.NewServer(gosmtp.BackendFunc(func(c *gosmtp.Conn) (gosmtp.Session, error) {
+		slog.Debug("smtp: new session", "remote", c.Conn().RemoteAddr().String(), "submission", isSubmission)
+		return &session{
+			conn:         c,
+			api:          s.api,
+			store:        s.store,
+			limiter:      s.limiter,
+			isSubmission: isSubmission,
+		}, nil
+	}))
+	srv.Domain = s.hostname
+	srv.TLSConfig = s.tlsConfig
+	srv.MaxMessageBytes = maxMessageSize
+	srv.MaxRecipients = maxRecipients
+	srv.ReadTimeout = 5 * time.Minute
+	srv.WriteTimeout = 5 * time.Minute
+	// Without a TLS config there is nothing to upgrade to; otherwise AUTH is
+	// only offered on TLS connections (STARTTLS on 587, implicit on 465).
+	srv.AllowInsecureAuth = s.tlsConfig == nil
+	srv.ErrorLog = slogAdapter{}
+	// Advertise the RESTMAIL capability for server-to-server upgrade.
+	srv.ExtraCaps = []string{fmt.Sprintf("RESTMAIL https://%s/restmail", s.hostname)}
+	return srv
+}
+
 func (s *Server) listen(port int, isSubmission, implicitTLS bool) error {
 	addr := fmt.Sprintf(":%d", port)
-	var listener net.Listener
-	var err error
 
-	if implicitTLS && s.tlsConfig != nil {
-		listener, err = tls.Listen("tcp", addr, s.tlsConfig)
-		if err != nil {
-			return err
-		}
-		slog.Info("smtp: listening (implicit TLS)", "port", port, "submission", isSubmission)
-	} else {
-		listener, err = net.Listen("tcp", addr)
-		if err != nil {
-			return err
-		}
-		slog.Info("smtp: listening", "port", port, "submission", isSubmission)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
 	}
+	slog.Info("smtp: listening", "port", port, "submission", isSubmission, "implicit_tls", implicitTLS && s.tlsConfig != nil)
 
-	// Wrap with PROXY protocol if trusted CIDRs are configured
+	// Wrap with PROXY protocol if trusted CIDRs are configured. This stays
+	// closest to the socket: the PROXY header arrives in cleartext before any
+	// TLS bytes.
 	if len(s.proxyProtocolCIDRs) > 0 {
 		wrapped, err := WrapWithProxyProtocol(listener, s.proxyProtocolCIDRs)
 		if err != nil {
@@ -99,54 +122,83 @@ func (s *Server) listen(port int, isSubmission, implicitTLS bool) error {
 		listener = wrapped
 	}
 
-	s.listeners = append(s.listeners, listener)
+	// Connection limiting happens at accept level, before any SMTP handling.
+	listener = &limitListener{Listener: listener, limiter: s.limiter}
 
-	s.wg.Add(1)
+	// Implicit TLS (465) wraps last so go-smtp sees a *tls.Conn and treats
+	// the connection as TLS from the first byte.
+	if implicitTLS && s.tlsConfig != nil {
+		listener = tls.NewListener(listener, s.tlsConfig)
+	}
+
+	srv := s.newSMTPServer(isSubmission)
+	s.servers = append(s.servers, srv)
+
 	go func() {
-		defer s.wg.Done()
-		s.acceptLoop(listener, isSubmission, implicitTLS)
+		if err := srv.Serve(listener); err != nil {
+			slog.Error("smtp: serve error", "port", port, "error", err)
+		}
 	}()
 
 	return nil
 }
 
-func (s *Server) acceptLoop(listener net.Listener, isSubmission, implicitTLS bool) {
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			select {
-			case <-s.shutdown:
-				return
-			default:
-				slog.Error("smtp: accept error", "error", err)
-				continue
-			}
+// Shutdown stops the SMTP server, closing all listeners and connections.
+func (s *Server) Shutdown() {
+	for _, srv := range s.servers {
+		if err := srv.Close(); err != nil {
+			slog.Warn("smtp: error closing server", "error", err)
 		}
+	}
+	slog.Info("smtp: server stopped")
+}
 
+// limitListener enforces the connection limiter at accept level: connections
+// over the per-IP or global limit are closed before any SMTP handling, and
+// the slot is released when the connection closes.
+type limitListener struct {
+	net.Listener
+	limiter *connlimiter.Limiter
+}
+
+func (l *limitListener) Accept() (net.Conn, error) {
+	for {
+		conn, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
 		ip := extractIP(conn.RemoteAddr().String())
-		if !s.limiter.Accept(ip) {
+		if !l.limiter.Accept(ip) {
 			slog.Warn("smtp: connection rejected by limiter", "ip", ip)
 			conn.Close()
 			continue
 		}
-
-		go func() {
-			defer s.limiter.Release(ip)
-			session := NewSession(conn, s.api, s.hostname, s.tlsConfig, s.store, isSubmission, s.limiter)
-			if implicitTLS {
-				session.usingTLS = true
-			}
-			session.Handle()
-		}()
+		lc := &limitedConn{Conn: conn}
+		lc.release = func() { l.limiter.Release(ip) }
+		return lc, nil
 	}
 }
 
-// Shutdown gracefully stops the SMTP server.
-func (s *Server) Shutdown() {
-	close(s.shutdown)
-	for _, l := range s.listeners {
-		l.Close()
-	}
-	s.wg.Wait()
-	slog.Info("smtp: server stopped")
+// limitedConn releases its limiter slot exactly once on Close.
+type limitedConn struct {
+	net.Conn
+	releaseOnce sync.Once
+	release     func()
+}
+
+func (c *limitedConn) Close() error {
+	c.releaseOnce.Do(c.release)
+	return c.Conn.Close()
+}
+
+// slogAdapter routes go-smtp's internal error log to slog, matching the
+// gateway's structured logging.
+type slogAdapter struct{}
+
+func (slogAdapter) Printf(format string, v ...interface{}) {
+	slog.Error("smtp: " + fmt.Sprintf(format, v...))
+}
+
+func (slogAdapter) Println(v ...interface{}) {
+	slog.Error("smtp: " + fmt.Sprint(v...))
 }
