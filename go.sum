@@ -108,8 +108,8 @@ github.com/rest-mail/dmarc v0.1.0 h1:tzqXiGUgwzmFcKRpUIWIvoWi5YOJCEH/pOjdiNSzh3s
 github.com/rest-mail/dmarc v0.1.0/go.mod h1:MV++dODghfbco22u53EGUspGgUSkhgvI/almpaszhUc=
 github.com/rest-mail/go-smtp v0.24.1-0.20260723074705-1df43ece562e h1:7s5fcOQnz8mZdlRoMyb26T6ndHyaVyka4mMDZzp0JF8=
 github.com/rest-mail/go-smtp v0.24.1-0.20260723074705-1df43ece562e/go.mod h1:ZtRRkbTyp2XTHCA+BmyTFTrj8xY4I+b4McvHxCU2gsQ=
-github.com/rest-mail/imap v0.1.0 h1:seT1F+hPByVOL+XcFQBEjkk1MO/F3N+zZMUxkYmb+3o=
-github.com/rest-mail/imap v0.1.0/go.mod h1:jqZsOM9dgesZKkFclz0VcSXC3cRAs3cWeALN3DkjwEI=
+github.com/rest-mail/imap v0.2.0 h1:S5Jqu6rdwUk97lsdf+p3rFhnQCfOVQ62sTitrkaHwEo=
+github.com/rest-mail/imap v0.2.0/go.mod h1:jqZsOM9dgesZKkFclz0VcSXC3cRAs3cWeALN3DkjwEI=
 github.com/rest-mail/mtasts v0.1.0 h1:lmyAxTKgVYr9Q+e49Z7Hp1m+XEYAbT20jC8nyq7cWhU=
 github.com/rest-mail/mtasts v0.1.0/go.mod h1:3vozT9c4NLMqddlVYEmDFWxDA1MxotfAzLb6bHKDJlk=
 github.com/rest-mail/pop3 v0.1.0 h1:lII8IWyWYAYuraQYUMcepnqcZOj45Gi4pDeA9KwkblE=
