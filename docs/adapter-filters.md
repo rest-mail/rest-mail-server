@@ -44,22 +44,29 @@ External adapters implement the `pipeline.ExternalAdapter` interface:
 ```go
 type ExternalAdapter interface {
     Name() string
-    Scan(ctx context.Context, rawMessage []byte, email *EmailJSON) (*AdapterResult, error)
+    Scan(ctx context.Context, email *EmailJSON) (*AdapterResult, error)
     Healthy(ctx context.Context) bool
 }
 ```
 
+The adapter receives the structured `*EmailJSON` and serializes it to raw RFC
+2822 itself (via `internal/mime.Serialize`) before calling out — the pipeline
+does not hand it a pre-serialized byte slice.
+
 ## Enabling Scanning Sidecars
 
-The rspamd and ClamAV containers are defined in `docker-compose.yml` under the `scanning` profile. To enable them:
+This repo is driven entirely by Taskfiles and ships **no** `docker-compose.yml`.
+The rspamd/ClamAV scanning services are not part of this repo — spam/virus
+scanning comes from the reference mail server stack
+([`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver))
+or any scanner you run yourself. Bring up a reference instance to get them:
 
 ```bash
-# Start the full stack with scanning
-docker compose --profile scanning up -d
-
-# Or start just the scanning services
-docker compose --profile scanning up -d rspamd clamav clamav-rest
+task -d .workspace/reference-mailserver up CONFIG=mail1
 ```
+
+Then point each filter's `url` (below) at the host/port that stack (or your own
+deployment) exposes for the scanner.
 
 ## Configuring rspamd in a Pipeline
 
@@ -103,7 +110,7 @@ Add the ClamAV filter to your inbound pipeline:
   "type": "action",
   "enabled": true,
   "config": {
-    "url": "http://clamav-rest:3000",
+    "url": "http://clamav:3310",
     "timeout_ms": 30000,
     "fallback_action": "continue"
   }
@@ -156,12 +163,12 @@ type myScanner struct {
 
 func (s *myScanner) Name() string { return "my_scanner" }
 
-func (s *myScanner) Scan(ctx context.Context, raw []byte, email *pipeline.EmailJSON) (*pipeline.AdapterResult, error) {
-    // POST raw message to your scanner
-    // Parse response
+func (s *myScanner) Scan(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.AdapterResult, error) {
+    // Serialize the email yourself (e.g. internal/mime.Serialize), POST it to
+    // your scanner, then parse the response.
     return &pipeline.AdapterResult{
         Clean:  true,
-        Action: "continue",
+        Action: pipeline.ActionContinue,
     }, nil
 }
 
@@ -171,7 +178,10 @@ func (s *myScanner) Healthy(ctx context.Context) bool {
 }
 ```
 
-Then register it as a filter using the adapter wrapper:
+Then register a factory for it. There is no exported wrapper: custom adapters
+live in the `filters` package and wrap themselves in the package-internal
+`adapterFilter` (the same struct `rspamd`/`clamav` use), reusing `parseAction`
+to turn the configured `fallback_action` string into a `pipeline.Action`:
 
 ```go
 func init() {
@@ -179,8 +189,12 @@ func init() {
 }
 
 func newMyScanner(config []byte) (pipeline.Filter, error) {
+    // Parse config (url, timeout_ms, fallback_action) as rspamd/clamav do.
     adapter := &myScanner{url: "http://scanner:8080"}
-    return NewAdapterFilter(adapter, config)
+    return &adapterFilter{
+        adapter:        adapter,
+        fallbackAction: parseAction("continue", pipeline.ActionContinue),
+    }, nil
 }
 ```
 

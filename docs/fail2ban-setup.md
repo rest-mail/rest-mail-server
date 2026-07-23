@@ -47,6 +47,13 @@ Each gateway process runs an in-memory connection limiter that provides immediat
 3. **Automatic ban**: When failures within the window reach `AuthMaxFails`, the IP is banned in-memory for `AuthBanDuration`.
 4. **Reset on success**: A successful authentication clears the failure history for that IP via `ResetAuth(ip)`.
 
+> **Which gateways feed this today:** the auth-failure tracking (steps 2–4) is
+> currently wired in the **SMTP gateway** only (`internal/gateway/smtp/session.go`
+> calls `RecordAuthFail`/`ResetAuth`). The IMAP and POP3 gateways construct the
+> same limiter for connection limiting (step 1) and share the Layer 2 DB ban
+> table via `bancheck.Wire`, but they do not record auth failures into the
+> in-memory limiter and do not emit an auth-failure log line.
+
 ### Tuning
 
 For high-traffic servers, adjust in the gateway main files:
@@ -125,7 +132,7 @@ Content-Type: application/json
     "reason": "Brute force attack on SMTP AUTH",
     "protocol": "smtp",
     "duration": "168h",
-    "created_by": "admin@mail3.test"
+    "created_by": "admin@restmail.test"
 }
 ```
 
@@ -156,7 +163,11 @@ For production, pair the DB ban system with fail2ban watching gateway logs:
 **`/etc/fail2ban/filter.d/restmail-smtp.conf`**:
 ```ini
 [Definition]
-failregex = ^.*"msg":"authentication failed".*"client_ip":"<HOST>".*$
+# The SMTP gateway logs each auth failure as one JSON line via slog, e.g.
+#   {"time":"...","level":"WARN","msg":"smtp: auth failed","remote":"1.2.3.4:52134",
+#    "user":"admin@restmail.test","event":"smtp_auth_failed","ip":"1.2.3.4"}
+# Key off the stable "event" tag and the "ip" field (a bare host string).
+failregex = "event":"smtp_auth_failed".*"ip":"<HOST>"
 ignoreregex =
 ```
 
@@ -170,24 +181,28 @@ maxretry = 5
 findtime = 600
 bantime  = 3600
 action   = restmail-ban
-
-[restmail-imap]
-enabled  = true
-filter   = restmail-imap
-logpath  = /var/log/restmail/imap-gateway.log
-maxretry = 10
-findtime = 600
-bantime  = 1800
-action   = restmail-ban
 ```
+
+> **Only the SMTP gateway emits a matchable auth-failure line today.** The IMAP
+> and POP3 gateways do not log a structured `*_auth_failed` event, so there is no
+> log for a `restmail-imap`/`restmail-pop3` jail to watch — a jail pointed at
+> `imap-gateway.log` would never match and is omitted here. IMAP/POP3 are still
+> covered indirectly: the SMTP jail's ban action writes to the shared DB ban
+> table with `protocol: all`, and every gateway enforces that table on connect
+> via `bancheck.Wire` (Layer 2). If you need per-protocol IMAP/POP3 log banning,
+> the gateways must first be taught to log an equivalent auth-failure event.
 
 **`/etc/fail2ban/action.d/restmail-ban.conf`**:
 ```ini
 [Definition]
+# protocol must be one of the enum values smtp|imap|pop3|all (column is
+# VARCHAR(10)); "all" bans the IP across every gateway. Do not use the fail2ban
+# <name> tag here — it expands to the jail name (e.g. "restmail-smtp"), which is
+# neither a valid protocol nor short enough for the column.
 actionban = curl -s -X POST http://localhost:8080/api/v1/admin/bans \
     -H "Authorization: Bearer <ADMIN_TOKEN>" \
     -H "Content-Type: application/json" \
-    -d '{"ip":"<ip>","reason":"fail2ban: <failures> failures in <findtime>s","protocol":"<name>","duration":"<bantime>s","created_by":"fail2ban"}'
+    -d '{"ip":"<ip>","reason":"fail2ban: <failures> failures in <findtime>s","protocol":"all","duration":"<bantime>s","created_by":"fail2ban"}'
 
 actionunban = curl -s -X DELETE http://localhost:8080/api/v1/admin/bans/ip/<ip> \
     -H "Authorization: Bearer <ADMIN_TOKEN>"
