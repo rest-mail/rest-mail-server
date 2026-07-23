@@ -12,7 +12,6 @@ import (
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/version"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/dns"
@@ -21,6 +20,7 @@ import (
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
 	"github.com/restmail/restmail/internal/trace"
+	"github.com/restmail/restmail/internal/version"
 	"gorm.io/gorm"
 )
 
@@ -140,7 +140,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
 	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
-	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder)
+	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder, handlers.RestmailTarpitConfig{
+		Enabled: cfg.RestmailTarpitEnabled,
+		Base:    cfg.RestmailTarpitBase,
+		Max:     cfg.RestmailTarpitMax,
+	})
 
 	// ═══════════════════════════════════════════════════════════════
 	// API root — version and discovery (no auth)
