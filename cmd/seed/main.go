@@ -129,6 +129,7 @@ func seedRBAC(database *gorm.DB) error {
 		{Name: "bans:read", Description: "View IP bans", Resource: "bans", Action: "read"},
 		{Name: "bans:write", Description: "Create/update IP bans", Resource: "bans", Action: "write"},
 		{Name: "bans:delete", Description: "Delete IP bans", Resource: "bans", Action: "delete"},
+		{Name: "observability:read", Description: "View pipeline analytics funnel and per-message traces", Resource: "observability", Action: "read"},
 	}
 
 	for i := range capabilities {
@@ -181,6 +182,7 @@ func seedRBAC(database *gorm.DB) error {
 		"users:read", "messages:read",
 		"queue:read", "queue:manage",
 		"bans:read", "bans:write", "bans:delete",
+		"observability:read",
 	}
 	for _, capName := range adminCaps {
 		var cap models.Capability
@@ -203,6 +205,7 @@ func seedRBAC(database *gorm.DB) error {
 	readonlyCaps := []string{
 		"domains:read", "mailboxes:read", "pipelines:read",
 		"users:read", "messages:read", "queue:read", "bans:read",
+		"observability:read",
 	}
 	for _, capName := range readonlyCaps {
 		var cap models.Capability

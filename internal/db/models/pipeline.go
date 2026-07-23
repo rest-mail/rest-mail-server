@@ -38,7 +38,13 @@ type CustomFilter struct {
 
 func (CustomFilter) TableName() string { return "custom_filters" }
 
-// PipelineLog records the execution of a pipeline on a message.
+// PipelineLog recorded the execution of a pipeline on a message.
+//
+// DEAD as of PR5: PR3 moved the WRITE path to MessageTrace and PR5 repointed the
+// last READER (ListPipelineLogs) to message_traces, so this table now has no
+// writer and no reader. It is intentionally LEFT in place (still AutoMigrated)
+// rather than dropped in this PR to avoid migration risk on existing databases;
+// a later cleanup PR can drop the pipeline_logs table and this model together.
 type PipelineLog struct {
 	ID         uint            `gorm:"primaryKey" json:"id"`
 	PipelineID uint            `gorm:"index" json:"pipeline_id"`
