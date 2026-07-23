@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/digest"
+	"github.com/restmail/restmail/internal/dmarc"
 	"github.com/restmail/restmail/internal/dns"
 )
 
@@ -134,6 +135,11 @@ func main() {
 	quotaReconciler := digest.NewQuotaReconciler(database, 6*time.Hour)
 	quotaReconciler.Start()
 
+	// Start DMARC aggregate (rua) reporter — emits RFC 7489 reports for the
+	// per-message evaluations captured by dmarc_check.
+	dmarcReporter := dmarc.NewReporter(database, digestInterval, cfg.GatewayHostname)
+	dmarcReporter.Start()
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:         cfg.APIAddr(),
@@ -162,6 +168,7 @@ func main() {
 		acmeManager.Shutdown()
 	}
 	quotaReconciler.Shutdown()
+	dmarcReporter.Shutdown()
 	digestWorker.Shutdown()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

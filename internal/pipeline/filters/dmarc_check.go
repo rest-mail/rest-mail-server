@@ -6,8 +6,42 @@ import (
 	"net"
 	"strings"
 
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 )
+
+// captureDMARC records this message's DMARC evaluation for later RFC 7489
+// aggregate (rua) reporting. Only inbound mail whose From domain publishes a
+// DMARC record is recorded; the reporter aggregates these rows per period. A DB
+// handle is available on the pipeline context; absent one (e.g. the test/preview
+// path), capture is a no-op.
+func captureDMARC(ctx context.Context, email *pipeline.EmailJSON, domain, policy string, spfPass, spfAligned, dkimPass, dkimAligned bool, disposition string) {
+	db := pipeline.DBFromContext(ctx)
+	if db == nil || email.Envelope.Direction == "outbound" {
+		return
+	}
+	result := func(pass bool) string {
+		if pass {
+			return "pass"
+		}
+		return "fail"
+	}
+	headerFrom := ""
+	if len(email.Headers.From) > 0 {
+		headerFrom = email.Headers.From[0].Address
+	}
+	_ = db.Create(&models.DMARCAggregateRecord{
+		Domain:      domain,
+		SourceIP:    email.Envelope.ClientIP,
+		HeaderFrom:  headerFrom,
+		Disposition: disposition,
+		Policy:      policy,
+		DKIMResult:  result(dkimPass),
+		DKIMAligned: dkimAligned,
+		SPFResult:   result(spfPass),
+		SPFAligned:  spfAligned,
+	}).Error
+}
 
 // dmarcCheckFilter evaluates DMARC policy using SPF and DKIM results.
 type dmarcCheckFilter struct{}
@@ -23,7 +57,7 @@ func NewDMARCCheck(_ []byte) (pipeline.Filter, error) {
 func (f *dmarcCheckFilter) Name() string             { return "dmarc_check" }
 func (f *dmarcCheckFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
-func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	// Get the From domain
 	if len(email.Headers.From) == 0 {
 		return &pipeline.FilterResult{
@@ -111,8 +145,28 @@ func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 		}
 	}
 
-	// DMARC requires both pass AND alignment
-	if spfAligned || dkimAligned {
+	// ARC override status: a valid ARC chain lets us honor the original
+	// authentication on forwarded mail (RFC 8617 §5.2).
+	arcStatus := ""
+	if email.Metadata != nil {
+		arcStatus = email.Metadata["arc_status"]
+	}
+	if arcStatus == "" && strings.Contains(authResults, "arc=pass") {
+		arcStatus = "pass"
+	}
+
+	aligned := spfAligned || dkimAligned
+
+	// Disposition actually applied to this message, for aggregate (rua) reports:
+	// "none" when DMARC passes or an ARC override applies, else the published policy.
+	disposition := "none"
+	if !aligned && arcStatus != "pass" && (policy == "reject" || policy == "quarantine") {
+		disposition = policy
+	}
+	captureDMARC(ctx, email, domain, policy, spfPass, spfAligned, dkimPass, dkimAligned, disposition)
+
+	// DMARC requires both pass AND alignment.
+	if aligned {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
 			Action: pipeline.ActionContinue,
@@ -124,18 +178,6 @@ func (f *dmarcCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON)
 		}, nil
 	}
 
-	// Check ARC results: if ARC chain is valid, honor the original
-	// authentication on forwarded mail (RFC 8617 §5.2).
-	arcStatus := ""
-	if email.Metadata != nil {
-		arcStatus = email.Metadata["arc_status"]
-	}
-	if arcStatus == "" {
-		// Also check Authentication-Results for arc= result
-		if strings.Contains(authResults, "arc=pass") {
-			arcStatus = "pass"
-		}
-	}
 	if arcStatus == "pass" {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
