@@ -7,17 +7,6 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
 
-// parseCommand splits a POP3 command line into command and argument.
-func parseCommand(line string) (string, string) {
-	parts := strings.SplitN(line, " ", 2)
-	cmd := strings.ToUpper(parts[0])
-	arg := ""
-	if len(parts) > 1 {
-		arg = parts[1]
-	}
-	return cmd, arg
-}
-
 // buildRawMessage constructs a simplified RFC 2822 message from API data.
 func buildRawMessage(msg apiclient.MessageDetail) string {
 	var b strings.Builder

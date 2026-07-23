@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	pop3srv "github.com/rest-mail/pop3"
+
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
@@ -98,8 +100,10 @@ func main() {
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	bancheck.Wire(limiter, database, "pop3")
-	pop3Server := pop3.NewServer(cfg.GatewayHostname, api, tlsConfig, limiter)
-	if err := pop3Server.ListenAndServe(pop3.POP3Ports{
+	// The shared connlimiter satisfies the library's structural Limiter interface;
+	// the rest-mail Backend adapter maps API responses onto the library's types.
+	pop3Server := pop3srv.NewServer(pop3.NewBackend(api), tlsConfig, limiter)
+	if err := pop3Server.ListenAndServe(pop3srv.Ports{
 		POP3:    cfg.POP3Port,
 		POP3TLS: cfg.POP3TLSPort,
 	}); err != nil {
