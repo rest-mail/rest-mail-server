@@ -142,6 +142,16 @@ var (
 		Name: "restmail_cert_expiry_days",
 		Help: "Days until certificate expires",
 	})
+
+	// TraceDropped counts per-message traces dropped by the async recorder's
+	// drop-on-full backpressure (buffer saturated / recorder shut down). It is
+	// the honest signal that trace detail was lost while mail kept flowing —
+	// aggregate metrics remain exact because they are counted inline, not here.
+	// No labels: this measures a single degradation condition.
+	TraceDropped = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_trace_dropped_total",
+		Help: "Per-message traces dropped by async recorder backpressure",
+	})
 )
 
 func init() {
@@ -161,5 +171,6 @@ func init() {
 		AuthVerdict,
 		AuthFailures,
 		CertExpiryDays,
+		TraceDropped,
 	)
 }

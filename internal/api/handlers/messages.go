@@ -31,10 +31,20 @@ type MessageHandler struct {
 	broker    *SSEBroker
 	engine    *pipeline.Engine
 	masterKey string
+	recorder  traceRecorder
 }
 
-func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string) *MessageHandler {
-	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey}
+func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
+	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey, recorder: recorder}
+}
+
+// recordTrace hands a MessageTrace to the async recorder when one is configured.
+// It never blocks or errors — trace persistence must not delay or fail message
+// processing (a nil recorder simply skips capture).
+func (h *MessageHandler) recordTrace(t models.MessageTrace) {
+	if h.recorder != nil {
+		h.recorder.Record(t)
+	}
 }
 
 // signOutboundDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes
@@ -385,6 +395,10 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	// ── Outbound pipeline execution ────────────────────────────────
 	var extraHeaders map[string]string // populated by pipeline transforms (e.g. DKIM-Signature)
+	// queuedTrace, set in the outbound continue branch, defers recording the
+	// happy-path trace until the sent Message row exists (message_id non-nil);
+	// the outbound continue outcome is "queued" (handed to the delivery queue).
+	var queuedTrace *traceInputs
 	if h.engine != nil {
 		var outToAddrs []pipeline.Address
 		for _, addr := range req.To {
@@ -457,7 +471,16 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		h.logPipelineExecution(outPipelineCfg.ID, nil, "outbound", outResult)
+		// Base trace inputs shared by every outbound terminal branch. transport is
+		// "" (local submission, not an inbound-MX arrival); the RFC Message-ID is
+		// generated only on the continue path (below), so non-continue outbound
+		// traces correlate via sender/recipient.
+		outTraceBase := traceInputs{
+			PipelineID: outPipelineCfg.ID,
+			Direction:  "outbound",
+			Result:     outResult,
+			Envelope:   outEmailJSON.Envelope,
+		}
 
 		switch outResult.FinalAction {
 		case pipeline.ActionReject:
@@ -465,18 +488,30 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			if rejectMsg == "" {
 				rejectMsg = "Message rejected by outbound policy"
 			}
+			outTraceBase.Outcome = outcomeRejected
+			h.recordTrace(buildTrace(outTraceBase))
 			respond.Error(w, http.StatusForbidden, "rejected", rejectMsg)
 			return
 		case pipeline.ActionQuarantine:
+			outTraceBase.Outcome = outcomeQuarantined
+			h.recordTrace(buildTrace(outTraceBase))
 			respond.Error(w, http.StatusForbidden, "quarantined", "Message held for review by outbound policy")
 			return
 		case pipeline.ActionDiscard:
+			outTraceBase.Outcome = outcomeDiscarded
+			h.recordTrace(buildTrace(outTraceBase))
 			respond.Data(w, http.StatusOK, map[string]string{"status": "discarded"})
 			return
 		case pipeline.ActionDefer:
+			outTraceBase.Outcome = outcomeDeferred
+			h.recordTrace(buildTrace(outTraceBase))
 			respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
 			return
 		case pipeline.ActionContinue:
+			// Stash the trace; recorded as "queued" after the sent Message row is
+			// created so message_id is non-nil.
+			base := outTraceBase
+			queuedTrace = &base
 			// Feed pipeline transforms back into req so downstream code
 			// (sent message creation + raw RFC 2822 builder) uses the
 			// pipeline output (e.g. header_cleanup, dkim_sign).
@@ -576,6 +611,18 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.Create(&sentMsg).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save sent message")
 		return
+	}
+
+	// ── Record the queued trace ──────────────────────────────────────
+	// The outbound pipeline said continue and the sent Message row now exists —
+	// record it as "queued" (handed to the outbound delivery queue) with
+	// message_id non-nil and the generated RFC Message-ID.
+	if queuedTrace != nil {
+		queuedTrace.Outcome = outcomeQueued
+		queuedTrace.RFCMessageID = sentMsg.MsgID
+		mid := sentMsg.ID
+		queuedTrace.MessageID = &mid
+		h.recordTrace(buildTrace(*queuedTrace))
 	}
 
 	// Build raw RFC 2822 message for outbound queue entries.
@@ -1346,19 +1393,6 @@ func (h *MessageHandler) GetThread(w http.ResponseWriter, r *http.Request) {
 	respond.List(w, messages, nil)
 }
 
-// logPipelineExecution persists a pipeline execution result to the pipeline_logs table.
-func (h *MessageHandler) logPipelineExecution(pipelineID uint, messageID *uint, direction string, result *pipeline.ExecutionResult) {
-	stepsJSON, _ := json.Marshal(result.Steps)
-	h.db.Create(&models.PipelineLog{
-		PipelineID: pipelineID,
-		MessageID:  messageID,
-		Direction:  direction,
-		Action:     string(result.FinalAction),
-		Steps:      stepsJSON,
-		DurationMS: result.Duration.Milliseconds(),
-	})
-}
-
 // GetRawMessage returns the raw RFC 2822 message content.
 // GET /api/v1/messages/{id}/raw
 func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
@@ -1836,6 +1870,9 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	// ── Run inbound pipeline ─────────────────────────────────────────
+	// deliveredTrace, set in the pipeline's continue branch, defers recording the
+	// happy-path trace until the Message row exists so its message_id is non-nil.
+	var deliveredTrace *traceInputs
 	if h.engine != nil {
 		var pipelineCfg *pipeline.PipelineConfig
 		var dbPipeline models.Pipeline
@@ -1862,10 +1899,23 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			return nil, fmt.Errorf("pipeline execution failed: %w", pipeErr)
 		}
 
-		h.logPipelineExecution(pipelineCfg.ID, nil, "inbound", pipelineResult)
+		// Base trace inputs shared by every terminal branch. The envelope,
+		// transport and RFC Message-ID are snapshotted here (pre-continue) so a
+		// later FinalEmail reassignment can't alter them; per-branch code sets
+		// Outcome (and, on delivery, MessageID) before recording.
+		traceBase := traceInputs{
+			PipelineID:   pipelineCfg.ID,
+			Direction:    "inbound",
+			Result:       pipelineResult,
+			Envelope:     emailJSON.Envelope,
+			Transport:    transportLabel(params.ReceivedTLS),
+			RFCMessageID: emailJSON.Headers.MessageID,
+		}
 
 		switch pipelineResult.FinalAction {
 		case pipeline.ActionReject:
+			traceBase.Outcome = outcomeRejected
+			h.recordTrace(buildTrace(traceBase))
 			return nil, fmt.Errorf("rejected: %s", pipelineResult.RejectMsg)
 		case pipeline.ActionQuarantine:
 			preview := params.BodyText
@@ -1882,13 +1932,23 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				ReceivedAt:       time.Now(),
 				ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
 			})
+			traceBase.Outcome = outcomeQuarantined
+			h.recordTrace(buildTrace(traceBase))
 			return nil, nil // quarantined, not an error but no message created
 		case pipeline.ActionDiscard:
+			traceBase.Outcome = outcomeDiscarded
+			h.recordTrace(buildTrace(traceBase))
 			return nil, nil // discarded, not an error but no message created
 		case pipeline.ActionDefer:
+			traceBase.Outcome = outcomeDeferred
+			h.recordTrace(buildTrace(traceBase))
 			return nil, fmt.Errorf("deferred: try again later")
 		case pipeline.ActionContinue:
 			emailJSON = pipelineResult.FinalEmail
+			// Stash the delivered trace; it is recorded after the Message row is
+			// created so message_id is non-nil (the only path where it is set).
+			base := traceBase
+			deliveredTrace = &base
 		}
 	}
 
@@ -1964,6 +2024,18 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 
 	if err := h.db.Create(&msg).Error; err != nil {
 		return nil, fmt.Errorf("failed to create message: %w", err)
+	}
+
+	// ── Record the delivered trace ───────────────────────────────────
+	// The pipeline said continue and the Message row now exists — record the
+	// happy-path trace with message_id non-nil (the sole path that sets it) and
+	// the persisted RFC Message-ID (generated above if the sender supplied none).
+	if deliveredTrace != nil {
+		deliveredTrace.Outcome = outcomeDelivered
+		deliveredTrace.RFCMessageID = msg.MsgID
+		mid := msg.ID
+		deliveredTrace.MessageID = &mid
+		h.recordTrace(buildTrace(*deliveredTrace))
 	}
 
 	// ── Update quota ─────────────────────────────────────────────────
