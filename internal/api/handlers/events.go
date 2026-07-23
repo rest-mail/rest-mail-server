@@ -13,7 +13,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
 
@@ -264,17 +263,5 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 // if the account is a WebmailAccount owned by the caller, then falls back to
 // checking LinkedAccounts.
 func (h *EventHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
-	var account models.WebmailAccount
-	if err := h.db.First(&account, accountID).Error; err == nil {
-		if account.ID == webmailAccountID {
-			return account.PrimaryMailboxID, nil
-		}
-	}
-
-	var linked models.LinkedAccount
-	if err := h.db.Where("webmail_account_id = ? AND id = ?", webmailAccountID, accountID).First(&linked).Error; err == nil {
-		return linked.MailboxID, nil
-	}
-
-	return 0, fmt.Errorf("account not found or access denied")
+	return resolveAccountMailbox(h.db, accountID, webmailAccountID)
 }
