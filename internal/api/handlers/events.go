@@ -188,7 +188,7 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 	}
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 
-	claims, err := h.jwtService.ValidateToken(token)
+	claims, err := h.jwtService.ValidateAccessToken(token)
 	if err != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
 		return
