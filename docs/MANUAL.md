@@ -8,16 +8,16 @@ Originals are preserved under `docs/plans/archive/` for historical reference.
 
 ## 1. Overview
 
-RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, a pluggable pipeline engine (16+ built-in filters plus JavaScript and Sieve custom filters), DKIM/SPF/DMARC/ARC/MTA-STS/TLS-RPT support, and a standalone CLI for mail server auditing.
+RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, and a pluggable pipeline engine (16+ built-in filters plus JavaScript and Sieve custom filters). Email authentication and policy — DKIM, ARC, DMARC, MTA-STS, and Sieve — are provided by the extracted libraries `rest-mail/{dkim,arc,dmarc,mtasts,sieve}`. The standalone mail-server auditing CLI (Instant Mail Check) now lives in its own repository (see §4.5).
 
-The development stack simulates three parallel mail domains on one host — `mail1.test` and `mail2.test` run traditional Postfix + Dovecot, while `mail3.test` routes through the RESTMAIL gateways. They share one PostgreSQL instance for account data and exist to verify cross-domain delivery, anti-spoofing, and protocol compatibility in a realistic environment.
+The development testbed simulates parallel mail domains: reference `mail1.test` and `mail2.test` run traditional Postfix + Dovecot (from the separate `rest-mail/reference-mailserver` project), while `restmail.test` routes through the RESTMAIL gateways. They exist to verify cross-domain delivery, anti-spoofing, and protocol compatibility in a realistic environment.
 
 ### Key design pillars
 
-- **Protocol gateway model** — SMTP/IMAP/POP3 gateways translate wire protocol into REST calls backed by PostgreSQL. Clients see a conventional mail server; internally it is all HTTP.
+- **Protocol gateway model** — SMTP/IMAP/POP3 gateways translate wire protocol into REST calls backed by PostgreSQL. Clients see a conventional mail server; internally it is all HTTP. The SMTP gateway is a thin layer over the `rest-mail/go-smtp` fork; the IMAP and POP3 gateways are thin backend adapters over the `rest-mail/imap` and `rest-mail/pop3` server libraries; MIME parsing uses `emersion/go-message`.
 - **REST-native inter-server delivery** — When two RESTMAIL servers discover each other via the `RESTMAIL` SMTP extension, they drop SMTP and upgrade to HTTPS POST, bypassing DATA phase entirely. Fallback to SMTP for non-RESTMAIL peers.
-- **Pluggable everywhere** — DNS providers (dnsmasq / manual / externaldns / cloudflare / route53), pipeline filters, certificate management, and authentication backends are all swappable.
-- **Dual-DB compatibility** — Passwords stored in Dovecot-compatible `{BLF-CRYPT}` format so mail1/mail2 and mail3 share one accounts table.
+- **Pluggable everywhere** — DNS providers (dnsmasq / manual / externaldns), pipeline filters, certificate management, and authentication backends are all swappable.
+- **Dovecot compatibility** — Passwords stored in Dovecot-compatible `{BLF-CRYPT}` format, so RESTMAIL mailboxes interoperate with the traditional Postfix/Dovecot reference servers.
 
 ### Top-level directory layout
 
@@ -29,19 +29,19 @@ internal/             Shared packages (api, auth, config, crypto, db, dns, gatew
 webmail/              React end-user webmail (Vite + TS + Tailwind)
 admin/                React admin UI (TanStack Router + Zustand + Tailwind v4)
 website/              Static project landing page
-projects/             Dockerfiles and config templates (postfix, dovecot, dnsmasq,
-                      gateways, js-filter-sidecar, etc.)
-docker-compose.yml    Core stack (+ override and profile files)
-Taskfile.yml          Task runner for dev/build/test workflows
+projects/             Dockerfiles and config templates (dnsmasq, smtp/imap/pop3
+                      gateways, js-filter-sidecar, api-entrypoint)
+Taskfile.yml          Task runner for dev/build/test workflows (per-service
+tasks/                image + container tasks; run `task --list`)
 tests/e2e/            End-to-end integration test suite
 docs/                 This manual + reference docs + archived plans
 ```
 
 ### Development environment notes
 
-- The shared docker network `rest-mail_mailnet` uses subnet **`10.99.0.0/16`** (moved from `172.20.0.0/16` on 2026-04-22 to avoid host-level collisions with docker's default auto-allocation pool).
-- Static IPs are load-bearing, not defensive: `dnsmasq` publishes A records at specific IPs, SPF records embed literal IPs (`v=spf1 ip4:10.99.0.11 -all`), and Postfix `mynetworks` uses the CIDR. Do not switch to docker service-name DNS without reworking the mail-internet simulation.
-- Every `start:*` task in `Taskfile.yml` is marked `run: once`. Without this, parallel `docker compose up --force-recreate` invocations race on transitive dependencies and fail with "container name already in use."
+- The shared docker network `mailnet` uses subnet **`10.99.0.0/16`** (moved from `172.20.0.0/16` on 2026-04-22 to avoid host-level collisions with docker's default auto-allocation pool). It is created by `task testbed:bootstrap` / `task testbed:up`.
+- Static IPs are load-bearing, not defensive: `dnsmasq` publishes A records at specific IPs, SPF records embed literal IPs (`v=spf1 ip4:10.99.0.13 -all`), and the reference Postfix `mynetworks` uses the CIDR. Do not switch to docker service-name DNS without reworking the mail-internet simulation.
+- The stack is no longer a single `docker-compose.yml`: each service is its own container image managed by discrete Taskfile tasks (`task <service>:up` / `:down`), started against the shared testbed. Run `task --list` for the full catalog and `task status` for current state.
 
 ---
 
@@ -84,14 +84,14 @@ Design docs for 7 pipeline/gateway integration fixes and 5 API endpoint wiring t
 
 ## 3. Architecture
 
-### 3.1 Three-server testing model
+### 3.1 Multi-server testing model
 | Domain | Server type | Services |
 |--------|-------------|----------|
-| `mail1.test` | Traditional | Postfix + Dovecot, shared PostgreSQL backend |
-| `mail2.test` | Traditional | Postfix + Dovecot, shared PostgreSQL backend |
-| `mail3.test` | RESTMAIL | Go gateways → REST API → PostgreSQL |
+| `mail1.test` | Traditional | Postfix + Dovecot (reference-mailserver project) |
+| `mail2.test` | Traditional | Postfix + Dovecot (reference-mailserver project) |
+| `restmail.test` | RESTMAIL | Go gateways → REST API → PostgreSQL |
 
-All three share one `restmail` database, which holds `domains`, `mailboxes`, `aliases`, `messages`, `webmail_accounts`, `linked_accounts`, `quota_usage`, and ancillary tables.
+The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds `domains`, `mailboxes`, `aliases`, `messages`, `webmail_accounts`, `linked_accounts`, `quota_usage`, and ancillary tables. The traditional reference servers (`mail1.test`, `mail2.test`) run their own storage from the separate `rest-mail/reference-mailserver` project and are used only for cross-domain interop testing.
 
 ### 3.2 Database schema (selected core tables)
 - `domains` — name, `server_type` (traditional|restmail), active, default_quota_bytes
@@ -117,13 +117,15 @@ All three share one `restmail` database, which holds `domains`, `mailboxes`, `al
 - Logging: `log/slog` JSON to stdout only. External systems collect logs.
 - DB pooling: `database/sql` with `DB_MAX_OPEN_CONNS` (default 25), `DB_MAX_IDLE_CONNS` (10), `DB_CONN_MAX_LIFETIME` (5 m). PgBouncer recommended for production HA.
 
-### 3.5 Docker stack
-Default `docker compose up` starts 9 core services: API, webmail, website, admin, SMTP/IMAP/POP3 gateways, Postfix+Dovecot for mail1/mail2, PostgreSQL (one instance per test domain), dnsmasq. Optional profiles:
-- `scanning` — rspamd + ClamAV + clamav-rest proxy
-- `monitoring` — Prometheus + Grafana + postgres-exporter
-- `security` — fail2ban sidecar
+### 3.5 Container stack
+The stack no longer uses a single `docker-compose.yml`. Each service is its own container image, started and managed through the Taskfile — `task <service>:up` / `:down` / `:logs` / `:restart` (run `task --list` for the full set). Core services: API, webmail, website, admin, SMTP/IMAP/POP3 gateways, the JavaScript-filter sidecar, PostgreSQL, and dnsmasq.
 
-All containers use dnsmasq (10.99.0.3) as resolver. Data persistence via named volumes: `postgres-data`, `mail1-maildir`, `mail2-maildir`, `mail3-attachments`, `certs`.
+A shared **testbed** (the `mailnet` network, the certs volume, and the dnsmasq fragments volume) underpins everything and is brought up with `task testbed:up`. Traditional reference Postfix/Dovecot servers (`mail1.test`, `mail2.test`) are not part of this repo — they come from the separate `rest-mail/reference-mailserver` project and are wired in for the e2e topology (`task e2e:up`).
+
+Optional add-on:
+- `task monitoring:up` — Prometheus + Grafana + postgres-exporter.
+
+Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence uses named volumes (per-service data/logs volumes plus the shared `testbed_certs`).
 
 ---
 
@@ -243,11 +245,11 @@ Recommended order (inbound): `size_check → {spf,dkim,arc,dmarc}_check → doma
 
 ### 4.3 Mail gateways
 
-Implementations at [internal/gateway/smtp/](../internal/gateway/smtp/), [internal/gateway/imap/](../internal/gateway/imap/), [internal/gateway/pop3/](../internal/gateway/pop3/).
+Implementations at [internal/gateway/smtp/](../internal/gateway/smtp/), [internal/gateway/imap/](../internal/gateway/imap/), [internal/gateway/pop3/](../internal/gateway/pop3/). The wire-protocol engines are external libraries; each in-repo gateway supplies only the backend (accounts, folders, messages) and policy:
 
-- SMTP: inbound (25), submission (587), implicit TLS (465). Wired for outbound queue — inserts into `outbound_queue` on non-local RCPT in `handleDATA` with `ExpiresAt: now+72h`, `MaxRetries: 30`.
-- IMAP: 143 / 993. EXPUNGE tracks `\Deleted` per session and emits `* N EXPUNGE` in descending sequence order per RFC 3501. CREATE validates folder name (length, reserved names, special chars). SEARCH supports `ALL`, `UNSEEN`, `SEEN`, `FLAGGED`, `UNFLAGGED`, `FROM`/`TO`/`SUBJECT` substring, `SINCE`/`BEFORE`/`ON`, UID sets, `NOT`/`OR` combinators.
-- POP3: 110 / 995. Basic STAT/LIST/RETR/DELE/QUIT.
+- **SMTP**: inbound (25), submission (587), implicit TLS (465). Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+72h`, `MaxRetries: 30`.
+- **IMAP**: 143 / 993. A thin `Backend` adapter over the `rest-mail/imap` server library; the library handles the IMAP protocol (SELECT/FETCH/SEARCH/EXPUNGE/CREATE etc.) and the gateway serves mailbox data from the REST/DB layer.
+- **POP3**: 110 / 995. A thin `Backend` adapter over the `rest-mail/pop3` server library (STAT/LIST/RETR/DELE/QUIT).
 
 #### Outbound queue worker
 At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Polls `outbound_queue`, attempts delivery, parses SMTP errors via `SMTPError{Code, Enhanced, Message}` + `parseSMTPError()`, and:
@@ -263,10 +265,10 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 - Hot reload via `fsnotify`: [internal/gateway/tlsutil/sni.go](../internal/gateway/tlsutil/sni.go) watches cert directory, invalidates cache entry on WRITE/CREATE. `StartWatching()` / `Stop()` lifecycle called from each gateway's main.go.
 
 #### PROXY protocol
-Enabled via `PROXY_PROTOCOL_TRUSTED_CIDRS` (comma-separated). Uses pires/go-proxyproto. Trusted connections: parse header, rewrite `RemoteAddr` to real client IP. Untrusted or missing header: ignored. Safe in mixed environments. SMTP/IMAP/POP3 gateways all support it. See [docs/proxy-protocol.md](proxy-protocol.md) for HAProxy / nginx examples.
+Enabled via `PROXY_PROTOCOL_TRUSTED_CIDRS` (comma-separated). Uses pires/go-proxyproto. Trusted connections: parse header, rewrite `RemoteAddr` to real client IP. Untrusted or missing header: ignored. Safe in mixed environments. **SMTP gateway only** — the IMAP and POP3 gateways do not read PROXY headers. The header is read lazily on each connection's own goroutine (first read/write), not in the accept loop, so a slow proxy handshake cannot stall acceptance of other connections. See [docs/proxy-protocol.md](proxy-protocol.md) for HAProxy / nginx examples.
 
 #### Connection limiter (`internal/gateway/connlimiter/`)
-Per-IP + global atomic counters. Per-IP auth-failure window with exponential backoff ban. Defaults: `MaxPerIP=20`, `MaxGlobal=1000`, `AuthMaxFails=5`, `AuthBanWindow=10m`, `AuthBanDuration=30m`. Methods: `Accept(ip)`, `Release(ip)`, `RecordAuthFail(ip)`, `ResetAuth(ip)`, `IsBanned(ip)`. Wired into each gateway's acceptLoop before goroutine spawn, plus auth handlers on success/failure.
+Per-IP + global atomic counters. Per-IP auth-failure window with exponential backoff ban. Defaults: `MaxPerIP=20`, `MaxGlobal=1000`, `AuthMaxFails=5`, `AuthBanWindow=10m`, `AuthBanDuration=30m`. Methods: `Accept(ip)`, `Release(ip)`, `RecordAuthFail(ip)`, `ResetAuth(ip)`, `IsBanned(ip)`. On SMTP, admission (peer-IP resolution + the limiter check) runs lazily on each connection's own goroutine via `limitedConn`, not in the accept loop; on IMAP/POP3 the same limiter is passed to the server libraries, which satisfy its structural `Limiter` interface. Auth handlers call it on success/failure.
 
 Two-layer ban system: in-memory limiter (fast) + persistent `bans` table (durable). `bancheck.Wire()` attaches a DB-backed `BanChecker` function to the limiter. Admin API at `/api/v1/admin/bans` for manual management. Optional fail2ban sidecar watches gateway JSON logs for `"event":"smtp_auth_failed"` patterns and calls the ban API; enabled via the `security` compose profile. See [docs/fail2ban-setup.md](fail2ban-setup.md).
 
@@ -277,7 +279,7 @@ Pluggable `Provider` interface at [internal/dns/](../internal/dns/) with methods
 | Provider | Value | Use case | Behavior |
 |----------|-------|----------|----------|
 | Manual | `manual` | Production with external DNS | Logs required records; no auto-apply |
-| Dnsmasq | `dnsmasq` (default) | Docker Compose dev | Writes to dnsmasq config file (`address=`, `mx-host=`, `txt-record=`) |
+| Dnsmasq | `dnsmasq` (default) | Development testbed | Writes to dnsmasq config file (`address=`, `mx-host=`, `txt-record=`, `srv-host=`) |
 | ExternalDNS | `externaldns` | Kubernetes with external-dns controller | Writes `DNSEndpoint` YAMLs to `/etc/externaldns/`; verify does live lookups |
 
 `RequiredRecords(domain, ip)` generates the standard 4-record set: A, MX, TXT (SPF), TXT (DMARC). Custom providers implement the interface and register in the factory. See [docs/dns-providers.md](dns-providers.md).
@@ -364,11 +366,11 @@ admin/app/
 
 ### 4.8 Console admin tool
 
-Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `task build:console` (auto-detects platform) or `task build:console:all`. Run: `task console` or `task run:console`.
+Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `task build:console` (auto-detects platform) or `task build:console:all`. Run: `task run:console` (runs inside the api container).
 
 ### 4.9 Metrics & monitoring
 
-Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `docker compose --profile monitoring up -d` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter included).
+Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `task monitoring:up` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter included).
 
 ### 4.10 E2E test suite
 
@@ -527,7 +529,7 @@ The following were drafted as design + implementation plans on 2026-02-17 and 20
 
 #### Backup & restore (BACKUP_PLAN.md)
 Design complete, nothing implemented. Targets:
-- **Simple (dev / single-instance):** daily `pg_dump -Fc`, 7-day retention, backup container in docker-compose.
+- **Simple (dev / single-instance):** daily `pg_dump -Fc`, 7-day retention, via a scheduled backup container / task.
 - **Production:** WAL archiving + pgBackRest or WAL-G; base backup weekly, continuous WAL to S3/GCS/Azure Blob, `archive_timeout = 60`. Near-zero RPO.
 - Attachments: tar snapshot daily or S3 versioning.
 - MASTER_KEY backup procedure — **critical; losing the key means losing access to every encrypted TLS/DKIM private key**. Not yet documented.
@@ -537,7 +539,7 @@ Design complete, nothing implemented. Targets:
 - Open questions: storage target? Acceptable RPO? Backup encryption? Cross-region replication?
 
 #### Internationalized Email (EAI_PLAN.md)
-Four phases, none implemented. Only SMTPUTF8 capability detection exists in [internal/mailcheck/smtp.go](../internal/mailcheck/smtp.go).
+Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection* was part of the Instant Mail Check tool, which has since been extracted to the `rest-mail/instantmailcheck` repo — see §4.5 — so `internal/mailcheck/` no longer exists here.)
 - **Phase A — IDN domains** (lowest risk): `golang.org/x/net/idna`, store Unicode, convert to Punycode for DNS/SMTP.
 - **Phase B — SMTPUTF8 gateway** (medium risk): advertise capability, accept UTF-8 in MAIL FROM / RCPT TO / DATA, MIME parser RFC 6532 update, outbound capability detection + RFC 6857 message downgrading.
 - **Phase C — IMAP/POP3**: advertise `UTF8=ACCEPT` (IMAP) and `UTF8` (POP3), return raw UTF-8 headers when enabled, UTF-8 folder names.
@@ -548,7 +550,6 @@ Four phases, none implemented. Only SMTPUTF8 capability detection exists in [int
 
 #### Phase-6+ items from original PLAN.md
 - Cross-domain delivery verification (user@mail1.test → user@mail2.test)
-- `externaldns` adapter for k8s
 - Periodic quota reconciliation task (fix drift)
 - Certificate management: Let's Encrypt full integration (only self-signed for `.test` exists today)
 - OpenAPI → TypeScript type generation pipeline
@@ -584,25 +585,31 @@ Four phases, none implemented. Only SMTPUTF8 capability detection exists in [int
 | `TLS_CERT_DIR` | *(empty)* | Per-domain cert/key directory for SNI |
 | `ACME_ENABLED` | `false` | Let's Encrypt auto-renewal |
 | `ACME_EMAIL` | *(empty)* | Contact email |
+| `ACME_DIRECTORY` | `https://acme-v02.api.letsencrypt.org/directory` | ACME directory URL |
 | `ACME_STAGING` | `false` | Use staging directory |
 
 ### 6.3 Gateways
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GATEWAY_HOSTNAME` | `mail3.test` | Hostname announced by gateways |
+| `GATEWAY_HOSTNAME` | `localhost` | Hostname announced by gateways (testbed sets `restmail.test`) |
 | `API_BASE_URL` | `http://localhost:8080` | Internal API URL |
 | `SMTP_PORT_INBOUND` | `25` | |
 | `SMTP_PORT_SUBMISSION` | `587` | |
 | `SMTP_PORT_SUBMISSION_TLS` | `465` | |
+| `SMTP_MAX_MESSAGE_SIZE` | `10485760` (10 MiB) | Max accepted message size, bytes. Drives EHLO `SIZE`, `MAIL SIZE=` check, and DATA enforcement. Must be positive; a malformed/non-positive value is a hard startup error |
+| `SMTP_MIN_TRANSFER_RATE` | `16384` (16 KiB/s) | Anti-slowloris average transfer-rate floor for message bodies, bytes/sec. `0` disables the rate floor |
+| `SMTP_TRANSFER_GRACE_PERIOD` | `60` | Seconds at the start of a body transfer during which the rate floor is not enforced |
+| `SMTP_TRANSFER_STALL_TIMEOUT` | `300` | Seconds a body transfer may deliver zero bytes before the connection is dropped |
 | `IMAP_PORT` | `143` | |
 | `IMAP_TLS_PORT` | `993` | |
 | `POP3_PORT` | `110` | |
 | `POP3_TLS_PORT` | `995` | |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | |
+| `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461) |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated |
-| `PROXY_PROTOCOL_TRUSTED_CIDRS` | *(empty)* | Comma-separated CIDRs; empty disables |
-| `DNS_PROVIDER` | `dnsmasq` | `dnsmasq`, `externaldns`, `manual`, `cloudflare`, `route53` |
+| `PROXY_PROTOCOL_TRUSTED_CIDRS` | *(empty)* | Comma-separated CIDRs; empty disables. SMTP gateway only |
+| `DNS_PROVIDER` | `dnsmasq` | `dnsmasq`, `externaldns`, `manual` |
 
 ### 6.4 Connection limiter defaults
 | Variable | Default | Purpose |
@@ -624,28 +631,31 @@ Four phases, none implemented. Only SMTPUTF8 capability detection exists in [int
 ## 7. Operational playbooks
 
 ### 7.1 Bringing up the stack
+The stack is driven by per-service Taskfile tasks, not a single compose file. Run `task --list` for the full catalog; `task status` shows what is running and where.
 ```bash
-task dev                 # full hot-reload dev env (air + Vite)
-task up                  # same as dev, without hot-reload
-task down                # stop + remove containers
-task reset               # full teardown + prune stale names
-task reset:hard          # teardown + volumes (clean slate)
-task db:reset            # migrate + seed (admin/admin123!@ + mail3.test accounts)
-task logs                # tail all container logs
+task testbed:up          # shared testbed: mailnet network + certs volume + dnsmasq
+task dev                 # bring up the full restmail stack (alias for restmail:up)
+task restmail:down       # stop the restmail stack (preserves data volumes)
+task restmail:restart    # stop + recreate the full stack (rebuilds images)
+task purge               # remove all rest-mail-* containers (keeps volumes)
+task db:reset            # drop postgres data volume, recreate, then seed (destructive)
+task db:seed             # seed the instance DB (admin/admin123!@ + restmail.test accounts)
+task postgres:reset      # drop the postgres data volume (destructive, clean slate)
+task <service>:logs      # tail a service's logs (e.g. task smtp-gateway:logs)
 ```
 
-Access: website `http://localhost/`, webmail `/webmail`, API `/api`, API docs `/api/docs`. Direct (bypass reverse proxy): webmail `http://localhost:3001` (Vite HMR), API `http://localhost:8080`.
+Access depends on the local reverse-proxy / DNS setup (see `task project:proxy:help`): website `/`, webmail `/webmail`, API `/api`, API docs `/api/docs`. Direct: API `http://localhost:8080`.
 
 ### 7.2 Building
 ```bash
-task build                          # everything
+task build                          # all Go binaries
 task build:api
-task build:gateways
+task build:gateways                 # smtp / imap / pop3
 task build:console                  # auto-detects OS/arch
-task build:instantmailcheck
-task build:instantmailcheck:all     # cross-compile all platforms
-task build:tools                    # certgen, migrate, seed, website, instantmailcheck
+task build:console:all              # cross-compile all platforms
+task build:tools                    # certgen, migrate, seed, website
 ```
+(Instant Mail Check is no longer built here — it moved to the `rest-mail/instantmailcheck` repo; see §4.5.)
 
 ### 7.3 Testing
 ```bash
@@ -687,12 +697,12 @@ services:
 Use `/32` CIDRs; never `0.0.0.0/0`. Firewall gateway ports so only the proxy can reach them. Prefer PROXY v2.
 
 ### 7.5 Enabling fail2ban
-`docker compose --profile security up -d` starts the sidecar. It watches gateway JSON logs for `"event":"smtp_auth_failed"` (and IMAP/POP3 equivalents) and calls `POST /api/v1/admin/bans` with a duration. Default jails: 3 (SMTP / IMAP / POP3), 5 retries, 30 m ban.
+The `security`/`scanning` compose profiles no longer exist (the single compose file was removed). The optional fail2ban sidecar and scanners are provided through the reference / e2e topology rather than a repo task. The sidecar watches gateway JSON logs for `"event":"smtp_auth_failed"` (and IMAP/POP3 equivalents) and calls `POST /api/v1/admin/bans` with a duration. Default jails: 3 (SMTP / IMAP / POP3), 5 retries, 30 m ban. See [docs/fail2ban-setup.md](fail2ban-setup.md).
 
 Recommended ban durations: SMTP brute (5 fails) = 1 h; IMAP brute (10 fails) = 30 m; known spam = 720 h; persistent abuser = permanent.
 
 ### 7.6 Enabling scanning
-`docker compose --profile scanning up -d` starts rspamd (11333) and ClamAV REST proxy (3000). Configure filters on relevant pipelines:
+rspamd (`rspamd:11333`) and the ClamAV REST proxy (`clamav-rest:3000`) are optional external scanners; the built-in `rspamd` and `clamav` pipeline filters call them. Once the scanners are reachable, configure the filters on the relevant pipelines:
 ```json
 {"name": "rspamd", "type": "action", "enabled": true,
  "config": {"url": "http://rspamd:11333", "timeout_ms": 5000, "fallback_action": "continue"}}
@@ -711,39 +721,40 @@ Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upser
 ### 7.8 Test accounts (seeded by `task db:seed`)
 **Admin:** `admin` / `admin123!@` — role `superadmin`, wildcard `*` capability.
 
-**mail3.test mailboxes** (all password `password123`):
-- `eve@mail3.test` (Eve Wilson)
-- `frank@mail3.test` (Frank Miller)
-- `postmaster@mail3.test`
+**restmail.test mailboxes** (all password `password123`):
+- `eve@restmail.test` (Eve Wilson)
+- `frank@restmail.test` (Frank Miller)
+- `postmaster@restmail.test`
 
-**Aliases on mail3.test:**
-- `info@mail3.test → eve@mail3.test`
-- `admin@mail3.test → eve@mail3.test`
+**Aliases on restmail.test:**
+- `info@restmail.test → eve@restmail.test`
+- `admin@restmail.test → eve@restmail.test`
 
 ---
 
-## 8. Test domain IPs (dev stack on `10.99.0.0/16`)
+## 8. Test stack IPs (dev testbed on `10.99.0.0/16`)
+
+These are the default static IPs for the `restmail.test` instance (overridable per-service via the corresponding `*_IP` task var). The traditional reference servers get their IPs from the separate `rest-mail/reference-mailserver` project.
+
+**restmail.test instance:**
 
 | Service | IP |
 |---------|-----|
-| dnsmasq | `10.99.0.3` |
-| api | `10.99.0.20` |
-| postfix-mail1 | `10.99.0.11` |
-| postfix-mail2 | `10.99.0.12` |
-| mail3.test (gateway) A record | `10.99.0.13` |
-| dovecot-mail1 | `10.99.0.14` |
-| smtp-gateway | `10.99.0.13` (primary) |
+| dnsmasq (testbed resolver) | `10.99.0.10` |
+| smtp-gateway (`restmail.test` A record) | `10.99.0.13` |
 | imap-gateway | `10.99.0.15` |
 | pop3-gateway | `10.99.0.16` |
-| dovecot-mail2 | `10.99.0.17` |
-| postgres-mail1 | `10.99.0.41` |
-| postgres-mail2 | `10.99.0.42` |
-| postgres-mail3 | `10.99.0.43` |
-| webmail | `10.99.0.22` |
-| website | `10.99.0.23` |
-| certgen | `10.99.0.99` |
+| api | `10.99.0.20` |
+| webmail | `10.99.0.21` |
+| js-filter sidecar | `10.99.0.22` |
+| admin | `10.99.0.27` |
+| postgres | `10.99.0.43` |
 
-SPF records in [docker/dnsmasq/dnsmasq.conf](../docker/dnsmasq/dnsmasq.conf) publish literal IPs per-domain.
+**Monitoring add-on (`task monitoring:up`):** prometheus `10.99.0.30`, grafana `10.99.0.31`, postgres-exporter `10.99.0.32`.
+
+**Reference servers (e2e, from `rest-mail/reference-mailserver`):** e.g. `mail2.test` Postfix `10.99.0.12`, Dovecot `10.99.0.112`, Postgres `10.99.0.42`; rspamd `10.99.0.23`, fail2ban `10.99.0.24`.
+
+Static IPs are load-bearing: dnsmasq publishes A records at specific IPs and SPF records embed literal IPs, so the addresses cannot be reassigned without updating the DNS fragments.
 
 ---
 

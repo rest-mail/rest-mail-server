@@ -21,7 +21,7 @@ Source files:
 
 | File | Purpose |
 |------|---------|
-| `internal/dns/provider.go` | Interface definition, shared types, `RequiredRecords` helper |
+| `internal/dns/provider.go` | Interface definition, shared types, `RequiredRecords` + `FullRequiredRecords` helpers |
 | `internal/dns/manual.go` | Manual (log-only) adapter |
 | `internal/dns/dnsmasq.go` | dnsmasq file-based adapter for local development |
 | `internal/dns/externaldns.go` | Kubernetes external-dns CRD adapter |
@@ -61,11 +61,13 @@ Represents a single DNS record to create or update.
 
 ```go
 type DNSRecord struct {
-    Type     string `json:"type"`     // A, MX, TXT, PTR, CNAME
-    Name     string `json:"name"`     // e.g. "mail1.test", "_dmarc.mail1.test"
-    Value    string `json:"value"`
+    Type     string `json:"type"`     // A, MX, TXT, PTR, CNAME, SRV
+    Name     string `json:"name"`     // e.g. "restmail.test", "_dmarc.restmail.test"
+    Value    string `json:"value"`    // target hostname for MX/SRV; IP for A; text for TXT
     TTL      int    `json:"ttl"`
-    Priority int    `json:"priority"` // for MX records
+    Priority int    `json:"priority"` // MX preference; SRV priority
+    Weight   int    `json:"weight"`   // SRV weight (0 = not applicable)
+    Port     int    `json:"port"`     // SRV port (0 = not applicable)
 }
 ```
 
@@ -109,6 +111,8 @@ This produces four records:
 
 DKIM records are not included here because they are generated separately by the `certgen` tool and require the public key material.
 
+A companion helper, `FullRequiredRecords(domain, mailIP, apiIP)`, returns the core four plus the records needed for a fully-configured mail domain: `autoconfig`/`autodiscover` A records, `SRV` service-discovery records (`_submission`, `_imap`, `_imaps`, `_pop3`, `_pop3s`), MTA-STS (RFC 8461: `_mta-sts` TXT + `mta-sts` A), and TLS-RPT (RFC 8460: `_smtp._tls` TXT). If `apiIP` is empty it defaults to `mailIP`.
+
 ---
 
 ## Built-in Providers
@@ -144,9 +148,9 @@ The simplest possible adapter. It does not create, modify, or verify any DNS rec
 **Name:** `"dnsmasq"`
 **Default provider** (used when `DNS_PROVIDER` is not set)
 
-Writes DNS records directly to a dnsmasq configuration file. This is the adapter used in the Docker Compose development environment, where a dnsmasq container provides DNS resolution for the `.test` domains.
+Writes DNS records directly to a dnsmasq configuration file. This is the adapter used in the development testbed, where a dnsmasq container provides DNS resolution for the `.test` domains.
 
-**Use case:** Local development with Docker Compose. The dnsmasq container reads config files from a mounted volume, so writing a file is equivalent to creating DNS records.
+**Use case:** Local development. The testbed's dnsmasq container reads config files from a mounted volume, so writing a file is equivalent to creating DNS records.
 
 **Constructor:**
 
@@ -160,18 +164,18 @@ If `configPath` is empty, it defaults to `/etc/dnsmasq.d/domains.conf`.
 
 | Method | Action |
 |--------|--------|
-| `EnsureRecords` | Writes a dnsmasq config file with `address=`, `mx-host=`, `txt-record=`, `ptr-record=` directives |
+| `EnsureRecords` | Writes a dnsmasq config file with `address=`, `mx-host=`, `txt-record=`, `ptr-record=`, `srv-host=` directives |
 | `RemoveRecords` | Deletes the config file |
 | `VerifyRecords` | Returns `nil, nil` (assumes records are always correct in dev) |
 
 **Example generated config:**
 
 ```
-# DNS records for mail1.test
-address=/mail1.test/10.99.0.11
-mx-host=mail1.test,mail1.test,10
-txt-record=mail1.test,"v=spf1 ip4:10.99.0.11 -all"
-txt-record=_dmarc.mail1.test,"v=DMARC1; p=reject; rua=mailto:postmaster@mail1.test"
+# DNS records for restmail.test
+address=/restmail.test/10.99.0.13
+mx-host=restmail.test,restmail.test,10
+txt-record=restmail.test,"v=spf1 ip4:10.99.0.13 -all"
+txt-record=_dmarc.restmail.test,"v=DMARC1; p=reject; rua=mailto:postmaster@restmail.test"
 ```
 
 **Supported record types:**
@@ -182,8 +186,9 @@ txt-record=_dmarc.mail1.test,"v=DMARC1; p=reject; rua=mailto:postmaster@mail1.te
 | MX | `mx-host=<name>,<value>,<priority>` |
 | TXT | `txt-record=<name>,"<value>"` |
 | PTR | `ptr-record=<name>,<value>` |
+| SRV | `srv-host=<name>,<target>,<port>,<priority>,<weight>` |
 
-CNAME records are logged as unsupported warnings since dnsmasq handles them differently.
+Any other record type (e.g. CNAME) hits the default case and is logged as a `dnsmasq: unsupported record type` warning, then skipped.
 
 ### 3. ExternalDNS Provider
 
@@ -262,7 +267,7 @@ The DNS provider is selected via the `DNS_PROVIDER` environment variable:
 | `manual` | ManualProvider | None |
 | `externaldns` | ExternalDNSProvider | Output dir: `/etc/externaldns/` |
 
-The default value is `"dnsmasq"`, which is appropriate for the Docker Compose development environment.
+The default value is `"dnsmasq"`, which is appropriate for the development testbed. (Note: this is the *application* provider name selected by `DNS_PROVIDER`; it is distinct from the testbed's DNS container, which is named `testbed-dnsmasq`.)
 
 Provider-specific options are passed as additional arguments to the factory function (see below), not through environment variables. The config struct in `internal/config/config.go` only stores the provider name:
 
@@ -347,7 +352,7 @@ func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
 
 ### 2. Domain Handler DNS Check Endpoint
 
-The `DomainHandler.DNSCheck` method (`GET /api/v1/admin/domains/:id/dns`) performs live DNS verification for a domain. It checks MX, SPF, DMARC, DKIM, MTA-STS, and TLS-RPT records using Go's `net` package directly, independent of the provider. This endpoint is useful for confirming that records have propagated regardless of which provider created them.
+The `DomainHandler.DNSCheck` method (`GET /api/v1/admin/domains/:id/dns`) performs live DNS verification for a domain. It checks MX, SPF, DKIM, DMARC, and MTA-STS records using Go's `net` package directly, independent of the provider. This endpoint is useful for confirming that records have propagated regardless of which provider created them.
 
 ### 3. API Server Startup
 
