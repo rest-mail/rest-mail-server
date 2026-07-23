@@ -216,7 +216,17 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokens, err := h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.IsAdmin)
+	// Reissue the SAME kind of token the refresh token represents. Previously
+	// this always used the mailbox generator, so refreshing an admin session
+	// produced a mailbox access token (UserType="mailbox", no capabilities,
+	// MailboxID=0) — every admin route then 403'd and the admin was locked out
+	// until a full re-login.
+	var tokens *auth.TokenPair
+	if claims.UserType == "admin" {
+		tokens, err = h.jwtService.GenerateAdminTokenPair(claims.AdminUserID, claims.Username, claims.Capabilities)
+	} else {
+		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.IsAdmin)
+	}
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
