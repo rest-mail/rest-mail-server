@@ -149,6 +149,10 @@ smtpGateway:
     submission: 587
     submissionTLS: 465
   queueWorkers: 4
+  # Max accepted SMTP message size in bytes (drives both the EHLO SIZE
+  # advertisement and DATA enforcement). Empty = server default (10 MiB).
+  # Must be positive when set; the gateway refuses to start on 0/negative.
+  maxMessageSize: ""
   logLevel: info
   environment: production
   service:

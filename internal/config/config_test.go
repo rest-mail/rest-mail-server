@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -19,6 +20,7 @@ var allEnvKeys = []string{
 	"DNS_PROVIDER",
 	"GATEWAY_HOSTNAME", "API_BASE_URL",
 	"SMTP_PORT_INBOUND", "SMTP_PORT_SUBMISSION", "SMTP_PORT_SUBMISSION_TLS",
+	"SMTP_MAX_MESSAGE_SIZE",
 	"IMAP_PORT", "IMAP_TLS_PORT",
 	"POP3_PORT", "POP3_TLS_PORT",
 	"QUEUE_WORKERS", "QUEUE_POLL_INTERVAL",
@@ -144,6 +146,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.QueuePollInterval != 5*time.Second {
 		t.Errorf("QueuePollInterval = %v, want %v", cfg.QueuePollInterval, 5*time.Second)
+	}
+	if cfg.SMTPMaxMessageSize != DefaultSMTPMaxMessageSize {
+		t.Errorf("SMTPMaxMessageSize = %d, want default %d", cfg.SMTPMaxMessageSize, int64(DefaultSMTPMaxMessageSize))
 	}
 
 	// Environment
@@ -286,6 +291,75 @@ func TestLoad_IntParsing(t *testing.T) {
 
 	if cfg.DBPort != 5432 {
 		t.Errorf("DBPort = %d, want fallback %d after invalid int", cfg.DBPort, 5432)
+	}
+}
+
+// ── SMTP max message size ──────────────────────────────────────────────
+
+func TestLoad_SMTPMaxMessageSize_Default(t *testing.T) {
+	clearEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if cfg.SMTPMaxMessageSize != 10*1024*1024 {
+		t.Errorf("SMTPMaxMessageSize = %d, want 10 MiB default", cfg.SMTPMaxMessageSize)
+	}
+	// Empty string behaves like unset (env files commonly render KEY=).
+	t.Setenv("SMTP_MAX_MESSAGE_SIZE", "")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load() with empty SMTP_MAX_MESSAGE_SIZE errored: %v", err)
+	}
+	if cfg.SMTPMaxMessageSize != 10*1024*1024 {
+		t.Errorf("SMTPMaxMessageSize with empty env = %d, want 10 MiB default", cfg.SMTPMaxMessageSize)
+	}
+}
+
+func TestLoad_SMTPMaxMessageSize_AdminValueRespected(t *testing.T) {
+	clearEnv(t)
+
+	// Any positive value is respected — 128 MB, 1 GB, the admin's choice.
+	for _, want := range []int64{1024, 128 * 1000 * 1000, 1 << 30} {
+		t.Setenv("SMTP_MAX_MESSAGE_SIZE", strconv.FormatInt(want, 10))
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() with SMTP_MAX_MESSAGE_SIZE=%d errored: %v", want, err)
+		}
+		if cfg.SMTPMaxMessageSize != want {
+			t.Errorf("SMTPMaxMessageSize = %d, want %d", cfg.SMTPMaxMessageSize, want)
+		}
+	}
+}
+
+func TestLoad_SMTPMaxMessageSize_Invalid(t *testing.T) {
+	clearEnv(t)
+
+	// Zero/negative → startup error (a max must always exist), and unlike the
+	// lenient getEnvInt pattern a malformed value is also an error rather than
+	// a silent fallback.
+	for _, bad := range []string{"0", "-1", "10MB", "banana"} {
+		t.Setenv("SMTP_MAX_MESSAGE_SIZE", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load() with SMTP_MAX_MESSAGE_SIZE=%q should fail", bad)
+		}
+	}
+}
+
+func TestSMTPMaxMessageSizeWarning(t *testing.T) {
+	// At or below the 100 MiB threshold: no warning.
+	for _, quiet := range []int64{1024, DefaultSMTPMaxMessageSize, SMTPMaxMessageSizeWarnThreshold} {
+		cfg := &Config{SMTPMaxMessageSize: quiet}
+		if w := cfg.SMTPMaxMessageSizeWarning(); w != "" {
+			t.Errorf("SMTPMaxMessageSizeWarning() for %d = %q, want empty", quiet, w)
+		}
+	}
+	// Above the threshold: warn (but Load still accepts the value — verified
+	// in TestLoad_SMTPMaxMessageSize_AdminValueRespected with 1 GiB).
+	cfg := &Config{SMTPMaxMessageSize: SMTPMaxMessageSizeWarnThreshold + 1}
+	if w := cfg.SMTPMaxMessageSizeWarning(); w == "" {
+		t.Error("SMTPMaxMessageSizeWarning() above threshold should be non-empty")
 	}
 }
 

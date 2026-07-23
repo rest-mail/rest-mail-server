@@ -162,12 +162,78 @@ func TestSMTP_EhloAdvertisements(t *testing.T) {
 	}
 	joined := strings.Join(lines, "\n")
 	for _, want := range []string{
-		"SIZE 10485760", // == maxMessageSize (10 MiB), matches DATA enforcement
+		"SIZE 10485760", // == defaultMaxMessageSize (10 MiB), matches DATA enforcement
 		"AUTH PLAIN LOGIN",
 		"RESTMAIL https://smtp.test/restmail",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("EHLO missing %q; got:\n%s", want, joined)
 		}
+	}
+}
+
+// TestSMTP_ConfiguredMaxMessageSize proves the admin-configured limit is a
+// single source of truth: SetMaxMessageSize drives the EHLO SIZE advertisement,
+// the MAIL FROM SIZE= parameter check, and DATA enforcement together (all
+// derived from go-smtp's MaxMessageBytes), and a message under the limit still
+// goes through.
+func TestSMTP_ConfiguredMaxMessageSize(t *testing.T) {
+	const limit = 1024 // deliberately tiny so the test stays cheap
+
+	back := newMockBackend()
+	back.local["alice@local.test"] = true
+	store := newMockStore()
+
+	h := newSMTPHarness(t, back, store, false, func(s *Server) {
+		s.SetMaxMessageSize(limit)
+	})
+
+	// EHLO advertises the configured limit, not the compiled-in default.
+	lines, final := h.readReplyAfter("EHLO client.test")
+	if replyCode(final) != "250" {
+		t.Fatalf("EHLO final = %q", final)
+	}
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "SIZE 1024") {
+		t.Errorf("EHLO should advertise SIZE 1024; got:\n%s", joined)
+	}
+	if strings.Contains(joined, "SIZE 10485760") {
+		t.Errorf("EHLO still advertises the default 10 MiB SIZE; got:\n%s", joined)
+	}
+
+	// MAIL FROM declaring SIZE= beyond the limit is refused up front (go-smtp
+	// derives this check from the same MaxMessageBytes value).
+	if r := h.cmd("MAIL FROM:<sender@remote.test> SIZE=2048"); replyCode(r) != "552" {
+		t.Errorf("MAIL with SIZE=2048 over the 1024 limit = %q, want 552", r)
+	}
+
+	// DATA exceeding the limit is rejected 552 and nothing is delivered.
+	if r := h.cmd("MAIL FROM:<sender@remote.test>"); replyCode(r) != "250" {
+		t.Fatalf("MAIL FROM = %q", r)
+	}
+	if r := h.cmd("RCPT TO:<alice@local.test>"); replyCode(r) != "250" {
+		t.Fatalf("RCPT = %q", r)
+	}
+	oversized := "Subject: Big\r\nFrom: Sender <sender@remote.test>\r\n\r\n" +
+		strings.Repeat("a", 2*limit) + "\r\n"
+	if final := h.dataBody(oversized); replyCode(final) != "552" {
+		t.Errorf("oversized DATA = %q, want 552", final)
+	}
+	if got := back.deliveredTo(); len(got) != 0 {
+		t.Errorf("oversized message must not be delivered, got %v", got)
+	}
+
+	// A message under the limit is accepted and delivered.
+	if r := h.cmd("MAIL FROM:<sender@remote.test>"); replyCode(r) != "250" {
+		t.Fatalf("MAIL FROM (retry) = %q", r)
+	}
+	if r := h.cmd("RCPT TO:<alice@local.test>"); replyCode(r) != "250" {
+		t.Fatalf("RCPT (retry) = %q", r)
+	}
+	if final := h.dataBody(testBody); replyCode(final) != "250" {
+		t.Errorf("under-limit DATA = %q, want 250", final)
+	}
+	if got := back.deliveredTo(); !reflect.DeepEqual(got, []string{"alice@local.test"}) {
+		t.Errorf("delivered = %v, want [alice@local.test]", got)
 	}
 }

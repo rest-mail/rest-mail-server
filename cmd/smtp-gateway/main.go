@@ -123,6 +123,11 @@ func main() {
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	bancheck.Wire(limiter, database, "smtp")
 	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, smtpgw.NewStore(database), limiter)
+	smtpServer.SetMaxMessageSize(cfg.SMTPMaxMessageSize)
+	slog.Info("SMTP max message size configured", "max_message_size", cfg.SMTPMaxMessageSize)
+	if warn := cfg.SMTPMaxMessageSizeWarning(); warn != "" {
+		slog.Warn(warn, "max_message_size", cfg.SMTPMaxMessageSize)
+	}
 	if len(cfg.ProxyProtocolTrustedCIDRs) > 0 {
 		smtpServer.SetProxyProtocol(cfg.ProxyProtocolTrustedCIDRs)
 		slog.Info("PROXY protocol configured", "trusted_cidrs", cfg.ProxyProtocolTrustedCIDRs)
