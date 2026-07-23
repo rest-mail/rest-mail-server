@@ -57,8 +57,13 @@ func parseHeaders(h gomessage.Header) pipeline.Headers {
 	}
 
 	// Subject returns the RFC 2047-decoded value (or the raw value on error).
+	// Sanitize it (and every other decoded scalar header) so an encoded-word that
+	// decodes to bytes containing CR/LF cannot inject a header on re-serialization.
 	subject, _ := mh.Subject()
-	headers.Subject = subject
+	headers.Subject = sanitizeHeaderValue(subject)
+	headers.Date = sanitizeHeaderValue(headers.Date)
+	headers.MessageID = sanitizeHeaderValue(headers.MessageID)
+	headers.InReplyTo = sanitizeHeaderValue(headers.InReplyTo)
 
 	headers.From = parseAddressList(&mh, "From")
 	headers.To = parseAddressList(&mh, "To")
@@ -89,13 +94,30 @@ func parseAddressList(h *mail.Header, key string) []pipeline.Address {
 	}
 	var addrs []pipeline.Address
 	for _, addr := range list {
+		// addr.Name is RFC 2047-decoded; strip any embedded CR/LF so a crafted
+		// display name cannot inject a header when the address is re-serialized.
 		addrs = append(addrs, pipeline.Address{
-			Name:    addr.Name,
-			Address: addr.Address,
+			Name:    sanitizeHeaderValue(addr.Name),
+			Address: sanitizeHeaderValue(addr.Address),
 		})
 	}
 	return addrs
 }
+
+// sanitizeHeaderValue removes CR and LF from a decoded header value. RFC 2047
+// encoded-words can decode to arbitrary bytes, including CR/LF; if such a value is
+// later re-serialized into a header (forward/reply/bounce/Sieve) the embedded line
+// break would start a new header line, enabling header injection (e.g. a smuggled
+// Bcc). Stripping the line breaks neutralizes the injection while preserving the
+// remaining visible text. (OSI-23)
+func sanitizeHeaderValue(s string) string {
+	if !strings.ContainsAny(s, "\r\n") {
+		return s
+	}
+	return headerLineBreakStripper.Replace(s)
+}
+
+var headerLineBreakStripper = strings.NewReplacer("\r", "", "\n", "")
 
 // parseEntity converts a go-message entity (whole message or a single part)
 // into the body tree, attachments, inline parts, and calendar events.
@@ -222,14 +244,18 @@ func parseMultipart(mr gomessage.MultipartReader, mediaType string) (pipeline.Bo
 // "filename" parameter and falling back to the Content-Type "name" parameter.
 // go-message decodes any RFC 2047 encoded-words in the parameter values.
 func partFilename(h gomessage.Header) string {
+	// Both the Content-Disposition "filename" and Content-Type "name" parameters are
+	// RFC 2047-decoded by go-message, so sanitize them: a filename that decodes to a
+	// value containing CR/LF must not be able to inject a header when the part is
+	// re-serialized. (OSI-23)
 	if _, params, err := h.ContentDisposition(); err == nil {
 		if fn := params["filename"]; fn != "" {
-			return fn
+			return sanitizeHeaderValue(fn)
 		}
 	}
 	if _, params, err := h.ContentType(); err == nil {
 		if fn := params["name"]; fn != "" {
-			return fn
+			return sanitizeHeaderValue(fn)
 		}
 	}
 	return ""

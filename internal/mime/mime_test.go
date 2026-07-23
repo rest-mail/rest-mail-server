@@ -234,6 +234,147 @@ func TestParse_HeaderDecoding(t *testing.T) {
 	}
 }
 
+func TestSanitizeHeaderValue(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"clean", "Clean Subject", "Clean Subject"},
+		{"crlf", "Legit\r\nBcc: evil@x", "LegitBcc: evil@x"},
+		{"cr_only", "a\rb", "ab"},
+		{"lf_only", "a\nb", "ab"},
+		{"leading_crlf", "\r\n\r\nvalue", "value"},
+		{"multiple", "x\r\ny\r\nz", "xyz"},
+		{"empty", "", ""},
+		{"tab_preserved", "a\tb", "a\tb"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := sanitizeHeaderValue(c.in); got != c.want {
+				t.Errorf("sanitizeHeaderValue(%q) = %q, want %q", c.in, got, c.want)
+			}
+			if strings.ContainsAny(sanitizeHeaderValue(c.in), "\r\n") {
+				t.Errorf("sanitizeHeaderValue(%q) still contains CR/LF", c.in)
+			}
+		})
+	}
+}
+
+// encodedWord wraps a raw value as an RFC 2047 UTF-8 base64 encoded-word. The
+// base64 payload itself never contains CR/LF, so the header line stays well-formed
+// while the decoded value can carry arbitrary bytes (including CR/LF).
+func encodedWord(raw string) string {
+	return "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte(raw)) + "?="
+}
+
+func TestParse_SubjectCRLFInjectionStripped(t *testing.T) {
+	// An encoded-word Subject that decodes to a value carrying a CRLF and a smuggled
+	// Bcc header. The decoded Subject must not retain the line breaks, and
+	// re-serializing must not emit an injected header line.
+	subject := encodedWord("Legit Subject\r\nBcc: attacker@evil.example")
+
+	msg := "From: sender@example.com\r\n" +
+		"To: recipient@example.com\r\n" +
+		"Subject: " + subject + "\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"body\r\n"
+
+	email, err := Parse([]byte(msg))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if strings.ContainsAny(email.Headers.Subject, "\r\n") {
+		t.Fatalf("decoded Subject still contains CR/LF: %q", email.Headers.Subject)
+	}
+	// The visible text survives; only the line breaks are removed.
+	if !strings.Contains(email.Headers.Subject, "Legit Subject") {
+		t.Errorf("sanitized Subject lost visible text: %q", email.Headers.Subject)
+	}
+
+	raw, err := Serialize(email)
+	if err != nil {
+		t.Fatalf("Serialize returned error: %v", err)
+	}
+	for _, line := range strings.Split(string(raw), "\r\n") {
+		if strings.HasPrefix(strings.ToLower(line), "bcc:") {
+			t.Fatalf("serialized output contains an injected Bcc header line: %q", string(raw))
+		}
+	}
+}
+
+func TestParse_AddressNameCRLFStripped(t *testing.T) {
+	// A From display name whose encoded-word decodes to a CRLF + injected header.
+	name := encodedWord("Real Name\r\nX-Injected: yes")
+
+	msg := "From: " + name + " <sender@example.com>\r\n" +
+		"To: recipient@example.com\r\n" +
+		"Subject: hi\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"body\r\n"
+
+	email, err := Parse([]byte(msg))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if len(email.Headers.From) != 1 {
+		t.Fatalf("expected 1 From address, got %d", len(email.Headers.From))
+	}
+	if strings.ContainsAny(email.Headers.From[0].Name, "\r\n") {
+		t.Fatalf("decoded From name still contains CR/LF: %q", email.Headers.From[0].Name)
+	}
+	if email.Headers.From[0].Address != "sender@example.com" {
+		t.Errorf("From address = %q, want sender@example.com", email.Headers.From[0].Address)
+	}
+
+	// Re-serializing must keep everything on the From line (no injected header).
+	raw, err := Serialize(email)
+	if err != nil {
+		t.Fatalf("Serialize returned error: %v", err)
+	}
+	for _, line := range strings.Split(string(raw), "\r\n") {
+		if strings.HasPrefix(strings.ToLower(line), "x-injected:") {
+			t.Fatalf("serialized output contains injected X-Injected header: %q", string(raw))
+		}
+	}
+}
+
+func TestParse_AttachmentFilenameCRLFStripped(t *testing.T) {
+	// An attachment whose filename decodes to a value containing CRLF.
+	filename := encodedWord("evil\r\nContent-Type: text/x-injected")
+	b64 := base64.StdEncoding.EncodeToString([]byte("data"))
+
+	msg := "From: sender@example.com\r\n" +
+		"To: recipient@example.com\r\n" +
+		"Subject: attach\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"b\"\r\n" +
+		"\r\n" +
+		"--b\r\n" +
+		"Content-Type: text/plain\r\n" +
+		"\r\n" +
+		"text\r\n" +
+		"--b\r\n" +
+		"Content-Type: application/octet-stream; name=\"" + filename + "\"\r\n" +
+		"Content-Disposition: attachment; filename=\"" + filename + "\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n" +
+		"\r\n" +
+		b64 + "\r\n" +
+		"--b--\r\n"
+
+	email, err := Parse([]byte(msg))
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if len(email.Attachments) != 1 {
+		t.Fatalf("expected 1 attachment, got %d", len(email.Attachments))
+	}
+	if strings.ContainsAny(email.Attachments[0].Filename, "\r\n") {
+		t.Fatalf("attachment filename still contains CR/LF: %q", email.Attachments[0].Filename)
+	}
+}
+
 func TestSerialize_SimplePlainText(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
