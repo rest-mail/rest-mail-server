@@ -488,8 +488,8 @@ func (s *Session) handleFetch(tag, args string) {
 			fmt.Fprintf(s.writer, "%s)\r\n", raw)
 			s.writer.Flush()
 
-			// Auto-mark as read
-			if !msg.IsRead {
+			// Auto-mark as read — but BODY.PEEK[] must NOT set \Seen (RFC 3501).
+			if !msg.IsRead && !strings.Contains(dataItems, "BODY.PEEK") {
 				_ = s.api.UpdateMessage(s.auth.token, msg.ID, map[string]interface{}{"is_read": true})
 				s.messages[seq-1].IsRead = true
 			}

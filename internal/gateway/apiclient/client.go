@@ -199,13 +199,41 @@ type MessageDetailResponse struct {
 }
 
 // ListMessages returns messages in a folder.
+// maxGatewayMessages caps how many messages the IMAP/POP3 gateways load per
+// folder, bounding memory for pathologically large mailboxes.
+const maxGatewayMessages = 5000
+
+// ListMessages returns the FULL folder in oldest-first order. The IMAP/POP3
+// gateways assign sequence numbers and UIDs from this slice, so it must be
+// complete (not just the newest page) and monotonic. The API pages newest-first
+// with a cursor; follow the cursor to the end, then reverse.
 func (c *Client) ListMessages(token string, accountID uint, folder string) (*MessageListResponse, error) {
-	var resp MessageListResponse
-	path := fmt.Sprintf("/api/v1/accounts/%d/folders/%s/messages?limit=100", accountID, url.PathEscape(folder))
-	if err := c.getAuth(path, token, &resp); err != nil {
-		return nil, err
+	var all []MessageSummary
+	cursor := ""
+	for {
+		path := fmt.Sprintf("/api/v1/accounts/%d/folders/%s/messages?limit=100",
+			accountID, url.PathEscape(folder))
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		var resp MessageListResponse
+		if err := c.getAuth(path, token, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Data...)
+		if resp.Pagination == nil || !resp.Pagination.HasMore || resp.Pagination.Cursor == "" {
+			break
+		}
+		if len(all) >= maxGatewayMessages {
+			break
+		}
+		cursor = resp.Pagination.Cursor
 	}
-	return &resp, nil
+	// Reverse newest-first → oldest-first so seq/UID are ascending.
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+	return &MessageListResponse{Data: all}, nil
 }
 
 // GetMessage returns a full message by ID.
