@@ -13,7 +13,7 @@ import (
 func testStage13ImapIdle(t *testing.T) {
 	adminClient := newAPIClient()
 	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
-		t.Skipf("Cannot get admin token: %v", err)
+		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
 	// Ensure domain and mailboxes exist

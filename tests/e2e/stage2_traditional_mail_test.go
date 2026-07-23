@@ -32,7 +32,7 @@ func testStage2TraditionalMail(t *testing.T) {
 	// and clean it up.
 	t.Run("CreateDomains", func(t *testing.T) {
 		if client.token == "" {
-			t.Skip("no admin token")
+			skipOrFail(t, "no admin token")
 		}
 		d := createDomain(t, client, "e2e-stage2.test", "traditional")
 		resp, err := client.delete(fmt.Sprintf("/api/v1/admin/domains/%d", d.ID))
@@ -47,7 +47,7 @@ func testStage2TraditionalMail(t *testing.T) {
 	probeAddr := "e2eprobe@restmail.test"
 	t.Run("CreateMailboxes", func(t *testing.T) {
 		if client.token == "" {
-			t.Skip("no admin token")
+			skipOrFail(t, "no admin token")
 		}
 		probe := createMailbox(t, client, probeAddr, adminPassword, "E2E Probe")
 		t.Logf("probe mailbox %s id=%d", probeAddr, probe.ID)
@@ -163,7 +163,7 @@ func testStage2TraditionalMail(t *testing.T) {
 	// picture) and to its IMAP gateway (login succeeds).
 	t.Run("ApiCreatedUser_VisibleToPostfix", func(t *testing.T) {
 		if client.token == "" {
-			t.Skip("no admin token")
+			skipOrFail(t, "no admin token")
 		}
 		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()

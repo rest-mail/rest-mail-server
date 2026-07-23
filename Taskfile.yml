@@ -509,6 +509,7 @@ tasks:
           -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
           -v rest-mail-e2e-gocache:/root/.cache/go-build \
           -e GOFLAGS=-buildvcs=false \
+          -e E2E_REQUIRE_STACK \
           golang:1.25 \
           go test -race -count=1 -v -timeout 8m ./tests/e2e/...
 

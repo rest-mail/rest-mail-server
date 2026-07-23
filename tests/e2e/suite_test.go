@@ -45,6 +45,24 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// requireStack is set when E2E_REQUIRE_STACK is non-empty. The CI e2e job sets
+// it so that "stack not reachable" preconditions (no admin token, gateway not
+// dialable, …) become HARD failures instead of skips: a misconfigured or
+// half-up topology must never make the suite green by skipping every stage.
+// Locally the flag is unset, so those same conditions still skip — running
+// `go test ./...` on a laptop without the testbed keeps passing.
+var requireStack = os.Getenv("E2E_REQUIRE_STACK") != ""
+
+// skipOrFail records a "stack not reachable" precondition. With
+// E2E_REQUIRE_STACK set it is fatal (CI); otherwise it skips (local dev).
+func skipOrFail(t *testing.T, format string, args ...interface{}) {
+	t.Helper()
+	if requireStack {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 // ── HTTP Client ──────────────────────────────────────────────────────
 
 var httpClient = &http.Client{
