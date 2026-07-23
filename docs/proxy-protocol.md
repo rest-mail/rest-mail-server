@@ -1,18 +1,25 @@
 # PROXY Protocol Support
 
-The RESTMAIL SMTP, IMAP, and POP3 gateways support PROXY protocol v1 (text) and
-v2 (binary) for preserving real client IP addresses when running behind a
-reverse proxy such as HAProxy or nginx.
+The RESTMAIL **SMTP gateway** supports PROXY protocol v1 (text) and v2 (binary)
+for preserving real client IP addresses when running behind a reverse proxy such
+as HAProxy or nginx.
 
-Without PROXY protocol, the gateways see the proxy's IP address as the client
+Without PROXY protocol, the gateway sees the proxy's IP address as the client
 address. This breaks per-IP rate limiting, fail2ban-style banning, and
 authentication logging. PROXY protocol solves this by letting the proxy prepend
 a small header to each TCP connection that carries the original client IP and
 port.
 
+> **Scope: SMTP only.** PROXY protocol is implemented for the SMTP gateway
+> (`internal/gateway/smtp`). The IMAP and POP3 gateways are thin adapters over
+> the external `rest-mail/imap` and `rest-mail/pop3` server libraries and do
+> **not** read PROXY headers. If you place a proxy in front of IMAP/POP3,
+> forward plain TCP (no `send-proxy` / `proxy_protocol`) — those gateways will
+> log the proxy's address as the client IP.
+
 ## How It Works
 
-The gateways use the [`github.com/pires/go-proxyproto`](https://github.com/pires/go-proxyproto)
+The SMTP gateway uses the [`github.com/pires/go-proxyproto`](https://github.com/pires/go-proxyproto)
 library to wrap each TCP listener. The behavior is controlled by a trusted CIDR
 policy:
 
@@ -28,10 +35,17 @@ This means you can safely enable PROXY protocol support even in mixed
 environments where some connections arrive through a proxy and others connect
 directly.
 
+The PROXY header is read lazily on each connection's own goroutine (at the first
+read/write), not synchronously in the accept loop. Reading the header blocks
+until the proxy sends it (or the go-proxyproto header timeout expires), so
+resolving the client IP off the accept path keeps one slow or stalled proxy
+handshake from delaying acceptance of every other connection. Peer-IP resolution
+and the connection-limiter admission both happen at this lazy point.
+
 ## Configuration
 
-PROXY protocol is configured via a single environment variable on each gateway
-container:
+PROXY protocol is configured via a single environment variable on the SMTP
+gateway container:
 
 ```
 PROXY_PROTOCOL_TRUSTED_CIDRS=<cidr1>,<cidr2>,...
@@ -61,7 +75,7 @@ Trust multiple ranges including IPv6:
 PROXY_PROTOCOL_TRUSTED_CIDRS=10.0.1.0/24,172.16.0.0/12,fd00::/8
 ```
 
-Trust the Docker bridge network (useful for the default RESTMAIL compose setup):
+Trust the whole testbed network (useful for the default RESTMAIL `mailnet` setup):
 
 ```
 PROXY_PROTOCOL_TRUSTED_CIDRS=10.99.0.0/16
@@ -69,9 +83,10 @@ PROXY_PROTOCOL_TRUSTED_CIDRS=10.99.0.0/16
 
 ## HAProxy Configuration
 
-HAProxy supports PROXY protocol natively in TCP mode. Below is a complete
-example that proxies SMTP (ports 25, 587, 465), IMAP (ports 143, 993), and
-POP3 (ports 110, 995) to the RESTMAIL gateways.
+HAProxy supports PROXY protocol natively in TCP mode. Below is an example that
+proxies SMTP (ports 25, 587, 465) to the SMTP gateway with PROXY headers. IMAP
+and POP3 do not read PROXY headers (see Scope above); if you also front them,
+forward those ports as plain TCP without `send-proxy`.
 
 ```haproxy
 global
@@ -110,48 +125,29 @@ frontend ft_smtp_submission_tls
 backend bk_smtp_submission_tls
     server smtp1 10.99.0.13:465 send-proxy-v2
 
-# ── IMAP (port 143) ─────────────────────────────────────────────────
-frontend ft_imap
-    bind *:143
-    default_backend bk_imap
-
-backend bk_imap
-    server imap1 10.99.0.15:143 send-proxy-v2
-
-# ── IMAPS (port 993) ────────────────────────────────────────────────
+# ── IMAP / POP3: plain TCP passthrough, NO PROXY header ──────────────
+# The IMAP/POP3 gateways do not parse PROXY headers; sending one would be
+# interpreted as a protocol command and break the session. Forward them
+# without send-proxy (client IP will appear as this proxy's address).
 frontend ft_imaps
     bind *:993
     default_backend bk_imaps
 
 backend bk_imaps
-    server imap1 10.99.0.15:993 send-proxy-v2
-
-# ── POP3 (port 110) ─────────────────────────────────────────────────
-frontend ft_pop3
-    bind *:110
-    default_backend bk_pop3
-
-backend bk_pop3
-    server pop3_1 10.99.0.16:110 send-proxy-v2
-
-# ── POP3S (port 995) ────────────────────────────────────────────────
-frontend ft_pop3s
-    bind *:995
-    default_backend bk_pop3s
-
-backend bk_pop3s
-    server pop3_1 10.99.0.16:995 send-proxy-v2
+    server imap1 10.99.0.15:993       # no send-proxy
 ```
 
 Key points:
 
 - Use `mode tcp` -- HAProxy must **not** inspect or modify the mail protocol
   traffic.
-- Use `send-proxy-v2` on each `server` line to send a binary PROXY v2 header.
-  You can substitute `send-proxy` for PROXY v1 (text) if needed.
+- Use `send-proxy-v2` on each SMTP `server` line to send a binary PROXY v2
+  header. You can substitute `send-proxy` for PROXY v1 (text) if needed.
+- Do **not** add `send-proxy`/`send-proxy-v2` to IMAP/POP3 backends — those
+  gateways do not read PROXY headers.
 - If HAProxy terminates TLS itself, bind with `ssl crt /path/to/cert.pem` on
-  the frontend and remove the implicit-TLS backend ports (465, 993, 995). The
-  gateway would then receive plain TCP with a PROXY header.
+  the frontend and remove the implicit-TLS backend port (465). The gateway would
+  then receive plain TCP with a PROXY header.
 
 ## nginx Stream Configuration
 
@@ -196,44 +192,23 @@ stream {
         proxy_protocol on;
     }
 
-    # ── IMAP (port 143) ────────────────────────────────────────────
-    upstream imap_backend {
-        server 10.99.0.15:143;
-    }
-    server {
-        listen 143;
-        proxy_pass imap_backend;
-        proxy_protocol on;
-    }
-
-    # ── IMAPS (port 993) ───────────────────────────────────────────
+    # ── IMAP / POP3: plain TCP passthrough, NO proxy_protocol ──────
+    # These gateways do not parse PROXY headers. Omit `proxy_protocol on`
+    # so nginx forwards the raw stream (client IP will appear as nginx's).
     upstream imaps_backend {
         server 10.99.0.15:993;
     }
     server {
         listen 993;
         proxy_pass imaps_backend;
-        proxy_protocol on;
     }
 
-    # ── POP3 (port 110) ────────────────────────────────────────────
-    upstream pop3_backend {
-        server 10.99.0.16:110;
-    }
-    server {
-        listen 110;
-        proxy_pass pop3_backend;
-        proxy_protocol on;
-    }
-
-    # ── POP3S (port 995) ───────────────────────────────────────────
     upstream pop3s_backend {
         server 10.99.0.16:995;
     }
     server {
         listen 995;
         proxy_pass pop3s_backend;
-        proxy_protocol on;
     }
 }
 ```
@@ -241,17 +216,22 @@ stream {
 Key points:
 
 - `proxy_protocol on` makes nginx send a PROXY v1 (text) header to the
-  upstream.
+  upstream. Use it only on the SMTP `server` blocks.
+- Do **not** set `proxy_protocol on` for IMAP/POP3 — those gateways do not
+  read PROXY headers.
 - The `stream` block is separate from the `http` block. Place it at the top
   level of `nginx.conf`, not inside an `http` block.
 - nginx stream does not support PROXY v2. If you require binary v2 headers, use
   HAProxy instead.
 
-## Docker Compose Integration
+## Compose / Container Integration
 
-To add an HAProxy container in front of the RESTMAIL gateways, add it to your
-`docker-compose.yml` and set the trusted CIDRs on each gateway to match the
-proxy's IP address.
+RESTMAIL's dev stack runs each gateway as its own container image on the shared
+`mailnet` network (managed via the Taskfile, not a single compose file), but the
+pattern below applies to any orchestrator. To put an HAProxy container in front
+of the gateways, set the trusted CIDRs on the **SMTP** gateway to match the
+proxy's IP address. `PROXY_PROTOCOL_TRUSTED_CIDRS` is only read by the SMTP
+gateway; the IMAP/POP3 gateways ignore it.
 
 ```yaml
 services:
@@ -293,30 +273,25 @@ services:
       mailnet:
         ipv4_address: 10.99.0.13
 
-  # ── IMAP Gateway ──────────────────────────────────────────────────
+  # ── IMAP Gateway (no PROXY_PROTOCOL_TRUSTED_CIDRS — not supported) ─
   imap-gateway:
     # ... existing build/image config ...
-    environment:
-      # ... existing env vars ...
-      PROXY_PROTOCOL_TRUSTED_CIDRS: "10.99.0.30/32"
     networks:
       mailnet:
         ipv4_address: 10.99.0.15
 
-  # ── POP3 Gateway ──────────────────────────────────────────────────
+  # ── POP3 Gateway (no PROXY_PROTOCOL_TRUSTED_CIDRS — not supported) ─
   pop3-gateway:
     # ... existing build/image config ...
-    environment:
-      # ... existing env vars ...
-      PROXY_PROTOCOL_TRUSTED_CIDRS: "10.99.0.30/32"
     networks:
       mailnet:
         ipv4_address: 10.99.0.16
 ```
 
-The important change is that `PROXY_PROTOCOL_TRUSTED_CIDRS` is set to the
-HAProxy container's static IP (`10.99.0.30/32`). Only PROXY headers arriving
-from that address will be honored.
+The important change is that `PROXY_PROTOCOL_TRUSTED_CIDRS` is set on the SMTP
+gateway to the HAProxy container's static IP (`10.99.0.30/32`). Only PROXY
+headers arriving from that address will be honored, and only the SMTP gateway
+reads the variable at all.
 
 ## Security Considerations
 
@@ -357,7 +332,9 @@ When a gateway starts with `PROXY_PROTOCOL_TRUSTED_CIDRS` set, it logs:
 {"level":"INFO","msg":"smtp: PROXY protocol enabled","trusted_cidrs":["10.99.0.30/32"]}
 ```
 
-Look for these lines in `docker logs smtp-gateway`.
+Look for these lines in the SMTP gateway logs (`task smtp-gateway:logs`). The
+first line comes from the gateway's startup wiring, the second from the listener
+wrapper as each SMTP listener is wrapped.
 
 ### Send a test PROXY v1 header manually
 
@@ -427,11 +404,12 @@ These tests cover:
 |------|-------|
 | Environment variable | `PROXY_PROTOCOL_TRUSTED_CIDRS` |
 | Format | Comma-separated CIDR list |
+| Gateways with PROXY support | SMTP only (IMAP/POP3 do not read PROXY headers) |
 | Protocols supported | PROXY protocol v1 (text), v2 (binary) |
 | Library | `github.com/pires/go-proxyproto` |
 | Source file | `internal/gateway/smtp/proxyproto.go` |
 | Test file | `internal/gateway/proxyproto_test.go` |
 | Default gateway IPs | SMTP: `10.99.0.13`, IMAP: `10.99.0.15`, POP3: `10.99.0.16` |
 | SMTP ports | 25 (inbound), 587 (submission), 465 (submission TLS) |
-| IMAP ports | 143 (plain/STARTTLS), 993 (implicit TLS) |
-| POP3 ports | 110 (plain/STARTTLS), 995 (implicit TLS) |
+| IMAP ports (plain TCP behind a proxy) | 143 (plain/STARTTLS), 993 (implicit TLS) |
+| POP3 ports (plain TCP behind a proxy) | 110 (plain/STARTTLS), 995 (implicit TLS) |
