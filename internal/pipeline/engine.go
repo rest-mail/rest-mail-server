@@ -164,8 +164,15 @@ Loop:
 	}
 
 	result.Duration = time.Since(start)
-	// One terminal observation per message, once the final action is known.
-	e.observer.ObserveTerminal(pipeline.Direction, result.FinalAction)
+	// One terminal observation per message, once the final action is known. A
+	// non-continue outcome breaks the loop immediately after recording its step,
+	// so the last recorded step IS the terminal step — hand it to the observer so
+	// it can derive the reason_code. A continue outcome has no terminal step.
+	var terminal *StepResult
+	if result.FinalAction != ActionContinue && len(result.Steps) > 0 {
+		terminal = &result.Steps[len(result.Steps)-1]
+	}
+	e.observer.ObserveTerminal(pipeline.Direction, result.FinalAction, terminal)
 	return result, nil
 }
 

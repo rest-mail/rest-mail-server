@@ -226,6 +226,83 @@ func TestObserver_RejectingRun(t *testing.T) {
 	}
 }
 
+// A rejecting run must increment reject_reason exactly once, with the bounded
+// reason_code derived from the terminal step (here dmarc_check + reject →
+// dmarc_reject), and must not touch any other reason bucket.
+func TestObserver_RejectReason_DMARC(t *testing.T) {
+	reg := pipeline.NewRegistry()
+	register(reg, fakeFilter{name: "dmarc_check", action: pipeline.ActionReject, logFilter: "dmarc_check", logResult: "fail"})
+
+	eng := pipeline.NewEngine(reg, nil, New())
+	cfg := &pipeline.PipelineConfig{
+		Direction: "inbound",
+		Filters:   []pipeline.FilterConfig{{Name: "dmarc_check", Enabled: true}},
+	}
+
+	before := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonDMARCReject))
+	beforeOther := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonOther))
+
+	if _, err := eng.Execute(context.Background(), cfg, &pipeline.EmailJSON{}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	if got := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonDMARCReject)) - before; got != 1 {
+		t.Errorf("reject_reason{dmarc_reject} delta = %v, want 1", got)
+	}
+	if got := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonOther)) - beforeOther; got != 0 {
+		t.Errorf("reject_reason{other} moved: delta = %v, want 0", got)
+	}
+}
+
+// A deferring built-in (greylist) and an unknown/custom rejecting filter must
+// land in their bounded reason buckets (greylist_defer and custom_reject).
+func TestObserver_RejectReason_GreylistAndCustom(t *testing.T) {
+	// greylist defer.
+	reg := pipeline.NewRegistry()
+	register(reg, fakeFilter{name: "greylist", action: pipeline.ActionDefer, logFilter: "greylist", logResult: "defer"})
+	eng := pipeline.NewEngine(reg, nil, New())
+	cfg := &pipeline.PipelineConfig{Direction: "inbound", Filters: []pipeline.FilterConfig{{Name: "greylist", Enabled: true}}}
+	before := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonGreylistDefer))
+	if _, err := eng.Execute(context.Background(), cfg, &pipeline.EmailJSON{}); err != nil {
+		t.Fatalf("Execute greylist: %v", err)
+	}
+	if got := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonGreylistDefer)) - before; got != 1 {
+		t.Errorf("reject_reason{greylist_defer} delta = %v, want 1", got)
+	}
+
+	// Unknown custom filter reject → custom_reject.
+	reg2 := pipeline.NewRegistry()
+	register(reg2, fakeFilter{name: "my_blocklist", action: pipeline.ActionReject, logFilter: "my_blocklist", logResult: "reject"})
+	eng2 := pipeline.NewEngine(reg2, nil, New())
+	cfg2 := &pipeline.PipelineConfig{Direction: "inbound", Filters: []pipeline.FilterConfig{{Name: "my_blocklist", Enabled: true}}}
+	beforeCustom := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonCustomReject))
+	if _, err := eng2.Execute(context.Background(), cfg2, &pipeline.EmailJSON{}); err != nil {
+		t.Fatalf("Execute custom: %v", err)
+	}
+	if got := counter(t, metrics.PipelineRejectReason, string(pipeline.ReasonCustomReject)) - beforeCustom; got != 1 {
+		t.Errorf("reject_reason{custom_reject} delta = %v, want 1", got)
+	}
+}
+
+// A continue (delivered) run must NOT increment reject_reason at all — a
+// delivered message has no reject reason.
+func TestObserver_RejectReason_ContinueNoIncrement(t *testing.T) {
+	reg := pipeline.NewRegistry()
+	register(reg, fakeFilter{name: "spf_check", action: pipeline.ActionContinue, logFilter: "spf_check", logResult: "pass"})
+	eng := pipeline.NewEngine(reg, nil, New())
+	cfg := &pipeline.PipelineConfig{Direction: "inbound", Filters: []pipeline.FilterConfig{{Name: "spf_check", Enabled: true}}}
+
+	for _, code := range []pipeline.ReasonCode{pipeline.ReasonOther, pipeline.ReasonSPFFail, pipeline.ReasonCustomReject} {
+		before := counter(t, metrics.PipelineRejectReason, string(code))
+		if _, err := eng.Execute(context.Background(), cfg, &pipeline.EmailJSON{}); err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if got := counter(t, metrics.PipelineRejectReason, string(code)) - before; got != 0 {
+			t.Errorf("reject_reason{%s} moved on continue: delta = %v, want 0", code, got)
+		}
+	}
+}
+
 // An outbound continue must record a terminal "queued" outcome.
 func TestObserver_OutboundQueued(t *testing.T) {
 	reg := pipeline.NewRegistry()

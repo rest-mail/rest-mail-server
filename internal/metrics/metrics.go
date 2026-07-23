@@ -49,11 +49,16 @@ var (
 		[]string{"protocol"},
 	)
 
-	// MessagesReceived counts total inbound messages received.
-	MessagesReceived = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "restmail_messages_received_total",
-		Help: "Total messages received",
-	})
+	// MessagesReceived counts inbound-MX messages received from the internet,
+	// per transport security. `transport` is strictly bounded to tls/plaintext;
+	// non inbound-MX deliveries (IMAP APPEND, local webmail send) are not counted.
+	MessagesReceived = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "restmail_messages_received_total",
+			Help: "Total inbound-MX messages received by transport security",
+		},
+		[]string{"transport"},
+	)
 
 	// MessagesSent counts total outbound messages sent.
 	MessagesSent = prometheus.NewCounter(prometheus.CounterOpts{
@@ -93,6 +98,18 @@ var (
 			Help: "Terminal message outcomes by direction and outcome",
 		},
 		[]string{"direction", "outcome"},
+	)
+
+	// PipelineRejectReason counts non-continue terminal outcomes by a bounded
+	// reason_code. The reason is derived once from the terminal step via
+	// pipeline.ReasonForStep; the label domain is the fixed ReasonCode enum, so
+	// it stays low-cardinality and volume-independent.
+	PipelineRejectReason = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "restmail_pipeline_reject_reason_total",
+			Help: "Non-continue terminal outcomes by bounded reason_code",
+		},
+		[]string{"reason_code"},
 	)
 
 	// AuthVerdict counts email-authentication verdicts, per mechanism and
@@ -140,6 +157,7 @@ func init() {
 		PipelineFilterDuration,
 		PipelineStageDecisions,
 		PipelineTerminal,
+		PipelineRejectReason,
 		AuthVerdict,
 		AuthFailures,
 		CertExpiryDays,

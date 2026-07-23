@@ -14,11 +14,12 @@ type recordingObserver struct {
 type terminalCall struct {
 	direction string
 	action    Action
+	terminal  *StepResult
 }
 
 func (o *recordingObserver) ObserveStep(s StepResult) { o.steps = append(o.steps, s) }
-func (o *recordingObserver) ObserveTerminal(direction string, action Action) {
-	o.terminals = append(o.terminals, terminalCall{direction, action})
+func (o *recordingObserver) ObserveTerminal(direction string, action Action, terminal *StepResult) {
+	o.terminals = append(o.terminals, terminalCall{direction, action, terminal})
 }
 
 func continueFilter(name string) FilterFactory {
@@ -61,6 +62,10 @@ func TestEngine_Observer_PerStepAndOnceTerminal(t *testing.T) {
 	if got := obs.terminals[0]; got.direction != "inbound" || got.action != ActionContinue {
 		t.Fatalf("terminal = %+v, want {inbound continue}", got)
 	}
+	// A continue outcome has no terminal reject step.
+	if obs.terminals[0].terminal != nil {
+		t.Fatalf("continue terminal step = %+v, want nil", obs.terminals[0].terminal)
+	}
 }
 
 // A terminal action (reject) must be observed as a step AND stop the pipeline:
@@ -101,6 +106,12 @@ func TestEngine_Observer_RejectStopsAndReportsTerminal(t *testing.T) {
 	}
 	if len(obs.terminals) != 1 || obs.terminals[0].action != ActionReject || obs.terminals[0].direction != "outbound" {
 		t.Fatalf("terminals = %+v, want one {outbound reject}", obs.terminals)
+	}
+	// The non-continue terminal must carry the deciding step so the observer can
+	// derive a reason_code; it must be the rejecting "bad" step.
+	term := obs.terminals[0].terminal
+	if term == nil || term.Action != ActionReject || term.FilterName != "bad" {
+		t.Fatalf("terminal step = %+v, want non-nil {bad reject}", term)
 	}
 }
 

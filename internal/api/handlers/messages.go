@@ -20,6 +20,7 @@ import (
 	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/restmail/restmail/internal/metrics"
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
@@ -1705,11 +1706,41 @@ type localDeliveryParams struct {
 	TLSVersion  string
 }
 
+// receivedTLSFlag reports whether an inbound delivery arrived over TLS, for the
+// pipeline Envelope.TLS so filters/pipeline see transport. A nil ReceivedTLS
+// (non inbound-MX: IMAP APPEND / local webmail send, where transport is not
+// applicable) is treated as false.
+func receivedTLSFlag(receivedTLS *bool) bool {
+	return receivedTLS != nil && *receivedTLS
+}
+
+// recordInboundReceived counts one inbound-MX arrival on messages_received,
+// labelled by transport (tls when ReceivedTLS is true, plaintext when false).
+// A nil ReceivedTLS marks a non inbound-MX delivery (IMAP APPEND, local webmail
+// send) which is NOT counted — this metric measures mail received from the
+// internet. The transport label is strictly bounded to tls|plaintext.
+func recordInboundReceived(receivedTLS *bool) {
+	if receivedTLS == nil {
+		return
+	}
+	transport := "plaintext"
+	if *receivedTLS {
+		transport = "tls"
+	}
+	metrics.MessagesReceived.WithLabelValues(transport).Inc()
+}
+
 // deliverToLocal runs the inbound pipeline and delivers a message to a local mailbox.
 // This is the shared logic used by both DeliverMessage (gateway inbound) and
 // SendMessage (local recipient delivery).
 func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliveryParams) (*models.Message, error) {
 	mailbox := params.Mailbox
+
+	// Always-on: count every inbound-MX arrival (before the pipeline runs, so a
+	// later reject/quarantine still counts as received) on messages_received,
+	// labelled by transport. Non inbound-MX deliveries (nil ReceivedTLS) are not
+	// counted — this measures mail received from the internet.
+	recordInboundReceived(params.ReceivedTLS)
 
 	// ── Build pipeline EmailJSON ─────────────────────────────────────
 	var toAddrs []pipeline.Address
@@ -1772,6 +1803,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		RcptTo:    []string{mailbox.Address},
 		ClientIP:  params.ClientIP,
 		Helo:      params.HeloName,
+		TLS:       receivedTLSFlag(params.ReceivedTLS),
 		Direction: "inbound",
 	}
 	// Fill any header the parse didn't populate from the gateway-extracted params.

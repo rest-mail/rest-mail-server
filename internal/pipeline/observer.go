@@ -18,7 +18,10 @@ type Observer interface {
 	// ObserveTerminal is called exactly once per Execute, after the final
 	// action for the message has been decided. direction is the pipeline
 	// direction ("inbound"/"outbound"); action is the final pipeline action.
-	ObserveTerminal(direction string, action Action)
+	// terminal is the step that decided a non-continue outcome (so the observer
+	// can derive a bounded reason_code via ReasonForStep); it is nil when the
+	// message ran to a continue outcome (delivered/queued — no reject reason).
+	ObserveTerminal(direction string, action Action, terminal *StepResult)
 }
 
 // NopObserver is the default Observer used when none is injected. All methods
@@ -29,4 +32,4 @@ type NopObserver struct{}
 func (NopObserver) ObserveStep(StepResult) {}
 
 // ObserveTerminal does nothing.
-func (NopObserver) ObserveTerminal(string, Action) {}
+func (NopObserver) ObserveTerminal(string, Action, *StepResult) {}
