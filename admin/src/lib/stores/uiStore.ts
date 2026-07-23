@@ -9,8 +9,8 @@ interface Notification {
 
 interface Modal {
   id: string;
-  component: React.ComponentType<any>;
-  props?: any;
+  component: React.ComponentType<Record<string, unknown>>;
+  props?: Record<string, unknown>;
 }
 
 interface UIStore {

@@ -27,7 +27,7 @@ interface FilterTestResult {
   result: string
   detail?: string
   duration_ms?: number
-  message?: any
+  message?: unknown
   errors?: string[]
 }
 
@@ -43,8 +43,8 @@ interface CustomFilterState {
   createFilter: (data: Partial<CustomFilter>, accessToken: string) => Promise<CustomFilter>
   updateFilter: (id: number, data: Partial<CustomFilter>, accessToken: string) => Promise<CustomFilter>
   deleteFilter: (id: number, accessToken: string) => Promise<void>
-  validateScript: (script: string, accessToken: string, email?: any) => Promise<ValidationResult>
-  testFilter: (id: number, accessToken: string, email?: any) => Promise<FilterTestResult>
+  validateScript: (script: string, accessToken: string, email?: unknown) => Promise<ValidationResult>
+  testFilter: (id: number, accessToken: string, email?: unknown) => Promise<FilterTestResult>
   clearError: () => void
   clearCurrentFilter: () => void
 }
@@ -216,7 +216,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  validateScript: async (script: string, accessToken: string, email?: any) => {
+  validateScript: async (script: string, accessToken: string, email?: unknown) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -246,7 +246,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  testFilter: async (id: number, accessToken: string, email?: any) => {
+  testFilter: async (id: number, accessToken: string, email?: unknown) => {
     set({ isLoading: true, error: null })
 
     try {

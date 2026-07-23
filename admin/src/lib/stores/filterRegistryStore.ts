@@ -16,7 +16,7 @@ export interface ConfigField {
   type: 'text' | 'number' | 'select' | 'boolean'
   label: string
   options?: string[]
-  default?: any
+  default?: unknown
   required?: boolean
   min?: number
   max?: number

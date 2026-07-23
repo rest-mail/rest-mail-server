@@ -1,6 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { useCustomFilterStore } from '../../lib/stores/customFilterStore'
+import {
+  useCustomFilterStore,
+  type ValidationResult,
+  type FilterTestResult,
+} from '../../lib/stores/customFilterStore'
 import { useDomainStore } from '../../lib/stores/domainStore'
 import { useAuthStore } from '../../lib/stores/authStore'
 import { useUIStore } from '../../lib/stores/uiStore'
@@ -66,8 +70,8 @@ function CustomFilterEditorPage() {
   const [enabled, setEnabled] = useState(true)
   const [script, setScript] = useState(FILTER_TEMPLATE)
   const [testEmail, setTestEmail] = useState(JSON.stringify(SAMPLE_EMAIL, null, 2))
-  const [testResult, setTestResult] = useState<any>(null)
-  const [validationResult, setValidationResult] = useState<any>(null)
+  const [testResult, setTestResult] = useState<FilterTestResult | null>(null)
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -143,7 +147,7 @@ function CustomFilterEditorPage() {
       let emailObj
       try {
         emailObj = JSON.parse(testEmail)
-      } catch (e) {
+      } catch {
         addNotification({
           type: 'error',
           message: 'Invalid test email JSON',
@@ -181,7 +185,7 @@ function CustomFilterEditorPage() {
       let emailObj
       try {
         emailObj = JSON.parse(testEmail)
-      } catch (e) {
+      } catch {
         addNotification({
           type: 'error',
           message: 'Invalid test email JSON',
@@ -565,7 +569,7 @@ function CustomFilterEditorPage() {
                         </ul>
                       </div>
                     )}
-                    {testResult.message && (
+                    {!!testResult.message && (
                       <div className="mt-3">
                         <span style={{ color: 'var(--gray-secondary)' }}>Modified Email: </span>
                         <pre className="mt-1 p-2 bg-gray-100 rounded overflow-x-auto text-xs">

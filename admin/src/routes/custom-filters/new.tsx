@@ -1,6 +1,9 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { useCustomFilterStore } from '../../lib/stores/customFilterStore'
+import {
+  useCustomFilterStore,
+  type ValidationResult,
+} from '../../lib/stores/customFilterStore'
 import { useDomainStore } from '../../lib/stores/domainStore'
 import { useAuthStore } from '../../lib/stores/authStore'
 import { useUIStore } from '../../lib/stores/uiStore'
@@ -64,7 +67,7 @@ function NewCustomFilterPage() {
   const [enabled, setEnabled] = useState(true)
   const [script, setScript] = useState(FILTER_TEMPLATE)
   const [testEmail, setTestEmail] = useState(JSON.stringify(SAMPLE_EMAIL, null, 2))
-  const [validationResult, setValidationResult] = useState<any>(null)
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -124,7 +127,7 @@ function NewCustomFilterPage() {
       let emailObj
       try {
         emailObj = JSON.parse(testEmail)
-      } catch (e) {
+      } catch {
         addNotification({
           type: 'error',
           message: 'Invalid test email JSON',

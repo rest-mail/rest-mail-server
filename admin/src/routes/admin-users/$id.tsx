@@ -84,7 +84,13 @@ function AdminUserDetailsPage() {
     if (!accessToken) return
 
     try {
-      const updateData: any = {
+      const updateData: {
+        email?: string
+        password?: string
+        active?: boolean
+        password_change_required?: boolean
+        role_ids?: number[]
+      } = {
         email: formData.email || undefined,
         active: formData.active,
         password_change_required: formData.password_change_required,

@@ -202,7 +202,7 @@ function MailboxDetailsPage() {
     setError(null)
 
     try {
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         display_name: formData.display_name || null,
         quota_bytes: formData.quota_bytes,
         active: formData.enabled,

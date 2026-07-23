@@ -1,7 +1,18 @@
 import { create } from 'zustand'
 import { apiV1 } from '../api'
 
-interface TLSReport {
+// One RFC 8460 failure-details row. The wire schema is open-ended, so extra
+// keys are permitted via the index signature; the named fields are the ones
+// the UI renders.
+export interface TLSFailureDetail {
+  result_type?: string
+  receiving_mx_hostname?: string
+  receiving_ip?: string
+  failed_session_count?: number
+  [key: string]: unknown
+}
+
+export interface TLSReport {
   id: number
   domain_id: number
   reporting_org: string
@@ -11,7 +22,7 @@ interface TLSReport {
   policy_domain: string
   total_successful: number
   total_failure: number
-  failure_details: any
+  failure_details: TLSFailureDetail[] | TLSFailureDetail | null
   raw_report: string
   received_at: string
 }

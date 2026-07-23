@@ -6,7 +6,7 @@ interface FilterConfig {
   type: 'action' | 'transform'
   enabled: boolean
   unskippable?: boolean
-  config?: Record<string, any>
+  config?: Record<string, unknown>
 }
 
 interface Pipeline {
@@ -74,7 +74,7 @@ interface PipelineTestResult {
   action: 'continue' | 'reject' | 'quarantine' | 'discard'
   steps: FilterLogStep[]
   duration_ms: number
-  message?: any
+  message?: unknown
 }
 
 interface FilterTestResult {
@@ -82,7 +82,7 @@ interface FilterTestResult {
   result: string
   detail?: string
   duration_ms?: number
-  message?: any
+  message?: unknown
 }
 
 interface TraceQueryParams {
@@ -110,8 +110,8 @@ interface PipelineState {
   createPipeline: (data: Partial<Pipeline>, accessToken: string) => Promise<Pipeline>
   updatePipeline: (id: number, data: Partial<Pipeline>, accessToken: string) => Promise<Pipeline>
   deletePipeline: (id: number, accessToken: string) => Promise<void>
-  testPipeline: (pipelineId: number, email: any, accessToken: string) => Promise<PipelineTestResult>
-  testFilter: (filterName: string, config: any, email: any, accessToken: string) => Promise<FilterTestResult>
+  testPipeline: (pipelineId: number, email: unknown, accessToken: string) => Promise<PipelineTestResult>
+  testFilter: (filterName: string, config: unknown, email: unknown, accessToken: string) => Promise<FilterTestResult>
   fetchTraces: (params: TraceQueryParams, accessToken: string) => Promise<void>
   fetchMessageTrace: (id: number, accessToken: string) => Promise<MessageTrace>
   clearError: () => void
@@ -288,7 +288,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  testPipeline: async (pipelineId: number, email: any, accessToken: string) => {
+  testPipeline: async (pipelineId: number, email: unknown, accessToken: string) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -318,7 +318,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  testFilter: async (filterName: string, config: any, email: any, accessToken: string) => {
+  testFilter: async (filterName: string, config: unknown, email: unknown, accessToken: string) => {
     set({ isLoading: true, error: null })
 
     try {
