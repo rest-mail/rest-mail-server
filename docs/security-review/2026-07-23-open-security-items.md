@@ -52,14 +52,27 @@ historical and, once fully processed + captured here, can be deleted.
 - **Origin:** kimi #31, opus H-7, L-6, M-1, M-4, M-24.
 
 ### OSI-6 — JS filter sidecar is not a real sandbox (admin RCE)
-- **Status:** needs-decision (large effort; lives in `projects/js-filter-sidecar`).
-- **Detail:** the sidecar runs admin-supplied scripts via Node `vm.runInNewContext`
-  (documented as **not** a sandbox); a `pipelines:write` admin escapes to the Node
-  runtime → env (DB creds, `MASTER_KEY`). URL is now configurable; unreachable sidecar
-  still fails open.
-- **Action:** replace with `isolated-vm`/WASM/microVM, or remove user-defined JS;
-  harden the container (read-only FS, drop caps, no egress); default filter-error to
-  `defer`. **Decision needed:** keep-and-sandbox vs remove the feature.
+- **Status:** DECIDED 2026-07-23 — **KEEP the feature.** Accepted trust model: filters
+  are operator/admin-authored (`pipelines:write`-gated), run in an isolated sidecar
+  container on the internal network, never exposed to public/untrusted input. The
+  **container is the real sandbox**, not Node's `vm` (which is explicitly not a security
+  boundary). So harden the container blast radius rather than rewrite the JS sandbox.
+- **Detail:** `internal/pipeline/filters/javascript.go` is only a CLIENT (POSTs the
+  script + email to `http://js-filter:3100` with a 500ms/HTTP-headroom timeout). The
+  sidecar (`projects/js-filter-sidecar`, Node) runs it via `vm.runInNewContext`. A
+  `pipelines:write` admin can escape the `vm` → code exec **inside the js-filter
+  container**. Blast radius = that container + whatever it can reach.
+- **Hardening plan (proportionate; not the full rewrite):**
+  1. **Strip secrets from the sidecar env** — it currently gets DB creds + `MASTER_KEY`
+     it does NOT need. Remove them so a `vm` escape finds no secrets. *(highest value, cheap)*
+  2. **Deny egress** on the js-filter container (inbound-from-API only) — kills the
+     escape→metadata/exfiltrate/pivot chain.
+  3. **Container lockdown** — non-root, read-only rootfs, `--cap-drop=ALL`,
+     `no-new-privileges`, no host mounts, memory/CPU/pids limits.
+  4. **Document** the trust boundary. Consider defaulting filter-error to `defer`
+     (fail-closed) vs the current fail-open — a small behavior call.
+  - **Deferred (not doing now):** a real in-VM sandbox (`isolated-vm`/WASM/microVM) —
+    the large effort; the container boundary makes it optional defense-in-depth.
 - **Origin:** kimi #4, #10, #11, opus C-7, H-9, H-10.
 
 ### OSI-7 — REST request-body size caps

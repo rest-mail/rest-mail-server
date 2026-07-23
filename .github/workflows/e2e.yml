@@ -1,0 +1,151 @@
+name: E2E
+
+# Full end-to-end suite: stands up the whole simulated-internet topology
+# (testbed dnsmasq + certs, reference mail1/mail2, the restmail.test product
+# stack) and runs the 13 staged tests in tests/e2e/ from a golang container on
+# the mailnet. Heavy, so it lives in its own workflow rather than bloating ci.yml.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# e2e is expensive — supersede in-flight runs for the same ref.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  e2e:
+    name: E2E (full topology)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Flip "stack not reachable" preconditions (no admin token, gateway not
+      # dialable, …) from t.Skip into t.Fatal inside the suite — see
+      # tests/e2e/suite_test.go. A half-up topology must go RED, never green by
+      # skipping every stage. Forwarded into the test container by `test:e2e`.
+      E2E_REQUIRE_STACK: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: Install go-task
+        run: |
+          sh -c "$(curl --location --silent --show-error --fail https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+          task --version
+
+      - name: Populate Go module cache
+        # `test:e2e` and `instance:mtls:issue` mount the host GOMODCACHE
+        # read-only into a golang container; it must be complete up front or
+        # those `go` invocations fail trying to write to a read-only cache.
+        run: go mod download
+
+      - name: Route git@github over HTTPS
+        # testbed:init / mailserver:init clone via `git@github.com:`. The hosted
+        # runner has no SSH key, so rewrite those URLs to anonymous HTTPS — the
+        # rest-mail substrate repos are public.
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Clone testbed + reference-mailserver substrate
+        # The `testbed` include must resolve before `task e2e:up` is parsed;
+        # reference-mailserver is also cloned by e2e:up, pre-cloning is harmless.
+        run: |
+          task testbed:init
+          task mailserver:init
+
+      - name: Patch reference dkim:provision for native-Linux Docker
+        # reference-mailserver's dkim:provision generates the DKIM key as
+        # container-root, then runs `chmod 644` on it FROM THE HOST. On Docker
+        # Desktop bind-mount files are host-user-owned so that works; on native
+        # Linux (this runner) the file is root-owned and the non-root runner
+        # can't chmod it ("Operation not permitted"). Run that chmod inside a
+        # container instead — the same idiom the task already uses two lines
+        # below for the fragment copy. (Follow-up: fix this upstream in
+        # rest-mail/reference-mailserver so it's portable off Docker Desktop.)
+        run: |
+          f=.workspace/reference-mailserver/Taskfile.yml
+          perl -pi -e 's{chmod 644 "\$KEYDIR/\$DOMAIN\.\$SEL\.key"}{docker run --rm -v "\$(pwd)/\$KEYDIR:/keys" alpine:3.20 chmod 644 "/keys/\$DOMAIN.\$SEL.key"}g' "$f"
+          if grep -qF 'chmod 644 "$KEYDIR/$DOMAIN.$SEL.key"' "$f"; then
+            echo "::error::dkim:provision chmod patch did not apply — upstream task changed"
+            exit 1
+          fi
+          echo "patched host chmod -> containerized chmod:"
+          grep -nF 'alpine:3.20 chmod 644' "$f"
+
+      - name: Pin reference-dnsmasq to a render-fragment-capable build
+        # The testbed / reference-mailserver / rest-mail Taskfiles all pin
+        # reference-dnsmasq:2026.04.28 — the INITIAL release, which predates the
+        # `render-fragment` / `remove-fragment` subcommands that dns:register
+        # needs (added in 2026.04.28.2 / latest). On a clean pull that stale pin
+        # makes dns:register fail with "dnsmasq: bad command line options". Seed
+        # the pinned tag locally with the capable digest so `docker run` resolves
+        # it without re-pulling. (Follow-up: bump the pins in those three repos.)
+        run: |
+          docker pull ghcr.io/rest-mail/reference-dnsmasq:2026.04.28.2
+          docker tag ghcr.io/rest-mail/reference-dnsmasq:2026.04.28.2 ghcr.io/rest-mail/reference-dnsmasq:2026.04.28
+
+      - name: Bring up e2e topology
+        run: task e2e:up
+
+      - name: Run e2e stages
+        run: |
+          set -o pipefail
+          task test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: Assert stages executed (guard against silent skips)
+        # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
+        # the stages actually RAN. Fail if any top-level stage skipped, or if
+        # fewer than all 13 stages reached PASS.
+        run: |
+          log="$RUNNER_TEMP/e2e.log"
+          skipped=$(grep -cE -- '--- SKIP: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
+          passed=$(grep -cE -- '--- PASS: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
+          echo "stage-level results — PASS: $passed  SKIP: $skipped"
+          if [ "$skipped" -ne 0 ]; then
+            echo "::error::an e2e stage was SKIPPED — the stack was not fully exercised"
+            grep -E -- '--- SKIP: TestStages/Stage' "$log" || true
+            exit 1
+          fi
+          if [ "$passed" -lt 13 ]; then
+            echo "::error::expected all 13 e2e stages to PASS, only $passed did"
+            exit 1
+          fi
+          echo "all 13 e2e stages executed and passed"
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          out="$RUNNER_TEMP/e2e-logs"
+          mkdir -p "$out"
+          cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
+          docker ps -a > "$out/docker-ps.txt" 2>&1 || true
+          docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
+          for c in $(docker ps -aq); do
+            name=$(docker inspect --format '{{.Name}}' "$c" | sed 's|^/||')
+            docker logs "$c" > "$out/container-$name.log" 2>&1 || true
+          done
+
+      - name: Upload container logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-container-logs
+          path: ${{ runner.temp }}/e2e-logs
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Tear down e2e topology
+        if: always()
+        run: task e2e:down

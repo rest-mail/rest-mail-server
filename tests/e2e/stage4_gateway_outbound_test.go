@@ -11,7 +11,7 @@ import (
 func testStage4GatewayOutbound(t *testing.T) {
 	adminClient := newAPIClient()
 	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
-		t.Skipf("Cannot get admin token: %v", err)
+		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
 	// Only the restmail sender is a product mailbox. alice@mail1.test and
@@ -24,7 +24,7 @@ func testStage4GatewayOutbound(t *testing.T) {
 
 	gwClient := newAPIClient()
 	if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
-		t.Skipf("Cannot login as testuser@restmail.test: %v", err)
+		skipOrFail(t, "Cannot login as testuser@restmail.test: %v", err)
 	}
 
 	t.Run("Mail3_to_Mail1_SmtpRelay", func(t *testing.T) {
