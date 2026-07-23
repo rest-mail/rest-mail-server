@@ -43,6 +43,31 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
+      - name: Pin deploy host key
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          # Verify the deploy host against a key we pinned out-of-band instead of
+          # blindly trusting whatever key the network offers (StrictHostKeyChecking=no
+          # accepts any key → MITM of the deploy channel, OSI-22). DEPLOY_HOST_KEY holds
+          # the host's known_hosts line(s) (e.g. `ssh-keyscan deploy.example.com`
+          # captured once, out-of-band, and stored as a secret). Fail closed when it is
+          # absent or doesn't cover the host — never fall back to unverified SSH.
+          if [ -z "${DEPLOY_HOST_KEY}" ]; then
+            echo "ERROR: DEPLOY_HOST_KEY secret is not set — refusing to deploy without a pinned host key." >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_HOST_KEY}" >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          if ! ssh-keygen -F "${DEPLOY_HOST}" -f ~/.ssh/known_hosts >/dev/null; then
+            echo "ERROR: DEPLOY_HOST_KEY does not contain a host key for ${DEPLOY_HOST} — refusing to deploy." >&2
+            exit 1
+          fi
+
       - name: Deploy via Docker Compose
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -50,7 +75,7 @@ jobs:
           IMAGE_TAG: ${{ inputs.tag }}
           DEPLOY_ENV: ${{ inputs.environment }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} << 'DEPLOY_SCRIPT'
+          ssh -o StrictHostKeyChecking=yes ${DEPLOY_USER}@${DEPLOY_HOST} << 'DEPLOY_SCRIPT'
             set -euo pipefail
 
             cd /opt/restmail
@@ -92,5 +117,5 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} \
+          ssh -o StrictHostKeyChecking=yes ${DEPLOY_USER}@${DEPLOY_HOST} \
             "docker compose -f /opt/restmail/docker-compose.yml ps --format 'table {{.Name}}\t{{.Status}}'"
