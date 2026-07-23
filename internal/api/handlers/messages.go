@@ -16,7 +16,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/dkim"
 	rmail "github.com/restmail/restmail/internal/mail"
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -24,13 +26,53 @@ import (
 )
 
 type MessageHandler struct {
-	db     *gorm.DB
-	broker *SSEBroker
-	engine *pipeline.Engine
+	db        *gorm.DB
+	broker    *SSEBroker
+	engine    *pipeline.Engine
+	masterKey string
 }
 
-func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine) *MessageHandler {
-	return &MessageHandler{db: db, broker: broker, engine: engine}
+func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string) *MessageHandler {
+	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey}
+}
+
+// signOutboundDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes
+// with the sender domain's key, returning the signed message. DKIM must be
+// signed over what is transmitted — signing a reconstructed EmailJSON produced
+// signatures whose header hash never matched the wire form, so every outbound
+// message failed verification at receivers. If the domain has no key configured
+// (or signing fails), the message is returned unchanged.
+func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) string {
+	if senderDomain == "" {
+		return raw
+	}
+	var domain models.Domain
+	if err := h.db.Where("name = ?", senderDomain).First(&domain).Error; err != nil ||
+		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
+		return raw
+	}
+	keyPEM := domain.DKIMPrivateKey
+	if h.masterKey != "" {
+		if dec, err := restcrypto.DecryptString(keyPEM, h.masterKey); err == nil {
+			keyPEM = dec // fall back to plaintext (pre-encryption keys) on failure
+		}
+	}
+	priv, err := dkim.ParsePrivateKey(keyPEM)
+	if err != nil {
+		slog.Warn("dkim sign: parse key failed", "domain", senderDomain, "error", err)
+		return raw
+	}
+	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
+		Domain:     senderDomain,
+		Selector:   domain.DKIMSelector,
+		PrivateKey: priv,
+		Time:       time.Now().Unix(),
+	})
+	if err != nil {
+		slog.Warn("dkim sign failed", "domain", senderDomain, "error", err)
+		return raw
+	}
+	return "DKIM-Signature: " + val + "\r\n" + raw
 }
 
 // ListMessages returns messages in a folder with cursor-based pagination.
@@ -550,8 +592,17 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString("MIME-Version: 1.0\r\n")
 
-		// Write extra headers added by pipeline transforms (e.g. DKIM-Signature).
+		// Write extra headers added by pipeline transforms (e.g. header_cleanup).
+		// DKIM-Signature/ARC-* are deliberately skipped here: the pipeline signs a
+		// reconstructed EmailJSON, whose header bytes don't match this serialized
+		// form, so its signature never verifies. DKIM is signed authoritatively
+		// over the finalized raw below (signOutboundDKIM).
 		for name, value := range extraHeaders {
+			switch {
+			case strings.EqualFold(name, "DKIM-Signature"),
+				strings.HasPrefix(strings.ToLower(name), "arc-"):
+				continue
+			}
 			b.WriteString(name + ": " + value + "\r\n")
 		}
 
@@ -623,6 +674,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		rawMessage = b.String()
 	}
+
+	// Sign the finalized outbound message over its actual transmitted bytes.
+	rawMessage = h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 
 	// Deliver to each recipient in to + cc + bcc
 	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
@@ -1519,6 +1573,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	b.WriteString("--" + boundary + "--\r\n")
 
 	rawMessage := b.String()
+	rawMessage = h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 
 	// Save the reply to Sent folder
 	toJSON, _ := json.Marshal([]string{organizer})
