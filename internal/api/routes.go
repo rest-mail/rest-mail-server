@@ -115,6 +115,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
 	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db, cfg.MasterKey))
 	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
+	// OSI-13: bind the sieve filter to the deployment's redirect allowlist,
+	// overriding the deny-external default baked into the init() registration.
+	sieveRedirect := cfg.SieveRedirect()
+	pipeline.DefaultRegistry.Register("sieve", filters.NewSieveWithPolicy(filters.SieveRedirectPolicy{
+		AllowExternal:  sieveRedirect.AllowExternal,
+		AllowedDomains: sieveRedirect.AllowedDomains,
+	}))
 
 	// The message-processing engine carries the metrics observer so real
 	// inbound/outbound message flow emits pipeline metrics. The pipeline
@@ -122,6 +129,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// runs never pollute the aggregate metrics.
 	pipelineEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default(), pipelineobs.New())
 	previewEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
+	// OSI-18: apply the configured fail-open/closed action for unknown or errored
+	// filters. The engine defaults to fail-closed (defer); this lets an operator
+	// override (e.g. "continue" to restore legacy fail-open).
+	filterErrAction := pipeline.Action(cfg.PipelineFilterErrorAction())
+	pipelineEngine.SetFilterErrorAction(filterErrAction)
+	previewEngine.SetFilterErrorAction(filterErrAction)
 
 	// Async per-message trace recorder: durable MessageTrace rows are written off
 	// the hot path by one background goroutine, so a slow/failed DB drops traces
@@ -140,10 +153,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
 	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
+	restmailDeliverAuth := cfg.RestmailDeliverAuth()
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder, handlers.RestmailTarpitConfig{
 		Enabled: cfg.RestmailTarpitEnabled,
 		Base:    cfg.RestmailTarpitBase,
 		Max:     cfg.RestmailTarpitMax,
+	}, handlers.RestmailDeliverAuthConfig{
+		Enabled:      restmailDeliverAuth.Enabled,
+		Strict:       restmailDeliverAuth.Strict,
+		TrustedCIDRs: restmailDeliverAuth.TrustedCIDRs,
 	})
 
 	// ═══════════════════════════════════════════════════════════════
@@ -242,7 +260,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	}
 
 	// ═══════════════════════════════════════════════════════════════
-	// RESTMAIL server-to-server (unauthenticated, verified by DKIM/SPF)
+	// RESTMAIL server-to-server. No API key (like SMTP, any server may connect),
+	// but delivery is authenticated at the handler (OSI-3): trusted-peer network
+	// or DKIM alignment, refusing spoofed local-domain injection.
 	// ═══════════════════════════════════════════════════════════════
 	r.Get("/restmail/capabilities", restmailH.Capabilities)
 	r.Get("/restmail/mailboxes", restmailH.CheckMailbox)

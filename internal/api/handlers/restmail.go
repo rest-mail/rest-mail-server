@@ -16,21 +16,26 @@ import (
 )
 
 // RestmailHandler implements the RESTMAIL server-to-server protocol endpoints.
-// These are unauthenticated (like SMTP — any server can deliver to you).
-// Authentication is via DKIM/SPF/DMARC verification, not API keys.
+// There is no API key (like SMTP, any server may connect), but the delivery
+// endpoint is authenticated per-message (OSI-3, see restmailDeliverAuth): a
+// delivery must come from a trusted peer network or carry a DKIM signature that
+// aligns with its From domain, so a spoofed-From injection into a local mailbox
+// is refused rather than silently accepted.
 type RestmailHandler struct {
-	db       *gorm.DB
-	engine   *pipeline.Engine
-	recorder traceRecorder
-	tarpit   *negLookupTarpit
+	db          *gorm.DB
+	engine      *pipeline.Engine
+	recorder    traceRecorder
+	tarpit      *negLookupTarpit
+	deliverAuth *restmailDeliverAuth
 }
 
-func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceRecorder, tarpitCfg RestmailTarpitConfig) *RestmailHandler {
+func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceRecorder, tarpitCfg RestmailTarpitConfig, authCfg RestmailDeliverAuthConfig) *RestmailHandler {
 	return &RestmailHandler{
-		db:       db,
-		engine:   engine,
-		recorder: recorder,
-		tarpit:   newNegLookupTarpit(tarpitCfg),
+		db:          db,
+		engine:      engine,
+		recorder:    recorder,
+		tarpit:      newNegLookupTarpit(tarpitCfg),
+		deliverAuth: newRestmailDeliverAuth(authCfg),
 	}
 }
 
@@ -174,6 +179,41 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// OSI-3: authenticate the delivery before accepting it. The RESTMAIL delivery
+	// endpoint is unauthenticated by protocol (like SMTP, any server may connect),
+	// so without this gate any host could POST a spoofed-From message straight
+	// into a local mailbox (BEC/CEO-fraud). Trusted peers and DKIM-aligned mail
+	// pass; an unauthenticated delivery claiming a locally-hosted From domain
+	// (the internal-spoofing vector) is refused before any pipeline or storage.
+	if h.deliverAuth != nil && h.deliverAuth.enabled {
+		clientIP := restmailClientIP(r)
+		fromDomain := rmail.DomainFromAddress(req.From)
+		fromLocal := false
+		if fromDomain != "" {
+			var d models.Domain
+			if h.db.Where("name = ?", fromDomain).First(&d).Error == nil {
+				fromLocal = true
+			}
+		}
+		// DKIM verification does DNS lookups, so only pay for it when the decision
+		// depends on it: a trusted peer is already accepted, and a non-strict
+		// external sender is accepted regardless of signature.
+		aligned := false
+		if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) {
+			aligned = dkimAlignedWith(r.Context(), req.RawMessage, fromDomain)
+		}
+		if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
+			slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
+				"reason", reason,
+				"from_domain", fromDomain,
+				"client_ip", clientIP,
+				"dkim_aligned", aligned,
+			)
+			respond.Error(w, http.StatusForbidden, "unauthorized", "Delivery not authenticated")
+			return
+		}
+	}
+
 	var delivered []string
 	var failed []string
 	// Authentication-Results the inbound pipeline produced (dkim/spf/dmarc/arc),
@@ -256,8 +296,11 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	if pipelineCfg != nil && h.engine != nil {
 		result, err := h.engine.Execute(context.Background(), pipelineCfg, emailJSON)
 		if err != nil {
-			slog.Error("restmail: pipeline error", "error", err)
-			// Continue delivery on pipeline error (fail-open)
+			// Fail-CLOSED on a pipeline error (OSI-18): temp-fail so the peer
+			// retries rather than delivering mail that skipped inbound filtering.
+			slog.Error("restmail: pipeline error, deferring delivery", "error", err)
+			respond.Error(w, http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
+			return
 		} else {
 			rmTrace := traceInputs{
 				PipelineID:   pipelineCfg.ID,
@@ -272,6 +315,14 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 				rmTrace.Outcome = outcomeRejected
 				h.recordTrace(buildTrace(rmTrace))
 				respond.Error(w, http.StatusForbidden, "rejected", "Message rejected by policy")
+				return
+			case pipeline.ActionDefer:
+				// Fail-closed temp-fail (OSI-18): a deferred pipeline outcome (incl. a
+				// filter that failed to instantiate/execute) must not be delivered —
+				// the peer retries.
+				rmTrace.Outcome = outcomeDeferred
+				h.recordTrace(buildTrace(rmTrace))
+				respond.Error(w, http.StatusServiceUnavailable, "deferred", "Message deferred, retry later")
 				return
 			case pipeline.ActionDiscard:
 				rmTrace.Outcome = outcomeDiscarded

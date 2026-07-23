@@ -214,7 +214,7 @@ func TestCheckMailboxTarpitsNegativeButNotPositive(t *testing.T) {
 		db.Where("id = ?", domain.ID).Delete(&models.Domain{})
 	})
 
-	h := NewRestmailHandler(db, nil, nil, RestmailTarpitConfig{Enabled: true, Base: 50 * time.Millisecond, Max: time.Second})
+	h := NewRestmailHandler(db, nil, nil, RestmailTarpitConfig{Enabled: true, Base: 50 * time.Millisecond, Max: time.Second}, RestmailDeliverAuthConfig{})
 	var mu sync.Mutex
 	var calls []time.Duration
 	h.tarpit.sleep = func(_ context.Context, d time.Duration) {
