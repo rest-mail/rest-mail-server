@@ -89,6 +89,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Capability{},
 		&models.UserRole{},
 		&models.RoleCapability{},
+		// DMARC aggregate (rua) reporting
+		&models.DMARCAggregateRecord{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)
