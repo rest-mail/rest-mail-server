@@ -37,6 +37,23 @@ const DefaultSMTPTransferGracePeriod = 60 * time.Second
 // deliver zero bytes before the connection is dropped.
 const DefaultSMTPTransferStallTimeout = 300 * time.Second
 
+// SMTP anti-abuse tarpit defaults (SMTP_TARPIT_*). Tarpitting is ON by default:
+// past DefaultSMTPTarpitSoftLimit rejections on a connection, each further one
+// sleeps DefaultSMTPTarpitBase*(errors-soft), capped at DefaultSMTPTarpitMax.
+const (
+	DefaultSMTPTarpitBase      = 1 * time.Second
+	DefaultSMTPTarpitSoftLimit = 2
+	DefaultSMTPTarpitMax       = 15 * time.Second
+)
+
+// RESTMAIL negative-lookup tarpit defaults (RESTMAIL_TARPIT_*). Small values:
+// this is a lightweight defense-in-depth throttle on an already-authenticated
+// (DKIM/SPF) path. base doubles as the uniform floor on the first miss.
+const (
+	DefaultRestmailTarpitBase = 75 * time.Millisecond
+	DefaultRestmailTarpitMax  = 2 * time.Second
+)
+
 type Config struct {
 	// Database
 	DBHost            string
@@ -103,13 +120,36 @@ type Config struct {
 	// SMTPTransferStallTimeout is how long a message-body transfer may deliver
 	// zero bytes before the connection is dropped. Always positive.
 	SMTPTransferStallTimeout time.Duration
-	SMTPPortInbound          int
-	SMTPPortSubmission       int
-	SMTPPortSubmissionTLS    int
-	IMAPPort                 int
-	IMAPTLSPort              int
-	POP3Port                 int
-	POP3TLSPort              int
+
+	// SMTP anti-abuse tarpit: a per-connection escalating delay imposed at the
+	// SMTP rejection points (an invalid inbound RCPT rejected 550, or an AUTH
+	// failure), to slow dictionary/enumeration/brute-force sessions without
+	// touching legitimate senders. Below the soft limit there is no delay; past
+	// it each further rejection sleeps SMTPTarpitBase*(errors-soft), capped at
+	// SMTPTarpitMax. The cap is what bounds the self-DoS surface (a sleep holds
+	// a connection slot). When SMTPTarpitEnabled is false the feature is off and
+	// the base/max/soft-limit values are not range-validated.
+	SMTPTarpitEnabled   bool
+	SMTPTarpitBase      time.Duration
+	SMTPTarpitSoftLimit int
+	SMTPTarpitMax       time.Duration
+
+	// RESTMAIL negative-lookup tarpit: a per-source escalating delay on the
+	// server-to-server recipient-existence check (GET /restmail/mailboxes) when
+	// the mailbox does NOT exist, to throttle recipient enumeration (OSI-1) on
+	// that DKIM/SPF-gated path. Positive lookups return promptly. Bounded by
+	// RestmailTarpitMax. Off when RestmailTarpitEnabled is false.
+	RestmailTarpitEnabled bool
+	RestmailTarpitBase    time.Duration
+	RestmailTarpitMax     time.Duration
+
+	SMTPPortInbound       int
+	SMTPPortSubmission    int
+	SMTPPortSubmissionTLS int
+	IMAPPort              int
+	IMAPTLSPort           int
+	POP3Port              int
+	POP3TLSPort           int
 
 	// Per-gateway Prometheus metrics endpoints. Each gateway runs as its own
 	// process with its own registry, so each exposes /metrics on its own port
@@ -354,6 +394,66 @@ func Load() (*Config, error) {
 	}
 	cfg.SMTPTransferStallTimeout = time.Duration(stallSecs) * time.Second
 
+	// SMTP anti-abuse tarpit. Same strictness rationale as the transfer knobs: a
+	// malformed value is a startup error, never a silent fallback. Range checks
+	// apply only when enabled, so a deployment that turns the tarpit off need not
+	// tune the delays (0/disabled is honored).
+	cfg.SMTPTarpitEnabled = getEnvBool("SMTP_TARPIT_ENABLED", true)
+	tarpitBase, err := getEnvDurationStrict("SMTP_TARPIT_BASE", DefaultSMTPTarpitBase)
+	if err != nil {
+		return nil, err
+	}
+	tarpitMax, err := getEnvDurationStrict("SMTP_TARPIT_MAX", DefaultSMTPTarpitMax)
+	if err != nil {
+		return nil, err
+	}
+	tarpitSoft, err := getEnvInt64Strict("SMTP_TARPIT_SOFT_LIMIT", DefaultSMTPTarpitSoftLimit, "errors")
+	if err != nil {
+		return nil, err
+	}
+	if cfg.SMTPTarpitEnabled {
+		if tarpitBase <= 0 {
+			return nil, fmt.Errorf("SMTP_TARPIT_BASE must be a positive duration when SMTP_TARPIT_ENABLED is true, got %v", tarpitBase)
+		}
+		if tarpitMax <= 0 {
+			return nil, fmt.Errorf("SMTP_TARPIT_MAX must be a positive duration when SMTP_TARPIT_ENABLED is true, got %v", tarpitMax)
+		}
+		if tarpitMax < tarpitBase {
+			return nil, fmt.Errorf("SMTP_TARPIT_MAX (%v) must be >= SMTP_TARPIT_BASE (%v)", tarpitMax, tarpitBase)
+		}
+		if tarpitSoft < 0 {
+			return nil, fmt.Errorf("SMTP_TARPIT_SOFT_LIMIT must be non-negative, got %d", tarpitSoft)
+		}
+	}
+	cfg.SMTPTarpitBase = tarpitBase
+	cfg.SMTPTarpitMax = tarpitMax
+	cfg.SMTPTarpitSoftLimit = int(tarpitSoft)
+
+	// RESTMAIL negative-lookup tarpit. Same strict parse + enabled-gated range
+	// validation as the SMTP tarpit above.
+	cfg.RestmailTarpitEnabled = getEnvBool("RESTMAIL_TARPIT_ENABLED", true)
+	restTarpitBase, err := getEnvDurationStrict("RESTMAIL_TARPIT_BASE", DefaultRestmailTarpitBase)
+	if err != nil {
+		return nil, err
+	}
+	restTarpitMax, err := getEnvDurationStrict("RESTMAIL_TARPIT_MAX", DefaultRestmailTarpitMax)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.RestmailTarpitEnabled {
+		if restTarpitBase <= 0 {
+			return nil, fmt.Errorf("RESTMAIL_TARPIT_BASE must be a positive duration when RESTMAIL_TARPIT_ENABLED is true, got %v", restTarpitBase)
+		}
+		if restTarpitMax <= 0 {
+			return nil, fmt.Errorf("RESTMAIL_TARPIT_MAX must be a positive duration when RESTMAIL_TARPIT_ENABLED is true, got %v", restTarpitMax)
+		}
+		if restTarpitMax < restTarpitBase {
+			return nil, fmt.Errorf("RESTMAIL_TARPIT_MAX (%v) must be >= RESTMAIL_TARPIT_BASE (%v)", restTarpitMax, restTarpitBase)
+		}
+	}
+	cfg.RestmailTarpitBase = restTarpitBase
+	cfg.RestmailTarpitMax = restTarpitMax
+
 	// Internal mTLS: the port must be a valid TCP port when the feature is
 	// enabled. Per-role certificate-path validation happens at the point of use
 	// (InternalMTLSServerTLS / InternalMTLSClientTLS) because the same Config is
@@ -528,6 +628,23 @@ func getEnvFloatStrict(key string, fallback float64) (float64, error) {
 		return 0, fmt.Errorf("%s must be a decimal number, got %q", key, val)
 	}
 	return f, nil
+}
+
+// getEnvDurationStrict returns fallback when key is unset or empty, and errors
+// on a malformed value instead of silently falling back — used for security
+// knobs (e.g. the tarpit delays) where ignoring an explicitly configured value
+// would be worse than failing startup. Accepts any Go duration string ("1s",
+// "500ms", "15s"). Range validation is the caller's responsibility.
+func getEnvDurationStrict(key string, fallback time.Duration) (time.Duration, error) {
+	val, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(val) == "" {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(val))
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a Go duration (e.g. \"1s\", \"500ms\"), got %q", key, val)
+	}
+	return d, nil
 }
 
 func getEnvSlice(key string, fallback []string) []string {

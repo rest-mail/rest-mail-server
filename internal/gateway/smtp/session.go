@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
@@ -39,6 +41,15 @@ type session struct {
 	limiter      *connlimiter.Limiter
 	isSubmission bool // port 587/465 requires AUTH
 
+	// Anti-abuse tarpit: the connection-scoped context is cancelled on server
+	// shutdown so an in-flight tarpit sleep aborts rather than blocking the
+	// shutdown or outliving the connection. sleep is the (injectable) delay
+	// primitive — tarpitSleep in production, a fake in tests.
+	ctx     context.Context
+	tarpit  tarpitPolicy
+	sleep   func(context.Context, time.Duration)
+	tarpitN int // cumulative rejections/auth-failures on this connection
+
 	// Authenticated user state (submission only).
 	authenticated bool
 	authEmail     string
@@ -47,6 +58,26 @@ type session struct {
 	// Current transaction.
 	mailFrom string
 	rcptTo   []string
+}
+
+// tarpitReject records one connection-level rejection (an invalid inbound RCPT
+// or an AUTH failure) and, once the count crosses the soft limit, sleeps the
+// escalating (capped) delay before the caller hands the rejection back to the
+// client. Legitimate senders (0-1 errors) never sleep. The sleep aborts on
+// context cancellation, so a closed connection or a server shutdown never
+// leaves the goroutine hanging.
+func (s *session) tarpitReject() {
+	s.tarpitN++
+	d := s.tarpit.delayFor(s.tarpitN)
+	if d <= 0 {
+		return
+	}
+	slog.Warn("smtp: tarpitting abusive session",
+		"remote", s.remoteAddr(),
+		"errors", s.tarpitN,
+		"delay", d.String(),
+	)
+	s.sleep(s.ctx, d)
 }
 
 var _ gosmtp.AuthSession = (*session)(nil)
@@ -201,6 +232,10 @@ func (s *session) login(username, password string) error {
 			"ip", ip,
 		)
 		s.limiter.RecordAuthFail(ip)
+		// A failed AUTH is a brute-force signal: feed the tarpit so repeated
+		// bad credentials on one connection are progressively slowed (the
+		// connlimiter's cross-connection ban is the separate hard stop below).
+		s.tarpitReject()
 		if s.limiter.IsBanned(ip) {
 			return &gosmtp.SMTPError{
 				Code:         421,
@@ -272,7 +307,10 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 
 	if !resp.Data.Exists && !(s.isSubmission && s.authenticated) {
 		// Not a local recipient — on inbound we reject; on authenticated
-		// submission we accept and queue for outbound delivery.
+		// submission we accept and queue for outbound delivery. A rejected
+		// inbound RCPT is the recipient-enumeration/dictionary signal, so it
+		// feeds the tarpit: past the soft limit each further miss is delayed.
+		s.tarpitReject()
 		return &gosmtp.SMTPError{
 			Code:         550,
 			EnhancedCode: gosmtp.EnhancedCode{5, 1, 1},

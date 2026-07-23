@@ -22,10 +22,16 @@ type RestmailHandler struct {
 	db       *gorm.DB
 	engine   *pipeline.Engine
 	recorder traceRecorder
+	tarpit   *negLookupTarpit
 }
 
-func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceRecorder) *RestmailHandler {
-	return &RestmailHandler{db: db, engine: engine, recorder: recorder}
+func NewRestmailHandler(db *gorm.DB, engine *pipeline.Engine, recorder traceRecorder, tarpitCfg RestmailTarpitConfig) *RestmailHandler {
+	return &RestmailHandler{
+		db:       db,
+		engine:   engine,
+		recorder: recorder,
+		tarpit:   newNegLookupTarpit(tarpitCfg),
+	}
 }
 
 // recordTrace hands a MessageTrace to the async recorder when configured. Never
@@ -60,6 +66,11 @@ func (h *RestmailHandler) CheckMailbox(w http.ResponseWriter, r *http.Request) {
 
 	var mailbox models.Mailbox
 	if err := h.db.Where("address = ? AND active = ?", address, true).First(&mailbox).Error; err != nil {
+		// Negative lookup: tarpit the source to throttle recipient enumeration
+		// (OSI-1). The delay escalates per source and is capped; a positive
+		// lookup (below) skips it and returns promptly. Keyed on the request
+		// context so a client disconnect aborts the sleep.
+		h.tarpit.delay(r.Context(), restmailClientIP(r))
 		respond.Data(w, http.StatusOK, map[string]interface{}{
 			"exists": false,
 		})
@@ -173,8 +184,14 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// Build pipeline EmailJSON from the request for inbound filtering
 	emailJSON := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
-			From:      []pipeline.Address{{Address: req.From}},
-			To:        func() []pipeline.Address { a := make([]pipeline.Address, len(req.To)); for i, r := range req.To { a[i] = pipeline.Address{Address: r} }; return a }(),
+			From: []pipeline.Address{{Address: req.From}},
+			To: func() []pipeline.Address {
+				a := make([]pipeline.Address, len(req.To))
+				for i, r := range req.To {
+					a[i] = pipeline.Address{Address: r}
+				}
+				return a
+			}(),
 			Subject:   req.Subject,
 			Date:      req.Date,
 			MessageID: req.MessageID,

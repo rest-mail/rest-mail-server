@@ -22,6 +22,8 @@ var allEnvKeys = []string{
 	"SMTP_PORT_INBOUND", "SMTP_PORT_SUBMISSION", "SMTP_PORT_SUBMISSION_TLS",
 	"SMTP_MAX_MESSAGE_SIZE",
 	"SMTP_MIN_TRANSFER_RATE", "SMTP_TRANSFER_GRACE_PERIOD", "SMTP_TRANSFER_STALL_TIMEOUT",
+	"SMTP_TARPIT_ENABLED", "SMTP_TARPIT_BASE", "SMTP_TARPIT_SOFT_LIMIT", "SMTP_TARPIT_MAX",
+	"RESTMAIL_TARPIT_ENABLED", "RESTMAIL_TARPIT_BASE", "RESTMAIL_TARPIT_MAX",
 	"IMAP_PORT", "IMAP_TLS_PORT",
 	"POP3_PORT", "POP3_TLS_PORT",
 	"SMTP_METRICS_PORT", "IMAP_METRICS_PORT", "POP3_METRICS_PORT",
@@ -650,5 +652,116 @@ func TestLoad_MaxRowsZeroDisablesBackstop(t *testing.T) {
 	}
 	if cfg.TraceMaxRows != 0 {
 		t.Errorf("TraceMaxRows = %d, want 0 (backstop disabled)", cfg.TraceMaxRows)
+	}
+}
+
+// ── Anti-abuse tarpit knobs (SMTP_TARPIT_* / RESTMAIL_TARPIT_*) ───────
+
+// TestLoad_TarpitDefaults verifies the tarpit knobs fall back to their
+// documented defaults (enabled, escalating) when unset.
+func TestLoad_TarpitDefaults(t *testing.T) {
+	clearEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if !cfg.SMTPTarpitEnabled {
+		t.Error("SMTPTarpitEnabled = false, want true (on by default)")
+	}
+	if cfg.SMTPTarpitBase != time.Second {
+		t.Errorf("SMTPTarpitBase = %v, want 1s", cfg.SMTPTarpitBase)
+	}
+	if cfg.SMTPTarpitSoftLimit != 2 {
+		t.Errorf("SMTPTarpitSoftLimit = %d, want 2", cfg.SMTPTarpitSoftLimit)
+	}
+	if cfg.SMTPTarpitMax != 15*time.Second {
+		t.Errorf("SMTPTarpitMax = %v, want 15s", cfg.SMTPTarpitMax)
+	}
+	if !cfg.RestmailTarpitEnabled {
+		t.Error("RestmailTarpitEnabled = false, want true (on by default)")
+	}
+	if cfg.RestmailTarpitBase != 75*time.Millisecond {
+		t.Errorf("RestmailTarpitBase = %v, want 75ms", cfg.RestmailTarpitBase)
+	}
+	if cfg.RestmailTarpitMax != 2*time.Second {
+		t.Errorf("RestmailTarpitMax = %v, want 2s", cfg.RestmailTarpitMax)
+	}
+}
+
+// TestLoad_TarpitOverrides verifies the tarpit knobs accept Go duration strings
+// and an integer soft limit.
+func TestLoad_TarpitOverrides(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("SMTP_TARPIT_BASE", "500ms")
+	t.Setenv("SMTP_TARPIT_SOFT_LIMIT", "5")
+	t.Setenv("SMTP_TARPIT_MAX", "30s")
+	t.Setenv("RESTMAIL_TARPIT_BASE", "100ms")
+	t.Setenv("RESTMAIL_TARPIT_MAX", "5s")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if cfg.SMTPTarpitBase != 500*time.Millisecond {
+		t.Errorf("SMTPTarpitBase = %v, want 500ms", cfg.SMTPTarpitBase)
+	}
+	if cfg.SMTPTarpitSoftLimit != 5 {
+		t.Errorf("SMTPTarpitSoftLimit = %d, want 5", cfg.SMTPTarpitSoftLimit)
+	}
+	if cfg.SMTPTarpitMax != 30*time.Second {
+		t.Errorf("SMTPTarpitMax = %v, want 30s", cfg.SMTPTarpitMax)
+	}
+	if cfg.RestmailTarpitBase != 100*time.Millisecond {
+		t.Errorf("RestmailTarpitBase = %v, want 100ms", cfg.RestmailTarpitBase)
+	}
+	if cfg.RestmailTarpitMax != 5*time.Second {
+		t.Errorf("RestmailTarpitMax = %v, want 5s", cfg.RestmailTarpitMax)
+	}
+}
+
+// TestLoad_TarpitDisabledSkipsValidation confirms a disabled tarpit loads
+// cleanly even when its delays are left at whatever (unset → default) — the
+// disable knob is honored and range checks do not apply.
+func TestLoad_TarpitDisabledSkipsValidation(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("SMTP_TARPIT_ENABLED", "false")
+	t.Setenv("RESTMAIL_TARPIT_ENABLED", "false")
+	// Even a nonsensical (max < base) pairing is tolerated when disabled.
+	t.Setenv("SMTP_TARPIT_BASE", "10s")
+	t.Setenv("SMTP_TARPIT_MAX", "1s")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() with tarpit disabled errored: %v", err)
+	}
+	if cfg.SMTPTarpitEnabled || cfg.RestmailTarpitEnabled {
+		t.Errorf("tarpit should be disabled: smtp=%v restmail=%v", cfg.SMTPTarpitEnabled, cfg.RestmailTarpitEnabled)
+	}
+}
+
+// TestLoad_TarpitInvalid verifies out-of-range / malformed tarpit values are
+// hard startup errors when the tarpit is enabled.
+func TestLoad_TarpitInvalid(t *testing.T) {
+	type kv struct{ key, val string }
+	bad := []kv{
+		{"SMTP_TARPIT_BASE", "0s"},        // non-positive base
+		{"SMTP_TARPIT_BASE", "-1s"},       // negative base
+		{"SMTP_TARPIT_BASE", "banana"},    // malformed
+		{"SMTP_TARPIT_MAX", "0s"},         // non-positive max
+		{"SMTP_TARPIT_MAX", "500ms"},      // max < default base (1s)
+		{"SMTP_TARPIT_SOFT_LIMIT", "-1"},  // negative soft limit
+		{"SMTP_TARPIT_SOFT_LIMIT", "abc"}, // malformed
+		{"RESTMAIL_TARPIT_BASE", "0s"},    // non-positive base
+		{"RESTMAIL_TARPIT_MAX", "-5s"},    // negative max
+		{"RESTMAIL_TARPIT_MAX", "10ms"},   // max < default base (75ms)
+		{"RESTMAIL_TARPIT_BASE", "nope"},  // malformed
+	}
+	for _, tc := range bad {
+		clearEnv(t)
+		t.Setenv(tc.key, tc.val)
+		if _, err := Load(); err == nil {
+			t.Errorf("Load() with %s=%q should fail", tc.key, tc.val)
+		}
 	}
 }
