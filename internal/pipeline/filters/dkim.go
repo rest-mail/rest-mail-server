@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rest-mail/dkim"
+	"github.com/rest-mail/go-dkim"
 	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"

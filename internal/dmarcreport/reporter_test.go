@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rest-mail/dmarc"
+	"github.com/rest-mail/go-dmarc"
 )
 
 func TestParseRUA(t *testing.T) {

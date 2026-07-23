@@ -47,13 +47,13 @@ RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where
 
 | Library | What it is |
 |---------|------------|
-| [`rest-mail/pop3`](https://github.com/rest-mail/pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
-| [`rest-mail/imap`](https://github.com/rest-mail/imap) | IMAP server engine with the same bring-a-`Backend` design |
-| [`rest-mail/dkim`](https://github.com/rest-mail/dkim) | RFC 6376 DKIM signing + verification, zero external deps |
-| [`rest-mail/arc`](https://github.com/rest-mail/arc) | RFC 8617 ARC chain verification and sealing |
-| [`rest-mail/dmarc`](https://github.com/rest-mail/dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
-| [`rest-mail/mtasts`](https://github.com/rest-mail/mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
-| [`rest-mail/sieve`](https://github.com/rest-mail/sieve) | RFC 5228 Sieve parser/interpreter |
+| [`rest-mail/pop3`](https://github.com/rest-mail/go-pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
+| [`rest-mail/imap`](https://github.com/rest-mail/go-imap) | IMAP server engine with the same bring-a-`Backend` design |
+| [`rest-mail/dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
+| [`rest-mail/arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
+| [`rest-mail/dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
+| [`rest-mail/mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
+| [`rest-mail/sieve`](https://github.com/rest-mail/go-sieve) | RFC 5228 Sieve parser/interpreter |
 
 Where the ecosystem already has a good answer, we use it:
 

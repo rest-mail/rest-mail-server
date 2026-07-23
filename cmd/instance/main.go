@@ -21,7 +21,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/rest-mail/dkim"
+	"github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/instance"
 )
 

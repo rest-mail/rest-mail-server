@@ -1,4 +1,4 @@
-// Package imap adapts the rest-mail REST API to the github.com/rest-mail/imap
+// Package imap adapts the rest-mail REST API to the github.com/rest-mail/go-imap
 // server library: it implements the library's Backend/Mailbox interfaces by
 // mapping apiclient responses onto the library's neutral types. The protocol
 // engine itself lives in the library; this package only knows how rest-mail
@@ -6,7 +6,7 @@
 package imap
 
 import (
-	imapsrv "github.com/rest-mail/imap"
+	imapsrv "github.com/rest-mail/go-imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )

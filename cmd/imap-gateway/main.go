@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	imapsrv "github.com/rest-mail/imap"
+	imapsrv "github.com/rest-mail/go-imap"
 
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"

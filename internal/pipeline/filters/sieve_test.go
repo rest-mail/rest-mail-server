@@ -1,6 +1,6 @@
 package filters
 
-// The Sieve parser and interpreter live in github.com/rest-mail/sieve, together
+// The Sieve parser and interpreter live in github.com/rest-mail/go-sieve, together
 // with the full evaluation-semantics test suite. The tests here cover what this
 // filter owns: the pipeline wiring (NewSieve/Execute, FilterResult mapping for
 // discard/reject), the metadata mapping of each action, and the app-specific

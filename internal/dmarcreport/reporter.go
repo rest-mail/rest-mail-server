@@ -1,7 +1,7 @@
 // Package dmarcreport runs the periodic worker that emits RFC 7489 DMARC
 // aggregate (rua) reports for the per-message evaluations captured by the
 // dmarc_check filter. Report XML generation and DMARC record parsing live in
-// github.com/rest-mail/dmarc; this package owns the scheduling, persistence,
+// github.com/rest-mail/go-dmarc; this package owns the scheduling, persistence,
 // and delivery wiring (reading captured evaluations, finding the rua address,
 // and queueing the report email for outbound delivery).
 package dmarcreport
@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rest-mail/dmarc"
+	"github.com/rest-mail/go-dmarc"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )

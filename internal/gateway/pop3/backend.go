@@ -1,4 +1,4 @@
-// Package pop3 adapts the rest-mail REST API to the github.com/rest-mail/pop3
+// Package pop3 adapts the rest-mail REST API to the github.com/rest-mail/go-pop3
 // server library: it implements the library's Backend/Mailbox interfaces by
 // mapping apiclient responses onto the library's neutral types. The protocol
 // engine itself lives in the library; this package only knows how rest-mail
@@ -8,7 +8,7 @@ package pop3
 import (
 	"strconv"
 
-	pop3srv "github.com/rest-mail/pop3"
+	pop3srv "github.com/rest-mail/go-pop3"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
