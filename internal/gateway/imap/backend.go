@@ -48,6 +48,14 @@ type mailbox struct {
 
 var _ imapsrv.Mailbox = (*mailbox)(nil)
 
+// The mailbox also satisfies the library's optional UIDPLUS (RFC 4315) and atomic
+// MOVE (RFC 6851) interfaces, so the server advertises UIDPLUS and emits
+// APPENDUID / COPYUID response codes and honours UID EXPUNGE for rest-mail.
+var (
+	_ imapsrv.UIDPlusMailbox = (*mailbox)(nil)
+	_ imapsrv.Mover          = (*mailbox)(nil)
+)
+
 // Folders lists the account's folders.
 func (m *mailbox) Folders() ([]imapsrv.Folder, error) {
 	resp, err := m.api.ListFolders(m.token, m.accountID)
@@ -134,9 +142,22 @@ func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
 	return m.api.UpdateMessage(m.token, uint(uid), updates)
 }
 
-// Move relocates a message to another folder.
+// Move relocates a message to another folder (base Mailbox.Move). It delegates to
+// MoveUID and discards the reported UID, so the two paths never diverge.
 func (m *mailbox) Move(uid uint32, dest string) error {
-	return m.api.UpdateMessage(m.token, uint(uid), map[string]interface{}{"folder": dest})
+	_, err := m.MoveUID(uid, dest)
+	return err
+}
+
+// MoveUID relocates a message to dest and returns its UID there (Mover, RFC 6851).
+// rest-mail's UpdateMessage changes only the folder and keeps the same message ID,
+// so the message keeps its UID; that UID is what the atomic MOVE's COPYUID
+// response code reports.
+func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
+	if err := m.api.UpdateMessage(m.token, uint(uid), map[string]interface{}{"folder": dest}); err != nil {
+		return 0, err
+	}
+	return uid, nil
 }
 
 // Delete permanently removes a message (EXPUNGE/CLOSE).
@@ -144,12 +165,22 @@ func (m *mailbox) Delete(uid uint32) error {
 	return m.api.DeleteMessage(m.token, uint(uid))
 }
 
-// Copy duplicates a message into dest by re-delivering its full detail (with the
-// raw original preserved) and then moving the new copy out of INBOX if needed.
+// Copy duplicates a message into dest (base Mailbox.Copy). It delegates to CopyUID
+// and discards the reported UID, so the two paths never diverge.
 func (m *mailbox) Copy(uid uint32, dest string) error {
+	_, err := m.CopyUID(uid, dest)
+	return err
+}
+
+// CopyUID duplicates the message named by uid into dest by re-delivering its full
+// detail (with the raw original preserved) and then moving the new copy out of
+// INBOX if needed. It returns the new message's UID (UIDPLUS, RFC 4315) — the ID
+// the delivery assigned, which is rest-mail's UID for the copy — for the COPYUID
+// response code.
+func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	detail, err := m.api.GetMessage(m.token, uint(uid))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	deliverReq := &apiclient.DeliverRequest{
@@ -169,19 +200,31 @@ func (m *mailbox) Copy(uid uint32, dest string) error {
 
 	resp, err := m.api.DeliverMessage(deliverReq)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	if resp == nil {
+		return 0, nil
 	}
 
 	// Move the new message to the destination folder if not INBOX
-	if dest != "INBOX" && resp != nil {
+	if dest != "INBOX" {
 		_ = m.api.UpdateMessage(m.token, resp.Data.ID, map[string]interface{}{"folder": dest})
 	}
-	return nil
+	return toUID(resp.Data.ID), nil
 }
 
-// Append delivers raw RFC 2822 bytes into dest (APPEND), applying any flags the
-// client supplied to the newly delivered message.
+// Append delivers raw RFC 2822 bytes into dest (base Mailbox.Append). It delegates
+// to AppendUID and discards the reported UID, so the two paths never diverge.
 func (m *mailbox) Append(dest string, f imapsrv.FlagUpdate, raw []byte) error {
+	_, err := m.AppendUID(dest, f, raw)
+	return err
+}
+
+// AppendUID delivers raw RFC 2822 bytes into dest (APPEND), applying any flags the
+// client supplied to the newly delivered message, and returns that message's UID
+// (UIDPLUS, RFC 4315) — the ID the delivery assigned, which is rest-mail's UID —
+// for the APPENDUID response code.
+func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint32, error) {
 	// Parse basic headers from raw message for the structured delivery fields.
 	subject, bodyText, bodyHTML, messageID, senderName := parseBasicHeaders(raw)
 
@@ -198,11 +241,14 @@ func (m *mailbox) Append(dest string, f imapsrv.FlagUpdate, raw []byte) error {
 
 	resp, err := m.api.DeliverMessage(deliverReq)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	if resp == nil {
+		return 0, nil
 	}
 
 	// Move to the target folder if not INBOX
-	if dest != "INBOX" && resp != nil {
+	if dest != "INBOX" {
 		_ = m.api.UpdateMessage(m.token, resp.Data.ID, map[string]interface{}{"folder": dest})
 	}
 
@@ -217,10 +263,19 @@ func (m *mailbox) Append(dest string, f imapsrv.FlagUpdate, raw []byte) error {
 	if f.Draft != nil && *f.Draft {
 		updates["is_draft"] = true
 	}
-	if resp != nil && len(updates) > 0 {
+	if len(updates) > 0 {
 		_ = m.api.UpdateMessage(m.token, resp.Data.ID, updates)
 	}
-	return nil
+	return toUID(resp.Data.ID), nil
+}
+
+// UIDValidity reports the UIDVALIDITY for a folder (UIDPlusMailbox, RFC 4315).
+// rest-mail uses a global message-ID-as-UID model: a message's ID is its IMAP UID,
+// is assigned once and never reused, so a single constant UIDVALIDITY holds
+// account-wide. Returning 1 matches the pre-UIDPLUS hardcoded SELECT
+// [UIDVALIDITY 1] behaviour. Per-folder UIDVALIDITY is future work.
+func (m *mailbox) UIDValidity(folder string) (uint32, error) {
+	return 1, nil
 }
 
 // Quota returns storage use and limit in bytes.

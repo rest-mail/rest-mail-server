@@ -2,10 +2,24 @@ package imap
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
+
+// toUID converts a rest-mail message ID to an IMAP UID. rest-mail's message ID is
+// the message's IMAP UID (a global message-ID-as-UID model). The ID is a uint,
+// which may be 64-bit, so clamp values that do not fit in the 32-bit UID space to
+// 0 rather than letting them silently wrap to a small, wrong UID; the library
+// treats a 0 UID as "none assigned" and omits the affected APPENDUID/COPYUID
+// response code.
+func toUID(id uint) uint32 {
+	if uint64(id) > math.MaxUint32 {
+		return 0
+	}
+	return uint32(id)
+}
 
 // buildRawMessage constructs a simplified RFC 2822 message from API data.
 func buildRawMessage(msg apiclient.MessageDetail) string {
