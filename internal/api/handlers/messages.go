@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rest-mail/dkim"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/dkim"
 	rmail "github.com/restmail/restmail/internal/mail"
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"

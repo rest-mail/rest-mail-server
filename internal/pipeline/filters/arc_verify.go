@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/restmail/restmail/internal/dkim"
+	"github.com/rest-mail/arc"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -15,7 +15,7 @@ import (
 // messages per RFC 8617. It validates chain structure (instance numbering, cv
 // values, header set completeness) and, when the raw message is available,
 // cryptographically verifies the chain (most recent ARC-Message-Signature over
-// the message plus every ARC-Seal over the header chain, via internal/dkim),
+// the message plus every ARC-Seal over the header chain, via github.com/rest-mail/arc),
 // adding arc=pass/fail/none to Authentication-Results.
 type arcVerifyFilter struct{}
 
@@ -28,7 +28,7 @@ func NewARCVerify(_ []byte) (pipeline.Filter, error) {
 	return &arcVerifyFilter{}, nil
 }
 
-func (f *arcVerifyFilter) Name() string             { return "arc_verify" }
+func (f *arcVerifyFilter) Name() string              { return "arc_verify" }
 func (f *arcVerifyFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
 // arcHeaderSet represents one complete ARC header set at a given instance number.
@@ -149,7 +149,7 @@ func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 	// the pipeline as metadata.
 	if result == "pass" {
 		if raw := email.Metadata["raw_message"]; raw != "" {
-			cv, reason := dkim.VerifyARC(ctx, []byte(raw), nil)
+			cv, reason := arc.Verify(ctx, []byte(raw), nil)
 			result, detail = cv, reason
 		} else {
 			detail = "chain structure valid; cryptographic verification skipped (no raw message)"
@@ -273,4 +273,3 @@ func addARCAuthResult(email *pipeline.EmailJSON, result string) {
 		email.Headers.Extra["Authentication-Results"] = arcResult
 	}
 }
-

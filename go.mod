@@ -13,6 +13,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/pires/go-proxyproto v0.11.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/rest-mail/arc v0.1.0
+	github.com/rest-mail/dkim v0.1.0
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.50.0
 	gorm.io/driver/postgres v1.6.0

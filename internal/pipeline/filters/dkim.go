@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rest-mail/dkim"
 	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/dkim"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
