@@ -139,10 +139,12 @@ includes:
       SMTP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       SMTP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       SMTP_GATEWAY_DB_HOST: '{{.MAIL3_POSTGRES_IP}}'
-      # With internal mTLS on, dial the API's dedicated https listener; else the
-      # plain public listener (unchanged).
-      SMTP_GATEWAY_API_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{else}}http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}{{end}}'
+      # API_BASE_URL always targets the PUBLIC listener (token/credential + user
+      # routes). With internal mTLS on, only the two machine routes use the
+      # separate API_INTERNAL_BASE_URL (the https internal listener).
+      SMTP_GATEWAY_API_BASE_URL: 'http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}'
       SMTP_GATEWAY_INTERNAL_MTLS: '{{.MAIL3_INTERNAL_MTLS | default "false"}}'
+      SMTP_GATEWAY_API_INTERNAL_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{end}}'
       SMTP_GATEWAY_TLS_CERT_PATH: '/certs/{{.MAIL3_HOSTNAME}}.crt'
       SMTP_GATEWAY_TLS_KEY_PATH: '/certs/{{.MAIL3_HOSTNAME}}.key'
       SMTP_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
@@ -168,8 +170,10 @@ includes:
       IMAP_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       IMAP_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       IMAP_GATEWAY_DB_HOST: '{{.MAIL3_POSTGRES_IP}}'
-      IMAP_GATEWAY_API_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{else}}http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}{{end}}'
+      # Public listener for token/user routes; machine routes use the internal one.
+      IMAP_GATEWAY_API_BASE_URL: 'http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}'
       IMAP_GATEWAY_INTERNAL_MTLS: '{{.MAIL3_INTERNAL_MTLS | default "false"}}'
+      IMAP_GATEWAY_API_INTERNAL_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{end}}'
       IMAP_GATEWAY_TLS_CERT_PATH: '/certs/{{.MAIL3_HOSTNAME}}.crt'
       IMAP_GATEWAY_TLS_KEY_PATH: '/certs/{{.MAIL3_HOSTNAME}}.key'
       IMAP_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
@@ -195,8 +199,10 @@ includes:
       POP3_GATEWAY_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       POP3_GATEWAY_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       POP3_GATEWAY_DB_HOST: '{{.MAIL3_POSTGRES_IP}}'
-      POP3_GATEWAY_API_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{else}}http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}{{end}}'
+      # Public listener for token/user routes; machine routes use the internal one.
+      POP3_GATEWAY_API_BASE_URL: 'http://{{.MAIL3_API_IP}}:{{.MAIL3_API_PORT}}'
       POP3_GATEWAY_INTERNAL_MTLS: '{{.MAIL3_INTERNAL_MTLS | default "false"}}'
+      POP3_GATEWAY_API_INTERNAL_BASE_URL: '{{if eq (.MAIL3_INTERNAL_MTLS | default "false") "true"}}https://{{.MAIL3_API_IP}}:{{.MAIL3_INTERNAL_MTLS_PORT | default "8443"}}{{end}}'
       POP3_GATEWAY_TLS_CERT_PATH: '/certs/{{.MAIL3_HOSTNAME}}.crt'
       POP3_GATEWAY_TLS_KEY_PATH: '/certs/{{.MAIL3_HOSTNAME}}.key'
       POP3_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'

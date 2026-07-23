@@ -71,7 +71,13 @@ type Config struct {
 
 	// Gateway
 	GatewayHostname string
-	APIBaseURL      string // internal API URL for the gateway
+	APIBaseURL      string // public API URL for the gateway (token/credential routes)
+	// APIInternalBaseURL is the URL of the API's dedicated internal mTLS
+	// listener. Used ONLY for the two tokenless machine routes (recipient check
+	// + inbound delivery) when internal mTLS is enabled; every other gateway→API
+	// call keeps using APIBaseURL (the public listener). Empty when internal
+	// mTLS is off.
+	APIInternalBaseURL string
 	// SMTPMaxMessageSize is the maximum accepted SMTP message size in bytes.
 	// It drives both the EHLO SIZE advertisement and DATA enforcement. Always
 	// positive: unset falls back to DefaultSMTPMaxMessageSize, and zero or
@@ -174,6 +180,7 @@ func Load() (*Config, error) {
 
 		GatewayHostname:       getEnv("GATEWAY_HOSTNAME", "localhost"),
 		APIBaseURL:            getEnv("API_BASE_URL", "http://localhost:8080"),
+		APIInternalBaseURL:    getEnv("API_INTERNAL_BASE_URL", ""),
 		SMTPPortInbound:       getEnvInt("SMTP_PORT_INBOUND", 25),
 		SMTPPortSubmission:    getEnvInt("SMTP_PORT_SUBMISSION", 587),
 		SMTPPortSubmissionTLS: getEnvInt("SMTP_PORT_SUBMISSION_TLS", 465),

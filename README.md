@@ -479,16 +479,27 @@ identity), separate from user JWTs and admin RBAC.
 **Off by default** (`INTERNAL_MTLS_ENABLED=false`): the routes stay on the
 public listener, tokenless — no change for existing network-trust deployments.
 
-When **enabled**, the API serves those routes ONLY on a dedicated listener
+When **enabled**, the API serves only those two routes on a dedicated listener
 (`INTERNAL_MTLS_PORT`, default `8443`) that requires
 `tls.RequireAndVerifyClientCert` against the internal CA, and withholds them
 from the public listener. A missing / wrong-CA / expired client certificate is
 rejected at the TLS handshake, before any HTTP handler runs.
 
+Routing is **per-endpoint, not per-client**: only `CheckMailbox` and
+`DeliverMessage` use the internal listener (`API_INTERNAL_BASE_URL`). `Login`
+and every token-authenticated user route (folders, messages, quota, …) stay on
+the public listener via `API_BASE_URL` — they are already authenticated by JWT
+or user credentials and don't need mTLS, and submission/IMAP/POP3 users don't
+hold gateway client certs. **Do not repoint `API_BASE_URL`** at the internal
+listener, or those user routes would 404 and IMAP/POP3 retrieval and SMTP
+submission would break.
+
 | Variable                    | Default   | Side    | Description                              |
 |-----------------------------|-----------|---------|------------------------------------------|
 | `INTERNAL_MTLS_ENABLED`     | `false`   | both    | Master switch                            |
 | `INTERNAL_MTLS_PORT`        | `8443`    | API     | Dedicated internal listener port         |
+| `API_BASE_URL`              | `http://localhost:8080` | gateway | PUBLIC listener (Login + user routes) — stays public |
+| `API_INTERNAL_BASE_URL`     | *(empty)* | gateway | Internal mTLS listener (the two machine routes only) |
 | `INTERNAL_MTLS_CA_CERT`     | *(empty)* | both    | Internal CA (anchors the trust domain)   |
 | `INTERNAL_MTLS_SERVER_CERT` | *(empty)* | API     | Server cert for the internal listener    |
 | `INTERNAL_MTLS_SERVER_KEY`  | *(empty)* | API     | Server key                               |
@@ -496,19 +507,21 @@ rejected at the TLS handshake, before any HTTP handler runs.
 | `INTERNAL_MTLS_CLIENT_KEY`  | *(empty)* | gateway | Gateway client key                       |
 
 Mint the material (dedicated CA + API server cert + gateway client cert) with
-the in-repo certgen — idempotent and CA-preserving:
+the in-repo certgen — idempotent and CA-preserving (it re-mints the server leaf
+if the requested SANs drift, e.g. the api IP changes on a persistent volume):
 
 ```
 go run ./cmd/certgen --internal-mtls --out /certs \
   --server-ip 127.0.0.1,<api-ip> --server-dns api,localhost,<hostname>
 ```
 
-When enabled, point the gateways' `API_BASE_URL` at the https internal listener
-(e.g. `https://<api-host>:8443`). Enabling it is fail-closed: if the feature is
-on but a cert path is unset or unreadable, the binary refuses to start; if the
-API has it on but a gateway does not, the gateway's tokenless calls to the old
-public route return 404 and delivery fails visibly rather than silently
-bypassing the check.
+When enabled, set the gateways' `API_INTERNAL_BASE_URL` to the https internal
+listener (e.g. `https://<api-host>:8443`) and leave `API_BASE_URL` on the public
+listener. Enabling it is fail-closed: if the feature is on but a cert path or
+`API_INTERNAL_BASE_URL` is unset/unreadable, the gateway refuses to start; if
+the API has it on but a gateway does not, the gateway's tokenless calls to the
+now-absent public route return 404 and delivery fails visibly rather than
+silently bypassing the check.
 
 **Testbed**: an instance opts in by setting `internal_mtls: true` in its
 `manifest.yml`; `task instance:mtls:issue` (run automatically by `task e2e:up`)

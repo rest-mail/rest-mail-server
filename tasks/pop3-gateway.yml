@@ -41,9 +41,11 @@ vars:
   POP3_GATEWAY_ENVIRONMENT: '{{.POP3_GATEWAY_ENVIRONMENT | default "development"}}'
   POP3_GATEWAY_MAILNET_ONLY: '{{.POP3_GATEWAY_MAILNET_ONLY | default "false"}}'
   # Internal mTLS (gateway → API). Off by default; when "true" the gateway
-  # presents /certs/internal-client.* to the API's internal listener (the
-  # caller must also point POP3_GATEWAY_API_BASE_URL at that https listener).
+  # presents /certs/internal-client.* on the two machine routes and sends them
+  # to POP3_GATEWAY_API_INTERNAL_BASE_URL (the API's https internal listener);
+  # all other routes keep using POP3_GATEWAY_API_BASE_URL (public).
   POP3_GATEWAY_INTERNAL_MTLS: '{{.POP3_GATEWAY_INTERNAL_MTLS | default "false"}}'
+  POP3_GATEWAY_API_INTERNAL_BASE_URL: '{{.POP3_GATEWAY_API_INTERNAL_BASE_URL | default ""}}'
 
 tasks:
 
@@ -108,6 +110,7 @@ tasks:
           -e LOG_LEVEL={{.POP3_GATEWAY_LOG_LEVEL}} \
           -e ENVIRONMENT={{.POP3_GATEWAY_ENVIRONMENT}} \
           -e INTERNAL_MTLS_ENABLED={{.POP3_GATEWAY_INTERNAL_MTLS}} \
+          -e API_INTERNAL_BASE_URL={{.POP3_GATEWAY_API_INTERNAL_BASE_URL}} \
           -e INTERNAL_MTLS_CA_CERT=/certs/internal-ca.crt \
           -e INTERNAL_MTLS_CLIENT_CERT=/certs/internal-client.crt \
           -e INTERNAL_MTLS_CLIENT_KEY=/certs/internal-client.key \

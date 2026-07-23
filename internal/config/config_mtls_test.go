@@ -23,6 +23,32 @@ func TestLoad_InternalMTLSDefaults(t *testing.T) {
 	if cfg.InternalMTLSCACert != "" || cfg.InternalMTLSServerCert != "" || cfg.InternalMTLSClientCert != "" {
 		t.Error("internal mTLS cert paths should default empty")
 	}
+	// API_INTERNAL_BASE_URL must default empty, and API_BASE_URL must keep its
+	// public default independent of the internal listener.
+	if cfg.APIInternalBaseURL != "" {
+		t.Errorf("APIInternalBaseURL = %q, want empty by default", cfg.APIInternalBaseURL)
+	}
+	if cfg.APIBaseURL != "http://localhost:8080" {
+		t.Errorf("APIBaseURL = %q, want the public default", cfg.APIBaseURL)
+	}
+}
+
+func TestLoad_APIInternalBaseURL(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("API_BASE_URL", "http://api:8080")
+	t.Setenv("API_INTERNAL_BASE_URL", "https://api:8443")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	// The two URLs are independent: public stays public, internal is separate.
+	if cfg.APIBaseURL != "http://api:8080" {
+		t.Errorf("APIBaseURL = %q, want http://api:8080 (public)", cfg.APIBaseURL)
+	}
+	if cfg.APIInternalBaseURL != "https://api:8443" {
+		t.Errorf("APIInternalBaseURL = %q, want https://api:8443", cfg.APIInternalBaseURL)
+	}
 }
 
 func TestLoad_InternalMTLSEnabled(t *testing.T) {

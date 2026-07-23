@@ -94,19 +94,24 @@ func main() {
 		slog.Warn("no TLS certificate configured — running without TLS")
 	}
 
-	// Internal mTLS (gateway → API machine auth): when enabled, present the
-	// gateway's client certificate to the API's dedicated internal listener
-	// (cfg.APIBaseURL must point at that https listener). Disabled → plain
-	// client, unchanged.
+	// Internal mTLS (gateway → API machine auth): when enabled, the two
+	// tokenless machine routes (recipient check + inbound delivery) go to the
+	// API's dedicated internal listener (API_INTERNAL_BASE_URL) presenting the
+	// gateway client certificate; all token/credential routes keep using the
+	// public API_BASE_URL. Disabled → single plain client, unchanged.
 	var apiOpts []apiclient.Option
 	if cfg.InternalMTLSEnabled {
+		if cfg.APIInternalBaseURL == "" {
+			slog.Error("internal mTLS enabled but API_INTERNAL_BASE_URL is not set (must point at the API's internal mTLS listener, e.g. https://api:8443)")
+			os.Exit(1)
+		}
 		clientTLS, err := cfg.InternalMTLSClientTLS()
 		if err != nil {
 			slog.Error("internal mTLS enabled but client TLS config is invalid", "error", err)
 			os.Exit(1)
 		}
-		apiOpts = append(apiOpts, apiclient.WithTLSConfig(clientTLS))
-		slog.Info("internal mTLS enabled — presenting gateway client certificate on internal API calls")
+		apiOpts = append(apiOpts, apiclient.WithInternalMTLS(cfg.APIInternalBaseURL, clientTLS))
+		slog.Info("internal mTLS enabled — machine routes use the internal listener with the gateway client certificate", "internal_base_url", cfg.APIInternalBaseURL)
 	}
 	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
 	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
