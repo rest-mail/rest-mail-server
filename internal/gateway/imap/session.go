@@ -26,11 +26,11 @@ type Session struct {
 	limiter   *connlimiter.Limiter
 
 	// Session state
-	tls_       bool
-	auth       *authState
-	selected   *selectedMailbox
-	messages   []apiclient.MessageSummary // cached message list for current selection
-	deleted    map[uint]bool              // message IDs flagged \Deleted in this session
+	usingTLS bool
+	auth     *authState
+	selected *selectedMailbox
+	messages []apiclient.MessageSummary // cached message list for current selection
+	deleted  map[uint]bool              // message IDs flagged \Deleted in this session
 }
 
 type authState struct {
@@ -171,10 +171,10 @@ func (s *Session) Handle() {
 
 func (s *Session) handleCapability(tag string) {
 	caps := "IMAP4rev1 UIDPLUS IDLE MOVE QUOTA"
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		caps += " STARTTLS"
 	}
-	if s.tls_ || s.tlsConfig == nil {
+	if s.usingTLS || s.tlsConfig == nil {
 		caps += " AUTH=PLAIN"
 	}
 	s.send("* CAPABILITY %s", caps)
@@ -182,7 +182,7 @@ func (s *Session) handleCapability(tag string) {
 }
 
 func (s *Session) handleSTARTTLS(tag string) bool {
-	if s.tls_ {
+	if s.usingTLS {
 		s.tagged(tag, "BAD", "Already in TLS mode")
 		return false
 	}
@@ -202,14 +202,14 @@ func (s *Session) handleSTARTTLS(tag string) bool {
 	s.conn = tlsConn
 	s.reader = bufio.NewReader(tlsConn)
 	s.writer = bufio.NewWriter(tlsConn)
-	s.tls_ = true
+	s.usingTLS = true
 
 	slog.Info("imap: TLS established", "remote", s.conn.RemoteAddr())
 	return false
 }
 
 func (s *Session) handleLogin(tag, args string) {
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		s.tagged(tag, "NO", "[PRIVACYREQUIRED] STARTTLS required")
 		return
 	}

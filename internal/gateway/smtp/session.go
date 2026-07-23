@@ -30,12 +30,12 @@ type Session struct {
 	limiter    *connlimiter.Limiter
 
 	// Session state
-	heloName   string
-	mailFrom   string
-	rcptTo     []string
-	data       []byte
-	tls_       bool
-	auth       *authState
+	heloName     string
+	mailFrom     string
+	rcptTo       []string
+	data         []byte
+	usingTLS     bool
+	auth         *authState
 	isSubmission bool // port 587/465 requires AUTH
 }
 
@@ -149,12 +149,12 @@ func (s *Session) handleEHLO(arg string) {
 	}
 
 	// Advertise STARTTLS if not already TLS
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		caps = append(caps, "250-STARTTLS")
 	}
 
 	// Advertise AUTH on submission ports (only after TLS)
-	if s.isSubmission && (s.tls_ || s.tlsConfig == nil) {
+	if s.isSubmission && (s.usingTLS || s.tlsConfig == nil) {
 		caps = append(caps, "250-AUTH PLAIN LOGIN")
 	}
 
@@ -171,7 +171,7 @@ func (s *Session) handleEHLO(arg string) {
 }
 
 func (s *Session) handleSTARTTLS() bool {
-	if s.tls_ {
+	if s.usingTLS {
 		s.reply(503, "Already in TLS mode")
 		return false
 	}
@@ -192,7 +192,7 @@ func (s *Session) handleSTARTTLS() bool {
 	s.conn = tlsConn
 	s.reader = bufio.NewReader(tlsConn)
 	s.writer = bufio.NewWriter(tlsConn)
-	s.tls_ = true
+	s.usingTLS = true
 	s.heloName = ""
 	s.mailFrom = ""
 	s.rcptTo = nil
@@ -210,7 +210,7 @@ func (s *Session) handleAUTH(arg string) {
 		s.reply(503, "Already authenticated")
 		return
 	}
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		s.reply(538, "Encryption required for requested authentication mechanism")
 		return
 	}

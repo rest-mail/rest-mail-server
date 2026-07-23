@@ -25,10 +25,10 @@ type Session struct {
 	limiter   *connlimiter.Limiter
 
 	// Session state
-	tls_      bool
-	auth      *authState
-	messages  []apiclient.MessageSummary
-	deleted   map[int]bool // sequence numbers marked for deletion
+	usingTLS bool
+	auth     *authState
+	messages []apiclient.MessageSummary
+	deleted  map[int]bool // sequence numbers marked for deletion
 }
 
 type authState struct {
@@ -120,7 +120,7 @@ func (s *Session) Handle() {
 func (s *Session) handleCapa() {
 	s.ok("Capability list follows")
 	s.sendLine("USER")
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		s.sendLine("STLS")
 	}
 	s.sendLine("TOP")
@@ -131,7 +131,7 @@ func (s *Session) handleCapa() {
 }
 
 func (s *Session) handleSTLS() bool {
-	if s.tls_ {
+	if s.usingTLS {
 		s.err("Already using TLS")
 		return false
 	}
@@ -151,7 +151,7 @@ func (s *Session) handleSTLS() bool {
 	s.conn = tlsConn
 	s.reader = bufio.NewReader(tlsConn)
 	s.writer = bufio.NewWriter(tlsConn)
-	s.tls_ = true
+	s.usingTLS = true
 
 	slog.Info("pop3: TLS established", "remote", s.conn.RemoteAddr())
 	return false
@@ -162,7 +162,7 @@ func (s *Session) handleUser(arg string) {
 		s.err("Already authenticated")
 		return
 	}
-	if !s.tls_ && s.tlsConfig != nil {
+	if !s.usingTLS && s.tlsConfig != nil {
 		s.err("TLS required")
 		return
 	}
