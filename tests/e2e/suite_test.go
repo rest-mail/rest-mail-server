@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
@@ -43,6 +44,24 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// requireStack is set when E2E_REQUIRE_STACK is non-empty. The CI e2e job sets
+// it so that "stack not reachable" preconditions (no admin token, gateway not
+// dialable, …) become HARD failures instead of skips: a misconfigured or
+// half-up topology must never make the suite green by skipping every stage.
+// Locally the flag is unset, so those same conditions still skip — running
+// `go test ./...` on a laptop without the testbed keeps passing.
+var requireStack = os.Getenv("E2E_REQUIRE_STACK") != ""
+
+// skipOrFail records a "stack not reachable" precondition. With
+// E2E_REQUIRE_STACK set it is fatal (CI); otherwise it skips (local dev).
+func skipOrFail(t *testing.T, format string, args ...interface{}) {
+	t.Helper()
+	if requireStack {
+		t.Fatalf(format, args...)
+	}
+	t.Skipf(format, args...)
 }
 
 // ── HTTP Client ──────────────────────────────────────────────────────
@@ -123,7 +142,7 @@ func (c *apiClient) delete(path string) (*http.Response, error) {
 // seeded `admin` account) and stores the access token. The same endpoint
 // serves both flows: `username` selects the admin path, `email` the mailbox
 // path.
-func (c *apiClient) loginAdmin(username, password string) error {
+func (c *apiClient) rawLoginAdmin(username, password string) error {
 	resp, err := c.post("/api/v1/auth/login", map[string]string{
 		"username": username,
 		"password": password,
@@ -149,7 +168,7 @@ func (c *apiClient) loginAdmin(username, password string) error {
 }
 
 // login authenticates and stores the access token.
-func (c *apiClient) login(email, password string) error {
+func (c *apiClient) rawLogin(email, password string) error {
 	resp, err := c.post("/api/v1/auth/login", map[string]string{
 		"email":    email,
 		"password": password,
@@ -177,6 +196,62 @@ func (c *apiClient) login(email, password string) error {
 	}
 	c.token = result.Data.AccessToken
 	return nil
+}
+
+// ── Cached auth (rate-limit aware) ───────────────────────────────────
+//
+// The API enforces a per-client-IP token-bucket rate limit on
+// /api/v1/auth/login (burst 15 @ 1 rps, on by default). This suite runs all 13
+// stages from a SINGLE IP (the golang test container on the mailnet) and many
+// stages authenticate the same principals (the seeded admin, testuser, eve, …)
+// over and over. A fresh login every time drains the bucket and trips 429
+// rate_limited part-way through the run — the limiter doing exactly its job
+// against what looks like credential brute-force. A real client logs in ONCE
+// and reuses its access token (valid 15m by default, far longer than a whole
+// suite run), so login()/loginAdmin() memoize the token per (identifier,
+// password). This keeps the rate limiter ON — full security coverage — while
+// staying within its budget. Negative-auth checks in the suite all go through
+// the SMTP/IMAP/POP3 protocols (never this HTTP endpoint), and the one HTTP
+// password change re-logs in under a NEW password (a distinct cache key), so
+// caching never masks an auth regression.
+var (
+	tokenCacheMu sync.Mutex
+	tokenCache   = map[string]string{}
+)
+
+func (c *apiClient) cachedLogin(key, identifier, password string, admin bool) error {
+	tokenCacheMu.Lock()
+	tok, ok := tokenCache[key]
+	tokenCacheMu.Unlock()
+	if ok {
+		c.token = tok
+		return nil
+	}
+
+	var err error
+	if admin {
+		err = c.rawLoginAdmin(identifier, password)
+	} else {
+		err = c.rawLogin(identifier, password)
+	}
+	if err != nil {
+		return err
+	}
+
+	tokenCacheMu.Lock()
+	tokenCache[key] = c.token
+	tokenCacheMu.Unlock()
+	return nil
+}
+
+// login authenticates as a mailbox user, reusing a cached token when present.
+func (c *apiClient) login(email, password string) error {
+	return c.cachedLogin("user\x00"+email+"\x00"+password, email, password, false)
+}
+
+// loginAdmin authenticates as an RBAC admin, reusing a cached token when present.
+func (c *apiClient) loginAdmin(username, password string) error {
+	return c.cachedLogin("admin\x00"+username+"\x00"+password, username, password, true)
 }
 
 // ── JSON decode helper ───────────────────────────────────────────────
