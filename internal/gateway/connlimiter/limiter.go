@@ -48,8 +48,12 @@ type BanChecker func(ip, protocol string) bool
 
 // Limiter tracks per-IP connection counts and auth failures.
 type Limiter struct {
-	cfg        Config
-	global     atomic.Int32
+	cfg    Config
+	global atomic.Int32
+	// acceptMu serializes the cap-check-and-increment in Accept so it is a
+	// single atomic step. The counters stay atomic.Int32 because Release
+	// decrements them lock-free (concurrently with an Accept holding acceptMu).
+	acceptMu   sync.Mutex
 	perIP      sync.Map // string → *atomic.Int32
 	authFails  sync.Map // string → *failRecord
 	banChecker BanChecker
@@ -79,20 +83,31 @@ func (l *Limiter) SetProtocol(protocol string) {
 // Accept checks whether a new connection from ip is allowed.
 // Returns true and increments counters if allowed.
 func (l *Limiter) Accept(ip string) bool {
-	// Check persistent bans first
+	// Check persistent bans first. The ban checker may hit the DB, so keep it
+	// outside acceptMu.
 	if l.banChecker != nil && l.banChecker(ip, l.protocol) {
 		return false
 	}
+
+	// The cap checks and the increments must form one atomic step. Doing the
+	// Load and the Add as separate atomic ops let concurrent callers each
+	// observe a sub-limit count and all increment past the cap, admitting more
+	// connections than MaxPerIP/MaxGlobal (M-2, CWE-362).
+	l.acceptMu.Lock()
 	if int(l.global.Load()) >= l.cfg.MaxGlobal {
+		l.acceptMu.Unlock()
 		return false
 	}
 	val, _ := l.perIP.LoadOrStore(ip, &atomic.Int32{})
 	counter := val.(*atomic.Int32)
 	if int(counter.Load()) >= l.cfg.MaxPerIP {
+		l.acceptMu.Unlock()
 		return false
 	}
 	counter.Add(1)
 	l.global.Add(1)
+	l.acceptMu.Unlock()
+
 	if l.protocol != "" {
 		metrics.ActiveConnections.WithLabelValues(l.protocol).Inc()
 	}
