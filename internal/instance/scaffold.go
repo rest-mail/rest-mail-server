@@ -34,33 +34,70 @@ const (
 type ScaffoldResult struct {
 	Domain   string
 	Slug     string
+	Profile  string            // substrate profile used ("testbed" | "host")
 	Manifest []byte            // manifest.yml
 	Secrets  []byte            // secrets.env (gitignored)
 	Config   []byte            // config.env (rendered from Manifest)
-	IPs      map[string]string // component -> IP, for the summary banner
+	IPs      map[string]string // component -> IP, for the summary banner (empty in the host profile)
 }
 
-// Scaffold builds a new instance definition for domain, allocating a free IP
-// block by scanning the manifests already under instancesDir. It does not
+// scaffoldProfile is a named substrate flavor: which manifest template to emit
+// and whether scaffold allocates mailnet IPs. Profiles ONLY change scaffold
+// DEFAULTS — render/check and the env contract are identical for both.
+type scaffoldProfile struct {
+	name        string
+	template    string
+	allocateIPs bool // testbed: allocate a 10.99.0.x block; host: leave IPs unset
+}
+
+// lookupProfile resolves the --profile value to its definition. The empty
+// string and "testbed" both select the testbed profile (today's behavior);
+// "host" selects the real-host profile. Any other value is an error.
+func lookupProfile(name string) (scaffoldProfile, error) {
+	switch name {
+	case "", "testbed":
+		return scaffoldProfile{name: "testbed", template: scaffoldTemplate, allocateIPs: true}, nil
+	case "host":
+		return scaffoldProfile{name: "host", template: scaffoldHostTemplate, allocateIPs: false}, nil
+	default:
+		return scaffoldProfile{}, fmt.Errorf("unknown profile %q (want testbed|host)", name)
+	}
+}
+
+// Scaffold builds a new instance definition for domain using the named substrate
+// profile ("testbed" | "host"; empty → testbed). The testbed profile allocates a
+// free mailnet IP block by scanning the manifests already under instancesDir; the
+// host profile leaves component IPs unset for the deployer to assign. It does not
 // write anything or bring anything up.
-func Scaffold(domain, instancesDir string) (*ScaffoldResult, error) {
+func Scaffold(domain, instancesDir, profile string) (*ScaffoldResult, error) {
 	if domain == "" {
 		return nil, fmt.Errorf("domain is required")
 	}
+	prof, err := lookupProfile(profile)
+	if err != nil {
+		return nil, err
+	}
 	slug := slugFor(domain)
 
-	used, err := usedOctets(instancesDir)
-	if err != nil {
-		return nil, err
-	}
-	block, err := allocateBlock(used, len(scaffoldComponents))
-	if err != nil {
-		return nil, err
-	}
-
 	ips := make(map[string]string, len(scaffoldComponents))
-	for i, name := range scaffoldComponents {
-		ips[name] = ipSubnet + strconv.Itoa(block+i)
+	if prof.allocateIPs {
+		used, err := usedOctets(instancesDir)
+		if err != nil {
+			return nil, err
+		}
+		block, err := allocateBlock(used, len(scaffoldComponents))
+		if err != nil {
+			return nil, err
+		}
+		for i, name := range scaffoldComponents {
+			ips[name] = ipSubnet + strconv.Itoa(block+i)
+		}
+	} else {
+		// Host profile: no mailnet allocation — the deployer assigns addresses on
+		// their own network. IPs stay empty (the banner and template omit them).
+		for _, name := range scaffoldComponents {
+			ips[name] = ""
+		}
 	}
 
 	dbPass, err := genSecret()
@@ -76,7 +113,7 @@ func Scaffold(domain, instancesDir string) (*ScaffoldResult, error) {
 		return nil, err
 	}
 
-	manifest, err := renderScaffoldManifest(domain, slug, ips)
+	manifest, err := renderScaffoldManifest(prof.template, domain, slug, ips)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +135,7 @@ func Scaffold(domain, instancesDir string) (*ScaffoldResult, error) {
 		domain, dbPass, jwt, master)
 
 	return &ScaffoldResult{
-		Domain: domain, Slug: slug,
+		Domain: domain, Slug: slug, Profile: prof.name,
 		Manifest: manifest, Secrets: secrets, Config: config, IPs: ips,
 	}, nil
 }
@@ -192,8 +229,8 @@ func genSecret() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-func renderScaffoldManifest(domain, slug string, ips map[string]string) ([]byte, error) {
-	t, err := template.New("manifest").Parse(scaffoldTemplate)
+func renderScaffoldManifest(tmpl, domain, slug string, ips map[string]string) ([]byte, error) {
+	t, err := template.New("manifest").Parse(tmpl)
 	if err != nil {
 		return nil, err
 	}
@@ -286,4 +323,96 @@ components:
   - { name: js-filter, ip: {{index .IP "js-filter"}} }
   - { name: webmail,   ip: {{index .IP "webmail"}} }
   - { name: admin,     ip: {{index .IP "admin"}} }
+`
+
+// scaffoldHostTemplate is the real-host (non-testbed) substrate profile. It is
+// the same logical instance as the testbed template with the testbed substrate
+// stripped out: NO 10.99.0.x mailnet IPs (the deployer assigns addresses on
+// their own network), NO testbed_dns_ip / testbed-dnsmasq / testbed-certgen /
+// testbed_* volumes, a BLANK registry to fill in, mailnet_only: false (publish
+// on real interfaces), a production runtime posture, and cert_provider: manual
+// (drop your own cert into the certs volume — a real host has no reference
+// certgen). It renders and passes `instance:check` unchanged; the env contract
+// is identical to the testbed profile. internal_mtls stays on (secure-by-default;
+// `task instance:new` provisions the internal CA regardless of substrate).
+const scaffoldHostTemplate = `# Logical mail instance: {{.Domain}} (generated by ` + "`instance scaffold -profile host`" + `).
+# Real-host profile: fill in the substrate placeholders below (registry, network,
+# component addresses), drop your serving cert into the certs volume
+# (cert_provider: manual), then re-run ` + "`task instance:render INSTANCE={{.Domain}}`" + `.
+
+# ── envelope: logical, implementation-agnostic ──────────────────────────
+domain:     {{.Domain}}
+hostname:   {{.Domain}}
+proxy_host: {{.Slug}}.localhost
+
+# ── substrate placement (real host — NOT the testbed) ───────────────────
+# Fill these in for your host: ` + "`network`" + ` is the docker network and
+# ` + "`certs_volume`" + ` the volume holding the serving cert/key + internal CA
+# (both created on ` + "`task instance:up`" + `). NO testbed dnsmasq/certgen assumptions.
+project:       rest-mail-{{.Slug}}
+network:       {{.Slug}}_net
+certs_volume:  {{.Slug}}_certs
+dns_provider:  manual    # you manage DNS at your registrar/provider
+cert_provider: manual    # drop <hostname>.{crt,key} into the certs volume;
+                         #   switch to acme once the ACME client lands
+
+# ── image source ────────────────────────────────────────────────────────
+registry:  ""          # REQUIRED: set to your image registry, e.g. registry.example.com/yourorg
+image_tag: dev         # pin to a released tag for production
+
+# ── runtime ─────────────────────────────────────────────────────────────
+log_level:    info
+environment:  production
+mailnet_only: false    # real host — publish gateway/API host ports on real interfaces
+internal_mtls: true    # secure-by-default: gateways authenticate to the API over
+                       # mutual TLS. ` + "`task instance:new`" + ` provisions the internal CA +
+                       # certs (instance:mtls:issue) automatically, on any substrate.
+
+db:
+  name: restmail
+  user: restmail
+
+# ── additional served domains (optional) ────────────────────────────────
+# This instance serves the primary ` + "`domain`" + ` above. To serve MORE domains from
+# the same stack, declare them here — each gets its own DB row, DKIM
+# selector/key, and DNS records provisioned at instance-up (` + "`task instance:new`" + `).
+# The primary is NOT repeated here. Uncomment and edit:
+#
+# domains:
+#   - name: example.com
+#     server_type: restmail      # or: traditional
+#     dkim: { selector: default, bits: 2048 }
+
+# ── public TLS ──────────────────────────────────────────────────────────
+# cert_provider: manual (above) means YOU provide the serving cert: drop
+# <hostname>.{crt,key} into the certs volume; ` + "`task instance:certs:issue`" + ` only
+# validates it (no issuance). The cert must cover every served domain's mail
+# hostname; add MORE SANs (autoconfig, mta-sts, a vanity host) with
+# extra_hostnames. Switch cert_provider to acme/letsencrypt and declare acme:
+# below once the ACME client lands. Uncomment and edit:
+#
+# tls:
+#   extra_hostnames: [autoconfig.{{.Domain}}, mta-sts.{{.Domain}}]
+#   acme:
+#     enabled: true
+#     email:   hostmaster@{{.Domain}}
+#     staging: true              # flip to false for production issuance
+
+# ── binding: components on the substrate ─────────────────────────────────
+# Real-host profile leaves component IPs UNSET — assign addresses on your own
+# network (or bind to real interfaces) before ` + "`task instance:up`" + `. Ports keep the
+# standard mail defaults.
+components:
+  - { name: postgres }
+  - name: api
+    port: 8080
+  - name: smtp-gateway
+    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+  - name: imap-gateway
+    ports: { plain: 143, tls: 993 }
+  - name: pop3-gateway
+    ports: { plain: 110, tls: 995 }
+  - { name: js-filter }
+  - { name: webmail }
+  - { name: admin }
 `

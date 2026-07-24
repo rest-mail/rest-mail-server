@@ -83,7 +83,22 @@ mTLS touch it). PRs that edit it are marked; the rest are manifest/Taskfile/scaf
   **acme/letsencrypt** stubbed to a not-yet-implemented error (fields wired through; the
   ACME client itself is a later PR). `tls.internal` (mTLS) stays with PR6. Risk: medium.
 - **PR6 — mTLS provisioning (G7)** *[touches config.go]* — **after `feat/internal-mtls` merges.** Replace hardcoded `/certs/ca.crt`; `tls.internal` → config; provision internal CA + client certs. Risk: high; gate behind `mode: off`.
-- **PR7 — Real-host substrate profile (G4)** *[no config.go]* — `scaffold --profile testbed|host`. Risk: medium.
+- **PR7 — Real-host substrate profile (G4)** *[no config.go]* — **SHIPPED.** Added a
+  `--profile testbed|host` flag to `instance scaffold` (default `testbed`). The
+  **testbed** profile is byte-for-byte today's output (pinned by the
+  `scaffold_testbed.*` golden, so the testbed + e2e stay green). The **host**
+  profile emits a real-host substrate with the testbed hardwires stripped: NO
+  `10.99.0.x` mailnet IPs (component IPs left unset for the deployer to assign),
+  NO `testbed_dns_ip` / `testbed-dnsmasq` / `testbed-certgen` / `testbed_*`
+  volumes (per-instance `<slug>_net` / `<slug>_certs`, `dns_provider: manual`),
+  a blank `registry` placeholder (not `ghcr.io/rest-mail`), `mailnet_only: false`
+  (publish on real interfaces), a production runtime posture, and
+  `cert_provider: manual` (a real host has no reference-certgen — the deployer
+  drops the cert, or switches to acme once that client lands). `internal_mtls`
+  stays on (secure-by-default; the internal CA is provisioned on any substrate).
+  Profiles change SCAFFOLD DEFAULTS only — `render`/`check` and the env contract
+  are identical, and a host manifest strict-parses + passes `instance:check`
+  from birth (pinned by the `scaffold_host.*` golden). Risk: medium.
 
 Order: **PR1 → PR2 → {PR3, PR4, PR5} → PR6 (after mTLS) → PR7**. Only PR6 (+ maybe a trivial PR4 line) touch `config.go`.
 
