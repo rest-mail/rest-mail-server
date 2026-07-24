@@ -1,6 +1,6 @@
 // Package seed builds the dev fixture data (test domain + mailboxes + aliases)
 // that `cmd/seed` persists. The fixture is parameterized by domain so any
-// instance can be seeded, not just mail3.test. RBAC/role seeding is
+// instance can be seeded, not just the primary domain. RBAC/role seeding is
 // domain-agnostic and stays in cmd/seed.
 package seed
 

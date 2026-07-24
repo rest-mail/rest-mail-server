@@ -41,7 +41,7 @@ type Manifest struct {
 	// MailnetOnly true means don't publish gateway/API host ports — the
 	// instance is reachable only on the mailnet (like the reference servers).
 	// Lets a secondary instance run alongside the primary without host-port
-	// collisions. Defaults false (publish), preserving mail3.test behavior.
+	// collisions. Defaults false (publish), preserving the primary instance's behavior.
 	MailnetOnly bool `yaml:"mailnet_only"`
 	// InternalMTLS true turns on gateway→API mutual-TLS for this instance: the
 	// API serves the gateway-facing routes on a dedicated client-cert-verified
