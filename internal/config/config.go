@@ -90,6 +90,16 @@ type Config struct {
 	AuthRateLimitRPS     float64 // sustained requests/sec per client IP
 	AuthRateLimitBurst   int     // bucket capacity (max short burst) per client IP
 
+	// Pipeline/filter test-endpoint rate limiting (M-14, CWE-770): a per-client-IP
+	// token bucket applied to the admin "try this pipeline/filter" endpoints
+	// (pipelines/test, pipelines/test-filter, custom-filters/{id}/test). Each runs
+	// a message through the pipeline engine, so an authenticated admin could
+	// otherwise hammer them without throttle. Bounded so ordinary interactive
+	// preview use is unaffected.
+	PipelineTestRateLimitEnabled bool
+	PipelineTestRateLimitRPS     float64 // sustained requests/sec per client IP
+	PipelineTestRateLimitBurst   int     // bucket capacity (max short burst) per client IP
+
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
@@ -317,6 +327,17 @@ const (
 	DefaultAuthRateLimitBurst = 15
 )
 
+// DefaultPipelineTestRateLimitRPS / DefaultPipelineTestRateLimitBurst are the
+// per-client-IP throttle defaults for the admin pipeline/filter test endpoints
+// (M-14) when PIPELINE_TEST_RATE_LIMIT_RPS / PIPELINE_TEST_RATE_LIMIT_BURST are
+// unset: 2 sustained requests/sec with a burst of 10 leaves an admin ample
+// headroom to iterate interactively while capping an automated hammer to a
+// trickle.
+const (
+	DefaultPipelineTestRateLimitRPS   = 2.0
+	DefaultPipelineTestRateLimitBurst = 10
+)
+
 // TraceRetention returns the per-message trace retention window as a Duration
 // (TraceRetentionDays × 24h) — what the recorder stamps as each trace's
 // expires_at horizon.
@@ -358,6 +379,9 @@ func Load() (*Config, error) {
 
 		AuthRateLimitEnabled: getEnvBool("AUTH_RATE_LIMIT_ENABLED", true),
 		AuthRateLimitBurst:   getEnvInt("AUTH_RATE_LIMIT_BURST", DefaultAuthRateLimitBurst),
+
+		PipelineTestRateLimitEnabled: getEnvBool("PIPELINE_TEST_RATE_LIMIT_ENABLED", true),
+		PipelineTestRateLimitBurst:   getEnvInt("PIPELINE_TEST_RATE_LIMIT_BURST", DefaultPipelineTestRateLimitBurst),
 
 		MasterKey: getEnv("MASTER_KEY", ""),
 
@@ -592,6 +616,22 @@ func Load() (*Config, error) {
 		}
 	}
 	cfg.AuthRateLimitRPS = authRPS
+
+	// Pipeline/filter test-endpoint rate limit (M-14): same strict-parse and
+	// enabled-only positivity rules as the auth limiter above.
+	pipelineTestRPS, err := getEnvFloatStrict("PIPELINE_TEST_RATE_LIMIT_RPS", DefaultPipelineTestRateLimitRPS)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.PipelineTestRateLimitEnabled {
+		if pipelineTestRPS <= 0 {
+			return nil, fmt.Errorf("PIPELINE_TEST_RATE_LIMIT_RPS must be positive, got %v", pipelineTestRPS)
+		}
+		if cfg.PipelineTestRateLimitBurst <= 0 {
+			return nil, fmt.Errorf("PIPELINE_TEST_RATE_LIMIT_BURST must be positive, got %d", cfg.PipelineTestRateLimitBurst)
+		}
+	}
+	cfg.PipelineTestRateLimitRPS = pipelineTestRPS
 
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)
