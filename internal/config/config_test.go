@@ -14,7 +14,8 @@ var allEnvKeys = []string{
 	"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASS",
 	"DB_MAX_OPEN_CONNS", "DB_MAX_IDLE_CONNS", "DB_CONN_MAX_LIFETIME",
 	"API_PORT", "API_HOST", "LOG_LEVEL",
-	"TLS_CERT_PATH", "TLS_KEY_PATH",
+	"TLS_CERT_PATH", "TLS_KEY_PATH", "TLS_CERT_DIR",
+	"PROXY_PROTOCOL_TRUSTED_CIDRS", "METRICS_ALLOWED_CIDRS", "RESTMAIL_DELIVER_TRUSTED_CIDRS",
 	"JWT_SECRET", "JWT_ACCESS_EXPIRY", "JWT_REFRESH_EXPIRY",
 	"MASTER_KEY",
 	"DNS_PROVIDER",
@@ -317,7 +318,7 @@ func TestLoad_ProductionNoMasterKey(t *testing.T) {
 	clearEnv(t)
 
 	t.Setenv("ENVIRONMENT", "production")
-	t.Setenv("JWT_SECRET", "my-strong-production-secret")
+	t.Setenv("JWT_SECRET", "a-strong-production-secret-32-bytes-long")
 	// MASTER_KEY is not set.
 
 	_, err := Load()
@@ -330,22 +331,23 @@ func TestLoad_ProductionWithSecret(t *testing.T) {
 	clearEnv(t)
 
 	t.Setenv("ENVIRONMENT", "production")
-	t.Setenv("JWT_SECRET", "my-strong-production-secret")
-	t.Setenv("MASTER_KEY", "my-strong-master-key")
+	// Both secrets clear the OSI-4 length floors (JWT >= 32 bytes, MASTER_KEY >= 16).
+	t.Setenv("JWT_SECRET", "a-strong-production-secret-32-bytes-long")
+	t.Setenv("MASTER_KEY", "a-strong-master-key-16plus")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() returned unexpected error: %v", err)
 	}
 
-	if cfg.JWTSecret != "my-strong-production-secret" {
-		t.Errorf("JWTSecret = %q, want %q", cfg.JWTSecret, "my-strong-production-secret")
+	if cfg.JWTSecret != "a-strong-production-secret-32-bytes-long" {
+		t.Errorf("JWTSecret = %q, want %q", cfg.JWTSecret, "a-strong-production-secret-32-bytes-long")
 	}
 	if cfg.Environment != "production" {
 		t.Errorf("Environment = %q, want %q", cfg.Environment, "production")
 	}
-	if cfg.MasterKey != "my-strong-master-key" {
-		t.Errorf("MasterKey = %q, want %q", cfg.MasterKey, "my-strong-master-key")
+	if cfg.MasterKey != "a-strong-master-key-16plus" {
+		t.Errorf("MasterKey = %q, want %q", cfg.MasterKey, "a-strong-master-key-16plus")
 	}
 }
 
