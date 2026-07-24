@@ -314,20 +314,37 @@ func TestCopyUID_ReturnsDeliveredUID(t *testing.T) {
 	}
 }
 
-func TestMoveUID_KeepsSameUID(t *testing.T) {
+// TestMoveUID_AssignsFreshDestinationUID proves MOVE gives the moved message a
+// fresh, higher UID in the destination (a re-delivery) and removes the source,
+// rather than carrying the source UID across. Reusing the source UID produces a
+// non-ascending UID in the destination and breaks clients doing
+// UID FETCH <lastuid+1>:* incremental sync (RFC 3501 §2.3.1.1).
+func TestMoveUID_AssignsFreshDestinationUID(t *testing.T) {
 	api := newFakeAPI()
-	api.seed(9, "INBOX", "Subject: Mv\r\n\r\nmv\r\n", "Mv")
+	api.seed(50, "INBOX", "Subject: Mv\r\n\r\nmv\r\n", "Mv")
+	// The next delivery is assigned nextID, standing in for a destination that
+	// already holds higher UIDs; that ID must become the moved message's new UID.
+	api.nextID = 500
 	m := newUnitMailbox(t, api)
 
-	uid, err := m.MoveUID(9, "Trash")
+	uid, err := m.MoveUID(50, "Archive")
 	if err != nil {
 		t.Fatalf("MoveUID: %v", err)
 	}
-	if uid != 9 {
-		t.Fatalf("MoveUID uid = %d, want 9 (UpdateMessage keeps the same ID across a folder change)", uid)
+	if uid == 50 {
+		t.Fatalf("MoveUID reused source UID 50; MOVE must assign a fresh destination UID")
 	}
-	if got := folderPatched(api, 9); got != "Trash" {
-		t.Errorf("moved to %q, want Trash", got)
+	if uid != 500 {
+		t.Fatalf("MoveUID uid = %d, want 500 (the freshly delivered ID in the destination)", uid)
+	}
+	if !api.deleted(50) {
+		t.Errorf("MoveUID left source message 50 in place; MOVE must remove it")
+	}
+	if !api.exists(500) {
+		t.Errorf("MoveUID did not deliver the moved message into the destination")
+	}
+	if got := folderPatched(api, 500); got != "Archive" {
+		t.Errorf("moved copy relocated to %q, want Archive", got)
 	}
 }
 
@@ -370,8 +387,13 @@ func TestBaseMethods_DelegateToUIDForms(t *testing.T) {
 	if err := m.Move(2, "Trash"); err != nil {
 		t.Fatalf("Move: %v", err)
 	}
-	if got := folderPatched(api, 2); got != "Trash" {
-		t.Errorf("base Move folder = %q, want Trash", got)
+	// Move is a re-delivery (602, the next ID) into Trash plus deletion of the
+	// source, not a folder relabel of message 2.
+	if !api.deleted(2) {
+		t.Errorf("base Move left source message 2 in place")
+	}
+	if got := folderPatched(api, 602); got != "Trash" {
+		t.Errorf("base Move relocated the moved copy to %q, want Trash", got)
 	}
 }
 
@@ -524,11 +546,13 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 		t.Errorf("copy relocated to %q, want Archive", got)
 	}
 
-	// MOVE reports an untagged COPYUID (same UID, atomic Mover) before the EXPUNGE.
+	// MOVE re-delivers the message into the destination, so it reports an untagged
+	// COPYUID mapping source UID 1 to a fresh, higher destination UID (102) before
+	// the EXPUNGE, and removes the source message.
 	unt, st = h.command("a6", "MOVE 1 Trash")
 	joined := strings.Join(unt, "\n")
-	if !strings.Contains(joined, "[COPYUID 1 1 1]") {
-		t.Errorf("MOVE untagged = %q, want an [COPYUID 1 1 1] resp-code", joined)
+	if !strings.Contains(joined, "[COPYUID 1 1 102]") {
+		t.Errorf("MOVE untagged = %q, want an [COPYUID 1 1 102] resp-code", joined)
 	}
 	if !strings.Contains(joined, "1 EXPUNGE") {
 		t.Errorf("MOVE untagged = %q, want a * 1 EXPUNGE", joined)
@@ -536,8 +560,11 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 	if !strings.Contains(st, "OK") {
 		t.Errorf("MOVE status = %q", st)
 	}
-	if got := folderPatched(api, 1); got != "Trash" {
-		t.Errorf("moved message relocated to %q, want Trash", got)
+	if got := folderPatched(api, 102); got != "Trash" {
+		t.Errorf("moved copy relocated to %q, want Trash", got)
+	}
+	if !api.deleted(1) {
+		t.Errorf("MOVE did not remove the source message 1")
 	}
 }
 
