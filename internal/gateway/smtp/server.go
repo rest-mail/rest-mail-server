@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -171,9 +172,13 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 	// go-smtp defaults MaxLineLength to 2000 and keeps the limit active during
 	// DATA, which would reject real-world messages with unwrapped long lines
 	// (8-bit text, HTML) that the previous engine accepted — Postfix wraps
-	// rather than rejects these. Disable it for old-engine parity; total input
-	// stays bounded by MaxMessageBytes.
-	srv.MaxLineLength = 0
+	// rather than rejects these. We impose no practical line limit so message
+	// size (MaxMessageBytes) stays the sole bound — including for oversized
+	// messages, which the server must read past the size limit to reject with a
+	// clean 552 (a line-length rejection would pre-empt that). An explicit large
+	// value is required rather than 0: go-smtp normalizes an unset MaxLineLength
+	// of 0 to its 2000 default, so 0 no longer means "unlimited".
+	srv.MaxLineLength = math.MaxInt
 	// These are PER-COMMAND idle timeouts, not a whole-DATA ceiling. During a
 	// message-body transfer the session arms the transferRateConn wrapper, which
 	// OWNS the read deadline and swallows this ReadTimeout (see transfer_rate.go):
