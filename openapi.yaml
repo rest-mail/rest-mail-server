@@ -4571,7 +4571,12 @@ components:
           type: string
         raw_message:
           type: string
-          description: Full RFC 2822 raw message
+          format: byte
+          description: >-
+            Full RFC 2822 raw message, base64-encoded. Encoding it as base64
+            (rather than a plain JSON string) lets arbitrary non-UTF-8 octets
+            (8bit/binary bodies, undeclared-charset high bytes) round-trip
+            byte-for-byte, preserving DKIM body hashes and BODY[] fidelity.
         client_ip:
           type: string
         helo_name:

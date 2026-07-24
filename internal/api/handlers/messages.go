@@ -855,9 +855,12 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		MessageID    string          `json:"message_id"`
 		InReplyTo    string          `json:"in_reply_to"`
 		References   string          `json:"references"`
-		RawMessage   string          `json:"raw_message"`
-		ClientIP     string          `json:"client_ip"`
-		HeloName     string          `json:"helo_name"`
+		// RawMessage is base64-decoded from the wire ([]byte, not string) so the
+		// pristine RFC 2822 octets survive JSON transport unchanged — a JSON
+		// string field would mangle every non-UTF-8 byte to U+FFFD (see #173).
+		RawMessage []byte `json:"raw_message"`
+		ClientIP   string `json:"client_ip"`
+		HeloName   string `json:"helo_name"`
 		// Inbound transport-security metrics (always-on, inbound-MX only). A nil
 		// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
 		// NULL. TLSCipher is accepted for wire completeness but only the version is
@@ -901,7 +904,7 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		MessageID:    req.MessageID,
 		InReplyTo:    req.InReplyTo,
 		References:   req.References,
-		RawMessage:   req.RawMessage,
+		RawMessage:   string(req.RawMessage),
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
 		ReceivedTLS:  req.ReceivedTLS,

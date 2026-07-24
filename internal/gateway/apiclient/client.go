@@ -208,9 +208,15 @@ type DeliverRequest struct {
 	MessageID    string          `json:"message_id,omitempty"`
 	InReplyTo    string          `json:"in_reply_to,omitempty"`
 	References   string          `json:"references,omitempty"`
-	RawMessage   string          `json:"raw_message,omitempty"`
-	ClientIP     string          `json:"client_ip,omitempty"`
-	HeloName     string          `json:"helo_name,omitempty"`
+	// RawMessage carries the pristine RFC 2822 wire bytes. It MUST be []byte, not
+	// string: encoding/json base64-encodes a []byte field, so arbitrary octets
+	// (8bit/binary content-transfer-encoding bodies, undeclared-charset high
+	// bytes) round-trip verbatim. A JSON string field would silently replace
+	// every invalid-UTF-8 byte with U+FFFD on marshal, corrupting the stored
+	// message and breaking DKIM body hashes and BODY[] byte fidelity.
+	RawMessage []byte `json:"raw_message,omitempty"`
+	ClientIP   string `json:"client_ip,omitempty"`
+	HeloName   string `json:"helo_name,omitempty"`
 
 	// Inbound transport-security metrics, populated only by the inbound-MX
 	// (port 25) SMTP path so the operator can always see how much mail arrives

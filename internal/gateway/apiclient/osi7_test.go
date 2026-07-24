@@ -80,14 +80,14 @@ func TestDeliverMessage_SizeAwareDeadlineGoverns(t *testing.T) {
 
 	t.Run("too-short deadline times out", func(t *testing.T) {
 		c := New(srv.URL, WithMessageDeadline(20*time.Millisecond))
-		if _, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: "hi"}); err == nil {
+		if _, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: []byte("hi")}); err == nil {
 			t.Fatal("expected a timeout error under a 20ms deadline against a 150ms API")
 		}
 	})
 
 	t.Run("generous deadline succeeds", func(t *testing.T) {
 		c := New(srv.URL, WithMessageDeadline(2*time.Second))
-		resp, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: "hi"})
+		resp, err := c.DeliverMessage(&DeliverRequest{Address: "a@local", RawMessage: []byte("hi")})
 		if err != nil {
 			t.Fatalf("expected success under a 2s deadline, got %v", err)
 		}

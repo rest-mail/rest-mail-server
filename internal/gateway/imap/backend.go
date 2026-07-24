@@ -223,7 +223,7 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 		MessageID:    detail.Data.MessageID,
 		InReplyTo:    detail.Data.InReplyTo,
 		References:   detail.Data.References,
-		RawMessage:   m.rawMessage(detail.Data),
+		RawMessage:   []byte(m.rawMessage(detail.Data)),
 	}
 
 	resp, err := m.api.DeliverMessage(deliverReq)
@@ -267,7 +267,7 @@ func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint
 		BodyText:   bodyText,
 		BodyHTML:   bodyHTML,
 		MessageID:  messageID,
-		RawMessage: string(raw),
+		RawMessage: raw,
 	}
 
 	resp, err := m.api.DeliverMessage(deliverReq)
