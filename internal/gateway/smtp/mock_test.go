@@ -106,8 +106,11 @@ type mockStore struct {
 	authorized map[string]bool // MAIL FROM address -> allowed for the account
 	authErr    error           // forced SenderAuthorized error
 	enqueueErr error           // forced EnqueueOutbound error
+	persistErr error           // forced PersistSubmittedMessage error
 
-	enqueued []OutboundMessage
+	enqueued  []OutboundMessage
+	persisted []SubmittedMessage
+	nextMsgID uint // assigned to the most recent persisted submission
 }
 
 func newMockStore() *mockStore {
@@ -121,6 +124,32 @@ func (s *mockStore) SenderAuthorized(_ uint, from string) (bool, error) {
 		return false, s.authErr
 	}
 	return s.authorized[from], nil
+}
+
+func (s *mockStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.persistErr != nil {
+		return nil, s.persistErr
+	}
+	s.persisted = append(s.persisted, msg)
+	s.nextMsgID++
+	id := s.nextMsgID
+	return &id, nil
+}
+
+func (s *mockStore) persistedSubmissions() []SubmittedMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]SubmittedMessage(nil), s.persisted...)
+}
+
+// lastPersistedID returns the id assigned to the most recent persisted
+// submission (0 if none).
+func (s *mockStore) lastPersistedID() uint {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nextMsgID
 }
 
 func (s *mockStore) EnqueueOutbound(msg OutboundMessage) error {

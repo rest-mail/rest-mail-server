@@ -78,9 +78,24 @@ func parseHeaders(h gomessage.Header) pipeline.Headers {
 	// Preserve all raw headers under their canonical MIME keys. go-message
 	// returns the undecoded (RFC 2047-encoded) values, exactly as net/mail did,
 	// which downstream DKIM/ARC/Authentication-Results logic relies on.
+	//
+	// EXCEPT inbound Authentication-Results: these are attacker-controlled on an
+	// untrusted inbound message and MUST NOT be trusted as this server's own
+	// authentication verdict. dmarc_check reads Headers.Raw["Authentication-Results"]
+	// (and Extra) to decide SPF/DKIM alignment, so a forged
+	// "Authentication-Results: x; spf=pass …; dkim=pass …" would otherwise bypass a
+	// p=reject/quarantine policy. The local spf_check/dkim_verify/arc_verify filters
+	// append their genuine verdict to this same key later in the pipeline, so
+	// rehoming the inbound copy to X-Original-Authentication-Results leaves only
+	// server-produced results under the trusted key while preserving the original
+	// for audit. ARC-* headers are cryptographically verified by arc_verify and are
+	// left untouched.
 	fields := h.Fields()
 	for fields.Next() {
 		key := fields.Key()
+		if strings.EqualFold(key, "Authentication-Results") {
+			key = "X-Original-Authentication-Results"
+		}
 		headers.Raw[key] = append(headers.Raw[key], fields.Value())
 	}
 
