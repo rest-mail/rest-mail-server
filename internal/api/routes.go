@@ -147,6 +147,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
 	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db, cfg.MasterKey))
 	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
+	// #178: bind dmarc_check to the deployment's trusted-ARC-sealer allowlist,
+	// overriding the empty-allowlist default from init(). A passing ARC chain
+	// overrides a DMARC failure only when its sealing domain is allowlisted; the
+	// default (empty) keeps ARC informational so an untrusted sealer cannot bypass
+	// the From domain's p=reject/quarantine.
+	pipeline.DefaultRegistry.Register("dmarc_check", filters.NewDMARCCheckWithSealers(cfg.TrustedARCSealers()))
 	// OSI-13: bind the sieve filter to the deployment's redirect allowlist,
 	// overriding the deny-external default baked into the init() registration.
 	sieveRedirect := cfg.SieveRedirect()

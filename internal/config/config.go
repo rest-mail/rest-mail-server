@@ -1657,3 +1657,26 @@ func (c *Config) enforceSecurityFindings(scope string, findings []string) error 
 
 // END listener secure-by-construction (secure-by-construction epic)
 // ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN trusted-ARC-sealer allowlist (#178)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The setting is read lazily through a *Config accessor over
+// the getEnvSlice helper above; the Config struct and Load() are untouched.
+// ══════════════════════════════════════════════════════════════════════════
+
+// TrustedARCSealers returns the allowlist of ARC sealing domains (the d= of the
+// most recent ARC-Seal) whose passing ARC chain may override a DMARC failure
+// (#178). RFC 8617 makes an ARC "pass" meaningful only when it comes from a
+// sealer you trust: without this gate an attacker running their own ARC sealer
+// could seal spoofed mail and launder it past the From domain's
+// p=reject/quarantine. The default is EMPTY — no sealer is trusted, so ARC stays
+// purely informational and never overrides DMARC unless an operator explicitly
+// lists a sealer. Set with TRUSTED_ARC_SEALERS (comma-separated domains).
+func (c *Config) TrustedARCSealers() []string {
+	return getEnvSlice("TRUSTED_ARC_SEALERS", nil)
+}
+
+// END trusted-ARC-sealer allowlist
+// ══════════════════════════════════════════════════════════════════════════
