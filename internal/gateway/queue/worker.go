@@ -41,6 +41,39 @@ func (e *SMTPError) IsPermanent() bool {
 	return e.Code >= 500 && e.Code < 600
 }
 
+// smtpErrorFrom recovers a *SMTPError from anywhere in err's wrap chain. The
+// delivery path returns the structured SMTP error wrapped (fmt.Errorf("… %w",
+// lastErr)), so callers MUST use errors.As rather than a concrete type assertion
+// — an assertion only matches the outermost error and would silently miss a
+// wrapped permanent (5xx) failure, retrying it for the whole budget instead of
+// bouncing. Returns nil when the failure carried no SMTP status (e.g. a
+// connect/DNS/TLS error).
+func smtpErrorFrom(err error) *SMTPError {
+	var se *SMTPError
+	if errors.As(err, &se) {
+		return se
+	}
+	return nil
+}
+
+// dsnStatusCode maps an SMTP failure to the RFC 3463 enhanced status reported in
+// the DSN. An explicit enhanced code from the peer is used verbatim; otherwise it
+// is derived from the reply's major digit so a 4xx (e.g. a retry budget exhausted
+// on repeated "451 try again later") is reported as a persistent-transient 4.x.y,
+// not a fabricated permanent 5.0.0. A code-less failure (no SMTP reply — a
+// connect/DNS/TLS error) falls back to a generic 5.0.0.
+func dsnStatusCode(smtpErr *SMTPError) string {
+	if smtpErr != nil {
+		if smtpErr.Enhanced != "" {
+			return smtpErr.Enhanced
+		}
+		if smtpErr.Code >= 400 && smtpErr.Code < 600 {
+			return fmt.Sprintf("%d.0.0", smtpErr.Code/100)
+		}
+	}
+	return "5.0.0"
+}
+
 // parseSMTPError extracts SMTP status code from a net/smtp error string.
 func parseSMTPError(err error) *SMTPError {
 	msg := err.Error()
@@ -314,12 +347,16 @@ func (w *Worker) processOne(workerID int) {
 		return
 	}
 
-	// Extract SMTP error code if available
-	var smtpErr *SMTPError
+	// Extract the SMTP error code if the delivery error carries one. deliver()
+	// wraps the underlying failure (fmt.Errorf("all MX hosts failed: %w", …)), so a
+	// bare type assertion would never see the *SMTPError through the %w wrap and
+	// would treat every permanent 5xx as transient — retrying an unrecoverable
+	// failure for the full retry budget. errors.As unwraps the chain so a wrapped
+	// permanent failure is recognized and bounced immediately.
+	smtpErr := smtpErrorFrom(deliveryErr)
 	var errorCode int
-	if se, ok := deliveryErr.(*SMTPError); ok {
-		smtpErr = se
-		errorCode = se.Code
+	if smtpErr != nil {
+		errorCode = smtpErr.Code
 	}
 
 	slog.Warn("queue: delivery failed",
@@ -350,7 +387,15 @@ func (w *Worker) processOne(workerID int) {
 			"last_error_code": errorCode,
 		})
 		slog.Warn("queue: message bounced (max retries)", "id", item.ID, "recipient", item.Recipient)
-		w.generateBounce(item, &SMTPError{Code: 0, Message: deliveryErr.Error()})
+		// Report the last SMTP status when we have one so a retry budget exhausted
+		// on repeated 4xx bounces as a persistent-transient 4.x.y, not a fabricated
+		// 5.0.0. Only when the failure carried no SMTP code (e.g. a connect/DNS
+		// error) do we fall back to a code-less DSN.
+		bounceErr := smtpErr
+		if bounceErr == nil {
+			bounceErr = &SMTPError{Code: 0, Message: deliveryErr.Error()}
+		}
+		w.generateBounce(item, bounceErr)
 		return
 	}
 
@@ -678,14 +723,9 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	boundary := fmt.Sprintf("=_restmail_dsn_%d", now.UnixNano())
 	msgID := fmt.Sprintf("<dsn-%d-%d@%s>", item.ID, now.UnixNano(), w.hostname)
 
-	statusCode := "5.0.0"
+	statusCode := dsnStatusCode(smtpErr)
 	diagnosticCode := "smtp; delivery failed"
 	if smtpErr != nil {
-		if smtpErr.Enhanced != "" {
-			statusCode = smtpErr.Enhanced
-		} else if smtpErr.Code >= 500 {
-			statusCode = fmt.Sprintf("%d.0.0", smtpErr.Code/100)
-		}
 		if smtpErr.Code > 0 {
 			diagnosticCode = fmt.Sprintf("smtp; %d %s", smtpErr.Code, smtpErr.Message)
 		} else {
