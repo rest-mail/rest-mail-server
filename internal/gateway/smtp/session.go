@@ -39,7 +39,8 @@ type session struct {
 	api          Backend
 	store        Store
 	limiter      *connlimiter.Limiter
-	isSubmission bool // port 587/465 requires AUTH
+	hostname     string // this server's host name, stamped into the Received header
+	isSubmission bool   // port 587/465 requires AUTH
 
 	// Anti-abuse tarpit: the connection-scoped context is cancelled on server
 	// shutdown so an in-flight tarpit sleep aborts rather than blocking the
@@ -376,6 +377,27 @@ func (s *session) Data(r io.Reader) error {
 	// it; on submission these stay nil/empty (see inboundTransportSecurity).
 	tlsState, isTLS := s.conn.TLSConnectionState()
 	receivedTLS, tlsVersion, tlsCipher := inboundTransportSecurity(s.isSubmission, tlsState, isTLS)
+
+	// Prepend our trace (Received) header (RFC 5321 §4.4): an SMTP server that
+	// accepts a message for delivery or further processing MUST insert trace
+	// information at the top of the content, so this hop is visible in the
+	// Received chain (loop detection, DMARC/ARC alignment) and the server behaves
+	// like a mainstream MTA. Stamped once onto the raw bytes here so it flows to
+	// every downstream use — local delivery, the outbound queue, and the persisted
+	// submission reference — identically. It sits above any DKIM-Signature, which
+	// is standard and does not invalidate existing signatures. The "for" clause is
+	// emitted only for a single recipient (see singleRecipient) so a Bcc recipient
+	// is never disclosed to the others.
+	received := rmail.BuildReceivedHeader(rmail.ReceivedInfo{
+		From:      s.conn.Hostname(),
+		RemoteIP:  extractIP(s.remoteAddr()),
+		By:        s.hostname,
+		With:      receivedWith(isTLS, s.authenticated),
+		ID:        rmail.GenerateQueueID(),
+		For:       singleRecipient(s.rcptTo),
+		Timestamp: time.Now(),
+	})
+	data = append([]byte(received), data...)
 
 	accepted := 0
 	failed := 0
