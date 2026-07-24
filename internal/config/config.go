@@ -822,3 +822,31 @@ func (c *Config) PipelineFilterErrorAction() string {
 
 // END inbound-path security hardening
 // ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN scanner-verdict hardening (OSI-15)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The setting is read lazily through a *Config accessor using
+// the getEnv helper above; the Config struct and Load() are deliberately
+// untouched. An unset secret disables only the extra verdict-signature check —
+// never the fail-closed fallback baked into the scanner adapters.
+// ══════════════════════════════════════════════════════════════════════════
+
+// ScannerHMACSecret returns the shared secret used to authenticate external
+// content-scanner (rspamd / ClamAV) verdicts (OSI-15). Verdicts otherwise travel
+// over plain HTTP with no integrity protection, so a MITM or rogue scanner could
+// downgrade a "reject"/"infected" verdict to "clean". When set, the scanner
+// filters verify an HMAC-SHA256 signature (X-Scanner-Signature) over every
+// verdict body and fail closed on a missing/forged signature.
+//
+// Empty (the default) is safe because NO external scanner is wired into the
+// default pipeline: the rspamd/clamav filters are optional and run only when an
+// operator explicitly adds them to a pipeline. When a scanner IS deployed, set
+// SCANNER_HMAC_SECRET on both the server and the scanner sidecar.
+func (c *Config) ScannerHMACSecret() string {
+	return getEnv("SCANNER_HMAC_SECRET", "")
+}
+
+// END scanner-verdict hardening
+// ══════════════════════════════════════════════════════════════════════════

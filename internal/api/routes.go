@@ -130,6 +130,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		AllowExternal:  sieveRedirect.AllowExternal,
 		AllowedDomains: sieveRedirect.AllowedDomains,
 	}))
+	// OSI-15: bind the external content-scanner filters to the deployment's shared
+	// HMAC secret so verdicts are authenticated end-to-end (a plain-HTTP verdict
+	// cannot be forged/downgraded). The adapters also default to fail-CLOSED
+	// (defer) when the scanner is unreachable/errors, overriding the legacy
+	// fail-open. No scanner runs by default — these filters are active only when an
+	// operator adds them to a pipeline, so the default pipeline is unaffected.
+	scannerSecret := cfg.ScannerHMACSecret()
+	pipeline.DefaultRegistry.Register("rspamd", filters.NewRspamdWithSecret(scannerSecret))
+	pipeline.DefaultRegistry.Register("clamav", filters.NewClamAVWithSecret(scannerSecret))
 
 	// The message-processing engine carries the metrics observer so real
 	// inbound/outbound message flow emits pipeline metrics. The pipeline
