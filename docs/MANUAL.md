@@ -2,7 +2,7 @@
 
 This document consolidates every plan, stage document, and reference guide that previously lived across `docs/`, `docs/plans/`, and `docs/stages/`. It is the single source of truth for what the project is, what works today, how it was built, and what remains.
 
-Originals are preserved under `docs/plans/archive/` for historical reference.
+The original plan and stage documents have since been retired; this manual is their consolidated replacement.
 
 ---
 
@@ -34,7 +34,7 @@ projects/             Dockerfiles and config templates (dnsmasq, smtp/imap/pop3
 Taskfile.yml          Task runner for dev/build/test workflows (per-service
 tasks/                image + container tasks; run `task --list`)
 tests/e2e/            End-to-end integration test suite
-docs/                 This manual + reference docs + archived plans
+docs/                 This manual + reference docs
 ```
 
 ### Development environment notes
@@ -786,7 +786,7 @@ For historical reference, source documents were:
 | §5.4 EAI | EAI_PLAN.md |
 | Stage 4 complete (§2 Changelog) | STAGE_4_CHECKLIST.md, STAGE_4_FEATURES.md, STAGE_4_IMPLEMENTATION_COMPLETE.md, STAGE_4_SUMMARY.md, STAGE_4_TESTING_GUIDE.md, STAGE_4_QUEUE_MANAGEMENT.md |
 
-All of the above now live at `docs/plans/archive/` (see §10).
+These original documents have since been retired; their content is consolidated into this manual (see §10).
 
 ---
 

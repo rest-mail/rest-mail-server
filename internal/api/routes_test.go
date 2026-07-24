@@ -630,6 +630,77 @@ func TestRefresh_AdminTokenFailsClosedWithoutLedger(t *testing.T) {
 	}
 }
 
+// ── M-14: pipeline/filter test endpoints are rate-limited ─────────────
+
+// TestPipelineTestRoutes_RateLimited proves the admin pipeline/filter test
+// endpoints are throttled per client IP: once the burst is spent, further
+// requests get 429 with a Retry-After header. Each of these endpoints runs a
+// message through the pipeline engine, so an authenticated admin could
+// otherwise hammer them without bound (CWE-770).
+func TestPipelineTestRoutes_RateLimited(t *testing.T) {
+	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
+	cfg := &config.Config{
+		CORSAllowedOrigins:           []string{"http://localhost:3000"},
+		Environment:                  "test",
+		PipelineTestRateLimitEnabled: true,
+		// Tiny refill so the bucket does not top up mid-test; small burst so the
+		// throttle trips quickly.
+		PipelineTestRateLimitRPS:   0.0001,
+		PipelineTestRateLimitBurst: 3,
+	}
+	token := adminToken(t, jwtSvc, []string{"*"})
+
+	for _, path := range []string{
+		"/api/v1/admin/pipelines/test",
+		"/api/v1/admin/pipelines/test-filter",
+		"/api/v1/admin/custom-filters/1/test",
+	} {
+		t.Run(path, func(t *testing.T) {
+			// The limiter is shared per-router, so exercise one path per subtest
+			// against its own router to keep the burst accounting clean.
+			router := NewRouter(newFailingGormDB(t), jwtSvc, cfg, nil)
+
+			passes := 0
+			got429 := false
+			for i := 0; i < 12; i++ {
+				rr := doRequest(router, http.MethodPost, path, token, `{}`)
+				if rr.Code == http.StatusTooManyRequests {
+					got429 = true
+					if rr.Header().Get("Retry-After") == "" {
+						t.Errorf("429 response missing Retry-After header")
+					}
+					break
+				}
+				// Anything that is not a 429 means the throttle admitted the
+				// request to the handler (which then 400/500s on the failing DB).
+				assertReachedHandler(t, rr)
+				passes++
+			}
+			if !got429 {
+				t.Fatalf("expected a 429 after exhausting the burst, never got one")
+			}
+			if passes < cfg.PipelineTestRateLimitBurst {
+				t.Errorf("throttle tripped too early: %d passes before 429, want >= burst (%d)", passes, cfg.PipelineTestRateLimitBurst)
+			}
+		})
+	}
+}
+
+// TestPipelineTestRoutes_ThrottleDisabled is the regression guard: with the
+// limiter disabled (the zero-value config the other router tests use), the same
+// endpoints never 429 no matter how hard they are hit.
+func TestPipelineTestRoutes_ThrottleDisabled(t *testing.T) {
+	router, jwtSvc := newTestRouter(t) // PipelineTestRateLimitEnabled defaults false
+	token := adminToken(t, jwtSvc, []string{"*"})
+
+	for i := 0; i < 30; i++ {
+		rr := doRequest(router, http.MethodPost, "/api/v1/admin/pipelines/test", token, `{}`)
+		if rr.Code == http.StatusTooManyRequests {
+			t.Fatalf("request %d got 429 with throttle disabled", i)
+		}
+	}
+}
+
 // ── OSI-11: security headers wired on the router ──────────────────────
 
 func TestSecurityHeaders_WiredOnRouter(t *testing.T) {
