@@ -3124,7 +3124,12 @@ paths:
       operationId: receiveTlsReport
       tags: [System]
       summary: TLS-RPT report ingestion (RFC 8460)
-      description: Receives JSON TLS-RPT reports from external MTAs. No auth by design.
+      description: >-
+        Receives JSON TLS-RPT reports from external MTAs. No auth by design, so
+        it is bounded to prevent storage write-amplification: the request body is
+        size-capped, the number of policy entries per report is capped, the route
+        is rate-limited per client IP, and only reports whose policy-domain is a
+        domain this server hosts are stored (others are dropped).
       security: []
       requestBody:
         required: true
@@ -3153,8 +3158,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Report body exceeds the size cap, or carries more policy entries than allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Rate limit exceeded for the client IP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /.well-known/acme-challenge/{token}:
     get:

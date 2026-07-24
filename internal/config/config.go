@@ -305,6 +305,18 @@ type Config struct {
 	// internal-mTLS CA (that is INTERNAL_MTLS_CA_CERT); it is the general outbound
 	// trust anchor.
 	TrustedCACertPath string
+
+	// ════════════════════════════════════════════════════════════════════
+	// TLS-RPT ingestion rate limit (issue #183) — appended additively; keep
+	// contiguous to ease rebasing alongside other in-flight config.go work.
+	// ════════════════════════════════════════════════════════════════════
+	//
+	// The unauthenticated TLS-RPT ingestion endpoint (POST /.well-known/smtp-tlsrpt)
+	// is throttled per client IP so it cannot be used to flood storage with reports.
+	// Same dependency-free per-IP token bucket as the auth/pipeline-test limiters.
+	TLSRPTRateLimitEnabled bool
+	TLSRPTRateLimitRPS     float64 // sustained requests/sec per client IP
+	TLSRPTRateLimitBurst   int     // bucket capacity (max short burst) per client IP
 }
 
 // DefaultHSTSMaxAgeSeconds is the Strict-Transport-Security max-age used when
@@ -349,6 +361,17 @@ const (
 const (
 	DefaultPipelineTestRateLimitRPS   = 2.0
 	DefaultPipelineTestRateLimitBurst = 10
+)
+
+// DefaultTLSRPTRateLimitRPS / DefaultTLSRPTRateLimitBurst are the per-client-IP
+// throttle defaults for the unauthenticated TLS-RPT ingestion endpoint (issue
+// #183) when TLSRPT_RATE_LIMIT_RPS / TLSRPT_RATE_LIMIT_BURST are unset. TLS-RPT
+// reports arrive at most a few times a day per sender, so 1 sustained request/sec
+// with a burst of 10 leaves legitimate reporters ample headroom while capping an
+// automated flood to a trickle.
+const (
+	DefaultTLSRPTRateLimitRPS   = 1.0
+	DefaultTLSRPTRateLimitBurst = 10
 )
 
 // TraceRetention returns the per-message trace retention window as a Duration
@@ -647,6 +670,24 @@ func Load() (*Config, error) {
 		}
 	}
 	cfg.PipelineTestRateLimitRPS = pipelineTestRPS
+
+	// TLS-RPT ingestion rate limit (issue #183): same strict-parse + enabled-only
+	// positivity rules as the auth/pipeline-test limiters above.
+	cfg.TLSRPTRateLimitEnabled = getEnvBool("TLSRPT_RATE_LIMIT_ENABLED", true)
+	cfg.TLSRPTRateLimitBurst = getEnvInt("TLSRPT_RATE_LIMIT_BURST", DefaultTLSRPTRateLimitBurst)
+	tlsRPTRPS, err := getEnvFloatStrict("TLSRPT_RATE_LIMIT_RPS", DefaultTLSRPTRateLimitRPS)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.TLSRPTRateLimitEnabled {
+		if tlsRPTRPS <= 0 {
+			return nil, fmt.Errorf("TLSRPT_RATE_LIMIT_RPS must be positive, got %v", tlsRPTRPS)
+		}
+		if cfg.TLSRPTRateLimitBurst <= 0 {
+			return nil, fmt.Errorf("TLSRPT_RATE_LIMIT_BURST must be positive, got %d", cfg.TLSRPTRateLimitBurst)
+		}
+	}
+	cfg.TLSRPTRateLimitRPS = tlsRPTRPS
 
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)
