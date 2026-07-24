@@ -8,7 +8,6 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
-	github.com/emersion/go-smtp v0.24.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
@@ -24,6 +23,7 @@ require (
 	github.com/rest-mail/go-mtasts v0.1.1
 	github.com/rest-mail/go-pop3 v0.1.1
 	github.com/rest-mail/go-sieve v0.1.1
+	github.com/rest-mail/go-smtp v0.25.0
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.50.0
 	gorm.io/driver/postgres v1.6.0
@@ -70,5 +70,3 @@ require (
 	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/protobuf v1.36.8 // indirect
 )
-
-replace github.com/emersion/go-smtp => github.com/rest-mail/go-smtp v0.24.1-0.20260723074705-1df43ece562e
