@@ -154,7 +154,7 @@ func defaultOutboundFilters() []FilterConfig {
 			Name:    "rate_limit",
 			Type:    FilterTypeAction,
 			Enabled: true,
-			Config:  json.RawMessage(`{"per_sender_per_hour": 100}`),
+			Config:  json.RawMessage(`{"max_per_hour": 100, "max_per_minute": 20}`),
 		},
 		{
 			Name:    "header_cleanup",

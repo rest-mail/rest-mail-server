@@ -195,6 +195,7 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		IsRead    *bool   `json:"is_read"`
 		IsFlagged *bool   `json:"is_flagged"`
 		IsStarred *bool   `json:"is_starred"`
+		IsDraft   *bool   `json:"is_draft"`
 		Folder    *string `json:"folder"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -211,6 +212,12 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.IsStarred != nil {
 		updates["is_starred"] = *req.IsStarred
+	}
+	// Persist \Draft. The IMAP gateway maps \Draft onto is_draft (APPEND and
+	// STORE); without this field the key was silently dropped, so the draft flag
+	// was lost on the next SELECT while PERMANENTFLAGS still advertised \Draft.
+	if req.IsDraft != nil {
+		updates["is_draft"] = *req.IsDraft
 	}
 	if req.Folder != nil {
 		updates["folder"] = *req.Folder
@@ -231,6 +238,7 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 				"is_read":    msg.IsRead,
 				"is_flagged": msg.IsFlagged,
 				"is_starred": msg.IsStarred,
+				"is_draft":   msg.IsDraft,
 			},
 		})
 
@@ -479,6 +487,14 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 				Content:     req.BodyHTML,
 			}
 		}
+
+		// Stamp the authenticated submitting account so account-scoped outbound
+		// policy (e.g. the rate_limit filter) counts against it rather than the
+		// envelope sender, which the client can rotate at will.
+		if outEmailJSON.Metadata == nil {
+			outEmailJSON.Metadata = make(map[string]string)
+		}
+		outEmailJSON.Metadata["auth_account"] = strconv.FormatUint(uint64(claims.WebmailAccountID), 10)
 
 		var outPipelineCfg *pipeline.PipelineConfig
 		var dbOutPipeline models.Pipeline

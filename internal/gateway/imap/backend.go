@@ -137,6 +137,13 @@ func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
 
 // Store applies a persistent flag change (STORE, or the auto-\Seen of a
 // non-peek BODY[] fetch).
+//
+// \Flagged is backed by BOTH is_flagged and is_starred so the mapping is
+// symmetric with FETCH, which folds a webmail star into \Flagged
+// (is_flagged || is_starred, see toMessage). Writing only is_flagged made
+// STORE -FLAGS \Flagged leave a starred message still flagged on the next
+// SELECT; mirroring the flag onto both columns means what you STORE is what
+// you FETCH back.
 func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
 	updates := map[string]interface{}{}
 	if f.Seen != nil {
@@ -144,6 +151,7 @@ func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
 	}
 	if f.Flagged != nil {
 		updates["is_flagged"] = *f.Flagged
+		updates["is_starred"] = *f.Flagged
 	}
 	if f.Draft != nil {
 		updates["is_draft"] = *f.Draft
@@ -283,13 +291,16 @@ func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint
 		_ = m.api.UpdateMessage(m.token, resp.Data.ID, map[string]interface{}{"folder": dest})
 	}
 
-	// Apply supplied flags to the delivered message
+	// Apply supplied flags to the delivered message. \Flagged writes both
+	// is_flagged and is_starred so it round-trips through FETCH's
+	// is_flagged || is_starred fold, matching Store's symmetric mapping.
 	updates := map[string]interface{}{}
 	if f.Seen != nil && *f.Seen {
 		updates["is_read"] = true
 	}
 	if f.Flagged != nil && *f.Flagged {
 		updates["is_flagged"] = true
+		updates["is_starred"] = true
 	}
 	if f.Draft != nil && *f.Draft {
 		updates["is_draft"] = true
