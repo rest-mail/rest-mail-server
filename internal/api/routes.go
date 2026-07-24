@@ -283,9 +283,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// mTLS listener built below, so an unauthenticated public caller can no
 	// longer reach them.
 	// ═══════════════════════════════════════════════════════════════
+	// OSI-7: bound the delivery body so a runaway upload cannot buffer without
+	// limit, while never capping below the configured max message size (the limit
+	// is a multiple of SMTP_MAX_MESSAGE_SIZE plus headroom). The recipient-check
+	// GET carries no body, so only the deliver POST is wrapped.
+	deliverBodyLimit := middleware.MaxBodyBytes(cfg.InternalDeliveryBodyLimit())
 	registerInternal := func(rt chi.Router) {
 		rt.Get("/api/mailboxes", mailboxH.CheckAddress)
-		rt.Post("/api/v1/messages/deliver", messageH.DeliverMessage)
+		rt.With(deliverBodyLimit).Post("/api/v1/messages/deliver", messageH.DeliverMessage)
 	}
 	if !cfg.InternalMTLSEnabled {
 		registerInternal(r)
@@ -298,7 +303,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Get("/restmail/capabilities", restmailH.Capabilities)
 	r.Get("/restmail/mailboxes", restmailH.CheckMailbox)
-	r.Post("/restmail/messages", restmailH.Deliver)
+	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
+	// hop must accept up to a full max-size message but not buffer without limit.
+	r.With(deliverBodyLimit).Post("/restmail/messages", restmailH.Deliver)
 
 	// ═══════════════════════════════════════════════════════════════
 	// SSE — outside JWT middleware group; handler validates Authorization: Bearer

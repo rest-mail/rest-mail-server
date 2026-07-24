@@ -896,4 +896,122 @@ func (c *Config) MetricsAllowedCIDRs() []string {
 }
 
 // END metrics network-gate
+// BEGIN internal large-message path (OSI-7)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. Like the inbound-path block above it touches neither the
+// Config struct, Load(), nor the import list — every setting is read lazily
+// through a *Config accessor over the helpers already defined above.
+//
+// SMTP_MAX_MESSAGE_SIZE is admin-configurable and can be large (e.g. 128 MiB).
+// Several internal hops that carry a full message body (gateway→API delivery,
+// queue→MX outbound send, the RESTMAIL HTTPS hop) historically had SMALLER fixed
+// ceilings — a 30 s HTTP-client timeout, a 15 s API read/write timeout, a fixed
+// 30 s per-send deadline — that silently strand a large-but-permitted message
+// SMTP already accepted. These accessors derive a TIME budget from the message
+// size and a floor throughput so each hop permits a full max-size body, while
+// staying BOUNDED (a finite function of the configured max size and a positive
+// floor rate — never infinite, so the internal path keeps its anti-slowloris
+// bound).
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultInternalDeliveryFloorRate is the assumed MINIMUM throughput, in bytes
+// per second, of an internal message-carrying hop when INTERNAL_DELIVERY_FLOOR_RATE
+// is unset: 1 MiB/s. It is deliberately far above the public
+// SMTP_MIN_TRANSFER_RATE anti-slowloris floor (default 16 KiB/s): the derived
+// deadlines govern hops between trusted components over a fast local/internal
+// network (and our own outbound send to a peer MX), so a max-size body's time
+// budget stays modest (128 MiB ≈ 128 s) instead of the hours a 16 KiB/s floor
+// would imply. An operator whose internal API link is genuinely constrained can
+// LOWER it to widen every derived budget. Must be positive.
+const DefaultInternalDeliveryFloorRate int64 = 1 * 1024 * 1024
+
+// internalDeliveryGrace is the fixed additive headroom on every derived internal
+// deadline: connection setup, the TLS handshake, the API-side pipeline run and DB
+// write — so a budget is never just the raw byte-transfer time.
+const internalDeliveryGrace = 30 * time.Second
+
+// minInternalDeliveryDeadline floors any derived internal deadline, so a small
+// configured max size still yields a sane budget and the derivation never
+// regresses the historical fixed 30 s internal-client timeout for normal mail.
+const minInternalDeliveryDeadline = 30 * time.Second
+
+// defaultStaleDeliveringReclaim is the baseline interval after which an
+// outbound-queue row stuck in "delivering" is treated as orphaned by a crashed
+// worker and reclaimed. The effective reclaim (StaleDeliveringReclaim) only grows
+// above this when a max-size send could legitimately take longer.
+const defaultStaleDeliveringReclaim = 15 * time.Minute
+
+// staleDeliveringReclaimMargin is the slack added on top of the worst-case
+// single-send budget when the queue reclaim interval is derived, so reclaim
+// strictly exceeds any one send attempt: an in-flight legitimately-slow large
+// send can never be reclaimed out from under itself (which would double-send).
+const staleDeliveringReclaimMargin = 5 * time.Minute
+
+// InternalDeliveryFloorRate returns the internal-hop floor throughput in bytes
+// per second (INTERNAL_DELIVERY_FLOOR_RATE, default DefaultInternalDeliveryFloorRate).
+// A malformed or non-positive value falls back to the default rather than failing
+// startup: this is a liveness/performance budget, not a security gate, and a
+// zero/negative rate would make the derived deadline infinite (the one thing this
+// block exists to prevent).
+func (c *Config) InternalDeliveryFloorRate() int64 {
+	v, err := getEnvInt64Strict("INTERNAL_DELIVERY_FLOOR_RATE", DefaultInternalDeliveryFloorRate, "bytes per second")
+	if err != nil || v <= 0 {
+		return DefaultInternalDeliveryFloorRate
+	}
+	return v
+}
+
+// InternalDeliveryDeadline returns the maximum time one internal hop should be
+// allowed to carry a message of sizeBytes: grace + ceil(sizeBytes/floorRate),
+// floored at minInternalDeliveryDeadline. BOUNDED by construction — a finite
+// function of the size and a positive floor rate, never infinite — so it caps
+// slowloris on the internal path while giving a legitimately large message enough
+// time to transfer. Pass c.SMTPMaxMessageSize for the worst-case (advertised-max)
+// budget.
+func (c *Config) InternalDeliveryDeadline(sizeBytes int64) time.Duration {
+	if sizeBytes < 0 {
+		sizeBytes = 0
+	}
+	rate := c.InternalDeliveryFloorRate() // guaranteed positive
+	secs := sizeBytes / rate
+	if sizeBytes%rate != 0 {
+		secs++ // round the truncated division up so we never under-budget
+	}
+	d := internalDeliveryGrace + time.Duration(secs)*time.Second
+	if d < minInternalDeliveryDeadline {
+		return minInternalDeliveryDeadline
+	}
+	return d
+}
+
+// InternalDeliveryBodyLimit returns the byte ceiling an internal delivery-body
+// reader (http.MaxBytesReader on POST /api/v1/messages/deliver and
+// POST /restmail/messages) should enforce. It must NEVER cap below the configured
+// SMTP_MAX_MESSAGE_SIZE, so it is 3× that max plus 1 MiB of fixed scaffolding
+// headroom: the gateway→API delivery JSON carries the full raw message AND its
+// extracted text/html body (content duplication ≈ 2×) plus JSON string-escaping
+// of CRLFs and field names. The 3× multiple clears that worst case comfortably
+// while staying a finite, bounded multiple of an already-bounded maximum — so an
+// oversized body is still rejected instead of buffered without limit.
+func (c *Config) InternalDeliveryBodyLimit() int64 {
+	return c.SMTPMaxMessageSize*3 + 1*1024*1024
+}
+
+// StaleDeliveringReclaim returns how long an outbound-queue row may sit in
+// "delivering" before the worker reclaims it as orphaned. It is the larger of the
+// baseline (defaultStaleDeliveringReclaim) and the worst-case single-send budget
+// (InternalDeliveryDeadline(max size) + margin), guaranteeing reclaim strictly
+// exceeds any one send attempt so a slow-but-legitimate max-size send completes
+// before it can be reclaimed and duplicated. For a normal deployment (10 MiB max)
+// the derived value stays below the baseline, so reclaim is unchanged at 15 min.
+func (c *Config) StaleDeliveringReclaim() time.Duration {
+	derived := c.InternalDeliveryDeadline(c.SMTPMaxMessageSize) + staleDeliveringReclaimMargin
+	if derived > defaultStaleDeliveringReclaim {
+		return derived
+	}
+	return defaultStaleDeliveringReclaim
+}
+
+// END internal large-message path (OSI-7)
 // ══════════════════════════════════════════════════════════════════════════

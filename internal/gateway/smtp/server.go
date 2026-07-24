@@ -174,6 +174,14 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 	// rather than rejects these. Disable it for old-engine parity; total input
 	// stays bounded by MaxMessageBytes.
 	srv.MaxLineLength = 0
+	// These are PER-COMMAND idle timeouts, not a whole-DATA ceiling. During a
+	// message-body transfer the session arms the transferRateConn wrapper, which
+	// OWNS the read deadline and swallows this ReadTimeout (see transfer_rate.go):
+	// a legitimately large max-size message keeps flowing under the size-scaling
+	// min-rate/stall policy instead of being killed at a fixed 5 min (OSI-7). So a
+	// message at/above SMTP_MIN_TRANSFER_RATE is never cut off for being large,
+	// while a trickler below the floor is still dropped — slowloris protection
+	// intact.
 	srv.ReadTimeout = 5 * time.Minute
 	srv.WriteTimeout = 5 * time.Minute
 	// Without a TLS config there is nothing to upgrade to; otherwise AUTH is

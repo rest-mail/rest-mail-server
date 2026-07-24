@@ -124,6 +124,21 @@ func main() {
 	routers := api.NewRouters(database, jwtService, cfg, dnsProvider, acmeClientPtr)
 	router := routers.Public
 
+	// OSI-7: the whole-request read/write budget must accommodate a max-size
+	// inbound delivery body (POST /api/v1/messages/deliver, POST /restmail/messages)
+	// transferred at the internal floor throughput — a fixed 15 s stranded a large
+	// but admin-permitted message. It is derived from SMTP_MAX_MESSAGE_SIZE and the
+	// floor rate, so it is BOUNDED (a finite function of the configured max, never
+	// infinite). ReadHeaderTimeout stays tight below so header-slowloris protection
+	// is unchanged; only the body-transfer window is widened. For a normal
+	// deployment (10 MiB max) this is the 30 s floor.
+	deliverBudget := cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize)
+	slog.Info("API request body budget configured (OSI-7)",
+		"max_message_size", cfg.SMTPMaxMessageSize,
+		"read_write_timeout", deliverBudget.String(),
+		"header_timeout", (15 * time.Second).String(),
+	)
+
 	// Build the internal mTLS listener up front (before serving) so a
 	// half-configured deployment fails closed at startup rather than after the
 	// public listener is already accepting traffic.
@@ -135,12 +150,17 @@ func main() {
 			os.Exit(1)
 		}
 		internalSrv = &http.Server{
-			Addr:         cfg.InternalMTLSAddr(),
-			Handler:      routers.Internal,
-			TLSConfig:    internalTLS,
-			ReadTimeout:  15 * time.Second,
-			WriteTimeout: 15 * time.Second,
-			IdleTimeout:  60 * time.Second,
+			Addr:      cfg.InternalMTLSAddr(),
+			Handler:   routers.Internal,
+			TLSConfig: internalTLS,
+			// Tight header read (slowloris on headers) with a size-aware whole-request
+			// budget so a max-size delivery body is not stranded (OSI-7). The internal
+			// listener carries the gateway→API deliver route, so it especially needs
+			// the larger body window.
+			ReadHeaderTimeout: 15 * time.Second,
+			ReadTimeout:       deliverBudget,
+			WriteTimeout:      deliverBudget,
+			IdleTimeout:       60 * time.Second,
 		}
 		slog.Info("internal mTLS listener configured (gateway-facing routes require a verified client certificate)",
 			"addr", cfg.InternalMTLSAddr(),
@@ -187,11 +207,16 @@ func main() {
 
 	// Create HTTP server
 	srv := &http.Server{
-		Addr:         cfg.APIAddr(),
-		Handler:      router,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:    cfg.APIAddr(),
+		Handler: router,
+		// Tight header read (slowloris on headers) with a size-aware whole-request
+		// budget so a max-size delivery body (POST /restmail/messages, or the deliver
+		// route when internal mTLS is off) is not stranded (OSI-7). Non-delivery
+		// routes carry tiny bodies, so the wider window only ever benefits large mail.
+		ReadHeaderTimeout: 15 * time.Second,
+		ReadTimeout:       deliverBudget,
+		WriteTimeout:      deliverBudget,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// Start server in goroutine

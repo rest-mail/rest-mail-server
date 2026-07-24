@@ -68,9 +68,17 @@ func parseSMTPError(err error) *SMTPError {
 	return &SMTPError{Code: 0, Message: msg}
 }
 
-// staleDeliveringTimeout is how long a row may sit in "delivering" before the
-// worker treats it as orphaned by a crashed worker and reclaims it.
+// staleDeliveringTimeout is the DEFAULT interval a row may sit in "delivering"
+// before the worker treats it as orphaned by a crashed worker and reclaims it.
+// The effective interval is Worker.reclaim, which SetDeliveryDeadline can raise
+// so it always exceeds the worst-case single-send budget (OSI-7) — otherwise a
+// legitimately slow max-size send would be reclaimed mid-flight and duplicated.
 const staleDeliveringTimeout = 15 * time.Minute
+
+// defaultSendDeadline is the per-attempt send budget used when the caller has not
+// configured a size-aware one via SetDeliveryDeadline. It matches the historical
+// fixed 30 s deadline, so behavior is unchanged until wired to the config.
+func defaultSendDeadline(int64) time.Duration { return 30 * time.Second }
 
 // computeBackoff returns the retry delay for the Nth delivery attempt:
 // exponential (1m, 2m, 4m, 8m, ...) capped at 4 hours.
@@ -111,6 +119,18 @@ type Worker struct {
 	// bounceMax <= 0 disables the cap. See generateBounce.
 	bounceMax    int
 	bounceWindow time.Duration
+
+	// Size-aware delivery timing (OSI-7). sendDeadline maps a message's byte size
+	// to the maximum time a single outbound send attempt (SMTP to a peer MX, or
+	// the RESTMAIL HTTPS hop) may take, so a large-but-permitted message is not
+	// cut off by a fixed short deadline. reclaim is how long a row may sit
+	// "delivering" before being reclaimed as orphaned; it is kept strictly larger
+	// than sendDeadline(max size) so an in-flight slow large send completes before
+	// it can be reclaimed and duplicated. Defaults preserve the historical fixed
+	// 30 s send / 15 min reclaim; SetDeliveryDeadline wires the config-derived,
+	// size-aware values.
+	sendDeadline func(sizeBytes int64) time.Duration
+	reclaim      time.Duration
 }
 
 const (
@@ -135,6 +155,8 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 		shutdown:     make(chan struct{}),
 		bounceMax:    defaultBounceMaxPerRecipient,
 		bounceWindow: defaultBounceWindow,
+		sendDeadline: defaultSendDeadline,
+		reclaim:      staleDeliveringTimeout,
 	}
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
 	// verification tracks the worker's tlsInsecure flag at call time.
@@ -168,6 +190,25 @@ func (w *Worker) SetBounceRateLimit(max int, window time.Duration) {
 		window = defaultBounceWindow
 	}
 	w.bounceWindow = window
+}
+
+// SetDeliveryDeadline configures the size-aware per-attempt send budget and the
+// stale-delivering reclaim interval (OSI-7). deadlineFn maps a message's byte
+// size to the maximum time one outbound send attempt may take; reclaim is how
+// long a row may sit "delivering" before the worker reclaims it as orphaned.
+//
+// The caller MUST supply a reclaim that strictly exceeds deadlineFn(max message
+// size): if reclaim were shorter, a legitimately slow max-size send still in
+// flight would be reclaimed by another worker and delivered a second time. A nil
+// deadlineFn or a non-positive reclaim is ignored (the safe default is kept), so
+// a misconfiguration can never shorten reclaim below a send budget.
+func (w *Worker) SetDeliveryDeadline(deadlineFn func(sizeBytes int64) time.Duration, reclaim time.Duration) {
+	if deadlineFn != nil {
+		w.sendDeadline = deadlineFn
+	}
+	if reclaim > 0 {
+		w.reclaim = reclaim
+	}
 }
 
 // Start begins processing the outbound queue.
@@ -208,11 +249,14 @@ func (w *Worker) processOne(workerID int) {
 	// Claim a pending item using raw SQL with FOR UPDATE SKIP LOCKED
 	var item models.OutboundQueue
 	now := time.Now()
-	// Rows that have been "delivering" longer than this were almost certainly
-	// orphaned by a worker that crashed mid-send: no attempt takes minutes, and a
-	// live send holds the row's transaction lock. Reclaim them so mail isn't
-	// stranded forever (the claim below only re-selects pending/deferred).
-	staleDelivering := now.Add(-staleDeliveringTimeout)
+	// Rows that have been "delivering" longer than w.reclaim were almost certainly
+	// orphaned by a worker that crashed mid-send: a live send is bounded by the
+	// size-aware send deadline (always < w.reclaim), and holds the row's
+	// transaction lock. Reclaim them so mail isn't stranded forever (the claim
+	// below only re-selects pending/deferred). w.reclaim exceeds the worst-case
+	// max-size send budget so a slow-but-legitimate large send is never reclaimed
+	// mid-flight and duplicated (OSI-7).
+	staleDelivering := now.Add(-w.reclaim)
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Raw(
 			`SELECT * FROM outbound_queue
@@ -484,7 +528,10 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 	}
 
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		// Size-aware upload budget (OSI-7): the payload carries the full raw
+		// message, so a fixed 30 s cannot transfer a large body. Bounded — a
+		// finite function of the message size — so this hop stays slowloris-safe.
+		Timeout: w.sendDeadline(int64(len(item.RawMessage))),
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: w.tlsInsecure},
 		},
@@ -744,7 +791,15 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 //   - testing / none / no policy: opportunistic TLS as before; a would-fail
 //     under "testing" is logged but delivery proceeds.
 func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Size-aware whole-attempt budget (OSI-7): the fixed 30 s could not transfer
+	// a large-but-permitted message's DATA phase. The deadline scales with the
+	// message size and stays strictly below w.reclaim, so a slow large send
+	// completes before the row is reclaimed (no duplicate delivery), while
+	// remaining a finite bound (no slowloris). One absolute deadline bounds the
+	// whole attempt (dial + the entire SMTP conversation), applied to the socket
+	// below because net/smtp sets no deadlines of its own.
+	attemptDeadline := time.Now().Add(w.sendDeadline(int64(len(item.RawMessage))))
+	ctx, cancel := context.WithDeadline(context.Background(), attemptDeadline)
 	defer cancel()
 
 	addr := host + ":25"
@@ -767,6 +822,13 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", addr, err)
 	}
+
+	// Bound the ENTIRE conversation — greeting, EHLO, STARTTLS handshake,
+	// MAIL/RCPT, the DATA body write and the final reply — with the single
+	// size-aware absolute deadline. net/smtp sets no deadlines, so without this a
+	// remote that hangs mid-DATA would block the worker indefinitely. The deadline
+	// persists across the StartTLS upgrade (the tls.Conn wraps this same socket).
+	_ = conn.SetDeadline(attemptDeadline)
 
 	client, err := smtp.NewClient(conn, host)
 	if err != nil {

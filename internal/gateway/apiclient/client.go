@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,19 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+)
+
+const (
+	// defaultRequestTimeout bounds every gateway↔API call when no size-aware
+	// message deadline is configured (WithMessageDeadline). It matches the
+	// historical fixed client timeout.
+	defaultRequestTimeout = 30 * time.Second
+	// internalCheckTimeout bounds the tiny tokenless recipient-existence check
+	// (CheckMailbox) independently of the — possibly much larger, size-derived —
+	// message deadline, so a RCPT-time lookup fails fast when the API is
+	// unresponsive instead of holding the SMTP session open for the whole
+	// large-message delivery budget.
+	internalCheckTimeout = 30 * time.Second
 )
 
 // Client is the REST API client used by all gateway protocol handlers.
@@ -35,6 +49,15 @@ type Client struct {
 
 	internalBaseURL    string
 	internalHTTPClient *http.Client
+
+	// msgDeadline is the maximum time a single message-carrying call
+	// (DeliverMessage upload, GetRawMessage download) may take. It is applied as
+	// the Timeout on both HTTP clients so a large-but-admin-permitted message is
+	// not stranded by a short fixed timeout (OSI-7). Derived from the configured
+	// SMTP_MAX_MESSAGE_SIZE and a floor throughput via WithMessageDeadline, so it
+	// is always a finite, bounded value (never zero/infinite); it defaults to
+	// defaultRequestTimeout when the option is not supplied.
+	msgDeadline time.Duration
 }
 
 // Option configures a Client at construction time.
@@ -54,8 +77,27 @@ func WithInternalMTLS(internalBaseURL string, tlsCfg *tls.Config) Option {
 		transport.TLSClientConfig = tlsCfg
 		c.internalBaseURL = internalBaseURL
 		c.internalHTTPClient = &http.Client{
-			Timeout:   30 * time.Second,
+			// A placeholder; New applies the effective (size-aware) timeout to
+			// both clients after all options run, so ordering with
+			// WithMessageDeadline does not matter.
+			Timeout:   defaultRequestTimeout,
 			Transport: transport,
+		}
+	}
+}
+
+// WithMessageDeadline sets the maximum time a single message-carrying call
+// (DeliverMessage, GetRawMessage) may take — the size-aware upper bound derived
+// by the caller from the configured SMTP_MAX_MESSAGE_SIZE and a floor throughput
+// (config.InternalDeliveryDeadline). It replaces the fixed default timeout so a
+// large-but-permitted message is not stranded, while staying BOUNDED: a
+// non-positive value is ignored, so the timeout can never be disabled (no
+// slowloris-reintroducing infinite wait). Applies to both the public and the
+// internal client.
+func WithMessageDeadline(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.msgDeadline = d
 		}
 	}
 }
@@ -63,7 +105,7 @@ func WithInternalMTLS(internalBaseURL string, tlsCfg *tls.Config) Option {
 // New creates a new API client pointing at the given (public) base URL. Options
 // may add a separate internal mTLS destination for the two machine routes.
 func New(baseURL string, opts ...Option) *Client {
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := &http.Client{Timeout: defaultRequestTimeout}
 	c := &Client{
 		baseURL:    baseURL,
 		httpClient: httpClient,
@@ -71,9 +113,21 @@ func New(baseURL string, opts ...Option) *Client {
 		// default-off behavior is exactly as before.
 		internalBaseURL:    baseURL,
 		internalHTTPClient: httpClient,
+		msgDeadline:        defaultRequestTimeout,
 	}
 	for _, opt := range opts {
 		opt(c)
+	}
+	// Apply the effective message deadline to BOTH clients after all options run
+	// (WithInternalMTLS may have replaced the internal client). The public client
+	// carries GetRawMessage (a full stored message streamed back to IMAP/POP3);
+	// the internal client carries DeliverMessage (a full inbound message uploaded
+	// to the API). Both must permit a max-size body, so both get the same
+	// size-aware, bounded timeout. When WithMessageDeadline was not supplied this
+	// is defaultRequestTimeout, i.e. behavior is unchanged.
+	if c.msgDeadline > 0 {
+		c.httpClient.Timeout = c.msgDeadline
+		c.internalHTTPClient.Timeout = c.msgDeadline
 	}
 	return c
 }
@@ -126,8 +180,14 @@ type MailboxCheckResponse struct {
 // machine-to-machine call, so it goes to the internal (mTLS, when configured)
 // destination rather than the public listener.
 func (c *Client) CheckMailbox(address string) (*MailboxCheckResponse, error) {
+	// A recipient-existence check carries no message body, so it is bounded by
+	// the short internalCheckTimeout — NOT the (possibly large) size-aware
+	// message deadline — so a RCPT-time lookup fails fast if the API is
+	// unresponsive.
+	ctx, cancel := context.WithTimeout(context.Background(), internalCheckTimeout)
+	defer cancel()
 	var resp MailboxCheckResponse
-	if err := c.getInternal("/api/mailboxes?address="+url.QueryEscape(address), &resp); err != nil {
+	if err := c.getInternal(ctx, "/api/mailboxes?address="+url.QueryEscape(address), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -175,8 +235,14 @@ type DeliverResponse struct {
 // machine-to-machine call, so it goes to the internal (mTLS, when configured)
 // destination rather than the public listener.
 func (c *Client) DeliverMessage(req *DeliverRequest) (*DeliverResponse, error) {
+	// A delivery uploads a full inbound message body, so it is bounded by the
+	// size-aware message deadline rather than a fixed short timeout — a 128 MiB
+	// body cannot complete in the old 30 s. The bound is finite (never infinite),
+	// so slowloris on this internal hop stays capped.
+	ctx, cancel := context.WithTimeout(context.Background(), c.msgDeadline)
+	defer cancel()
 	var resp DeliverResponse
-	if err := c.postInternal("/api/v1/messages/deliver", req, &resp); err != nil {
+	if err := c.postInternal(ctx, "/api/v1/messages/deliver", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -567,9 +633,14 @@ func (c *Client) get(path string, out interface{}) error {
 }
 
 // getInternal performs a tokenless GET against the internal destination
-// (the mTLS listener when configured, else the public client — see Client).
-func (c *Client) getInternal(path string, out interface{}) error {
-	resp, err := c.internalHTTPClient.Get(c.internalBaseURL + path)
+// (the mTLS listener when configured, else the public client — see Client). The
+// context carries the per-call deadline; the client Timeout is the outer bound.
+func (c *Client) getInternal(ctx context.Context, path string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.internalBaseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.internalHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
 	}
@@ -578,13 +649,20 @@ func (c *Client) getInternal(path string, out interface{}) error {
 }
 
 // postInternal performs a tokenless POST against the internal destination
-// (the mTLS listener when configured, else the public client — see Client).
-func (c *Client) postInternal(path string, body interface{}, out interface{}) error {
+// (the mTLS listener when configured, else the public client — see Client). The
+// context carries the per-call (size-aware) deadline for the message-body
+// upload; the client Timeout is the outer bound.
+func (c *Client) postInternal(ctx context.Context, path string, body interface{}, out interface{}) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	resp, err := c.internalHTTPClient.Post(c.internalBaseURL+path, "application/json", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.internalBaseURL+path, bytes.NewReader(jsonBody))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.internalHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("POST %s: %w", path, err)
 	}
