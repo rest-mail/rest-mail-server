@@ -233,7 +233,27 @@ type Config struct {
 	// mail-bombing amplification without dropping legitimate low-volume bounces.
 	BounceDSNMaxPerRecipient int
 	BounceDSNRateWindow      time.Duration
+	// ════════════════════════════════════════════════════════════════════
+	// Auth-hardening additions (appended additively — keep contiguous to ease
+	// rebasing alongside other in-flight config.go work).
+	// ════════════════════════════════════════════════════════════════════
+	//
+	// SecurityHeadersEnabled toggles the API security-headers middleware
+	// (HSTS / X-Content-Type-Options / X-Frame-Options / Referrer-Policy /
+	// a JSON-API CSP) — OSI-11. Default on. A reverse proxy is the other natural
+	// place for these; setting them at the app too keeps responses secure even
+	// behind an absent/misconfigured proxy, and the headers are idempotent.
+	SecurityHeadersEnabled bool
+	// HSTSMaxAgeSeconds is the Strict-Transport-Security max-age in seconds.
+	// Default DefaultHSTSMaxAgeSeconds (2 years). 0 omits the HSTS header (e.g.
+	// plain-HTTP local dev where pinning HTTPS would be wrong).
+	HSTSMaxAgeSeconds int
 }
+
+// DefaultHSTSMaxAgeSeconds is the Strict-Transport-Security max-age used when
+// HSTS_MAX_AGE_SECONDS is unset: two years, the common HSTS-preload-eligible
+// value.
+const DefaultHSTSMaxAgeSeconds = 63072000
 
 // DefaultTraceRetentionDays is the per-message trace hot window when
 // TRACE_RETENTION_DAYS is unset.
@@ -542,6 +562,18 @@ func Load() (*Config, error) {
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)
 	cfg.BounceDSNRateWindow = getEnvDuration("BOUNCE_DSN_RATE_WINDOW", time.Hour)
+	// ════════════════════════════════════════════════════════════════════
+	// Auth-hardening additions (OSI-11) — appended additively; keep contiguous.
+	// ════════════════════════════════════════════════════════════════════
+	cfg.SecurityHeadersEnabled = getEnvBool("SECURITY_HEADERS_ENABLED", true)
+	hstsMaxAge, err := getEnvInt64Strict("HSTS_MAX_AGE_SECONDS", DefaultHSTSMaxAgeSeconds, "seconds")
+	if err != nil {
+		return nil, err
+	}
+	if hstsMaxAge < 0 {
+		return nil, fmt.Errorf("HSTS_MAX_AGE_SECONDS must be a non-negative number of seconds (0 disables the HSTS header), got %d", hstsMaxAge)
+	}
+	cfg.HSTSMaxAgeSeconds = int(hstsMaxAge)
 
 	return cfg, nil
 }

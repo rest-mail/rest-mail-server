@@ -71,6 +71,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Use(chimw.RealIP)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
+	// Security headers (OSI-11) — HSTS/nosniff/frame-deny/referrer-policy/CSP on
+	// every response. Opt-out via SECURITY_HEADERS_ENABLED for deployments that
+	// terminate these at a reverse proxy.
+	if cfg.SecurityHeadersEnabled {
+		r.Use(middleware.SecurityHeaders(middleware.SecurityHeadersConfig{
+			HSTSMaxAgeSeconds: cfg.HSTSMaxAgeSeconds,
+		}))
+	}
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},

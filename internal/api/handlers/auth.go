@@ -12,13 +12,44 @@ import (
 	"gorm.io/gorm"
 )
 
+// refreshTokenStore is the rotation/revocation ledger the auth handler needs.
+// A consumer-side interface (implemented by repositories.RefreshTokenRepository)
+// so the handler's rotation/revocation state machine can be unit-tested against
+// an in-memory fake without a database.
+type refreshTokenStore interface {
+	Save(rec *models.RefreshToken) error
+	Rotate(jti string) error
+	Revoke(jti string) error
+}
+
 type AuthHandler struct {
-	db         *gorm.DB
-	jwtService *auth.JWTService
+	db           *gorm.DB
+	jwtService   *auth.JWTService
+	refreshStore refreshTokenStore
 }
 
 func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService) *AuthHandler {
-	return &AuthHandler{db: db, jwtService: jwtService}
+	var store refreshTokenStore
+	if db != nil {
+		store = repositories.NewRefreshTokenRepository(db)
+	}
+	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: store}
+}
+
+// persistRefreshToken records a freshly issued refresh token in the rotation
+// ledger (status active). A nil store (no database, e.g. some unit tests) is a
+// no-op — production always wires the DB-backed store via NewAuthHandler.
+func (h *AuthHandler) persistRefreshToken(tokens *auth.TokenPair, userType string, subjectID uint) error {
+	if h.refreshStore == nil {
+		return nil
+	}
+	return h.refreshStore.Save(&models.RefreshToken{
+		Jti:       tokens.RefreshJTI,
+		UserType:  userType,
+		SubjectID: subjectID,
+		Status:    models.RefreshTokenActive,
+		ExpiresAt: tokens.RefreshExpiresAt,
+	})
 }
 
 type loginRequest struct {
@@ -69,22 +100,26 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) loginAdmin(w http.ResponseWriter, username, password string) {
 	adminUserRepo := repositories.NewAdminUserRepository(h.db)
 
-	// Find the admin user
-	adminUser, err := adminUserRepo.GetByUsername(username)
-	if err != nil {
+	// Find the admin user. A miss does NOT short-circuit: we still run one bcrypt
+	// comparison (against a dummy hash) so an unknown username costs the same as a
+	// wrong password and the two are indistinguishable by timing or message
+	// (OSI-24 user-enumeration defense-in-depth).
+	adminUser, lookupErr := adminUserRepo.GetByUsername(username)
+	passwordHash := auth.DummyPasswordHash
+	if lookupErr == nil {
+		passwordHash = adminUser.PasswordHash
+	}
+	pwErr := auth.CheckPassword(password, passwordHash)
+	if lookupErr != nil || pwErr != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid username or password")
 		return
 	}
 
-	// Check if user is active
+	// Credentials verified. Account-state checks (which legitimately surface a
+	// distinct message) run only after a correct password, so they never leak
+	// account existence to an unauthenticated guesser.
 	if !adminUser.Active {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
-		return
-	}
-
-	// Check password
-	if err := auth.CheckPassword(password, adminUser.PasswordHash); err != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid username or password")
 		return
 	}
 
@@ -105,6 +140,13 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, username, password strin
 	tokens, err := h.jwtService.GenerateAdminTokenPair(adminUser.ID, adminUser.Username, capNames)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
+		return
+	}
+
+	// Record the refresh token in the rotation ledger before handing it out, so
+	// it can later be rotated on use and revoked on logout (OSI-10).
+	if err := h.persistRefreshToken(tokens, "admin", adminUser.ID); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
 		return
 	}
 
@@ -135,15 +177,18 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, username, password strin
 }
 
 func (h *AuthHandler) loginMailbox(w http.ResponseWriter, email, password string) {
-	// Find the mailbox
+	// Find the mailbox. As with admin login, a miss does NOT short-circuit: run
+	// one bcrypt comparison (against a dummy hash) so an unknown or inactive
+	// address is timing- and message-indistinguishable from a wrong password
+	// (OSI-24 user-enumeration defense-in-depth).
 	var mailbox models.Mailbox
-	if err := h.db.Where("address = ? AND active = ?", email, true).First(&mailbox).Error; err != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
-		return
+	lookupErr := h.db.Where("address = ? AND active = ?", email, true).First(&mailbox).Error
+	passwordHash := auth.DummyPasswordHash
+	if lookupErr == nil {
+		passwordHash = mailbox.Password
 	}
-
-	// Check password
-	if err := auth.CheckPassword(password, mailbox.Password); err != nil {
+	pwErr := auth.CheckPassword(password, passwordHash)
+	if lookupErr != nil || pwErr != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
 		return
 	}
@@ -159,9 +204,17 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, email, password string
 	}
 
 	// Generate tokens
-	tokens, err := h.jwtService.GenerateTokenPair(mailbox.ID, mailbox.Address, account.ID, account.IsAdmin)
+	tokens, err := h.jwtService.GenerateTokenPair(mailbox.ID, mailbox.Address, account.ID)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
+		return
+	}
+
+	// Record the refresh token in the rotation ledger before handing it out
+	// (OSI-10). Keyed by mailbox ID so a password change / account disable can
+	// revoke every session for that mailbox.
+	if err := h.persistRefreshToken(tokens, "mailbox", mailbox.ID); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
 		return
 	}
 
@@ -191,6 +244,16 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, email, password string
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Revoke the presented refresh token server-side so it can no longer be
+	// exchanged (OSI-10: logout was previously client-side only). Best-effort:
+	// a missing/invalid cookie still clears client state below. Idempotent, so a
+	// double logout is harmless.
+	if cookie, err := r.Cookie("restmail_refresh"); err == nil && h.refreshStore != nil {
+		if claims, err := h.jwtService.ValidateRefreshToken(cookie.Value); err == nil && claims.ID != "" {
+			_ = h.refreshStore.Revoke(claims.ID)
+		}
+	}
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "restmail_refresh",
 		Value:    "",
@@ -216,19 +279,41 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Rotation + revocation (OSI-10): the presented refresh token must still be
+	// the ACTIVE ledger row for its jti. Rotate flips active→rotated atomically;
+	// it fails (not-found) when the row is missing, already rotated (reuse of a
+	// spent token), or revoked (logout / password change). Any of those refuses
+	// the refresh. A nil store (no DB, some unit tests) skips this check.
+	if h.refreshStore != nil {
+		if err := h.refreshStore.Rotate(claims.ID); err != nil {
+			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+			return
+		}
+	}
+
 	// Reissue the SAME kind of token the refresh token represents. Previously
 	// this always used the mailbox generator, so refreshing an admin session
 	// produced a mailbox access token (UserType="mailbox", no capabilities,
 	// MailboxID=0) — every admin route then 403'd and the admin was locked out
 	// until a full re-login.
 	var tokens *auth.TokenPair
+	var userType string
+	var subjectID uint
 	if claims.UserType == "admin" {
 		tokens, err = h.jwtService.GenerateAdminTokenPair(claims.AdminUserID, claims.Username, claims.Capabilities)
+		userType, subjectID = "admin", claims.AdminUserID
 	} else {
-		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.IsAdmin)
+		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID)
+		userType, subjectID = "mailbox", claims.MailboxID
 	}
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
+		return
+	}
+
+	// Record the replacement refresh token as the new active ledger row.
+	if err := h.persistRefreshToken(tokens, userType, subjectID); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
 		return
 	}
 

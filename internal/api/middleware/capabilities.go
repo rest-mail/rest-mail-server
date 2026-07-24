@@ -11,14 +11,13 @@ package middleware
 // How capabilities derive from token types:
 //   - Admin tokens (UserType "admin"): the Capabilities claim issued at login
 //     from the user's roles. "*" grants everything.
-//   - Legacy mailbox-admin tokens (UserType "mailbox" with the deprecated
-//     IsAdmin flag): treated as wildcard, preserving the pre-RBAC AdminOnly
-//     behavior for already-issued tokens and webmail accounts flagged
-//     is_admin.
 //   - Mailbox tokens: no admin capabilities. They are confined to the
 //     mailbox-scoped route group (accounts, folders, messages, send, drafts,
 //     attachments, contacts, vacation, sieve, search, quarantine, SSE events)
-//     and receive 403 on every capability-gated admin route.
+//     and receive 403 on every capability-gated admin route. The deprecated
+//     mailbox IsAdmin escalation path was removed (OSI-14): a mailbox token can
+//     never satisfy AdminOnly or RequireCapability, regardless of any stale
+//     is_admin payload it may carry.
 //
 // Route-group mapping (wired in internal/api/routes.go):
 //
