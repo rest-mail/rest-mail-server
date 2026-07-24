@@ -5,9 +5,11 @@ import (
 	"testing"
 )
 
-// secureGatewayCfg returns a Config with all protocol ports enabled and a TLS
-// keypair configured, in the given environment. Individual tests blank the
-// keypair or flip env knobs to exercise a single finding.
+// secureGatewayCfg returns a Config with all protocol ports enabled, a TLS
+// keypair configured, and internal mTLS enabled (so the gateway routes are not
+// exposed on the public listener), in the given environment — a fully-secure
+// baseline. Individual tests blank the keypair, disable internal mTLS, or flip
+// env knobs to exercise a single finding.
 func secureGatewayCfg(env string) *Config {
 	return &Config{
 		Environment:           env,
@@ -22,6 +24,7 @@ func secureGatewayCfg(env string) *Config {
 		POP3TLSPort:           995,
 		APIHost:               "0.0.0.0",
 		APIPort:               8080,
+		InternalMTLSEnabled:   true,
 	}
 }
 
@@ -143,6 +146,75 @@ func TestValidateListenerSecurity_API_Development(t *testing.T) {
 
 	if err := cfg.ValidateListenerSecurity(RoleAPI); err != nil {
 		t.Fatalf("API in development without proxy ack must warn+boot (not error), got: %v", err)
+	}
+}
+
+// TestValidateListenerSecurity_InternalMTLSOff_Production: with internal mTLS
+// disabled the gateway-facing routes (GET /api/mailboxes recipient oracle and
+// POST /api/v1/messages/deliver, which trusts a caller-supplied client_ip/helo)
+// are mounted unauthenticated on the PUBLIC API listener. In production that is
+// refused unless the operator either enables internal mTLS or explicitly
+// acknowledges an out-of-band network trust boundary. The proxy ack + secure DB
+// are set so the ONLY remaining finding is the internal-routes exposure — this
+// FAILS on pre-fix code, which returns nil for exactly this config.
+func TestValidateListenerSecurity_InternalMTLSOff_Production(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_SSLMODE", "require")               // isolate: clear the DB finding
+	t.Setenv("API_TLS_TERMINATED_BY_PROXY", "true") // isolate: clear the proxy finding
+	cfg := secureGatewayCfg("production")
+	cfg.InternalMTLSEnabled = false // routes served unauthenticated on the public listener
+
+	err := cfg.ValidateListenerSecurity(RoleAPI)
+	if err == nil {
+		t.Fatal("internal mTLS off exposes the gateway routes unauthenticated on the public listener; production should refuse to boot")
+	}
+	if !strings.Contains(err.Error(), "INTERNAL_MTLS_ENABLED") {
+		t.Errorf("error should name the INTERNAL_MTLS_ENABLED switch, got: %v", err)
+	}
+}
+
+// TestValidateListenerSecurity_InternalMTLSOn_Production: enabling internal mTLS
+// moves the gateway routes onto the client-certificate-authenticated internal
+// listener, so a production API with proxy ack + secure DB boots clean.
+func TestValidateListenerSecurity_InternalMTLSOn_Production(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_SSLMODE", "require")
+	t.Setenv("API_TLS_TERMINATED_BY_PROXY", "true")
+	cfg := secureGatewayCfg("production")
+	cfg.InternalMTLSEnabled = true
+
+	if err := cfg.ValidateListenerSecurity(RoleAPI); err != nil {
+		t.Fatalf("internal mTLS on should boot clean in production, got: %v", err)
+	}
+}
+
+// TestValidateListenerSecurity_InternalRoutesAllowPublicAck: the explicit
+// acknowledgement (an operator who fronts the public listener with a firewall /
+// NetworkPolicy that restricts the gateway routes to trusted peers) clears the
+// finding in production even with internal mTLS off.
+func TestValidateListenerSecurity_InternalRoutesAllowPublicAck(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("DB_SSLMODE", "require")
+	t.Setenv("API_TLS_TERMINATED_BY_PROXY", "true")
+	t.Setenv("INTERNAL_ROUTES_ALLOW_PUBLIC", "true")
+	cfg := secureGatewayCfg("production")
+	cfg.InternalMTLSEnabled = false
+
+	if err := cfg.ValidateListenerSecurity(RoleAPI); err != nil {
+		t.Fatalf("INTERNAL_ROUTES_ALLOW_PUBLIC=true should clear the internal-routes finding in production, got: %v", err)
+	}
+}
+
+// TestValidateListenerSecurity_InternalMTLSOff_Development: the identical
+// mTLS-off config only warns and boots in development — the local testbed/e2e
+// stack (which runs without internal mTLS) is unaffected.
+func TestValidateListenerSecurity_InternalMTLSOff_Development(t *testing.T) {
+	clearEnv(t)
+	cfg := secureGatewayCfg("development")
+	cfg.InternalMTLSEnabled = false
+
+	if err := cfg.ValidateListenerSecurity(RoleAPI); err != nil {
+		t.Fatalf("internal mTLS off must warn+boot (not error) in development, got: %v", err)
 	}
 }
 

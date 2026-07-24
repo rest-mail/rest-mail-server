@@ -1491,6 +1491,7 @@ func (c *Config) ValidateListenerSecurity(role ListenerRole) error {
 		findings = append(findings, c.pop3ListenerFindings()...)
 	case RoleAPI:
 		findings = append(findings, c.apiListenerFindings()...)
+		findings = append(findings, c.internalRoutesFindings()...)
 	}
 	return c.enforceSecurityFindings(role.String(), findings)
 }
@@ -1568,6 +1569,29 @@ func (c *Config) apiListenerFindings() []string {
 		c.APIAddr())}
 }
 
+// internalRoutesFindings flags the gateway-facing machine-to-machine routes being
+// reachable UNAUTHENTICATED on the public API listener. When internal mTLS is
+// disabled the API mounts GET /api/mailboxes (a recipient-existence oracle) and
+// POST /api/v1/messages/deliver (inbound delivery into any mailbox, trusting a
+// caller-supplied client_ip/helo_name that the SPF/greylist pipeline then honors
+// verbatim) onto the public router with no token, CIDR gate, or client
+// certificate — the whole network becomes the trust boundary. The secure posture
+// is internal mTLS ON (INTERNAL_MTLS_ENABLED=true), which withholds those routes
+// from the public listener and serves them only on the client-certificate
+// listener. In production this is refused unless mTLS is enabled OR the operator
+// explicitly acknowledges an out-of-band network trust boundary (a firewall /
+// Kubernetes NetworkPolicy that restricts the port to trusted gateways) with
+// INTERNAL_ROUTES_ALLOW_PUBLIC=true. In development/test (the testbed/e2e default,
+// which runs without internal mTLS) this only warns, so local use is unchanged.
+func (c *Config) internalRoutesFindings() []string {
+	if c.InternalMTLSEnabled || internalRoutesAllowPublic() {
+		return nil
+	}
+	return []string{
+		"internal mTLS is disabled (INTERNAL_MTLS_ENABLED=false), so the gateway-facing routes GET /api/mailboxes (recipient-existence oracle) and POST /api/v1/messages/deliver (unauthenticated inbound delivery that trusts a caller-supplied client_ip/helo_name) are served on the public API listener with no authentication — enable internal mTLS (INTERNAL_MTLS_ENABLED=true with the INTERNAL_MTLS_* certificate material) so these routes move to the client-certificate-authenticated internal listener, or acknowledge an out-of-band network trust boundary (firewall/NetworkPolicy restricting the port to trusted gateways) with INTERNAL_ROUTES_ALLOW_PUBLIC=true",
+	}
+}
+
 // dbTransportFindings flags a cleartext DB link. sslmode disable/allow/prefer all
 // permit (or silently fall back to) an unencrypted connection to Postgres. In
 // production that is refused unless explicitly acknowledged with
@@ -1602,6 +1626,13 @@ func apiTLSTerminatedByProxy() bool { return getEnvBool("API_TLS_TERMINATED_BY_P
 // dbInsecureAcknowledged reports the operator's acknowledgement of a cleartext DB
 // link (an already-encrypted/private network segment).
 func dbInsecureAcknowledged() bool { return getEnvBool("DB_ALLOW_INSECURE", false) }
+
+// internalRoutesAllowPublic reports the operator's acknowledgement that the
+// gateway-facing routes may be served unauthenticated on the public API listener
+// (internal mTLS off) because an out-of-band network trust boundary — a firewall
+// or Kubernetes NetworkPolicy restricting the port to trusted gateways — protects
+// them. Without it, production refuses to boot with internal mTLS disabled.
+func internalRoutesAllowPublic() bool { return getEnvBool("INTERNAL_ROUTES_ALLOW_PUBLIC", false) }
 
 // isInsecureDBSSLMode reports whether a libpq sslmode permits or silently falls
 // back to a cleartext connection. "disable" never uses TLS; "allow" and "prefer"

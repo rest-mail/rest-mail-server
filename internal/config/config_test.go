@@ -38,6 +38,7 @@ var allEnvKeys = []string{
 	"INTERNAL_DELIVERY_FLOOR_RATE",
 	"DB_SSLMODE", "DB_ALLOW_INSECURE",
 	"QUEUE_TLS_INSECURE", "API_TLS_TERMINATED_BY_PROXY",
+	"INTERNAL_ROUTES_ALLOW_PUBLIC",
 }
 
 // clearEnv ensures every config-related env var is truly unset for the test.
