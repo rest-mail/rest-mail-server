@@ -20,7 +20,7 @@ require (
 	github.com/rest-mail/go-arc v0.1.1
 	github.com/rest-mail/go-dkim v0.1.1
 	github.com/rest-mail/go-dmarc v0.1.1
-	github.com/rest-mail/go-imap v0.2.1
+	github.com/rest-mail/go-imap v0.2.2
 	github.com/rest-mail/go-mtasts v0.1.1
 	github.com/rest-mail/go-pop3 v0.1.1
 	github.com/rest-mail/go-sieve v0.1.1
