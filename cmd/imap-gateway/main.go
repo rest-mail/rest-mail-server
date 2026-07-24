@@ -120,8 +120,13 @@ func main() {
 		apiOpts = append(apiOpts, apiclient.WithInternalMTLS(cfg.APIInternalBaseURL, clientTLS))
 		slog.Info("internal mTLS enabled — machine routes use the internal listener with the gateway client certificate", "internal_base_url", cfg.APIInternalBaseURL)
 	}
+	// OSI-7: size-aware deadline for message-carrying API calls — GetRawMessage
+	// streams a full stored message back to IMAP clients, so a large message must
+	// not be stranded by a fixed 30 s timeout. Bounded by the configured max size.
+	msgDeadline := cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize)
+	apiOpts = append(apiOpts, apiclient.WithMessageDeadline(msgDeadline))
 	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
-	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
+	slog.Info("API client configured", "base_url", cfg.APIBaseURL, "message_deadline", msgDeadline.String())
 
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	limiter.SetProtocol("imap")
