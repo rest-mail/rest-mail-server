@@ -146,13 +146,15 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}
 
 	// ARC override status: a valid ARC chain lets us honor the original
-	// authentication on forwarded mail (RFC 8617 §5.2).
+	// authentication on forwarded mail (RFC 8617 §5.2). The verdict is taken ONLY
+	// from the arc_status metadata written by the local arc_verify filter — never
+	// from an "arc=pass" substring in Authentication-Results, which on an inbound
+	// message is attacker-controlled and was a second DMARC-bypass vector (any
+	// message merely containing "arc=pass" would trigger the override even when
+	// arc_verify never ran).
 	arcStatus := ""
 	if email.Metadata != nil {
 		arcStatus = email.Metadata["arc_status"]
-	}
-	if arcStatus == "" && strings.Contains(authResults, "arc=pass") {
-		arcStatus = "pass"
 	}
 
 	aligned := spfAligned || dkimAligned
