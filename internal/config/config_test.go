@@ -34,6 +34,7 @@ var allEnvKeys = []string{
 	"TRACE_RETENTION_DAYS", "TRACE_SAMPLE_RATE", "TRACE_MAX_ROWS", "ROLLUP_INTERVAL",
 	"ENVIRONMENT",
 	"SECURITY_HEADERS_ENABLED", "HSTS_MAX_AGE_SECONDS",
+	"INTERNAL_DELIVERY_FLOOR_RATE",
 }
 
 // clearEnv ensures every config-related env var is truly unset for the test.
