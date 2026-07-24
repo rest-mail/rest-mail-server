@@ -24,7 +24,7 @@ func main() {
 
 	domain := os.Getenv("SEED_DOMAIN")
 	if domain == "" {
-		domain = "restmail.test"
+		domain = "example.test"
 	}
 	slog.Info("seeding database with test data", "domain", domain)
 

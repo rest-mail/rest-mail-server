@@ -14,7 +14,7 @@ import (
 
 // SNICertLoader provides SNI-based certificate selection by loading
 // per-domain certificate/key pairs from a directory. Files are expected
-// as {domain}.crt and {domain}.key (e.g. mail3.test.crt, mail3.test.key).
+// as {domain}.crt and {domain}.key (e.g. example.test.crt, example.test.key).
 type SNICertLoader struct {
 	certDir     string
 	fallback    *tls.Certificate

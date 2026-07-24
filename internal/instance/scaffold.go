@@ -24,7 +24,7 @@ const (
 	ipSubnet = "10.99.0."
 	// allocStart is the first octet scaffold will hand out. Octets below it
 	// are reserved for hand-assigned infrastructure (testbed dnsmasq, the
-	// reference servers, monitoring) and the mail3.test fixture.
+	// reference servers, monitoring) and the primary instance fixture.
 	allocStart = 50
 	// allocEnd is the last usable octet.
 	allocEnd = 250
@@ -239,7 +239,7 @@ func renderScaffoldManifest(tmpl, domain, slug string, ips map[string]string) ([
 	return b.Bytes(), err
 }
 
-// scaffoldTemplate mirrors the mail3.test fixture manifest, parameterized.
+// scaffoldTemplate mirrors the primary instance fixture manifest, parameterized.
 // Project + proxy_host are per-instance so container names and proxy vhosts
 // don't collide. Ports keep the standard defaults (edit them if you need two
 // instances publishing to the host at once).
