@@ -93,7 +93,7 @@ func TestDeliverRESTMAILErrorBodyBounded(t *testing.T) {
 	// tlsInsecure accepts the httptest self-signed cert; allowPrivateDest permits
 	// the loopback endpoint — isolating the body cap as the property under test.
 	w := &Worker{sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
-	err := w.deliverRESTMAILHTTPS(srv.URL, testItem())
+	err := w.deliverRESTMAILHTTPS(srv.URL, testItem(), false)
 	if err == nil {
 		t.Fatal("expected a non-2xx RESTMAIL response to surface as an error")
 	}

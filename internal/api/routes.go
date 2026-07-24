@@ -176,6 +176,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	filterErrAction := pipeline.Action(cfg.PipelineFilterErrorAction())
 	pipelineEngine.SetFilterErrorAction(filterErrAction)
 	previewEngine.SetFilterErrorAction(filterErrAction)
+	// Per-filter execution backstop: a hung/deadlocked filter is abandoned after
+	// this and routed through the fail-closed policy above, so it can never wedge
+	// delivery. Combined with the engine's panic recovery, a single misbehaving
+	// filter is always contained to its own step.
+	filterTimeout := cfg.PipelineFilterTimeout()
+	pipelineEngine.SetFilterTimeout(filterTimeout)
+	previewEngine.SetFilterTimeout(filterTimeout)
 
 	// Async per-message trace recorder: durable MessageTrace rows are written off
 	// the hot path by one background goroutine, so a slow/failed DB drops traces

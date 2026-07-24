@@ -159,6 +159,7 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 			api:          s.api,
 			store:        s.store,
 			limiter:      s.limiter,
+			hostname:     s.hostname,
 			isSubmission: isSubmission,
 			ctx:          s.ctx,
 			tarpit:       s.tarpit,

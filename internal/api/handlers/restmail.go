@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -294,7 +293,11 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// RESTMAIL delivery has no TLS/IP envelope, so transport stays "".
 	var deliveredTrace *traceInputs
 	if pipelineCfg != nil && h.engine != nil {
-		result, err := h.engine.Execute(context.Background(), pipelineCfg, emailJSON)
+		// Use the request context so a client disconnect / server shutdown cancels
+		// the pipeline. Combined with the engine's per-filter timeout backstop, a
+		// hung filter on this path is bounded even though there is no outer
+		// delivery deadline here.
+		result, err := h.engine.Execute(r.Context(), pipelineCfg, emailJSON)
 		if err != nil {
 			// Fail-CLOSED on a pipeline error (OSI-18): temp-fail so the peer
 			// retries rather than delivering mail that skipped inbound filtering.
