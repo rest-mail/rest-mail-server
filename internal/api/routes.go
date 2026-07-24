@@ -104,7 +104,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	// Initialize handlers
 	healthH := handlers.NewHealthHandler(db)
-	authH := handlers.NewAuthHandler(db, jwtService)
+	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey)
+	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled)
 	domainH := handlers.NewDomainHandler(db, dnsProvider)
 	mailboxH := handlers.NewMailboxHandler(db)
 	aliasH := handlers.NewAliasHandler(db)
@@ -309,6 +310,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
+
+		// Two-factor auth (OSI-19) — an authenticated account manages its own
+		// TOTP enrollment. Available to both mailbox and admin tokens (no
+		// AdminOnly gate); each endpoint keys on the caller's own claims.
+		r.Get("/api/v1/auth/2fa", twofaH.Status)
+		r.Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
+		r.Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
+		r.Post("/api/v1/auth/2fa/disable", twofaH.Disable)
 
 		// Linked accounts
 		r.Get("/api/v1/accounts", accountH.ListAccounts)

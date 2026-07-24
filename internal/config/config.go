@@ -249,6 +249,19 @@ type Config struct {
 	// Default DefaultHSTSMaxAgeSeconds (2 years). 0 omits the HSTS header (e.g.
 	// plain-HTTP local dev where pinning HTTPS would be wrong).
 	HSTSMaxAgeSeconds int
+	// ════════════════════════════════════════════════════════════════════
+	// OSI-19: optional TOTP two-factor auth (appended additively — keep
+	// contiguous to ease rebasing alongside other in-flight config.go work).
+	// ════════════════════════════════════════════════════════════════════
+	//
+	// TOTP2FAEnabled permits accounts to ENROLL in TOTP 2FA (RFC 6238). Default
+	// true — allow-but-not-required: any account may opt in, none is forced, and
+	// accounts that never enrol behave exactly as before. Setting it false blocks
+	// new enrollment/confirmation but deliberately does NOT disable verification
+	// for already-active enrollments: turning the feature off must not silently
+	// downgrade the security of users who already turned it on. 2FA enrollment
+	// additionally requires MASTER_KEY (the secret is stored encrypted at rest).
+	TOTP2FAEnabled bool
 }
 
 // DefaultHSTSMaxAgeSeconds is the Strict-Transport-Security max-age used when
@@ -575,6 +588,9 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("HSTS_MAX_AGE_SECONDS must be a non-negative number of seconds (0 disables the HSTS header), got %d", hstsMaxAge)
 	}
 	cfg.HSTSMaxAgeSeconds = int(hstsMaxAge)
+
+	// ── OSI-19: optional TOTP 2FA (appended block — keep contiguous) ──
+	cfg.TOTP2FAEnabled = getEnvBool("TOTP_2FA_ENABLED", true)
 
 	return cfg, nil
 }
