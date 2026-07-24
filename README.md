@@ -35,7 +35,7 @@ The application itself is deliberately thin: the protocol engines and email-auth
 - Queue management with retry, bounce, and bulk operations
 - Delivery and activity log queries
 - IP ban management
-- OpenAPI 3.1 spec (108 operations) with Swagger UI
+- OpenAPI 3.1 spec (146 operations) with Swagger UI
 - Console admin tool (bubbletea) with inbox, search, compose, and live status
 - React webmail with rich text editor, contacts, vacation settings
 - Prometheus metrics endpoint with Grafana dashboards
@@ -43,21 +43,21 @@ The application itself is deliberately thin: the protocol engines and email-auth
 
 ## The Library Family
 
-RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is seven focused libraries (all MIT, tagged `v0.1.0`), each usable entirely on its own:
+RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is seven focused libraries, all MIT-licensed and each usable entirely on its own:
 
 | Library | What it is |
 |---------|------------|
-| [`rest-mail/pop3`](https://github.com/rest-mail/go-pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
-| [`rest-mail/imap`](https://github.com/rest-mail/go-imap) | IMAP server engine with the same bring-a-`Backend` design |
-| [`rest-mail/dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
-| [`rest-mail/arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
-| [`rest-mail/dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
-| [`rest-mail/mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
-| [`rest-mail/sieve`](https://github.com/rest-mail/go-sieve) | RFC 5228 Sieve parser/interpreter |
+| [`rest-mail/go-pop3`](https://github.com/rest-mail/go-pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
+| [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap) | IMAP server engine with the same bring-a-`Backend` design |
+| [`rest-mail/go-dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
+| [`rest-mail/go-arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
+| [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
+| [`rest-mail/go-mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
+| [`rest-mail/go-sieve`](https://github.com/rest-mail/go-sieve) | RFC 5228 Sieve parser/interpreter |
 
 Where the ecosystem already has a good answer, we use it:
 
-- **SMTP** runs on [`emersion/go-smtp`](https://github.com/emersion/go-smtp), via the [`rest-mail/go-smtp`](https://github.com/rest-mail/go-smtp) fork which adds an `ExtraCaps` hook so the gateway can advertise the custom `RESTMAIL` EHLO capability. The same change is submitted upstream ([emersion/go-smtp#303](https://github.com/emersion/go-smtp/pull/303)); when accepted, the fork retires.
+- **SMTP** runs on [`rest-mail/go-smtp`](https://github.com/rest-mail/go-smtp), a fork of [`emersion/go-smtp`](https://github.com/emersion/go-smtp) that adds an `ExtraCaps` hook so the gateway can advertise the custom `RESTMAIL` EHLO capability.
 - **MIME** parsing is [`emersion/go-message`](https://github.com/emersion/go-message); **SASL** is [`emersion/go-sasl`](https://github.com/emersion/go-sasl).
 
 This repo's gateways are thin adapters: `internal/gateway/pop3` and `internal/gateway/imap` implement each library's `Backend`/`Mailbox` interfaces by mapping REST API responses onto the library's neutral types, and `internal/gateway/smtp` provides go-smtp's backend/session over the same API.
@@ -548,7 +548,7 @@ this repo); its `configs/restmail/manifest.yml` should also carry
 
 ## API Overview
 
-The REST API exposes 108 operations across these resource groups:
+The REST API exposes 146 operations across these resource groups:
 
 - **Auth** -- Login, logout, token refresh
 - **Accounts** -- Link/unlink mail accounts, test connections
@@ -604,11 +604,11 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | Filter | Description |
 |--------|-------------|
 | `spf_check` | SPF record validation |
-| `dkim_verify` | DKIM signature verification (via `rest-mail/dkim`) |
-| `dkim_sign` | DKIM signature generation (via `rest-mail/dkim`) |
-| `dmarc_check` | DMARC policy enforcement (via `rest-mail/dmarc`) |
-| `arc_verify` | ARC chain verification (via `rest-mail/arc`) |
-| `arc_seal` | ARC seal generation (via `rest-mail/arc`) |
+| `dkim_verify` | DKIM signature verification (via `rest-mail/go-dkim`) |
+| `dkim_sign` | DKIM signature generation (via `rest-mail/go-dkim`) |
+| `dmarc_check` | DMARC policy enforcement (via `rest-mail/go-dmarc`) |
+| `arc_verify` | ARC chain verification (via `rest-mail/go-arc`) |
+| `arc_seal` | ARC seal generation (via `rest-mail/go-arc`) |
 | `greylist` | Greylisting with DB-backed tracking |
 | `rate_limit` | Per-sender/domain rate limiting |
 | `size_check` | Message size enforcement |
@@ -620,7 +620,7 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | `header_cleanup` | Strip/rewrite internal headers |
 | `extract_attachments` | Extract and store attachments |
 | `vacation` | Auto-reply responder |
-| `sieve` | Sieve script execution (via `rest-mail/sieve`) |
+| `sieve` | Sieve script execution (via `rest-mail/go-sieve`) |
 | `webhook` | HTTP webhook notifications |
 | `duplicate` | Fork message to webhook/queue |
 | `javascript` | Custom JS filter via Node.js sidecar |
