@@ -23,7 +23,7 @@ require (
 	github.com/rest-mail/go-mtasts v0.1.1
 	github.com/rest-mail/go-pop3 v0.1.1
 	github.com/rest-mail/go-sieve v0.1.1
-	github.com/rest-mail/go-smtp v0.26.0
+	github.com/rest-mail/go-smtp v0.26.2
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.50.0
 	gorm.io/driver/postgres v1.6.0
