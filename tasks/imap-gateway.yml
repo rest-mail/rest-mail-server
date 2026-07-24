@@ -93,6 +93,15 @@ tasks:
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL --cap-add NET_BIND_SERVICE \
           --pids-limit 512 --memory 1g --cpus 1.5"
+        # DB_PASS goes through a 0600 env-file rather than an -e flag, so it
+        # never sits on the `docker run` command line (host process list, shell
+        # history, CI logs). Removed once docker has read it.
+        mkdir -p {{.ROOT_DIR}}/.cache
+        SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.IMAP_GATEWAY_CONTAINER_NAME}}.secrets.env"
+        trap 'rm -f "$SECRETS_ENV"' EXIT
+        rm -f "$SECRETS_ENV"
+        ( umask 077; printf 'DB_PASS=%s\n' "{{.IMAP_GATEWAY_DB_PASS}}" > "$SECRETS_ENV" )
+        chmod 600 "$SECRETS_ENV"
         docker run -d --name {{.IMAP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
           --hostname {{.IMAP_GATEWAY_MAIL3_HOSTNAME}} \
@@ -110,7 +119,7 @@ tasks:
           -e DB_PORT={{.IMAP_GATEWAY_DB_PORT}} \
           -e DB_NAME={{.IMAP_GATEWAY_DB_NAME}} \
           -e DB_USER={{.IMAP_GATEWAY_DB_USER}} \
-          -e DB_PASS={{.IMAP_GATEWAY_DB_PASS}} \
+          --env-file "$SECRETS_ENV" \
           -e TLS_CERT_PATH={{.IMAP_GATEWAY_TLS_CERT_PATH}} \
           -e TLS_KEY_PATH={{.IMAP_GATEWAY_TLS_KEY_PATH}} \
           -e IMAP_PORT={{.IMAP_GATEWAY_PORT}} \
