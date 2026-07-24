@@ -878,6 +878,20 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		RawMessage []byte `json:"raw_message"`
 		ClientIP   string `json:"client_ip"`
 		HeloName   string `json:"helo_name"`
+		// Folder is the destination folder the message must be created in (empty =
+		// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
+		// directly in its destination in one atomic delivery, rather than delivered
+		// to INBOX and then moved. Flags and ReceivedAt (INTERNALDATE) let COPY
+		// preserve the source message's flags/internal date and APPEND apply the
+		// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
+		// ReceivedAt keeps the delivery default, so ordinary inbound mail is
+		// unaffected.
+		Folder     string     `json:"folder"`
+		IsRead     *bool      `json:"is_read"`
+		IsFlagged  *bool      `json:"is_flagged"`
+		IsStarred  *bool      `json:"is_starred"`
+		IsDraft    *bool      `json:"is_draft"`
+		ReceivedAt *time.Time `json:"received_at"`
 		// Inbound transport-security metrics (always-on, inbound-MX only). A nil
 		// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
 		// NULL. TLSCipher is accepted for wire completeness but only the version is
@@ -924,6 +938,12 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		RawMessage:   string(req.RawMessage),
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
+		Folder:       req.Folder,
+		IsRead:       req.IsRead,
+		IsFlagged:    req.IsFlagged,
+		IsStarred:    req.IsStarred,
+		IsDraft:      req.IsDraft,
+		ReceivedAt:   req.ReceivedAt,
 		ReceivedTLS:  req.ReceivedTLS,
 		TLSVersion:   req.TLSVersion,
 	})
@@ -1809,6 +1829,18 @@ type localDeliveryParams struct {
 	RawMessage   string
 	ClientIP     string
 	HeloName     string
+	// Folder is the destination folder the message is created in (empty = INBOX).
+	// Set by the IMAP gateway's COPY/APPEND so the message lands directly in its
+	// destination. The flag pointers and ReceivedAt let COPY preserve the source
+	// message's flags and INTERNALDATE and APPEND apply the client-supplied flags;
+	// a nil flag / nil-or-zero ReceivedAt keeps the delivery default, so ordinary
+	// inbound mail (which never sets them) is unaffected.
+	Folder     string
+	IsRead     *bool
+	IsFlagged  *bool
+	IsStarred  *bool
+	IsDraft    *bool
+	ReceivedAt *time.Time
 	// Inbound transport-security (always-on, inbound-MX only). Nil ReceivedTLS =
 	// not an inbound-MX delivery (local send / IMAP APPEND / submission) →
 	// persisted as NULL, never counted as a plaintext arrival.
@@ -2071,9 +2103,16 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	threadID = rmail.CanonicalID(threadID)
 
 	// ── Create message ───────────────────────────────────────────────
+	// The destination folder defaults to INBOX; the IMAP gateway sets params.Folder
+	// on COPY/APPEND so the message is created directly in its destination instead
+	// of being delivered to INBOX and then moved (a non-atomic two-call flow).
+	folder := params.Folder
+	if folder == "" {
+		folder = "INBOX"
+	}
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
-		Folder:       "INBOX",
+		Folder:       folder,
 		MsgID:        params.MessageID,
 		InReplyTo:    params.InReplyTo,
 		References:   params.References,
@@ -2098,7 +2137,51 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		TLSVersion:  params.TLSVersion,
 	}
 
-	if err := h.db.Create(&msg).Error; err != nil {
+	// Apply IMAP flags / INTERNALDATE the gateway carried through: COPY preserves
+	// the source message's flags and internal date (RFC 3501 §6.4.7); APPEND
+	// applies the client-supplied flags. A nil flag pointer leaves the model
+	// default; a nil-or-zero ReceivedAt leaves the column's `default:now()` to fill
+	// the internal date, so ordinary inbound mail keeps arriving stamped with now().
+	if params.IsRead != nil {
+		msg.IsRead = *params.IsRead
+	}
+	if params.IsFlagged != nil {
+		msg.IsFlagged = *params.IsFlagged
+	}
+	if params.IsStarred != nil {
+		msg.IsStarred = *params.IsStarred
+	}
+	if params.IsDraft != nil {
+		msg.IsDraft = *params.IsDraft
+	}
+	if params.ReceivedAt != nil && !params.ReceivedAt.IsZero() {
+		msg.ReceivedAt = *params.ReceivedAt
+	}
+
+	// Create the message and bump quota in one transaction so a COPY/APPEND (or
+	// inbound delivery) never leaves a half-written row or quota that disagrees
+	// with the stored message: either both commit or neither does. The message now
+	// lands directly in its destination folder, so there is no transient INBOX
+	// state and no separate, swallow-prone move step. Any write error rolls the
+	// whole delivery back and is surfaced to the caller rather than swallowed; a
+	// quota row that does not exist yet matches zero rows, which is not an error,
+	// so ordinary deliveries are unaffected.
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&msg).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
+			"subject_bytes": gorm.Expr("subject_bytes + ?", len(params.Subject)),
+			"body_bytes":    gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
+			"message_count": gorm.Expr("message_count + 1"),
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes)).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to create message: %w", err)
 	}
 
@@ -2113,14 +2196,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		deliveredTrace.MessageID = &mid
 		h.recordTrace(buildTrace(*deliveredTrace))
 	}
-
-	// ── Update quota ─────────────────────────────────────────────────
-	h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
-		"subject_bytes": gorm.Expr("subject_bytes + ?", len(params.Subject)),
-		"body_bytes":    gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
-		"message_count": gorm.Expr("message_count + 1"),
-	})
-	h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes))
 
 	// ── Persist attachments ──────────────────────────────────────────
 	if emailJSON != nil {

@@ -61,9 +61,10 @@ func validateFolder(folder string) error {
 // toUID converts a rest-mail message ID to an IMAP UID. rest-mail's message ID is
 // the message's IMAP UID (a global message-ID-as-UID model). The ID is a uint,
 // which may be 64-bit, so clamp values that do not fit in the 32-bit UID space to
-// 0 rather than letting them silently wrap to a small, wrong UID; the library
-// treats a 0 UID as "none assigned" and omits the affected APPENDUID/COPYUID
-// response code.
+// 0 rather than letting them silently wrap to a small, wrong UID. A 0 result is
+// not a valid UID: the APPENDUID/COPYUID callers treat it as a failure and return
+// an error, so the client never receives an APPENDUID/COPYUID response code
+// naming UID 0 (go-imap emits the resp-code even for a 0 UID).
 func toUID(id uint) uint32 {
 	if uint64(id) > math.MaxUint32 {
 		return 0
