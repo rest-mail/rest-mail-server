@@ -100,6 +100,11 @@ func AutoMigrate(db *gorm.DB) error {
 		// message_traces (which are sampled + pruned) so aggregate history is
 		// never affected by trace sampling or pruning.
 		&models.PipelineRollup{},
+		// Downsampling additive block (multi-resolution rollups): the coarse
+		// (default daily) aggregate table the rollup worker condenses aged-out
+		// fine rollups into. Separate table so the two resolutions never collide
+		// on pipeline_rollups' (metric_name, labels, bucket_start) unique index.
+		&models.PipelineRollupCoarse{},
 		&models.Contact{},
 		&models.DomainSenderRule{},
 		&models.GreylistEntry{},
