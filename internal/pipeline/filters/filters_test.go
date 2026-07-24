@@ -263,7 +263,7 @@ func TestSizeCheck_CustomLimit(t *testing.T) {
 // ── RateLimit Tests ─────────────────────────────────────────────────
 
 func TestRateLimit_UnderLimit(t *testing.T) {
-	f, err := NewRateLimit(nil) // default: 20/min, 100/hour
+	f, err := NewRateLimit()(nil) // default: 20/min, 100/hour
 	if err != nil {
 		t.Fatalf("NewRateLimit: %v", err)
 	}
@@ -282,7 +282,10 @@ func TestRateLimit_UnderLimit(t *testing.T) {
 func TestRateLimit_ExceedsMinuteLimit(t *testing.T) {
 	// Set a per-minute limit of 2 so we can trigger it with 3 messages.
 	cfg := json.RawMessage(`{"max_per_minute": 2, "max_per_hour": 100}`)
-	f, err := NewRateLimit(cfg)
+	// A single factory hands out per-message instances that share one store, so
+	// three sends against instances from the same factory accumulate.
+	factory := NewRateLimit()
+	f, err := factory(cfg)
 	if err != nil {
 		t.Fatalf("NewRateLimit: %v", err)
 	}
@@ -310,5 +313,67 @@ func TestRateLimit_ExceedsMinuteLimit(t *testing.T) {
 	}
 	if result.RejectMsg == "" {
 		t.Error("expected non-empty reject message on rate limit")
+	}
+}
+
+// TestRateLimit_PersistsAcrossMessages proves the limiter accumulates across the
+// fresh filter instance the engine builds for every message. The engine calls
+// registry.Create once per message (engine.go), so a limiter whose counter lives
+// in the per-message instance resets to a count of 1 each time and can never
+// trip. This drives the real registration path (DefaultRegistry, populated by
+// the package init) exactly as the engine does — a fresh Create per message —
+// and requires the configured per-minute limit to be enforced across them.
+func TestRateLimit_PersistsAcrossMessages(t *testing.T) {
+	cfg := json.RawMessage(`{"max_per_minute": 2, "max_per_hour": 100}`)
+
+	email := validEmail()
+	// Unique sender so this test's counts never collide with any other test that
+	// shares the process-global DefaultRegistry limiter store.
+	email.Envelope.MailFrom = "persist-across-messages@example.com"
+	email.Headers.From = []pipeline.Address{{Address: "persist-across-messages@example.com"}}
+
+	var last pipeline.Action
+	for i := 0; i < 3; i++ {
+		f, err := pipeline.DefaultRegistry.Create("rate_limit", cfg)
+		if err != nil {
+			t.Fatalf("Create (msg %d): %v", i+1, err)
+		}
+		res, err := f.Execute(context.Background(), email)
+		if err != nil {
+			t.Fatalf("Execute (msg %d): %v", i+1, err)
+		}
+		last = res.Action
+	}
+
+	if last != pipeline.ActionDefer {
+		t.Fatalf("expected ActionDefer on the 3rd message (max_per_minute=2), got %q; "+
+			"limiter state did not persist across per-message filter instances", last)
+	}
+}
+
+// TestRateLimit_TemplateConfigKeyMatches guards the default outbound template's
+// rate_limit config against the struct tags the filter actually reads. A
+// mismatched key (e.g. per_sender_per_hour vs max_per_hour) is silently dropped
+// by encoding/json, so the configured limit would never take effect.
+func TestRateLimit_TemplateConfigKeyMatches(t *testing.T) {
+	var rlConfig json.RawMessage
+	for _, fc := range pipeline.DefaultOutboundPipeline(0).Filters {
+		if fc.Name == "rate_limit" {
+			rlConfig = fc.Config
+		}
+	}
+	if len(rlConfig) == 0 {
+		t.Fatal("default outbound pipeline has no rate_limit filter")
+	}
+	var parsed struct {
+		MaxPerHour   int `json:"max_per_hour"`
+		MaxPerMinute int `json:"max_per_minute"`
+	}
+	if err := json.Unmarshal(rlConfig, &parsed); err != nil {
+		t.Fatalf("unmarshal template config: %v", err)
+	}
+	if parsed.MaxPerHour == 0 {
+		t.Fatalf("template rate_limit config %s does not populate max_per_hour "+
+			"(config key mismatch: the configured limit is silently ignored)", rlConfig)
 	}
 }
