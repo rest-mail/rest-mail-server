@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -56,13 +58,90 @@ type tlsRPTSummary struct {
 	TotalFailureSessionCount    int64 `json:"total-failure-session-count"`
 }
 
+// TLS-RPT ingestion is unauthenticated — external MTAs POST reports per RFC 8460 —
+// so it is bounded to stop it being used as a storage write-amplification vector:
+// the request body is hard-capped, the number of policy entries per report is
+// capped, and the route is rate-limited per client IP (wired in routes.go). Only
+// reports whose policy-domain matches a domain this server hosts are stored; the
+// rest are dropped. These caps are security invariants, not operator knobs.
+const (
+	// tlsRPTMaxBodyBytes caps the accepted request body. A legitimate aggregate
+	// report is small; anything larger is rejected outright (413) rather than
+	// silently truncated, so a caller cannot stream an unbounded body.
+	tlsRPTMaxBodyBytes int64 = 512 << 10 // 512 KiB
+
+	// tlsRPTMaxPolicies caps how many policy entries a single report may contain.
+	// Each stored policy becomes a database row, so without this cap one accepted
+	// body fans out into unbounded rows (write amplification). RFC 8460 reports
+	// carry a handful of policies; 100 is far above any legitimate report.
+	tlsRPTMaxPolicies = 100
+)
+
+// tlsRPTValidationErr is a structured validation failure the handler maps to an
+// HTTP response. When fields is non-nil it is surfaced as a 422 field-validation
+// error; otherwise status/code/message are used directly.
+type tlsRPTValidationErr struct {
+	status  int
+	code    string
+	message string
+	fields  map[string]string
+}
+
+// validateTLSRPTReport enforces the RFC 8460 structure and the policy-count cap on
+// an already-parsed report, returning the parsed date range on success. It performs
+// NO database access and NO storage, so a malformed or over-large report is rejected
+// before it can fan out into stored rows.
+func validateTLSRPTReport(report *tlsRPTReport) (start, end time.Time, verr *tlsRPTValidationErr) {
+	if report.OrganizationName == "" {
+		return start, end, &tlsRPTValidationErr{fields: map[string]string{
+			"organization-name": "Required field",
+		}}
+	}
+
+	start, err := time.Parse(time.RFC3339, report.DateRange.StartDatetime)
+	if err != nil {
+		return start, end, &tlsRPTValidationErr{fields: map[string]string{
+			"date-range.start-datetime": "Invalid RFC3339 datetime",
+		}}
+	}
+	end, err = time.Parse(time.RFC3339, report.DateRange.EndDatetime)
+	if err != nil {
+		return start, end, &tlsRPTValidationErr{fields: map[string]string{
+			"date-range.end-datetime": "Invalid RFC3339 datetime",
+		}}
+	}
+
+	if len(report.Policies) == 0 {
+		return start, end, &tlsRPTValidationErr{fields: map[string]string{
+			"policies": "At least one policy entry is required",
+		}}
+	}
+	if len(report.Policies) > tlsRPTMaxPolicies {
+		return start, end, &tlsRPTValidationErr{
+			status:  http.StatusRequestEntityTooLarge,
+			code:    "too_many_policies",
+			message: fmt.Sprintf("Report exceeds the maximum of %d policy entries", tlsRPTMaxPolicies),
+		}
+	}
+
+	return start, end, nil
+}
+
 // ReceiveReport accepts a JSON TLS-RPT report from an external MTA,
 // parses it, and stores each policy entry as a separate TLSReport row.
 // POST /.well-known/smtp-tlsrpt
 func (h *TLSReportHandler) ReceiveReport(w http.ResponseWriter, r *http.Request) {
-	// Limit body to 1MB to prevent abuse
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	// Hard-cap the body: an oversized report is rejected (413), never silently
+	// truncated, so an unauthenticated caller cannot stream an unbounded body.
+	r.Body = http.MaxBytesReader(w, r.Body, tlsRPTMaxBodyBytes)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			respond.Error(w, http.StatusRequestEntityTooLarge, "payload_too_large",
+				"TLS-RPT report exceeds the maximum accepted size")
+			return
+		}
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Failed to read request body")
 		return
 	}
@@ -73,33 +152,15 @@ func (h *TLSReportHandler) ReceiveReport(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if report.OrganizationName == "" {
-		respond.ValidationError(w, map[string]string{
-			"organization-name": "Required field",
-		})
-		return
-	}
-
-	// Parse date range
-	startDate, err := time.Parse(time.RFC3339, report.DateRange.StartDatetime)
-	if err != nil {
-		respond.ValidationError(w, map[string]string{
-			"date-range.start-datetime": "Invalid RFC3339 datetime",
-		})
-		return
-	}
-	endDate, err := time.Parse(time.RFC3339, report.DateRange.EndDatetime)
-	if err != nil {
-		respond.ValidationError(w, map[string]string{
-			"date-range.end-datetime": "Invalid RFC3339 datetime",
-		})
-		return
-	}
-
-	if len(report.Policies) == 0 {
-		respond.ValidationError(w, map[string]string{
-			"policies": "At least one policy entry is required",
-		})
+	// Validate structure and enforce the policy-count cap BEFORE any storage, so a
+	// malformed or over-large report cannot fan out into database rows.
+	startDate, endDate, verr := validateTLSRPTReport(&report)
+	if verr != nil {
+		if verr.fields != nil {
+			respond.ValidationError(w, verr.fields)
+		} else {
+			respond.Error(w, verr.status, verr.code, verr.message)
+		}
 		return
 	}
 
