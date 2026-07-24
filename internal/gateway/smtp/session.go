@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-sasl"
-	gosmtp "github.com/emersion/go-smtp"
+	gosmtp "github.com/rest-mail/go-smtp"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	gosmtp "github.com/emersion/go-smtp"
+	gosmtp "github.com/rest-mail/go-smtp"
 
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
