@@ -3,6 +3,8 @@ package config
 import (
 	"crypto/tls"
 	"fmt"
+	"log/slog"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -592,6 +594,13 @@ func Load() (*Config, error) {
 	// ── OSI-19: optional TOTP 2FA (appended block — keep contiguous) ──
 	cfg.TOTP2FAEnabled = getEnvBool("TOTP_2FA_ENABLED", true)
 
+	// ── OSI-4: boot-time security config validation (single append-only call).
+	// Production (ENVIRONMENT=production) refuses to boot on an insecure value;
+	// development/test only warn. See the OSI-4 block at the end of this file. ──
+	if err := cfg.validateSecurityConfig(); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
 }
 
@@ -1014,4 +1023,192 @@ func (c *Config) StaleDeliveringReclaim() time.Duration {
 }
 
 // END internal large-message path (OSI-7)
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN boot-time security config validation (OSI-4)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. It adds fail-closed boot validation of the security-critical
+// configuration — weak/blank/default secrets, a half-configured or unparseable
+// TLS keypair, and malformed CIDR allowlists — via the single entry point
+// validateSecurityConfig, which is called once from Load() (see the clearly
+// marked call there, just before it returns).
+//
+// Enforcement split: in PRODUCTION (ENVIRONMENT=="production", the exact value
+// the two pre-existing JWT/MASTER_KEY checks in Load already key on) an insecure
+// value is a hard startup error — the process refuses to boot rather than run
+// insecurely. In every OTHER environment (development/test — the testbed/e2e
+// default) the identical finding is logged as a warning and boot proceeds, so
+// local development and the e2e stack are unaffected. Validation only INSPECTS
+// existing settings: it changes no default value and consumes no new required
+// knob, so it composes with (rather than duplicates) the earlier checks in Load.
+// ══════════════════════════════════════════════════════════════════════════
+
+// MinJWTSecretLength is the minimum accepted JWT_SECRET length in bytes (OSI-4).
+// 32 bytes (256 bits) matches the HMAC-SHA256 width used to sign tokens, so a
+// shorter secret adds no strength over a full-width one while a much shorter one
+// is brute-forceable. instance:new generates a 64-char key, which clears this.
+const MinJWTSecretLength = 32
+
+// MinMasterKeyLength is the minimum accepted MASTER_KEY length in bytes (OSI-4).
+// MASTER_KEY is a passphrase run through SHA-256 to derive the AES-256
+// data-encryption key, so its real strength is bounded by the passphrase's
+// guessability; 16 bytes is a conservative floor (instance:new generates 64).
+const MinMasterKeyLength = 16
+
+// legacyDefaultJWTSecret is the compiled-in development JWT secret. Shipping it
+// outside development is equivalent to having no secret at all (it is public in
+// the source tree), so it is rejected the same as a blank secret. It matches the
+// default used by getEnv("JWT_SECRET", ...) in Load.
+const legacyDefaultJWTSecret = "dev-secret-change-in-production"
+
+// isProductionEnv reports whether enforcement is active. It mirrors the exact
+// string comparison the two pre-existing secret checks in Load use, so the whole
+// package treats "production" identically (and development/test only warn).
+func (c *Config) isProductionEnv() bool { return c.Environment == "production" }
+
+// validateSecurityConfig performs boot-time validation of the security-critical
+// configuration and applies the production-enforce / development-warn split. It
+// returns a non-nil error ONLY in production and ONLY when at least one insecure
+// value is found; in every other environment it logs each finding as a warning
+// and returns nil, so the testbed/e2e (which run in development) still boot.
+//
+// It also emits an advisory warning (production only) for an insecure setting
+// OSI-4 names but whose remediation is a behavior/default change deferred to the
+// separate secure-by-construction pass (the DB sslmode=disable in DSN()): it is
+// surfaced here so it is not silently forgotten, without being a boot-blocker
+// that a production operator has no in-scope knob to satisfy.
+func (c *Config) validateSecurityConfig() error {
+	var findings []string
+
+	// ── Secrets ──
+	// JWT_SECRET: reject blank, the built-in dev default, and anything shorter
+	// than the entropy floor. (In production the exact-default and blank cases can
+	// also be caught earlier in Load; these checks are order-independent and add
+	// the missing min-length floor, so they compose rather than duplicate.)
+	switch {
+	case c.JWTSecret == "":
+		findings = append(findings, fmt.Sprintf("JWT_SECRET is empty; set a random secret of at least %d bytes", MinJWTSecretLength))
+	case c.JWTSecret == legacyDefaultJWTSecret:
+		findings = append(findings, fmt.Sprintf("JWT_SECRET is the built-in development default; set a unique random secret of at least %d bytes", MinJWTSecretLength))
+	case len(c.JWTSecret) < MinJWTSecretLength:
+		findings = append(findings, fmt.Sprintf("JWT_SECRET is too short (%d bytes); use at least %d bytes of randomness", len(c.JWTSecret), MinJWTSecretLength))
+	}
+
+	// MASTER_KEY: reject blank and anything below the length floor. Private keys
+	// (DKIM, ACME) are encrypted at rest with a key derived from it.
+	switch {
+	case c.MasterKey == "":
+		findings = append(findings, fmt.Sprintf("MASTER_KEY is empty; set a random key of at least %d bytes (private keys are encrypted at rest with it)", MinMasterKeyLength))
+	case len(c.MasterKey) < MinMasterKeyLength:
+		findings = append(findings, fmt.Sprintf("MASTER_KEY is too short (%d bytes); use at least %d bytes of randomness", len(c.MasterKey), MinMasterKeyLength))
+	}
+
+	// ── TLS ──
+	// The primary cert/key pair: when either path is configured, both must be, and
+	// they must exist and parse as a valid keypair at boot (fail early, not on the
+	// first TLS handshake). Internal-mTLS material is deliberately NOT validated
+	// here: the same Config is shared by the API (server material) and the gateways
+	// (client material), so each role validates only its half at point of use via
+	// InternalMTLSServerTLS / InternalMTLSClientTLS.
+	findings = append(findings, validateTLSKeypair("TLS_CERT_PATH", c.TLSCertPath, "TLS_KEY_PATH", c.TLSKeyPath)...)
+	// The per-domain SNI cert directory, when configured, must exist and be a dir.
+	if strings.TrimSpace(c.TLSCertDir) != "" {
+		if info, err := os.Stat(c.TLSCertDir); err != nil {
+			findings = append(findings, fmt.Sprintf("TLS_CERT_DIR %q cannot be read: %v", c.TLSCertDir, err))
+		} else if !info.IsDir() {
+			findings = append(findings, fmt.Sprintf("TLS_CERT_DIR %q is not a directory", c.TLSCertDir))
+		}
+	}
+
+	// ── CIDR / allowlist knobs ──
+	// Each entry must parse as a CIDR block or a bare IP; a malformed entry is a
+	// boot error in production rather than being silently dropped at use (which
+	// could unexpectedly widen or narrow an allowlist). METRICS_ALLOWED_CIDRS and
+	// RESTMAIL_DELIVER_TRUSTED_CIDRS are read lazily through accessors elsewhere,
+	// so they are read directly here (with a nil default) to validate only what the
+	// operator actually set.
+	findings = append(findings, validateCIDRList("PROXY_PROTOCOL_TRUSTED_CIDRS", c.ProxyProtocolTrustedCIDRs)...)
+	findings = append(findings, validateCIDRList("METRICS_ALLOWED_CIDRS", getEnvSlice("METRICS_ALLOWED_CIDRS", nil))...)
+	findings = append(findings, validateCIDRList("RESTMAIL_DELIVER_TRUSTED_CIDRS", getEnvSlice("RESTMAIL_DELIVER_TRUSTED_CIDRS", nil))...)
+
+	// ── Advisory (production only; not a boot-blocker) ──
+	// DSN() hardcodes sslmode=disable, so DB traffic to Postgres is cleartext. The
+	// fix (a configurable sslmode defaulting to require in production) is a
+	// behavior/default change deferred to the secure-by-construction pass; surface
+	// it so it is not forgotten, but do not block boot on a knob that does not yet
+	// exist.
+	if c.isProductionEnv() {
+		slog.Warn("security-config advisory: database connections use sslmode=disable (cleartext to Postgres); enable TLS to the database in production — deferred to secure-by-construction (OSI-4)")
+	}
+
+	if len(findings) == 0 {
+		return nil
+	}
+	if c.isProductionEnv() {
+		return fmt.Errorf("insecure configuration refused in production (ENVIRONMENT=production): %s", strings.Join(findings, "; "))
+	}
+	for _, f := range findings {
+		slog.Warn("security-config warning (would refuse boot in production)", "finding", f, "environment", c.Environment)
+	}
+	return nil
+}
+
+// validateTLSKeypair validates a certificate/private-key path pair. It returns no
+// finding when NEITHER path is set (TLS not configured this way — nothing to
+// check); a half-configuration finding when exactly one is set (a cert needs its
+// key and vice versa); a per-file finding when a configured file cannot be read;
+// and a keypair finding when both files exist but do not form a valid
+// certificate/key pair. certKey/keyKey are the env-var names used in messages.
+func validateTLSKeypair(certKey, certPath, keyKey, keyPath string) []string {
+	certSet := strings.TrimSpace(certPath) != ""
+	keySet := strings.TrimSpace(keyPath) != ""
+	switch {
+	case !certSet && !keySet:
+		return nil
+	case certSet && !keySet:
+		return []string{fmt.Sprintf("%s is set but %s is not; a TLS certificate needs its matching private key", certKey, keyKey)}
+	case !certSet && keySet:
+		return []string{fmt.Sprintf("%s is set but %s is not; a TLS private key needs its matching certificate", keyKey, certKey)}
+	}
+	var findings []string
+	if _, err := os.Stat(certPath); err != nil {
+		findings = append(findings, fmt.Sprintf("%s %q cannot be read: %v", certKey, certPath, err))
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		findings = append(findings, fmt.Sprintf("%s %q cannot be read: %v", keyKey, keyPath, err))
+	}
+	if len(findings) > 0 {
+		return findings
+	}
+	if _, err := tls.LoadX509KeyPair(certPath, keyPath); err != nil {
+		return []string{fmt.Sprintf("%s / %s are not a valid certificate/key pair: %v", certKey, keyKey, err)}
+	}
+	return nil
+}
+
+// validateCIDRList returns a finding for each entry of cidrs that is neither a
+// valid CIDR block nor a bare IP address. Blank entries are ignored (the same
+// tolerance getEnvSlice/netallow apply). key is the env-var name used in the
+// message.
+func validateCIDRList(key string, cidrs []string) []string {
+	var findings []string
+	for _, entry := range cidrs {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(entry); err == nil {
+			continue
+		}
+		if ip := net.ParseIP(entry); ip != nil {
+			continue
+		}
+		findings = append(findings, fmt.Sprintf("%s contains an entry that is not a valid CIDR block or IP address: %q", key, entry))
+	}
+	return findings
+}
+
+// END boot-time security config validation (OSI-4)
 // ══════════════════════════════════════════════════════════════════════════
