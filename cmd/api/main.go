@@ -196,7 +196,18 @@ func main() {
 	// covered; the outbound queue counters run in the smtp-gateway process (no
 	// /metrics endpoint there yet — the known gateway-scraping gap) so they are not
 	// rolled up yet. Aggregate accuracy is independent of trace sampling/pruning.
-	rollupWorker := rollup.NewWorker(database, cfg.RollupInterval)
+	// Multi-resolution downsampling keeps the analytics DB bounded: fine rollups
+	// are kept for ROLLUP_DETAILED_RETENTION (default 7 days), then coarse periods
+	// aged past that window are condensed to ROLLUP_COARSE_RESOLUTION (default
+	// daily) rows and their fine rows removed — an ~288× reduction with no loss of
+	// the aggregate signal. Idempotent and crash-safe (per-period transactions).
+	rollupWorker := rollup.NewWorker(database, cfg.RollupInterval,
+		rollup.WithDownsampling(
+			cfg.RollupDetailedRetention(),
+			cfg.RollupCoarseResolution(),
+			cfg.RollupCoarseRetention(),
+			cfg.RollupDownsampleInterval(),
+		))
 	rollupWorker.Start()
 
 	// Start the trace retention pruner (hourly): deletes per-message traces past

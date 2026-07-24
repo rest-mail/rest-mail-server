@@ -50,6 +50,23 @@ type Worker struct {
 	interval time.Duration
 	now      func() time.Time
 
+	// Multi-resolution downsampling config (see downsample.go). Zero
+	// detailedRetention or coarseResolution disables downsampling entirely, so a
+	// worker built without WithDownsampling behaves exactly as before (fine
+	// rollups only). Read once at construction; never mutated after Start.
+	detailedRetention  time.Duration // keep fine rollups at fine resolution for this window
+	coarseResolution   time.Duration // coarse (downsampled) bucket width, e.g. 24h
+	coarseRetention    time.Duration // optional hard cap on coarse-row age; 0 = unbounded
+	downsampleInterval time.Duration // how often the downsample pass runs
+
+	// onBeforeFineDelete is a test-only seam: if non-nil it is invoked inside each
+	// per-period downsample transaction AFTER the coarse row is written but BEFORE
+	// the superseded fine rows are deleted. Returning an error rolls the whole
+	// transaction back, exercising the crash-between-insert-and-delete path so a
+	// test can prove atomicity (fine rows survive, no partial coarse row leaks).
+	// nil in production.
+	onBeforeFineDelete func() error
+
 	// lastSeen is the watermark: the last cumulative value observed per series.
 	// It is in-memory by design. The counters live in THIS process's registry and
 	// reset to zero when the process restarts, so the watermark must reset with
@@ -63,10 +80,30 @@ type Worker struct {
 	wg   sync.WaitGroup
 }
 
+// Option customises a Worker at construction (functional-options so the base
+// NewWorker signature stays backward-compatible).
+type Option func(*Worker)
+
+// WithDownsampling enables multi-resolution downsampling: fine rollups are kept
+// at fine resolution for detailedRetention, then coarse periods aged fully past
+// that window are condensed to coarseResolution rows and their fine rows removed.
+// coarseRetention optionally caps coarse-row age (0 = keep indefinitely).
+// interval is how often the downsample pass runs. Passing zero detailedRetention
+// or coarseResolution leaves downsampling disabled.
+func WithDownsampling(detailedRetention, coarseResolution, coarseRetention, interval time.Duration) Option {
+	return func(w *Worker) {
+		w.detailedRetention = detailedRetention
+		w.coarseResolution = coarseResolution
+		w.coarseRetention = coarseRetention
+		w.downsampleInterval = interval
+	}
+}
+
 // NewWorker builds a rollup worker reading the process-default Prometheus
-// registry on the given interval (also the rollup bucket width).
-func NewWorker(db *gorm.DB, interval time.Duration) *Worker {
-	return &Worker{
+// registry on the given interval (also the rollup bucket width). Downsampling is
+// off unless WithDownsampling is supplied.
+func NewWorker(db *gorm.DB, interval time.Duration, opts ...Option) *Worker {
+	w := &Worker{
 		db:       db,
 		gatherer: prometheus.DefaultGatherer,
 		interval: interval,
@@ -74,13 +111,27 @@ func NewWorker(db *gorm.DB, interval time.Duration) *Worker {
 		lastSeen: make(map[string]float64),
 		stop:     make(chan struct{}),
 	}
+	for _, opt := range opts {
+		opt(w)
+	}
+	return w
 }
 
-// Start launches the background snapshot loop.
+// Start launches the background snapshot loop and, when downsampling is enabled,
+// the background downsample loop. Both share the stop channel and WaitGroup, so
+// Shutdown drains them together.
 func (w *Worker) Start() {
 	w.wg.Add(1)
 	go w.loop()
-	slog.Info("rollup worker started", "interval", w.interval)
+	if w.downsampleEnabled() {
+		w.wg.Add(1)
+		go w.downsampleLoop()
+	}
+	slog.Info("rollup worker started",
+		"interval", w.interval,
+		"downsampling", w.downsampleEnabled(),
+		"detailed_retention", w.detailedRetention,
+		"coarse_resolution", w.coarseResolution)
 }
 
 // Shutdown stops the loop and takes one final snapshot so the partial interval
