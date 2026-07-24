@@ -53,6 +53,31 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
+  frontend-audit:
+    name: Frontend Dependency Audit
+    runs-on: ubuntu-latest
+    strategy:
+      # Report both frontends every run; one failing app must not mask the other.
+      fail-fast: false
+      matrix:
+        app: [webmail, admin]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Audit ${{ matrix.app }} npm dependencies
+        working-directory: ${{ matrix.app }}
+        # Fail the scheduled run on a high/critical advisory so dependency CVEs
+        # surface instead of going unnoticed.
+        run: npm audit --audit-level=high
+
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
@@ -70,14 +95,3 @@ jobs:
         run: |
           echo "=== Direct dependencies ==="
           go list -m -u all 2>/dev/null | grep '\[' || echo "All dependencies are up to date."
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: webmail/package-lock.json
-
-      - name: Audit npm dependencies
-        working-directory: webmail
-        run: npm audit --audit-level=high || true
