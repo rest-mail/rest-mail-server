@@ -120,13 +120,17 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		req.To = req.Recipients
 	}
 
-	// When raw_message is provided, parse RFC 2822 into structured fields
+	// When raw_message is provided, parse RFC 2822 into structured fields. The
+	// parsed form is retained (not discarded) so it can seed the pipeline message
+	// below with its real headers, including Headers.Raw.
+	var parsed *pipeline.EmailJSON
 	if req.RawMessage != "" {
-		parsed, err := rmime.Parse([]byte(req.RawMessage))
+		p, err := rmime.Parse([]byte(req.RawMessage))
 		if err != nil {
 			slog.Warn("restmail: failed to parse raw_message", "error", err)
 			// Fall through to use whatever structured fields were provided
 		} else {
+			parsed = p
 			if len(parsed.Headers.From) > 0 && req.From == "" {
 				req.From = parsed.Headers.From[0].Address
 			}
@@ -220,41 +224,11 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// same surfacing the SMTP delivery path does.
 	var authResults []string
 
-	// Build pipeline EmailJSON from the request for inbound filtering
-	emailJSON := &pipeline.EmailJSON{
-		Headers: pipeline.Headers{
-			From: []pipeline.Address{{Address: req.From}},
-			To: func() []pipeline.Address {
-				a := make([]pipeline.Address, len(req.To))
-				for i, r := range req.To {
-					a[i] = pipeline.Address{Address: r}
-				}
-				return a
-			}(),
-			Subject:   req.Subject,
-			Date:      req.Date,
-			MessageID: req.MessageID,
-		},
-		Body: pipeline.Body{
-			ContentType: "text/plain",
-			Content:     req.BodyText,
-			Parts: []pipeline.Body{
-				{ContentType: "text/plain", Content: req.BodyText},
-				{ContentType: "text/html", Content: req.BodyHTML},
-			},
-		},
-		Envelope: pipeline.Envelope{
-			MailFrom:  req.From,
-			RcptTo:    req.To,
-			Direction: "inbound",
-		},
-	}
-
-	// Thread the raw source through for DKIM verification (dkim_verify must
-	// canonicalize the exact signed bytes, not the reconstructed EmailJSON).
-	if req.RawMessage != "" {
-		emailJSON.Metadata = map[string]string{"raw_message": req.RawMessage}
-	}
+	// Build the pipeline EmailJSON for inbound filtering. The parsed raw message
+	// (with its real headers, including Headers.Raw) seeds the message so
+	// header-dependent filters see the actual headers, mirroring the SMTP inbound
+	// path; the structured request fields fill any gaps.
+	emailJSON := buildInboundEmail(parsed, req.From, req.To, req.Subject, req.Date, req.MessageID, req.BodyText, req.BodyHTML, req.RawMessage, restmailClientIP(r))
 
 	// Look up inbound pipeline for the recipient domain
 	var domainName string
@@ -475,6 +449,82 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		"delivered": delivered,
 		"failed":    failed,
 	})
+}
+
+// buildInboundEmail assembles the pipeline EmailJSON for a RESTMAIL inbound
+// delivery, mirroring the SMTP inbound path (deliverToLocal).
+//
+// When the raw message parsed, that parsed form is the base — crucially it
+// carries Headers.Raw, so header-dependent filters see the real headers rather
+// than an empty set: arc_verify, header_validate, dmarc_check (which reads the
+// local Authentication-Results the spf/dkim filters append), and vacation's RFC
+// 3834 auto-reply suppression. Building the message from scratch (as this path
+// previously did) left Headers.Raw nil and blinded those filters. The structured
+// request fields fill any header the parse left empty, and are the sole source
+// when there was no parseable raw message (parsed == nil).
+//
+// The SMTP envelope is not part of the message body: it is set from the request,
+// with clientIP the connecting RESTMAIL peer so spf_check/dmarc_check have a
+// genuine local verdict to work from rather than "none".
+func buildInboundEmail(parsed *pipeline.EmailJSON, from string, to []string, subject, date, messageID, bodyText, bodyHTML, rawMessage, clientIP string) *pipeline.EmailJSON {
+	toAddrs := make([]pipeline.Address, len(to))
+	for i, rcpt := range to {
+		toAddrs[i] = pipeline.Address{Address: rcpt}
+	}
+
+	emailJSON := parsed
+	if emailJSON == nil {
+		emailJSON = &pipeline.EmailJSON{
+			Headers: pipeline.Headers{
+				Subject:   subject,
+				Date:      date,
+				MessageID: messageID,
+			},
+			Body: pipeline.Body{
+				ContentType: "text/plain",
+				Content:     bodyText,
+				Parts: []pipeline.Body{
+					{ContentType: "text/plain", Content: bodyText},
+					{ContentType: "text/html", Content: bodyHTML},
+				},
+			},
+		}
+	}
+
+	emailJSON.Envelope = pipeline.Envelope{
+		MailFrom:  from,
+		RcptTo:    to,
+		ClientIP:  clientIP,
+		Direction: "inbound",
+	}
+
+	// Fill any header the parse didn't populate from the structured request fields.
+	if len(emailJSON.Headers.From) == 0 {
+		emailJSON.Headers.From = []pipeline.Address{{Address: from}}
+	}
+	if len(emailJSON.Headers.To) == 0 {
+		emailJSON.Headers.To = toAddrs
+	}
+	if emailJSON.Headers.Subject == "" {
+		emailJSON.Headers.Subject = subject
+	}
+	if emailJSON.Headers.Date == "" {
+		emailJSON.Headers.Date = date
+	}
+	if emailJSON.Headers.MessageID == "" {
+		emailJSON.Headers.MessageID = messageID
+	}
+
+	// Thread the raw source through for DKIM verification (dkim_verify must
+	// canonicalize the exact signed bytes, not the reconstructed EmailJSON).
+	if rawMessage != "" {
+		if emailJSON.Metadata == nil {
+			emailJSON.Metadata = make(map[string]string)
+		}
+		emailJSON.Metadata["raw_message"] = rawMessage
+	}
+
+	return emailJSON
 }
 
 // resolveRecipientMailbox resolves an envelope recipient to a deliverable local

@@ -43,6 +43,27 @@ func (f *contactWhitelistFilter) Execute(_ context.Context, email *pipeline.Emai
 		}, nil
 	}
 
+	senderDomain := ""
+	if at := strings.LastIndex(sender, "@"); at >= 0 {
+		senderDomain = sender[at+1:]
+	}
+	// A trusted/auto contact may skip spam/greylist scanning ONLY when the
+	// sender's identity is authenticated and aligned to its domain (SPF or DKIM).
+	// Otherwise a spoofer who forges a trusted contact's address would reuse the
+	// entry to bypass scanning entirely (#177). An unauthenticated match still
+	// passes (no reject) but is scanned like any other mail.
+	authed := senderAuthenticated(email, senderDomain)
+	// gatedSkip returns the requested skip list only for an authenticated sender;
+	// for a spoofable (unauthenticated) match it returns nil so scanning proceeds,
+	// and notes why in the log detail.
+	gatedSkip := func(skip []string, detail *string) []string {
+		if authed {
+			return skip
+		}
+		*detail += " (unauthenticated sender: scanning not skipped)"
+		return nil
+	}
+
 	// Check each recipient's contacts
 	for _, rcpt := range email.Envelope.RcptTo {
 		parts := strings.SplitN(rcpt, "@", 2)
@@ -76,25 +97,29 @@ func (f *contactWhitelistFilter) Execute(_ context.Context, email *pipeline.Emai
 				},
 			}, nil
 		case "trusted":
+			detail := fmt.Sprintf("sender %s is trusted contact of %s", sender, rcpt)
+			skip := gatedSkip([]string{"rspamd", "spamassassin", "greylist"}, &detail)
 			return &pipeline.FilterResult{
 				Type:        pipeline.FilterTypeAction,
 				Action:      pipeline.ActionContinue,
-				SkipFilters: []string{"rspamd", "spamassassin", "greylist"},
+				SkipFilters: skip,
 				Log: pipeline.FilterLog{
 					Filter: "contact_whitelist",
 					Result: "pass",
-					Detail: fmt.Sprintf("sender %s is trusted contact of %s", sender, rcpt),
+					Detail: detail,
 				},
 			}, nil
 		case "auto":
+			detail := fmt.Sprintf("sender %s is auto-collected contact of %s", sender, rcpt)
+			skip := gatedSkip([]string{"rspamd", "spamassassin"}, &detail)
 			return &pipeline.FilterResult{
 				Type:        pipeline.FilterTypeAction,
 				Action:      pipeline.ActionContinue,
-				SkipFilters: []string{"rspamd", "spamassassin"},
+				SkipFilters: skip,
 				Log: pipeline.FilterLog{
 					Filter: "contact_whitelist",
 					Result: "pass",
-					Detail: fmt.Sprintf("sender %s is auto-collected contact of %s", sender, rcpt),
+					Detail: detail,
 				},
 			}, nil
 		}

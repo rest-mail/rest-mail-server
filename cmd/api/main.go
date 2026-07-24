@@ -19,6 +19,7 @@ import (
 	"github.com/restmail/restmail/internal/digest"
 	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/greylist"
 	"github.com/restmail/restmail/internal/rollup"
 	"github.com/restmail/restmail/internal/trace"
 )
@@ -242,6 +243,12 @@ func main() {
 	tracePruner := trace.NewPruner(database, time.Hour, cfg.TraceMaxRows)
 	tracePruner.Start()
 
+	// Start the greylist purger (hourly): deletes greylist_entries rows past their
+	// ttl_days horizon so the triple table stays bounded rather than growing with
+	// every new sender/recipient/IP combination seen.
+	greylistPurger := greylist.NewPurger(database, time.Hour)
+	greylistPurger.Start()
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    cfg.APIAddr(),
@@ -293,6 +300,7 @@ func main() {
 	// interval) and the trace pruner.
 	rollupWorker.Shutdown()
 	tracePruner.Shutdown()
+	greylistPurger.Shutdown()
 	digestWorker.Shutdown()
 	// Flush buffered per-message traces and stop the recorder goroutine.
 	routers.Close()

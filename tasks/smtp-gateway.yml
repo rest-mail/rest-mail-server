@@ -38,6 +38,10 @@ vars:
   SMTP_GATEWAY_DB_NAME: '{{.SMTP_GATEWAY_DB_NAME | default "restmail"}}'
   SMTP_GATEWAY_DB_USER: '{{.SMTP_GATEWAY_DB_USER | default "restmail"}}'
   SMTP_GATEWAY_DB_PASS: '{{.SMTP_GATEWAY_DB_PASS | default "restmail"}}'
+  # Decrypts at-rest DKIM private keys so the queue worker can DKIM-sign
+  # SMTP-submitted outbound mail (#171). Default matches the API's default so a
+  # standalone `task smtp-gateway:up` shares the same key the API used to encrypt.
+  SMTP_GATEWAY_MASTER_KEY: '{{.SMTP_GATEWAY_MASTER_KEY | default "dev-master-key-change-in-production"}}'
   SMTP_GATEWAY_TLS_CERT_PATH: '{{.SMTP_GATEWAY_TLS_CERT_PATH | default "/certs/mail3.test.crt"}}'
   SMTP_GATEWAY_TLS_KEY_PATH: '{{.SMTP_GATEWAY_TLS_KEY_PATH | default "/certs/mail3.test.key"}}'
   # Max accepted SMTP message size in bytes. Empty = server default (10 MiB).
@@ -149,6 +153,7 @@ tasks:
           -e DB_NAME={{.SMTP_GATEWAY_DB_NAME}} \
           -e DB_USER={{.SMTP_GATEWAY_DB_USER}} \
           -e DB_PASS={{.SMTP_GATEWAY_DB_PASS}} \
+          -e MASTER_KEY={{.SMTP_GATEWAY_MASTER_KEY}} \
           -e TLS_CERT_PATH={{.SMTP_GATEWAY_TLS_CERT_PATH}} \
           -e TLS_KEY_PATH={{.SMTP_GATEWAY_TLS_KEY_PATH}} \
           -e SMTP_MAX_MESSAGE_SIZE={{.SMTP_GATEWAY_MAX_MESSAGE_SIZE}} \

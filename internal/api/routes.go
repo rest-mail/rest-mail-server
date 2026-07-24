@@ -266,8 +266,20 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	// ═══════════════════════════════════════════════════════════════
 	// TLS-RPT report ingestion (no auth — receives reports from external MTAs per RFC 8460)
+	//
+	// Unauthenticated, so it is throttled per client IP (issue #183) to stop it
+	// being used as a storage write-amplification vector. The handler additionally
+	// caps the body size and the number of policy entries, and stores reports only
+	// for domains this server hosts.
 	// ═══════════════════════════════════════════════════════════════
-	r.Post("/.well-known/smtp-tlsrpt", tlsrptH.ReceiveReport)
+	tlsrptThrottle := func(next http.Handler) http.Handler { return next }
+	if cfg.TLSRPTRateLimitEnabled {
+		tlsrptThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+			RPS:   cfg.TLSRPTRateLimitRPS,
+			Burst: cfg.TLSRPTRateLimitBurst,
+		})
+	}
+	r.With(tlsrptThrottle).Post("/.well-known/smtp-tlsrpt", tlsrptH.ReceiveReport)
 
 	// ═══════════════════════════════════════════════════════════════
 	// ACME HTTP-01 challenge (no auth — served to ACME CA for domain validation)

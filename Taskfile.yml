@@ -152,6 +152,10 @@ includes:
       SMTP_GATEWAY_DB_NAME: '{{.MAIL3_DB_NAME}}'
       SMTP_GATEWAY_DB_USER: '{{.MAIL3_DB_USER}}'
       SMTP_GATEWAY_DB_PASS: '{{.MAIL3_DB_PASS | default "restmail"}}'
+      # Same source and default as API_MASTER_KEY above, so the gateway worker
+      # decrypts the same at-rest DKIM keys the API encrypted and can DKIM-sign
+      # SMTP-submitted outbound mail (#171). They can never diverge.
+      SMTP_GATEWAY_MASTER_KEY: '{{.MAIL3_MASTER_KEY | default "dev-master-key-change-in-production"}}'
       SMTP_GATEWAY_PORT_INBOUND: '{{.MAIL3_SMTP_PORT_INBOUND}}'
       SMTP_GATEWAY_PORT_SUBMISSION: '{{.MAIL3_SMTP_PORT_SUBMISSION}}'
       SMTP_GATEWAY_PORT_SUBMISSION_TLS: '{{.MAIL3_SMTP_PORT_SUBMISSION_TLS}}'
