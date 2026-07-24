@@ -6,6 +6,8 @@
 package imap
 
 import (
+	"log/slog"
+
 	imapsrv "github.com/rest-mail/go-imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
@@ -28,6 +30,13 @@ var _ imapsrv.Backend = (*Backend)(nil)
 func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
 	resp, err := b.api.Login(user, pass)
 	if err != nil {
+		// A failed IMAP login is a security-relevant event (credential stuffing /
+		// enumeration). Log it structured, with the attacker-controlled username
+		// masked, so it is observable alongside the SMTP smtp_auth_failed events.
+		slog.Warn("imap: auth failed",
+			"user", maskEmail(user),
+			"event", "imap_auth_failed",
+		)
 		return nil, err
 	}
 	return &mailbox{

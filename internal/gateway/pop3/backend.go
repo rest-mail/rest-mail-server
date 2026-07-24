@@ -6,6 +6,7 @@
 package pop3
 
 import (
+	"log/slog"
 	"strconv"
 
 	pop3srv "github.com/rest-mail/go-pop3"
@@ -30,6 +31,13 @@ var _ pop3srv.Backend = (*Backend)(nil)
 func (b *Backend) Authenticate(user, pass string) (pop3srv.Mailbox, error) {
 	resp, err := b.api.Login(user, pass)
 	if err != nil {
+		// A failed POP3 login is a security-relevant event (credential stuffing /
+		// enumeration). Log it structured, with the attacker-controlled username
+		// masked, so it is observable alongside the SMTP smtp_auth_failed events.
+		slog.Warn("pop3: auth failed",
+			"user", maskEmail(user),
+			"event", "pop3_auth_failed",
+		)
 		return nil, err
 	}
 	return &mailbox{
