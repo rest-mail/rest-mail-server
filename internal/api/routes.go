@@ -272,6 +272,19 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Post("/api/v1/auth/logout", authH.Logout)
 	r.With(authThrottle).Post("/api/v1/auth/refresh", authH.Refresh)
 
+	// M-14 (CWE-770): the admin pipeline/filter test endpoints each run a message
+	// through the pipeline engine. They are capability-gated but were otherwise
+	// unthrottled, so an authenticated admin could hammer them. Apply the same
+	// per-client-IP token bucket used on the auth routes, on its own dedicated
+	// limiter (separate bucket from auth) and its own config knobs.
+	pipelineTestThrottle := func(next http.Handler) http.Handler { return next }
+	if cfg.PipelineTestRateLimitEnabled {
+		pipelineTestThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+			RPS:   cfg.PipelineTestRateLimitRPS,
+			Burst: cfg.PipelineTestRateLimitBurst,
+		})
+	}
+
 	// ═══════════════════════════════════════════════════════════════
 	// Inbound delivery — machine-to-machine, called by the protocol
 	// gateways with no user token.
@@ -458,8 +471,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines", pipelineH.CreatePipeline)
 		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/pipelines/{id}", pipelineH.UpdatePipeline)
 		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/pipelines/{id}", pipelineH.DeletePipeline)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines/test", pipelineH.TestPipeline)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines/test-filter", pipelineH.TestFilter)
+		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/pipelines/test", pipelineH.TestPipeline)
+		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/pipelines/test-filter", pipelineH.TestFilter)
 		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines/logs", pipelineH.ListPipelineLogs)
 
 		// Pipeline observability (PR5) — analytics funnel + per-message trace.
@@ -477,7 +490,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/custom-filters/{id}", pipelineH.GetCustomFilter)
 		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/custom-filters/{id}", pipelineH.UpdateCustomFilter)
 		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
+		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
 
 		// Queue management
 		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue", queueH.ListQueue)
