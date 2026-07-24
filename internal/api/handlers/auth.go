@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -21,12 +22,74 @@ type refreshTokenStore interface {
 	Save(rec *models.RefreshToken) error
 	Rotate(jti string) error
 	Revoke(jti string) error
+	// RevokeAllForSubject kills every remaining active session for one owner —
+	// used when a refresh detects a disabled/deleted account, so no sibling
+	// session for that owner survives.
+	RevokeAllForSubject(userType string, subjectID uint) error
+}
+
+// accountStateStore re-reads live account state during a refresh so a token that
+// outlived a password change, disable, delete, or role change cannot be used to
+// mint fresh access tokens. It also re-derives an admin's capabilities from the
+// database rather than trusting the (up to 7-day-old) refresh-token claim. A nil
+// store (no database, some unit tests) skips the re-check and falls back to the
+// token claims.
+type accountStateStore interface {
+	// MailboxActive reports whether the mailbox exists and is active.
+	MailboxActive(id uint) (bool, error)
+	// AdminState reports whether the admin exists and is active, together with
+	// the capabilities currently granted by its roles.
+	AdminState(id uint) (active bool, capabilities []string, err error)
+}
+
+// dbAccountState is the gorm-backed accountStateStore used in production.
+type dbAccountState struct {
+	db *gorm.DB
+}
+
+func (s dbAccountState) MailboxActive(id uint) (bool, error) {
+	var mb models.Mailbox
+	err := s.db.Select("id", "active").First(&mb, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return mb.Active, nil
+}
+
+func (s dbAccountState) AdminState(id uint) (bool, []string, error) {
+	repo := repositories.NewAdminUserRepository(s.db)
+	user, err := repo.GetByID(id)
+	if errors.Is(err, repositories.ErrUserNotFound) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	if !user.Active {
+		return false, nil, nil
+	}
+	caps, err := repo.GetCapabilities(id)
+	if err != nil {
+		return false, nil, err
+	}
+	names := make([]string, len(caps))
+	for i, c := range caps {
+		names[i] = c.Name
+	}
+	return true, names, nil
 }
 
 type AuthHandler struct {
 	db           *gorm.DB
 	jwtService   *auth.JWTService
 	refreshStore refreshTokenStore
+	// accountState re-derives live account state (active flag, admin
+	// capabilities) on refresh. Nil in DB-less unit tests, which then trust the
+	// refresh-token claims unchanged.
+	accountState accountStateStore
 	// twoFactorStore + masterKey back the optional TOTP 2FA enforcement in the
 	// login path (OSI-19). When an account has 2FA active, a correct password is
 	// necessary but not sufficient — a valid current code (or recovery code) is
@@ -44,11 +107,13 @@ type AuthHandler struct {
 func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string) *AuthHandler {
 	var refreshStore refreshTokenStore
 	var tfStore twoFactorStore
+	var accountState accountStateStore
 	if db != nil {
 		refreshStore = repositories.NewRefreshTokenRepository(db)
 		tfStore = repositories.NewTwoFactorRepository(db)
+		accountState = dbAccountState{db: db}
 	}
-	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, twoFactorStore: tfStore, masterKey: masterKey}
+	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, accountState: accountState, twoFactorStore: tfStore, masterKey: masterKey}
 }
 
 // persistRefreshToken records a freshly issued refresh token in the rotation
@@ -65,6 +130,18 @@ func (h *AuthHandler) persistRefreshToken(tokens *auth.TokenPair, userType strin
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: tokens.RefreshExpiresAt,
 	})
+}
+
+// revokeAllForSubject best-effort revokes every remaining active session for one
+// owner. Used from the refresh path when a disabled/deleted account is detected;
+// failures are non-fatal (the refresh is refused regardless) but logged.
+func (h *AuthHandler) revokeAllForSubject(userType string, subjectID uint) {
+	if h.refreshStore == nil {
+		return
+	}
+	if err := h.refreshStore.RevokeAllForSubject(userType, subjectID); err != nil {
+		slog.Warn("failed to revoke sessions on refresh", "user_type", userType, "subject_id", subjectID, "error", err)
+	}
 }
 
 type loginRequest struct {
@@ -346,6 +423,46 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Re-read live account state BEFORE consuming the rotation, so a token that
+	// outlived a password change, disable, delete, or role change cannot mint a
+	// fresh access token, and an admin's capabilities are re-derived from the
+	// database rather than trusted from the (up to 7-day-old) refresh token. A nil
+	// store (no DB, some unit tests) trusts the claims unchanged.
+	//
+	// Like the rotation-ledger check below, this path fails CLOSED: an
+	// unreachable store refuses the refresh (401) rather than minting tokens
+	// without re-verifying account state.
+	//
+	// capabilities carries the set the new admin access token will be minted with:
+	// the freshly re-derived DB set when reloaded, otherwise the token claim.
+	capabilities := claims.Capabilities
+	if h.accountState != nil {
+		if claims.UserType == "admin" {
+			active, dbCaps, stateErr := h.accountState.AdminState(claims.AdminUserID)
+			if stateErr != nil {
+				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+				return
+			}
+			if !active {
+				h.revokeAllForSubject("admin", claims.AdminUserID)
+				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
+				return
+			}
+			capabilities = dbCaps
+		} else {
+			active, stateErr := h.accountState.MailboxActive(claims.MailboxID)
+			if stateErr != nil {
+				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+				return
+			}
+			if !active {
+				h.revokeAllForSubject("mailbox", claims.MailboxID)
+				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
+				return
+			}
+		}
+	}
+
 	// Rotation + revocation (OSI-10): the presented refresh token must still be
 	// the ACTIVE ledger row for its jti. Rotate flips active→rotated atomically;
 	// it fails (not-found) when the row is missing, already rotated (reuse of a
@@ -367,7 +484,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var userType string
 	var subjectID uint
 	if claims.UserType == "admin" {
-		tokens, err = h.jwtService.GenerateAdminTokenPair(claims.AdminUserID, claims.Username, claims.Capabilities)
+		tokens, err = h.jwtService.GenerateAdminTokenPair(claims.AdminUserID, claims.Username, capabilities)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else {
 		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID)
