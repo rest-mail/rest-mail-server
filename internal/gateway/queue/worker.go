@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -165,6 +166,15 @@ type Worker struct {
 	// size-aware values.
 	sendDeadline func(sizeBytes int64) time.Duration
 	reclaim      time.Duration
+
+	// SSRF guard (#167). Outbound delivery dials whatever a recipient domain's
+	// MX resolves to, and POSTs to whatever RESTMAIL endpoint an MX advertises —
+	// both attacker-influenced. allowPrivateDest, when true, is an explicit
+	// dev/testbed opt-in that disables the guard so delivery between containers
+	// on a private bridge network works; it defaults false (deny), so a
+	// production worker refuses to dial loopback/link-local/private/metadata
+	// addresses. See ssrf.go.
+	allowPrivateDest bool
 }
 
 const (
@@ -204,6 +214,27 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 // SetTLSInsecure sets whether to skip TLS certificate verification for outbound delivery.
 func (w *Worker) SetTLSInsecure(insecure bool) {
 	w.tlsInsecure = insecure
+}
+
+// SetAllowPrivateDestinations opts the worker in to dialing non-public
+// destinations (loopback/link-local/private/metadata) during outbound delivery
+// (#167). It exists only for a dev/testbed that delivers between containers on a
+// private bridge network. It defaults false so production denies SSRF-class
+// destinations; enabling it disables the outbound SSRF guard entirely.
+func (w *Worker) SetAllowPrivateDestinations(allow bool) {
+	w.allowPrivateDest = allow
+}
+
+// newGuardedDialer builds a net.Dialer whose Control hook refuses to connect to
+// non-public addresses (#167) unless the worker was opted in to private
+// destinations. The check runs on the concrete resolved IP about to be dialed,
+// so it also defeats DNS rebinding. Used for every outbound SMTP dial and the
+// RESTMAIL HTTPS hop.
+func (w *Worker) newGuardedDialer(timeout time.Duration) *net.Dialer {
+	return &net.Dialer{
+		Timeout: timeout,
+		Control: outboundDialControl(w.allowPrivateDest),
+	}
 }
 
 // SetMTASTSEnforce controls whether "enforce"-mode MTA-STS policies are honored
@@ -579,17 +610,40 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 	payloadBytes, _ := json.Marshal(payload)
 
 	messagesURL := endpointURL + "/messages"
-	if !strings.HasPrefix(messagesURL, "http") {
+	if !strings.Contains(messagesURL, "://") {
 		messagesURL = "https://" + messagesURL
 	}
 
+	// Require HTTPS (#167). The endpoint URL comes from an MX's RESTMAIL EHLO
+	// keyword, i.e. it is attacker-influenced; the raw message must never be
+	// POSTed in cleartext, nor over any non-HTTP(S) scheme.
+	parsed, err := url.Parse(messagesURL)
+	if err != nil {
+		return fmt.Errorf("RESTMAIL endpoint %q invalid: %w", endpointURL, err)
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("RESTMAIL endpoint %q refused: only https is permitted, got scheme %q", endpointURL, parsed.Scheme)
+	}
+
+	// Guarded dialer refuses non-public resolved addresses (#167) unless opted in
+	// — the RESTMAIL host is attacker-advertised and could point at loopback,
+	// link-local metadata, or internal relays. The check runs on the resolved IP,
+	// so it also defeats DNS rebinding.
+	dialer := w.newGuardedDialer(10 * time.Second)
 	httpClient := &http.Client{
 		// Size-aware upload budget (OSI-7): the payload carries the full raw
 		// message, so a fixed 30 s cannot transfer a large body. Bounded — a
 		// finite function of the message size — so this hop stays slowloris-safe.
 		Timeout: w.sendDeadline(int64(len(item.RawMessage))),
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: w.tlsInsecure},
+			DialContext:         dialer.DialContext,
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: w.tlsInsecure},
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+		// Do not follow redirects (#167): a 30x could otherwise downgrade
+		// HTTPS→HTTP or re-POST the body to a different, unchecked host.
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}
 	resp, err := httpClient.Post(messagesURL, "application/json", bytes.NewReader(payloadBytes))
@@ -613,7 +667,7 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 // (true, err) if RESTMAIL was detected but delivery failed,
 // (false, nil) if the host does not support RESTMAIL.
 func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded bool, err error) {
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	dialer := w.newGuardedDialer(10 * time.Second)
 	conn, err := dialer.Dial("tcp", host+":25")
 	if err != nil {
 		return false, nil // Can't connect, let SMTP path handle it
@@ -867,8 +921,9 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 	enforce := mode == mtasts.ModeEnforce
 	testingMode := mode == mtasts.ModeTesting
 
-	// Dial with timeout
-	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	// Dial with timeout. The guarded dialer refuses non-public resolved
+	// addresses (#167) unless the worker was opted in to private destinations.
+	dialer := w.newGuardedDialer(10 * time.Second)
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", addr, err)
