@@ -162,17 +162,27 @@ func (m *mailbox) Move(uid uint32, dest string) error {
 }
 
 // MoveUID relocates a message to dest and returns its UID there (Mover, RFC 6851).
-// rest-mail's UpdateMessage changes only the folder and keeps the same message ID,
-// so the message keeps its UID; that UID is what the atomic MOVE's COPYUID
-// response code reports.
+//
+// rest-mail assigns each message a UID from a monotonically increasing, never
+// reused ID at delivery time, so a move cannot be a folder relabel that keeps the
+// old ID: that would drop a message carrying a low source UID into a destination
+// already holding higher UIDs, violating RFC 3501 §2.3.1.1 (each newly arrived
+// message must be assigned a UID higher than all previously added) and breaking
+// clients that sync incrementally with UID FETCH <lastuid+1>:*.
+//
+// Instead the move is a fresh delivery of the message into dest — which allocates
+// a new, higher destination UID exactly like COPY — followed by deletion of the
+// source. Copy-before-delete means a failure can at worst leave a duplicate, never
+// lose the message. The new UID is what the atomic MOVE's COPYUID response reports.
 func (m *mailbox) MoveUID(uid uint32, dest string) (uint32, error) {
-	if err := validateFolder(dest); err != nil {
+	newUID, err := m.CopyUID(uid, dest)
+	if err != nil {
 		return 0, err
 	}
-	if err := m.api.UpdateMessage(m.token, uint(uid), map[string]interface{}{"folder": dest}); err != nil {
+	if err := m.api.DeleteMessage(m.token, uint(uid)); err != nil {
 		return 0, err
 	}
-	return uid, nil
+	return newUID, nil
 }
 
 // Delete permanently removes a message (EXPUNGE/CLOSE).
