@@ -568,6 +568,11 @@ func TestDeleteMessage_Success(t *testing.T) {
 		if auth := r.Header.Get("Authorization"); auth != "Bearer tok" {
 			t.Errorf("expected 'Bearer tok', got %q", auth)
 		}
+		// The gateway has no trash stage; its delete must be permanent so quota
+		// is reclaimed and the row removed (issue #191).
+		if got := r.URL.Query().Get("permanent"); got != "true" {
+			t.Errorf("expected permanent=true, got %q", got)
+		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 
