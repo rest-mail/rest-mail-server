@@ -44,6 +44,8 @@ func main() {
 		dkimKeygenCmd(os.Args[2:])
 	case "dkim-provision":
 		dkimProvisionCmd(os.Args[2:])
+	case "dkim-check":
+		dkimCheckCmd(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "instance: unknown subcommand %q\n\n", os.Args[1])
 		usage()
@@ -88,6 +90,11 @@ usage:
       Keygen + install the key on the instance via the admin API; print a
       dnsmasq txt-record line for the public record to stdout. Run where the
       API is reachable (e.g. inside the api container).
+
+  instance dkim-check --admin-pass <p> [--api URL] <manifest.yml>
+      Assert the DKIM selector provisioned in the DB for each served domain
+      matches the selector the manifest declares; exit non-zero on drift. Run
+      where the API is reachable (e.g. inside the api container).
 `)
 }
 
@@ -328,6 +335,81 @@ func dkimProvisionCmd(args []string) {
 	fmt.Fprintf(os.Stderr, "installed DKIM key on domain %d (selector %q)\n", id, *selector)
 	// stdout: the dnsmasq txt-record line to publish.
 	fmt.Println(dkim.RecordFragment(dkim.RecordName(*selector, *domain), rec))
+}
+
+// dkimCheckCmd asserts that the DKIM selector provisioned in the database for
+// each served domain matches the selector the manifest declares, failing loudly
+// on drift (#150). `instance render -check` only diffs the rendered config.env;
+// it cannot see that a domain's DB key was provisioned under a different
+// selector than the manifest names, which would silently diverge outbound
+// signing and the published DNS record from the manifest. This closes that gap
+// by reading the live selectors via the admin API and comparing.
+func dkimCheckCmd(args []string) {
+	fs := flag.NewFlagSet("dkim-check", flag.ExitOnError)
+	api := fs.String("api", "http://localhost:8080", "instance API base URL")
+	user := fs.String("admin-user", "admin", "admin username")
+	pass := fs.String("admin-pass", "", "admin password")
+	_ = fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "instance dkim-check: exactly one manifest path is required")
+		os.Exit(2)
+	}
+	if *pass == "" {
+		fatal("dkim-check: --admin-pass is required")
+	}
+
+	raw, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		fatal("read manifest: %v", err)
+	}
+	m, err := instance.Parse(raw)
+	if err != nil {
+		fatal("%s: %v", fs.Arg(0), err)
+	}
+
+	token, err := apiLogin(*api, *user, *pass)
+	if err != nil {
+		fatal("dkim-check: login: %v", err)
+	}
+	provisioned, err := apiDKIMSelectors(*api, token)
+	if err != nil {
+		fatal("dkim-check: list DKIM keys: %v", err)
+	}
+
+	drift := m.CheckDKIMSelectorDrift(provisioned, dkim.DefaultSelector)
+	if len(drift) > 0 {
+		fmt.Fprintf(os.Stderr, "instance: DKIM selector drift detected (%d domain(s)):\n", len(drift))
+		for _, d := range drift {
+			fmt.Fprintf(os.Stderr, "  %s\n", d.String())
+		}
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "DKIM selectors match the manifest for all %d served domain(s)\n", len(m.ServedDomains()))
+}
+
+// apiDKIMSelectors fetches the provisioned DKIM selectors from the admin API and
+// returns them keyed by domain name. Only domains with an installed key are
+// included (GET /api/v1/admin/dkim already filters to those), so a served domain
+// absent from the map has no provisioned key.
+func apiDKIMSelectors(api, token string) (map[string]string, error) {
+	var res struct {
+		Data []struct {
+			Domain   string `json:"domain"`
+			Selector string `json:"selector"`
+			HasKey   bool   `json:"has_key"`
+		} `json:"data"`
+	}
+	if err := apiJSON(http.MethodGet, api+"/api/v1/admin/dkim", token, nil, &res); err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(res.Data))
+	for _, e := range res.Data {
+		if e.HasKey {
+			out[e.Domain] = e.Selector
+		}
+	}
+	return out, nil
 }
 
 func apiJSON(method, url, token string, body any, out any) error {
