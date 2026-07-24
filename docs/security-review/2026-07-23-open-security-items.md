@@ -14,7 +14,7 @@ Overnight autonomous sprint (2026-07-23→24) landed most of this register. Per-
 | OSI-2 | ✅ Resolved — internal mTLS default-on | #88 |
 | OSI-3 | ✅ Resolved — RESTMAIL deliver-auth (trusted-peer OR aligned-DKIM) | #95 |
 | OSI-4 | 🔲 OPEN — config secret/TLS hardening (last config.go writer; part of secure-by-construction pass) | — |
-| OSI-5 | ◑ Resolved w/ residual — SMTP session hardening + failed-auth masking (#95); **submission-path DSN provenance deferred** (`dbstore.go` doesn't persist MessageID) — see `docs/reports/2026-07-24-known-gaps-and-followups.md` | #95 |
+| OSI-5 | ◑ Resolved w/ residual — SMTP session hardening + failed-auth masking (#95); **submission-path DSN provenance deferred** (`dbstore.go` doesn't persist MessageID) — tracked in #119 | #95 |
 | OSI-6 | ◑ Decided KEEP + container-contained (js-filter separate vm container, cap-drop/read-only/no-secrets); egress internal-network deferred (needs testbed dnsmasq coord) | #98 |
 | OSI-7 | ✅ Resolved — size-derived bounded internal delivery deadlines/body-limits/reclaim | #103 |
 | OSI-8 | ✅ Resolved — DKIM keys AES-GCM encrypted at rest + fail-closed + idempotent migration | #100 |
@@ -29,7 +29,7 @@ Overnight autonomous sprint (2026-07-23→24) landed most of this register. Per-
 | OSI-17 | ◑ Container lockdown (non-root/cap-drop/no-new-privileges/limits/digest-pins); deferred: read-only rootfs on dev targets, non-root prod gateways, helm securityContext | #98 |
 | OSI-18 | ✅ Resolved — pipeline unknown/errored filter fail-closed (defer) | #95 |
 | OSI-19 | ◑ Optional TOTP 2FA (enroll/confirm/login/recovery/disable); admin proxy-IP gate + WebAuthn out of scope | #101 |
-| OSI-20 | ◑ Resolved w/ residual — MX-host binding + TTL (#96); **mx_cert_fingerprint + peer-allowlist deferred** (probe is plaintext SMTP/25) — see `docs/reports/2026-07-24-known-gaps-and-followups.md` | #96 |
+| OSI-20 | ◑ Resolved w/ residual — MX-host binding + TTL (#96); **mx_cert_fingerprint + peer-allowlist deferred** (probe is plaintext SMTP/25) — tracked in #120 | #96 |
 | OSI-21 | ✅ Resolved — account-linking TOCTOU (tx + FOR UPDATE + unique index) | #94 |
 | OSI-22 | ✅ Resolved — CI deploy pins host key (`DEPLOY_HOST_KEY` secret; operator must set) | #91 |
 | OSI-23 | ✅ Resolved — MIME header CRLF sanitization at parse | #94 |
