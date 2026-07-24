@@ -4,6 +4,41 @@ Live register of **unresolved** security items carried forward from the point-in
 review docs in this folder. This is the maintained doc; the dated review files are
 historical and, once fully processed + captured here, can be deleted.
 
+## Resolution status — updated 2026-07-24
+
+Overnight autonomous sprint (2026-07-23→24) landed most of this register. Per-item PRs below; the `**Status:**` lines in each section are point-in-time and superseded by this table.
+
+| OSI | Status | PR |
+|---|---|---|
+| OSI-1 | OPEN — `/restmail/mailboxes` enumeration; accept-by-design decision pending | — |
+| OSI-2 | ✅ Resolved — internal mTLS default-on | #88 |
+| OSI-3 | ✅ Resolved — RESTMAIL deliver-auth (trusted-peer OR aligned-DKIM) | #95 |
+| OSI-4 | 🔲 OPEN — config secret/TLS hardening (last config.go writer; part of secure-by-construction pass) | — |
+| OSI-5 | ✅ Resolved — SMTP session hardening + failed-auth email masking (rest via go-smtp) | #95 |
+| OSI-6 | ◑ Decided KEEP + container-contained (js-filter separate vm container, cap-drop/read-only/no-secrets); egress internal-network deferred (needs testbed dnsmasq coord) | #98 |
+| OSI-7 | ✅ Resolved — size-derived bounded internal delivery deadlines/body-limits/reclaim | #103 |
+| OSI-8 | ✅ Resolved — DKIM keys AES-GCM encrypted at rest + fail-closed + idempotent migration | #100 |
+| OSI-9 | ✅ Resolved — IMAP folder-name validation/authz | #96 |
+| OSI-10 | ✅ Resolved — refresh-token rotation + revocation ledger | #97 |
+| OSI-11 | ✅ Resolved — security headers middleware (HSTS/CSP/…) | #97 |
+| OSI-12 | ✅ Resolved — `/metrics` netallow CIDR gate (default loopback+RFC1918) | #102 |
+| OSI-13 | ✅ Resolved — Sieve redirect external-domain allowlist (default-deny) | #95 |
+| OSI-14 | ✅ Resolved — `IsAdmin` field + claim removed (keys on UserType) | #97 |
+| OSI-15 | ✅ Resolved — scanner verdicts fail-closed + HMAC-authenticated | #102 |
+| OSI-16 | ✅ Resolved — webmail sandboxed srcdoc iframe + strict CSP + remote-opt-in | #93 |
+| OSI-17 | ◑ Container lockdown (non-root/cap-drop/no-new-privileges/limits/digest-pins); deferred: read-only rootfs on dev targets, non-root prod gateways, helm securityContext | #98 |
+| OSI-18 | ✅ Resolved — pipeline unknown/errored filter fail-closed (defer) | #95 |
+| OSI-19 | ◑ Optional TOTP 2FA (enroll/confirm/login/recovery/disable); admin proxy-IP gate + WebAuthn out of scope | #101 |
+| OSI-20 | ✅ Resolved — capability-cache MX-host binding + TTL | #96 |
+| OSI-21 | ✅ Resolved — account-linking TOCTOU (tx + FOR UPDATE + unique index) | #94 |
+| OSI-22 | ✅ Resolved — CI deploy pins host key (`DEPLOY_HOST_KEY` secret; operator must set) | #91 |
+| OSI-23 | ✅ Resolved — MIME header CRLF sanitization at parse | #94 |
+| OSI-24 | ✅ Resolved — constant-time login (dummy-bcrypt on miss) | #97 |
+| OSI-25 | ✅ Resolved — bounce/DSN sender-auth + per-recipient rate limit | #96 |
+| OSI-26 | 🔲 OPEN — residual medium/low backlog (batch last) | — |
+
+**Still open after this sprint:** OSI-1 (product decision), OSI-4 (config hardening), OSI-26 (residual batch); plus the deferred sub-items in OSI-6/17/19 above. Everything else is merged to `main`.
+
 ## Open items
 
 ### OSI-1 — `/restmail/mailboxes` recipient enumeration
