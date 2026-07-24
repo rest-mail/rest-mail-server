@@ -380,6 +380,14 @@ func (s *session) Data(r io.Reader) error {
 	accepted := 0
 	failed := 0
 	failCode, failEnhanced, failMsg := 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
+
+	// DSN provenance: the first time this submission produces outbound mail we
+	// persist a sender-owned reference for it and link every outbound queue row
+	// to that reference, so a later bounce/DSN can be authenticated back to the
+	// submitting mailbox. submittedMsgID stays nil when nothing was persisted.
+	var submittedMsgID *uint
+	submittedOnce := false
+
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient.
 		check, err := s.api.CheckMailbox(rcpt)
@@ -389,11 +397,46 @@ func (s *session) Data(r io.Reader) error {
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {
 				recipientDomain = rcpt[idx+1:]
 			}
+
+			// Persist the submission reference once per message (authenticated
+			// submissions only). A failure must not fail delivery — proceed with
+			// no linked reference.
+			if s.authenticated && !submittedOnce {
+				submittedOnce = true
+				var toJSON, ccJSON []byte
+				if len(toList) > 0 {
+					toJSON, _ = json.Marshal(toList)
+				}
+				if len(ccList) > 0 {
+					ccJSON, _ = json.Marshal(ccList)
+				}
+				ref, perr := s.store.PersistSubmittedMessage(SubmittedMessage{
+					Sender:       s.mailFrom,
+					MessageID:    messageID,
+					SenderName:   senderName,
+					Subject:      subject,
+					BodyText:     bodyText,
+					BodyHTML:     bodyHTML,
+					InReplyTo:    inReplyTo,
+					References:   references,
+					RawMessage:   string(data),
+					RecipientsTo: toJSON,
+					RecipientsCc: ccJSON,
+				})
+				if perr != nil {
+					slog.Warn("smtp: failed to persist submission reference for DSN provenance",
+						"from", s.mailFrom, "error", perr)
+				} else {
+					submittedMsgID = ref
+				}
+			}
+
 			if err := s.store.EnqueueOutbound(OutboundMessage{
 				Sender:     s.mailFrom,
 				Recipient:  rcpt,
 				Domain:     recipientDomain,
 				RawMessage: string(data),
+				MessageID:  submittedMsgID,
 			}); err != nil {
 				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)
 				failed++

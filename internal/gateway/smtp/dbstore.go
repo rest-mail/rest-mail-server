@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"errors"
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
@@ -32,10 +33,60 @@ func (s *dbStore) SenderAuthorized(accountID uint, from string) (bool, error) {
 	return count > 0, err
 }
 
+// PersistSubmittedMessage records an authenticated submission as a message row
+// owned by the sender's mailbox (folder "Sent") and returns its id, so an
+// eventual bounce/DSN can be authenticated back to the submitting mailbox. When
+// the sender has no local mailbox there is nothing to attribute the message to,
+// so it returns (nil, nil) rather than an error.
+func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
+	var mb models.Mailbox
+	if err := s.db.Where("address = ? AND active = ?", msg.Sender, true).First(&mb).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	threadID := msg.MessageID
+	if msg.InReplyTo != "" {
+		threadID = msg.InReplyTo
+	}
+	senderName := msg.SenderName
+	if senderName == "" {
+		senderName = mb.DisplayName
+	}
+
+	row := models.Message{
+		MailboxID:    mb.ID,
+		Folder:       "Sent",
+		MsgID:        msg.MessageID,
+		InReplyTo:    msg.InReplyTo,
+		References:   msg.References,
+		ThreadID:     threadID,
+		Sender:       msg.Sender,
+		SenderName:   senderName,
+		RecipientsTo: models.JSONB(msg.RecipientsTo),
+		RecipientsCc: models.JSONB(msg.RecipientsCc),
+		Subject:      msg.Subject,
+		BodyText:     msg.BodyText,
+		BodyHTML:     msg.BodyHTML,
+		RawMessage:   msg.RawMessage,
+		IsRead:       true,
+		SizeBytes:    len(msg.Subject) + len(msg.BodyText) + len(msg.BodyHTML),
+		RawSize:      len(msg.RawMessage),
+		ReceivedAt:   time.Now(),
+	}
+	if err := s.db.Create(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row.ID, nil
+}
+
 // EnqueueOutbound inserts the message into the outbound queue with the same
 // pending/retry/expiry defaults the session used to set inline.
 func (s *dbStore) EnqueueOutbound(msg OutboundMessage) error {
 	entry := models.OutboundQueue{
+		MessageID:  msg.MessageID,
 		Sender:     msg.Sender,
 		Recipient:  msg.Recipient,
 		Domain:     msg.Domain,
