@@ -701,6 +701,91 @@ func TestPipelineTestRoutes_ThrottleDisabled(t *testing.T) {
 	}
 }
 
+// ── Password-verification oracles: test-connection + LinkAccount ──────
+
+// verifyOracleRoutes are the two authenticated endpoints that verify a supplied
+// address+password against a mailbox and reveal correctness (200 vs 401). Both
+// must sit behind the same per-client-IP auth throttle as /auth/login, so a
+// holder of a valid low-privilege token cannot use them as an unthrottled
+// online password-guessing oracle that bypasses the login rate limit.
+var verifyOracleRoutes = []struct{ name, path string }{
+	{"test-connection", "/api/v1/accounts/test-connection"},
+	{"link-account", "/api/v1/accounts"},
+}
+
+// TestVerifyOracleRoutes_RateLimited proves that repeated wrong-password
+// attempts against test-connection and LinkAccount are throttled: once the
+// per-IP burst is spent, further attempts get 429 with a Retry-After header,
+// exactly like /auth/login. Without the throttle these routes process every
+// guess at full speed.
+func TestVerifyOracleRoutes_RateLimited(t *testing.T) {
+	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
+	cfg := &config.Config{
+		CORSAllowedOrigins:   []string{"http://localhost:3000"},
+		Environment:          "test",
+		AuthRateLimitEnabled: true,
+		// Tiny refill so the bucket does not top up mid-test; small burst so the
+		// throttle trips quickly.
+		AuthRateLimitRPS:   0.0001,
+		AuthRateLimitBurst: 3,
+	}
+	token := mailboxToken(t, jwtSvc)
+	const wrongPassword = `{"address":"victim@example.com","password":"guess"}`
+
+	for _, rt := range verifyOracleRoutes {
+		t.Run(rt.name, func(t *testing.T) {
+			// The limiter is shared per-router, so exercise one route per subtest
+			// against its own router to keep the burst accounting clean.
+			router := NewRouter(newFailingGormDB(t), jwtSvc, cfg, nil)
+
+			passes := 0
+			got429 := false
+			for i := 0; i < 12; i++ {
+				rr := doRequest(router, http.MethodPost, rt.path, token, wrongPassword)
+				if rr.Code == http.StatusTooManyRequests {
+					got429 = true
+					if rr.Header().Get("Retry-After") == "" {
+						t.Errorf("429 response missing Retry-After header")
+					}
+					break
+				}
+				// A non-429 means the throttle admitted the guess to the handler
+				// (which then 401s on the wrong password / failing DB).
+				if rr.Code == http.StatusUnauthorized && errorMessage(t, rr) == "Authentication required" {
+					t.Fatalf("request rejected by auth middleware, expected to reach handler")
+				}
+				passes++
+			}
+			if !got429 {
+				t.Fatalf("expected a 429 after exhausting the burst, never got one")
+			}
+			if passes < cfg.AuthRateLimitBurst {
+				t.Errorf("throttle tripped too early: %d passes before 429, want >= burst (%d)", passes, cfg.AuthRateLimitBurst)
+			}
+		})
+	}
+}
+
+// TestVerifyOracleRoutes_ThrottleDisabled is the regression guard: with the auth
+// limiter disabled, the verify-oracle routes never 429 no matter how hard they
+// are hit.
+func TestVerifyOracleRoutes_ThrottleDisabled(t *testing.T) {
+	router, jwtSvc := newTestRouter(t) // AuthRateLimitEnabled defaults false
+	token := mailboxToken(t, jwtSvc)
+	const wrongPassword = `{"address":"victim@example.com","password":"guess"}`
+
+	for _, rt := range verifyOracleRoutes {
+		t.Run(rt.name, func(t *testing.T) {
+			for i := 0; i < 30; i++ {
+				rr := doRequest(router, http.MethodPost, rt.path, token, wrongPassword)
+				if rr.Code == http.StatusTooManyRequests {
+					t.Fatalf("request %d got 429 with throttle disabled", i)
+				}
+			}
+		})
+	}
+}
+
 // ── OSI-11: security headers wired on the router ──────────────────────
 
 func TestSecurityHeaders_WiredOnRouter(t *testing.T) {
