@@ -14,13 +14,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
 	rmime "github.com/restmail/restmail/internal/mime"
+	"github.com/restmail/restmail/internal/outbound"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
@@ -55,40 +55,11 @@ func (h *MessageHandler) recordTrace(t models.MessageTrace) {
 // key configured but it cannot be loaded (OSI-8: an encrypted-at-rest key that
 // fails to decrypt), it returns an error so the caller fails closed (temp-fail)
 // rather than sending the message unsigned.
+//
+// The signing itself lives in internal/outbound.SignDKIM, shared with the queue
+// worker so submitted mail is signed by the same code (#171).
 func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, error) {
-	if senderDomain == "" {
-		return raw, nil
-	}
-	var domain models.Domain
-	if err := h.db.Where("name = ?", senderDomain).First(&domain).Error; err != nil ||
-		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
-		return raw, nil
-	}
-	// OSI-8: decrypt the at-rest key, failing CLOSED. An encrypted key that cannot
-	// be decrypted (wrong/missing MASTER_KEY or corrupt ciphertext) is a
-	// transient/config fault — surface it so the send temp-fails instead of
-	// silently going out unsigned. A legacy plaintext key loads as-is.
-	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, h.masterKey)
-	if err != nil {
-		slog.Error("dkim sign: key load failed (fail-closed)", "domain", senderDomain, "error", err)
-		return "", err
-	}
-	priv, err := dkim.ParsePrivateKey(keyPEM)
-	if err != nil {
-		slog.Warn("dkim sign: parse key failed", "domain", senderDomain, "error", err)
-		return raw, nil
-	}
-	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
-		Domain:     senderDomain,
-		Selector:   domain.DKIMSelector,
-		PrivateKey: priv,
-		Time:       time.Now().Unix(),
-	})
-	if err != nil {
-		slog.Warn("dkim sign failed", "domain", senderDomain, "error", err)
-		return raw, nil
-	}
-	return "DKIM-Signature: " + val + "\r\n" + raw, nil
+	return outbound.SignDKIM(h.db, h.masterKey, senderDomain, raw)
 }
 
 // ListMessages returns messages in a folder with cursor-based pagination.

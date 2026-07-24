@@ -21,6 +21,7 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
+	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -156,6 +157,11 @@ type Worker struct {
 	shutdown     chan struct{}
 	wg           sync.WaitGroup
 
+	// masterKey decrypts the domain's at-rest DKIM private key when the worker
+	// signs an outbound message that arrived unsigned (SMTP submission, #171).
+	// Empty when DKIM keys are stored as legacy plaintext (encryption disabled).
+	masterKey string
+
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
 	// may be delivered into a single recipient mailbox within bounceWindow;
 	// bounceMax <= 0 disables the cap. See generateBounce.
@@ -230,6 +236,26 @@ func (w *Worker) SetTLSInsecure(insecure bool) {
 // destinations; enabling it disables the outbound SSRF guard entirely.
 func (w *Worker) SetAllowPrivateDestinations(allow bool) {
 	w.allowPrivateDest = allow
+}
+
+// SetMasterKey provides the key used to decrypt at-rest DKIM private keys so the
+// worker can DKIM-sign outbound messages that arrived unsigned (#171). Pass the
+// empty string when DKIM keys are stored as legacy plaintext.
+func (w *Worker) SetMasterKey(key string) {
+	w.masterKey = key
+}
+
+// prepareOutbound applies the outbound transforms to a queue row's raw message
+// immediately before it is written to the wire: the Bcc header is stripped and,
+// when the message arrived unsigned, it is DKIM-signed with the sender domain's
+// key. This is the single choke point every outbound message passes through, so
+// SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
+// API path applies at submission (#171); the transforms are idempotent, so
+// already-prepared API mail passes through unchanged. It returns an error only
+// when a configured DKIM key cannot be loaded, so the caller fails closed
+// (defer/retry) rather than relaying the message unsigned.
+func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
+	return outbound.Prepare(w.db, w.masterKey, rmail.DomainFromAddress(item.Sender), item.RawMessage)
 }
 
 // newGuardedDialer builds a net.Dialer whose Control hook refuses to connect to
@@ -668,6 +694,14 @@ func (w *Worker) cacheCapability(domain, mxHost string, supported bool, endpoint
 // enforce-mode MTA-STS policy (#168), so the "verified HTTPS" half of the enforce
 // guarantee holds on the RESTMAIL hop just as it does on the STARTTLS SMTP path.
 func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQueue, forceTLSVerify bool) error {
+	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
+	// that cannot be loaded so the send retries rather than going out unsigned.
+	prepared, err := w.prepareOutbound(item)
+	if err != nil {
+		return fmt.Errorf("prepare outbound message: %w", err)
+	}
+	item.RawMessage = prepared
+
 	payload := map[string]interface{}{
 		"from":        item.Sender,
 		"to":          []string{item.Recipient},
@@ -1008,6 +1042,14 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 //   - testing / none / no policy: opportunistic TLS as before; a would-fail
 //     under "testing" is logged but delivery proceeds.
 func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
+	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
+	// that cannot be loaded so the send retries rather than going out unsigned.
+	prepared, err := w.prepareOutbound(item)
+	if err != nil {
+		return fmt.Errorf("prepare outbound message: %w", err)
+	}
+	item.RawMessage = prepared
+
 	// Size-aware whole-attempt budget (OSI-7): the fixed 30 s could not transfer
 	// a large-but-permitted message's DATA phase. The deadline scales with the
 	// message size and stays strictly below w.reclaim, so a slow large send
