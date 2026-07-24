@@ -850,6 +850,14 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 // never silently pass mail. Override with PIPELINE_FILTER_ERROR_ACTION.
 const DefaultPipelineFilterErrorAction = "defer"
 
+// DefaultPipelineFilterTimeoutSeconds is the per-filter execution backstop: a
+// single filter may run this long before the engine abandons it and routes the
+// step through the fail-closed policy above. It is a safety net against a hung
+// or deadlocked filter wedging delivery, deliberately set above every built-in
+// filter's own I/O timeout (the slowest being clamav/rspamd at 30s) so it never
+// preempts a legitimately slow scan. Override with PIPELINE_FILTER_TIMEOUT_SECONDS.
+const DefaultPipelineFilterTimeoutSeconds = 60
+
 // RestmailDeliverAuthSettings configures server-to-server authentication on the
 // RESTMAIL inbound-delivery endpoint POST /restmail/messages (OSI-3). Without
 // it any host can inject a spoofed-From message into a local mailbox
@@ -922,6 +930,21 @@ func (c *Config) PipelineFilterErrorAction() string {
 	default:
 		return DefaultPipelineFilterErrorAction
 	}
+}
+
+// PipelineFilterTimeout returns the per-filter execution backstop applied by the
+// pipeline engine. A single filter that runs longer than this is abandoned and
+// its step routed through PipelineFilterErrorAction (fail-closed by default), so
+// a hung filter cannot wedge delivery. Set with PIPELINE_FILTER_TIMEOUT_SECONDS
+// (a whole number of seconds). A malformed or non-positive value falls back to
+// the secure default rather than disabling the backstop — an unparseable knob
+// must never remove the protection.
+func (c *Config) PipelineFilterTimeout() time.Duration {
+	secs := getEnvInt("PIPELINE_FILTER_TIMEOUT_SECONDS", DefaultPipelineFilterTimeoutSeconds)
+	if secs <= 0 {
+		secs = DefaultPipelineFilterTimeoutSeconds
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // END inbound-path security hardening
