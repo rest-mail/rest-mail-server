@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"time"
 )
 
@@ -19,7 +20,20 @@ type Engine struct {
 	// while the rest of the pipeline continues. Override via SetFilterErrorAction
 	// (ActionContinue restores the legacy fail-open behavior).
 	filterErrorAction Action
+	// filterTimeout bounds how long a single filter's Execute may run before it
+	// is abandoned and treated as a filter error (routed through
+	// filterErrorAction, i.e. fail-closed by default). It is a backstop against a
+	// hung/deadlocked filter wedging the whole delivery — it sits ABOVE each
+	// filter's own I/O timeouts (webhook 5s, clamav/rspamd 30s), not in place of
+	// them. Zero disables the backstop. Override via SetFilterTimeout.
+	filterTimeout time.Duration
 }
+
+// DefaultFilterTimeout is the per-filter execution backstop applied unless
+// overridden via SetFilterTimeout. It is deliberately larger than any built-in
+// filter's own I/O timeout (the slowest being clamav/rspamd at 30s) so it never
+// preempts a legitimately slow scan — it only fires for a genuinely hung filter.
+const DefaultFilterTimeout = 60 * time.Second
 
 // NewEngine creates a pipeline execution engine.
 //
@@ -40,7 +54,15 @@ func NewEngine(registry *Registry, logger *slog.Logger, observer ...Observer) *E
 		logger:            logger,
 		observer:          obs,
 		filterErrorAction: ActionDefer, // fail-closed by default (OSI-18)
+		filterTimeout:     DefaultFilterTimeout,
 	}
+}
+
+// SetFilterTimeout overrides the per-filter execution backstop. A non-positive
+// value disables it (a filter may then run unbounded). Call once at wiring time
+// — it is not safe to change while Execute is running.
+func (e *Engine) SetFilterTimeout(d time.Duration) {
+	e.filterTimeout = d
 }
 
 // SetFilterErrorAction overrides the action taken when a filter fails to
@@ -139,8 +161,11 @@ Loop:
 		}
 
 		// Execute the filter. Same fail-closed policy for a runtime error: a filter
-		// that errors out is not silently ignored under the default (OSI-18).
-		filterResult, err := filter.Execute(ctx, result.FinalEmail)
+		// that errors out is not silently ignored under the default (OSI-18). A
+		// panic or a per-filter-timeout is surfaced here as an ordinary error so a
+		// crashing/hung filter takes the same fail-closed path — it is never a
+		// crashed worker or a silently skipped security filter.
+		filterResult, err := e.runFilter(ctx, filter, result.FinalEmail)
 		if err != nil {
 			step.Error = fmt.Sprintf("execute: %v", err)
 			step.Action = e.filterErrorAction
@@ -210,6 +235,66 @@ Loop:
 	}
 	e.observer.ObserveTerminal(pipeline.Direction, result.FinalAction, terminal)
 	return result, nil
+}
+
+// runFilter executes a single filter with two safety wrappers that a filter
+// author cannot be relied upon to provide themselves:
+//
+//   - A per-filter timeout backstop (e.filterTimeout). The filter runs in its
+//     own goroutine so that even a filter which ignores its context — a genuine
+//     deadlock or a tight loop — cannot wedge the entire delivery. When the
+//     backstop fires runFilter returns immediately with a timeout error and the
+//     abandoned goroutine is left to finish on its own; the buffered result
+//     channel guarantees it can never block on the send, so nothing parks
+//     forever.
+//   - Panic recovery. A filter that panics (a poison-message bug) is recovered
+//     in the same goroutine the panic occurs in, turned into an error, and
+//     logged with a stack trace — instead of crashing the worker and becoming an
+//     infinite temp-fail/retry loop for the sender.
+//
+// Both failure modes return a non-nil error, which the caller routes through
+// filterErrorAction (fail-closed by default). On either path the returned
+// FilterResult is nil, so a hung or crashing transform filter can never
+// half-apply its mutation to the message.
+func (e *Engine) runFilter(ctx context.Context, filter Filter, email *EmailJSON) (*FilterResult, error) {
+	fctx := ctx
+	if e.filterTimeout > 0 {
+		var cancel context.CancelFunc
+		fctx, cancel = context.WithTimeout(ctx, e.filterTimeout)
+		defer cancel()
+	}
+
+	type outcome struct {
+		res *FilterResult
+		err error
+	}
+	// Buffered (cap 1) so the filter goroutine can always send its outcome and
+	// exit, even after runFilter has already returned on the timeout path.
+	done := make(chan outcome, 1)
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				e.logger.Error("filter panicked; recovered",
+					"filter", filter.Name(),
+					"panic", r,
+					"stack", string(debug.Stack()),
+				)
+				done <- outcome{nil, fmt.Errorf("filter panicked: %v", r)}
+			}
+		}()
+		res, err := filter.Execute(fctx, email)
+		done <- outcome{res, err}
+	}()
+
+	select {
+	case o := <-done:
+		return o.res, o.err
+	case <-fctx.Done():
+		// The backstop deadline (or an upstream cancellation) fired before the
+		// filter returned. Abandon the in-flight goroutine and fail this step.
+		return nil, fmt.Errorf("filter execution aborted (timeout %s): %w", e.filterTimeout, context.Cause(fctx))
+	}
 }
 
 // TestFilter runs a single filter against an email (for testing/debugging).
