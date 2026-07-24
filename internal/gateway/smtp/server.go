@@ -24,6 +24,7 @@ type Server struct {
 	tlsConfig          *tls.Config
 	store              Store
 	limiter            *connlimiter.Limiter
+	subLimiter         *submissionRateLimiter
 	proxyProtocolCIDRs []string
 	maxMessageBytes    int64
 	transferPolicy     transferRatePolicy
@@ -47,6 +48,7 @@ func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store,
 		tlsConfig:       tlsConfig,
 		store:           store,
 		limiter:         limiter,
+		subLimiter:      newSubmissionRateLimiter(defaultSubmissionPerMinute, defaultSubmissionPerHour),
 		maxMessageBytes: defaultMaxMessageSize,
 		transferPolicy:  defaultTransferRatePolicy(),
 		tarpit:          defaultTarpitPolicy(),
@@ -118,6 +120,14 @@ func (s *Server) SetTarpitPolicy(enabled bool, base time.Duration, softLimit int
 	s.tarpit = tarpitPolicy{enabled: true, base: base, softLimit: softLimit, max: max}
 }
 
+// SetSubmissionRateLimit sets the per-account submission caps (per minute, per
+// hour) enforced on authenticated submission (#171). A non-positive value
+// disables that tier. Call before ListenAndServe — the limiter is shared by
+// every submission session.
+func (s *Server) SetSubmissionRateLimit(perMinute, perHour int) {
+	s.subLimiter = newSubmissionRateLimiter(perMinute, perHour)
+}
+
 // ListenAndServe starts SMTP listeners on the specified ports.
 // - port 25: inbound MTA (STARTTLS)
 // - port 587: submission (STARTTLS + AUTH required)
@@ -159,6 +169,7 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 			api:          s.api,
 			store:        s.store,
 			limiter:      s.limiter,
+			subLimiter:   s.subLimiter,
 			hostname:     s.hostname,
 			isSubmission: isSubmission,
 			ctx:          s.ctx,

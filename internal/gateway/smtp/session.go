@@ -39,8 +39,9 @@ type session struct {
 	api          Backend
 	store        Store
 	limiter      *connlimiter.Limiter
-	hostname     string // this server's host name, stamped into the Received header
-	isSubmission bool   // port 587/465 requires AUTH
+	subLimiter   *submissionRateLimiter // per-account submission cap (nil = disabled)
+	hostname     string                 // this server's host name, stamped into the Received header
+	isSubmission bool                   // port 587/465 requires AUTH
 
 	// Anti-abuse tarpit: the connection-scoped context is cancelled on server
 	// shutdown so an in-flight tarpit sleep aborts rather than blocking the
@@ -264,6 +265,18 @@ func (s *session) login(username, password string) error {
 	return nil
 }
 
+// rateLimitKey identifies the account a submission is charged against for the
+// per-account rate limit. Linked accounts share one webmail account id, so a
+// compromised credential is capped as a single principal regardless of which of
+// its authorized From addresses it sends as. It falls back to the authenticated
+// login when no account id is set.
+func (s *session) rateLimitKey() string {
+	if s.accountID != 0 {
+		return fmt.Sprintf("acct:%d", s.accountID)
+	}
+	return "user:" + s.authEmail
+}
+
 // Mail starts a transaction. On submission ports it requires authentication
 // and verifies the sender is either the authenticated user or one of its
 // linked accounts.
@@ -360,6 +373,21 @@ func (s *session) Data(r io.Reader) error {
 			Code:         451,
 			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
 			Message:      "Error reading message data",
+		}
+	}
+
+	// Per-account submission rate limit (#171): a compromised credential must not
+	// be able to flood outbound mail. Enforced after the body is fully read (so the
+	// DATA stream is consumed) and before any recipient is delivered or queued, so a
+	// throttled message commits nothing. Only authenticated submission is limited;
+	// inbound-MX (port 25) has no account to key on.
+	if s.isSubmission && s.authenticated && !s.subLimiter.Allow(s.rateLimitKey()) {
+		slog.Warn("smtp: submission rate limit exceeded",
+			"user", s.authEmail, "account_id", s.accountID, "event", "smtp_submission_rate_limited")
+		return &gosmtp.SMTPError{
+			Code:         451,
+			EnhancedCode: gosmtp.EnhancedCode{4, 7, 1},
+			Message:      "Account rate limit exceeded, try again later",
 		}
 	}
 
