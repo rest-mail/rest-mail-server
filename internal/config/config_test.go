@@ -36,6 +36,8 @@ var allEnvKeys = []string{
 	"ENVIRONMENT",
 	"SECURITY_HEADERS_ENABLED", "HSTS_MAX_AGE_SECONDS",
 	"INTERNAL_DELIVERY_FLOOR_RATE",
+	"DB_SSLMODE", "DB_ALLOW_INSECURE",
+	"QUEUE_TLS_INSECURE", "API_TLS_TERMINATED_BY_PROXY",
 }
 
 // clearEnv ensures every config-related env var is truly unset for the test.

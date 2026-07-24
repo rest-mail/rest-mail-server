@@ -46,6 +46,16 @@ func main() {
 		slog.SetDefault(slog.New(logHandler))
 	}
 
+	// Secure-by-construction (production-only): refuse to boot when the POP3
+	// listeners would serve plaintext where they shouldn't — no TLS keypair to
+	// advertise STLS on 110 or bind implicit TLS on 995 (which would also accept
+	// USER/PASS before TLS). In development/test (the testbed & e2e default) each
+	// finding only warns and boot proceeds unchanged.
+	if err := cfg.ValidateListenerSecurity(config.RolePOP3Gateway); err != nil {
+		slog.Error("insecure listener configuration refused", "error", err)
+		os.Exit(1)
+	}
+
 	// Prometheus /metrics endpoint for this gateway process. Serves the process
 	// registry the connection limiter increments into.
 	metricsServer := metricsrv.New(cfg.POP3MetricsPort, cfg.MetricsAllowedCIDRs(), cfg.ProxyProtocolTrustedCIDRs)

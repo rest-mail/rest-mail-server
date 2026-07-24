@@ -642,8 +642,8 @@ func (c *Config) SMTPMaxMessageSizeWarning() string {
 
 func (c *Config) DSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		c.DBHost, c.DBPort, c.DBUser, c.DBPass, c.DBName,
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.DBHost, c.DBPort, c.DBUser, c.DBPass, c.DBName, c.DBSSLMode(),
 	)
 }
 
@@ -1327,4 +1327,255 @@ func (c *Config) RollupDownsampleInterval() time.Duration {
 }
 
 // END multi-resolution rollup downsampling
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN listener secure-by-construction (secure-by-construction epic)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. It EXTENDS the OSI-4 boot-validation pattern above with the
+// per-listener TLS / plaintext-AUTH policy and the insecure-knob refusals, and
+// reuses the exact production-enforce / development-warn split OSI-4 established
+// (via the shared isProductionEnv method). Load() is deliberately NOT changed:
+// enforcement is process-specific (each protocol gateway runs different
+// listeners), so each cmd/*/main.go calls ValidateListenerSecurity with its own
+// role right after config.Load(). In PRODUCTION (ENVIRONMENT=="production") an
+// insecure listener/knob is a hard boot error; in development/test (the testbed
+// & e2e default) the identical finding is a slog.Warn and boot proceeds
+// unchanged — no new boot error can fire outside production.
+//
+// Per-listener policy (production):
+//   - SMTP 25 inbound: plaintext is required by protocol, so it is NOT refused;
+//     but a TLS keypair MUST be present so STARTTLS can be advertised and AUTH is
+//     never taken before STARTTLS (go-smtp sets AllowInsecureAuth=false whenever
+//     a TLS config is present — see internal/gateway/smtp/server.go).
+//   - SMTP 587 submission: STARTTLS + keypair required; AUTH only after STARTTLS.
+//   - SMTP 465 / IMAP 993 / POP3 995: implicit TLS — a keypair MUST be present
+//     (without it the listener binds plaintext instead of TLS).
+//   - IMAP 143 / POP3 110: STARTTLS/STLS + keypair required; pre-TLS AUTH refused.
+//   - API: never serves TLS itself (TLS is terminated by a front proxy), so the
+//     operator must acknowledge that proxy with API_TLS_TERMINATED_BY_PROXY=true;
+//     otherwise it would serve auth/token traffic in cleartext.
+//
+// Insecure-knob refusals (production): QUEUE_TLS_INSECURE=true (disables outbound
+// TLS verification / MTA-STS enforcement) and a cleartext DB sslmode
+// (DB_SSLMODE=disable/allow/prefer) unless acknowledged with DB_ALLOW_INSECURE=true.
+//
+// For all three protocol gateways the single switch is the TLS keypair: go-smtp,
+// go-imap and go-pop3 each advertise STARTTLS / bind implicit-TLS / refuse
+// pre-TLS AUTH only when a non-nil TLS config is present, and degrade to
+// plaintext-AUTH-capable listeners when it is absent. So "a valid keypair is
+// configured" is exactly the condition that makes every listener secure, and the
+// testbed (which mounts /certs/<host>.crt|.key for every gateway) satisfies it.
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultDBSSLMode is the libpq sslmode used when DB_SSLMODE is unset. It stays
+// "disable" so the development testbed's DSN is byte-for-byte unchanged; a
+// production deployment sets a secure mode (require/verify-ca/verify-full) or
+// explicitly acknowledges the cleartext link with DB_ALLOW_INSECURE=true.
+const DefaultDBSSLMode = "disable"
+
+// ListenerRole identifies which process's listeners ValidateListenerSecurity is
+// checking, so enforcement covers only the listeners that process actually runs.
+type ListenerRole int
+
+const (
+	RoleSMTPGateway ListenerRole = iota
+	RoleIMAPGateway
+	RolePOP3Gateway
+	RoleAPI
+)
+
+// String names the role for log/error messages.
+func (r ListenerRole) String() string {
+	switch r {
+	case RoleSMTPGateway:
+		return "smtp-gateway"
+	case RoleIMAPGateway:
+		return "imap-gateway"
+	case RolePOP3Gateway:
+		return "pop3-gateway"
+	case RoleAPI:
+		return "api"
+	default:
+		return "unknown"
+	}
+}
+
+// DBSSLMode returns the libpq sslmode used to build the DSN (DB_SSLMODE, default
+// DefaultDBSSLMode). Lower-cased and trimmed; an empty value falls back to the
+// default. DSN() reads it, so a deployment sets DB_SSLMODE=require (or a verify-*
+// mode) to encrypt DB traffic.
+func (c *Config) DBSSLMode() string {
+	m := strings.ToLower(strings.TrimSpace(getEnv("DB_SSLMODE", DefaultDBSSLMode)))
+	if m == "" {
+		return DefaultDBSSLMode
+	}
+	return m
+}
+
+// ValidateListenerSecurity performs the production secure-by-construction boot
+// checks for the given process role and applies the OSI-4 production-enforce /
+// development-warn split: it returns a non-nil error ONLY in production and ONLY
+// when at least one insecure listener/knob is found; in every other environment
+// it logs each finding as a warning and returns nil, so the testbed/e2e (which
+// run in development) boot exactly as before. Call it once from the process's
+// main() right after config.Load().
+func (c *Config) ValidateListenerSecurity(role ListenerRole) error {
+	var findings []string
+	// Shared: every process wired to this validator opens a Postgres connection,
+	// so the DB-transport check applies to all roles.
+	findings = append(findings, c.dbTransportFindings()...)
+	switch role {
+	case RoleSMTPGateway:
+		findings = append(findings, c.smtpListenerFindings()...)
+		findings = append(findings, queueTLSInsecureFindings()...)
+	case RoleIMAPGateway:
+		findings = append(findings, c.imapListenerFindings()...)
+	case RolePOP3Gateway:
+		findings = append(findings, c.pop3ListenerFindings()...)
+	case RoleAPI:
+		findings = append(findings, c.apiListenerFindings()...)
+	}
+	return c.enforceSecurityFindings(role.String(), findings)
+}
+
+// tlsKeypairConfigured reports whether a primary TLS certificate/key pair is
+// configured. This is the switch that makes every protocol gateway secure: with
+// it, go-smtp/go-imap/go-pop3 advertise STARTTLS, bind implicit-TLS listeners and
+// refuse pre-TLS AUTH; without it they degrade to plaintext-AUTH-capable
+// listeners. When both paths are set, OSI-4's validateTLSKeypair (run earlier in
+// Load) has already confirmed the pair exists and parses, so presence is
+// sufficient here.
+func (c *Config) tlsKeypairConfigured() bool {
+	return strings.TrimSpace(c.TLSCertPath) != "" && strings.TrimSpace(c.TLSKeyPath) != ""
+}
+
+// smtpListenerFindings flags an SMTP gateway with any listener enabled but no TLS
+// keypair: 25 could not advertise STARTTLS, 587 would run plaintext submission,
+// 465 would bind plaintext instead of implicit TLS, and all three would accept
+// AUTH before TLS.
+func (c *Config) smtpListenerFindings() []string {
+	if c.tlsKeypairConfigured() {
+		return nil
+	}
+	if c.SMTPPortInbound <= 0 && c.SMTPPortSubmission <= 0 && c.SMTPPortSubmissionTLS <= 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"SMTP gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STARTTLS cannot be advertised on port %d (inbound) or %d (submission), implicit TLS cannot run on port %d, and AUTH would be accepted before TLS — provide a certificate/key so STARTTLS is offered and pre-TLS AUTH is refused",
+		c.SMTPPortInbound, c.SMTPPortSubmission, c.SMTPPortSubmissionTLS)}
+}
+
+// imapListenerFindings flags an IMAP gateway with any listener enabled but no TLS
+// keypair: 143 could not advertise STARTTLS, 993 would bind plaintext instead of
+// implicit TLS, and both would accept LOGIN/AUTHENTICATE before TLS.
+func (c *Config) imapListenerFindings() []string {
+	if c.tlsKeypairConfigured() {
+		return nil
+	}
+	if c.IMAPPort <= 0 && c.IMAPTLSPort <= 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"IMAP gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STARTTLS cannot be advertised on port %d, implicit TLS cannot run on port %d, and LOGIN/AUTHENTICATE would be accepted before TLS — provide a certificate/key so STARTTLS is offered and pre-TLS auth is refused",
+		c.IMAPPort, c.IMAPTLSPort)}
+}
+
+// pop3ListenerFindings flags a POP3 gateway with any listener enabled but no TLS
+// keypair: 110 could not advertise STLS, 995 would bind plaintext instead of
+// implicit TLS, and both would accept USER/PASS before TLS.
+func (c *Config) pop3ListenerFindings() []string {
+	if c.tlsKeypairConfigured() {
+		return nil
+	}
+	if c.POP3Port <= 0 && c.POP3TLSPort <= 0 {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"POP3 gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STLS cannot be advertised on port %d, implicit TLS cannot run on port %d, and USER/PASS would be accepted before TLS — provide a certificate/key so STLS is offered and pre-TLS auth is refused",
+		c.POP3Port, c.POP3TLSPort)}
+}
+
+// apiListenerFindings flags the API serving plaintext HTTP with no TLS. The API
+// process never terminates TLS itself (cmd/api always ListenAndServe on APIAddr;
+// a front proxy does TLS), so the only secure production posture is a
+// TLS-terminating reverse proxy, which the operator acknowledges with
+// API_TLS_TERMINATED_BY_PROXY=true. Without that acknowledgement, refuse — the
+// security headers/HSTS assume HTTPS and auth tokens would otherwise travel in
+// cleartext.
+func (c *Config) apiListenerFindings() []string {
+	if apiTLSTerminatedByProxy() {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"API would serve plaintext HTTP on %s with no TLS: HSTS/security headers assume HTTPS and auth tokens would travel in cleartext — front it with a TLS-terminating reverse proxy and set API_TLS_TERMINATED_BY_PROXY=true to acknowledge it",
+		c.APIAddr())}
+}
+
+// dbTransportFindings flags a cleartext DB link. sslmode disable/allow/prefer all
+// permit (or silently fall back to) an unencrypted connection to Postgres. In
+// production that is refused unless explicitly acknowledged with
+// DB_ALLOW_INSECURE=true (e.g. a private, already-encrypted network segment).
+func (c *Config) dbTransportFindings() []string {
+	if !isInsecureDBSSLMode(c.DBSSLMode()) || dbInsecureAcknowledged() {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"DB_SSLMODE=%q sends database traffic in cleartext to Postgres — set DB_SSLMODE=require (or verify-ca/verify-full), or acknowledge an already-secured link with DB_ALLOW_INSECURE=true",
+		c.DBSSLMode())}
+}
+
+// queueTLSInsecureFindings flags QUEUE_TLS_INSECURE=true, which makes the SMTP
+// gateway's outbound delivery skip TLS certificate verification (and forces
+// MTA-STS enforcement off). It is honored in development for test delivery, but
+// in production it silently downgrades every outbound TLS connection, so it is
+// refused there. The exact-"true" match mirrors the check in
+// cmd/smtp-gateway/main.go so the refusal fires on precisely the value that
+// enables the insecure behavior.
+func queueTLSInsecureFindings() []string {
+	if os.Getenv("QUEUE_TLS_INSECURE") != "true" {
+		return nil
+	}
+	return []string{"QUEUE_TLS_INSECURE=true disables TLS certificate verification for outbound delivery (and turns MTA-STS enforcement off) — unset it so outbound TLS is verified"}
+}
+
+// apiTLSTerminatedByProxy reports the operator's acknowledgement that a
+// TLS-terminating reverse proxy fronts the plaintext API listener.
+func apiTLSTerminatedByProxy() bool { return getEnvBool("API_TLS_TERMINATED_BY_PROXY", false) }
+
+// dbInsecureAcknowledged reports the operator's acknowledgement of a cleartext DB
+// link (an already-encrypted/private network segment).
+func dbInsecureAcknowledged() bool { return getEnvBool("DB_ALLOW_INSECURE", false) }
+
+// isInsecureDBSSLMode reports whether a libpq sslmode permits or silently falls
+// back to a cleartext connection. "disable" never uses TLS; "allow" and "prefer"
+// try cleartext-or-TLS and fall back to cleartext, so none of them guarantee
+// encryption. "require"/"verify-ca"/"verify-full" always encrypt.
+func isInsecureDBSSLMode(mode string) bool {
+	switch mode {
+	case "disable", "allow", "prefer":
+		return true
+	default:
+		return false
+	}
+}
+
+// enforceSecurityFindings applies the production-enforce / development-warn split
+// (identical to OSI-4's validateSecurityConfig): a non-nil error in production
+// when there is at least one finding, otherwise a per-finding slog.Warn and nil.
+func (c *Config) enforceSecurityFindings(scope string, findings []string) error {
+	if len(findings) == 0 {
+		return nil
+	}
+	if c.isProductionEnv() {
+		return fmt.Errorf("insecure %s configuration refused in production (ENVIRONMENT=production): %s", scope, strings.Join(findings, "; "))
+	}
+	for _, f := range findings {
+		slog.Warn("listener security warning (would refuse boot in production)", "scope", scope, "finding", f, "environment", c.Environment)
+	}
+	return nil
+}
+
+// END listener secure-by-construction (secure-by-construction epic)
 // ══════════════════════════════════════════════════════════════════════════

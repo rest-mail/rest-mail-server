@@ -80,6 +80,17 @@ func main() {
 		slog.SetDefault(slog.New(logHandler))
 	}
 
+	// Secure-by-construction (production-only): refuse to boot when a listener
+	// would serve plaintext where it shouldn't — no TLS keypair to advertise
+	// STARTTLS on 25/587 or bind implicit TLS on 465 (which would also accept AUTH
+	// before TLS) — or when an insecure knob is set (QUEUE_TLS_INSECURE). In
+	// development/test (the testbed & e2e default) each finding only warns and boot
+	// proceeds unchanged.
+	if err := cfg.ValidateListenerSecurity(config.RoleSMTPGateway); err != nil {
+		slog.Error("insecure listener configuration refused", "error", err)
+		os.Exit(1)
+	}
+
 	// Prometheus /metrics endpoint for this gateway process. Serves the process
 	// registry the outbound queue worker and connection limiter increment into.
 	metricsServer := metricsrv.New(cfg.SMTPMetricsPort, cfg.MetricsAllowedCIDRs(), cfg.ProxyProtocolTrustedCIDRs)

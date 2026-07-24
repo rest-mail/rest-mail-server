@@ -86,6 +86,17 @@ func main() {
 		slog.SetDefault(slog.New(logHandler))
 	}
 
+	// Secure-by-construction (production-only): the API always serves plaintext
+	// HTTP (TLS is terminated by a front proxy), so in production refuse to boot
+	// unless the operator acknowledges that proxy with
+	// API_TLS_TERMINATED_BY_PROXY=true; also refuse a cleartext DB link
+	// (DB_SSLMODE=disable) unless acknowledged. In development/test (the testbed &
+	// e2e default) each finding only warns and boot proceeds unchanged.
+	if err := cfg.ValidateListenerSecurity(config.RoleAPI); err != nil {
+		slog.Error("insecure listener configuration refused", "error", err)
+		os.Exit(1)
+	}
+
 	// Connect to database (with retry)
 	database, err := db.WaitForDB(cfg, 60*time.Second)
 	if err != nil {
