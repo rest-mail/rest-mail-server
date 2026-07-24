@@ -118,7 +118,17 @@ tasks:
         # embedded DNS. Peer services are addressed by static mailnet IPs.
         mkdir -p {{.ROOT_DIR}}/.cache
         printf 'nameserver %s\n' "{{.SMTP_GATEWAY_DNS_IP}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
+        # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
+        # capabilities then add back only NET_BIND_SERVICE (binds the privileged
+        # SMTP ports 25/465/587), plus pid/mem/cpu ceilings. Rootfs stays
+        # writable: dev mode compiles via `air` into the bind-mounted /app and
+        # the entrypoint runs update-ca-certificates (read-only is a prod-image
+        # follow-up); log volume is separate.
+        HARDENING="--security-opt no-new-privileges:true \
+          --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          --pids-limit 512 --memory 1g --cpus 1.5"
         docker run -d --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
+          $HARDENING \
           --hostname {{.SMTP_GATEWAY_MAIL3_HOSTNAME}} \
           --restart unless-stopped \
           --network {{.SMTP_GATEWAY_NETWORK}} \

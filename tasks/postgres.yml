@@ -22,7 +22,8 @@ vars:
   POSTGRES_DB_USER: '{{.POSTGRES_DB_USER | default "restmail"}}'
   POSTGRES_DB_PASS: '{{.POSTGRES_DB_PASS | default "restmail"}}'
   POSTGRES_REGISTRY: '{{.POSTGRES_REGISTRY | default "ghcr.io/rest-mail"}}'
-  POSTGRES_UPSTREAM_IMAGE: '{{.POSTGRES_UPSTREAM_IMAGE | default "postgres:16-alpine"}}'
+  # Pinned by digest for reproducible, tamper-evident pulls (OSI-17).
+  POSTGRES_UPSTREAM_IMAGE: '{{.POSTGRES_UPSTREAM_IMAGE | default "postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"}}'
   POSTGRES_IMAGE: '{{.POSTGRES_REGISTRY}}/postgres:16-alpine'
   POSTGRES_CONTAINER_NAME: '{{.POSTGRES_PROJECT}}-postgres'
   POSTGRES_DATA_VOLUME: '{{.POSTGRES_PROJECT}}-postgres-data'
@@ -54,7 +55,19 @@ tasks:
       - |
         echo "  starting postgres ({{.POSTGRES_CONTAINER_NAME}} @ {{.POSTGRES_IP}})"
         docker rm -f {{.POSTGRES_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        # Container hardening (OSI-17): no privilege escalation, drop all Linux
+        # capabilities then add back only the ones the official postgres
+        # entrypoint needs to chown $PGDATA and gosu-drop to the postgres user
+        # (CHOWN/DAC_OVERRIDE/FOWNER/SETGID/SETUID), plus pid/mem/cpu ceilings.
+        # No read-only rootfs: postgres needs a writable data dir, socket dir,
+        # and /tmp — the data dir is already a named volume.
+        HARDENING="--security-opt no-new-privileges:true \
+          --cap-drop ALL \
+          --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+          --cap-add SETGID --cap-add SETUID \
+          --pids-limit 256 --memory 512m --cpus 1"
         docker run -d --name {{.POSTGRES_CONTAINER_NAME}} \
+          $HARDENING \
           --restart unless-stopped \
           --network {{.POSTGRES_NETWORK}} \
           --ip {{.POSTGRES_IP}} \

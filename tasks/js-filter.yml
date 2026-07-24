@@ -43,7 +43,36 @@ tasks:
       - |
         echo "  starting js-filter ({{.JS_FILTER_CONTAINER_NAME}} @ {{.JS_FILTER_IP}})"
         docker rm -f {{.JS_FILTER_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+        # ── OSI-6: contain the admin-authored JS mail-filter runner ──────────
+        # This container executes trusted-admin-authored filter scripts in a
+        # Node `vm` sandbox, so it gets the strictest profile in the stack:
+        #   * no-new-privileges + drop ALL capabilities (binds the unprivileged
+        #     :3100, needs none) — no way to gain privilege from a filter.
+        #   * read-only root filesystem with a small noexec/nosuid tmpfs for the
+        #     only writable path a filter could need (/tmp scratch).
+        #   * tight pid/mem/cpu ceilings to bound a runaway or abusive filter
+        #     (the Node heap is already capped at 64 MiB via --max-old-space-size).
+        #   * runs as the non-root `jsfilter` user baked into the image.
+        # No secrets: this container is started with NO -e flags — it never sees
+        # DB creds, JWT_SECRET, MASTER_KEY, or API tokens.
+        # Egress: this container carries no outbound dependency of its own (it
+        # only *receives* /execute + /validate calls from the API). Filter
+        # scripts can only fetch() hosts explicitly allow-listed by the app, and
+        # NO allow-list is configured here (JS_FILTER_ALLOWED_HOSTS unset), so
+        # outbound HTTP is default-denied at the application layer. A dedicated
+        # `internal: true` network is the intended container-level backstop but
+        # is not adoptable from this repo alone: the API resolves the sidecar as
+        # `http://js-filter:3100` via the testbed dnsmasq to a fixed mailnet IP
+        # and bypasses Docker's embedded DNS, so the sidecar must stay on the
+        # mailnet at {{.JS_FILTER_IP}} to remain reachable. Moving it behind an
+        # internal network requires a testbed dnsmasq/addressing change — see PR
+        # notes (OSI-6 follow-up).
+        HARDENING="--security-opt no-new-privileges:true \
+          --cap-drop ALL \
+          --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m \
+          --pids-limit 64 --memory 256m --cpus 0.5"
         docker run -d --name {{.JS_FILTER_CONTAINER_NAME}} \
+          $HARDENING \
           --restart unless-stopped \
           --network {{.JS_FILTER_NETWORK}} \
           --ip {{.JS_FILTER_IP}} \

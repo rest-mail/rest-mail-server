@@ -85,7 +85,16 @@ tasks:
         # mailnet_only secondary instances skip host-port publishing.
         PUBLISH="-p {{.IMAP_GATEWAY_PORT}}:{{.IMAP_GATEWAY_PORT}}"
         [ "{{.IMAP_GATEWAY_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
+        # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
+        # capabilities then add back only NET_BIND_SERVICE (binds the privileged
+        # IMAP ports 143/993), plus pid/mem/cpu ceilings. Rootfs stays writable
+        # (dev `air` build into bind-mounted /app + update-ca-certificates;
+        # read-only is a prod-image follow-up).
+        HARDENING="--security-opt no-new-privileges:true \
+          --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          --pids-limit 512 --memory 1g --cpus 1.5"
         docker run -d --name {{.IMAP_GATEWAY_CONTAINER_NAME}} \
+          $HARDENING \
           --hostname {{.IMAP_GATEWAY_MAIL3_HOSTNAME}} \
           --restart unless-stopped \
           --network {{.IMAP_GATEWAY_NETWORK}} \
