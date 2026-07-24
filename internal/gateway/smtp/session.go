@@ -458,7 +458,7 @@ func (s *session) Data(r io.Reader) error {
 			MessageID:  messageID,
 			InReplyTo:  inReplyTo,
 			References: references,
-			RawMessage: string(data),
+			RawMessage: data,
 			ClientIP:   extractIP(s.remoteAddr()),
 			HeloName:   s.conn.Hostname(),
 			// Always-on inbound transport-security metrics (inbound-MX only).

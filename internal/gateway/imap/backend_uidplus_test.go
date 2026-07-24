@@ -170,7 +170,7 @@ func (f *fakeAPI) deliver(w http.ResponseWriter, r *http.Request) {
 	id := f.nextID
 	f.nextID++
 	f.msgs[id] = &fakeMsg{
-		id: id, folder: "INBOX", raw: req.RawMessage,
+		id: id, folder: "INBOX", raw: string(req.RawMessage),
 		subject: req.Subject, sender: req.Sender, senderNm: req.SenderName,
 	}
 	f.mu.Unlock()

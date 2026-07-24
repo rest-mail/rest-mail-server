@@ -1134,7 +1134,7 @@ func TestRequestBody_Roundtrip(t *testing.T) {
 		if req.HeloName != "mx.test.com" {
 			t.Errorf("expected helo_name 'mx.test.com', got %q", req.HeloName)
 		}
-		if req.RawMessage != "raw content here" {
+		if string(req.RawMessage) != "raw content here" {
 			t.Errorf("expected raw_message 'raw content here', got %q", req.RawMessage)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -1151,7 +1151,7 @@ func TestRequestBody_Roundtrip(t *testing.T) {
 		BodyText:   "Body",
 		ClientIP:   "10.0.0.5",
 		HeloName:   "mx.test.com",
-		RawMessage: "raw content here",
+		RawMessage: []byte("raw content here"),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
