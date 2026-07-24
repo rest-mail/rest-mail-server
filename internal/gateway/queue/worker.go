@@ -115,6 +115,13 @@ const staleDeliveringTimeout = 15 * time.Minute
 // fixed 30 s deadline, so behavior is unchanged until wired to the config.
 func defaultSendDeadline(int64) time.Duration { return 30 * time.Second }
 
+// maxRESTMAILErrorBody caps how much of a non-2xx RESTMAIL response body is read
+// into the delivery error (#169). The endpoint is attacker-advertised (an MX's
+// RESTMAIL EHLO keyword), so an unbounded read of the error body would let a
+// hostile endpoint exhaust worker memory; 64 KiB is far more than any legitimate
+// error payload needs.
+const maxRESTMAILErrorBody = 64 << 10
+
 // computeBackoff returns the retry delay for the Nth delivery attempt:
 // exponential (1m, 2m, 4m, 8m, ...) capped at 4 hours.
 //
@@ -657,7 +664,10 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 		return nil
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	// Cap the error body read: the endpoint is attacker-advertised (an MX's
+	// RESTMAIL EHLO keyword), so an unbounded read would let a hostile endpoint
+	// exhaust worker memory with a huge response (#169).
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRESTMAILErrorBody))
 	return fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
 }
 
@@ -667,26 +677,10 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 // (true, err) if RESTMAIL was detected but delivery failed,
 // (false, nil) if the host does not support RESTMAIL.
 func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded bool, err error) {
-	dialer := w.newGuardedDialer(10 * time.Second)
-	conn, err := dialer.Dial("tcp", host+":25")
-	if err != nil {
-		return false, nil // Can't connect, let SMTP path handle it
+	probed, ok, restmailURL := w.probeRESTMAIL(host+":25", host)
+	if !probed {
+		return false, nil // Can't connect / probe failed, let SMTP path handle it
 	}
-
-	client, err := smtp.NewClient(conn, host)
-	if err != nil {
-		conn.Close()
-		return false, nil
-	}
-
-	if err := client.Hello(w.hostname); err != nil {
-		_ = client.Close()
-		return false, nil
-	}
-
-	ok, restmailURL := client.Extension("RESTMAIL")
-	_ = client.Quit()
-	_ = client.Close()
 
 	if !ok || restmailURL == "" {
 		w.cacheCapability(item.Domain, host, false, "")
@@ -701,6 +695,53 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 		return true, err
 	}
 	return true, nil
+}
+
+// probeRESTMAIL dials addr and runs the RESTMAIL capability probe against it:
+// read the SMTP greeting, EHLO, check for the RESTMAIL extension, then QUIT.
+// serverName is passed to smtp.NewClient (the TLS server name, informational
+// until STARTTLS). It reports (probed, supported, endpointURL):
+//   - probed is true only when the greeting+EHLO handshake completed and the
+//     remote gave a definitive RESTMAIL answer. When probed is false the socket
+//     or handshake failed and the caller falls through to plain SMTP without
+//     caching a capability result.
+//   - supported / endpointURL carry the RESTMAIL extension result when probed.
+//
+// The ENTIRE probe conversation is bounded by a single absolute deadline set on
+// the socket immediately after dial, before smtp.NewClient reads the greeting.
+// net/smtp installs no deadlines of its own, so without this a remote that
+// accepts the TCP connection and then stays silent would park this worker
+// goroutine forever: the queue row is reclaimed and re-probed on a timer, leaking
+// a goroutine each cycle, so a single silent MX can drain the worker pool and
+// wedge the outbound queue until restart (#169). The probe transfers no message
+// body, so it uses the base per-attempt budget (sendDeadline(0)), which stays far
+// below the reclaim interval.
+func (w *Worker) probeRESTMAIL(addr, serverName string) (probed, supported bool, endpointURL string) {
+	dialer := w.newGuardedDialer(10 * time.Second)
+	conn, err := dialer.Dial("tcp", addr)
+	if err != nil {
+		return false, false, ""
+	}
+
+	// Bound the whole probe with one absolute deadline, set before smtp.NewClient
+	// reads the greeting, so a silent remote cannot wedge this goroutine (#169).
+	_ = conn.SetDeadline(time.Now().Add(w.sendDeadline(0)))
+
+	client, err := smtp.NewClient(conn, serverName)
+	if err != nil {
+		conn.Close()
+		return false, false, ""
+	}
+
+	if err := client.Hello(w.hostname); err != nil {
+		_ = client.Close()
+		return false, false, ""
+	}
+
+	ok, restmailURL := client.Extension("RESTMAIL")
+	_ = client.Quit()
+	_ = client.Close()
+	return true, ok, restmailURL
 }
 
 // bounceSenderAuthorized reports whether a DSN for a failed outbound item may be
