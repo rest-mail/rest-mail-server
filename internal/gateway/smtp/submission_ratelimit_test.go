@@ -58,8 +58,11 @@ func TestSubmissionRateLimited(t *testing.T) {
 // credential cannot multiply its allowance by rotating authorized senders).
 func TestSubmissionRateLimit_PerAccountKey(t *testing.T) {
 	l := newSubmissionRateLimiter(2, 100)
-	if !l.Allow("acct:1") || !l.Allow("acct:1") {
-		t.Fatal("first two under the cap should be allowed")
+	if !l.Allow("acct:1") {
+		t.Fatal("first under the cap should be allowed")
+	}
+	if !l.Allow("acct:1") {
+		t.Fatal("second under the cap should be allowed")
 	}
 	if l.Allow("acct:1") {
 		t.Fatal("third over the cap should be denied")
