@@ -431,9 +431,12 @@ func (c *Client) UpdateMessage(token string, msgID uint, updates map[string]inte
 	return c.patchAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token, updates, nil)
 }
 
-// DeleteMessage deletes a message.
+// DeleteMessage permanently deletes a message. The gateway serves IMAP EXPUNGE /
+// CLOSE and POP3 QUIT-DELE (and the delete half of a MOVE) — protocols with no
+// trash stage — so the delete must be permanent: it reclaims quota and removes
+// the row rather than soft-deleting it into an unreachable, still-counted state.
 func (c *Client) DeleteMessage(token string, msgID uint) error {
-	return c.deleteAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token)
+	return c.deleteAuth(fmt.Sprintf("/api/v1/messages/%d?permanent=true", msgID), token)
 }
 
 // ── Quota ─────────────────────────────────────────────────────────────
