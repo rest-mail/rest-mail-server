@@ -128,6 +128,10 @@ func AutoMigrate(db *gorm.DB) error {
 		// Refresh-token rotation/revocation ledger (OSI-10): one row per issued
 		// refresh token, keyed by jti, tracking active/rotated/revoked state.
 		&models.RefreshToken{},
+		// Optional TOTP two-factor auth (OSI-19): one enrollment per account
+		// (secret encrypted at rest) plus its hashed one-time recovery codes.
+		&models.TwoFactor{},
+		&models.TwoFactorRecoveryCode{},
 		// DMARC aggregate (rua) reporting
 		&models.DMARCAggregateRecord{},
 	)

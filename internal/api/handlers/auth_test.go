@@ -12,7 +12,7 @@ import (
 
 func refreshWith(t *testing.T, jwt *auth.JWTService, refreshToken string) *auth.Claims {
 	t.Helper()
-	h := NewAuthHandler(nil, jwt) // Refresh does not touch the DB
+	h := NewAuthHandler(nil, jwt, "") // Refresh does not touch the DB
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
 	req.AddCookie(&http.Cookie{Name: "restmail_refresh", Value: refreshToken})
 	rec := httptest.NewRecorder()

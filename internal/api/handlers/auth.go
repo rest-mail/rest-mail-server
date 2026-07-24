@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -26,14 +27,28 @@ type AuthHandler struct {
 	db           *gorm.DB
 	jwtService   *auth.JWTService
 	refreshStore refreshTokenStore
+	// twoFactorStore + masterKey back the optional TOTP 2FA enforcement in the
+	// login path (OSI-19). When an account has 2FA active, a correct password is
+	// necessary but not sufficient — a valid current code (or recovery code) is
+	// also required before tokens are issued. masterKey decrypts the stored
+	// per-account secret. A nil store (no DB, some unit tests) disables the check.
+	twoFactorStore twoFactorStore
+	masterKey      string
 }
 
-func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService) *AuthHandler {
-	var store refreshTokenStore
+// NewAuthHandler wires the auth handler. masterKey is the MASTER_KEY used to
+// decrypt stored TOTP 2FA secrets during login enforcement; pass "" when
+// encryption is not configured (2FA enrollment is then refused elsewhere, and
+// login enforcement degrades to recovery-code-only for any pre-existing
+// enrollment — a secret that could not have been stored anyway).
+func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string) *AuthHandler {
+	var refreshStore refreshTokenStore
+	var tfStore twoFactorStore
 	if db != nil {
-		store = repositories.NewRefreshTokenRepository(db)
+		refreshStore = repositories.NewRefreshTokenRepository(db)
+		tfStore = repositories.NewTwoFactorRepository(db)
 	}
-	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: store}
+	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, twoFactorStore: tfStore, masterKey: masterKey}
 }
 
 // persistRefreshToken records a freshly issued refresh token in the rotation
@@ -56,6 +71,12 @@ type loginRequest struct {
 	Email    string `json:"email,omitempty"`    // For mailbox users
 	Username string `json:"username,omitempty"` // For admin users
 	Password string `json:"password"`
+	// TOTPCode / RecoveryCode carry the second factor for accounts with 2FA
+	// active (OSI-19). Both are optional and ignored for accounts without 2FA,
+	// so non-2FA logins are byte-for-byte unchanged. A single-step login that
+	// omits them for a 2FA account is answered with a totp_required challenge.
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
 }
 
 type loginResponse struct {
@@ -89,15 +110,47 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	// Admin user login path
 	if req.Username != "" {
-		h.loginAdmin(w, req.Username, req.Password)
+		h.loginAdmin(w, req)
 		return
 	}
 
 	// Mailbox user login path
-	h.loginMailbox(w, req.Email, req.Password)
+	h.loginMailbox(w, req)
 }
 
-func (h *AuthHandler) loginAdmin(w http.ResponseWriter, username, password string) {
+// enforce2FA gates token issuance on the second factor when an account has TOTP
+// 2FA active. It MUST be called only after the password has been verified: the
+// enrollment lookup happens here, so whether 2FA is enabled never leaks to a
+// caller who has not already proven the password (OSI-19 + OSI-24). Returns
+// true when login may proceed (no active 2FA, or a valid TOTP/recovery code was
+// supplied). On failure it writes the response and returns false — with a
+// distinct totp_required code when no second factor was supplied, so a client
+// knows to prompt for one.
+func (h *AuthHandler) enforce2FA(w http.ResponseWriter, userType string, subjectID uint, req loginRequest) bool {
+	if h.twoFactorStore == nil {
+		return true
+	}
+	tf, err := h.twoFactorStore.GetActive(userType, subjectID)
+	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
+		return true // account has no active 2FA — unchanged behaviour
+	}
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
+		return false
+	}
+	if verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, tf, req.TOTPCode, req.RecoveryCode) {
+		return true
+	}
+	if req.TOTPCode == "" && req.RecoveryCode == "" {
+		respond.Error(w, http.StatusUnauthorized, "totp_required", "Two-factor authentication code required")
+	} else {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid two-factor authentication code")
+	}
+	return false
+}
+
+func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
+	username, password := req.Username, req.Password
 	adminUserRepo := repositories.NewAdminUserRepository(h.db)
 
 	// Find the admin user. A miss does NOT short-circuit: we still run one bcrypt
@@ -120,6 +173,12 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, username, password strin
 	// account existence to an unauthenticated guesser.
 	if !adminUser.Active {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
+		return
+	}
+
+	// Second factor (OSI-19): only reached with a correct password, so a 2FA
+	// challenge never leaks account existence. No-op for admins without 2FA.
+	if !h.enforce2FA(w, "admin", adminUser.ID, req) {
 		return
 	}
 
@@ -176,7 +235,8 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, username, password strin
 	})
 }
 
-func (h *AuthHandler) loginMailbox(w http.ResponseWriter, email, password string) {
+func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
+	email, password := req.Email, req.Password
 	// Find the mailbox. As with admin login, a miss does NOT short-circuit: run
 	// one bcrypt comparison (against a dummy hash) so an unknown or inactive
 	// address is timing- and message-indistinguishable from a wrong password
@@ -190,6 +250,13 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, email, password string
 	pwErr := auth.CheckPassword(password, passwordHash)
 	if lookupErr != nil || pwErr != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
+		return
+	}
+
+	// Second factor (OSI-19): only reached with a correct password, so a 2FA
+	// challenge never leaks whether the address exists or has 2FA. No-op for
+	// mailboxes without 2FA, before any account side effects.
+	if !h.enforce2FA(w, "mailbox", mailbox.ID, req) {
 		return
 	}
 

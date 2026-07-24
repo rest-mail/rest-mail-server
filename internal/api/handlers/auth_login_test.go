@@ -96,7 +96,7 @@ func seedLoginMailbox(t *testing.T, gdb *gorm.DB, password string) string {
 func TestLogin_UnknownUserAndWrongPasswordAreIndistinguishable(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc)
+	h := NewAuthHandler(gdb, jwtSvc, "")
 
 	addr := seedLoginMailbox(t, gdb, "correct-horse-battery")
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -120,7 +120,7 @@ func TestLogin_UnknownUserAndWrongPasswordAreIndistinguishable(t *testing.T) {
 func TestLogin_PersistsActiveRefreshToken(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc)
+	h := NewAuthHandler(gdb, jwtSvc, "")
 
 	addr := seedLoginMailbox(t, gdb, "correct-horse-battery")
 
