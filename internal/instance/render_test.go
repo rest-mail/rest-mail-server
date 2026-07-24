@@ -111,6 +111,45 @@ func TestRenderOmittedPolicyBlocksEmitNoLines(t *testing.T) {
 	}
 }
 
+// TestRenderInternalMTLSMatchesGolden is the internal-mTLS counterpart to the
+// drift guard: a manifest setting the optional `tls.internal:` block (mode
+// require + a non-default ca_source: manual) must render byte-for-byte to the
+// committed config_internal_mtls.env — pinning the MAIL3_INTERNAL_MTLS=true and
+// RESTMAIL_INTERNAL_CA_SOURCE=manual lines. Together with
+// TestRenderMatchesCommittedConfig (no block → byte-identical config.env) this
+// proves the block is purely additive: present → new lines, absent → unchanged.
+func TestRenderInternalMTLSMatchesGolden(t *testing.T) {
+	dir := "testdata"
+
+	raw, err := os.ReadFile(filepath.Join(dir, "manifest_internal_mtls.yml"))
+	if err != nil {
+		t.Fatalf("read manifest_internal_mtls: %v", err)
+	}
+	m, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("parse manifest_internal_mtls: %v", err)
+	}
+	got, err := Render(m)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	want, err := os.ReadFile(filepath.Join(dir, "config_internal_mtls.env"))
+	if err != nil {
+		t.Fatalf("read config_internal_mtls.env: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("rendered config_internal_mtls.env is stale — re-run render.\n--- got ---\n%s\n--- committed ---\n%s", got, want)
+	}
+	for _, want := range []string{
+		"MAIL3_INTERNAL_MTLS=true\n",
+		"RESTMAIL_INTERNAL_CA_SOURCE=manual\n",
+	} {
+		if !bytes.Contains(got, []byte(want)) {
+			t.Errorf("internal-mTLS output missing %q", want)
+		}
+	}
+}
+
 func TestParseRejectsUnknownField(t *testing.T) {
 	_, err := Parse([]byte("domain: x.test\nbogus_field: 1\n"))
 	if err == nil {

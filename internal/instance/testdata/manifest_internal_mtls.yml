@@ -1,0 +1,62 @@
+# Fixture: a manifest that exercises the internal-mTLS seam (PR6 / G7). It sets
+# the optional `tls.internal:` block — mode require (the enforced gateway→API
+# handshake, on) plus a NON-default ca_source (manual, deployer-provisioned
+# internal CA). Paired with config_internal_mtls.env; proves the block renders
+# MAIL3_INTERNAL_MTLS=true (same line the legacy `internal_mtls: true` bool emits)
+# and RESTMAIL_INTERNAL_CA_SOURCE=manual. The no-block fixture (manifest.yml →
+# config.env) proves omitting `tls.internal` renders byte-for-byte as before.
+
+# ── envelope ────────────────────────────────────────────────────────────
+domain:     mail3.test
+hostname:   mail3.test
+proxy_host: restmail.localhost
+
+# ── substrate placement ─────────────────────────────────────────────────
+project:        rest-mail
+network:        testbed_mailnet
+certs_volume:   testbed_certs
+testbed_dns_ip: 10.99.0.10
+dns_provider:   testbed-dnsmasq
+cert_provider:  testbed-certgen
+
+# ── image source ────────────────────────────────────────────────────────
+registry:  ghcr.io/rest-mail
+image_tag: dev
+
+# ── runtime ─────────────────────────────────────────────────────────────
+log_level:    debug
+environment:  development
+mailnet_only: false
+
+db:
+  name: restmail
+  user: restmail
+
+# ── internal gateway→API mTLS (optional) ────────────────────────────────
+# mode: require (default when the block is present) enforces the client-cert
+# handshake on the API's internal listener — secure-by-default. ca_source: manual
+# means the deployer provisions the internal CA + server/client certs into the
+# certs volume out of band (`task instance:mtls:issue` only validates presence).
+tls:
+  internal:
+    mode:      require
+    ca_source: manual
+
+# ── binding: components on the substrate ────────────────────────────────
+components:
+  - { name: postgres, ip: 10.99.0.43 }
+  - name: api
+    ip: 10.99.0.20
+    port: 8080
+  - name: smtp-gateway
+    ip: 10.99.0.13
+    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+  - name: imap-gateway
+    ip: 10.99.0.15
+    ports: { plain: 143, tls: 993 }
+  - name: pop3-gateway
+    ip: 10.99.0.16
+    ports: { plain: 110, tls: 995 }
+  - { name: js-filter, ip: 10.99.0.22 }
+  - { name: webmail,   ip: 10.99.0.21 }
+  - { name: admin,     ip: 10.99.0.27 }

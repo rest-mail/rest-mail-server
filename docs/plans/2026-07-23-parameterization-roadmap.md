@@ -82,7 +82,28 @@ mTLS touch it). PRs that edit it are marked; the rest are manifest/Taskfile/scaf
   e2e stays green), **manual** (validate operator-dropped cert/key, no issuance), and
   **acme/letsencrypt** stubbed to a not-yet-implemented error (fields wired through; the
   ACME client itself is a later PR). `tls.internal` (mTLS) stays with PR6. Risk: medium.
-- **PR6 — mTLS provisioning (G7)** *[touches config.go]* — **after `feat/internal-mtls` merges.** Replace hardcoded `/certs/ca.crt`; `tls.internal` → config; provision internal CA + client certs. Risk: high; gate behind `mode: off`.
+- **PR6 — mTLS provisioning (G7)** *[touches config.go]* — **SHIPPED.** Internal mTLS
+  was already built (#65) and is on for the testbed (the scaffold/testbed manifests
+  carry `internal_mtls: true`); this PR makes its provisioning DECLARATIVE without
+  touching the working handshake. Added the optional `tls.internal:` block
+  (`{ mode: off|verify|require (default require, secure-by-default ON), ca_source:
+  testbed-certgen|manual }`) as the richer counterpart of the legacy top-level
+  `internal_mtls` bool (still supported; the block wins when present, an omitted
+  block falls back to the bool → existing manifests render byte-for-byte as before,
+  pinned by golden). `mode` renders `MAIL3_INTERNAL_MTLS=true` (verify/require both
+  ENABLE the enforced `RequireAndVerifyClientCert` handshake — the implementation
+  has no soft mode; off suppresses the line). De-hardcoded cmd/api's literal
+  `/certs/ca.crt` into `config.TrustedCACertPath` (`TRUSTED_CA_CERT`, default exactly
+  `/certs/ca.crt` → testbed unchanged; empty skips the extra outbound trust).
+  Generalized `instance:mtls:issue` behind `ca_source` (RESTMAIL_INTERNAL_CA_SOURCE,
+  rendered only when non-default): **testbed-certgen** (default, the in-repo
+  `certgen --internal-mtls` command byte-identical to before — e2e stays green) and
+  **manual** (validate deployer-provisioned `/certs/internal-*` material, no issuance).
+  The **NOTE the earlier "gate behind `mode: off`" line was STALE** — it predated the
+  default-on decision; the real posture is mTLS ON and this PR does NOT change it.
+  Risk: high (working handshake) — mitigated: every existing golden (config.env,
+  scaffold_testbed.config.env, config_tls.env) is byte-unchanged and the testbed
+  renders no new line, so its rendered config + provisioned cert paths are identical.
 - **PR7 — Real-host substrate profile (G4)** *[no config.go]* — **SHIPPED.** Added a
   `--profile testbed|host` flag to `instance scaffold` (default `testbed`). The
   **testbed** profile is byte-for-byte today's output (pinned by the
@@ -117,7 +138,14 @@ Order: **PR1 → PR2 → {PR3, PR4, PR5} → PR6 (after mTLS) → PR7**. Only PR
    (`tls.acme:`), while provisioning stays a task: `testbed-certgen` issues via the testbed
    CA, `manual` validates deployer-dropped files in the named certs volume without issuing,
    and `acme` is stubbed pending the ACME client.
-3. **mTLS coupling (PR6):** wait for `feat/internal-mtls` to define config fields then add the manifest block, or design `tls.internal` now?
+3. ~~**mTLS coupling (PR6):** wait for `feat/internal-mtls` to define config fields then add the manifest block, or design `tls.internal` now?~~
+   **RESOLVED (PR6):** the mTLS implementation landed first (#65, on for the testbed via
+   `internal_mtls: true`); PR6 then added `tls.internal:` as the richer declarative
+   form over the existing `INTERNAL_MTLS_*` env contract. `mode` maps to the existing
+   `MAIL3_INTERNAL_MTLS` switch (the legacy bool stays valid, block wins when present);
+   `ca_source` steers `instance:mtls:issue` (testbed-certgen default | manual). No
+   change to the working handshake — only its configuration/provisioning became
+   manifest-driven, with the testbed's rendered env + cert paths byte-identical.
 4. **DKIM selector (PR3):** purely a rendered input, or also asserted in a DB/health-check?
 5. **certgen (G8):** keep `cmd/certgen` as a dev tool or deprecate in favour of `instance:certs:issue`?
 6. ~~**Multi-domain instances:** manifest declares several served domains, or one primary domain + others via admin API post-up?~~

@@ -1056,28 +1056,59 @@ tasks:
         esac
 
   instance:mtls:issue:
-    desc: "Provision internal-mTLS certs (dedicated CA + API server + gateway client) for INSTANCE into the certs volume"
+    desc: "Provision internal-mTLS certs for INSTANCE into the certs volume (source = tls.internal.ca_source: testbed-certgen | manual)"
     vars:
       CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
+      # tls.internal.ca_source (render.go → RESTMAIL_INTERNAL_CA_SOURCE) selects
+      # the provisioning branch. Rendered only when NON-default, so an absent var
+      # means the testbed default — byte-identical to before.
+      CA_SOURCE: '{{.RESTMAIL_INTERNAL_CA_SOURCE | default "testbed-certgen"}}'
     cmds:
-      # Mints a DEDICATED internal CA + an API server cert (SANs cover the api
-      # container IP + localhost + the instance hostname) + a gateway client
-      # cert into /certs, using the in-repo certgen (built inside a golang
-      # container so it is arch-correct for the volume). Idempotent: an existing
-      # internal CA is reused and leaves already present are skipped, so it is
-      # safe to re-run and safe to run even when the instance has not enabled
-      # internal mTLS (the certs simply go unused).
       - |
-        docker run --rm \
-          -v "{{.CERTS_VOLUME}}:/certs" \
-          -v "{{.ROOT_DIR}}:/src" -w /src \
-          -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
-          -v rest-mail-e2e-gocache:/root/.cache/go-build \
-          -e GOFLAGS=-buildvcs=false \
-          golang:1.25 \
-          go run ./cmd/certgen --internal-mtls --out /certs \
-            --server-ip 127.0.0.1,{{.MAIL3_API_IP}} \
-            --server-dns api,localhost,{{.MAIL3_HOSTNAME}}
+        case "{{.CA_SOURCE}}" in
+          testbed-certgen)
+            # Default (testbed): mint a DEDICATED internal CA + an API server cert
+            # (SANs cover the api container IP + localhost + the instance hostname)
+            # + a gateway client cert into /certs, using the in-repo certgen (built
+            # inside a golang container so it is arch-correct for the volume).
+            # Idempotent: an existing internal CA is reused and leaves already
+            # present are skipped, so it is safe to re-run and safe to run even when
+            # the instance has not enabled internal mTLS (the certs simply go unused).
+            docker run --rm \
+              -v "{{.CERTS_VOLUME}}:/certs" \
+              -v "{{.ROOT_DIR}}:/src" -w /src \
+              -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+              -v rest-mail-e2e-gocache:/root/.cache/go-build \
+              -e GOFLAGS=-buildvcs=false \
+              golang:1.25 \
+              go run ./cmd/certgen --internal-mtls --out /certs \
+                --server-ip 127.0.0.1,{{.MAIL3_API_IP}} \
+                --server-dns api,localhost,{{.MAIL3_HOSTNAME}}
+            ;;
+          manual)
+            # The deployer provisions the internal trust domain out of band (their
+            # own CA/PKI) and drops the material into the certs volume; we ONLY
+            # validate presence and never issue. The five files are the internal CA
+            # + the API server keypair + the gateway client keypair, at the fixed
+            # /certs/internal-* paths the api/gateway task env vars point at
+            # (INTERNAL_MTLS_CA_CERT / _SERVER_* / _CLIENT_*).
+            docker run --rm -v "{{.CERTS_VOLUME}}:/certs:ro" alpine:3 sh -euc '
+              missing=0
+              for f in internal-ca.crt internal-server.crt internal-server.key internal-client.crt internal-client.key; do
+                if [ ! -f "/certs/$f" ]; then
+                  echo "ca_source=manual: MISSING /certs/$f — drop the internal CA + server/client cert material into volume {{.CERTS_VOLUME}}" >&2
+                  missing=1
+                fi
+              done
+              [ "$missing" = 0 ] || exit 1
+              echo "ca_source=manual: ok — internal CA + server + client material present"
+            '
+            ;;
+          *)
+            echo "ca_source={{.CA_SOURCE}}: unknown internal-CA source (want testbed-certgen | manual)." >&2
+            exit 2
+            ;;
+        esac
 
   instance:dns:register:
     desc: "Publish <INSTANCE>'s DNS to the testbed dnsmasq (requires the testbed running)"
