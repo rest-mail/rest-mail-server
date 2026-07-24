@@ -177,7 +177,11 @@ type Config struct {
 	QueuePollInterval time.Duration
 	MTASTSEnforce     bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
 
-	// PROXY protocol
+	// Trusted front-proxy networks. Governs the PROXY protocol on the gateway
+	// listeners AND the HTTP API's trusted-proxy-aware client-IP derivation: an
+	// X-Forwarded-For header is honored only when the direct TCP peer is one of
+	// these CIDRs. Empty by default — no proxy is trusted, so the genuine socket
+	// peer is always used and a client cannot spoof its source IP.
 	ProxyProtocolTrustedCIDRs []string
 
 	// CORS

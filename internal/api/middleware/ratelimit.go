@@ -107,9 +107,10 @@ func (rl *rateLimiter) sweepLocked(now time.Time) {
 	}
 }
 
-// clientIP extracts the client IP from RemoteAddr. The chi RealIP middleware
-// (installed first in the stack) already resolves X-Forwarded-For/X-Real-IP into
-// RemoteAddr, so this keys on the true client for proxied deployments.
+// clientIP extracts the client IP from RemoteAddr. The TrustedRealIP middleware
+// (installed early in the stack) resolves X-Forwarded-For into RemoteAddr ONLY for
+// trusted-proxy peers, so this keys on the true client for proxied deployments and
+// on the genuine socket peer otherwise — a spoofed header cannot shift the key.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

@@ -153,9 +153,10 @@ func ctxSleep(ctx context.Context, d time.Duration) {
 	}
 }
 
-// restmailClientIP extracts the client IP from RemoteAddr. When the API sits
-// behind the chi RealIP middleware (which resolves X-Forwarded-For/X-Real-IP
-// into RemoteAddr), this keys on the true client for proxied deployments.
+// restmailClientIP extracts the client IP from RemoteAddr. The TrustedRealIP
+// middleware resolves X-Forwarded-For into RemoteAddr ONLY for trusted-proxy peers,
+// so this keys on the true client for proxied deployments and on the genuine socket
+// peer otherwise — an untrusted caller cannot spoof its source via a forwarded header.
 func restmailClientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
