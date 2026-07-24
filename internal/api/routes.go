@@ -69,20 +69,29 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	// Global middleware
 	//
-	// Metrics network-gate (OSI-12) MUST come first — before chimw.RealIP — so it
-	// evaluates the genuine TCP peer, not a client-spoofable X-Forwarded-For that
-	// RealIP folds into RemoteAddr. It restricts /metrics to internal CIDRs
-	// (default loopback + RFC1918, so the in-cluster Prometheus scrape keeps
-	// working) and 404s any other peer; every non-/metrics path passes straight
-	// through. A forwarded header is trusted only from a PROXY_PROTOCOL_TRUSTED_CIDRS
-	// proxy.
+	// A forwarded header (X-Forwarded-For) is honored only when the direct TCP peer
+	// is a configured trusted proxy (PROXY_PROTOCOL_TRUSTED_CIDRS). The allowlist is
+	// empty by default, so out of the box the genuine socket peer is always used and
+	// a public client cannot spoof its source IP. This one allowlist governs both
+	// the metrics network-gate and the RealIP rewrite below.
+	trustedProxies := netallow.New("api-proxy", cfg.ProxyProtocolTrustedCIDRs)
+
+	// Metrics network-gate (OSI-12) MUST come first — before the RealIP rewrite — so
+	// it evaluates the genuine TCP peer, not a client-spoofable X-Forwarded-For. It
+	// restricts /metrics to internal CIDRs (default loopback + RFC1918, so the
+	// in-cluster Prometheus scrape keeps working) and 404s any other peer; every
+	// non-/metrics path passes straight through.
 	r.Use(middleware.MetricsAllowlist(middleware.MetricsAllowlistConfig{
 		Path:           "/metrics",
 		Allow:          netallow.New("api-metrics", cfg.MetricsAllowedCIDRs()),
-		TrustedProxies: netallow.New("api-metrics-proxy", cfg.ProxyProtocolTrustedCIDRs),
+		TrustedProxies: trustedProxies,
 	}))
 	r.Use(chimw.RequestID)
-	r.Use(chimw.RealIP)
+	// TrustedRealIP replaces chi's RealIP: it resolves the client IP from
+	// X-Forwarded-For ONLY for trusted-proxy peers and writes it into RemoteAddr, so
+	// the auth rate limiter, the RESTMAIL delivery-auth gate, and the negative-lookup
+	// tarpit — all of which key on RemoteAddr — cannot be fooled by a spoofed header.
+	r.Use(middleware.TrustedRealIP(trustedProxies))
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	// Security headers (OSI-11) — HSTS/nosniff/frame-deny/referrer-policy/CSP on
@@ -560,7 +569,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	if cfg.InternalMTLSEnabled {
 		ir := chi.NewRouter()
 		ir.Use(chimw.RequestID)
-		ir.Use(chimw.RealIP)
+		// Same trusted-proxy-aware RealIP as the public listener: never trust a
+		// forwarded header from an untrusted peer (see the public middleware above).
+		ir.Use(middleware.TrustedRealIP(trustedProxies))
 		ir.Use(chimw.Logger)
 		ir.Use(chimw.Recoverer)
 		ir.Use(metrics.HTTPMetrics)
