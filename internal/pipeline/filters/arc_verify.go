@@ -45,6 +45,9 @@ var instanceRe = regexp.MustCompile(`\bi=(\d+)\b`)
 // cvRe matches the cv= tag in ARC-Seal headers.
 var cvRe = regexp.MustCompile(`\bcv=(none|pass|fail)\b`)
 
+// sealDomainRe matches the d= (sealing domain) tag in an ARC-Seal header.
+var sealDomainRe = regexp.MustCompile(`\bd=([^;\s]+)`)
+
 func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
 
@@ -159,6 +162,16 @@ func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 	addARCAuthResult(&modified, result)
 	modified.Metadata["arc_status"] = result
 
+	// Record the most recent ARC-Seal's signing domain (its d= tag) so
+	// dmarc_check can gate the DMARC override on the trusted-sealer allowlist
+	// (#178). This is the sealer that vouches for the whole chain; trust is
+	// anchored on it, not on any earlier hop.
+	if s := sets[instances[len(instances)-1]]; s != nil {
+		if d := parseSealDomain(s.Seal); d != "" {
+			modified.Metadata["arc_sealer"] = d
+		}
+	}
+
 	return &pipeline.FilterResult{
 		Type:    pipeline.FilterTypeTransform,
 		Action:  pipeline.ActionContinue,
@@ -249,6 +262,15 @@ func parseInstance(header string) int {
 // parseCVValue extracts the cv= value from an ARC-Seal header.
 func parseCVValue(seal string) string {
 	m := cvRe.FindStringSubmatch(seal)
+	if len(m) < 2 {
+		return ""
+	}
+	return m[1]
+}
+
+// parseSealDomain extracts the d= (sealing domain) value from an ARC-Seal header.
+func parseSealDomain(seal string) string {
+	m := sealDomainRe.FindStringSubmatch(seal)
 	if len(m) < 2 {
 		return ""
 	}

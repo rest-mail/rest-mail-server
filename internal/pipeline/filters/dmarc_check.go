@@ -44,7 +44,14 @@ func captureDMARC(ctx context.Context, email *pipeline.EmailJSON, domain, policy
 }
 
 // dmarcCheckFilter evaluates DMARC policy using SPF and DKIM results.
-type dmarcCheckFilter struct{}
+type dmarcCheckFilter struct {
+	// trustedSealers is the set of ARC sealing domains (lower-cased) whose
+	// passing ARC chain is permitted to override a DMARC failure. Empty by
+	// default, which keeps ARC purely informational: no sealer is trusted, so an
+	// ARC "pass" never rescues a DMARC reject/quarantine (see #178). Bound to the
+	// deployment's allowlist in routes.go via NewDMARCCheckWithSealers.
+	trustedSealers map[string]struct{}
+}
 
 func init() {
 	pipeline.DefaultRegistry.Register("dmarc_check", NewDMARCCheck)
@@ -52,6 +59,34 @@ func init() {
 
 func NewDMARCCheck(_ []byte) (pipeline.Filter, error) {
 	return &dmarcCheckFilter{}, nil
+}
+
+// NewDMARCCheckWithSealers returns a factory that binds the trusted-ARC-sealer
+// allowlist to the dmarc_check filter. Only a passing ARC chain whose most
+// recent ARC-Seal was signed by one of these domains (its d= tag) may override a
+// DMARC failure (RFC 8617 makes ARC meaningful only when it comes from a sealer
+// you trust). An empty list leaves ARC informational — the secure default.
+func NewDMARCCheckWithSealers(sealers []string) pipeline.FilterFactory {
+	set := make(map[string]struct{}, len(sealers))
+	for _, s := range sealers {
+		if s = strings.ToLower(strings.TrimSpace(s)); s != "" {
+			set[s] = struct{}{}
+		}
+	}
+	return func(_ []byte) (pipeline.Filter, error) {
+		return &dmarcCheckFilter{trustedSealers: set}, nil
+	}
+}
+
+// sealerTrusted reports whether the given ARC sealing domain is in the
+// configured trusted-sealer allowlist. An empty domain or an empty allowlist is
+// never trusted, so ARC stays informational by default.
+func (f *dmarcCheckFilter) sealerTrusted(sealer string) bool {
+	if sealer == "" || len(f.trustedSealers) == 0 {
+		return false
+	}
+	_, ok := f.trustedSealers[strings.ToLower(strings.TrimSpace(sealer))]
+	return ok
 }
 
 func (f *dmarcCheckFilter) Name() string              { return "dmarc_check" }
@@ -146,23 +181,35 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}
 
 	// ARC override status: a valid ARC chain lets us honor the original
-	// authentication on forwarded mail (RFC 8617 §5.2). The verdict is taken ONLY
-	// from the arc_status metadata written by the local arc_verify filter — never
-	// from an "arc=pass" substring in Authentication-Results, which on an inbound
-	// message is attacker-controlled and was a second DMARC-bypass vector (any
-	// message merely containing "arc=pass" would trigger the override even when
-	// arc_verify never ran).
+	// authentication on forwarded mail (RFC 8617 §5.2). The verdict and the
+	// sealing domain are taken ONLY from the arc_status / arc_sealer metadata
+	// written by the local arc_verify filter — never from an "arc=pass" substring
+	// in Authentication-Results, which on an inbound message is attacker-controlled
+	// and was a second DMARC-bypass vector (any message merely containing
+	// "arc=pass" would trigger the override even when arc_verify never ran).
 	arcStatus := ""
+	arcSealer := ""
 	if email.Metadata != nil {
 		arcStatus = email.Metadata["arc_status"]
+		arcSealer = email.Metadata["arc_sealer"]
 	}
+
+	// An ARC "pass" may override a DMARC failure ONLY when the sealing domain (the
+	// d= of the most recent ARC-Seal, recorded by arc_verify) is in the configured
+	// trusted-sealer allowlist. RFC 8617 makes ARC meaningful only when it comes
+	// from a sealer you trust: without this gate any attacker who runs their own
+	// ARC sealer could seal spoofed mail and launder it past the From domain's
+	// p=reject/quarantine (#178). The allowlist is empty by default, so ARC stays
+	// purely informational unless a sealer is explicitly trusted.
+	arcOverride := arcStatus == "pass" && f.sealerTrusted(arcSealer)
 
 	aligned := spfAligned || dkimAligned
 
 	// Disposition actually applied to this message, for aggregate (rua) reports:
-	// "none" when DMARC passes or an ARC override applies, else the published policy.
+	// "none" when DMARC passes or a trusted-sealer ARC override applies, else the
+	// published policy.
 	disposition := "none"
-	if !aligned && arcStatus != "pass" && (policy == "reject" || policy == "quarantine") {
+	if !aligned && !arcOverride && (policy == "reject" || policy == "quarantine") {
 		disposition = policy
 	}
 	captureDMARC(ctx, email, domain, policy, spfPass, spfAligned, dkimPass, dkimAligned, disposition)
@@ -180,14 +227,14 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		}, nil
 	}
 
-	if arcStatus == "pass" {
+	if arcOverride {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
 			Action: pipeline.ActionContinue,
 			Log: pipeline.FilterLog{
 				Filter: "dmarc_check",
 				Result: "pass",
-				Detail: fmt.Sprintf("policy=%s dmarc=fail but arc=pass (ARC override) domain=%s", policy, domain),
+				Detail: fmt.Sprintf("policy=%s dmarc=fail but arc=pass from trusted sealer %s (ARC override) domain=%s", policy, arcSealer, domain),
 			},
 		}, nil
 	}
