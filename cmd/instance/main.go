@@ -60,9 +60,15 @@ usage:
       -o     output path (default: <manifest-dir>/config.env)
       -check don't write; exit non-zero if the target is missing or stale
 
-  instance scaffold [-dir instances] <domain>
-      Create instances/<domain>/{manifest.yml,config.env,secrets.env} with a
-      freshly-allocated IP block and random secrets. Brings up nothing.
+  instance scaffold [-dir instances] [-profile testbed|host] <domain>
+      Create instances/<domain>/{manifest.yml,config.env,secrets.env} with
+      random secrets. Brings up nothing.
+      -profile  substrate flavor of the generated manifest (default testbed):
+                testbed  the testbed mailnet (allocates a 10.99.0.x block,
+                         testbed dnsmasq/certgen) — the default; unchanged.
+                host     a real host: no mailnet IPs (you assign addresses),
+                         blank registry, cert_provider: manual, published
+                         host ports. Fill in the placeholders, then render.
 
   instance dns-env [-o out.env] [-domain <name>] <manifest.yml>
       Render the dns.env consumed by reference-dnsmasq render-fragment.
@@ -162,6 +168,7 @@ func domainsCmd(args []string) {
 func scaffoldCmd(args []string) {
 	fs := flag.NewFlagSet("scaffold", flag.ExitOnError)
 	dir := fs.String("dir", "instances", "instances directory")
+	profile := fs.String("profile", "testbed", "substrate profile: testbed | host")
 	_ = fs.Parse(args)
 
 	if fs.NArg() != 1 {
@@ -175,7 +182,7 @@ func scaffoldCmd(args []string) {
 		fatal("scaffold: %s already exists — refusing to overwrite", target)
 	}
 
-	res, err := instance.Scaffold(domain, *dir)
+	res, err := instance.Scaffold(domain, *dir, *profile)
 	if err != nil {
 		fatal("scaffold: %v", err)
 	}
@@ -193,9 +200,13 @@ func scaffoldCmd(args []string) {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "scaffolded %s (project rest-mail-%s)\n", domain, res.Slug)
+	fmt.Fprintf(os.Stderr, "scaffolded %s (profile %s, project rest-mail-%s)\n", domain, res.Profile, res.Slug)
 	for _, name := range []string{"postgres", "api", "smtp-gateway", "imap-gateway", "pop3-gateway", "js-filter", "webmail", "admin"} {
-		fmt.Fprintf(os.Stderr, "  %-13s %s\n", name, res.IPs[name])
+		ip := res.IPs[name]
+		if ip == "" {
+			ip = "(assign an address on your network)"
+		}
+		fmt.Fprintf(os.Stderr, "  %-13s %s\n", name, ip)
 	}
 	fmt.Fprintf(os.Stderr, "  files: %s/{manifest.yml,config.env,secrets.env}\n", target)
 }

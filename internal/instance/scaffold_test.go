@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,9 +48,12 @@ func TestAllocateBlock(t *testing.T) {
 func TestScaffoldEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 
-	res, err := Scaffold("mail4.test", dir)
+	res, err := Scaffold("mail4.test", dir, "testbed")
 	if err != nil {
 		t.Fatalf("scaffold: %v", err)
+	}
+	if res.Profile != "testbed" {
+		t.Errorf("profile = %q, want testbed", res.Profile)
 	}
 	if res.Slug != "mail4" {
 		t.Errorf("slug = %q, want mail4", res.Slug)
@@ -107,7 +111,7 @@ func TestScaffoldAvoidsExistingIPs(t *testing.T) {
 	dir := t.TempDir()
 
 	// Write a first instance occupying the .50 block.
-	first, err := Scaffold("first.test", dir)
+	first, err := Scaffold("first.test", dir, "testbed")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,11 +123,115 @@ func TestScaffoldAvoidsExistingIPs(t *testing.T) {
 	}
 
 	// Second instance must not reuse the .50 block.
-	second, err := Scaffold("second.test", dir)
+	second, err := Scaffold("second.test", dir, "testbed")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.IPs["postgres"] != "10.99.0.58" {
 		t.Errorf("second postgres IP = %s, want 10.99.0.58 (after first's 50-57 block)", second.IPs["postgres"])
+	}
+}
+
+// TestScaffoldTestbedGolden pins the testbed profile byte-for-byte. This is the
+// contract that keeps the testbed + e2e working: the default scaffold output
+// (empty dir → .50 block, mail4.test) must exactly equal the committed golden.
+// The golden files were captured from the pre-PR7 scaffold, so any drift in the
+// testbed template — including an accidental change from adding the --profile
+// seam — fails here. Both "" and "testbed" select this profile.
+func TestScaffoldTestbedGolden(t *testing.T) {
+	for _, profile := range []string{"testbed", ""} {
+		t.Run("profile="+profile, func(t *testing.T) {
+			res, err := Scaffold("mail4.test", t.TempDir(), profile)
+			if err != nil {
+				t.Fatalf("scaffold: %v", err)
+			}
+			assertGolden(t, "scaffold_testbed.manifest.yml", res.Manifest)
+			assertGolden(t, "scaffold_testbed.config.env", res.Config)
+		})
+	}
+}
+
+// TestScaffoldHostGolden pins the host profile and proves it is a real-host
+// substrate with NO testbed leakage: it renders to the committed golden, the
+// generated manifest passes strict Parse (which also runs Validate), re-renders
+// identically (so `instance render -check` is green from birth), and carries
+// none of the testbed substrate (10.99.0.x IPs, testbed_* volumes/dnsmasq,
+// ghcr.io/rest-mail registry).
+func TestScaffoldHostGolden(t *testing.T) {
+	res, err := Scaffold("mail4.test", t.TempDir(), "host")
+	if err != nil {
+		t.Fatalf("scaffold host: %v", err)
+	}
+	if res.Profile != "host" {
+		t.Errorf("profile = %q, want host", res.Profile)
+	}
+	assertGolden(t, "scaffold_host.manifest.yml", res.Manifest)
+	assertGolden(t, "scaffold_host.config.env", res.Config)
+
+	// The host manifest must strict-parse (Parse runs Validate) and render to
+	// exactly the config.env scaffold emitted — i.e. `instance render -check`
+	// passes with no edits, satisfying the CI drift guard.
+	m, err := Parse(res.Manifest)
+	if err != nil {
+		t.Fatalf("host manifest invalid: %v", err)
+	}
+	rendered, err := Render(m)
+	if err != nil {
+		t.Fatalf("render host manifest: %v", err)
+	}
+	if !bytes.Equal(rendered, res.Config) {
+		t.Error("host scaffold Config does not match Render(manifest) — check would be stale")
+	}
+
+	// Real-host posture: mailnet_only off, cert_provider manual, production.
+	for _, want := range []string{
+		"MAIL3_MAILNET_ONLY=false\n",
+		"RESTMAIL_CERT_PROVIDER=manual\n",
+		"MAIL3_ENVIRONMENT=production\n",
+	} {
+		if !bytes.Contains(res.Config, []byte(want)) {
+			t.Errorf("host config.env missing %q", want)
+		}
+	}
+	// Component IPs are unset — the deployer assigns addresses on their network.
+	for _, name := range []string{"postgres", "api", "smtp-gateway", "imap-gateway", "pop3-gateway", "js-filter", "webmail", "admin"} {
+		if res.IPs[name] != "" {
+			t.Errorf("host IPs[%s] = %q, want unset", name, res.IPs[name])
+		}
+	}
+	if !bytes.Contains(res.Config, []byte("MAIL3_POSTGRES_IP=\n")) {
+		t.Error("host config.env should leave MAIL3_POSTGRES_IP unset")
+	}
+	// No testbed substrate leakage in the rendered config.env (values only; the
+	// manifest keeps one 'NOT the testbed' clarifying comment by design).
+	for _, leak := range []string{"10.99.0.", "testbed", "ghcr.io/rest-mail"} {
+		if bytes.Contains(res.Config, []byte(leak)) {
+			t.Errorf("host config.env leaks testbed substrate %q", leak)
+		}
+	}
+}
+
+// TestScaffoldUnknownProfile checks that an unrecognized --profile value fails
+// loudly rather than silently falling back to a default.
+func TestScaffoldUnknownProfile(t *testing.T) {
+	_, err := Scaffold("mail4.test", t.TempDir(), "bogus")
+	if err == nil {
+		t.Fatal("expected error for unknown profile, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown profile") {
+		t.Errorf("error = %v, want it to mention 'unknown profile'", err)
+	}
+}
+
+// assertGolden compares got against testdata/<name>, failing with a readable
+// diff-ish message on mismatch.
+func assertGolden(t *testing.T, name string, got []byte) {
+	t.Helper()
+	want, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("read golden %s: %v", name, err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s does not match golden.\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
 	}
 }
