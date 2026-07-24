@@ -22,23 +22,20 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- include "restmail.dnsSpec" . | nindent 6 }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- include "restmail.podSecurityContext" (list . "api") | nindent 8 }}
       containers:
         - name: api
           image: "{{ .Values.api.image.repository }}:{{ include "restmail.imageTag" (list . .Values.api.image.tag) }}"
           imagePullPolicy: {{ include "restmail.imagePullPolicy" (list . .Values.api.image.pullPolicy) }}
-          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- include "restmail.containerSecurityContext" (list . "api") | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.api.port }}
