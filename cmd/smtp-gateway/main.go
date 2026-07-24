@@ -240,6 +240,16 @@ func main() {
 		queueWorker.SetMTASTSEnforce(false)
 		slog.Info("queue worker TLS verification disabled; MTA-STS enforcement off", "environment", cfg.Environment)
 	}
+	// Outbound SSRF guard (#167): by default the worker refuses to dial
+	// non-public (loopback/link-local/private/metadata) MX or RESTMAIL endpoint
+	// addresses. A dev/testbed delivers between containers on a private bridge
+	// network, so opt in when in development or when explicitly requested. This
+	// mirrors the QUEUE_TLS_INSECURE dev auto-enable above; production stays deny.
+	if cfg.OutboundAllowPrivateDestinations || cfg.Environment == "development" {
+		queueWorker.SetAllowPrivateDestinations(true)
+		slog.Info("queue worker outbound SSRF guard: private destinations allowed",
+			"environment", cfg.Environment, "explicit", cfg.OutboundAllowPrivateDestinations)
+	}
 	queueWorker.Start()
 
 	slog.Info("SMTP gateway started",

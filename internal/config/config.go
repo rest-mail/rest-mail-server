@@ -177,6 +177,15 @@ type Config struct {
 	QueuePollInterval time.Duration
 	MTASTSEnforce     bool // enforce recipient MTA-STS policies on outbound delivery (RFC 8461)
 
+	// OutboundAllowPrivateDestinations opts outbound delivery in to dialing
+	// non-public addresses (loopback/link-local/private/metadata) for the MX host
+	// or the RESTMAIL endpoint (#167). It exists only for a dev/testbed that
+	// delivers between containers on a private bridge network. Default false so
+	// production denies these SSRF-class destinations. It is also implied by
+	// ENVIRONMENT=development (see cmd/smtp-gateway/main.go), mirroring how
+	// QUEUE_TLS_INSECURE is auto-enabled there.
+	OutboundAllowPrivateDestinations bool
+
 	// Trusted front-proxy networks. Governs the PROXY protocol on the gateway
 	// listeners AND the HTTP API's trusted-proxy-aware client-IP derivation: an
 	// X-Forwarded-For header is honored only when the direct TCP peer is one of
@@ -407,6 +416,8 @@ func Load() (*Config, error) {
 		QueueWorkers:          getEnvInt("QUEUE_WORKERS", 4),
 		QueuePollInterval:     getEnvDuration("QUEUE_POLL_INTERVAL", 5*time.Second),
 		MTASTSEnforce:         getEnvBool("MTASTS_ENFORCE", true),
+
+		OutboundAllowPrivateDestinations: getEnvBool("OUTBOUND_ALLOW_PRIVATE_DESTINATIONS", false),
 
 		ProxyProtocolTrustedCIDRs: getEnvSlice("PROXY_PROTOCOL_TRUSTED_CIDRS", nil),
 
