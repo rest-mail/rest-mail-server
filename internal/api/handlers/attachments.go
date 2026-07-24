@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,51 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
+
+// attachmentsRoot is the base directory filesystem-backed attachments are
+// written under (see internal/pipeline/filters/extract_attachments.go).
+// Retrieval is confined to this tree.
+const attachmentsRoot = "/attachments"
+
+// errAttachmentPathEscape is returned when a stored attachment path resolves
+// outside the attachments root (directly, via traversal, or via a symlink).
+var errAttachmentPathEscape = errors.New("attachment path escapes storage root")
+
+// resolveAttachmentPath validates storageRef and returns the real, canonical
+// file path to serve. It confines retrieval to root both lexically and after
+// resolving symlinks (filepath.EvalSymlinks), so a symlink planted inside the
+// attachments tree cannot be used to read files outside it (M-5, CWE-59). It
+// returns errAttachmentPathEscape when the ref escapes the root, or the
+// underlying error (e.g. os.ErrNotExist) when the path cannot be resolved.
+func resolveAttachmentPath(root, storageRef string) (string, error) {
+	cleanPath := filepath.Clean(storageRef)
+
+	// Lexical guard: must live under the root and contain no parent-traversal
+	// component. filepath.Clean has already collapsed any real ".." segments.
+	if cleanPath != root && !strings.HasPrefix(cleanPath, root+string(os.PathSeparator)) {
+		return "", errAttachmentPathEscape
+	}
+	if strings.Contains(cleanPath, "..") {
+		return "", errAttachmentPathEscape
+	}
+
+	// Resolve symlinks in both the root and the target, then confirm the
+	// resolved target is still contained in the resolved root. EvalSymlinks
+	// also fails for a missing file, which the caller maps to a 404.
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	realPath, err := filepath.EvalSymlinks(cleanPath)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(realRoot, realPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", errAttachmentPathEscape
+	}
+	return realPath, nil
+}
 
 // AttachmentHandler handles attachment retrieval.
 type AttachmentHandler struct {
@@ -63,14 +109,19 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Security: ensure the storage ref is within the attachments directory
-	cleanPath := filepath.Clean(att.StorageRef)
-	if !strings.HasPrefix(cleanPath, "/attachments/") || strings.Contains(cleanPath, "..") {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Invalid storage path")
+	// Security: confine retrieval to the attachments tree, following symlinks
+	// so a planted symlink cannot escape it (M-5, CWE-59).
+	realPath, err := resolveAttachmentPath(attachmentsRoot, att.StorageRef)
+	if err != nil {
+		if errors.Is(err, errAttachmentPathEscape) {
+			respond.Error(w, http.StatusForbidden, "forbidden", "Invalid storage path")
+		} else {
+			respond.Error(w, http.StatusNotFound, "not_found", "Attachment file not found on disk")
+		}
 		return
 	}
 
-	file, err := os.Open(cleanPath)
+	file, err := os.Open(realPath)
 	if err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Attachment file not found on disk")
 		return
