@@ -152,6 +152,13 @@ type DomainSenderRule struct {
 
 func (DomainSenderRule) TableName() string { return "domain_sender_rules" }
 
+// DefaultGreylistTTLDays is the greylist entry lifetime used when a greylist
+// filter's config omits ttl_days. It is both the auto-whitelist horizon (a
+// passed triple is honored for at most this long, then reconsidered) and the
+// lifetime of an un-retried entry. It matches the value shipped in the default
+// inbound pipeline template so the two never drift.
+const DefaultGreylistTTLDays = 36
+
 // GreylistEntry tracks sender/recipient/IP triples for greylisting.
 type GreylistEntry struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
@@ -161,7 +168,13 @@ type GreylistEntry struct {
 	FirstSeen  time.Time `json:"first_seen"`
 	RetryAfter time.Time `json:"retry_after"`
 	Passed     bool      `gorm:"default:false" json:"passed"`
-	CreatedAt  time.Time `json:"created_at"`
+	// ExpiresAt is the TTL horizon after which this entry is purged by the
+	// greylist purge worker and, if it is still present when re-encountered,
+	// re-greylisted. Nullable so rows written before the column existed (NULL)
+	// are handled by the purge worker's created_at fallback rather than living
+	// forever.
+	ExpiresAt *time.Time `gorm:"index" json:"expires_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 func (GreylistEntry) TableName() string { return "greylist_entries" }
