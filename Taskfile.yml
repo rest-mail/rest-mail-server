@@ -553,6 +553,10 @@ tasks:
       - INSTANCE=restmail.test task instance:dns:register
       - INSTANCE=restmail.test task instance:up MAIL3_INTERNAL_MTLS=true
       - INSTANCE=restmail.test task instance:dkim
+      # Fail the bring-up loudly if a domain's provisioned DKIM selector has
+      # drifted from what the manifest declares (#150), rather than silently
+      # signing/publishing under the wrong selector.
+      - INSTANCE=restmail.test task instance:dkim:check
 
   e2e:down:
     desc: 'Tear down the e2e topology (preserves data volumes)'
@@ -1249,6 +1253,21 @@ tasks:
         done
         docker restart {{.DNSMASQ_CONTAINER}} >/dev/null
         {{end}}
+
+  instance:dkim:check:
+    desc: "Assert the DB DKIM selector for each served domain matches INSTANCE's manifest (drift detection); needs the stack up"
+    vars:
+      ADMIN_USER: '{{.ADMIN_USER | default "admin"}}'
+      ADMIN_PASS: '{{.ADMIN_PASS | default "admin123!@"}}'
+    cmds:
+      # Run inside the api container so the API is reachable at localhost:8080
+      # (works for mailnet-only instances) and the manifest is on the shared repo
+      # mount. Exits non-zero — failing the task — on any selector drift.
+      - |
+        docker exec {{.RESTMAIL_PROJECT}}-api \
+          go run ./cmd/instance dkim-check \
+            --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
+            {{.INSTANCE_DIR}}/manifest.yml
 
   # ── Bring-up (instance-generic; restmail:* are back-compat aliases) ──
 
