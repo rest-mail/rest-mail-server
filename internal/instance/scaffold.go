@@ -252,6 +252,22 @@ db:
 #     server_type: restmail      # or: traditional
 #     dkim: { selector: default, bits: 2048 }
 
+# ── public TLS (optional) ───────────────────────────────────────────────
+# The serving cert is issued by ` + "`task instance:certs:issue`" + ` per ` + "`cert_provider`" + ` above.
+# It automatically covers every served domain's mail hostname; add MORE SANs
+# (autoconfig, mta-sts, a vanity host) with extra_hostnames. cert_provider:
+#   testbed-certgen  (default) issue via the testbed reference-certgen
+#   manual                     drop <hostname>.{crt,key} into the certs volume yourself
+#   letsencrypt / acme         declare acme: below (ACME client not yet implemented)
+# Uncomment and edit:
+#
+# tls:
+#   extra_hostnames: [autoconfig.{{.Domain}}, mta-sts.{{.Domain}}]
+#   acme:
+#     enabled: true
+#     email:   hostmaster@{{.Domain}}
+#     staging: true              # flip to false for production issuance
+
 # ── binding: components on the substrate (IPs allocated at scaffold time) ─
 components:
   - { name: postgres, ip: {{index .IP "postgres"}} }

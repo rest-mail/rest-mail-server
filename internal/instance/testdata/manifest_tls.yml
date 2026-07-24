@@ -1,0 +1,67 @@
+# Fixture: a manifest that exercises the public-TLS / cert-provider seam (PR5).
+# It sets a non-default `cert_provider` plus the optional `tls:` block
+# (extra_hostnames + acme). Paired with config_tls.env; proves the
+# RESTMAIL_CERT_PROVIDER + MAIL3_TLS_* lines render, that the cert SAN set folds
+# extra_hostnames onto the served hostname, and that the ACME inputs are
+# declarable. The no-tls fixture (manifest.yml → config.env) proves omitting the
+# block renders byte-for-byte as before.
+
+# ── envelope ────────────────────────────────────────────────────────────
+domain:     mail3.test
+hostname:   mail3.test
+proxy_host: restmail.localhost
+
+# ── substrate placement ─────────────────────────────────────────────────
+project:        rest-mail
+network:        testbed_mailnet
+certs_volume:   testbed_certs
+testbed_dns_ip: 10.99.0.10
+dns_provider:   testbed-dnsmasq
+cert_provider:  manual            # deployer drops certs into the certs volume
+
+# ── image source ────────────────────────────────────────────────────────
+registry:  ghcr.io/rest-mail
+image_tag: dev
+
+# ── runtime ─────────────────────────────────────────────────────────────
+log_level:    debug
+environment:  development
+mailnet_only: false
+
+db:
+  name: restmail
+  user: restmail
+
+# ── public TLS (optional) ───────────────────────────────────────────────
+# extra_hostnames are additional SANs the serving cert must cover on top of the
+# served-domain mail hostnames (autoconfig, mta-sts, ...). The acme: sub-block
+# declares how a public CA would issue the cert (the ACME client itself is not
+# implemented yet — cert_provider: acme returns a not-yet-implemented error).
+tls:
+  extra_hostnames:
+    - autoconfig.mail3.test
+    - mta-sts.mail3.test
+  acme:
+    enabled:   false
+    email:     hostmaster@mail3.test
+    staging:   true
+    directory: https://acme-staging-v02.api.letsencrypt.org/directory
+
+# ── binding: components on the substrate ────────────────────────────────
+components:
+  - { name: postgres, ip: 10.99.0.43 }
+  - name: api
+    ip: 10.99.0.20
+    port: 8080
+  - name: smtp-gateway
+    ip: 10.99.0.13
+    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+  - name: imap-gateway
+    ip: 10.99.0.15
+    ports: { plain: 143, tls: 993 }
+  - name: pop3-gateway
+    ip: 10.99.0.16
+    ports: { plain: 110, tls: 995 }
+  - { name: js-filter, ip: 10.99.0.22 }
+  - { name: webmail,   ip: 10.99.0.21 }
+  - { name: admin,     ip: 10.99.0.27 }
