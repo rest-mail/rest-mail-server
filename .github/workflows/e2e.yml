@@ -3,7 +3,22 @@ name: E2E
 # Full end-to-end suite: stands up the whole simulated-internet topology
 # (testbed dnsmasq + certs, reference mail1/mail2, the restmail.test product
 # stack) and runs the 13 staged tests in tests/e2e/ from a golang container on
-# the mailnet. Heavy, so it lives in its own workflow rather than bloating ci.yml.
+# the mailnet. Heavy (~20 min), so it lives in its own workflow rather than
+# bloating ci.yml.
+#
+# Path gate (anti-stranding): `E2E (full topology)` is a REQUIRED status check
+# on main. A docs-only PR should NOT have to wait ~20 min for the full topology.
+# We must NOT skip via trigger-level `paths-ignore`, because a required check
+# that never posts leaves the PR blocked forever ("expected — waiting for status
+# to be reported"). Instead:
+#   * `changes`  — always runs, classifies the diff as docs-only vs. code.
+#   * `e2e-run`  — the heavy suite; runs ONLY when code changed (skipped on
+#                  docs-only PRs, so no 20-min wait).
+#   * `e2e`      — the gate. It is the job named `E2E (full topology)`, so it is
+#                  the required-check context. It ALWAYS runs (if: always()) and
+#                  reports success when the heavy job passed OR was legitimately
+#                  skipped for a docs-only change. Because this job always posts,
+#                  the required context is satisfied on every PR — code or docs.
 on:
   push:
     branches: [main]
@@ -21,8 +36,73 @@ permissions:
   packages: read
 
 jobs:
-  e2e:
-    name: E2E (full topology)
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_e2e: ${{ steps.classify.outputs.run_e2e }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need history back to the PR base so we can diff the changed paths.
+          fetch-depth: 0
+
+      - name: Classify diff (docs-only -> skip heavy e2e)
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          # Any non-PR event (push to main, manual dispatch) always runs the
+          # full suite — post-merge and on-demand validation is never gated.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "event=$EVENT_NAME -> run full e2e"
+            echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # PR changes relative to the merge-base with the target branch.
+          files="$(git diff --name-only "$BASE_SHA"...HEAD)"
+          echo "changed files:"
+          printf '%s\n' "$files"
+
+          if [ -z "$files" ]; then
+            # Empty diff is unexpected — fail safe by running the full suite.
+            echo "empty diff -> run full e2e (fail-safe)"
+            echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Docs-only allowlist. The heavy suite is skipped ONLY when EVERY
+          # changed file is documentation; ANY other path (code, go.mod/sum,
+          # Dockerfiles, tasks, webmail/admin src, the workflow files
+          # themselves, or anything unrecognised) forces the full e2e.
+          # "When in doubt, run e2e" is baked in: strip the known-docs paths
+          # and if ANYTHING is left over, treat the change as code.
+          #   ^docs/     documentation tree (incl. docs/security-review)
+          #   \.md$      any Markdown, anywhere
+          #   ^LICENSE$  licence text
+          #   \.txt$     plain-text notes
+          nondocs="$(printf '%s\n' "$files" | grep -vE '(^docs/|\.md$|^LICENSE$|\.txt$)' || true)"
+          if [ -n "$nondocs" ]; then
+            run_e2e=true
+            echo "non-docs paths force full e2e:"
+            echo "$nondocs"
+          else
+            run_e2e=false
+          fi
+
+          echo "run_e2e=$run_e2e" >> "$GITHUB_OUTPUT"
+          echo "decision: run_e2e=$run_e2e"
+
+  e2e-run:
+    name: E2E (run full suite)
+    needs: changes
+    if: needs.changes.outputs.run_e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -149,3 +229,41 @@ jobs:
       - name: Tear down e2e topology
         if: always()
         run: task e2e:down
+
+  e2e:
+    # Required-check anchor. Branch protection requires the context
+    # `E2E (full topology)`, which is THIS job's name. It always runs so the
+    # required check always posts, and it is green when the heavy suite passed
+    # (code PR) or was intentionally skipped (docs-only PR). This is what keeps
+    # a docs-only PR from being stranded on a never-reported required check.
+    name: E2E (full topology)
+    needs: [changes, e2e-run]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify e2e outcome
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          RUN_E2E: ${{ needs.changes.outputs.run_e2e }}
+          E2E_RESULT: ${{ needs.e2e-run.result }}
+        run: |
+          set -euo pipefail
+          echo "classify job result : $CHANGES_RESULT"
+          echo "run_e2e decision    : $RUN_E2E"
+          echo "heavy e2e result    : $E2E_RESULT"
+
+          # Docs-only PR: classifier succeeded and chose to skip the heavy job.
+          if [ "$CHANGES_RESULT" = "success" ] && [ "$RUN_E2E" != "true" ]; then
+            echo "docs-only change — full e2e intentionally skipped. Reporting success."
+            exit 0
+          fi
+
+          # Otherwise the heavy suite must have actually run and passed.
+          if [ "$E2E_RESULT" = "success" ]; then
+            echo "full e2e ran and passed."
+            exit 0
+          fi
+
+          echo "::error::E2E gate failing — classify=$CHANGES_RESULT run_e2e=$RUN_E2E heavy=$E2E_RESULT"
+          exit 1
