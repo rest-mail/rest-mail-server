@@ -74,7 +74,14 @@ mTLS touch it). PRs that edit it are marked; the rest are manifest/Taskfile/scaf
 - **PR2 — Thread SMTP/queue policy into manifest (G1/G2)** *[no config.go]* — add `smtp:` block + Taskfile SMTP include lines. Risk: low, additive. Test: golden render + e2e stage3/4.
 - **PR3 — DKIM selector in manifest (G6)** *[no config.go]* — `dkim.selector/bits` → `instance:dkim`. Risk: low.
 - **PR4 — Litter/drift cleanup (G8)** — docs/dev tools; sequence after PR2/mTLS if it touches config.go at all. Risk: very low.
-- **PR5 — Public TLS / cert-provider seam (G5)** *[no config.go]* — `tls:` block; generalize `instance:certs:issue` behind `cert_provider` (testbed-certgen | manual, letsencrypt-* later). Risk: medium.
+- **PR5 — Public TLS / cert-provider seam (G5)** *[no config.go]* — **SHIPPED.** Added the
+  optional `tls:` block (`extra_hostnames[]` + `acme:{enabled,email,staging,directory}`),
+  a `CertSANHostnames()` derivation (served hostnames ∪ extra_hostnames → rendered
+  `MAIL3_TLS_CERT_SANS`, resolving #99's deferred multi-name SAN item), and generalized
+  `instance:certs:issue` behind `cert_provider`: **testbed-certgen** (default, unchanged —
+  e2e stays green), **manual** (validate operator-dropped cert/key, no issuance), and
+  **acme/letsencrypt** stubbed to a not-yet-implemented error (fields wired through; the
+  ACME client itself is a later PR). `tls.internal` (mTLS) stays with PR6. Risk: medium.
 - **PR6 — mTLS provisioning (G7)** *[touches config.go]* — **after `feat/internal-mtls` merges.** Replace hardcoded `/certs/ca.crt`; `tls.internal` → config; provision internal CA + client certs. Risk: high; gate behind `mode: off`.
 - **PR7 — Real-host substrate profile (G4)** *[no config.go]* — `scaffold --profile testbed|host`. Risk: medium.
 
@@ -89,7 +96,12 @@ Order: **PR1 → PR2 → {PR3, PR4, PR5} → PR6 (after mTLS) → PR7**. Only PR
 
 ## 5. Open questions (need a decision)
 1. **Instance home (PR1):** top-level `instances/<domain>/` (drop `INSTANCE_DIR` special-case) vs keep under `.workspace/testbed`?
-2. **Manifest cert scope (PR5):** manifest owns public TLS/ACME + `extra_hostnames`, or cert provisioning stays out-of-band (deployer drops files, manifest names the volume)?
+2. ~~**Manifest cert scope (PR5):** manifest owns public TLS/ACME + `extra_hostnames`, or cert provisioning stays out-of-band (deployer drops files, manifest names the volume)?~~
+   **RESOLVED (PR5):** both, selected by `cert_provider`. The manifest owns the SAN set
+   (`domains:` served hostnames ∪ `tls.extra_hostnames`) and declares ACME inputs
+   (`tls.acme:`), while provisioning stays a task: `testbed-certgen` issues via the testbed
+   CA, `manual` validates deployer-dropped files in the named certs volume without issuing,
+   and `acme` is stubbed pending the ACME client.
 3. **mTLS coupling (PR6):** wait for `feat/internal-mtls` to define config fields then add the manifest block, or design `tls.internal` now?
 4. **DKIM selector (PR3):** purely a rendered input, or also asserted in a DB/health-check?
 5. **certgen (G8):** keep `cmd/certgen` as a dev tool or deprecate in favour of `instance:certs:issue`?
@@ -106,8 +118,10 @@ Order: **PR1 → PR2 → {PR3, PR4, PR5} → PR6 (after mTLS) → PR7**. Only PR
    each served domain: `cmd/seed` creates a DB row per domain (with its
    server_type), `instance:dkim` provisions a DKIM selector/key per domain,
    `instance:dns:register` writes a dnsmasq fragment per domain over the shared
-   instance gateways. Cert SAN plumbing is rendered/passed here; verifying
-   reference-certgen multi-name issuance is deferred to PR5 (TLS/cert seam). No
+   instance gateways. Cert SAN plumbing is rendered/passed here; the multi-name
+   SAN derivation (served hostnames ∪ `tls.extra_hostnames` →
+   `MAIL3_TLS_CERT_SANS`) and reference-certgen multi-name issuance are RESOLVED
+   in PR5 (TLS/cert seam). No
    DB/model changes — domains remain fully DB-driven, the manifest only DECLARES
    which to provision at instance-up.
 
