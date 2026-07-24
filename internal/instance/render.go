@@ -90,8 +90,42 @@ type Manifest struct {
 	// DB-driven — this list only DECLARES which domains the instance serves so
 	// they can be provisioned at instance-up. See ServedDomains().
 	Domains []DomainEntry `yaml:"domains"`
+	// TLS holds optional PUBLIC-TLS declarations for the instance cert. Every
+	// field is optional and strict-parse-safe: an omitted `tls:` block emits no
+	// MAIL3_TLS_* / RESTMAIL_CERT_PROVIDER line, so existing manifests render
+	// byte-for-byte as before. This block is ONLY about the public serving cert
+	// (SAN coverage + how it is obtained). The internal gateway→API mTLS switch
+	// is the separate top-level `internal_mtls` field — it is NOT part of this
+	// block.
+	TLS TLS `yaml:"tls"`
 	// binding
 	Components []Component `yaml:"components"`
+}
+
+// TLS is the optional public-TLS block of a manifest.
+//
+//   - ExtraHostnames are ADDITIONAL DNS names the instance serving cert must
+//     cover on top of every served domain's mail hostname — e.g.
+//     autoconfig/autodiscover, mta-sts, or a vanity submission host. They are
+//     purely cert SANs: unlike `domains:` entries they get NO DB row, DKIM key
+//     or DNS provisioning. See CertSANHostnames().
+//   - ACME declares how a public CA (Let's Encrypt-style) would issue the cert.
+//     PR5 wires these fields through so they are declarable and the
+//     `cert_provider` seam exists; the ACME client itself is NOT implemented in
+//     this PR (see the `instance:certs:issue` task — the `acme`/`letsencrypt`
+//     providers return a "not yet implemented" error).
+type TLS struct {
+	ExtraHostnames []string `yaml:"extra_hostnames"`
+	ACME           ACME     `yaml:"acme"`
+}
+
+// ACME is the optional `tls.acme:` sub-block. Bools are pointers so an unset
+// field emits no line (and is distinguishable from an explicit false).
+type ACME struct {
+	Enabled   *bool  `yaml:"enabled"`   // MAIL3_TLS_ACME_ENABLED
+	Email     string `yaml:"email"`     // MAIL3_TLS_ACME_EMAIL (ACME account contact)
+	Staging   *bool  `yaml:"staging"`   // MAIL3_TLS_ACME_STAGING (use the CA's staging endpoint)
+	Directory string `yaml:"directory"` // MAIL3_TLS_ACME_DIRECTORY (ACME directory URL override)
 }
 
 // DomainEntry is one ADDITIONAL served domain declared in the manifest
@@ -213,6 +247,33 @@ func (m *Manifest) AdditionalServedDomains() []ServedDomain {
 	return all[1:]
 }
 
+// CertSANHostnames returns the complete Subject-Alternative-Name set the
+// instance serving certificate must cover: every served domain's mail hostname
+// (ServedDomains(), primary first) UNION any tls.extra_hostnames, de-duplicated
+// while preserving first-seen order. It is the single source the cert-issuance
+// path (task instance:certs:issue) consumes so a single multi-SAN cert covers
+// the whole instance. For a bare single-domain manifest with no extra hostnames
+// this is exactly []string{hostname}, so the issuance default is byte-identical
+// to before (#99 deferred this multi-name derivation to PR5 — resolved here).
+func (m *Manifest) CertSANHostnames() []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, 1+len(m.Domains)+len(m.TLS.ExtraHostnames))
+	add := func(h string) {
+		if h == "" || seen[h] {
+			return
+		}
+		seen[h] = true
+		out = append(out, h)
+	}
+	for _, d := range m.ServedDomains() {
+		add(d.Hostname)
+	}
+	for _, h := range m.TLS.ExtraHostnames {
+		add(h)
+	}
+	return out
+}
+
 // SeedServedDomain is one additional served domain to seed a DB row for,
 // decoded from the MAIL3_SEED_SERVED_DOMAINS env line.
 type SeedServedDomain struct {
@@ -293,6 +354,14 @@ func Render(m *Manifest) ([]byte, error) {
 	kv("RESTMAIL_REGISTRY", m.Registry)
 	kv("RESTMAIL_IMAGE_TAG", m.ImageTag)
 	kv("RESTMAIL_PROXY_HOST", m.ProxyHost)
+	// Cert provider selects which branch `task instance:certs:issue` takes.
+	// "testbed-certgen" is THE default, so it renders no line (and the Taskfile
+	// `| default "testbed-certgen"` supplies it) — keeping existing manifests
+	// byte-for-byte identical. Only a non-default provider (manual, acme/
+	// letsencrypt) emits the switch line.
+	if m.CertProvider != "" && m.CertProvider != "testbed-certgen" {
+		kv("RESTMAIL_CERT_PROVIDER", m.CertProvider)
+	}
 	b.WriteString("\n")
 	kv("MAIL3_HOSTNAME", m.Hostname)
 	kv("MAIL3_DB_NAME", m.DB.Name)
@@ -366,6 +435,39 @@ func Render(m *Manifest) ([]byte, error) {
 			extra = append(extra, d.Name+":"+d.ServerType)
 		}
 		kv("MAIL3_SEED_SERVED_DOMAINS", strings.Join(extra, ","))
+	}
+
+	// Public-TLS seam (manifest `tls:` block + the derived cert SAN set). Every
+	// line is emitted only when it carries information, so a manifest without a
+	// `tls:` block and without additional `domains:` renders byte-for-byte as
+	// before.
+	//   - MAIL3_TLS_EXTRA_HOSTNAMES  the raw tls.extra_hostnames, for visibility.
+	//   - MAIL3_TLS_CERT_SANS        the COMPLETE SAN list the instance cert must
+	//     cover: served hostnames ∪ extra_hostnames (see CertSANHostnames()).
+	//     Emitted whenever it holds more than the single primary hostname
+	//     (additional domains and/or extra hostnames); `task instance:certs:issue`
+	//     consumes it, falling back to MAIL3_HOSTNAME for the single-domain
+	//     default — byte-identical to before.
+	//   - MAIL3_TLS_ACME_*           the declarative ACME inputs, wired through so
+	//     the cert_provider seam is complete; the ACME client is not implemented
+	//     in PR5.
+	if len(m.TLS.ExtraHostnames) > 0 {
+		kv("MAIL3_TLS_EXTRA_HOSTNAMES", strings.Join(m.TLS.ExtraHostnames, ","))
+	}
+	if len(m.Domains) > 0 || len(m.TLS.ExtraHostnames) > 0 {
+		kv("MAIL3_TLS_CERT_SANS", strings.Join(m.CertSANHostnames(), ","))
+	}
+	if v := m.TLS.ACME.Enabled; v != nil {
+		kv("MAIL3_TLS_ACME_ENABLED", strconv.FormatBool(*v))
+	}
+	if m.TLS.ACME.Email != "" {
+		kv("MAIL3_TLS_ACME_EMAIL", m.TLS.ACME.Email)
+	}
+	if v := m.TLS.ACME.Staging; v != nil {
+		kv("MAIL3_TLS_ACME_STAGING", strconv.FormatBool(*v))
+	}
+	if m.TLS.ACME.Directory != "" {
+		kv("MAIL3_TLS_ACME_DIRECTORY", m.TLS.ACME.Directory)
 	}
 	b.WriteString("\n")
 
