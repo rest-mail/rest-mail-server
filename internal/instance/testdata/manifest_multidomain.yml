@@ -1,0 +1,63 @@
+# Fixture: a manifest that serves MULTIPLE domains — the primary (mail3.test)
+# plus two ADDITIONAL served domains declared in the `domains:` list. Paired
+# with config_multidomain.env; proves the served-domain lines render and that
+# each additional domain carries its own server_type + DKIM selector.
+# The no-domains fixture (manifest.yml → config.env) proves omitting the list
+# renders byte-for-byte as before.
+
+# ── envelope ────────────────────────────────────────────────────────────
+domain:     mail3.test
+hostname:   mail3.test
+proxy_host: restmail.localhost
+
+# ── substrate placement (testbed) ───────────────────────────────────────
+project:        rest-mail
+network:        testbed_mailnet
+certs_volume:   testbed_certs
+testbed_dns_ip: 10.99.0.10
+dns_provider:   testbed-dnsmasq
+cert_provider:  testbed-certgen
+
+# ── image source ────────────────────────────────────────────────────────
+registry:  ghcr.io/rest-mail
+image_tag: dev
+
+# ── runtime ─────────────────────────────────────────────────────────────
+log_level:    debug
+environment:  development
+mailnet_only: false
+
+db:
+  name: restmail
+  user: restmail
+
+# ── additional served domains (optional) ────────────────────────────────
+# The primary domain (mail3.test) is NOT repeated here. Each entry gets its own
+# DB row + DKIM selector/key + DNS at provision time; all resolve to the same
+# instance gateways.
+domains:
+  - name: shop.test
+    server_type: restmail
+    dkim: { selector: shop2026, bits: 2048 }
+  - name: legacy.test
+    server_type: traditional   # a traditional (non-restmail) served domain
+    # no dkim block → provisioned with the default selector
+
+# ── binding: components on the substrate ────────────────────────────────
+components:
+  - { name: postgres, ip: 10.99.0.43 }
+  - name: api
+    ip: 10.99.0.20
+    port: 8080
+  - name: smtp-gateway
+    ip: 10.99.0.13
+    ports: { inbound: 25, submission: 587, submission_tls: 465 }
+  - name: imap-gateway
+    ip: 10.99.0.15
+    ports: { plain: 143, tls: 993 }
+  - name: pop3-gateway
+    ip: 10.99.0.16
+    ports: { plain: 110, tls: 995 }
+  - { name: js-filter, ip: 10.99.0.22 }
+  - { name: webmail,   ip: 10.99.0.21 }
+  - { name: admin,     ip: 10.99.0.27 }

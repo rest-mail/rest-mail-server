@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"fmt"
 	"strconv"
+	"strings"
 
 	yaml "go.yaml.in/yaml/v2"
 )
@@ -79,8 +80,178 @@ type Manifest struct {
 		Selector string `yaml:"selector"` // MAIL3_DKIM_SELECTOR (dkim-provision --selector)
 		Bits     *int   `yaml:"bits"`     // MAIL3_DKIM_BITS (dkim-provision -bits)
 	} `yaml:"dkim"`
+	// Domains declares ADDITIONAL served domains beyond the primary `domain`.
+	// Optional and additive: omitted → the instance serves only the primary
+	// domain and every rendered/provisioned artifact is byte-for-byte as before.
+	// The primary is NEVER repeated here — it stays the top-level
+	// `domain`/`hostname` (instance identity + default cert CN). Each entry gets
+	// its own DB domain row (with server_type), DKIM selector/key, and DNS
+	// records at provision time. Domains, mailboxes, aliases and DKIM keys remain
+	// DB-driven — this list only DECLARES which domains the instance serves so
+	// they can be provisioned at instance-up. See ServedDomains().
+	Domains []DomainEntry `yaml:"domains"`
 	// binding
 	Components []Component `yaml:"components"`
+}
+
+// DomainEntry is one ADDITIONAL served domain declared in the manifest
+// `domains:` list. Only Name is required. ServerType defaults to "restmail"
+// (matching the primary/seed fixture) and, when set, must be one of the
+// DB-supported values ("traditional" | "restmail"). Hostname defaults to Name.
+// As with the top-level `dkim:` block, only the PUBLIC selector/bits are
+// declarative — the DKIM PRIVATE KEY is never in the manifest; it is generated
+// and installed at runtime via `task instance:dkim`.
+type DomainEntry struct {
+	Name       string `yaml:"name"`
+	ServerType string `yaml:"server_type"` // "traditional" | "restmail"; default "restmail"
+	Hostname   string `yaml:"hostname"`    // gateway EHLO/DNS name; default = Name
+	DKIM       struct {
+		Selector string `yaml:"selector"`
+		Bits     *int   `yaml:"bits"`
+	} `yaml:"dkim"`
+	// DNS is an optional per-domain DNS override. Declared now for strict-parse
+	// acceptance and forward-compat; the derived MX/A/PTR/MTA-STS records come
+	// from the SHARED instance gateways (every served domain resolves to the same
+	// smtp/imap/pop3 IPs). Richer per-domain records are consumed by the PR5
+	// DNS/cert seam.
+	DNS *DomainDNS `yaml:"dns"`
+}
+
+// DomainDNS is the optional per-domain DNS override block. Kept minimal and
+// strict: unknown keys under `dns:` still error. ExtraRecords is declared but
+// not yet consumed (PR5 DNS/cert seam).
+type DomainDNS struct {
+	ExtraRecords []string `yaml:"extra_records"`
+}
+
+// validServerType reports whether s is an accepted per-domain server type.
+// Empty is accepted (unset → defaults to "restmail" at provision time).
+func validServerType(s string) bool {
+	return s == "" || s == "traditional" || s == "restmail"
+}
+
+// Validate checks cross-field manifest invariants that strict YAML parsing
+// cannot: each declared additional domain must have a non-empty name and a
+// valid server_type, names must be unique, and an additional domain must not
+// duplicate the primary `domain`. Called by Parse so malformed manifests fail
+// loudly at load time.
+func (m *Manifest) Validate() error {
+	seen := map[string]bool{}
+	for i, d := range m.Domains {
+		if d.Name == "" {
+			return fmt.Errorf("domains[%d]: name is required", i)
+		}
+		if !validServerType(d.ServerType) {
+			return fmt.Errorf("domains[%d] (%s): invalid server_type %q (want traditional|restmail)", i, d.Name, d.ServerType)
+		}
+		if d.Name == m.Domain {
+			return fmt.Errorf("domains[%d]: %q duplicates the primary domain — declare additional domains only", i, d.Name)
+		}
+		if seen[d.Name] {
+			return fmt.Errorf("domains[%d]: duplicate domain %q", i, d.Name)
+		}
+		seen[d.Name] = true
+	}
+	return nil
+}
+
+// ServedDomain is a resolved entry in the instance's served-domain set: the
+// primary plus each additional `domains:` entry, with defaults applied. It is
+// the single source the render/DNS/DKIM/seed provisioning paths iterate.
+type ServedDomain struct {
+	Name       string // domain name (DB domain row Name)
+	Hostname   string // gateway EHLO / DNS hostname
+	ServerType string // "traditional" | "restmail"
+	Primary    bool   // true for the top-level primary domain
+	Selector   string // DKIM selector ("" → provisioner default "default")
+	Bits       *int   // DKIM key bits (nil → provisioner default)
+}
+
+// ServedDomains returns every domain this instance serves: the primary first
+// (from `domain`/`hostname` + the top-level `dkim:` block), then each
+// `domains:` entry in order. Defaults are resolved here so callers don't
+// repeat them: Hostname←Name, ServerType←"restmail". The primary always uses
+// server_type "restmail" to match the seed fixture.
+func (m *Manifest) ServedDomains() []ServedDomain {
+	out := make([]ServedDomain, 0, 1+len(m.Domains))
+	primaryHost := m.Hostname
+	if primaryHost == "" {
+		primaryHost = m.Domain
+	}
+	out = append(out, ServedDomain{
+		Name:       m.Domain,
+		Hostname:   primaryHost,
+		ServerType: "restmail",
+		Primary:    true,
+		Selector:   m.DKIM.Selector,
+		Bits:       m.DKIM.Bits,
+	})
+	for _, d := range m.Domains {
+		host := d.Hostname
+		if host == "" {
+			host = d.Name
+		}
+		st := d.ServerType
+		if st == "" {
+			st = "restmail"
+		}
+		out = append(out, ServedDomain{
+			Name:       d.Name,
+			Hostname:   host,
+			ServerType: st,
+			Selector:   d.DKIM.Selector,
+			Bits:       d.DKIM.Bits,
+		})
+	}
+	return out
+}
+
+// AdditionalServedDomains returns ServedDomains minus the primary — the
+// domains that need provisioning ON TOP OF the primary path.
+func (m *Manifest) AdditionalServedDomains() []ServedDomain {
+	all := m.ServedDomains()
+	return all[1:]
+}
+
+// SeedServedDomain is one additional served domain to seed a DB row for,
+// decoded from the MAIL3_SEED_SERVED_DOMAINS env line.
+type SeedServedDomain struct {
+	Name       string
+	ServerType string
+}
+
+// ParseSeedServedDomains decodes the MAIL3_SEED_SERVED_DOMAINS value
+// ("name:server_type,name:server_type,...") that Render emits, into structured
+// entries. It is the decode side of that encoding — `cmd/seed` consumes it to
+// create a DB domain row per additional domain. Empty input yields no entries
+// (single-domain instances seed exactly as before). server_type defaults to
+// "restmail" and, when present, must be valid.
+func ParseSeedServedDomains(spec string) ([]SeedServedDomain, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil, nil
+	}
+	var out []SeedServedDomain
+	for _, part := range strings.Split(spec, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name, st, hasST := strings.Cut(part, ":")
+		name = strings.TrimSpace(name)
+		st = strings.TrimSpace(st)
+		if name == "" {
+			return nil, fmt.Errorf("served-domains spec %q: empty domain name", spec)
+		}
+		if !hasST || st == "" {
+			st = "restmail"
+		}
+		if !validServerType(st) {
+			return nil, fmt.Errorf("served-domains spec: domain %q has invalid server_type %q", name, st)
+		}
+		out = append(out, SeedServedDomain{Name: name, ServerType: st})
+	}
+	return out, nil
 }
 
 // Component is one service placed on the substrate.
@@ -96,6 +267,9 @@ type Component struct {
 func Parse(data []byte) (*Manifest, error) {
 	var m Manifest
 	if err := yaml.UnmarshalStrict(data, &m); err != nil {
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
+	if err := m.Validate(); err != nil {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
 	return &m, nil
@@ -167,6 +341,31 @@ func Render(m *Manifest) ([]byte, error) {
 	}
 	if v := m.DKIM.Bits; v != nil {
 		kv("MAIL3_DKIM_BITS", strconv.Itoa(*v))
+	}
+
+	// Multi-domain (manifest `domains:` list). Emitted ONLY when the instance
+	// declares additional served domains, so a single-domain manifest renders
+	// byte-for-byte as before. Two flat lines carry what the provisioning tasks
+	// need; the structured per-domain data (selector/bits) is read from the
+	// manifest by `instance domains` at provision time.
+	//   - MAIL3_SERVED_HOSTNAMES  every served mail hostname (primary first) —
+	//     the cert SAN set + the guard that turns on the per-domain DKIM/DNS
+	//     provisioning loops.
+	//   - MAIL3_SEED_SERVED_DOMAINS  the ADDITIONAL domains as name:server_type,
+	//     so `cmd/seed` creates a DB domain row (with server_type) for each.
+	if len(m.Domains) > 0 {
+		served := m.ServedDomains()
+		hostnames := make([]string, 0, len(served))
+		for _, d := range served {
+			hostnames = append(hostnames, d.Hostname)
+		}
+		kv("MAIL3_SERVED_HOSTNAMES", strings.Join(hostnames, ","))
+
+		extra := make([]string, 0, len(m.Domains))
+		for _, d := range m.AdditionalServedDomains() {
+			extra = append(extra, d.Name+":"+d.ServerType)
+		}
+		kv("MAIL3_SEED_SERVED_DOMAINS", strings.Join(extra, ","))
 	}
 	b.WriteString("\n")
 

@@ -241,6 +241,17 @@ db:
   name: restmail
   user: restmail
 
+# ── additional served domains (optional) ────────────────────────────────
+# This instance serves the primary ` + "`domain`" + ` above. To serve MORE domains from
+# the same stack, declare them here — each gets its own DB row, DKIM
+# selector/key, and DNS records provisioned at instance-up (` + "`task instance:new`" + `).
+# The primary is NOT repeated here. Uncomment and edit:
+#
+# domains:
+#   - name: example.test
+#     server_type: restmail      # or: traditional
+#     dkim: { selector: default, bits: 2048 }
+
 # ── binding: components on the substrate (IPs allocated at scaffold time) ─
 components:
   - { name: postgres, ip: {{index .IP "postgres"}} }
