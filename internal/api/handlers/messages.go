@@ -371,6 +371,35 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate every address before it is serialized into the DKIM-signed
+	// To:/Cc: headers or queued as an SMTP envelope recipient. Without this a
+	// recipient like "victim@real.com>\r\nRCPT TO:<attacker@evil.com" is written
+	// raw into headers and passed to the queue worker's client.Rcpt, which
+	// net/smtp does not sanitize — enabling CRLF header forgery and SMTP command
+	// injection (#166).
+	for _, addr := range req.To {
+		if err := rmail.ValidateAddress(addr); err != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in to")
+			return
+		}
+	}
+	for _, addr := range req.Cc {
+		if err := rmail.ValidateAddress(addr); err != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
+			return
+		}
+	}
+	for _, addr := range req.Bcc {
+		if err := rmail.ValidateAddress(addr); err != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in bcc")
+			return
+		}
+	}
+	if err := rmail.ValidateAddress(req.From); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
+		return
+	}
+
 	// Verify sender belongs to authenticated user
 	var senderMailbox models.Mailbox
 	authorized := false
@@ -1583,6 +1612,15 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	organizer := event.Organizer.Address
 	if organizer == "" {
 		organizer = msg.Sender
+	}
+
+	// The organizer address originates from an externally-received .ics file, so
+	// it is fully attacker-controlled. Validate it before it is written into the
+	// To: header and queued as an SMTP envelope recipient, or a CRLF-bearing
+	// organizer would enable header forgery / SMTP command injection (#166).
+	if err := rmail.ValidateAddress(organizer); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid organizer address in calendar event")
+		return
 	}
 
 	subject := event.Summary

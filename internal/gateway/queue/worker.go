@@ -18,6 +18,7 @@ import (
 
 	"github.com/rest-mail/go-mtasts"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -413,6 +414,16 @@ func (w *Worker) processOne(workerID int) {
 // It first checks if the primary MX supports the RESTMAIL protocol for
 // direct HTTPS delivery, falling back to standard SMTP if not.
 func (w *Worker) deliver(item models.OutboundQueue) error {
+	// Defense in depth against SMTP command / header injection (#166): never write
+	// a control-character-bearing address into a MAIL FROM / RCPT TO command or the
+	// RESTMAIL HTTPS payload. net/smtp does not sanitize its arguments, so a
+	// recipient carrying CR/LF would inject an extra SMTP command. The API boundary
+	// already rejects such addresses, so reaching here means a poisoned queue row;
+	// fail it permanently rather than attempt delivery.
+	if rmail.ContainsControlChar(item.Sender) || rmail.ContainsControlChar(item.Recipient) {
+		return &SMTPError{Code: 550, Enhanced: "5.1.3", Message: "address contains control characters"}
+	}
+
 	// Look up MX records
 	mxRecords, err := net.LookupMX(item.Domain)
 	if err != nil {
