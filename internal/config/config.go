@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/mtls"
+	"github.com/restmail/restmail/internal/netallow"
 )
 
 // DefaultSMTPMaxMessageSize is the SMTP maximum message size applied when
@@ -849,4 +850,34 @@ func (c *Config) ScannerHMACSecret() string {
 }
 
 // END scanner-verdict hardening
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN metrics network-gate (OSI-12)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The setting is read lazily through a *Config accessor using
+// the getEnvSlice helper above; the Config struct and Load() are untouched. An
+// unset allowlist defaults to internal-only CIDRs — never open to the public.
+// ══════════════════════════════════════════════════════════════════════════
+
+// MetricsAllowedCIDRs returns the source-network allowlist for the Prometheus
+// /metrics endpoints (OSI-12), applied to both the API route and the gateway
+// metrics servers. Prometheus scraping is a network-level control (JWT-gating
+// would break scrapers), so the endpoint is restricted to trusted CIDRs and a
+// non-allowlisted peer is denied. Unset defaults to loopback + RFC1918
+// (netallow.DefaultInternalCIDRs) — exactly how the in-cluster Prometheus reaches
+// the endpoint — so the default keeps scraping working while closing the
+// endpoint to the public internet. Override with METRICS_ALLOWED_CIDRS
+// (comma-separated).
+//
+// The trusted-proxy set for safe real-client-IP derivation is the existing
+// PROXY_PROTOCOL_TRUSTED_CIDRS (ProxyProtocolTrustedCIDRs): a forwarded header is
+// honored only when the direct TCP peer is one of those proxies, so a public
+// client cannot spoof an internal source.
+func (c *Config) MetricsAllowedCIDRs() []string {
+	return getEnvSlice("METRICS_ALLOWED_CIDRS", netallow.DefaultInternalCIDRs)
+}
+
+// END metrics network-gate
 // ══════════════════════════════════════════════════════════════════════════
