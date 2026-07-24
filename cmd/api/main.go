@@ -23,10 +23,22 @@ import (
 	"github.com/restmail/restmail/internal/trace"
 )
 
-func loadCACert() {
-	caCert, err := os.ReadFile("/certs/ca.crt")
+// loadCACert adds the PEM CA bundle at path to the API's outbound HTTP client
+// trust store (the default transport's RootCAs), on top of the system roots, so
+// the API trusts TLS peers issued by an operator/testbed CA (e.g. MTA-STS policy
+// fetches over the simulated internet). The path is config-driven
+// (config.TrustedCACertPath / TRUSTED_CA_CERT) and defaults to the historical
+// "/certs/ca.crt", so existing deployments are byte-for-byte unchanged. An empty
+// path skips the extra trust; a missing/unreadable file is not fatal — the API
+// falls back to the system roots. This is the general outbound trust anchor, NOT
+// the internal-mTLS CA (that is loaded from INTERNAL_MTLS_CA_CERT at point of use).
+func loadCACert(path string) {
+	if path == "" {
+		return
+	}
+	caCert, err := os.ReadFile(path)
 	if err != nil {
-		slog.Info("no custom CA cert found, using system defaults")
+		slog.Info("no custom CA cert found, using system defaults", "path", path)
 		return
 	}
 	pool, err := x509.SystemCertPool()
@@ -37,12 +49,10 @@ func loadCACert() {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
 		RootCAs: pool,
 	}
-	slog.Info("loaded custom CA certificate", "path", "/certs/ca.crt")
+	slog.Info("loaded custom CA certificate", "path", path)
 }
 
 func main() {
-	loadCACert()
-
 	// Configure structured JSON logging
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -57,6 +67,11 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	// Trust the operator/testbed CA for the API's outbound HTTP client. The path
+	// is config-driven and defaults to the historical /certs/ca.crt, so the
+	// testbed is unchanged; empty or missing → system roots only.
+	loadCACert(cfg.TrustedCACertPath)
 
 	// Set log level
 	switch cfg.LogLevel {

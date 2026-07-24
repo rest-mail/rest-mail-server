@@ -264,6 +264,24 @@ type Config struct {
 	// downgrade the security of users who already turned it on. 2FA enrollment
 	// additionally requires MASTER_KEY (the secret is stored encrypted at rest).
 	TOTP2FAEnabled bool
+
+	// ════════════════════════════════════════════════════════════════════
+	// PR6 (G7): internal-mTLS provisioning seam — appended additively; keep
+	// contiguous to ease rebasing alongside other in-flight config.go work.
+	// ════════════════════════════════════════════════════════════════════
+	//
+	// TrustedCACertPath is a PEM file of one or more extra CA certificates the
+	// API adds to its outbound HTTP client trust store (on top of the system
+	// roots) at startup — so it trusts TLS peers (e.g. MTA-STS policy fetches)
+	// issued by an operator/testbed CA. On the testbed this is the shared testbed
+	// root CA. It de-hardcodes cmd/api's former literal "/certs/ca.crt": the
+	// DEFAULT is that exact path, so the testbed is byte-for-byte unchanged, but a
+	// deployer can point it elsewhere, and an EMPTY value skips the extra trust
+	// (system roots only). A missing/unreadable file is not an error — the API
+	// falls back to the system roots (unchanged legacy behavior). This is NOT the
+	// internal-mTLS CA (that is INTERNAL_MTLS_CA_CERT); it is the general outbound
+	// trust anchor.
+	TrustedCACertPath string
 }
 
 // DefaultHSTSMaxAgeSeconds is the Strict-Transport-Security max-age used when
@@ -593,6 +611,11 @@ func Load() (*Config, error) {
 
 	// ── OSI-19: optional TOTP 2FA (appended block — keep contiguous) ──
 	cfg.TOTP2FAEnabled = getEnvBool("TOTP_2FA_ENABLED", true)
+
+	// ── PR6 (G7): internal-mTLS provisioning seam (appended block — keep contiguous) ──
+	// De-hardcodes cmd/api's former literal "/certs/ca.crt"; the default is that
+	// exact path so the testbed's rendered/provisioned setup is unchanged.
+	cfg.TrustedCACertPath = getEnv("TRUSTED_CA_CERT", "/certs/ca.crt")
 
 	// ── OSI-4: boot-time security config validation (single append-only call).
 	// Production (ENVIRONMENT=production) refuses to boot on an insecure value;
