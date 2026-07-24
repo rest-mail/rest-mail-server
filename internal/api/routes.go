@@ -348,12 +348,21 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
 		r.Post("/api/v1/auth/2fa/disable", twofaH.Disable)
 
-		// Linked accounts
+		// Linked accounts.
+		//
+		// LinkAccount and TestConnection each verify a supplied address+password
+		// against a mailbox and reveal correctness (200 vs 401). Left unthrottled
+		// they are online password-guessing oracles a holder of any valid
+		// low-privilege token could hammer to brute-force arbitrary credentials,
+		// bypassing the login rate limit entirely. They share the SAME per-client-IP
+		// auth throttle as /auth/login and /auth/refresh (same limiter instance), so
+		// a wrong guess consumes the same budget as a failed login and cannot be used
+		// to sidestep it. The read/list/unlink routes carry no such risk.
 		r.Get("/api/v1/accounts", accountH.ListAccounts)
 		r.Get("/api/v1/accounts/{id}", accountH.GetAccount)
-		r.Post("/api/v1/accounts", accountH.LinkAccount)
+		r.With(authThrottle).Post("/api/v1/accounts", accountH.LinkAccount)
 		r.Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
-		r.Post("/api/v1/accounts/test-connection", accountH.TestConnection)
+		r.With(authThrottle).Post("/api/v1/accounts/test-connection", accountH.TestConnection)
 
 		// Folders
 		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
