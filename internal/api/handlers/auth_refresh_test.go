@@ -65,6 +65,15 @@ func (f *fakeRefreshStore) Revoke(jti string) error {
 	return nil
 }
 
+func (f *fakeRefreshStore) RevokeAllForSubject(userType string, subjectID uint) error {
+	for _, rec := range f.rows {
+		if rec.UserType == userType && rec.SubjectID == subjectID && rec.Status == models.RefreshTokenActive {
+			rec.Status = models.RefreshTokenRevoked
+		}
+	}
+	return nil
+}
+
 func (f *fakeRefreshStore) statusOf(jti string) string {
 	if rec, ok := f.rows[jti]; ok {
 		return rec.Status

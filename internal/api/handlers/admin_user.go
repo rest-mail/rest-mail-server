@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,6 +20,20 @@ type AdminUserHandler struct {
 
 func NewAdminUserHandler(db *gorm.DB) *AdminUserHandler {
 	return &AdminUserHandler{db: db}
+}
+
+// revokeSessions best-effort invalidates every live session for an admin user
+// after a security-relevant change (password change, disable, role change,
+// delete), so an existing refresh token can no longer be exchanged and cannot
+// carry stale capabilities. Failures are logged, not fatal: the primary mutation
+// has already succeeded.
+func (h *AdminUserHandler) revokeSessions(adminUserID uint) {
+	if h.db == nil {
+		return
+	}
+	if err := repositories.NewRefreshTokenRepository(h.db).RevokeAllForSubject("admin", adminUserID); err != nil {
+		slog.Warn("failed to revoke admin sessions", "admin_user_id", adminUserID, "error", err)
+	}
 }
 
 // Request/Response types
@@ -246,6 +261,11 @@ func (h *AdminUserHandler) UpdateAdminUser(w http.ResponseWriter, r *http.Reques
 
 	repo := repositories.NewAdminUserRepository(h.db)
 
+	// revokeSessions tracks whether this update is security-relevant (password
+	// change, disable, or role/capability change) and therefore must invalidate
+	// the user's live sessions once all changes have been applied.
+	revokeSessions := false
+
 	// Update password if provided
 	if req.Password != nil && *req.Password != "" {
 		passwordHash, err := auth.HashPassword(*req.Password)
@@ -257,6 +277,7 @@ func (h *AdminUserHandler) UpdateAdminUser(w http.ResponseWriter, r *http.Reques
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update password")
 			return
 		}
+		revokeSessions = true
 	}
 
 	// Update other fields
@@ -266,6 +287,9 @@ func (h *AdminUserHandler) UpdateAdminUser(w http.ResponseWriter, r *http.Reques
 	}
 	if req.Active != nil {
 		updates["active"] = *req.Active
+		if !*req.Active {
+			revokeSessions = true
+		}
 	}
 	if req.PasswordChangeRequired != nil {
 		updates["password_change_required"] = *req.PasswordChangeRequired
@@ -284,6 +308,13 @@ func (h *AdminUserHandler) UpdateAdminUser(w http.ResponseWriter, r *http.Reques
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update roles")
 			return
 		}
+		// A role change alters the capability set; force re-authentication so no
+		// session keeps stale capabilities.
+		revokeSessions = true
+	}
+
+	if revokeSessions {
+		h.revokeSessions(uint(id))
 	}
 
 	respond.Data(w, http.StatusOK, map[string]string{"message": "Admin user updated successfully"})
@@ -303,6 +334,9 @@ func (h *AdminUserHandler) DeleteAdminUser(w http.ResponseWriter, r *http.Reques
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete admin user")
 		return
 	}
+
+	// A deleted admin must not keep a usable session.
+	h.revokeSessions(uint(id))
 
 	w.WriteHeader(http.StatusNoContent)
 }

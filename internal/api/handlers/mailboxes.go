@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -20,6 +22,19 @@ type MailboxHandler struct {
 
 func NewMailboxHandler(db *gorm.DB) *MailboxHandler {
 	return &MailboxHandler{db: db}
+}
+
+// revokeSessions best-effort invalidates every live session for a mailbox after
+// a security-relevant change (password change, disable, delete), so an existing
+// refresh token can no longer be exchanged for fresh access tokens. Failures are
+// logged, not fatal: the primary mutation has already succeeded.
+func (h *MailboxHandler) revokeSessions(mailboxID uint) {
+	if h.db == nil {
+		return
+	}
+	if err := repositories.NewRefreshTokenRepository(h.db).RevokeAllForSubject("mailbox", mailboxID); err != nil {
+		slog.Warn("failed to revoke mailbox sessions", "mailbox_id", mailboxID, "error", err)
+	}
 }
 
 func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +219,12 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A password change or a disable must not leave live sessions behind: revoke
+	// every refresh token for this mailbox so it re-authenticates.
+	if req.Password != nil || (req.Active != nil && !*req.Active) {
+		h.revokeSessions(mailbox.ID)
+	}
+
 	h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id)
 	respond.Data(w, http.StatusOK, mailbox)
 }
@@ -225,6 +246,9 @@ func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete mailbox")
 		return
 	}
+
+	// A deleted mailbox must not keep a usable session.
+	h.revokeSessions(mailbox.ID)
 
 	w.WriteHeader(http.StatusNoContent)
 }
