@@ -29,6 +29,14 @@ type Store interface {
 	// as the given MAIL FROM address (i.e. it owns a linked mailbox with that
 	// address). An error is treated by the caller as "not authorized".
 	SenderAuthorized(accountID uint, from string) (bool, error)
+	// PersistSubmittedMessage records an authenticated submission as a message
+	// row owned by the sender's mailbox and returns its id. The returned id is
+	// threaded onto the outbound queue rows for the message's remote recipients
+	// so a later bounce/DSN can be authenticated back to the submitting mailbox
+	// (DSN sender-auth provenance). It returns (nil, nil) when the sender has no
+	// local mailbox to attribute the message to; a returned error must not fail
+	// the submission (delivery proceeds without a linked reference).
+	PersistSubmittedMessage(msg SubmittedMessage) (*uint, error)
 	// EnqueueOutbound appends a message to the outbound delivery queue for the
 	// queue worker to deliver to a remote MX.
 	EnqueueOutbound(msg OutboundMessage) error
@@ -41,4 +49,27 @@ type OutboundMessage struct {
 	Recipient  string
 	Domain     string // destination domain for MX lookup
 	RawMessage string // RFC 2822 formatted message
+	// MessageID links the queue row to the stored submission reference (a
+	// messages row owned by the sender), so a bounce/DSN for this recipient can
+	// verify its sender against the real submission. Nil when no reference was
+	// persisted (e.g. the sender has no local mailbox).
+	MessageID *uint
+}
+
+// SubmittedMessage is a neutral description of an authenticated submission the
+// Store persists as a sender-owned message reference, keeping the DB model out
+// of the SMTP session. RecipientsTo/RecipientsCc are pre-marshaled JSON (nil
+// when empty).
+type SubmittedMessage struct {
+	Sender       string
+	MessageID    string // RFC 5322 Message-ID header
+	SenderName   string
+	Subject      string
+	BodyText     string
+	BodyHTML     string
+	InReplyTo    string
+	References   string
+	RawMessage   string
+	RecipientsTo []byte
+	RecipientsCc []byte
 }
