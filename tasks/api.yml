@@ -92,7 +92,17 @@ tasks:
         # mailnet_only secondary instances skip host-port publishing.
         PUBLISH="-p {{.API_PORT}}:{{.API_PORT}}"
         [ "{{.API_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
+        # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
+        # capabilities (the API binds the unprivileged :8080/:8443, so needs
+        # none), plus pid/mem/cpu ceilings. Rootfs is left writable: dev mode
+        # hot-reloads via `air` (compiles into the bind-mounted /app) and the
+        # entrypoint runs update-ca-certificates — read-only rootfs is a
+        # prod-image follow-up (see PR notes).
+        HARDENING="--security-opt no-new-privileges:true \
+          --cap-drop ALL \
+          --pids-limit 1024 --memory 2g --cpus 2"
         docker run -d --name {{.API_CONTAINER_NAME}} \
+          $HARDENING \
           --restart unless-stopped \
           --network {{.API_NETWORK}} \
           --ip {{.API_IP}} \

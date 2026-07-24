@@ -64,9 +64,17 @@ tasks:
           docker rm -f {{.ADMIN_CONTAINER_NAME}} >$OUTPUT 2>&1
         fi
       - |
+        # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
+        # capabilities then add back only NET_BIND_SERVICE (prod nginx binds
+        # :80; harmless for the dev Vite server on :3000), plus pid/mem/cpu
+        # ceilings. Serves static assets only — no secrets in env.
+        HARDENING="--security-opt no-new-privileges:true \
+          --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          --pids-limit 512 --memory 1g --cpus 1.5"
         if [ "{{.ADMIN_MODE}}" = "prod" ]; then
           echo "  starting {{.ADMIN_CONTAINER_NAME}} (prod @ {{.ADMIN_IP}}, port {{.ADMIN_PROD_PORT}})"
           docker run -d --name {{.ADMIN_CONTAINER_NAME}} \
+            $HARDENING \
             --restart unless-stopped \
             --network {{.ADMIN_NETWORK}} \
             --ip {{.ADMIN_IP}} \
@@ -79,6 +87,7 @@ tasks:
         else
           echo "  starting {{.ADMIN_CONTAINER_NAME}} (dev @ {{.ADMIN_IP}}, port {{.ADMIN_DEV_PORT}})"
           docker run -d --name {{.ADMIN_CONTAINER_NAME}} \
+            $HARDENING \
             --restart unless-stopped \
             --network {{.ADMIN_NETWORK}} \
             --ip {{.ADMIN_IP}} \
