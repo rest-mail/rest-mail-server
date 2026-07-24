@@ -517,6 +517,14 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Stamp the authenticated submitting account so account-scoped outbound
+		// policy (e.g. the rate_limit filter) counts against it rather than the
+		// envelope sender, which the client can rotate at will.
+		if outEmailJSON.Metadata == nil {
+			outEmailJSON.Metadata = make(map[string]string)
+		}
+		outEmailJSON.Metadata["auth_account"] = strconv.FormatUint(uint64(claims.WebmailAccountID), 10)
+
 		var outPipelineCfg *pipeline.PipelineConfig
 		var dbOutPipeline models.Pipeline
 		if err := h.db.Where("domain_id = ? AND direction = ? AND active = ?", senderMailbox.DomainID, "outbound", true).
