@@ -27,8 +27,12 @@ type clamavConfig struct {
 
 // clamavAdapter communicates with a ClamAV REST service over HTTP.
 type clamavAdapter struct {
-	url    string
-	client *http.Client
+	url string
+	// hmacSecret, when non-empty, requires every verdict to carry a valid
+	// ScannerSignatureHeader HMAC (OSI-15); a missing/forged signature fails the
+	// scan and the pipeline fails closed. Empty disables verdict verification.
+	hmacSecret string
+	client     *http.Client
 }
 
 // clamavResponse represents the JSON response from a ClamAV REST scan endpoint.
@@ -37,12 +41,30 @@ type clamavResponse struct {
 	Description string `json:"description"` // virus name if found
 }
 
-// NewClamAV creates a new ClamAV adapter filter from JSON configuration.
+// NewClamAV creates a new ClamAV adapter filter from JSON configuration with no
+// verdict-HMAC secret. It is the init()-registered factory; routes.go re-registers
+// via NewClamAVWithSecret to bind the deployment's SCANNER_HMAC_SECRET (OSI-15).
 func NewClamAV(config []byte) (pipeline.Filter, error) {
+	return newClamAV(config, "")
+}
+
+// NewClamAVWithSecret returns a filter factory whose ClamAV adapters HMAC-verify
+// every verdict against secret (SCANNER_HMAC_SECRET). An empty secret leaves
+// verdict-signature verification off; the fail-closed fallback still applies.
+func NewClamAVWithSecret(secret string) pipeline.FilterFactory {
+	return func(config []byte) (pipeline.Filter, error) {
+		return newClamAV(config, secret)
+	}
+}
+
+func newClamAV(config []byte, hmacSecret string) (pipeline.Filter, error) {
 	cfg := clamavConfig{
-		URL:            "http://clamav:3310",
-		TimeoutMS:      30000,
-		FallbackAction: "continue",
+		URL:       "http://clamav:3310",
+		TimeoutMS: 30000,
+		// SECURE DEFAULT (OSI-15): defer, not continue. An unreachable or errored
+		// virus scanner temp-fails the message rather than delivering it unscanned.
+		// Restore legacy fail-open with "fallback_action":"continue".
+		FallbackAction: "defer",
 	}
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -57,7 +79,8 @@ func NewClamAV(config []byte) (pipeline.Filter, error) {
 	}
 
 	adapter := &clamavAdapter{
-		url: strings.TrimRight(cfg.URL, "/"),
+		url:        strings.TrimRight(cfg.URL, "/"),
+		hmacSecret: hmacSecret,
 		client: &http.Client{
 			Timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
 		},
@@ -65,7 +88,7 @@ func NewClamAV(config []byte) (pipeline.Filter, error) {
 
 	return &adapterFilter{
 		adapter:        adapter,
-		fallbackAction: parseAction(cfg.FallbackAction, pipeline.ActionContinue),
+		fallbackAction: parseAction(cfg.FallbackAction, pipeline.ActionDefer),
 	}, nil
 }
 
@@ -114,6 +137,13 @@ func (a *clamavAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 		return nil, fmt.Errorf("clamav: unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Authenticate the verdict before trusting it (OSI-15). A missing/forged
+	// signature (when a scanner secret is configured) returns an error so
+	// adapterFilter fails closed rather than treating the response as clean.
+	if err := verifyScannerSignature(a.hmacSecret, resp.Header, body); err != nil {
+		return nil, fmt.Errorf("clamav: %w", err)
+	}
+
 	var clamResp clamavResponse
 	if err := json.Unmarshal(body, &clamResp); err != nil {
 		return nil, fmt.Errorf("clamav: parse response: %w", err)
@@ -123,10 +153,8 @@ func (a *clamavAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 		"X-Virus-Scanned": "ClamAV",
 	}
 
-	// Determine if the message is infected.
-	infected := strings.EqualFold(clamResp.Status, "FOUND")
-
-	if infected {
+	switch {
+	case strings.EqualFold(clamResp.Status, "FOUND"):
 		virusName := clamResp.Description
 		if virusName == "" {
 			virusName = "unknown"
@@ -141,15 +169,22 @@ func (a *clamavAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 			Headers:   headers,
 			RejectMsg: fmt.Sprintf("Message contains virus: %s", virusName),
 		}, nil
+
+	case strings.EqualFold(clamResp.Status, "OK"):
+		headers["X-Virus-Status"] = "Clean"
+
+		return &pipeline.AdapterResult{
+			Clean:   true,
+			Score:   0,
+			Action:  pipeline.ActionContinue,
+			Details: "no virus detected",
+			Headers: headers,
+		}, nil
+
+	default:
+		// Unrecognized or missing status: fail CLOSED (OSI-15). A response that is
+		// neither OK nor FOUND is an ambiguous/partial verdict and must not be
+		// treated as clean — surface an error so adapterFilter defers the message.
+		return nil, fmt.Errorf("clamav: unrecognized scan status %q (fail-closed)", clamResp.Status)
 	}
-
-	headers["X-Virus-Status"] = "Clean"
-
-	return &pipeline.AdapterResult{
-		Clean:   true,
-		Score:   0,
-		Action:  pipeline.ActionContinue,
-		Details: "no virus detected",
-		Headers: headers,
-	}, nil
 }

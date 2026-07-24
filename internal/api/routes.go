@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/metrics"
 	pipelineobs "github.com/restmail/restmail/internal/metrics/observer"
+	"github.com/restmail/restmail/internal/netallow"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
 	"github.com/restmail/restmail/internal/trace"
@@ -67,6 +68,19 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r := chi.NewRouter()
 
 	// Global middleware
+	//
+	// Metrics network-gate (OSI-12) MUST come first — before chimw.RealIP — so it
+	// evaluates the genuine TCP peer, not a client-spoofable X-Forwarded-For that
+	// RealIP folds into RemoteAddr. It restricts /metrics to internal CIDRs
+	// (default loopback + RFC1918, so the in-cluster Prometheus scrape keeps
+	// working) and 404s any other peer; every non-/metrics path passes straight
+	// through. A forwarded header is trusted only from a PROXY_PROTOCOL_TRUSTED_CIDRS
+	// proxy.
+	r.Use(middleware.MetricsAllowlist(middleware.MetricsAllowlistConfig{
+		Path:           "/metrics",
+		Allow:          netallow.New("api-metrics", cfg.MetricsAllowedCIDRs()),
+		TrustedProxies: netallow.New("api-metrics-proxy", cfg.ProxyProtocolTrustedCIDRs),
+	}))
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
 	r.Use(chimw.Logger)
@@ -130,6 +144,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		AllowExternal:  sieveRedirect.AllowExternal,
 		AllowedDomains: sieveRedirect.AllowedDomains,
 	}))
+	// OSI-15: bind the external content-scanner filters to the deployment's shared
+	// HMAC secret so verdicts are authenticated end-to-end (a plain-HTTP verdict
+	// cannot be forged/downgraded). The adapters also default to fail-CLOSED
+	// (defer) when the scanner is unreachable/errors, overriding the legacy
+	// fail-open. No scanner runs by default — these filters are active only when an
+	// operator adds them to a pipeline, so the default pipeline is unaffected.
+	scannerSecret := cfg.ScannerHMACSecret()
+	pipeline.DefaultRegistry.Register("rspamd", filters.NewRspamdWithSecret(scannerSecret))
+	pipeline.DefaultRegistry.Register("clamav", filters.NewClamAVWithSecret(scannerSecret))
 
 	// The message-processing engine carries the metrics observer so real
 	// inbound/outbound message flow emits pipeline metrics. The pipeline

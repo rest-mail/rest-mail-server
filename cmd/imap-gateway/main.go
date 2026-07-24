@@ -48,7 +48,7 @@ func main() {
 
 	// Prometheus /metrics endpoint for this gateway process. Serves the process
 	// registry the connection limiter increments into.
-	metricsServer := metricsrv.New(cfg.IMAPMetricsPort)
+	metricsServer := metricsrv.New(cfg.IMAPMetricsPort, cfg.MetricsAllowedCIDRs(), cfg.ProxyProtocolTrustedCIDRs)
 	metricsServer.Start()
 
 	var tlsConfig *tls.Config

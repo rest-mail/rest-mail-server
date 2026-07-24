@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/mtls"
+	"github.com/restmail/restmail/internal/netallow"
 )
 
 // DefaultSMTPMaxMessageSize is the SMTP maximum message size applied when
@@ -821,4 +822,62 @@ func (c *Config) PipelineFilterErrorAction() string {
 }
 
 // END inbound-path security hardening
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN scanner-verdict hardening (OSI-15)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The setting is read lazily through a *Config accessor using
+// the getEnv helper above; the Config struct and Load() are deliberately
+// untouched. An unset secret disables only the extra verdict-signature check —
+// never the fail-closed fallback baked into the scanner adapters.
+// ══════════════════════════════════════════════════════════════════════════
+
+// ScannerHMACSecret returns the shared secret used to authenticate external
+// content-scanner (rspamd / ClamAV) verdicts (OSI-15). Verdicts otherwise travel
+// over plain HTTP with no integrity protection, so a MITM or rogue scanner could
+// downgrade a "reject"/"infected" verdict to "clean". When set, the scanner
+// filters verify an HMAC-SHA256 signature (X-Scanner-Signature) over every
+// verdict body and fail closed on a missing/forged signature.
+//
+// Empty (the default) is safe because NO external scanner is wired into the
+// default pipeline: the rspamd/clamav filters are optional and run only when an
+// operator explicitly adds them to a pipeline. When a scanner IS deployed, set
+// SCANNER_HMAC_SECRET on both the server and the scanner sidecar.
+func (c *Config) ScannerHMACSecret() string {
+	return getEnv("SCANNER_HMAC_SECRET", "")
+}
+
+// END scanner-verdict hardening
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN metrics network-gate (OSI-12)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The setting is read lazily through a *Config accessor using
+// the getEnvSlice helper above; the Config struct and Load() are untouched. An
+// unset allowlist defaults to internal-only CIDRs — never open to the public.
+// ══════════════════════════════════════════════════════════════════════════
+
+// MetricsAllowedCIDRs returns the source-network allowlist for the Prometheus
+// /metrics endpoints (OSI-12), applied to both the API route and the gateway
+// metrics servers. Prometheus scraping is a network-level control (JWT-gating
+// would break scrapers), so the endpoint is restricted to trusted CIDRs and a
+// non-allowlisted peer is denied. Unset defaults to loopback + RFC1918
+// (netallow.DefaultInternalCIDRs) — exactly how the in-cluster Prometheus reaches
+// the endpoint — so the default keeps scraping working while closing the
+// endpoint to the public internet. Override with METRICS_ALLOWED_CIDRS
+// (comma-separated).
+//
+// The trusted-proxy set for safe real-client-IP derivation is the existing
+// PROXY_PROTOCOL_TRUSTED_CIDRS (ProxyProtocolTrustedCIDRs): a forwarded header is
+// honored only when the direct TCP peer is one of those proxies, so a public
+// client cannot spoof an internal source.
+func (c *Config) MetricsAllowedCIDRs() []string {
+	return getEnvSlice("METRICS_ALLOWED_CIDRS", netallow.DefaultInternalCIDRs)
+}
+
+// END metrics network-gate
 // ══════════════════════════════════════════════════════════════════════════

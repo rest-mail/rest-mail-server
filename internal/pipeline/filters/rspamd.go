@@ -27,8 +27,12 @@ type rspamdConfig struct {
 
 // rspamdAdapter communicates with an rspamd instance over HTTP.
 type rspamdAdapter struct {
-	url    string
-	client *http.Client
+	url string
+	// hmacSecret, when non-empty, requires every verdict to carry a valid
+	// ScannerSignatureHeader HMAC (OSI-15); a missing/forged signature fails the
+	// scan and the pipeline fails closed. Empty disables verdict verification.
+	hmacSecret string
+	client     *http.Client
 }
 
 // rspamdResponse represents the relevant fields from rspamd's /checkv2 JSON response.
@@ -47,12 +51,32 @@ type rspamdSymbol struct {
 	Description string  `json:"description"`
 }
 
-// NewRspamd creates a new rspamd adapter filter from JSON configuration.
+// NewRspamd creates a new rspamd adapter filter from JSON configuration with no
+// verdict-HMAC secret. It is the init()-registered factory; routes.go re-registers
+// via NewRspamdWithSecret to bind the deployment's SCANNER_HMAC_SECRET (OSI-15).
 func NewRspamd(config []byte) (pipeline.Filter, error) {
+	return newRspamd(config, "")
+}
+
+// NewRspamdWithSecret returns a filter factory whose rspamd adapters
+// HMAC-verify every verdict against secret (SCANNER_HMAC_SECRET). An empty
+// secret leaves verdict-signature verification off; the fail-closed fallback
+// still applies regardless.
+func NewRspamdWithSecret(secret string) pipeline.FilterFactory {
+	return func(config []byte) (pipeline.Filter, error) {
+		return newRspamd(config, secret)
+	}
+}
+
+func newRspamd(config []byte, hmacSecret string) (pipeline.Filter, error) {
 	cfg := rspamdConfig{
-		URL:            "http://rspamd:11333",
-		TimeoutMS:      5000,
-		FallbackAction: "continue",
+		URL:       "http://rspamd:11333",
+		TimeoutMS: 5000,
+		// SECURE DEFAULT (OSI-15): defer, not continue. If the scanner is
+		// unreachable or errors, the message is temp-failed (sender retries)
+		// rather than silently delivered unscanned. An operator can restore the
+		// legacy fail-open behavior with "fallback_action":"continue".
+		FallbackAction: "defer",
 	}
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -67,7 +91,8 @@ func NewRspamd(config []byte) (pipeline.Filter, error) {
 	}
 
 	adapter := &rspamdAdapter{
-		url: strings.TrimRight(cfg.URL, "/"),
+		url:        strings.TrimRight(cfg.URL, "/"),
+		hmacSecret: hmacSecret,
 		client: &http.Client{
 			Timeout: time.Duration(cfg.TimeoutMS) * time.Millisecond,
 		},
@@ -75,7 +100,7 @@ func NewRspamd(config []byte) (pipeline.Filter, error) {
 
 	return &adapterFilter{
 		adapter:        adapter,
-		fallbackAction: parseAction(cfg.FallbackAction, pipeline.ActionContinue),
+		fallbackAction: parseAction(cfg.FallbackAction, pipeline.ActionDefer),
 	}, nil
 }
 
@@ -135,6 +160,13 @@ func (a *rspamdAdapter) Scan(ctx context.Context, email *pipeline.EmailJSON) (*p
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("rspamd: unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Authenticate the verdict before trusting it (OSI-15). When a scanner secret
+	// is configured, a missing/forged signature returns an error here, so
+	// adapterFilter applies its fail-closed fallback instead of the verdict.
+	if err := verifyScannerSignature(a.hmacSecret, resp.Header, body); err != nil {
+		return nil, fmt.Errorf("rspamd: %w", err)
 	}
 
 	var rspamdResp rspamdResponse
@@ -198,7 +230,9 @@ func mapRspamdAction(rspamdAction string) (pipeline.Action, bool) {
 	case "no action":
 		return pipeline.ActionContinue, true
 	default:
-		// Unknown action: continue to be safe.
-		return pipeline.ActionContinue, true
+		// Unknown or missing action: fail CLOSED (OSI-15). An unrecognized or
+		// empty verdict is treated as a temp-failure (defer) — never as clean —
+		// so a malformed/partial scanner response cannot pass mail unscanned.
+		return pipeline.ActionDefer, false
 	}
 }

@@ -22,6 +22,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"github.com/restmail/restmail/internal/netallow"
+
 	// Blank import guarantees internal/metrics' init() runs so its collectors
 	// are registered in the default registry even if a gateway happens not to
 	// reference them directly — the handler is then always meaningful.
@@ -35,6 +37,21 @@ func Handler() http.Handler {
 	return promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{})
 }
 
+// gate restricts h to peers on the allowlist (OSI-12). The gateway metrics
+// server has no reverse-proxy middleware in front, so RemoteAddr is the genuine
+// TCP peer; RealClientIP additionally honors X-Forwarded-For only when the direct
+// peer is a trusted proxy. A non-allowlisted or undeterminable peer gets 404, so
+// the endpoint's existence is not advertised to outsiders.
+func gate(allow, trusted *netallow.Allowlist, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !allow.Allowed(netallow.RealClientIP(r, trusted)) {
+			http.NotFound(w, r)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
 // Server is a minimal HTTP server that serves GET /metrics and nothing else.
 type Server struct {
 	srv  *http.Server
@@ -45,12 +62,21 @@ type Server struct {
 // meant to be reached over the internal (container) network, not host-published.
 // A port <= 0 disables metrics: New returns nil, and Start/Shutdown on a nil
 // *Server are no-ops, so callers need no special-casing.
-func New(port int) *Server {
+//
+// allowedCIDRs is the source-network allowlist (OSI-12): only peers within it may
+// scrape /metrics; everyone else gets 404. Passing nil/empty denies all — callers
+// pass cfg.MetricsAllowedCIDRs(), which defaults to loopback + RFC1918 so the
+// in-cluster Prometheus scrape keeps working. trustedProxyCIDRs are proxies whose
+// X-Forwarded-For is honored when deriving the real client IP; a gateway metrics
+// server normally has no proxy in front, so RemoteAddr is the genuine peer.
+func New(port int, allowedCIDRs, trustedProxyCIDRs []string) *Server {
 	if port <= 0 {
 		return nil
 	}
+	allow := netallow.New("gateway-metrics", allowedCIDRs)
+	trusted := netallow.New("gateway-metrics-proxy", trustedProxyCIDRs)
 	mux := http.NewServeMux()
-	mux.Handle("GET /metrics", Handler())
+	mux.Handle("GET /metrics", gate(allow, trusted, Handler()))
 	addr := ":" + strconv.Itoa(port)
 	return &Server{
 		srv: &http.Server{
