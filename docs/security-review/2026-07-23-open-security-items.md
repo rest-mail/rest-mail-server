@@ -272,6 +272,10 @@ Overnight autonomous sprint (2026-07-23→24) landed most of this register. Per-
 
 ## Processed reviews
 
+> **Retired 2026-07-24:** the source review files named below were fully processed into
+> this register (every finding struck or captured as an OSI item) and have since been
+> deleted. Their processing record is retained here; this register is the standalone record.
+
 - **`kimi-security-review.md`** — re-evaluated 2026-07-23 against `main` @ `3567df1`;
   all 50 findings classified and struck/annotated. Fixed here: #9 (webhook SSRF).
 - **`opus-security-review-2026-04-23.md`** — re-evaluated 2026-07-23; all 17 Critical +
@@ -296,3 +300,12 @@ Overnight autonomous sprint (2026-07-23→24) landed most of this register. Per-
 
 Once a source review is fully resolved (every finding struck through) and its open items
 are captured above, its dated file can be deleted.
+
+**Retired 2026-07-24:** the following point-in-time review files were fully processed into
+this register and deleted; this register now stands alone as the record:
+
+- `codex-security-review-2026-04-23.md` + `-board-` + `-summary-` — codex trio, fully
+  resolved (struck in #77 / #80); OSI-1 / OSI-2 carried forward.
+- `kimi-security-review.md` — all 50 findings classified; open items captured as OSI-N.
+- `opus-security-review-2026-04-23.md` — 17 Critical + 24 High struck/annotated,
+  Medium/Low dispositioned; open items captured as OSI-N.
