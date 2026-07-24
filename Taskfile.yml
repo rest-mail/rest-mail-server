@@ -992,26 +992,68 @@ tasks:
         go run ./cmd/instance scaffold {{.DOMAIN}}
 
   instance:certs:issue:
-    desc: "Issue a TLS cert for INSTANCE into the shared testbed_certs volume (requires the testbed)"
+    desc: "Issue/validate INSTANCE's serving cert into the certs volume (provider = cert_provider: testbed-certgen | manual | acme)"
     vars:
       CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
       CERTGEN_IMAGE: '{{.CERTGEN_IMAGE | default "ghcr.io/rest-mail/reference-certgen"}}'
       CERTGEN_TAG: '{{.CERTGEN_TAG | default "2026.04.28"}}'
+      # cert_provider selects the branch below. Rendered as RESTMAIL_CERT_PROVIDER
+      # only when NON-default, so an absent var means the testbed default —
+      # byte-identical to before.
+      CERT_PROVIDER: '{{.RESTMAIL_CERT_PROVIDER | default "testbed-certgen"}}'
+      # The COMPLETE SAN list one instance cert must cover: served hostnames ∪
+      # tls.extra_hostnames (render.go CertSANHostnames → MAIL3_TLS_CERT_SANS).
+      # Single-domain instances with no extras render no line, so this falls back
+      # to MAIL3_HOSTNAME — the exact single-name value issued before, keeping the
+      # e2e testbed path unchanged. This resolves #99's deferred multi-name SAN
+      # derivation: the full list is now built and passed to the issuer.
+      CERT_SANS: '{{.MAIL3_TLS_CERT_SANS | default .MAIL3_HOSTNAME}}'
     cmds:
-      # Reuses reference-certgen. One wildcard cert (<domain> + *.<domain>)
-      # covers the split-gateway hostnames (imap./pop3./mta-sts.<domain>).
-      # For a multi-domain instance CERTGEN_DOMAINS is the full served-hostname
-      # list (MAIL3_SERVED_HOSTNAMES, primary first) so a single instance cert
-      # covers every served domain; single-domain instances fall back to
-      # MAIL3_HOSTNAME — byte-identical to before. NOTE: verifying that
-      # reference-certgen issues a correct multi-name SAN cert from a
-      # comma-separated list is deferred to the PR5 TLS/cert seam; this renders
-      # and passes the complete list so PR5 can consume it.
       - |
-        docker run --rm \
-          -v "{{.CERTS_VOLUME}}:/certs" \
-          -e CERTGEN_DOMAINS="{{.MAIL3_SERVED_HOSTNAMES | default .MAIL3_HOSTNAME}}" \
-          {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
+        case "{{.CERT_PROVIDER}}" in
+          testbed-certgen)
+            # Default (testbed): reference-certgen issues one cert covering
+            # CERT_SANS. For a single-domain instance that is a single hostname
+            # (byte-identical to before); for multi-domain / extra_hostnames it is
+            # the full comma-separated SAN list. Idempotent + CA-preserving.
+            docker run --rm \
+              -v "{{.CERTS_VOLUME}}:/certs" \
+              -e CERTGEN_DOMAINS="{{.CERT_SANS}}" \
+              {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
+            ;;
+          manual)
+            # The deployer drops the serving cert/key into the certs volume out of
+            # band; we ONLY validate presence and never issue. SNICertLoader serves
+            # <hostname>.{crt,key} by SNI and falls back to the primary cert for any
+            # name it lacks a per-name file for — so a single multi-SAN cert named
+            # after the primary hostname is sufficient (it must list every SAN).
+            docker run --rm -v "{{.CERTS_VOLUME}}:/certs:ro" alpine:3 sh -euc '
+              sans=$(echo "$1" | tr "," " "); set -- $sans; primary="$1"; shift
+              if [ ! -f "/certs/${primary}.crt" ] || [ ! -f "/certs/${primary}.key" ]; then
+                echo "cert_provider=manual: MISSING /certs/${primary}.{crt,key} — drop the serving cert+key (covering SANs: ${sans}) into volume {{.CERTS_VOLUME}}" >&2
+                exit 1
+              fi
+              echo "cert_provider=manual: ok — ${primary}.{crt,key} present (fallback + primary SNI cert)"
+              for h in "$@"; do
+                if [ -f "/certs/${h}.crt" ] && [ -f "/certs/${h}.key" ]; then
+                  echo "  ok: per-name ${h}.{crt,key} present"
+                else
+                  echo "  note: no per-name ${h}.{crt,key} — SNI for ${h} uses the ${primary} fallback, which must list ${h} as a SAN"
+                fi
+              done
+            ' _ "{{.CERT_SANS}}"
+            ;;
+          acme|letsencrypt|letsencrypt-http01|letsencrypt-dns01)
+            echo "cert_provider={{.CERT_PROVIDER}}: ACME/Let's Encrypt issuance is not yet implemented (PR5 wires the tls.acme: manifest fields through; the ACME client is a later PR)." >&2
+            echo "  Use cert_provider: manual (drop cert/key into the certs volume) or testbed-certgen (the testbed reference CA) for now." >&2
+            echo "  Declared SAN set: {{.CERT_SANS}}" >&2
+            exit 2
+            ;;
+          *)
+            echo "cert_provider={{.CERT_PROVIDER}}: unknown provider (want testbed-certgen | manual | acme)." >&2
+            exit 2
+            ;;
+        esac
 
   instance:mtls:issue:
     desc: "Provision internal-mTLS certs (dedicated CA + API server + gateway client) for INSTANCE into the certs volume"
