@@ -334,8 +334,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 				return
 			case pipeline.ActionQuarantine:
 				for _, rcpt := range req.To {
-					var mailbox models.Mailbox
-					if h.db.Where("address = ? AND active = ?", rcpt, true).First(&mailbox).Error == nil {
+					if mailbox, _, ok := h.resolveRecipientMailbox(rcpt); ok {
 						preview := req.BodyText
 						if len(preview) > 200 {
 							preview = preview[:200]
@@ -386,8 +385,8 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, rcpt := range req.To {
-		var mailbox models.Mailbox
-		if err := h.db.Where("address = ? AND active = ?", rcpt, true).First(&mailbox).Error; err != nil {
+		mailbox, deliveredTo, ok := h.resolveRecipientMailbox(rcpt)
+		if !ok {
 			failed = append(failed, rcpt)
 			continue
 		}
@@ -396,6 +395,14 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		if mailbox.QuotaBytes > 0 && mailbox.QuotaUsedBytes >= mailbox.QuotaBytes {
 			failed = append(failed, rcpt)
 			continue
+		}
+
+		// RFC 5233: when the recipient was resolved by stripping a "+detail" tag
+		// down to the base mailbox, record the original recipient in a
+		// Delivered-To header so downstream Sieve rules can still match the tag.
+		rcptRaw := rawMessage
+		if deliveredTo != "" && rcptRaw != "" {
+			rcptRaw = "Delivered-To: " + deliveredTo + "\r\n" + rcptRaw
 		}
 
 		sizeBytes := len(req.Subject) + len(req.BodyText) + len(req.BodyHTML)
@@ -420,9 +427,9 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			BodyText:     req.BodyText,
 			BodyHTML:     req.BodyHTML,
 			Headers:      models.JSONB(req.Headers),
-			RawMessage:   rawMessage,
+			RawMessage:   rcptRaw,
 			SizeBytes:    sizeBytes,
-			RawSize:      len(rawMessage), // exact stored-raw octet count for IMAP/POP3 size reporting
+			RawSize:      len(rcptRaw), // exact stored-raw octet count for IMAP/POP3 size reporting
 		}
 
 		if err := h.db.Create(&msg).Error; err != nil {
@@ -465,6 +472,38 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		"delivered": delivered,
 		"failed":    failed,
 	})
+}
+
+// resolveRecipientMailbox resolves an envelope recipient to a deliverable local
+// mailbox, applying RFC 5233 subaddressing ("plus addressing"). An exact
+// address match always wins. When none exists and the local part carries a
+// "+detail" tag, it retries against the base address — but only when no explicit
+// alias claims the full "+detail" address (an explicit alias wins over the base
+// fallback). deliveredTo is the original recipient when a "+detail" tag was
+// stripped (so the caller can record a Delivered-To header preserving the tag
+// for downstream Sieve filters), and "" otherwise.
+func (h *RestmailHandler) resolveRecipientMailbox(rcpt string) (mailbox models.Mailbox, deliveredTo string, ok bool) {
+	if err := h.db.Where("address = ? AND active = ?", rcpt, true).First(&mailbox).Error; err == nil {
+		return mailbox, "", true
+	}
+
+	base, _, tagged := rmail.StripSubaddress(rcpt)
+	if !tagged {
+		return models.Mailbox{}, "", false
+	}
+
+	// An explicit alias for the full "+detail" address claims it — do not fall
+	// back to the base mailbox (explicit alias wins over subaddressing).
+	var aliasCount int64
+	h.db.Model(&models.Alias{}).Where("source_address = ?", rcpt).Count(&aliasCount)
+	if aliasCount > 0 {
+		return models.Mailbox{}, "", false
+	}
+
+	if err := h.db.Where("address = ? AND active = ?", base, true).First(&mailbox).Error; err == nil {
+		return mailbox, rcpt, true
+	}
+	return models.Mailbox{}, "", false
 }
 
 // mediaType returns the lower-cased media type of a Content-Type value with any
