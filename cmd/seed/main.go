@@ -9,9 +9,14 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/instance"
 	"github.com/restmail/restmail/internal/seed"
 	"gorm.io/gorm"
 )
+
+// defaultQuotaBytes is the per-domain default quota (1 GiB) applied to
+// additional served-domain rows, matching the seed fixture's primary domain.
+const defaultQuotaBytes = 1073741824
 
 func main() {
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
@@ -42,6 +47,16 @@ func main() {
 
 	if err := seedFixture(database, domain); err != nil {
 		slog.Error("seeding failed", "error", err)
+		os.Exit(1)
+	}
+
+	// Additional served domains (manifest `domains:` list, rendered to
+	// MAIL3_SEED_SERVED_DOMAINS and passed here as SEED_SERVED_DOMAINS). Each
+	// gets a DB domain row with its declared server_type; mailboxes/aliases for
+	// these stay DB-driven (admin API). Empty/unset → nothing extra is seeded,
+	// so single-domain instances are unchanged.
+	if err := seedServedDomains(database, os.Getenv("SEED_SERVED_DOMAINS")); err != nil {
+		slog.Error("served-domain seeding failed", "error", err)
 		os.Exit(1)
 	}
 
@@ -101,6 +116,27 @@ func seedFixture(database *gorm.DB, domain string) error {
 		slog.Info("webmail_account", "address", addr, "id", account.ID, "created", result.RowsAffected > 0)
 	}
 
+	return nil
+}
+
+// seedServedDomains creates a DB domain row for each ADDITIONAL served domain
+// declared in the manifest `domains:` list (decoded from SEED_SERVED_DOMAINS).
+// FirstOrCreate on the name makes it idempotent. Only the domain row (with its
+// server_type) is created — mailboxes/aliases for additional domains remain
+// DB-driven via the admin API, matching how the roadmap treats domain data.
+func seedServedDomains(database *gorm.DB, spec string) error {
+	entries, err := instance.ParseSeedServedDomains(spec)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		domain := models.Domain{Name: e.Name, ServerType: e.ServerType, Active: true, DefaultQuotaBytes: defaultQuotaBytes}
+		result := database.Where("name = ?", e.Name).FirstOrCreate(&domain)
+		if result.Error != nil {
+			return result.Error
+		}
+		slog.Info("served domain", "name", e.Name, "server_type", e.ServerType, "id", domain.ID, "created", result.RowsAffected > 0)
+	}
 	return nil
 }
 

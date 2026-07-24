@@ -93,7 +93,23 @@ Order: **PR1 → PR2 → {PR3, PR4, PR5} → PR6 (after mTLS) → PR7**. Only PR
 3. **mTLS coupling (PR6):** wait for `feat/internal-mtls` to define config fields then add the manifest block, or design `tls.internal` now?
 4. **DKIM selector (PR3):** purely a rendered input, or also asserted in a DB/health-check?
 5. **certgen (G8):** keep `cmd/certgen` as a dev tool or deprecate in favour of `instance:certs:issue`?
-6. **Multi-domain instances:** manifest declares several served domains, or one primary domain + others via admin API post-up?
+6. ~~**Multi-domain instances:** manifest declares several served domains, or one primary domain + others via admin API post-up?~~
+   **RESOLVED (multi-domain schema):** the manifest declares several served
+   domains. Top-level `domain` stays the PRIMARY (instance identity/hostname +
+   default cert CN); an optional `domains:` list declares ADDITIONAL served
+   domains, each `{ name, server_type?, hostname?, dkim:{selector?,bits?}, dns? }`.
+   The primary is never repeated in the list (validated). Omitting `domains:` →
+   exactly today's single-domain behavior (byte-identical render, pinned by
+   golden test). `ServedDomains()` resolves the primary+additional set; render
+   emits `MAIL3_SERVED_HOSTNAMES` (cert SAN set) + `MAIL3_SEED_SERVED_DOMAINS`
+   (name:server_type) only when additional domains exist. Provisioning iterates
+   each served domain: `cmd/seed` creates a DB row per domain (with its
+   server_type), `instance:dkim` provisions a DKIM selector/key per domain,
+   `instance:dns:register` writes a dnsmasq fragment per domain over the shared
+   instance gateways. Cert SAN plumbing is rendered/passed here; verifying
+   reference-certgen multi-name issuance is deferred to PR5 (TLS/cert seam). No
+   DB/model changes — domains remain fully DB-driven, the manifest only DECLARES
+   which to provision at instance-up.
 
 ### Critical files
 `internal/instance/render.go`, `internal/instance/scaffold.go`,

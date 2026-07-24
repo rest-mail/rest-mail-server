@@ -742,7 +742,14 @@ tasks:
   db:seed:
     desc: Seed the INSTANCE database with test data (fixture users under its domain)
     cmds:
-      - docker exec -e SEED_DOMAIN={{.MAIL3_HOSTNAME}} {{.RESTMAIL_PROJECT}}-api go run ./cmd/seed
+      # SEED_SERVED_DOMAINS carries the manifest `domains:` list (rendered to
+      # MAIL3_SEED_SERVED_DOMAINS as name:server_type,...) so cmd/seed creates a
+      # DB row per ADDITIONAL served domain. Passed only when the instance
+      # declares extra domains — single-domain instances seed exactly as before.
+      - |
+        docker exec -e SEED_DOMAIN={{.MAIL3_HOSTNAME}} \
+          {{if .MAIL3_SEED_SERVED_DOMAINS}}-e SEED_SERVED_DOMAINS="{{.MAIL3_SEED_SERVED_DOMAINS}}" \
+          {{end}}{{.RESTMAIL_PROJECT}}-api go run ./cmd/seed
 
   db:reset:
     desc: Drop the postgres data volume, recreate, then seed (destructive)
@@ -993,10 +1000,17 @@ tasks:
     cmds:
       # Reuses reference-certgen. One wildcard cert (<domain> + *.<domain>)
       # covers the split-gateway hostnames (imap./pop3./mta-sts.<domain>).
+      # For a multi-domain instance CERTGEN_DOMAINS is the full served-hostname
+      # list (MAIL3_SERVED_HOSTNAMES, primary first) so a single instance cert
+      # covers every served domain; single-domain instances fall back to
+      # MAIL3_HOSTNAME — byte-identical to before. NOTE: verifying that
+      # reference-certgen issues a correct multi-name SAN cert from a
+      # comma-separated list is deferred to the PR5 TLS/cert seam; this renders
+      # and passes the complete list so PR5 can consume it.
       - |
         docker run --rm \
           -v "{{.CERTS_VOLUME}}:/certs" \
-          -e CERTGEN_DOMAINS="{{.MAIL3_HOSTNAME}}" \
+          -e CERTGEN_DOMAINS="{{.MAIL3_SERVED_HOSTNAMES | default .MAIL3_HOSTNAME}}" \
           {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
 
   instance:mtls:issue:
@@ -1048,6 +1062,34 @@ tasks:
         else
           echo "  note: {{.DNSMASQ_CONTAINER}} not running — fragment written, applies when the testbed dnsmasq starts"
         fi
+      # Additional served domains (manifest `domains:` list): one dnsmasq
+      # fragment each, over the SAME instance gateways (only the
+      # hostname/MX/MTA-STS differ). Guarded on MAIL3_SERVED_HOSTNAMES, so this
+      # is a no-op for single-domain instances — their registration is unchanged.
+      - |
+        {{if .MAIL3_SERVED_HOSTNAMES}}
+        set -e
+        # Each iteration reuses the gitignored dns.env (rendered → consumed by
+        # the fragment render immediately) so no new repo-tracked artifact is
+        # introduced; the per-domain identity lives in the fragment --name.
+        go run ./cmd/instance domains -additional {{.INSTANCE_DIR}}/manifest.yml |
+        while IFS= read -r line; do
+          name=$(printf '%s' "$line" | cut -f1)
+          [ -n "$name" ] || continue
+          slug=$(echo "$name" | cut -d. -f1)
+          go run ./cmd/instance dns-env -domain "$name" -o "{{.INSTANCE_DIR}}/dns.env" {{.INSTANCE_DIR}}/manifest.yml
+          docker run --rm \
+            -v "{{.FRAG_VOL}}:/dst" \
+            -v "$(pwd)/{{.INSTANCE_DIR}}/dns.env:/env:ro" \
+            -v "$(pwd)/projects/dnsmasq/fragment.tmpl:/tmpl:ro" \
+            {{.DNSMASQ_IMAGE}}:{{.DNSMASQ_TAG}} \
+            render-fragment --name "{{.INSTANCE}}-$slug" --project {{.RESTMAIL_PROJECT}}
+          echo "  registered DNS for served domain $name"
+        done
+        if docker ps -aq --filter "name=^/{{.DNSMASQ_CONTAINER}}$" | grep -q .; then
+          docker restart {{.DNSMASQ_CONTAINER}} >/dev/null && echo "  reloaded {{.DNSMASQ_CONTAINER}} (served domains)"
+        fi
+        {{end}}
 
   instance:dns:unregister:
     desc: "Remove <INSTANCE>'s DNS fragment from the testbed dnsmasq"
@@ -1099,6 +1141,41 @@ tasks:
           alpine:3.20 cp /src/dkim.conf /dst/11-{{.INSTANCE}}-dkim.conf
         docker restart {{.DNSMASQ_CONTAINER}} >/dev/null
         echo "  DKIM provisioned + published for {{.MAIL3_HOSTNAME}}"
+      # Additional served domains (manifest `domains:` list): provision DKIM per
+      # domain. Selector/bits come from each domains: entry (via
+      # `instance domains -additional`); an empty field falls through to
+      # dkim-provision's own default (selector "default", 2048 bits), exactly
+      # like the primary above. Each domain must already have a DB row (db:seed
+      # created it from SEED_SERVED_DOMAINS). Guarded on MAIL3_SERVED_HOSTNAMES,
+      # so single-domain instances are a no-op — their DKIM path is unchanged.
+      - |
+        {{if .MAIL3_SERVED_HOSTNAMES}}
+        set -e
+        # Each iteration reuses the gitignored dkim.conf (rendered → consumed →
+        # copied to a per-domain fragment name in the volume) so no new
+        # repo-tracked artifact is introduced; the per-domain identity lives in
+        # the dnsmasq fragment filename (11-<instance>-<slug>-dkim.conf).
+        go run ./cmd/instance domains -additional {{.INSTANCE_DIR}}/manifest.yml |
+        while IFS= read -r line; do
+          name=$(printf '%s' "$line" | cut -f1)
+          [ -n "$name" ] || continue
+          sel=$(printf '%s' "$line" | cut -f3)
+          bits=$(printf '%s' "$line" | cut -f4)
+          slug=$(echo "$name" | cut -d. -f1)
+          docker exec {{.RESTMAIL_PROJECT}}-api \
+            go run ./cmd/instance dkim-provision \
+              --domain "$name" \
+              --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
+              ${sel:+--selector "$sel"} ${bits:+-bits "$bits"} \
+            2>/dev/null | tail -1 > "{{.INSTANCE_DIR}}/dkim.conf"
+          docker run --rm \
+            -v "{{.ROOT_DIR}}/{{.INSTANCE_DIR}}:/src:ro" \
+            -v "{{.FRAG_VOL}}:/dst" \
+            alpine:3.20 cp "/src/dkim.conf" "/dst/11-{{.INSTANCE}}-$slug-dkim.conf"
+          echo "  DKIM provisioned + published for $name"
+        done
+        docker restart {{.DNSMASQ_CONTAINER}} >/dev/null
+        {{end}}
 
   # ── Bring-up (instance-generic; restmail:* are back-compat aliases) ──
 

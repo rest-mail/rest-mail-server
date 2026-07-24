@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/rest-mail/go-dkim"
@@ -37,6 +38,8 @@ func main() {
 		scaffoldCmd(os.Args[2:])
 	case "dns-env":
 		dnsEnvCmd(os.Args[2:])
+	case "domains":
+		domainsCmd(os.Args[2:])
 	case "dkim-keygen":
 		dkimKeygenCmd(os.Args[2:])
 	case "dkim-provision":
@@ -61,8 +64,15 @@ usage:
       Create instances/<domain>/{manifest.yml,config.env,secrets.env} with a
       freshly-allocated IP block and random secrets. Brings up nothing.
 
-  instance dns-env [-o out.env] <manifest.yml>
+  instance dns-env [-o out.env] [-domain <name>] <manifest.yml>
       Render the dns.env consumed by reference-dnsmasq render-fragment.
+      -domain  render for a specific SERVED domain (default: the primary).
+
+  instance domains [-additional] <manifest.yml>
+      List the instance's served domains, one tab-separated record per line:
+      name<TAB>server_type<TAB>dkim_selector<TAB>dkim_bits<TAB>hostname.
+      The primary domain is first; -additional omits it. Drives the per-domain
+      DKIM/DNS provisioning loops.
 
   instance dkim-keygen [-selector default] [-bits 2048] <domain>
       Generate a DKIM keypair; print the private key (stdout) + the DNS
@@ -78,6 +88,7 @@ usage:
 func dnsEnvCmd(args []string) {
 	fs := flag.NewFlagSet("dns-env", flag.ExitOnError)
 	out := fs.String("o", "", "output path (default: stdout)")
+	domain := fs.String("domain", "", "render for a specific served domain (default: the primary)")
 	_ = fs.Parse(args)
 
 	if fs.NArg() != 1 {
@@ -92,7 +103,12 @@ func dnsEnvCmd(args []string) {
 	if err != nil {
 		fatal("%s: %v", fs.Arg(0), err)
 	}
-	data, err := instance.DNSEnv(m)
+	var data []byte
+	if *domain == "" {
+		data, err = instance.DNSEnv(m)
+	} else {
+		data, err = instance.DNSEnvForDomain(m, *domain)
+	}
 	if err != nil {
 		fatal("dns-env %s: %v", fs.Arg(0), err)
 	}
@@ -106,6 +122,41 @@ func dnsEnvCmd(args []string) {
 		fatal("write %s: %v", *out, err)
 	}
 	fmt.Fprintf(os.Stderr, "wrote %s\n", *out)
+}
+
+// domainsCmd lists the instance's served domains as tab-separated records
+// (name, server_type, dkim_selector, dkim_bits, hostname), one per line. The
+// per-domain provisioning loops (instance:dkim, instance:dns:register) iterate
+// this so structured per-domain data (selector/bits) never has to round-trip
+// through flat config.env vars. -additional omits the primary.
+func domainsCmd(args []string) {
+	fs := flag.NewFlagSet("domains", flag.ExitOnError)
+	additional := fs.Bool("additional", false, "list additional served domains only (omit the primary)")
+	_ = fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "instance domains: exactly one manifest path is required")
+		os.Exit(2)
+	}
+	raw, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		fatal("read manifest: %v", err)
+	}
+	m, err := instance.Parse(raw)
+	if err != nil {
+		fatal("%s: %v", fs.Arg(0), err)
+	}
+	domains := m.ServedDomains()
+	if *additional {
+		domains = m.AdditionalServedDomains()
+	}
+	for _, d := range domains {
+		bits := ""
+		if d.Bits != nil {
+			bits = strconv.Itoa(*d.Bits)
+		}
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\n", d.Name, d.ServerType, d.Selector, bits, d.Hostname)
+	}
 }
 
 func scaffoldCmd(args []string) {
