@@ -134,6 +134,19 @@ type updateMailboxRequest struct {
 	Active      *bool   `json:"active"`
 }
 
+// mailboxUpdatableColumns is the exhaustive allowlist of DB columns the mailbox
+// update handler may write. The write is bound to this set (via Select), so a
+// field added to updateMailboxRequest — or a stray key threaded into the updates
+// map — can never implicitly become a writable column (mass-assignment,
+// CWE-915). Ownership/identity columns (domain_id, address, local_part) are
+// deliberately absent. Any addition here must be reviewed.
+var mailboxUpdatableColumns = map[string]bool{
+	"password":     true,
+	"display_name": true,
+	"quota_bytes":  true,
+	"active":       true,
+}
+
 func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
 	if err != nil {
@@ -176,8 +189,16 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 		updates["active"] = *req.Active
 	}
 
-	if len(updates) > 0 {
-		if err := h.db.Model(&mailbox).Updates(updates).Error; err != nil {
+	// Bind the write to the reviewed column allowlist so only vetted columns can
+	// ever be updated here, regardless of what the updates map contains.
+	cols := make([]string, 0, len(updates))
+	for k := range updates {
+		if mailboxUpdatableColumns[k] {
+			cols = append(cols, k)
+		}
+	}
+	if len(cols) > 0 {
+		if err := h.db.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
 			return
 		}
