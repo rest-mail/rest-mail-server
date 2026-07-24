@@ -47,5 +47,9 @@
     "vite": "^7.1.7",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.0.5"
+  },
+  "overrides": {
+    "tsx": "^4.23.1",
+    "esbuild": "^0.28.1"
   }
 }
