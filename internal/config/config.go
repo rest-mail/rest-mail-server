@@ -1211,4 +1211,97 @@ func validateCIDRList(key string, cidrs []string) []string {
 }
 
 // END boot-time security config validation (OSI-4)
+// Multi-resolution rollup downsampling (appended additively — keep contiguous
+// so it rebases trivially alongside other in-flight config.go work).
+//
+// One contiguous, append-only block: like the OSI-7 block above it touches
+// neither the Config struct, Load(), nor the import list — every knob is read
+// lazily through a *Config accessor over the getEnv* helpers already defined
+// above, and read exactly once when the rollup worker is constructed.
+//
+// The rollup worker keeps fine-grained rollups (pipeline_rollups, one row per
+// ROLLUP_INTERVAL bucket) for a recent DETAILED-retention window, then condenses
+// older fine rows into a coarser resolution (pipeline_rollups_coarse) and deletes
+// the superseded fine rows — bounding storage (~288 five-minute rows/day collapse
+// to one daily row) without losing the aggregate signal. These are volume/cost
+// dials, NOT security controls (aggregate accuracy is unaffected — the values
+// derive from the always-on, never-sampled counters), so a malformed value falls
+// back to the secure default rather than failing startup, matching the OSI-7
+// block's rationale.
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultRollupDetailedRetention is how long fine-grained (ROLLUP_INTERVAL)
+// rollups are kept at fine resolution before being downsampled, when
+// ROLLUP_DETAILED_RETENTION is unset: 7 days, matching the design doc's recent
+// hot window. Fine rows in coarse periods that have aged fully past this window
+// are condensed to coarse rows and removed. Must be positive.
+const DefaultRollupDetailedRetention = 7 * 24 * time.Hour
+
+// DefaultRollupCoarseResolution is the coarse bucket width fine rollups are
+// downsampled to when ROLLUP_COARSE_RESOLUTION is unset: 24h (daily), the
+// design doc's "fine recent, daily older" model. Should be a whole multiple of
+// ROLLUP_INTERVAL so fine buckets tile coarse periods exactly. Must be positive.
+const DefaultRollupCoarseResolution = 24 * time.Hour
+
+// DefaultRollupCoarseRetention is the optional hard cap on coarse-row age when
+// ROLLUP_COARSE_RETENTION is unset: 0 = disabled (coarse aggregates kept
+// indefinitely — the design doc's "aggregate rollups long-retention"). The
+// primary storage bound is the resolution reduction itself; set a positive
+// duration to also cap the coarse table's absolute growth. Must be non-negative
+// (0 disables).
+const DefaultRollupCoarseRetention time.Duration = 0
+
+// DefaultRollupDownsampleInterval is how often the downsampling pass runs when
+// ROLLUP_DOWNSAMPLE_INTERVAL is unset: hourly (matching the trace pruner
+// cadence). Downsampling only ever touches complete coarse periods already past
+// the detailed-retention window, so the cadence governs latency-to-condense, not
+// correctness. Must be positive.
+const DefaultRollupDownsampleInterval = time.Hour
+
+// RollupDetailedRetention returns the fine-resolution retention window
+// (ROLLUP_DETAILED_RETENTION, default DefaultRollupDetailedRetention). A
+// malformed or non-positive value falls back to the default.
+func (c *Config) RollupDetailedRetention() time.Duration {
+	v, err := getEnvDurationStrict("ROLLUP_DETAILED_RETENTION", DefaultRollupDetailedRetention)
+	if err != nil || v <= 0 {
+		return DefaultRollupDetailedRetention
+	}
+	return v
+}
+
+// RollupCoarseResolution returns the coarse (downsampled) bucket width
+// (ROLLUP_COARSE_RESOLUTION, default DefaultRollupCoarseResolution). A malformed
+// or non-positive value falls back to the default.
+func (c *Config) RollupCoarseResolution() time.Duration {
+	v, err := getEnvDurationStrict("ROLLUP_COARSE_RESOLUTION", DefaultRollupCoarseResolution)
+	if err != nil || v <= 0 {
+		return DefaultRollupCoarseResolution
+	}
+	return v
+}
+
+// RollupCoarseRetention returns the optional coarse-row retention cap
+// (ROLLUP_COARSE_RETENTION, default DefaultRollupCoarseRetention = 0 disabled). A
+// malformed or negative value falls back to the default. 0 keeps coarse
+// aggregates indefinitely.
+func (c *Config) RollupCoarseRetention() time.Duration {
+	v, err := getEnvDurationStrict("ROLLUP_COARSE_RETENTION", DefaultRollupCoarseRetention)
+	if err != nil || v < 0 {
+		return DefaultRollupCoarseRetention
+	}
+	return v
+}
+
+// RollupDownsampleInterval returns how often the downsampling pass runs
+// (ROLLUP_DOWNSAMPLE_INTERVAL, default DefaultRollupDownsampleInterval). A
+// malformed or non-positive value falls back to the default.
+func (c *Config) RollupDownsampleInterval() time.Duration {
+	v, err := getEnvDurationStrict("ROLLUP_DOWNSAMPLE_INTERVAL", DefaultRollupDownsampleInterval)
+	if err != nil || v <= 0 {
+		return DefaultRollupDownsampleInterval
+	}
+	return v
+}
+
+// END multi-resolution rollup downsampling
 // ══════════════════════════════════════════════════════════════════════════
