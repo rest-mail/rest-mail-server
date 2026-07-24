@@ -131,9 +131,17 @@ func HasDKIMSignature(raw string) bool {
 // a reconstructed representation.
 //
 // If the domain has no key configured (or the key parses/signs poorly) the
-// message is returned unchanged. If the domain HAS a key but it cannot be loaded
-// (an encrypted-at-rest key that fails to decrypt), an error is returned so the
-// caller fails closed (temp-fail) instead of relaying the message unsigned.
+// message is returned unchanged.
+//
+// Loading the key fails CLOSED — an error is returned so the caller temp-fails
+// instead of relaying unsigned — with ONE deliberate exception: when this
+// process has no master key configured at all (masterKey == "") it cannot read
+// ANY encrypted-at-rest key, so failing closed would block every message for
+// every domain with an encrypted key. That is a process-wide capability gap, not
+// a per-key fault, and dropping deliverable mail is worse than relaying it
+// unsigned (relaying unsigned is the pre-existing behavior), so it degrades to
+// unsigned instead. A process that DOES have a master key still fails closed on a
+// key it cannot decrypt (wrong key or corrupt ciphertext) — a genuine fault.
 //
 // A nil db or empty senderDomain returns the message unchanged — there is
 // nothing to look a key up with.
@@ -146,12 +154,14 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
 		return raw, nil
 	}
-	// Decrypt the at-rest key, failing CLOSED. An encrypted key that cannot be
-	// decrypted (wrong/missing master key or corrupt ciphertext) is a
-	// transient/config fault — surface it so the send temp-fails instead of
-	// silently going out unsigned. A legacy plaintext key loads as-is.
 	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, masterKey)
 	if err != nil {
+		if masterKey == "" {
+			// No master key: this process cannot decrypt an at-rest key. Relay
+			// unsigned rather than drop deliverable mail.
+			slog.Warn("outbound dkim sign: no MASTER_KEY configured, relaying unsigned", "domain", senderDomain)
+			return raw, nil
+		}
 		slog.Error("outbound dkim sign: key load failed (fail-closed)", "domain", senderDomain, "error", err)
 		return "", err
 	}

@@ -126,6 +126,73 @@ func TestSubmittedMailSignedBeforeRelay(t *testing.T) {
 	}
 }
 
+// TestSubmittedMailRelayedUnsignedWhenNoMasterKey is the direct guard for the
+// #171 E2E regression: the queue worker runs in a process (the SMTP gateway)
+// that may have no MASTER_KEY, so it cannot decrypt an at-rest DKIM key. It must
+// then relay the message UNSIGNED and deliver it — never fail closed and strand
+// deliverable mail, which would drop every submitted outbound message for any
+// domain with an encrypted key. Needs the unit-test Postgres; skips when absent.
+func TestSubmittedMailRelayedUnsignedWhenNoMasterKey(t *testing.T) {
+	db := openQueueTestDB(t)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	// Key encrypted at rest under a real master key...
+	domainName := seedSignedDomain(t, tx, "the-real-master-key")
+
+	var gotRaw string
+	var gotTo []string
+	srv := captureRESTMAILServer(t, &gotRaw, &gotTo)
+
+	// ...but the worker has NO master key, so it cannot decrypt it.
+	w := &Worker{db: tx, masterKey: "", sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
+
+	item := models.OutboundQueue{
+		Sender:     "alice@" + domainName,
+		Recipient:  "bob@example.net",
+		RawMessage: "From: alice@" + domainName + "\r\nTo: bob@example.net\r\nSubject: hi\r\n\r\nhello\r\n",
+	}
+
+	if err := w.deliverRESTMAILHTTPS(srv.URL, item, false); err != nil {
+		t.Fatalf("delivery must NOT fail when the worker cannot sign (deliverable mail dropped): %v", err)
+	}
+	if strings.Contains(gotRaw, "DKIM-Signature:") {
+		t.Fatalf("worker with no MASTER_KEY should relay unsigned, but a signature was added:\n%s", gotRaw)
+	}
+	if !strings.Contains(gotRaw, "hello") {
+		t.Fatalf("message body not relayed:\n%s", gotRaw)
+	}
+}
+
+// TestSubmittedMailFailsClosedOnWrongMasterKey proves the fail-closed guarantee
+// is preserved for a GENUINE key fault: when the worker HAS a master key but it
+// is the wrong one for the domain's encrypted key, signing must fail closed so
+// the send temp-fails (retries) rather than going out unsigned. Needs the
+// unit-test Postgres; skips when absent.
+func TestSubmittedMailFailsClosedOnWrongMasterKey(t *testing.T) {
+	db := openQueueTestDB(t)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	domainName := seedSignedDomain(t, tx, "the-real-master-key")
+
+	var gotRaw string
+	var gotTo []string
+	srv := captureRESTMAILServer(t, &gotRaw, &gotTo)
+
+	// A DIFFERENT, non-empty master key: the process can attempt decryption but
+	// the key is wrong, so it is a real fault, not a missing-capability case.
+	w := &Worker{db: tx, masterKey: "a-different-master-key", sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
+
+	item := models.OutboundQueue{
+		Sender:     "alice@" + domainName,
+		Recipient:  "bob@example.net",
+		RawMessage: "From: alice@" + domainName + "\r\nTo: bob@example.net\r\nSubject: hi\r\n\r\nhello\r\n",
+	}
+
+	if err := w.deliverRESTMAILHTTPS(srv.URL, item, false); err == nil {
+		t.Fatal("expected fail-closed error on an undecryptable key, got nil (message would go out unsigned)")
+	}
+}
+
 // TestAlreadySignedMailPassesThroughUnchanged proves the relay transform is
 // idempotent: API-originated mail is Bcc-free and DKIM-signed at submission, so
 // the worker must not disturb it (no second signature, no re-canonicalization
