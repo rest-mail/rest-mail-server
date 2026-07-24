@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
@@ -82,15 +81,14 @@ func (f *arcSealFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*
 		return arcSealSkipResult("no DKIM key configured for domain " + senderDomain), nil
 	}
 
-	// Decrypt private key if master key is configured
-	privateKeyPEM := domain.DKIMPrivateKey
-	if f.masterKey != "" {
-		decrypted, err := restcrypto.DecryptString(privateKeyPEM, f.masterKey)
-		if err != nil {
-			// Fall back to plaintext in case key was stored before encryption was enabled
-			decrypted = privateKeyPEM
-		}
-		privateKeyPEM = decrypted
+	// OSI-8: load the domain's DKIM private key, decrypting the at-rest ciphertext.
+	// ARC seals reuse the domain's DKIM key, so it fails CLOSED the same way as
+	// dkim_sign: an undecryptable key (wrong/missing MASTER_KEY or corrupt
+	// ciphertext) returns an error and the engine defers rather than sealing with
+	// the raw ciphertext. Legacy plaintext keys are returned as-is for migration.
+	privateKeyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, f.masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("arc_seal: %w", err)
 	}
 
 	// Parse private key

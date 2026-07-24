@@ -3,6 +3,7 @@ package db
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/restmail/restmail/internal/config"
@@ -192,8 +193,57 @@ func AutoMigrate(db *gorm.DB) error {
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachments_checksum ON attachments(checksum)`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_unique ON vacation_responses(mailbox_id, sender)`)
 
+	// ── OSI-8: encrypt DKIM private keys at rest ──────────────────────────────
+	// Any domains.dkim_private_key stored as legacy plaintext PEM is encrypted in
+	// place with the MASTER_KEY-derived key and tagged with the dkim:v1: version
+	// prefix, so the signer can tell an encrypted key (which MUST decrypt) apart
+	// from a plaintext one and fail closed on an undecryptable key. Idempotent:
+	// already-versioned rows are skipped and legacy bare-base64 ciphertext is only
+	// normalized (prefixed, never re-encrypted), so a re-run never double-encrypts.
+	// A no-op when MASTER_KEY is unset (encryption disabled) or the table is absent.
+	// The key is read from the same MASTER_KEY env var config.Load uses, so every
+	// entrypoint that calls AutoMigrate (api, migrate, seed) runs this transparently.
+	if masterKey := os.Getenv("MASTER_KEY"); masterKey != "" && db.Migrator().HasTable(&models.Domain{}) {
+		if n, err := encryptPlaintextDKIMKeys(db, masterKey); err != nil {
+			slog.Warn("failed to encrypt DKIM keys at rest", "error", err)
+		} else if n > 0 {
+			slog.Info("encrypted plaintext DKIM keys at rest", "count", n)
+		}
+	}
+
 	slog.Info("database migration completed")
 	return nil
+}
+
+// encryptPlaintextDKIMKeys migrates any plaintext domains.dkim_private_key rows
+// to the encrypted-at-rest form (OSI-8), returning how many rows were changed.
+// Per-value plaintext/ciphertext detection and idempotency live in
+// models.MigrateDKIMKeyAtRest; a row whose value cannot be interpreted under the
+// current MASTER_KEY is logged and left untouched (fail-closed happens at sign
+// time), so a single bad row never aborts startup migration.
+func encryptPlaintextDKIMKeys(db *gorm.DB, masterKey string) (int, error) {
+	var domains []models.Domain
+	if err := db.Where("dkim_private_key <> ''").Find(&domains).Error; err != nil {
+		return 0, err
+	}
+	migrated := 0
+	for i := range domains {
+		d := domains[i]
+		upgraded, changed, err := models.MigrateDKIMKeyAtRest(d.DKIMPrivateKey, masterKey)
+		if err != nil {
+			slog.Warn("DKIM key at-rest migration skipped a row", "domain", d.Name, "error", err)
+			continue
+		}
+		if !changed {
+			continue
+		}
+		if err := db.Model(&models.Domain{}).Where("id = ?", d.ID).
+			Update("dkim_private_key", upgraded).Error; err != nil {
+			return migrated, err
+		}
+		migrated++
+	}
+	return migrated, nil
 }
 
 // WaitForDB retries connecting to the database until it succeeds or the timeout is reached.

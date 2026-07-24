@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -78,16 +77,16 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keyToStore := req.PrivateKey
-	if h.masterKey != "" {
-		encrypted, err := crypto.EncryptString(req.PrivateKey, h.masterKey)
-		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to encrypt private key")
-			return
-		}
-		keyToStore = encrypted
-	} else {
+	if h.masterKey == "" {
 		slog.Warn("DKIM private key stored in plaintext: MASTER_KEY not configured")
+	}
+	// OSI-8: encrypt at rest with a version-tagged (dkim:v1:) ciphertext so the
+	// signer can later tell it apart from a legacy plaintext key and fail closed
+	// on an undecryptable one. With no MASTER_KEY (dev) this returns the plaintext.
+	keyToStore, err := models.EncryptDKIMPrivateKey(req.PrivateKey, h.masterKey)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to encrypt private key")
+		return
 	}
 
 	h.db.Model(&domain).Updates(map[string]interface{}{

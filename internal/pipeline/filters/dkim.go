@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dkim"
-	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
@@ -183,15 +182,15 @@ func (f *dkimSignFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (
 		}, nil
 	}
 
-	// Decrypt private key if master key is configured
-	privateKeyPEM := domain.DKIMPrivateKey
-	if f.masterKey != "" {
-		decrypted, err := restcrypto.DecryptString(privateKeyPEM, f.masterKey)
-		if err != nil {
-			// Fall back to plaintext in case key was stored before encryption was enabled
-			decrypted = privateKeyPEM
-		}
-		privateKeyPEM = decrypted
+	// OSI-8: load the domain's DKIM private key, decrypting the at-rest ciphertext.
+	// This FAILS CLOSED — an encrypted key that cannot be decrypted (wrong/missing
+	// MASTER_KEY or corrupt ciphertext) returns an error, so the pipeline engine
+	// applies its fail-closed policy (defer/temp-fail by default, OSI-18) instead
+	// of silently signing with the raw ciphertext or sending the message unsigned.
+	// A legacy plaintext key is returned as-is (the startup migration upgrades it).
+	privateKeyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, f.masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("dkim_sign: %w", err)
 	}
 
 	// Parse private key

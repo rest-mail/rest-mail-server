@@ -17,7 +17,6 @@ import (
 	"github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
-	restcrypto "github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
@@ -52,26 +51,32 @@ func (h *MessageHandler) recordTrace(t models.MessageTrace) {
 // signed over what is transmitted — signing a reconstructed EmailJSON produced
 // signatures whose header hash never matched the wire form, so every outbound
 // message failed verification at receivers. If the domain has no key configured
-// (or signing fails), the message is returned unchanged.
-func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) string {
+// (or signing fails), the message is returned unchanged. If the domain HAS a
+// key configured but it cannot be loaded (OSI-8: an encrypted-at-rest key that
+// fails to decrypt), it returns an error so the caller fails closed (temp-fail)
+// rather than sending the message unsigned.
+func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, error) {
 	if senderDomain == "" {
-		return raw
+		return raw, nil
 	}
 	var domain models.Domain
 	if err := h.db.Where("name = ?", senderDomain).First(&domain).Error; err != nil ||
 		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
-		return raw
+		return raw, nil
 	}
-	keyPEM := domain.DKIMPrivateKey
-	if h.masterKey != "" {
-		if dec, err := restcrypto.DecryptString(keyPEM, h.masterKey); err == nil {
-			keyPEM = dec // fall back to plaintext (pre-encryption keys) on failure
-		}
+	// OSI-8: decrypt the at-rest key, failing CLOSED. An encrypted key that cannot
+	// be decrypted (wrong/missing MASTER_KEY or corrupt ciphertext) is a
+	// transient/config fault — surface it so the send temp-fails instead of
+	// silently going out unsigned. A legacy plaintext key loads as-is.
+	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, h.masterKey)
+	if err != nil {
+		slog.Error("dkim sign: key load failed (fail-closed)", "domain", senderDomain, "error", err)
+		return "", err
 	}
 	priv, err := dkim.ParsePrivateKey(keyPEM)
 	if err != nil {
 		slog.Warn("dkim sign: parse key failed", "domain", senderDomain, "error", err)
-		return raw
+		return raw, nil
 	}
 	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
 		Domain:     senderDomain,
@@ -81,9 +86,9 @@ func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) string {
 	})
 	if err != nil {
 		slog.Warn("dkim sign failed", "domain", senderDomain, "error", err)
-		return raw
+		return raw, nil
 	}
-	return "DKIM-Signature: " + val + "\r\n" + raw
+	return "DKIM-Signature: " + val + "\r\n" + raw, nil
 }
 
 // ListMessages returns messages in a folder with cursor-based pagination.
@@ -727,7 +732,14 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Sign the finalized outbound message over its actual transmitted bytes.
-	rawMessage = h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
+	// OSI-8: a key that should decrypt but cannot fails closed — temp-fail the
+	// send (client retries) rather than deliver the message unsigned.
+	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
+	if signErr != nil {
+		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
+		return
+	}
+	rawMessage = signedRaw
 
 	// Deliver to each recipient in to + cc + bcc
 	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
@@ -1620,7 +1632,13 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	b.WriteString("--" + boundary + "--\r\n")
 
 	rawMessage := b.String()
-	rawMessage = h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
+	// OSI-8: fail closed if the DKIM key cannot be loaded (see signOutboundDKIM).
+	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
+	if signErr != nil {
+		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
+		return
+	}
+	rawMessage = signedRaw
 
 	// Save the reply to Sent folder
 	toJSON, _ := json.Marshal([]string{organizer})
