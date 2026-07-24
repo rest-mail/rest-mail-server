@@ -119,8 +119,14 @@ func main() {
 		apiOpts = append(apiOpts, apiclient.WithInternalMTLS(cfg.APIInternalBaseURL, clientTLS))
 		slog.Info("internal mTLS enabled — machine routes use the internal listener with the gateway client certificate", "internal_base_url", cfg.APIInternalBaseURL)
 	}
+	// OSI-7: size-aware deadline for message-carrying API calls (DeliverMessage
+	// uploads a full inbound message) so a large-but-permitted message is not
+	// stranded by a fixed 30 s timeout. Bounded — derived from the configured max
+	// size and the internal floor rate.
+	msgDeadline := cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize)
+	apiOpts = append(apiOpts, apiclient.WithMessageDeadline(msgDeadline))
 	api := apiclient.New(cfg.APIBaseURL, apiOpts...)
-	slog.Info("API client configured", "base_url", cfg.APIBaseURL)
+	slog.Info("API client configured", "base_url", cfg.APIBaseURL, "message_deadline", msgDeadline.String())
 
 	// SMTP gateway needs DB access for the outbound queue worker
 	database, err := db.WaitForDB(cfg, 60*time.Second)
@@ -191,6 +197,18 @@ func main() {
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
 	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
 	queueWorker.SetBounceRateLimit(cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
+	// OSI-7: size-aware per-attempt send budget + matching reclaim interval. The
+	// per-send deadline scales with each message's size (a fixed 30 s could not
+	// transfer a large body); the reclaim interval is kept strictly above the
+	// worst-case max-size send so a slow legitimate large send is never reclaimed
+	// mid-flight and delivered twice. Both are bounded.
+	queueReclaim := cfg.StaleDeliveringReclaim()
+	queueWorker.SetDeliveryDeadline(cfg.InternalDeliveryDeadline, queueReclaim)
+	slog.Info("queue delivery timing configured (OSI-7)",
+		"max_message_size", cfg.SMTPMaxMessageSize,
+		"max_size_send_budget", cfg.InternalDeliveryDeadline(cfg.SMTPMaxMessageSize).String(),
+		"reclaim_interval", queueReclaim.String(),
+	)
 	if cfg.Environment == "development" || os.Getenv("QUEUE_TLS_INSECURE") == "true" {
 		queueWorker.SetTLSInsecure(true)
 		// MTA-STS enforce requires real certificate verification, which is
