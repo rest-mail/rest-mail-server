@@ -90,13 +90,14 @@ type Manifest struct {
 	// DB-driven — this list only DECLARES which domains the instance serves so
 	// they can be provisioned at instance-up. See ServedDomains().
 	Domains []DomainEntry `yaml:"domains"`
-	// TLS holds optional PUBLIC-TLS declarations for the instance cert. Every
-	// field is optional and strict-parse-safe: an omitted `tls:` block emits no
-	// MAIL3_TLS_* / RESTMAIL_CERT_PROVIDER line, so existing manifests render
-	// byte-for-byte as before. This block is ONLY about the public serving cert
-	// (SAN coverage + how it is obtained). The internal gateway→API mTLS switch
-	// is the separate top-level `internal_mtls` field — it is NOT part of this
-	// block.
+	// TLS holds optional TLS declarations for the instance. Every field is
+	// optional and strict-parse-safe: an omitted `tls:` block emits no
+	// MAIL3_TLS_* / RESTMAIL_CERT_PROVIDER / RESTMAIL_INTERNAL_CA_SOURCE line, so
+	// existing manifests render byte-for-byte as before. It carries two
+	// independent concerns: the PUBLIC serving cert (`extra_hostnames`, `acme`)
+	// and the gateway→API INTERNAL mutual-TLS channel (`internal:`). The internal
+	// block is the richer, declarative counterpart of the legacy top-level
+	// `internal_mtls` bool (still supported) — see InternalTLS.
 	TLS TLS `yaml:"tls"`
 	// binding
 	Components []Component `yaml:"components"`
@@ -117,6 +118,68 @@ type Manifest struct {
 type TLS struct {
 	ExtraHostnames []string `yaml:"extra_hostnames"`
 	ACME           ACME     `yaml:"acme"`
+	// Internal is the optional gateway→API internal-mTLS sub-block. A pointer so
+	// "block present" is distinguishable from "omitted": present makes the block
+	// authoritative over the legacy `internal_mtls` bool (with mode defaulting to
+	// require/on); omitted falls back to the bool, so existing manifests are
+	// byte-for-byte unchanged.
+	Internal *InternalTLS `yaml:"internal"`
+}
+
+// InternalTLS is the optional `tls.internal:` sub-block — the declarative form of
+// the gateway→API internal mutual-TLS switch, and the richer counterpart of the
+// legacy top-level `internal_mtls: bool` (which stays supported for
+// back-compat). Where the bool only toggles on/off, this block also declares HOW
+// the internal trust material is provisioned.
+//
+//   - Mode selects the handshake posture. "require" (the default when the block
+//     is present with an empty mode) and "verify" both turn internal mTLS ON: the
+//     API's dedicated internal listener REQUIRES and verifies a client
+//     certificate signed by the internal CA (tls.RequireAndVerifyClientCert) —
+//     exactly today's behavior. The implementation always enforces the client
+//     cert, so "verify" and "require" are equivalent today; the pair is kept for
+//     forward-compatibility, and the secure-by-construction posture means neither
+//     is a soft/optional mode. "off" disables the channel (routes stay on the
+//     public listener, tokenless — the pre-mTLS behavior).
+//   - CASource selects the provisioning path `task instance:mtls:issue` takes:
+//     "testbed-certgen" (the default) mints a dedicated internal CA + API server
+//     cert + gateway client cert with the in-repo certgen — what the testbed does
+//     today; "manual" means the deployer provisions the internal CA + server/
+//     client material out of band into the certs volume and the task only
+//     validates its presence (no issuance).
+//
+// Rendered env: mode → MAIL3_INTERNAL_MTLS (only when ON, matching the bool);
+// a non-default ca_source → RESTMAIL_INTERNAL_CA_SOURCE. Both lines are emitted
+// only when they carry information, so an omitted block renders nothing new.
+type InternalTLS struct {
+	Mode     string `yaml:"mode"`      // off | verify | require; default require (on)
+	CASource string `yaml:"ca_source"` // testbed-certgen (default) | manual
+}
+
+// Internal-mTLS mode tokens. verify and require both ENABLE the enforced
+// gateway→API handshake (the implementation always RequireAndVerifyClientCert);
+// off disables it. An empty mode defaults to require (secure-by-default: on).
+const (
+	internalMTLSModeOff     = "off"
+	internalMTLSModeVerify  = "verify"
+	internalMTLSModeRequire = "require"
+)
+
+// internalCASourceDefault is the CA-provisioning source that renders NO line (the
+// Taskfile `| default` supplies it), so testbed/default manifests are unchanged.
+const internalCASourceDefault = "testbed-certgen"
+
+// internalMTLSEnabled resolves whether this instance runs the gateway→API mutual
+// TLS channel. The optional `tls.internal:` block is authoritative when present:
+// mode require/verify — or an empty mode, which defaults to require — turns it
+// ON; mode off turns it OFF. When the block is OMITTED the legacy top-level
+// `internal_mtls` bool decides, so existing manifests render byte-for-byte as
+// before.
+func (m *Manifest) internalMTLSEnabled() bool {
+	if m.TLS.Internal != nil {
+		return m.TLS.Internal.Mode != internalMTLSModeOff
+	}
+	return m.InternalMTLS
 }
 
 // ACME is the optional `tls.acme:` sub-block. Bools are pointers so an unset
@@ -185,6 +248,23 @@ func (m *Manifest) Validate() error {
 			return fmt.Errorf("domains[%d]: duplicate domain %q", i, d.Name)
 		}
 		seen[d.Name] = true
+	}
+	if ti := m.TLS.Internal; ti != nil {
+		switch ti.Mode {
+		case "", internalMTLSModeOff, internalMTLSModeVerify, internalMTLSModeRequire:
+		default:
+			return fmt.Errorf("tls.internal.mode %q invalid (want off|verify|require)", ti.Mode)
+		}
+		switch ti.CASource {
+		case "", internalCASourceDefault, "manual":
+		default:
+			return fmt.Errorf("tls.internal.ca_source %q invalid (want testbed-certgen|manual)", ti.CASource)
+		}
+		// A manifest that both flips the legacy bool on and sets the block off is
+		// contradictory — fail loudly rather than silently pick one.
+		if m.InternalMTLS && ti.Mode == internalMTLSModeOff {
+			return fmt.Errorf("internal_mtls: true conflicts with tls.internal.mode: off — set exactly one")
+		}
 	}
 	return nil
 }
@@ -362,6 +442,14 @@ func Render(m *Manifest) ([]byte, error) {
 	if m.CertProvider != "" && m.CertProvider != "testbed-certgen" {
 		kv("RESTMAIL_CERT_PROVIDER", m.CertProvider)
 	}
+	// Internal-mTLS CA provisioning source (manifest `tls.internal.ca_source`).
+	// Like cert_provider, "testbed-certgen" is THE default and renders no line
+	// (the Taskfile `| default "testbed-certgen"` supplies it), so existing
+	// manifests are byte-for-byte identical; only a non-default source (manual)
+	// emits the switch that steers `task instance:mtls:issue`.
+	if ti := m.TLS.Internal; ti != nil && ti.CASource != "" && ti.CASource != internalCASourceDefault {
+		kv("RESTMAIL_INTERNAL_CA_SOURCE", ti.CASource)
+	}
 	b.WriteString("\n")
 	kv("MAIL3_HOSTNAME", m.Hostname)
 	kv("MAIL3_DB_NAME", m.DB.Name)
@@ -371,7 +459,10 @@ func Render(m *Manifest) ([]byte, error) {
 	kv("MAIL3_MAILNET_ONLY", strconv.FormatBool(m.MailnetOnly))
 	// Emit the internal-mTLS switch only when enabled, so instances that don't
 	// opt in render byte-for-byte as before (no drift against committed config).
-	if m.InternalMTLS {
+	// Enablement is resolved from the optional `tls.internal:` block (mode
+	// require/verify, or an empty mode → default require) when present, else the
+	// legacy top-level `internal_mtls` bool — see internalMTLSEnabled.
+	if m.internalMTLSEnabled() {
 		kv("MAIL3_INTERNAL_MTLS", "true")
 	}
 

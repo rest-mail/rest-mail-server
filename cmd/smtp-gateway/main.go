@@ -22,10 +22,20 @@ import (
 	"github.com/restmail/restmail/internal/gateway/tlsutil"
 )
 
-func loadCACert() {
-	caCert, err := os.ReadFile("/certs/ca.crt")
+// loadCACert adds the PEM CA bundle at path to the gateway's outbound HTTP
+// client trust store (the default transport's RootCAs), on top of the system
+// roots, so the gateway trusts TLS peers issued by an operator/testbed CA. The
+// path is config-driven (config.TrustedCACertPath / TRUSTED_CA_CERT) and defaults
+// to the historical "/certs/ca.crt", so existing deployments are byte-for-byte
+// unchanged. An empty path skips the extra trust; a missing/unreadable file is
+// not fatal — the gateway falls back to the system roots.
+func loadCACert(path string) {
+	if path == "" {
+		return
+	}
+	caCert, err := os.ReadFile(path)
 	if err != nil {
-		slog.Info("no custom CA cert found, using system defaults")
+		slog.Info("no custom CA cert found, using system defaults", "path", path)
 		return
 	}
 	pool, err := x509.SystemCertPool()
@@ -36,7 +46,7 @@ func loadCACert() {
 	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
 		RootCAs: pool,
 	}
-	slog.Info("loaded custom CA certificate", "path", "/certs/ca.crt")
+	slog.Info("loaded custom CA certificate", "path", path)
 }
 
 func main() {
@@ -45,8 +55,6 @@ func main() {
 	})
 	slog.SetDefault(slog.New(logHandler))
 
-	loadCACert()
-
 	slog.Info("starting SMTP gateway")
 
 	cfg, err := config.Load()
@@ -54,6 +62,11 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	// Trust the operator/testbed CA for the gateway's outbound HTTP client. The
+	// path is config-driven and defaults to the historical /certs/ca.crt, so the
+	// testbed is unchanged; empty or missing → system roots only.
+	loadCACert(cfg.TrustedCACertPath)
 
 	switch cfg.LogLevel {
 	case "debug":
