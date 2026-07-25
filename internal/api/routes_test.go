@@ -786,6 +786,94 @@ func TestVerifyOracleRoutes_ThrottleDisabled(t *testing.T) {
 	}
 }
 
+// ── #204: 2FA management endpoints share the auth throttle ────────────
+
+// twoFactorThrottledRoutes are the state-changing / code-verifying 2FA
+// management endpoints. Left unthrottled they were bounded only by the 15-minute
+// access-token lifetime, inconsistent with the throttled login path — an
+// attacker with a live session could hammer confirm/disable to brute-force TOTP
+// codes. They must sit behind the SAME per-client-IP auth throttle as
+// /auth/login.
+var twoFactorThrottledRoutes = []struct{ name, path string }{
+	{"enroll", "/api/v1/auth/2fa/enroll"},
+	{"confirm", "/api/v1/auth/2fa/confirm"},
+	{"disable", "/api/v1/auth/2fa/disable"},
+}
+
+// TestTwoFactorRoutes_RateLimited proves the 2FA enroll/confirm/disable
+// endpoints are throttled per client IP: once the burst is spent, further
+// requests get 429 with a Retry-After header, exactly like /auth/login.
+func TestTwoFactorRoutes_RateLimited(t *testing.T) {
+	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
+	cfg := &config.Config{
+		CORSAllowedOrigins:   []string{"http://localhost:3000"},
+		Environment:          "test",
+		AuthRateLimitEnabled: true,
+		// Tiny refill so the bucket does not top up mid-test; small burst so the
+		// throttle trips quickly.
+		AuthRateLimitRPS:   0.0001,
+		AuthRateLimitBurst: 3,
+		// Turn the feature on with a master key so enroll/confirm run past their
+		// guard clauses; the specific handler status is irrelevant here — only
+		// whether the throttle admitted the request (non-429) or not (429).
+		TOTP2FAEnabled: true,
+		MasterKey:      "test-master-key-0123456789abcdef",
+	}
+	token := mailboxToken(t, jwtSvc)
+
+	for _, rt := range twoFactorThrottledRoutes {
+		t.Run(rt.name, func(t *testing.T) {
+			// The limiter is shared per-router, so exercise one route per subtest
+			// against its own router to keep the burst accounting clean.
+			router := NewRouter(newFailingGormDB(t), jwtSvc, cfg, nil)
+
+			passes := 0
+			got429 := false
+			for i := 0; i < 12; i++ {
+				rr := doRequest(router, http.MethodPost, rt.path, token, `{"code":"000000"}`)
+				if rr.Code == http.StatusTooManyRequests {
+					got429 = true
+					if rr.Header().Get("Retry-After") == "" {
+						t.Errorf("429 response missing Retry-After header")
+					}
+					break
+				}
+				// A non-429 means the throttle admitted the request to the handler
+				// (which then answers 4xx/5xx); the auth middleware must not have
+				// rejected our valid token.
+				if rr.Code == http.StatusUnauthorized && errorMessage(t, rr) == "Missing authorization header" {
+					t.Fatalf("request rejected by auth middleware, expected to reach handler")
+				}
+				passes++
+			}
+			if !got429 {
+				t.Fatalf("expected a 429 after exhausting the burst, never got one")
+			}
+			if passes < cfg.AuthRateLimitBurst {
+				t.Errorf("throttle tripped too early: %d passes before 429, want >= burst (%d)", passes, cfg.AuthRateLimitBurst)
+			}
+		})
+	}
+}
+
+// TestTwoFactorRoutes_ThrottleDisabled is the regression guard: with the auth
+// limiter disabled, the 2FA endpoints never 429 no matter how hard they are hit.
+func TestTwoFactorRoutes_ThrottleDisabled(t *testing.T) {
+	router, jwtSvc := newTestRouter(t) // AuthRateLimitEnabled defaults false
+	token := mailboxToken(t, jwtSvc)
+
+	for _, rt := range twoFactorThrottledRoutes {
+		t.Run(rt.name, func(t *testing.T) {
+			for i := 0; i < 30; i++ {
+				rr := doRequest(router, http.MethodPost, rt.path, token, `{"code":"000000"}`)
+				if rr.Code == http.StatusTooManyRequests {
+					t.Fatalf("request %d got 429 with throttle disabled", i)
+				}
+			}
+		})
+	}
+}
+
 // ── OSI-11: security headers wired on the router ──────────────────────
 
 func TestSecurityHeaders_WiredOnRouter(t *testing.T) {

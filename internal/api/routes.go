@@ -389,10 +389,18 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// Two-factor auth (OSI-19) — an authenticated account manages its own
 		// TOTP enrollment. Available to both mailbox and admin tokens (no
 		// AdminOnly gate); each endpoint keys on the caller's own claims.
+		//
+		// #204: the state-changing / code-verifying endpoints share the SAME
+		// per-client-IP auth throttle as /auth/login (same limiter instance). Left
+		// unthrottled they were bounded only by the 15-minute access-token
+		// lifetime, so a holder of a live session could hammer confirm/disable to
+		// brute-force TOTP codes — inconsistent with the throttled login path. The
+		// status read carries no secret to guess and is left unthrottled so the SPA
+		// can poll it freely.
 		r.Get("/api/v1/auth/2fa", twofaH.Status)
-		r.Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
-		r.Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
-		r.Post("/api/v1/auth/2fa/disable", twofaH.Disable)
+		r.With(authThrottle).Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
+		r.With(authThrottle).Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
+		r.With(authThrottle).Post("/api/v1/auth/2fa/disable", twofaH.Disable)
 
 		// Linked accounts.
 		//
