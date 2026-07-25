@@ -108,12 +108,12 @@ tasks:
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.API_CONTAINER_NAME}}.secrets.env"
         trap 'rm -f "$SECRETS_ENV"' EXIT
         rm -f "$SECRETS_ENV"
-        ( umask 077; {
-            printf 'DB_PASS=%s\n'    "{{.API_DB_PASS}}"
-            printf 'JWT_SECRET=%s\n' "{{.API_JWT_SECRET}}"
-            printf 'MASTER_KEY=%s\n' "{{.API_MASTER_KEY}}"
-          } > "$SECRETS_ENV" )
+        # Create empty, chmod 0600, THEN write the secrets (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
+        printf 'DB_PASS=%s\n'    "{{.API_DB_PASS}}"    >  "$SECRETS_ENV"
+        printf 'JWT_SECRET=%s\n' "{{.API_JWT_SECRET}}" >> "$SECRETS_ENV"
+        printf 'MASTER_KEY=%s\n' "{{.API_MASTER_KEY}}" >> "$SECRETS_ENV"
         docker run -d --name {{.API_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \

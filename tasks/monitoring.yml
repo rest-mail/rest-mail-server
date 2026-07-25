@@ -194,8 +194,10 @@ tasks:
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.GRAFANA_NAME}}.secrets.env"
         trap 'rm -f "$SECRETS_ENV"' EXIT
         rm -f "$SECRETS_ENV"
-        ( umask 077; printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "{{.GRAFANA_ADMIN_PASSWORD}}" > "$SECRETS_ENV" )
+        # Create empty, chmod 0600, THEN write the secret (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
+        printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "{{.GRAFANA_ADMIN_PASSWORD}}" > "$SECRETS_ENV"
         docker run -d --name {{.GRAFANA_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
@@ -248,9 +250,11 @@ tasks:
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.POSTGRES_EXPORTER_NAME}}.secrets.env"
         trap 'rm -f "$SECRETS_ENV"' EXIT
         rm -f "$SECRETS_ENV"
-        ( umask 077; printf 'DATA_SOURCE_NAME=postgresql://%s:%s@%s:5432/%s?sslmode=disable\n' \
-            "{{.MONITORING_DB_USER}}" "{{.MONITORING_DB_PASS}}" "{{.MONITORING_DB_HOST}}" "{{.MONITORING_DB_NAME}}" > "$SECRETS_ENV" )
+        # Create empty, chmod 0600, THEN write the secret (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
+        printf 'DATA_SOURCE_NAME=postgresql://%s:%s@%s:5432/%s?sslmode=disable\n' \
+          "{{.MONITORING_DB_USER}}" "{{.MONITORING_DB_PASS}}" "{{.MONITORING_DB_HOST}}" "{{.MONITORING_DB_NAME}}" > "$SECRETS_ENV"
         docker run -d --name {{.POSTGRES_EXPORTER_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \

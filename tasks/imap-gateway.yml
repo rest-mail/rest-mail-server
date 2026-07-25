@@ -100,8 +100,10 @@ tasks:
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.IMAP_GATEWAY_CONTAINER_NAME}}.secrets.env"
         trap 'rm -f "$SECRETS_ENV"' EXIT
         rm -f "$SECRETS_ENV"
-        ( umask 077; printf 'DB_PASS=%s\n' "{{.IMAP_GATEWAY_DB_PASS}}" > "$SECRETS_ENV" )
+        # Create empty, chmod 0600, THEN write the secret (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
+        printf 'DB_PASS=%s\n' "{{.IMAP_GATEWAY_DB_PASS}}" > "$SECRETS_ENV"
         docker run -d --name {{.IMAP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
           --hostname {{.IMAP_GATEWAY_MAIL3_HOSTNAME}} \

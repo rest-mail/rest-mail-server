@@ -73,8 +73,10 @@ tasks:
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.POSTGRES_CONTAINER_NAME}}.secrets.env"
         trap 'rm -f "$SECRETS_ENV"' EXIT
         rm -f "$SECRETS_ENV"
-        ( umask 077; printf 'POSTGRES_PASSWORD=%s\n' "{{.POSTGRES_DB_PASS}}" > "$SECRETS_ENV" )
+        # Create empty, chmod 0600, THEN write the secret (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
         chmod 600 "$SECRETS_ENV"
+        printf 'POSTGRES_PASSWORD=%s\n' "{{.POSTGRES_DB_PASS}}" > "$SECRETS_ENV"
         docker run -d --name {{.POSTGRES_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
