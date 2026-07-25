@@ -1,6 +1,7 @@
 package connlimiter
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,7 +56,8 @@ type Limiter struct {
 	// decrements them lock-free (concurrently with an Accept holding acceptMu).
 	acceptMu   sync.Mutex
 	perIP      sync.Map // string → *atomic.Int32
-	authFails  sync.Map // string → *failRecord
+	authFails  sync.Map // source IP → *failRecord
+	userFails  sync.Map // normalized account key → *failRecord
 	banChecker BanChecker
 	protocol   string
 }
@@ -128,12 +130,11 @@ func (l *Limiter) Release(ip string) {
 	}
 }
 
-// RecordAuthFail records an authentication failure for an IP.
-func (l *Limiter) RecordAuthFail(ip string) {
-	if l.protocol != "" {
-		metrics.AuthFailures.WithLabelValues(l.protocol).Inc()
-	}
-	val, _ := l.authFails.LoadOrStore(ip, &failRecord{})
+// recordFail appends a failure to the record for key in fails and (re)arms the
+// ban once the count within the sliding window crosses AuthMaxFails. It is the
+// shared core of the per-IP and per-account failure trackers.
+func (l *Limiter) recordFail(fails *sync.Map, key string) {
+	val, _ := fails.LoadOrStore(key, &failRecord{})
 	rec := val.(*failRecord)
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
@@ -141,7 +142,7 @@ func (l *Limiter) RecordAuthFail(ip string) {
 	now := time.Now()
 	rec.failures = append(rec.failures, now)
 
-	// Prune old failures outside the window
+	// Prune old failures outside the window.
 	cutoff := now.Add(-l.cfg.AuthBanWindow)
 	fresh := rec.failures[:0]
 	for _, t := range rec.failures {
@@ -156,14 +157,10 @@ func (l *Limiter) RecordAuthFail(ip string) {
 	}
 }
 
-// IsBanned returns true if the IP is currently banned (in-memory or persistent).
-func (l *Limiter) IsBanned(ip string) bool {
-	// Check persistent bans
-	if l.banChecker != nil && l.banChecker(ip, l.protocol) {
-		return true
-	}
-
-	val, ok := l.authFails.Load(ip)
+// banned reports whether key currently holds an in-memory ban in fails,
+// lazily clearing it once AuthBanDuration has elapsed.
+func (l *Limiter) banned(fails *sync.Map, key string) bool {
+	val, ok := fails.Load(key)
 	if !ok {
 		return false
 	}
@@ -182,9 +179,9 @@ func (l *Limiter) IsBanned(ip string) bool {
 	return true
 }
 
-// ResetAuth clears auth failure history for an IP (call on successful auth).
-func (l *Limiter) ResetAuth(ip string) {
-	val, ok := l.authFails.Load(ip)
+// clearFail drops the failure history for key in fails.
+func (l *Limiter) clearFail(fails *sync.Map, key string) {
+	val, ok := fails.Load(key)
 	if !ok {
 		return
 	}
@@ -193,4 +190,68 @@ func (l *Limiter) ResetAuth(ip string) {
 	defer rec.mu.Unlock()
 	rec.failures = nil
 	rec.bannedAt = time.Time{}
+}
+
+// RecordAuthFail records an authentication failure for a source IP.
+func (l *Limiter) RecordAuthFail(ip string) {
+	if l.protocol != "" {
+		metrics.AuthFailures.WithLabelValues(l.protocol).Inc()
+	}
+	l.recordFail(&l.authFails, ip)
+}
+
+// IsBanned returns true if the IP is currently banned (in-memory or persistent).
+func (l *Limiter) IsBanned(ip string) bool {
+	// Check persistent bans
+	if l.banChecker != nil && l.banChecker(ip, l.protocol) {
+		return true
+	}
+	return l.banned(&l.authFails, ip)
+}
+
+// ResetAuth clears auth failure history for an IP (call on successful auth).
+func (l *Limiter) ResetAuth(ip string) {
+	l.clearFail(&l.authFails, ip)
+}
+
+// accountKey normalizes a username/email into the stable key used for
+// per-account throttling, so that case- and whitespace-only variants of the
+// same login are counted as one principal. An empty result means "no account
+// to key on" and callers skip per-account tracking.
+func accountKey(user string) string {
+	return strings.ToLower(strings.TrimSpace(user))
+}
+
+// RecordAuthFailUser records an authentication failure against an ACCOUNT
+// (username/email), independent of the source IP. This throttles a distributed
+// brute-force that rotates source IPs against a single account, which the per-IP
+// tracker alone cannot see. It deliberately does NOT touch the auth_failures
+// metric: the per-IP RecordAuthFail already counts the event, so pairing the two
+// on one failure must not double-count.
+func (l *Limiter) RecordAuthFailUser(user string) {
+	key := accountKey(user)
+	if key == "" {
+		return
+	}
+	l.recordFail(&l.userFails, key)
+}
+
+// IsUserBanned reports whether the ACCOUNT is currently rate-limited by too many
+// recent auth failures across all source IPs.
+func (l *Limiter) IsUserBanned(user string) bool {
+	key := accountKey(user)
+	if key == "" {
+		return false
+	}
+	return l.banned(&l.userFails, key)
+}
+
+// ResetAuthUser clears per-account auth failure history (call on a successful
+// auth for that account).
+func (l *Limiter) ResetAuthUser(user string) {
+	key := accountKey(user)
+	if key == "" {
+		return
+	}
+	l.clearFail(&l.userFails, key)
 }

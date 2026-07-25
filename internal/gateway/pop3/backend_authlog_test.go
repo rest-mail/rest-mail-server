@@ -25,7 +25,7 @@ func TestAuthenticate_LogsMaskedFailure(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	b := NewBackend(apiclient.New(srv.URL))
+	b := NewBackend(apiclient.New(srv.URL), nil)
 	if _, err := b.Authenticate("alice@example.com", "wrong"); err == nil {
 		t.Fatal("expected auth to fail against a 401 server")
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -818,4 +819,18 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("API error %d: %s", e.StatusCode, e.Body)
+}
+
+// IsAuthRejection reports whether err is a DEFINITIVE credential rejection from
+// the auth API — an HTTP 401 or 403. Only these count as a brute-force signal:
+// transient failures (5xx, network/DNS/timeout errors, connection refused) leave
+// credentials unverified and must NOT accrue against the auth-failure ban, or a
+// brief API outage would lock out legitimate clients. A nil error is not a
+// rejection.
+func IsAuthRejection(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden
+	}
+	return false
 }

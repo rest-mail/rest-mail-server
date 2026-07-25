@@ -28,6 +28,11 @@ type mockBackend struct {
 	checkErr    map[string]bool // addresses where CheckMailbox errors (temp fail)
 	deliverFail map[string]bool // local addresses whose DeliverMessage errors
 
+	// loginErr, when non-nil, is returned by Login instead of verifying
+	// credentials — used to simulate a transient API/network failure.
+	loginErr   error
+	loginCalls int // number of times Login was invoked (brute-force hard-stop assertions)
+
 	delivered   []string                    // recorded successful local deliveries (by Address)
 	deliverReqs []*apiclient.DeliverRequest // full deliver requests, for asserting captured fields
 }
@@ -45,6 +50,13 @@ func newMockBackend() *mockBackend {
 }
 
 func (m *mockBackend) Login(email, password string) (*apiclient.LoginResponse, error) {
+	m.mu.Lock()
+	m.loginCalls++
+	loginErr := m.loginErr
+	m.mu.Unlock()
+	if loginErr != nil {
+		return nil, loginErr
+	}
 	if email != m.user || password != m.pass {
 		return nil, &apiclient.APIError{StatusCode: 401, Body: "invalid credentials"}
 	}
@@ -53,6 +65,13 @@ func (m *mockBackend) Login(email, password string) (*apiclient.LoginResponse, e
 	resp.Data.User.ID = m.accountID
 	resp.Data.User.Email = email
 	return resp, nil
+}
+
+// loginCallCount returns how many times Login has been invoked.
+func (m *mockBackend) loginCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.loginCalls
 }
 
 func (m *mockBackend) CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error) {
@@ -171,13 +190,14 @@ func (s *mockStore) queued() []OutboundMessage {
 // ── Transcript harness ────────────────────────────────────────────────
 
 type smtpHarness struct {
-	t     *testing.T
-	back  *mockBackend
-	store *mockStore
-	conn  net.Conn
-	cr    *bufio.Reader
-	cw    *bufio.Writer
-	done  chan struct{}
+	t       *testing.T
+	back    *mockBackend
+	store   *mockStore
+	limiter *connlimiter.Limiter
+	conn    net.Conn
+	cr      *bufio.Reader
+	cw      *bufio.Writer
+	done    chan struct{}
 }
 
 // newSMTPHarness builds a transcript harness. Optional configure funcs run on
@@ -205,13 +225,14 @@ func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmiss
 	}()
 
 	h := &smtpHarness{
-		t:     t,
-		back:  back,
-		store: store,
-		conn:  client,
-		cr:    bufio.NewReader(client),
-		cw:    bufio.NewWriter(client),
-		done:  done,
+		t:       t,
+		back:    back,
+		store:   store,
+		limiter: limiter,
+		conn:    client,
+		cr:      bufio.NewReader(client),
+		cw:      bufio.NewWriter(client),
+		done:    done,
 	}
 	t.Cleanup(func() {
 		_ = client.Close()

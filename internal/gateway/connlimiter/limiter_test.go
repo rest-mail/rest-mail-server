@@ -137,6 +137,92 @@ func TestAuthBan(t *testing.T) {
 	}
 }
 
+// TestAuthBanPerAccountAcrossIPs reproduces the distributed brute-force from
+// issue #180: an attacker rotates source IPs so no single IP ever reaches the
+// per-IP threshold, yet all the failures target ONE account. The per-IP tracker
+// must stay silent while the per-account tracker bans the account.
+func TestAuthBanPerAccountAcrossIPs(t *testing.T) {
+	l := New(Config{
+		MaxPerIP:        100,
+		MaxGlobal:       100,
+		AuthMaxFails:    3,
+		AuthBanWindow:   10 * time.Second,
+		AuthBanDuration: 1 * time.Second,
+	})
+
+	const victim = "victim@example.com"
+	// Three failures, each from a DIFFERENT source IP (one failure per IP — well
+	// under the per-IP threshold), all against the same account.
+	ips := []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}
+	for _, ip := range ips {
+		l.RecordAuthFail(ip)         // per-IP, as the gateway records it
+		l.RecordAuthFailUser(victim) // per-account, the new dimension
+	}
+
+	// No single IP crossed the per-IP threshold, so none is banned.
+	for _, ip := range ips {
+		if l.IsBanned(ip) {
+			t.Fatalf("IP %s should NOT be banned (only 1 failure)", ip)
+		}
+	}
+	// The account, having seen 3 failures across those IPs, IS banned.
+	if !l.IsUserBanned(victim) {
+		t.Fatal("account should be banned after 3 failures across rotating IPs")
+	}
+
+	// A fresh, never-seen IP attempting the banned account is still stopped by the
+	// per-account ban (the hard-stop the gateways consult before calling Login).
+	if l.IsBanned("10.0.0.99") {
+		t.Fatal("fresh IP should not be per-IP banned")
+	}
+	if !l.IsUserBanned(victim) {
+		t.Fatal("account ban must apply regardless of source IP")
+	}
+
+	// The account ban expires like the per-IP one.
+	time.Sleep(1100 * time.Millisecond)
+	if l.IsUserBanned(victim) {
+		t.Fatal("account ban should have expired")
+	}
+}
+
+// TestAuthBanPerAccountCaseInsensitive verifies the account key is normalized so
+// mixed-case/whitespace variants of one login count as a single principal and an
+// empty username is ignored.
+func TestAuthBanPerAccountCaseInsensitive(t *testing.T) {
+	l := New(Config{AuthMaxFails: 3, AuthBanWindow: 10 * time.Second, AuthBanDuration: time.Minute})
+
+	l.RecordAuthFailUser("Victim@Example.com")
+	l.RecordAuthFailUser("victim@example.com")
+	l.RecordAuthFailUser("  VICTIM@EXAMPLE.COM  ")
+	if !l.IsUserBanned("victim@example.com") {
+		t.Fatal("case/whitespace variants of one account must aggregate into one ban")
+	}
+
+	// Empty username is a no-op, never banned.
+	l.RecordAuthFailUser("")
+	l.RecordAuthFailUser("")
+	l.RecordAuthFailUser("")
+	if l.IsUserBanned("") {
+		t.Fatal("empty account key must never be banned")
+	}
+}
+
+// TestResetAuthUser confirms a successful auth clears the per-account failure
+// history, mirroring ResetAuth for IPs.
+func TestResetAuthUser(t *testing.T) {
+	l := New(Config{AuthMaxFails: 3, AuthBanWindow: 10 * time.Second, AuthBanDuration: time.Minute})
+
+	l.RecordAuthFailUser("u@example.com")
+	l.RecordAuthFailUser("u@example.com")
+	l.ResetAuthUser("u@example.com")
+	l.RecordAuthFailUser("u@example.com")
+
+	if l.IsUserBanned("u@example.com") {
+		t.Fatal("should not be banned after reset + 1 failure")
+	}
+}
+
 func TestResetAuth(t *testing.T) {
 	l := New(Config{
 		MaxPerIP:        100,

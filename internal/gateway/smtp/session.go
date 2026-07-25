@@ -220,10 +220,40 @@ func (l *loginSASLServer) Next(response []byte) (challenge []byte, done bool, er
 	return nil, true, l.authenticate(l.username, string(response))
 }
 
+// tooManyAuthFailures is the 421 reply sent when a client or the targeted
+// account is banned. 421 closes the connection, so a banned attacker cannot keep
+// pipelining AUTH commands down the same session.
+var tooManyAuthFailures = &gosmtp.SMTPError{
+	Code:         421,
+	EnhancedCode: gosmtp.EnhancedCode{4, 7, 0},
+	Message:      "Too many authentication failures",
+}
+
 // login authenticates against the REST API and tracks failures in the
 // connection limiter so repeated bad credentials lead to a ban.
+//
+// Brute-force protection is layered: failures are throttled BOTH per source IP
+// and per targeted account, so neither a single host hammering many accounts nor
+// a rotating botnet hammering one account slips through. A ban is a HARD stop —
+// once the IP or the account is banned the request is rejected outright, WITHOUT
+// calling the auth API. That keeps a banned attacker off the backend and means a
+// ban is never lifted by a lucky correct guess, because no guess is verified
+// while banned.
 func (s *session) login(username, password string) error {
 	ip := extractIP(s.remoteAddr())
+
+	// Hard stop before any API call: reject a banned client or a banned target
+	// account without verifying the password.
+	if s.limiter.IsBanned(ip) || s.limiter.IsUserBanned(username) {
+		slog.Warn("smtp: auth rejected: banned",
+			"remote", s.remoteAddr(),
+			"user", maskEmail(username),
+			"event", "smtp_auth_banned",
+			"ip", ip,
+		)
+		s.tarpitReject()
+		return tooManyAuthFailures
+	}
 
 	resp, err := s.api.Login(username, password)
 	if err != nil {
@@ -237,17 +267,27 @@ func (s *session) login(username, password string) error {
 			"event", "smtp_auth_failed",
 			"ip", ip,
 		)
-		s.limiter.RecordAuthFail(ip)
-		// A failed AUTH is a brute-force signal: feed the tarpit so repeated
-		// bad credentials on one connection are progressively slowed (the
-		// connlimiter's cross-connection ban is the separate hard stop below).
-		s.tarpitReject()
-		if s.limiter.IsBanned(ip) {
+
+		// Only a DEFINITIVE credential rejection (401/403) is a brute-force signal.
+		// A transient API/network error leaves the password unverified, so it must
+		// not accrue against the ban — otherwise a brief API outage would ban
+		// legitimate clients' IPs and accounts. Surface it as a temporary failure.
+		if !apiclient.IsAuthRejection(err) {
 			return &gosmtp.SMTPError{
-				Code:         421,
+				Code:         454,
 				EnhancedCode: gosmtp.EnhancedCode{4, 7, 0},
-				Message:      "Too many authentication failures",
+				Message:      "Temporary authentication failure, try again later",
 			}
+		}
+
+		// Count the failure against both the source IP and the target account, then
+		// feed the tarpit so repeated bad credentials on one connection are
+		// progressively slowed.
+		s.limiter.RecordAuthFail(ip)
+		s.limiter.RecordAuthFailUser(username)
+		s.tarpitReject()
+		if s.limiter.IsBanned(ip) || s.limiter.IsUserBanned(username) {
+			return tooManyAuthFailures
 		}
 		return &gosmtp.SMTPError{
 			Code:         535,
@@ -257,6 +297,7 @@ func (s *session) login(username, password string) error {
 	}
 
 	s.limiter.ResetAuth(ip)
+	s.limiter.ResetAuthUser(username)
 	s.authenticated = true
 	s.authEmail = username
 	s.accountID = resp.Data.User.ID
