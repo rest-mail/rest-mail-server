@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/restmail/restmail/internal/ratelimit"
 )
 
 // defaultMaxMessageSize is the maximum accepted message size, in bytes, when
@@ -39,9 +40,9 @@ type session struct {
 	api          Backend
 	store        Store
 	limiter      *connlimiter.Limiter
-	subLimiter   *submissionRateLimiter // per-account submission cap (nil = disabled)
-	hostname     string                 // this server's host name, stamped into the Received header
-	isSubmission bool                   // port 587/465 requires AUTH
+	subLimiter   *ratelimit.SubmissionLimiter // per-account submission cap (nil = disabled)
+	hostname     string                       // this server's host name, stamped into the Received header
+	isSubmission bool                         // port 587/465 requires AUTH
 
 	// Anti-abuse tarpit: the connection-scoped context is cancelled on server
 	// shutdown so an in-flight tarpit sleep aborts rather than blocking the

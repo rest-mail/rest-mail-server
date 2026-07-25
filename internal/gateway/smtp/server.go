@@ -13,6 +13,7 @@ import (
 	gosmtp "github.com/rest-mail/go-smtp"
 
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/restmail/restmail/internal/ratelimit"
 )
 
 // Server listens for SMTP connections and serves them with go-smtp, one
@@ -24,7 +25,7 @@ type Server struct {
 	tlsConfig          *tls.Config
 	store              Store
 	limiter            *connlimiter.Limiter
-	subLimiter         *submissionRateLimiter
+	subLimiter         *ratelimit.SubmissionLimiter
 	proxyProtocolCIDRs []string
 	maxMessageBytes    int64
 	transferPolicy     transferRatePolicy
@@ -48,7 +49,7 @@ func NewServer(hostname string, api Backend, tlsConfig *tls.Config, store Store,
 		tlsConfig:       tlsConfig,
 		store:           store,
 		limiter:         limiter,
-		subLimiter:      newSubmissionRateLimiter(defaultSubmissionPerMinute, defaultSubmissionPerHour),
+		subLimiter:      ratelimit.NewSubmissionLimiter(ratelimit.DefaultPerMinute, ratelimit.DefaultPerHour),
 		maxMessageBytes: defaultMaxMessageSize,
 		transferPolicy:  defaultTransferRatePolicy(),
 		tarpit:          defaultTarpitPolicy(),
@@ -125,7 +126,7 @@ func (s *Server) SetTarpitPolicy(enabled bool, base time.Duration, softLimit int
 // disables that tier. Call before ListenAndServe — the limiter is shared by
 // every submission session.
 func (s *Server) SetSubmissionRateLimit(perMinute, perHour int) {
-	s.subLimiter = newSubmissionRateLimiter(perMinute, perHour)
+	s.subLimiter = ratelimit.NewSubmissionLimiter(perMinute, perHour)
 }
 
 // ListenAndServe starts SMTP listeners on the specified ports.

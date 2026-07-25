@@ -20,6 +20,7 @@ import (
 	"github.com/restmail/restmail/internal/netallow"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
+	"github.com/restmail/restmail/internal/ratelimit"
 	"github.com/restmail/restmail/internal/trace"
 	"github.com/restmail/restmail/internal/version"
 	"gorm.io/gorm"
@@ -206,6 +207,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	traceRecorder.Start()
 
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
+	// Send-path abuse limits (#184): a per-message recipient cap and a per-account
+	// send rate limiter, mirroring the SMTP submission caps (#171) so the webmail/API
+	// send path (and the draft-send / forward paths that delegate to it) cannot be
+	// used to fan out unlimited bulk mail. The limiter is shared across all requests.
+	messageH.SetSendLimits(
+		cfg.APIMaxRecipientsPerMessage,
+		ratelimit.NewSubmissionLimiter(cfg.APISendRateLimitPerMinute, cfg.APISendRateLimitPerHour),
+	)
 	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
 	restmailDeliverAuth := cfg.RestmailDeliverAuth()
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder, handlers.RestmailTarpitConfig{
@@ -364,6 +373,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
+		// #184: cap the request body across the authenticated surface (send,
+		// drafts, contacts import, sieve PUT, …) so an unbounded JSON upload
+		// cannot exhaust memory. cfg.APIMaxBodyBytes <= 0 makes this a no-op.
+		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
 
 		// Two-factor auth (OSI-19) — an authenticated account manages its own
 		// TOTP enrollment. Available to both mailbox and admin tokens (no
@@ -464,6 +477,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
 		r.Use(middleware.AdminOnly)
+		// #184: same request-body cap as the mailbox surface, covering the admin
+		// JSON endpoints (pipeline create/test, custom filters, …).
+		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
 		needs := middleware.RequireCapability
 
 		// Dashboard stats — visible to every admin role
