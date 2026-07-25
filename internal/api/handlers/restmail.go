@@ -266,6 +266,10 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// the delivery loop so its message_id points at the first delivered row. A
 	// RESTMAIL delivery has no TLS/IP envelope, so transport stays "".
 	var deliveredTrace *traceInputs
+	// suppressLocalKeep is set when a bare Sieve `redirect` forwarded the message
+	// and cancelled the implicit keep (RFC 5228 §4.2): the message is forwarded but
+	// NOT also stored to a local mailbox.
+	suppressLocalKeep := false
 	if pipelineCfg != nil && h.engine != nil {
 		// Use the request context so a client disconnect / server shutdown cancels
 		// the pipeline. Combined with the engine's per-filter timeout backstop, a
@@ -343,7 +347,40 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			if result.FinalEmail != nil {
 				authResults = result.FinalEmail.Headers.Raw["Authentication-Results"]
 			}
+
+			// Sieve `redirect`: forward the ORIGINAL message onward to each recorded
+			// target via the outbound queue (the same path SMTP submission and
+			// vacation replies use). A bare redirect that cancelled the implicit keep
+			// also suppresses the local copy below — but only when a forward was
+			// actually enqueued, so a redirect that cannot be honoured never loses
+			// the message.
+			forwarded := 0
+			for _, fwd := range buildRedirectForwards(result.FinalEmail, req.RawMessage, req.From, req.To) {
+				row := fwd
+				if err := h.db.Create(&row).Error; err != nil {
+					slog.Error("restmail: failed to enqueue sieve redirect",
+						"recipient", row.Recipient, "error", err)
+					continue
+				}
+				forwarded++
+				slog.Info("restmail: sieve redirect queued", "recipient", row.Recipient)
+			}
+			suppressLocalKeep = forwarded > 0 && redirectSuppressesKeep(result.FinalEmail)
 		}
+	}
+
+	// A bare redirect forwarded the message with no local copy (RFC 5228 §4.2):
+	// record the delivered trace and respond without storing it to any mailbox.
+	if suppressLocalKeep {
+		if deliveredTrace != nil {
+			deliveredTrace.Outcome = outcomeDelivered
+			h.recordTrace(buildTrace(*deliveredTrace))
+		}
+		respond.Data(w, http.StatusCreated, map[string]interface{}{
+			"delivered": req.To,
+			"failed":    []string{},
+		})
+		return
 	}
 
 	// Store the original raw message (with the pipeline's Authentication-Results

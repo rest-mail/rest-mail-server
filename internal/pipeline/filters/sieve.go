@@ -167,7 +167,29 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 		slog.Error("sieve: script evaluation error, keeping message (fail-safe)",
 			"error", outcome.Error)
 	}
-	return sieveResult(outcome, exec.applied, &modified), nil
+	return sieveResult(outcome, exec, scriptRequiresCopy(f.script), &modified), nil
+}
+
+// scriptRequiresCopy reports whether the script declared the RFC 3894 "copy"
+// extension. go-sieve v0.3.0 does not surface the per-action :copy flag to the
+// Executor (Executor.Redirect receives only the address) nor preserve the
+// implicit keep for a :copy redirect in its Outcome, so a `redirect :copy` and a
+// bare `redirect` are indistinguishable from the callbacks alone. The declared
+// "copy" capability is the signal we have: when a redirect-only script requires
+// "copy", the redirect is treated as keep-preserving (message forwarded AND kept
+// locally). This errs toward keeping the message — never losing mail — in the
+// uncommon script that mixes a bare and a :copy redirect. A future go-sieve that
+// exposes :copy on Executor.Redirect would let this be decided per redirect.
+func scriptRequiresCopy(s *sieve.Script) bool {
+	if s == nil {
+		return false
+	}
+	for _, r := range s.Requires() {
+		if strings.EqualFold(r, "copy") {
+			return true
+		}
+	}
+	return false
 }
 
 // sieveResult maps a completed sieve evaluation onto a pipeline.FilterResult,
@@ -179,9 +201,23 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 //     recorded deliver_to_folder metadata and the message goes to that folder;
 //     otherwise the §2.10.2 implicit keep (outcome.ImplicitKeep) delivers to the
 //     default mailbox (INBOX), which ActionContinue with no folder override does.
+//   - A `redirect` records its target(s) in redirect_to metadata for the delivery
+//     path to forward (RFC 5228 §4.2). A bare redirect cancels the implicit keep,
+//     so when the message has no other local destination redirect_suppress_keep is
+//     set and the delivery path forwards WITHOUT also keeping a local copy; a
+//     `redirect :copy` forwards AND keeps.
 //   - A runtime error (outcome.Error — always reported as Continue+ImplicitKeep)
 //     fails safe to that implicit keep per §2.10.6: the message is kept.
-func sieveResult(outcome sieve.Outcome, applied []string, modified *pipeline.EmailJSON) *pipeline.FilterResult {
+func sieveResult(outcome sieve.Outcome, exec *metadataExecutor, copyRequired bool, modified *pipeline.EmailJSON) *pipeline.FilterResult {
+	var applied []string
+	var redirectTargets []string
+	hasLocalDelivery := false
+	if exec != nil {
+		applied = exec.applied
+		redirectTargets = exec.redirectTargets
+		hasLocalDelivery = exec.hasLocalDelivery
+	}
+
 	switch outcome.Disposition {
 	case sieve.Discard:
 		return &pipeline.FilterResult{
@@ -207,7 +243,24 @@ func sieveResult(outcome sieve.Outcome, applied []string, modified *pipeline.Ema
 	}
 
 	// Continue: deliver the message (to the fileinto folder if one was chosen,
-	// else INBOX via the implicit keep).
+	// else INBOX via the implicit keep) and forward any recorded redirect targets.
+	//
+	// Redirect targets are handed to the delivery path as JSON in redirect_to.
+	// The local-keep decision (RFC 5228 §4.2 / RFC 3894): the message is kept
+	// locally when the implicit keep still stands, OR an explicit keep / fileinto
+	// delivered it locally, OR every redirect was keep-preserving (:copy). Only a
+	// bare redirect that was the message's sole destination cancels the local
+	// copy — signalled with redirect_suppress_keep so the delivery path forwards
+	// without also storing to INBOX.
+	if len(redirectTargets) > 0 {
+		ensureMetadata(modified)
+		modified.Metadata["redirect_to"] = encodeRedirectTargets(redirectTargets)
+		localKeep := outcome.ImplicitKeep || hasLocalDelivery || copyRequired
+		if !localKeep {
+			modified.Metadata["redirect_suppress_keep"] = "true"
+		}
+	}
+
 	result := "transformed"
 	var detail string
 	switch {
@@ -233,6 +286,16 @@ func sieveResult(outcome sieve.Outcome, applied []string, modified *pipeline.Ema
 			Detail: detail,
 		},
 	}
+}
+
+// encodeRedirectTargets serializes the redirect targets to the JSON array stored
+// in the redirect_to metadata the delivery path decodes.
+func encodeRedirectTargets(targets []string) string {
+	b, err := json.Marshal(targets)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 // ── Message adaptation ───────────────────────────────────────────────
@@ -301,6 +364,15 @@ type metadataExecutor struct {
 	email   *pipeline.EmailJSON
 	applied []string
 
+	// redirectTargets accumulates the addresses a `redirect` action selected that
+	// passed the OSI-13 policy AND the loop check, in script order. The delivery
+	// path forwards to each (see redirect_to metadata).
+	redirectTargets []string
+	// hasLocalDelivery records that an explicit keep or a fileinto delivered the
+	// message to a local mailbox, so a co-occurring bare redirect does not cancel
+	// the local copy.
+	hasLocalDelivery bool
+
 	// redirect / localDomains gate the `redirect` action (OSI-13): a redirect to
 	// one of localDomains (the recipient's own domain(s)) is always allowed;
 	// external targets are governed by the policy (deny by default).
@@ -308,7 +380,10 @@ type metadataExecutor struct {
 	localDomains []string
 }
 
-func (e *metadataExecutor) Keep() { e.applied = append(e.applied, "keep") }
+func (e *metadataExecutor) Keep() {
+	e.hasLocalDelivery = true
+	e.applied = append(e.applied, "keep")
+}
 
 func (e *metadataExecutor) FileInto(folder string, create bool) {
 	ensureMetadata(e.email)
@@ -316,12 +391,13 @@ func (e *metadataExecutor) FileInto(folder string, create bool) {
 	if create {
 		e.email.Metadata["deliver_to_folder_create"] = "true"
 	}
+	e.hasLocalDelivery = true
 	e.applied = append(e.applied, "fileinto:"+folder)
 }
 
 func (e *metadataExecutor) Redirect(addr string) {
 	if !e.redirectAllowed(addr) {
-		// Deny: do NOT record redirect_to, so the delivery path never forwards the
+		// Deny: do NOT record the target, so the delivery path never forwards the
 		// message off-domain. This is the OSI-13 exfiltration guard.
 		slog.Warn("sieve: redirect to disallowed external domain denied (OSI-13)",
 			"target_domain", domainOf(addr),
@@ -330,9 +406,64 @@ func (e *metadataExecutor) Redirect(addr string) {
 		e.applied = append(e.applied, "redirect-denied:"+addr)
 		return
 	}
-	ensureMetadata(e.email)
-	e.email.Metadata["redirect_to"] = addr
+	// Loop suppression (RFC 5228 §4.2 / RFC 5321 §6.3): never forward to a target
+	// the message has already been delivered to (present in its Delivered-To
+	// chain) or to one of its own recipients (a self-redirect). Suppressing the
+	// target here — before it is recorded — also leaves the message with no
+	// redirect destination, so the implicit keep stands and it is kept locally
+	// rather than lost when a looping redirect was its only action.
+	if e.redirectLoops(addr) {
+		slog.Warn("sieve: redirect suppressed to avoid a mail loop", "target", addr)
+		e.applied = append(e.applied, "redirect-loop-suppressed:"+addr)
+		return
+	}
+	e.redirectTargets = append(e.redirectTargets, addr)
 	e.applied = append(e.applied, "redirect:"+addr)
+}
+
+// redirectLoops reports whether forwarding to addr would create a mail loop: the
+// message has already been delivered to that address (it appears in the
+// Delivered-To header chain), or addr is one of the message's own envelope
+// recipients (a self-redirect). RFC 5228 §4.2 directs implementations to
+// suppress redirects that would cause a loop. An address with no parseable domain
+// is treated as a loop (never forwarded).
+func (e *metadataExecutor) redirectLoops(addr string) bool {
+	target := normalizeAddr(addr)
+	if target == "" {
+		return true
+	}
+	for _, dt := range deliveredToHeaders(e.email.Headers.Raw) {
+		if normalizeAddr(dt) == target {
+			return true
+		}
+	}
+	for _, r := range e.email.Envelope.RcptTo {
+		if normalizeAddr(r) == target {
+			return true
+		}
+	}
+	return false
+}
+
+// deliveredToHeaders returns every Delivered-To header value present in the raw
+// header map (matched case-insensitively).
+func deliveredToHeaders(raw map[string][]string) []string {
+	var out []string
+	for k, v := range raw {
+		if strings.EqualFold(k, "Delivered-To") {
+			out = append(out, v...)
+		}
+	}
+	return out
+}
+
+// normalizeAddr lower-cases an email address and strips surrounding angle
+// brackets and whitespace, for loop-detection comparisons.
+func normalizeAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	addr = strings.TrimPrefix(addr, "<")
+	addr = strings.TrimSuffix(addr, ">")
+	return strings.ToLower(strings.TrimSpace(addr))
 }
 
 // redirectAllowed reports whether a sieve redirect to addr is permitted under
@@ -594,8 +725,9 @@ func ValidateSieveForInstall(script string) error {
 // count as a dry-run failure: the evaluator panicking (recovered here into an
 // error, defensive against a future parser/evaluator regression), and an action
 // the recording executor rejects as unrunnable (currently a redirect whose
-// target has no parseable domain — which the delivery executor silently denies,
-// so surfacing it at install turns a silent no-op into immediate feedback).
+// target has no parseable domain — which the delivery executor cannot forward and
+// suppresses, so surfacing it at install turns a silent drop into immediate
+// feedback).
 func dryRunSieve(script *sieve.Script) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -640,8 +772,8 @@ func dryRunMessage() *sieve.Message {
 // records the actions a script would take and performs NO real side effect. It
 // also flags an action that cannot run as a dry-run error via err — currently a
 // redirect to an address with no parseable domain, which the delivery-time
-// executor (metadataExecutor.Redirect) denies as an OSI-13 guard; surfacing it
-// here turns that silent denial into an install-time rejection.
+// executor (metadataExecutor.Redirect) cannot forward and suppresses; surfacing
+// it here turns that silent drop into an install-time rejection.
 type recordingExecutor struct {
 	actions []string
 	err     error

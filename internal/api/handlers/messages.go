@@ -2110,6 +2110,31 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		}
 	}
 
+	// Sieve `redirect`: forward the ORIGINAL message onward to each recorded
+	// target via the outbound queue (the same path SMTP submission and vacation
+	// replies use). A bare redirect that cancelled the implicit keep forwards
+	// WITHOUT storing a local copy — return no stored message, like a discard —
+	// but only when a forward was actually enqueued, so a redirect that cannot be
+	// honoured never loses the message.
+	forwarded := 0
+	for _, fwd := range buildRedirectForwards(emailJSON, params.RawMessage, params.Sender, []string{mailbox.Address}) {
+		row := fwd
+		if err := h.db.Create(&row).Error; err != nil {
+			slog.Error("deliverToLocal: failed to enqueue sieve redirect",
+				"recipient", row.Recipient, "error", err)
+			continue
+		}
+		forwarded++
+		slog.Info("deliverToLocal: sieve redirect queued", "recipient", row.Recipient)
+	}
+	if forwarded > 0 && redirectSuppressesKeep(emailJSON) {
+		if deliveredTrace != nil {
+			deliveredTrace.Outcome = outcomeDelivered
+			h.recordTrace(buildTrace(*deliveredTrace))
+		}
+		return nil, nil
+	}
+
 	// ── Persist Authentication-Results ───────────────────────────────
 	// Prepend any Authentication-Results the inbound pipeline produced (the
 	// dkim/spf/dmarc verdicts) onto the stored raw message — standard receiver

@@ -128,9 +128,23 @@ func TestSieve_Redirect(t *testing.T) {
 	if result.Action != pipeline.ActionContinue {
 		t.Fatalf("expected ActionContinue, got %q", result.Action)
 	}
-	if result.Message.Metadata["redirect_to"] != "other@example.com" {
-		t.Errorf("expected redirect_to=other@example.com, got %q", result.Message.Metadata["redirect_to"])
+	if got := decodeRedirectTargets(t, result.Message.Metadata["redirect_to"]); len(got) != 1 || got[0] != "other@example.com" {
+		t.Errorf("expected redirect_to=[other@example.com], got %v", got)
 	}
+}
+
+// decodeRedirectTargets parses the JSON-array redirect_to metadata the sieve
+// filter records for the delivery path.
+func decodeRedirectTargets(t *testing.T, raw string) []string {
+	t.Helper()
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("decode redirect_to %q: %v", raw, err)
+	}
+	return out
 }
 
 // ── fileinto :create ─────────────────────────────────────────────────
@@ -364,7 +378,7 @@ func TestSieve_EvaluationError_KeepsFailSafe(t *testing.T) {
 		ImplicitKeep: true,
 		Error:        errors.New("executor callback panicked"),
 	}
-	r := sieveResult(outcome, nil, msg)
+	r := sieveResult(outcome, nil, false, msg)
 	if r.Action != pipeline.ActionContinue {
 		t.Fatalf("runtime error must fail safe to keep (ActionContinue), got %q", r.Action)
 	}
