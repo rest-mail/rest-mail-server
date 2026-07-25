@@ -9,8 +9,10 @@ package filters
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/rest-mail/go-sieve"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -295,6 +297,96 @@ if envelope :is "from" "a@b.com" {
 func TestValidateSieve_Invalid(t *testing.T) {
 	if err := ValidateSieve(`if true { keep;`); err == nil {
 		t.Error("expected ValidateSieve to reject an unterminated block")
+	}
+}
+
+// ── RFC 5228 delivery outcome (go-sieve v0.3.0 Outcome contract) ─────
+//
+// go-sieve v0.3.0 returns an Outcome carrying the RFC 5228 §2.10.2 implicit
+// keep (ImplicitKeep) and a §2.10.6 fail-safe error (Error). These tests pin
+// the four delivery cases the host must honour: implicit-keep → INBOX,
+// discard → dropped, fileinto → folder, and runtime error → kept.
+
+// TestSieve_ImplicitKeep_DeliversToInbox: a script that matches nothing (takes
+// no delivering action) leaves the implicit keep in effect, so the message is
+// delivered to the default mailbox — ActionContinue with no folder override.
+func TestSieve_ImplicitKeep_DeliversToInbox(t *testing.T) {
+	script := `require "fileinto";
+if header :contains "Subject" "ZZZ-NO-SUCH-SUBJECT" { fileinto "Junk"; }`
+	r := runSieve(t, script, sieveEmail())
+	if r.Action != pipeline.ActionContinue {
+		t.Fatalf("expected ActionContinue (implicit keep), got %q", r.Action)
+	}
+	if folderOf(r) != "" {
+		t.Errorf("implicit keep must deliver to INBOX, but a folder override was set: %q", folderOf(r))
+	}
+	if r.Log.Detail != "implicit keep -> INBOX" {
+		t.Errorf("expected implicit-keep detail, got %q", r.Log.Detail)
+	}
+}
+
+// TestSieve_NonDeliveringActionStillImplicitKeeps: a non-delivering action
+// (addflag) does NOT cancel the implicit keep — the message still lands in
+// INBOX (no folder override), it just carries the flag.
+func TestSieve_NonDeliveringActionStillImplicitKeeps(t *testing.T) {
+	script := `require "imap4flags";
+if true { addflag "\\Seen"; }`
+	r := runSieve(t, script, sieveEmail())
+	if r.Action != pipeline.ActionContinue {
+		t.Fatalf("expected ActionContinue, got %q", r.Action)
+	}
+	if folderOf(r) != "" {
+		t.Errorf("addflag must not divert delivery; got folder %q", folderOf(r))
+	}
+	if got := r.Message.Metadata["imap_flags"]; got != `\Seen` {
+		t.Errorf("expected imap_flags=\\Seen, got %q", got)
+	}
+}
+
+// TestSieve_BareDiscard_Drops: a bare `discard` cancels the implicit keep and
+// drops the message.
+func TestSieve_BareDiscard_Drops(t *testing.T) {
+	r := runSieve(t, `discard;`, sieveEmail())
+	if r.Action != pipeline.ActionDiscard {
+		t.Errorf("expected ActionDiscard for bare discard, got %q", r.Action)
+	}
+}
+
+// TestSieve_EvaluationError_KeepsFailSafe: a runtime evaluation error (reported
+// by go-sieve as Continue+ImplicitKeep+Error) must fail safe to a keep — the
+// message is delivered, never lost. sieveResult is exercised directly because a
+// runtime error requires an Executor callback to panic inside the library,
+// which the filter's internal executor never does under normal input.
+func TestSieve_EvaluationError_KeepsFailSafe(t *testing.T) {
+	msg := sieveEmail()
+	outcome := sieve.Outcome{
+		Disposition:  sieve.Continue,
+		ImplicitKeep: true,
+		Error:        errors.New("executor callback panicked"),
+	}
+	r := sieveResult(outcome, nil, msg)
+	if r.Action != pipeline.ActionContinue {
+		t.Fatalf("runtime error must fail safe to keep (ActionContinue), got %q", r.Action)
+	}
+	if r.Message != msg {
+		t.Error("kept message must be delivered (Message should be set)")
+	}
+	if folderOf(r) != "" {
+		t.Errorf("fail-safe keep goes to INBOX, not a folder; got %q", folderOf(r))
+	}
+	if r.Log.Result != "kept" {
+		t.Errorf("expected Result=kept on fail-safe, got %q", r.Log.Result)
+	}
+}
+
+// TestSieve_Vacation_IntervalDays: the go-sieve v0.3.0 Vacation.Interval
+// duration (:days 3 → 72h) is mapped back to whole days in metadata.
+func TestSieve_Vacation_IntervalDays(t *testing.T) {
+	script := `require "vacation";
+vacation :days 3 :subject "OOO" "Away.";`
+	r := runSieve(t, script, sieveEmail())
+	if got := r.Message.Metadata["vacation_days"]; got != "3" {
+		t.Errorf("expected vacation_days=3 from :days 3 interval, got %q", got)
 	}
 }
 

@@ -57,15 +57,22 @@ func TestSMTP_SenderAuthorization(t *testing.T) {
 		t.Fatalf("AUTH = %q", r)
 	}
 
+	// Each sender is checked in its own transaction. RSET clears the open
+	// reverse-path between them: since go-smtp v0.28.2 a second MAIL FROM issued
+	// while a transaction is still open is rejected 503 as a nested MAIL command
+	// (RFC 5321 §4.1.1.2), instead of silently replacing the sender.
+
 	// The authenticated identity itself: accepted without any store lookup.
 	if r := h.cmd("MAIL FROM:<alice@example.com>"); replyCode(r) != "250" {
 		t.Errorf("self sender should be accepted, got %q", r)
 	}
 	// A linked address the store authorizes: accepted.
+	h.cmd("RSET")
 	if r := h.cmd("MAIL FROM:<linked@example.com>"); replyCode(r) != "250" {
 		t.Errorf("linked sender should be accepted, got %q", r)
 	}
 	// An unauthorized address: rejected 553.
+	h.cmd("RSET")
 	if r := h.cmd("MAIL FROM:<mallory@example.com>"); replyCode(r) != "553" {
 		t.Errorf("unauthorized sender should be rejected 553, got %q", r)
 	}

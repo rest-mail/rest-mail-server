@@ -3,6 +3,7 @@ package filters
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/rest-mail/go-dmarc"
@@ -135,8 +136,15 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		}, nil
 	}
 
-	// Parse DMARC policy
-	policy := dmarc.ParsePolicy(dmarcRecord)
+	// Parse DMARC policy. A malformed record (bad/duplicate p= tag) has no valid
+	// policy: per RFC 7489 §6.6.3 treat it as if none were published — i.e. no
+	// enforcement — rather than applying an unintended disposition.
+	policy, err := dmarc.ParsePolicy(dmarcRecord)
+	if err != nil {
+		slog.Warn("dmarc_check: malformed DMARC record, treating as no policy",
+			"domain", domain, "error", err)
+		policy = "none"
+	}
 
 	// Check Authentication-Results from both Extra and Raw maps
 	authResults := ""
