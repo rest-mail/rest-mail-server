@@ -21,8 +21,13 @@ RUN COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
  && LDFLAGS="-X github.com/restmail/restmail/internal/version.Version=${VERSION} \
              -X github.com/restmail/restmail/internal/version.Commit=${COMMIT} \
              -X github.com/restmail/restmail/internal/version.BuildDate=${BUILD_DATE}" \
- && CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o /bin/restmail-api  ./cmd/api \
- && CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o /bin/restmail-seed ./cmd/seed
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags "${LDFLAGS}" -o /bin/restmail-api ./cmd/api
+# NOTE: cmd/seed is deliberately NOT built into any shipped image. It creates
+# fixture accounts with well-known passwords (mailbox `password123`, and an
+# admin whose forced password-change only mitigates the admin), so it must never
+# be present in the production runtime. Seeding for dev/testbed runs through
+# `task db:seed`, which does `go run ./cmd/seed` inside the source-mounted dev
+# image — it never relies on a prebuilt binary in the prod stage.
 
 # ── Stage 3: dev (hot reload via air) ────────────────────────────────
 # Source code is volume-mounted at /app by docker-compose.override.yml.
@@ -44,8 +49,8 @@ RUN apk add --no-cache ca-certificates curl \
  && addgroup -S restmail && adduser -S -u 10001 -G restmail restmail \
  && mkdir -p /attachments \
  && chown -R restmail:restmail /attachments /usr/local/share/ca-certificates /etc/ssl
-COPY --from=builder /bin/restmail-api  /usr/local/bin/restmail-api
-COPY --from=builder /bin/restmail-seed /usr/local/bin/restmail-seed
+COPY --from=builder /bin/restmail-api /usr/local/bin/restmail-api
+# cmd/seed is intentionally excluded from the prod image (see builder stage).
 COPY projects/api-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 USER restmail
