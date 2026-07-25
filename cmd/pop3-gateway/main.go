@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"log/slog"
 	"os"
@@ -162,7 +163,14 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down POP3 gateway...")
-	pop3Server.Shutdown()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := pop3Server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("POP3 server did not drain within timeout, forcing close", "error", err)
+		if cerr := pop3Server.Close(); cerr != nil {
+			slog.Error("POP3 server close failed", "error", cerr)
+		}
+	}
 	metricsServer.Shutdown()
 	slog.Info("POP3 gateway stopped")
 }

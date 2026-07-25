@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"log/slog"
 	"os"
@@ -162,7 +163,14 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down IMAP gateway...")
-	imapServer.Shutdown()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := imapServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("IMAP server did not drain within timeout, forcing close", "error", err)
+		if cerr := imapServer.Close(); cerr != nil {
+			slog.Error("IMAP server close failed", "error", cerr)
+		}
+	}
 	metricsServer.Shutdown()
 	slog.Info("IMAP gateway stopped")
 }

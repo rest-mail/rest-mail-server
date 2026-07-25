@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/rest-mail/go-sieve"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -119,8 +120,30 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 		redirect:     f.redirect,
 		localDomains: recipientDomains(&modified),
 	}
+	// Evaluate applies the RFC 5228 implicit-keep model itself and returns the
+	// terminal Outcome; sieveResult maps that Outcome onto the pipeline result.
 	outcome := f.script.Evaluate(sieveMessage(&modified), exec)
+	if outcome.Error != nil {
+		// RFC 5228 §2.10.6: a runtime error fails safe to an implicit keep — the
+		// message is kept, never lost. Log it so the failure stays visible.
+		slog.Error("sieve: script evaluation error, keeping message (fail-safe)",
+			"error", outcome.Error)
+	}
+	return sieveResult(outcome, exec.applied, &modified), nil
+}
 
+// sieveResult maps a completed sieve evaluation onto a pipeline.FilterResult,
+// honouring the RFC 5228 delivery model exposed by the go-sieve Outcome:
+//
+//   - Reject and Discard are terminal: the message is rejected or dropped (a
+//     bare `discard` drops the mail).
+//   - Continue delivers the message. When a delivering action ran, fileinto has
+//     recorded deliver_to_folder metadata and the message goes to that folder;
+//     otherwise the §2.10.2 implicit keep (outcome.ImplicitKeep) delivers to the
+//     default mailbox (INBOX), which ActionContinue with no folder override does.
+//   - A runtime error (outcome.Error — always reported as Continue+ImplicitKeep)
+//     fails safe to that implicit keep per §2.10.6: the message is kept.
+func sieveResult(outcome sieve.Outcome, applied []string, modified *pipeline.EmailJSON) *pipeline.FilterResult {
 	switch outcome.Disposition {
 	case sieve.Discard:
 		return &pipeline.FilterResult{
@@ -131,7 +154,7 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 				Result: "discard",
 				Detail: "sieve discard action",
 			},
-		}, nil
+		}
 	case sieve.Reject:
 		return &pipeline.FilterResult{
 			Type:      pipeline.FilterTypeTransform,
@@ -142,24 +165,36 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 				Result: "reject",
 				Detail: "sieve reject: " + outcome.RejectReason,
 			},
-		}, nil
+		}
 	}
 
-	detail := "no rules matched"
-	if len(exec.applied) > 0 {
-		detail = "applied: " + strings.Join(exec.applied, ", ")
+	// Continue: deliver the message (to the fileinto folder if one was chosen,
+	// else INBOX via the implicit keep).
+	result := "transformed"
+	var detail string
+	switch {
+	case outcome.Error != nil:
+		result = "kept"
+		detail = "evaluation error, kept (fail-safe): " + outcome.Error.Error()
+	case len(applied) > 0:
+		detail = "applied: " + strings.Join(applied, ", ")
+	case outcome.ImplicitKeep:
+		result = "kept"
+		detail = "implicit keep -> INBOX"
+	default:
+		detail = "no rules matched"
 	}
 
 	return &pipeline.FilterResult{
 		Type:    pipeline.FilterTypeTransform,
 		Action:  pipeline.ActionContinue,
-		Message: &modified,
+		Message: modified,
 		Log: pipeline.FilterLog{
 			Filter: "sieve",
-			Result: "transformed",
+			Result: result,
 			Detail: detail,
 		},
-	}, nil
+	}
 }
 
 // ── Message adaptation ───────────────────────────────────────────────
@@ -356,8 +391,11 @@ func (e *metadataExecutor) Vacation(v sieve.Vacation) {
 	e.email.Metadata["vacation_reply_to"] = replyTo
 	e.email.Metadata["vacation_reply_subject"] = v.Subject
 	e.email.Metadata["vacation_reply_body"] = v.Body
-	if v.Days > 0 {
-		e.email.Metadata["vacation_days"] = strconv.Itoa(v.Days)
+	// go-sieve now carries the resend interval as a duration (RFC 5230 :days /
+	// RFC 6131 :seconds). The downstream vacation agent keys off whole days, so
+	// convert; a sub-day :seconds interval rounds down to 0 and is omitted.
+	if days := int(v.Interval / (24 * time.Hour)); days > 0 {
+		e.email.Metadata["vacation_days"] = strconv.Itoa(days)
 	}
 	e.email.Metadata[lastSentKey] = "pending"
 	e.applied = append(e.applied, "vacation:"+replyTo)

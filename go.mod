@@ -16,14 +16,14 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
-	github.com/rest-mail/go-arc v0.2.1
-	github.com/rest-mail/go-dkim v0.1.3
-	github.com/rest-mail/go-dmarc v0.2.0
-	github.com/rest-mail/go-imap v0.2.3
-	github.com/rest-mail/go-mtasts v0.2.0
-	github.com/rest-mail/go-pop3 v0.1.2
-	github.com/rest-mail/go-sieve v0.2.0
-	github.com/rest-mail/go-smtp v0.28.1
+	github.com/rest-mail/go-arc v0.2.2
+	github.com/rest-mail/go-dkim v0.2.1
+	github.com/rest-mail/go-dmarc v0.3.0
+	github.com/rest-mail/go-imap v0.3.0
+	github.com/rest-mail/go-mtasts v0.2.1
+	github.com/rest-mail/go-pop3 v0.2.0
+	github.com/rest-mail/go-sieve v0.3.0
+	github.com/rest-mail/go-smtp v0.28.2
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.50.0
 	gorm.io/driver/postgres v1.6.0
