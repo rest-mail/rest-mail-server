@@ -44,7 +44,7 @@ jobs:
       run_e2e: ${{ steps.classify.outputs.run_e2e }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Need history back to the PR base so we can diff the changed paths.
           fetch-depth: 0
@@ -113,17 +113,33 @@ jobs:
       E2E_REQUIRE_STACK: "1"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.25.10"
           cache: true
 
-      - name: Install go-task
+      - name: Install go-task (pinned + checksum-verified)
+        # Do NOT pipe-execute the unpinned install.sh from the network — that is
+        # an arbitrary-code-execution supply-chain surface. Download a specific
+        # release tarball and verify its sha256 before installing.
+        env:
+          TASK_VERSION: v3.52.0
+          # sha256 of task_linux_amd64.tar.gz for TASK_VERSION, taken from that
+          # release's task_checksums.txt. Bump both together when upgrading.
+          TASK_SHA256: 02c679ffae53dca791804847d78b31731615894e292948397c971c87ac9e95bd
         run: |
-          sh -c "$(curl --location --silent --show-error --fail https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          curl --location --silent --show-error --fail \
+            "https://github.com/go-task/task/releases/download/${TASK_VERSION}/task_linux_amd64.tar.gz" \
+            -o "$tmp/task.tar.gz"
+          echo "${TASK_SHA256}  $tmp/task.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/task.tar.gz" -C "$tmp" task
+          sudo install -m 0755 "$tmp/task" /usr/local/bin/task
+          rm -rf "$tmp"
           task --version
 
       - name: Populate Go module cache
@@ -138,12 +154,29 @@ jobs:
         # rest-mail substrate repos are public.
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
-      - name: Clone testbed + reference-mailserver substrate
+      - name: Clone testbed + reference-mailserver substrate (pinned)
         # The `testbed` include must resolve before `task e2e:up` is parsed;
         # reference-mailserver is also cloned by e2e:up, pre-cloning is harmless.
+        #
+        # The init tasks clone each repo's DEFAULT BRANCH (no ref). Pin the
+        # checkout to a known-good commit so an e2e run is reproducible and
+        # tamper-evident: an upstream force-push or a compromised default branch
+        # cannot silently change what CI executes — a missing/rewritten pin fails
+        # the step loudly instead. Bump these SHAs deliberately when adopting
+        # upstream substrate changes.
+        env:
+          TESTBED_REF: 6a766a3eb05670b9a999fe1e7210d28fb270644c              # rest-mail/testbed @ master
+          REFERENCE_MAILSERVER_REF: 07c68b71c0cd38333d18e6c5b130de6daa47c0a7  # rest-mail/reference-mailserver @ master
         run: |
+          set -euo pipefail
           task testbed:init
           task mailserver:init
+          git -C .workspace/testbed fetch --quiet origin "$TESTBED_REF" || true
+          git -C .workspace/testbed checkout --quiet "$TESTBED_REF"
+          git -C .workspace/reference-mailserver fetch --quiet origin "$REFERENCE_MAILSERVER_REF" || true
+          git -C .workspace/reference-mailserver checkout --quiet "$REFERENCE_MAILSERVER_REF"
+          echo "testbed pinned @ $(git -C .workspace/testbed rev-parse --short HEAD)"
+          echo "reference-mailserver pinned @ $(git -C .workspace/reference-mailserver rev-parse --short HEAD)"
 
       - name: Patch reference dkim:provision for native-Linux Docker
         # reference-mailserver's dkim:provision generates the DKIM key as
@@ -219,7 +252,7 @@ jobs:
 
       - name: Upload container logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-container-logs
           path: ${{ runner.temp }}/e2e-logs
