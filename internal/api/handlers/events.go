@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"gorm.io/gorm"
@@ -176,16 +176,19 @@ func NewEventHandler(db *gorm.DB, broker *SSEBroker, jwtService *auth.JWTService
 }
 
 // Events handles GET /api/v1/accounts/{id}/events as a Server-Sent Events stream.
-// Authentication is performed via the standard Authorization: Bearer header.
-// The client uses fetch() instead of EventSource so it can send headers.
+// Authentication accepts EITHER the restmail_access httpOnly cookie (browser
+// EventSource, which attaches it automatically) or an Authorization: Bearer
+// header (programmatic clients) — the same dual transport as JWTMiddleware. This
+// removes the old need for a header-capable fetch() SSE shim: a browser can now
+// use the native EventSource, whose cookie rides along, with no token in JS or
+// in the URL.
 func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
-	// 1. Auth via Authorization: Bearer header
-	authHeader := r.Header.Get("Authorization")
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authorization header required")
+	// 1. Auth via the access cookie or Authorization: Bearer header.
+	token, errMsg := middleware.AccessTokenFromRequest(r)
+	if errMsg != "" {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", errMsg)
 		return
 	}
-	token := strings.TrimPrefix(authHeader, "Bearer ")
 
 	claims, err := h.jwtService.ValidateAccessToken(token)
 	if err != nil {

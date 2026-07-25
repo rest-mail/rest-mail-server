@@ -12,23 +12,47 @@ type contextKey string
 
 const ClaimsKey contextKey = "claims"
 
-// JWTMiddleware validates the Authorization: Bearer <token> header.
+// AccessTokenFromRequest extracts the JWT access token from a request, accepting
+// EITHER transport:
+//
+//   - the Authorization: Bearer <token> header — used by programmatic/API
+//     clients (the protocol gateways, tooling). Checked first and, when present,
+//     authoritative: a present-but-malformed header is rejected rather than
+//     silently falling through to the cookie.
+//   - the restmail_access httpOnly cookie — used by the browser SPAs, which no
+//     longer hold the token in JavaScript at all.
+//
+// It returns the raw token, or a non-empty errMsg describing why none could be
+// read (preserving the historical messages the API surfaced for a
+// missing/malformed Authorization header).
+func AccessTokenFromRequest(r *http.Request) (token, errMsg string) {
+	if header := r.Header.Get("Authorization"); header != "" {
+		parts := strings.SplitN(header, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			return "", "Invalid authorization header format"
+		}
+		return parts[1], ""
+	}
+	if c, err := r.Cookie(auth.AccessCookieName); err == nil && c.Value != "" {
+		return c.Value, ""
+	}
+	return "", "Missing authorization header"
+}
+
+// JWTMiddleware validates the access token, read from either the
+// Authorization: Bearer header or the restmail_access cookie (see
+// AccessTokenFromRequest). Validation is unchanged — only the accepted transport
+// widens to include the httpOnly cookie.
 func JWTMiddleware(jwtService *auth.JWTService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			header := r.Header.Get("Authorization")
-			if header == "" {
-				writeError(w, http.StatusUnauthorized, "unauthorized", "Missing authorization header")
+			token, errMsg := AccessTokenFromRequest(r)
+			if errMsg != "" {
+				writeError(w, http.StatusUnauthorized, "unauthorized", errMsg)
 				return
 			}
 
-			parts := strings.SplitN(header, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid authorization header format")
-				return
-			}
-
-			claims, err := jwtService.ValidateAccessToken(parts[1])
+			claims, err := jwtService.ValidateAccessToken(token)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
 				return

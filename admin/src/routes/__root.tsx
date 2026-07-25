@@ -33,6 +33,14 @@ export const Route = createRootRoute({
 function RootComponent() {
   const navigate = useNavigate()
   const logout = useAuthStore((state) => state.logout)
+  const checkSession = useAuthStore((state) => state.checkSession)
+
+  // Restore an existing session on boot by exchanging the httpOnly refresh
+  // cookie for a fresh access cookie. No token is ever exposed to JS; on failure
+  // the session is cleared and the route guards redirect to /login.
+  useEffect(() => {
+    void checkSession()
+  }, [checkSession])
 
   // Set up global 401 handler
   useEffect(() => {

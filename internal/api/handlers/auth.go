@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -156,11 +159,79 @@ type loginRequest struct {
 	RecoveryCode string `json:"recovery_code,omitempty"`
 }
 
+// loginResponse is the login/refresh success body. It deliberately carries NO
+// access token: the token is delivered ONLY as the httpOnly restmail_access
+// cookie (see setSessionCookies), so page JavaScript — and therefore any XSS —
+// can neither read it at rest nor scrape it from this response. ExpiresIn lets
+// the SPA schedule a pre-emptive refresh without ever seeing the token; User and
+// Capabilities let it restore session UI state on boot from /auth/refresh.
 type loginResponse struct {
-	AccessToken  string   `json:"access_token"`
 	ExpiresIn    int      `json:"expires_in"`
 	User         userInfo `json:"user"`
 	Capabilities []string `json:"capabilities,omitempty"` // For admin users
+}
+
+// setSessionCookies issues the browser session cookies for a freshly minted
+// access token: the httpOnly, Secure, SameSite=Strict restmail_access cookie
+// (the ONLY place the access token is handed to a browser) and its non-httpOnly
+// restmail_csrf companion for the double-submit CSRF defence. Both are scoped to
+// Path=/ so they accompany every API and SSE request, and both expire with the
+// access token (the SPA refreshes before then, which rotates them). A fresh
+// random CSRF token is minted per call.
+//
+// Secure is set unconditionally: the stack is served over HTTPS (and browsers
+// treat the *.localhost testbed as a secure context), matching the pre-existing
+// restmail_refresh cookie. If a plain-HTTP deployment is ever required, gate
+// this one flag behind cfg.IsProduction rather than defaulting it off.
+func setSessionCookies(w http.ResponseWriter, accessToken string, accessMaxAgeSecs int) error {
+	csrfToken, err := newCSRFToken()
+	if err != nil {
+		return err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.AccessCookieName,
+		Value:    accessToken,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   accessMaxAgeSecs,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.CSRFCookieName,
+		Value:    csrfToken,
+		Path:     "/",
+		HttpOnly: false, // MUST be readable so the SPA can echo it in X-CSRF-Token.
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   accessMaxAgeSecs,
+	})
+	return nil
+}
+
+// clearSessionCookies expires the access and CSRF cookies (logout). The refresh
+// cookie is cleared separately by Logout because it is scoped to a different
+// path.
+func clearSessionCookies(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.AccessCookieName, Value: "", Path: "/",
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: -1,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.CSRFCookieName, Value: "", Path: "/",
+		HttpOnly: false, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: -1,
+	})
+}
+
+// newCSRFToken returns a 128-bit cryptographically random, hex-encoded CSRF
+// token — the value placed in the restmail_csrf cookie and required back in the
+// X-CSRF-Token header.
+func newCSRFToken() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate CSRF token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 type userInfo struct {
@@ -288,7 +359,7 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 
 	// Set refresh token as HTTP-only cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     "restmail_refresh",
+		Name:     auth.RefreshCookieName,
 		Value:    tokens.RefreshToken,
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
@@ -297,11 +368,17 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 		MaxAge:   7 * 24 * 60 * 60,
 	})
 
+	// Deliver the access token ONLY as the httpOnly session cookie (never the
+	// body), together with the readable CSRF companion.
+	if err := setSessionCookies(w, tokens.AccessToken, tokens.ExpiresIn); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
+		return
+	}
+
 	// Update last login
 	h.db.Model(adminUser).Update("updated_at", time.Now())
 
 	respond.Data(w, http.StatusOK, loginResponse{
-		AccessToken:  tokens.AccessToken,
 		ExpiresIn:    tokens.ExpiresIn,
 		Capabilities: capNames,
 		User: userInfo{
@@ -364,7 +441,7 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 
 	// Set refresh token as HTTP-only cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     "restmail_refresh",
+		Name:     auth.RefreshCookieName,
 		Value:    tokens.RefreshToken,
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
@@ -373,12 +450,18 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 		MaxAge:   7 * 24 * 60 * 60,
 	})
 
+	// Deliver the access token ONLY as the httpOnly session cookie (never the
+	// body), together with the readable CSRF companion.
+	if err := setSessionCookies(w, tokens.AccessToken, tokens.ExpiresIn); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
+		return
+	}
+
 	// Update last login
 	h.db.Model(&mailbox).Update("last_login_at", time.Now())
 
 	respond.Data(w, http.StatusOK, loginResponse{
-		AccessToken: tokens.AccessToken,
-		ExpiresIn:   tokens.ExpiresIn,
+		ExpiresIn: tokens.ExpiresIn,
 		User: userInfo{
 			ID:          account.ID,
 			Email:       mailbox.Address,
@@ -392,14 +475,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	// exchanged (OSI-10: logout was previously client-side only). Best-effort:
 	// a missing/invalid cookie still clears client state below. Idempotent, so a
 	// double logout is harmless.
-	if cookie, err := r.Cookie("restmail_refresh"); err == nil && h.refreshStore != nil {
+	if cookie, err := r.Cookie(auth.RefreshCookieName); err == nil && h.refreshStore != nil {
 		if claims, err := h.jwtService.ValidateRefreshToken(cookie.Value); err == nil && claims.ID != "" {
 			_ = h.refreshStore.Revoke(claims.ID)
 		}
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "restmail_refresh",
+		Name:     auth.RefreshCookieName,
 		Value:    "",
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
@@ -407,11 +490,14 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
+	// Also expire the access + CSRF session cookies so the browser holds no
+	// usable session material after logout.
+	clearSessionCookies(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("restmail_refresh")
+	cookie, err := r.Cookie(auth.RefreshCookieName)
 	if err != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "No refresh token")
 		return
@@ -502,7 +588,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     "restmail_refresh",
+		Name:     auth.RefreshCookieName,
 		Value:    tokens.RefreshToken,
 		Path:     "/api/v1/auth",
 		HttpOnly: true,
@@ -511,8 +597,23 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   7 * 24 * 60 * 60,
 	})
 
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"access_token": tokens.AccessToken,
-		"expires_in":   tokens.ExpiresIn,
-	})
+	// Reissue the access token as the httpOnly cookie (+ rotated CSRF companion);
+	// like login, it is never returned in the body.
+	if err := setSessionCookies(w, tokens.AccessToken, tokens.ExpiresIn); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
+		return
+	}
+
+	// The body carries only what the SPA needs to restore session UI on boot
+	// (identity + capabilities + expiry) — never the token itself. User identity
+	// is taken from the validated refresh-token claims, so this stays a single
+	// DB-touch-free response.
+	resp := loginResponse{ExpiresIn: tokens.ExpiresIn}
+	if claims.UserType == "admin" {
+		resp.Capabilities = capabilities
+		resp.User = userInfo{ID: claims.AdminUserID, Email: claims.Username, DisplayName: claims.Username}
+	} else {
+		resp.User = userInfo{ID: claims.WebmailAccountID, Email: claims.Email, DisplayName: claims.Email}
+	}
+	respond.Data(w, http.StatusOK, resp)
 }

@@ -44,16 +44,29 @@ describe('apiV1.request', () => {
     expect(fetchFn.mock.calls[0][0]).toBe(`${BASE}/admin/queue`)
   })
 
-  it('attaches a Bearer token when one is supplied', async () => {
+  it('never attaches an Authorization header (auth is by httpOnly cookie)', async () => {
     const fetchFn = mockFetch()
     await apiV1.request('/admin/domains', { method: 'GET' }, 'tok-123')
-    expect(lastHeaders(fetchFn).get('Authorization')).toBe('Bearer tok-123')
+    expect(lastHeaders(fetchFn).has('Authorization')).toBe(false)
   })
 
-  it('omits Authorization when no token is supplied', async () => {
+  it('sends credentials so the session cookie rides along', async () => {
     const fetchFn = mockFetch()
     await apiV1.request('/admin/domains')
-    expect(lastHeaders(fetchFn).has('Authorization')).toBe(false)
+    expect(lastInit(fetchFn).credentials).toBe('include')
+  })
+
+  it('adds the X-CSRF-Token header on mutating requests', async () => {
+    document.cookie = 'restmail_csrf=csrf-xyz'
+    const fetchFn = mockFetch()
+    await apiV1.request('/admin/domains', { method: 'POST', body: '{}' })
+    expect(lastHeaders(fetchFn).get('X-CSRF-Token')).toBe('csrf-xyz')
+  })
+
+  it('omits the CSRF header on safe (GET) requests', async () => {
+    const fetchFn = mockFetch()
+    await apiV1.request('/admin/domains', { method: 'GET' })
+    expect(lastHeaders(fetchFn).has('X-CSRF-Token')).toBe(false)
   })
 
   it('defaults Content-Type to application/json when a body is present', async () => {

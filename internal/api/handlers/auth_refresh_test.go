@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,23 +11,31 @@ import (
 	"github.com/restmail/restmail/internal/db/repositories"
 )
 
-// validateBody decodes the access_token from a refresh response body and returns
-// its validated claims.
+// validateBody reads the refreshed access token from the restmail_access cookie
+// (the token is no longer returned in the response body) and returns its
+// validated claims.
 func validateBody(t *testing.T, jwt *auth.JWTService, rr *httptest.ResponseRecorder) *auth.Claims {
 	t.Helper()
-	var resp struct {
-		Data struct {
-			AccessToken string `json:"access_token"`
-		} `json:"data"`
+	tok := accessCookieValue(rr)
+	if tok == "" {
+		t.Fatalf("refresh set no access cookie (body: %s)", rr.Body.String())
 	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode refresh response: %v", err)
-	}
-	claims, err := jwt.ValidateAccessToken(resp.Data.AccessToken)
+	claims, err := jwt.ValidateAccessToken(tok)
 	if err != nil {
 		t.Fatalf("validate refreshed access token: %v", err)
 	}
 	return claims
+}
+
+// accessCookieValue returns the value of the restmail_access cookie set on a
+// response, or "" when absent.
+func accessCookieValue(rr *httptest.ResponseRecorder) string {
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == auth.AccessCookieName {
+			return c.Value
+		}
+	}
+	return ""
 }
 
 // fakeRefreshStore is an in-memory refreshTokenStore for exercising the auth

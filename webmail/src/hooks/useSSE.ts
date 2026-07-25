@@ -1,101 +1,46 @@
 import { useEffect, useRef } from 'react';
-import { getToken } from '@/api/client';
 
 export interface SSEEvent {
   type: string;
   data: Record<string, unknown>;
 }
 
-const EVENT_TYPES = new Set(['new_message', 'folder_update', 'message_updated', 'message_deleted', 'message_sent']);
+const EVENT_TYPES = ['new_message', 'folder_update', 'message_updated', 'message_deleted', 'message_sent'];
 
-/**
- * Parse a single SSE event block (the text between two blank lines).
- * Returns null for comment-only or empty blocks (e.g. keepalives).
- */
-function parseBlock(block: string): { type: string; data: string; id: string } | null {
-  let type = 'message';
-  let data = '';
-  let id = '';
-
-  for (const line of block.split('\n')) {
-    if (line.startsWith('event: ')) type = line.slice(7).trim();
-    else if (line.startsWith('data: ')) data += (data ? '\n' : '') + line.slice(6);
-    else if (line.startsWith('id: ')) id = line.slice(4).trim();
-  }
-
-  if (!data) return null;
-  return { type, data, id };
+function apiBase(): string {
+  return (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
 }
 
 /**
- * Open a fetch-based SSE stream using Authorization: Bearer header.
- * Returns a cleanup function that aborts the stream.
+ * Open a native EventSource for one account. Authentication is by cookie: the
+ * browser attaches the httpOnly `restmail_access` cookie automatically
+ * (withCredentials), so there is no token in JavaScript and none in the URL. The
+ * browser also handles reconnection and Last-Event-ID replay natively.
+ *
+ * Returns a cleanup function that closes the stream.
  */
-function openStream(
-  url: string,
-  token: string,
-  lastEventId: string,
-  onEvent: (e: SSEEvent) => void,
-  onError: () => void,
-  onOpen: () => void,
-): () => void {
-  const controller = new AbortController();
+function openStream(accountId: number, onEvent: (e: SSEEvent) => void): () => void {
+  const url = `${apiBase()}/accounts/${accountId}/events`;
+  const es = new EventSource(url, { withCredentials: true });
 
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
-    Accept: 'text/event-stream',
-    'Cache-Control': 'no-cache',
+  const handler = (type: string) => (evt: MessageEvent) => {
+    try {
+      onEvent({ type, data: JSON.parse(evt.data) });
+    } catch {
+      // ignore malformed JSON
+    }
   };
-  if (lastEventId) headers['Last-Event-ID'] = lastEventId;
+  // The server names every event (`event: <type>`), so we subscribe per type
+  // rather than the default `message` listener.
+  for (const type of EVENT_TYPES) {
+    es.addEventListener(type, handler(type) as EventListener);
+  }
 
-  fetch(url, { headers, signal: controller.signal })
-    .then(async (res) => {
-      if (!res.ok || !res.body) {
-        onError();
-        return;
-      }
-      onOpen();
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // SSE events are separated by double newlines
-        const blocks = buffer.split('\n\n');
-        buffer = blocks.pop() ?? '';
-
-        for (const block of blocks) {
-          const parsed = parseBlock(block);
-          if (!parsed) continue;
-          if (!EVENT_TYPES.has(parsed.type)) continue;
-          try {
-            const data = JSON.parse(parsed.data);
-            onEvent({ type: parsed.type, data });
-          } catch {
-            // ignore malformed JSON
-          }
-        }
-      }
-      // Stream closed cleanly — reconnect
-      onError();
-    })
-    .catch(() => {
-      if (!controller.signal.aborted) onError();
-    });
-
-  return () => controller.abort();
+  return () => es.close();
 }
 
 /**
  * Subscribe to SSE events for a single account.
- * Uses fetch() so we can send Authorization: Bearer header.
- * Includes exponential backoff on reconnect.
  */
 export function useSSE(
   accountId: number | null,
@@ -106,51 +51,13 @@ export function useSSE(
 
   useEffect(() => {
     if (!accountId) return;
-
-    const token = getToken();
-    if (!token) return;
-
-    let closed = false;
-    let delay = 1000;
-    const maxDelay = 30000;
-    const lastEventId = '';
-    let cancelStream: (() => void) | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function connect() {
-      if (closed) return;
-      // Use complete API URL
-      const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
-      const url = `${apiUrl}/accounts/${accountId}/events`;
-      cancelStream = openStream(
-        url, token, lastEventId,
-        (e) => onEventRef.current(e),
-        () => {
-          // error / stream ended — reconnect with backoff
-          if (!closed) {
-            reconnectTimer = setTimeout(() => {
-              delay = Math.min(delay * 2, maxDelay);
-              connect();
-            }, delay);
-          }
-        },
-        () => { delay = 1000; }, // reset backoff on open
-      );
-    }
-
-    connect();
-
-    return () => {
-      closed = true;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      cancelStream?.();
-    };
+    return openStream(accountId, (e) => onEventRef.current(e));
   }, [accountId]);
 }
 
 /**
  * Subscribe to SSE events for multiple accounts simultaneously.
- * Opens one fetch stream per account and forwards all events to the callback.
+ * Opens one EventSource per account and forwards all events to the callback.
  */
 export function useMultiAccountSSE(
   accountIds: number[],
@@ -162,48 +69,8 @@ export function useMultiAccountSSE(
   const idsKey = accountIds.join(',');
 
   useEffect(() => {
-    const token = getToken();
-    if (!token || accountIds.length === 0) return;
-
-    const cleanups: (() => void)[] = [];
-
-    for (const id of accountIds) {
-      let closed = false;
-      let delay = 1000;
-      const maxDelay = 30000;
-      const lastEventId = '';
-      let cancelStream: (() => void) | null = null;
-      let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-      function connect() {
-        if (closed) return;
-        // Use complete API URL
-        const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
-        const url = `${apiUrl}/accounts/${id}/events`;
-        cancelStream = openStream(
-          url, token, lastEventId,
-          (e) => onEventRef.current(e),
-          () => {
-            if (!closed) {
-              reconnectTimer = setTimeout(() => {
-                delay = Math.min(delay * 2, maxDelay);
-                connect();
-              }, delay);
-            }
-          },
-          () => { delay = 1000; },
-        );
-      }
-
-      connect();
-
-      cleanups.push(() => {
-        closed = true;
-        if (reconnectTimer) clearTimeout(reconnectTimer);
-        cancelStream?.();
-      });
-    }
-
-    return () => cleanups.forEach(fn => fn());
+    if (accountIds.length === 0) return;
+    const cleanups = accountIds.map((id) => openStream(id, (e) => onEventRef.current(e)));
+    return () => cleanups.forEach((fn) => fn());
   }, [idsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 }
