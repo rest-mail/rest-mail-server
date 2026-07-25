@@ -66,6 +66,47 @@ func validateSievePipelineFilters(raw json.RawMessage) error {
 	return nil
 }
 
+// validateDuplicatePipelineFilters rejects a domain pipeline that configures the
+// `duplicate` filter with a queue_recipient. That knob records
+// duplicate_queue_recipient metadata which NO delivery consumer reads, so it
+// silently no-ops (issue #201). Rather than accept a config we won't honour, the
+// admin save is rejected at HTTP 400 with an actionable message; the webhook
+// fork is unaffected and stays configurable.
+//
+// The reject deliberately lives here (config save) rather than in NewDuplicate:
+// erroring at filter construction would make the engine's fail-closed policy
+// DEFER live mail for any already-stored config, which is worse than the benign
+// no-op. Every duplicate block is inspected regardless of its `enabled` flag —
+// a disabled-but-unsupported block would no-op the moment it is enabled.
+//
+// Scope mirrors validateSievePipelineFilters: a filter list that does not
+// unmarshal is "nothing to validate" (nil), preserving the existing contract for
+// unrelated shapes.
+func validateDuplicatePipelineFilters(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	var fcs []pipeline.FilterConfig
+	if err := json.Unmarshal(raw, &fcs); err != nil {
+		return nil
+	}
+	for _, fc := range fcs {
+		if fc.Name != "duplicate" || len(fc.Config) == 0 {
+			continue
+		}
+		var cfg struct {
+			QueueRecipient string `json:"queue_recipient"`
+		}
+		if err := json.Unmarshal(fc.Config, &cfg); err != nil {
+			continue
+		}
+		if strings.TrimSpace(cfg.QueueRecipient) != "" {
+			return fmt.Errorf("the duplicate filter's queue_recipient is not supported (it has no delivery consumer and would silently no-op); use webhook_url to fork a copy")
+		}
+	}
+	return nil
+}
+
 type PipelineHandler struct {
 	db     *gorm.DB
 	engine *pipeline.Engine
@@ -198,6 +239,14 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Reject a duplicate filter configured with an unsupported queue_recipient
+	// (issue #201) before persisting, for the same reason: an unhonoured config
+	// silently no-ops at delivery.
+	if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
+		respond.Error(w, http.StatusBadRequest, "unsupported_filter", err.Error())
+		return
+	}
+
 	p := models.Pipeline{
 		DomainID:  req.DomainID,
 		Direction: req.Direction,
@@ -241,6 +290,10 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 		// Sieve with HTTP 400 and leave the stored config untouched.
 		if err := validateSievePipelineFilters(req.Filters); err != nil {
 			respond.Error(w, http.StatusBadRequest, "invalid_sieve", err.Error())
+			return
+		}
+		if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
+			respond.Error(w, http.StatusBadRequest, "unsupported_filter", err.Error())
 			return
 		}
 		p.Filters = req.Filters

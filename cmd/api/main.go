@@ -22,6 +22,7 @@ import (
 	"github.com/restmail/restmail/internal/greylist"
 	"github.com/restmail/restmail/internal/rollup"
 	"github.com/restmail/restmail/internal/trace"
+	"github.com/restmail/restmail/internal/vacation"
 )
 
 // loadCACert adds the PEM CA bundle at path to the API's outbound HTTP client
@@ -252,6 +253,12 @@ func main() {
 	greylistPurger := greylist.NewPurger(database, time.Hour)
 	greylistPurger.Start()
 
+	// Start the vacation-responses purger (hourly): deletes vacation_responses
+	// rows past their retention horizon so the auto-reply dedup table stays
+	// bounded rather than growing one row per (mailbox, sender) forever.
+	vacationPurger := vacation.NewPurger(database, time.Hour, vacation.DefaultRetention)
+	vacationPurger.Start()
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    cfg.APIAddr(),
@@ -304,6 +311,7 @@ func main() {
 	rollupWorker.Shutdown()
 	tracePruner.Shutdown()
 	greylistPurger.Shutdown()
+	vacationPurger.Shutdown()
 	digestWorker.Shutdown()
 	// Flush buffered per-message traces and stop the recorder goroutine.
 	routers.Close()

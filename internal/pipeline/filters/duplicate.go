@@ -54,6 +54,17 @@ func NewDuplicate(config []byte) (pipeline.Filter, error) {
 		cfg.TimeoutMS = 5000
 	}
 
+	// queue_recipient has no delivery consumer, so it silently no-ops (issue
+	// #201). New saves are rejected at the admin-pipeline config gate
+	// (validateDuplicatePipelineFilters); a filter is still constructed for any
+	// LEGACY stored config so its (working) webhook fork keeps running and the
+	// engine's fail-closed policy does not defer the domain's mail. Warn so an
+	// operator sees the queue copy is not being made.
+	if cfg.QueueRecipient != "" {
+		slog.Warn("duplicate: queue_recipient is not supported and is ignored (no delivery consumer); use webhook_url to fork a copy",
+			"queue_recipient", cfg.QueueRecipient)
+	}
+
 	return &duplicateFilter{
 		webhookURL:     cfg.WebhookURL,
 		method:         cfg.Method,

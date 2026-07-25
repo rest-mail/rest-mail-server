@@ -19,16 +19,44 @@ type jsFilterConfig struct {
 	Script    string `json:"script"`
 	TimeoutMS int    `json:"timeout_ms"`
 	URL       string `json:"url"`
+	// FailureAction is the pipeline action applied when the sidecar cannot be
+	// reached, times out, errors, or returns an unusable result. It defaults to
+	// "defer" (fail-closed): a wedged or compromised sidecar must not silently
+	// disable JS filtering by letting every message through. An operator may set
+	// "continue" to restore the legacy fail-open behaviour, or "reject".
+	FailureAction string `json:"failure_action"`
 }
 
 type jsFilter struct {
 	script     string
 	timeout    time.Duration
 	sidecarURL string
+	onFailure  pipeline.Action
 }
 
 func init() {
 	pipeline.DefaultRegistry.Register("javascript", NewJavaScript)
+}
+
+// jsFailureActions is the set of pipeline actions a failed JS filter may apply.
+// A failure means "we could not get a trustworthy verdict", so the choice is
+// between holding the message (defer, default), refusing it (reject), or letting
+// it pass unfiltered (continue) — never a delivering/transform action.
+var jsFailureActions = map[pipeline.Action]bool{
+	pipeline.ActionDefer:    true,
+	pipeline.ActionContinue: true,
+	pipeline.ActionReject:   true,
+}
+
+// jsResultActions is the set of actions the sidecar is allowed to return. An
+// action outside this set is untrusted (a bug or a compromised sidecar) and is
+// rejected rather than cast blindly onto the pipeline.
+var jsResultActions = map[pipeline.Action]bool{
+	pipeline.ActionContinue:   true,
+	pipeline.ActionReject:     true,
+	pipeline.ActionQuarantine: true,
+	pipeline.ActionDiscard:    true,
+	pipeline.ActionDefer:      true,
 }
 
 func NewJavaScript(config []byte) (pipeline.Filter, error) {
@@ -48,11 +76,36 @@ func NewJavaScript(config []byte) (pipeline.Filter, error) {
 		cfg.URL = defaultSidecarURL
 	}
 
+	onFailure := pipeline.ActionDefer // fail-closed default
+	if cfg.FailureAction != "" {
+		a := pipeline.Action(cfg.FailureAction)
+		if !jsFailureActions[a] {
+			return nil, fmt.Errorf("javascript filter: invalid failure_action %q (want defer, continue, or reject)", cfg.FailureAction)
+		}
+		onFailure = a
+	}
+
 	return &jsFilter{
 		script:     cfg.Script,
 		timeout:    time.Duration(cfg.TimeoutMS) * time.Millisecond,
 		sidecarURL: cfg.URL,
+		onFailure:  onFailure,
 	}, nil
+}
+
+// fail returns the configured failure result for a sidecar problem, tagging the
+// log so an operator can see that the JS verdict was NOT obtained (and, with the
+// default, that the message is being held rather than passed unfiltered).
+func (f *jsFilter) fail(result, detail string) *pipeline.FilterResult {
+	return &pipeline.FilterResult{
+		Type:   pipeline.FilterTypeAction,
+		Action: f.onFailure,
+		Log: pipeline.FilterLog{
+			Filter: "javascript",
+			Result: result,
+			Detail: fmt.Sprintf("%s; applying failure_action=%s", detail, f.onFailure),
+		},
+	}
 }
 
 func (f *jsFilter) Name() string             { return "javascript" }
@@ -96,42 +149,18 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeAction,
-			Action: pipeline.ActionContinue,
-			Log: pipeline.FilterLog{
-				Filter: "javascript",
-				Result: "error",
-				Detail: fmt.Sprintf("sidecar request failed: %v", err),
-			},
-		}, nil
+		return f.fail("error", fmt.Sprintf("sidecar request failed: %v", err)), nil
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeAction,
-			Action: pipeline.ActionContinue,
-			Log: pipeline.FilterLog{
-				Filter: "javascript",
-				Result: "error",
-				Detail: fmt.Sprintf("read sidecar response: %v", err),
-			},
-		}, nil
+		return f.fail("error", fmt.Sprintf("read sidecar response: %v", err)), nil
 	}
 
 	// Handle timeout response
 	if resp.StatusCode == http.StatusRequestTimeout {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeAction,
-			Action: pipeline.ActionContinue,
-			Log: pipeline.FilterLog{
-				Filter: "javascript",
-				Result: "timeout",
-				Detail: "script execution timed out",
-			},
-		}, nil
+		return f.fail("timeout", "script execution timed out"), nil
 	}
 
 	// Handle other error responses
@@ -142,29 +171,13 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 		if detail == "" {
 			detail = fmt.Sprintf("sidecar returned status %d", resp.StatusCode)
 		}
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeAction,
-			Action: pipeline.ActionContinue,
-			Log: pipeline.FilterLog{
-				Filter: "javascript",
-				Result: "error",
-				Detail: fmt.Sprintf("script error: %s", detail),
-			},
-		}, nil
+		return f.fail("error", fmt.Sprintf("script error: %s", detail)), nil
 	}
 
 	// Parse the successful response
 	var sidecarResp sidecarResponse
 	if err := json.Unmarshal(respBody, &sidecarResp); err != nil {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeAction,
-			Action: pipeline.ActionContinue,
-			Log: pipeline.FilterLog{
-				Filter: "javascript",
-				Result: "error",
-				Detail: fmt.Sprintf("cannot parse sidecar response: %v", err),
-			},
-		}, nil
+		return f.fail("error", fmt.Sprintf("cannot parse sidecar response: %v", err)), nil
 	}
 
 	// Parse the result from the sidecar into the expected format
@@ -177,20 +190,20 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 		} `json:"log"`
 	}
 	if err := json.Unmarshal(sidecarResp.Result, &jsResult); err != nil {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeAction,
-			Action: pipeline.ActionContinue,
-			Log: pipeline.FilterLog{
-				Filter: "javascript",
-				Result: "error",
-				Detail: "invalid result format from script",
-			},
-		}, nil
+		return f.fail("error", "invalid result format from script"), nil
+	}
+
+	// Validate the returned action against the known set BEFORE casting it into
+	// the pipeline. A sidecar (untrusted at runtime) returning an unknown action
+	// must not be able to inject an arbitrary Action value; treat it as a failure.
+	action := pipeline.Action(jsResult.Action)
+	if !jsResultActions[action] {
+		return f.fail("error", fmt.Sprintf("sidecar returned unknown action %q", jsResult.Action)), nil
 	}
 
 	result := &pipeline.FilterResult{
 		Type:   pipeline.FilterType(jsResult.Type),
-		Action: pipeline.Action(jsResult.Action),
+		Action: action,
 		Log: pipeline.FilterLog{
 			Filter: "javascript",
 			Result: jsResult.Action,
@@ -210,7 +223,17 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 }
 
 // ValidateScript checks if a JavaScript filter script is syntactically valid.
-// This performs a basic check that the script contains a filter function definition.
+// This performs a basic check that the script contains a filter function
+// definition.
+//
+// NOTE (issue #201): this is only a substring check — it cannot catch a syntax
+// error, a runtime throw, or a script that never returns. Real validation means
+// parsing/dry-running the script in the same JS engine the sidecar uses, so the
+// authoritative check belongs in the sidecar (a POST /validate already exists;
+// see PipelineHandler.ValidateCustomFilter). Delegating this Go-side helper to
+// that endpoint is deferred: it turns a pure function into a network call, so it
+// needs a sidecar URL + timeout + failure policy (mirroring Execute) and touches
+// every caller — a change better made alongside the sidecar hardening in #160.
 func ValidateScript(script string) error {
 	if !strings.Contains(script, "function filter") {
 		return fmt.Errorf("script must define a filter(email) function")

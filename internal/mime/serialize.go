@@ -186,11 +186,10 @@ func EstimateSize(email *pipeline.EmailJSON) int64 {
 		size += int64(len(from.Address) + len(from.Name) + 20)
 	}
 	size += int64(len(email.Headers.Subject) + 20)
-	// Body
-	size += int64(len(email.Body.Content))
-	for _, part := range email.Body.Parts {
-		size += int64(len(part.Content))
-	}
+	// Body — recurse the full part tree, not just the top level, so a nested
+	// multipart (multipart/mixed → multipart/alternative → text) is counted in
+	// full rather than undercounted (issue #201).
+	size += bodyTreeSize(email.Body)
 	// Attachments
 	for _, att := range email.Attachments {
 		if att.Content != "" {
@@ -207,6 +206,17 @@ func EstimateSize(email *pipeline.EmailJSON) int64 {
 		} else {
 			size += att.Size
 		}
+	}
+	return size
+}
+
+// bodyTreeSize returns the total content length of a body and every nested part,
+// recursively. A multipart body carries its payload in Parts (which may
+// themselves be multipart), so summing only the top level undercounts.
+func bodyTreeSize(b pipeline.Body) int64 {
+	size := int64(len(b.Content))
+	for _, part := range b.Parts {
+		size += bodyTreeSize(part)
 	}
 	return size
 }

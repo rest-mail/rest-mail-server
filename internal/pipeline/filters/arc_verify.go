@@ -51,16 +51,13 @@ var sealDomainRe = regexp.MustCompile(`\bd=([^;\s]+)`)
 func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
 
-	// Ensure maps are initialised
-	if modified.Headers.Raw == nil {
-		modified.Headers.Raw = make(map[string][]string)
-	}
-	if modified.Headers.Extra == nil {
-		modified.Headers.Extra = make(map[string]string)
-	}
-	if modified.Metadata == nil {
-		modified.Metadata = make(map[string]string)
-	}
+	// Clone the maps before mutating them: `modified := *email` shares
+	// Headers.Raw / Headers.Extra / Metadata with the caller's original, so an
+	// in-place append/overwrite (addARCAuthResult, arc_status) would leak back
+	// onto the input (issue #201). Cloning also yields non-nil maps.
+	modified.Headers.Raw = cloneRawHeaders(email.Headers.Raw)
+	modified.Headers.Extra = cloneStringMap(email.Headers.Extra)
+	modified.Metadata = cloneStringMap(email.Metadata)
 
 	// Collect ARC headers from Raw
 	arcAAR := email.Headers.Raw["Arc-Authentication-Results"]

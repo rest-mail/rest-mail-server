@@ -37,6 +37,11 @@ func (f *dkimVerifyFilter) Type() pipeline.FilterType { return pipeline.FilterTy
 
 func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
+	// Clone the header maps before appending: `modified := *email` shares them
+	// with the caller's original, so mutating them in place would leak this
+	// filter's Authentication-Results back onto the input (issue #201).
+	modified.Headers.Raw = cloneRawHeaders(email.Headers.Raw)
+	modified.Headers.Extra = cloneStringMap(email.Headers.Extra)
 
 	// DKIM must be verified against the exact signed bytes. The raw message is
 	// threaded through the pipeline as metadata by the inbound handlers; a
@@ -63,15 +68,16 @@ func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		authResults = "restmail; dkim=neutral"
 	}
 
-	// Add Authentication-Results header
-	if modified.Headers.Extra == nil {
-		modified.Headers.Extra = make(map[string]string)
+	// Add Authentication-Results header. Append (not overwrite) to Extra so an
+	// earlier filter's entry — spf_check runs before dkim_verify — is preserved
+	// rather than clobbered (issue #201); Raw already appends. Both maps were
+	// cloned above, so this never touches the caller's original.
+	if existing := modified.Headers.Extra["Authentication-Results"]; existing != "" {
+		modified.Headers.Extra["Authentication-Results"] = existing + "; " + authResults
+	} else {
+		modified.Headers.Extra["Authentication-Results"] = authResults
 	}
-	modified.Headers.Extra["Authentication-Results"] = authResults
 
-	if modified.Headers.Raw == nil {
-		modified.Headers.Raw = make(map[string][]string)
-	}
 	modified.Headers.Raw["Authentication-Results"] = append(
 		modified.Headers.Raw["Authentication-Results"],
 		authResults,
