@@ -59,20 +59,85 @@ const backfillRawSizeSQL = `UPDATE messages SET raw_size = CASE
 END
 WHERE raw_size = 0 AND (COALESCE(raw_message, '') <> '' OR size_bytes <> 0)`
 
-// AutoMigrate runs GORM's auto-migration for all models.
-func AutoMigrate(db *gorm.DB) error {
-	slog.Info("running database auto-migration")
+// dedupeLinkedAccountsSQL collapses pre-existing duplicate linked_accounts rows,
+// keeping the earliest (lowest id) link per mailbox, so the standalone unique
+// index on mailbox_id (OSI-21) can be created on a database that predates the
+// constraint. It DELETEs rows, so it is DESTRUCTIVE and one-time: it runs only on
+// the explicit opt-in migrate path, never on a server boot (issue #196).
+const dedupeLinkedAccountsSQL = `DELETE FROM linked_accounts a USING linked_accounts b WHERE a.mailbox_id = b.mailbox_id AND a.id > b.id`
 
-	// OSI-21: linked_accounts now carries a standalone unique index on mailbox_id
-	// (a mailbox may be linked to at most one webmail account). On an existing
-	// database that predates the constraint, any duplicate links must be collapsed
-	// first — keep the earliest (lowest id) link per mailbox — or the unique-index
-	// creation inside AutoMigrate would fail. Guarded on HasTable so it is a no-op
-	// on a fresh database where the table does not yet exist.
-	if db.Migrator().HasTable(&models.LinkedAccount{}) {
-		if err := db.Exec(`DELETE FROM linked_accounts a USING linked_accounts b WHERE a.mailbox_id = b.mailbox_id AND a.id > b.id`).Error; err != nil {
-			slog.Warn("failed to deduplicate linked_accounts before unique index", "error", err)
+// countLinkedAccountDuplicatesSQL counts the rows a dedupe would remove: any link
+// for a mailbox that already has an earlier (lower-id) link. Used on the additive
+// boot path to detect — WITHOUT deleting anything — whether a legacy database
+// still holds duplicates that would block creating the unique index.
+const countLinkedAccountDuplicatesSQL = `SELECT count(*) FROM linked_accounts a WHERE EXISTS (SELECT 1 FROM linked_accounts b WHERE b.mailbox_id = a.mailbox_id AND b.id < a.id)`
+
+// pendingDestructiveMigrations returns the destructive, one-time DML a migration
+// run would issue for the given opt-in. On the additive/boot path (allowDestructive
+// == false) it is ALWAYS empty: booting the API, seeding, or any default run never
+// issues destructive DML, so a rolling deploy can never have whichever code
+// version boots first silently rewrite data (issue #196). The destructive steps
+// run only when an operator explicitly opts in via the migrate tool.
+func pendingDestructiveMigrations(allowDestructive bool) []string {
+	if !allowDestructive {
+		return nil
+	}
+	return []string{dedupeLinkedAccountsSQL}
+}
+
+// migrateLinkedAccountsDedupe applies (or, on the boot path, guards against) the
+// one-time destructive collapse of duplicate linked_accounts rows. When
+// allowDestructive is true it runs the dedupe; when false (every server boot) it
+// deletes nothing and, if a legacy database still holds duplicates that would make
+// the unique-index creation fail opaquely, it refuses with an actionable error so
+// the operator runs the migrate tool rather than the API silently rewriting data.
+func migrateLinkedAccountsDedupe(db *gorm.DB, allowDestructive bool) error {
+	// Fresh database: the table does not exist yet, so there is nothing to collapse
+	// and nothing to guard — a no-op for the common install case.
+	if !db.Migrator().HasTable(&models.LinkedAccount{}) {
+		return nil
+	}
+
+	for _, stmt := range pendingDestructiveMigrations(allowDestructive) {
+		if err := db.Exec(stmt).Error; err != nil {
+			return fmt.Errorf("destructive migration failed: %w", err)
 		}
+	}
+	if allowDestructive {
+		return nil
+	}
+
+	// Additive/boot path: never delete. If duplicates remain, the unique index
+	// below would fail with an opaque error — surface an actionable one and refuse.
+	var dupes int64
+	if err := db.Raw(countLinkedAccountDuplicatesSQL).Scan(&dupes).Error; err != nil {
+		// Could not even introspect (e.g. an unrelated quirk on a very old schema):
+		// do not block boot on the check itself — proceed additive-only.
+		slog.Warn("could not check linked_accounts for duplicates; proceeding additive-only", "error", err)
+		return nil
+	}
+	if dupes > 0 {
+		return fmt.Errorf("linked_accounts holds %d duplicate row(s) that block the unique index; a server boot never modifies data — run the migrate tool with DB_ALLOW_DESTRUCTIVE_MIGRATIONS=true to collapse duplicates", dupes)
+	}
+	return nil
+}
+
+// AutoMigrate runs GORM's auto-migration for all models. It is ADDITIVE and
+// idempotent by default: it adds tables/columns/indexes and runs guarded,
+// WHERE-0 backfills — all safe to re-run on every startup. Destructive one-time
+// upgrades (currently the linked_accounts dedupe) run ONLY when allowDestructive
+// is true, i.e. from the dedicated migrate tool with an explicit opt-in, never
+// from a server boot (issue #196).
+func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
+	slog.Info("running database auto-migration", "allow_destructive", allowDestructive)
+
+	// OSI-21: linked_accounts carries a standalone unique index on mailbox_id (a
+	// mailbox may be linked to at most one webmail account). On a database that
+	// predates the constraint, duplicate links must be collapsed first or the
+	// unique-index creation below would fail — but that collapse is destructive, so
+	// it is gated behind the explicit opt-in (see migrateLinkedAccountsDedupe).
+	if err := migrateLinkedAccountsDedupe(db, allowDestructive); err != nil {
+		return err
 	}
 
 	err := db.AutoMigrate(

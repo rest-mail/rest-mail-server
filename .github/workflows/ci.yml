@@ -109,6 +109,21 @@ jobs:
       - name: Build ${{ matrix.target }}
         run: CGO_ENABLED=0 go build ./${{ matrix.target }}
 
+  helm:
+    name: Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Lint and render (render-test.sh)
+        run: helm/restmail/tests/render-test.sh
+
   webmail:
     name: Webmail Build
     runs-on: ubuntu-latest

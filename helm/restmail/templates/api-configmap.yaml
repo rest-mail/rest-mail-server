@@ -8,3 +8,7 @@ data:
   API_PORT: {{ .Values.api.port | quote }}
   ENVIRONMENT: {{ .Values.api.environment | quote }}
   LOG_LEVEL: {{ .Values.api.logLevel | quote }}
+  # The API never terminates TLS itself; a front proxy/ingress does. In
+  # production the boot validator refuses to serve cleartext auth traffic unless
+  # this acknowledgement is set. Keep a TLS-terminating reverse proxy in front.
+  API_TLS_TERMINATED_BY_PROXY: {{ .Values.api.tlsTerminatedByProxy | quote }}

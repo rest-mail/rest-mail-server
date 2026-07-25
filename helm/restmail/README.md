@@ -44,6 +44,36 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
    already does this).
 5. **PersistentVolume provisioner.** PostgreSQL data and API attachments use
    PVCs.
+6. **NetworkPolicy-enforcing CNI** (Calico, Cilium, Weave, …). The chart ships
+   default-deny NetworkPolicies. On a cluster whose CNI does not enforce them,
+   set `networkPolicy.enabled=false` (the policies are then simply inert, but
+   disabling them documents the intent).
+
+## Security posture
+
+The chart is hardened by default and is deployable in its declared
+`environment: production` mode out of the box:
+
+- **Production boot validator satisfied.** The API and gateways run the
+  secure-by-construction boot checks. The chart wires their acknowledgement
+  inputs: `API_TLS_TERMINATED_BY_PROXY=true` (front the API with a
+  TLS-terminating proxy/ingress) and a secure `DB_SSLMODE` (default `require`).
+  The bundled PostgreSQL serves TLS (`postgres.tls.enabled`, on by default) so
+  `require` connects end-to-end. Point at an external managed database with
+  `postgres.enabled=false` and `db.sslMode=verify-full` for the strongest
+  posture, or acknowledge an in-cluster cleartext link with
+  `db.sslMode=disable` + `db.allowInsecure=true`.
+- **Per-container securityContext.** Every workload drops all Linux
+  capabilities, sets `seccompProfile: RuntimeDefault`, and disables privilege
+  escalation. The API, js-filter and PostgreSQL run as non-root with read-only
+  root filesystems where feasible. The SMTP/IMAP/POP3 gateways bind privileged
+  ports (<1024); their images ship no file capabilities, so they keep a root
+  UID with **only** `NET_BIND_SERVICE` re-added — everything else is dropped.
+- **No ServiceAccount token.** `automountServiceAccountToken: false` on the
+  ServiceAccount and every pod (no workload uses the Kubernetes API).
+- **Default-deny NetworkPolicies.** Ingress and egress are denied by default,
+  then re-opened least-privilege: DNS, API↔DB, gateway↔API/DB, public
+  mail/API ingress, and SMTP outbound delivery (25/465/587) + MTA-STS (443).
 
 ## Install (production)
 
@@ -159,6 +189,18 @@ The most common knobs at install time:
 | `imapGateway.service.type` | `LoadBalancer` | |
 | `pop3Gateway.service.type` | `LoadBalancer` | |
 | `networking.dnsPolicy` | `ClusterFirst` | Override for testbed |
+| `db.sslMode` | `require` | libpq sslmode in the DSN; `verify-full` for external DB |
+| `db.allowInsecure` | `false` | Acknowledge a cleartext DB link (insecure sslmode only) |
+| `postgres.tls.enabled` | `true` | Bundled Postgres serves TLS so `require` connects |
+| `api.tlsTerminatedByProxy` | `true` | Acknowledge a TLS-terminating front proxy |
+| `networkPolicy.enabled` | `true` | Default-deny + least-privilege policies |
+| `serviceAccount.automountServiceAccountToken` | `false` | No workload uses the K8s API |
+
+To verify the chart renders and stays hardened, run the infra test:
+
+```sh
+helm/restmail/tests/render-test.sh
+```
 
 ## What is intentionally not in this chart
 

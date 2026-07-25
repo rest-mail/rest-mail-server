@@ -106,8 +106,8 @@ github.com/prometheus/procfs v0.16.1 h1:hZ15bTNuirocR6u0JZ6BAHHmwS1p8B4P6MRqxtzM
 github.com/prometheus/procfs v0.16.1/go.mod h1:teAbpZRB1iIAJYREa1LsoWUXykVXA1KlTmWl8x/U+Is=
 github.com/rest-mail/go-arc v0.1.1 h1:WOHYTF8pF4pCg7Gq+E85PTaBUykMK6BMWlOWtuFgX1Y=
 github.com/rest-mail/go-arc v0.1.1/go.mod h1:BGVPJkW2SYbmtlgWq8ufOe3pwTqfiSO9M8l+QXxUtQ4=
-github.com/rest-mail/go-dkim v0.1.1 h1:IwgLrjXc/B9cuA99EeInuUjSTIUhcyp6qHxS0qiTiKs=
-github.com/rest-mail/go-dkim v0.1.1/go.mod h1:gKNVxM9vL+am4veiCZMO/UlKBj6zI0jBleex1+fmJsU=
+github.com/rest-mail/go-dkim v0.1.2 h1:FF49nRi0wiVNpIue+Ba0TNQx4Vvhnv2JB/gGzLOFGvM=
+github.com/rest-mail/go-dkim v0.1.2/go.mod h1:gKNVxM9vL+am4veiCZMO/UlKBj6zI0jBleex1+fmJsU=
 github.com/rest-mail/go-dmarc v0.1.1 h1:sXHagMNXWcZV73YS1Ryq4Wjn2t8XJE3oR6NRxp+jN28=
 github.com/rest-mail/go-dmarc v0.1.1/go.mod h1:KnprK9jDG1vftuvO5scs3KZcMkvMWl+XcATFsxM3RCk=
 github.com/rest-mail/go-imap v0.2.2 h1:dXN0tUHQbHNUEQfu40cuNRaxTeUFzPpyfqvGa4KZa7c=

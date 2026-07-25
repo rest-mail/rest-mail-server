@@ -17,7 +17,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/rest-mail/go-arc v0.1.1
-	github.com/rest-mail/go-dkim v0.1.1
+	github.com/rest-mail/go-dkim v0.1.2
 	github.com/rest-mail/go-dmarc v0.1.1
 	github.com/rest-mail/go-imap v0.2.2
 	github.com/rest-mail/go-mtasts v0.1.1

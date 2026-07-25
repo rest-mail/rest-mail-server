@@ -15,24 +15,21 @@ spec:
         {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       hostname: {{ .Values.mailserver.hostname | replace "." "-" | trunc 63 | trimSuffix "-" }}
       {{- include "restmail.dnsSpec" . | nindent 6 }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- include "restmail.podSecurityContext" (list . "smtp-gateway") | nindent 8 }}
       containers:
         - name: smtp-gateway
           image: "{{ .Values.smtpGateway.image.repository }}:{{ include "restmail.imageTag" (list . .Values.smtpGateway.image.tag) }}"
           imagePullPolicy: {{ include "restmail.imagePullPolicy" (list . .Values.smtpGateway.image.pullPolicy) }}
-          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- include "restmail.containerSecurityContext" (list . "smtp-gateway") | nindent 12 }}
           ports:
             - name: smtp
               containerPort: {{ .Values.smtpGateway.ports.inbound }}
@@ -82,6 +79,8 @@ spec:
             - name: tls
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             tcpSocket:
               port: smtp
@@ -103,6 +102,8 @@ spec:
                 path: {{ .Values.tls.certFilename }}
               - key: tls.key
                 path: {{ .Values.tls.keyFilename }}
+        - name: tmp
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
