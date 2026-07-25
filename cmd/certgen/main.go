@@ -169,10 +169,9 @@ func generateCA(outputDir string) error {
 		return fmt.Errorf("failed to marshal CA key: %w", err)
 	}
 	keyPath := filepath.Join(outputDir, "ca.key")
-	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
+	if err := writeKeyPEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
 		return err
 	}
-	_ = os.Chmod(keyPath, 0600)
 
 	slog.Info("CA certificate generated", "cert", certPath, "key", keyPath)
 	return nil
@@ -228,10 +227,9 @@ func generateServerCert(outputDir, domain string) error {
 		return fmt.Errorf("failed to marshal server key: %w", err)
 	}
 	keyPath := filepath.Join(outputDir, domain+".key")
-	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
+	if err := writeKeyPEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
 		return err
 	}
-	_ = os.Chmod(keyPath, 0600)
 
 	slog.Info("server certificate generated", "domain", domain, "cert", certPath, "key", keyPath)
 	return nil
@@ -311,10 +309,9 @@ func loadOrCreateInternalCA(outputDir string) (*x509.Certificate, *ecdsa.Private
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal internal CA key: %w", err)
 	}
-	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
+	if err := writeKeyPEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
 		return nil, nil, err
 	}
-	_ = os.Chmod(keyPath, 0600)
 	caCert, err := x509.ParseCertificate(der)
 	if err != nil {
 		return nil, nil, err
@@ -430,10 +427,9 @@ func signAndWriteLeaf(certPath, keyPath string, template, caCert *x509.Certifica
 	if err != nil {
 		return fmt.Errorf("failed to marshal key: %w", err)
 	}
-	if err := writePEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
+	if err := writeKeyPEM(keyPath, "EC PRIVATE KEY", keyBytes); err != nil {
 		return err
 	}
-	_ = os.Chmod(keyPath, 0600)
 	return nil
 }
 
@@ -535,10 +531,9 @@ func generateDKIM(outputDir, domain string) error {
 	// Write private key
 	privBytes := x509.MarshalPKCS1PrivateKey(key)
 	privPath := filepath.Join(outputDir, domain+".dkim.key")
-	if err := writePEM(privPath, "RSA PRIVATE KEY", privBytes); err != nil {
+	if err := writeKeyPEM(privPath, "RSA PRIVATE KEY", privBytes); err != nil {
 		return err
 	}
-	_ = os.Chmod(privPath, 0600)
 
 	// Write public key
 	pubBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
@@ -586,4 +581,27 @@ func writePEM(path, pemType string, data []byte) error {
 	defer f.Close()
 
 	return pem.Encode(f, &pem.Block{Type: pemType, Bytes: data})
+}
+
+// writeKeyPEM writes a PRIVATE-key PEM block to path. Unlike writePEM (used for
+// public certs/keys), the file is created with 0600 permissions at open time
+// via O_CREATE|O_TRUNC, so the key material is never briefly world-readable in
+// the window between an os.Create (umask-derived, typically 0644) and a
+// follow-up os.Chmod. If the path pre-existed with wider permissions it is
+// tightened to 0600 BEFORE any key bytes are written. Every error is returned,
+// never discarded.
+func writeKeyPEM(path, pemType string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %w", path, err)
+	}
+	defer f.Close()
+
+	if err := f.Chmod(0600); err != nil {
+		return fmt.Errorf("failed to secure %s: %w", path, err)
+	}
+	if err := pem.Encode(f, &pem.Block{Type: pemType, Bytes: data}); err != nil {
+		return fmt.Errorf("failed to write %s: %w", path, err)
+	}
+	return nil
 }
