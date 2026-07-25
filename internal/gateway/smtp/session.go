@@ -528,7 +528,21 @@ func (s *session) Data(r io.Reader) error {
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient.
 		check, err := s.api.CheckMailbox(rcpt)
-		if err != nil || !check.Data.Exists {
+		if err != nil {
+			// Classification failed: we cannot tell whether this recipient is
+			// local or remote. Do NOT fall through to the outbound queue — a
+			// local recipient (this is the inbound-MX path) would then be
+			// relayed externally (a leak) or MX-delivered back to ourselves.
+			// Tempfail (451) so the sender retries once the API recovers,
+			// matching the RCPT-time path. The default fail reply is already a
+			// 451, so counting this recipient as failed yields the right reply
+			// when nothing else commits.
+			slog.Error("smtp: API error re-checking mailbox at DATA time; tempfailing to avoid misroute",
+				"from", s.mailFrom, "to", rcpt, "error", err)
+			failed++
+			continue
+		}
+		if !check.Data.Exists {
 			// Non-local: insert into the outbound queue for the queue worker.
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {

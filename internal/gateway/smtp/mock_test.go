@@ -28,6 +28,13 @@ type mockBackend struct {
 	checkErr    map[string]bool // addresses where CheckMailbox errors (temp fail)
 	deliverFail map[string]bool // local addresses whose DeliverMessage errors
 
+	// checkErrAfter[address] = N: the first N CheckMailbox calls for that
+	// address behave normally; the (N+1)th and every later call return a
+	// transient error. Models an API outage that strikes between the RCPT-time
+	// check (call 1) and the DATA-time re-check (call 2) for the same recipient.
+	checkErrAfter map[string]int
+	checkCount    map[string]int // per-address CheckMailbox invocation count
+
 	// loginErr, when non-nil, is returned by Login instead of verifying
 	// credentials — used to simulate a transient API/network failure.
 	loginErr   error
@@ -39,13 +46,15 @@ type mockBackend struct {
 
 func newMockBackend() *mockBackend {
 	return &mockBackend{
-		user:        "alice@example.com",
-		pass:        "s3cret",
-		token:       "tok-alice",
-		accountID:   42,
-		local:       map[string]bool{},
-		checkErr:    map[string]bool{},
-		deliverFail: map[string]bool{},
+		user:          "alice@example.com",
+		pass:          "s3cret",
+		token:         "tok-alice",
+		accountID:     42,
+		local:         map[string]bool{},
+		checkErr:      map[string]bool{},
+		deliverFail:   map[string]bool{},
+		checkErrAfter: map[string]int{},
+		checkCount:    map[string]int{},
 	}
 }
 
@@ -77,7 +86,11 @@ func (m *mockBackend) loginCallCount() int {
 func (m *mockBackend) CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.checkCount[address]++
 	if m.checkErr[address] {
+		return nil, &apiclient.APIError{StatusCode: 503, Body: "service unavailable"}
+	}
+	if n, ok := m.checkErrAfter[address]; ok && m.checkCount[address] > n {
 		return nil, &apiclient.APIError{StatusCode: 503, Body: "service unavailable"}
 	}
 	resp := &apiclient.MailboxCheckResponse{}
