@@ -22,6 +22,31 @@ func ContainsControlChar(s string) bool {
 	return false
 }
 
+// SanitizeHeaderValue neutralizes a value before it is interpolated into a mail
+// header line or a structured DSN field. Every ASCII control character (any byte
+// < 0x20 — CR and LF included — and DEL 0x7f) is replaced with a space, then
+// runs of whitespace are collapsed to a single space and the result is trimmed.
+//
+// It is the defense applied to REMOTE-controlled text (a peer MX's multiline
+// reply) and to envelope values (a recipient address that may carry control
+// bytes on a poisoned queue row) before they are placed into a mailer-daemon DSN.
+// Without it a CR/LF in that text would inject forged headers or fake
+// message/delivery-status fields into a trusted bounce that bypasses inbound
+// filters. Collapsing (rather than merely deleting) keeps a multiline remote
+// reply readable as a single line.
+func SanitizeHeaderValue(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
 // ValidateAddress rejects an address that cannot be safely written into a
 // message header or an SMTP envelope command. It rejects the empty string, any
 // address containing a control character (defeating CR/LF header- and

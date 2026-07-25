@@ -89,6 +89,12 @@ type Message struct {
 	TLSVersion     string     `gorm:"size:16" json:"tls_version,omitempty"`
 	HasAttachments bool       `gorm:"default:false" json:"has_attachments"`
 	IsRead         bool       `gorm:"default:false" json:"is_read"`
+	// IsDSN marks a message this server generated as a Delivery Status
+	// Notification (a mailer-daemon bounce). The outbound worker counts only these
+	// rows for the per-recipient DSN rate limit, so inbound mail that merely claims
+	// a mailer-daemon@ envelope-from cannot inflate the counter and suppress a
+	// target user's legitimate bounces.
+	IsDSN          bool       `gorm:"default:false" json:"is_dsn"`
 	IsFlagged      bool       `gorm:"default:false" json:"is_flagged"`
 	IsStarred      bool       `gorm:"default:false" json:"is_starred"`
 	IsDraft        bool       `gorm:"default:false" json:"is_draft"`

@@ -13,6 +13,11 @@ type OutboundQueue struct {
 	Recipient     string     `gorm:"size:255;not null" json:"recipient"`
 	Domain        string     `gorm:"size:255;not null;index" json:"domain"` // destination domain for MX lookup
 	RawMessage    string     `gorm:"type:text" json:"-"`                   // RFC 2822 formatted message
+	// BodyType is the SMTP BODY= parameter declared for this message at submission
+	// (7BIT, 8BITMIME, or BINARYMIME; empty when the client declared none). The
+	// outbound worker consults it so it never relays 8-bit content to a next hop
+	// that does not advertise 8BITMIME (RFC 6152 §3).
+	BodyType      string     `gorm:"size:16" json:"body_type"`
 	Status        string     `gorm:"size:20;not null;default:pending;index" json:"status"`
 	// Status values: pending, delivering, deferred, delivered, bounced, expired
 	Attempts      int        `gorm:"default:0" json:"attempts"`

@@ -49,6 +49,11 @@ type OutboundMessage struct {
 	Recipient  string
 	Domain     string // destination domain for MX lookup
 	RawMessage string // RFC 2822 formatted message
+	// BodyType is the SMTP BODY= parameter the client declared on MAIL FROM
+	// (7BIT/8BITMIME/BINARYMIME, or empty). It is persisted on the queue row so
+	// the outbound worker never relays 8-bit content to a next hop that does not
+	// advertise 8BITMIME (RFC 6152).
+	BodyType string
 	// MessageID links the queue row to the stored submission reference (a
 	// messages row owned by the sender), so a bounce/DSN for this recipient can
 	// verify its sender against the real submission. Nil when no reference was

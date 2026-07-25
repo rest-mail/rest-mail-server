@@ -91,6 +91,7 @@ func (s *dbStore) EnqueueOutbound(msg OutboundMessage) error {
 		Recipient:  msg.Recipient,
 		Domain:     msg.Domain,
 		RawMessage: msg.RawMessage,
+		BodyType:   msg.BodyType,
 		Status:     "pending",
 		MaxRetries: 30,
 		ExpiresAt:  time.Now().Add(72 * time.Hour),
