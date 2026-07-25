@@ -60,9 +60,9 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("folder = ?", folder)
 	}
 
-	// From filter
+	// From filter (LIKE metacharacters escaped so they match literally)
 	if from := r.URL.Query().Get("from"); from != "" {
-		query = query.Where("sender ILIKE ?", "%"+from+"%")
+		query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(from)+"%")
 	}
 
 	// Date filters

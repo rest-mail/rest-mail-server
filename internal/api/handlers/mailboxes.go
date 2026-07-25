@@ -38,18 +38,22 @@ func (h *MailboxHandler) revokeSessions(mailboxID uint) {
 }
 
 func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
-	var mailboxes []models.Mailbox
-	query := h.db.Preload("Domain").Preload("QuotaUsage")
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
+	query := h.db.Model(&models.Mailbox{})
 	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
 
-	if err := query.Order("address ASC").Find(&mailboxes).Error; err != nil {
+	var total int64
+	query.Count(&total)
+
+	var mailboxes []models.Mailbox
+	if err := query.Preload("Domain").Preload("QuotaUsage").Order("address ASC").Limit(limit).Offset(offset).Find(&mailboxes).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list mailboxes")
 		return
 	}
-	respond.List(w, mailboxes, nil)
+	respond.List(w, mailboxes, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 type createMailboxRequest struct {

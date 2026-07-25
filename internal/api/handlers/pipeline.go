@@ -77,19 +77,23 @@ func NewPipelineHandler(db *gorm.DB, engine *pipeline.Engine) *PipelineHandler {
 
 // ListPipelines returns all pipelines for a domain.
 func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
-	var pipelines []models.Pipeline
-	query := h.db.Order("direction ASC, id ASC")
+	query := h.db.Model(&models.Pipeline{})
 	if domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
 
-	if err := query.Find(&pipelines).Error; err != nil {
+	var total int64
+	query.Count(&total)
+
+	var pipelines []models.Pipeline
+	if err := query.Order("direction ASC, id ASC").Limit(limit).Offset(offset).Find(&pipelines).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list pipelines")
 		return
 	}
-	respond.List(w, pipelines, nil)
+	respond.List(w, pipelines, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 // ListPipelineLogs returns recent per-message pipeline traces, newest first.
@@ -348,19 +352,23 @@ func (h *PipelineHandler) TestFilter(w http.ResponseWriter, r *http.Request) {
 
 // ListCustomFilters returns custom filters for a domain.
 func (h *PipelineHandler) ListCustomFilters(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
-	var filters []models.CustomFilter
-	query := h.db.Order("name ASC")
+	query := h.db.Model(&models.CustomFilter{})
 	if domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
 
-	if err := query.Find(&filters).Error; err != nil {
+	var total int64
+	query.Count(&total)
+
+	var filters []models.CustomFilter
+	if err := query.Order("name ASC").Limit(limit).Offset(offset).Find(&filters).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list custom filters")
 		return
 	}
-	respond.List(w, filters, nil)
+	respond.List(w, filters, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 // CreateCustomFilter creates a new custom filter definition.
@@ -610,12 +618,17 @@ func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	var items []models.Quarantine
-	h.db.Where("mailbox_id = ? AND released = false", mailboxID).
-		Order("received_at DESC").
-		Find(&items)
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
-	respond.List(w, items, nil)
+	query := h.db.Model(&models.Quarantine{}).Where("mailbox_id = ? AND released = false", mailboxID)
+
+	var total int64
+	query.Count(&total)
+
+	var items []models.Quarantine
+	query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&items)
+
+	respond.List(w, items, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 // ReleaseQuarantine releases a quarantined message to the inbox.

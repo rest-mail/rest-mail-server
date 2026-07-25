@@ -21,18 +21,22 @@ func NewAliasHandler(db *gorm.DB) *AliasHandler {
 }
 
 func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
-	var aliases []models.Alias
-	query := h.db.Preload("Domain")
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
+	query := h.db.Model(&models.Alias{})
 	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
 
-	if err := query.Order("source_address ASC").Find(&aliases).Error; err != nil {
+	var total int64
+	query.Count(&total)
+
+	var aliases []models.Alias
+	if err := query.Preload("Domain").Order("source_address ASC").Limit(limit).Offset(offset).Find(&aliases).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list aliases")
 		return
 	}
-	respond.List(w, aliases, nil)
+	respond.List(w, aliases, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 type createAliasRequest struct {

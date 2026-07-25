@@ -27,12 +27,17 @@ func NewCertificateHandler(db *gorm.DB, masterKey string) *CertificateHandler {
 // ListCertificates returns all certificates (PEM fields redacted via json:"-").
 // GET /api/v1/admin/certificates
 func (h *CertificateHandler) ListCertificates(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+
+	var total int64
+	h.db.Model(&models.Certificate{}).Count(&total)
+
 	var certs []models.Certificate
-	if err := h.db.Preload("Domain").Find(&certs).Error; err != nil {
+	if err := h.db.Preload("Domain").Limit(limit).Offset(offset).Find(&certs).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list certificates")
 		return
 	}
-	respond.List(w, certs, nil)
+	respond.List(w, certs, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 // GetCertificate returns a single certificate, including CertPEM in the response.

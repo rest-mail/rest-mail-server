@@ -63,23 +63,30 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := h.db.Where("mailbox_id = ?", mailboxID)
+	query := h.db.Model(&models.Contact{}).Where("mailbox_id = ?", mailboxID)
 
 	if trustLevel := r.URL.Query().Get("trust_level"); trustLevel != "" {
 		query = query.Where("trust_level = ?", trustLevel)
 	}
 
+	// Escape LIKE metacharacters so a search term containing % or _ matches
+	// literally instead of acting as a wildcard.
 	if search := r.URL.Query().Get("search"); search != "" {
-		query = query.Where("email LIKE ?", "%"+search+"%")
+		query = query.Where("email LIKE ? ESCAPE '\\'", "%"+escapeLike(search)+"%")
 	}
 
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+
+	var total int64
+	query.Count(&total)
+
 	var contacts []models.Contact
-	if err := query.Order("email ASC").Find(&contacts).Error; err != nil {
+	if err := query.Order("email ASC").Limit(limit).Offset(offset).Find(&contacts).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list contacts")
 		return
 	}
 
-	respond.List(w, contacts, nil)
+	respond.List(w, contacts, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 type createContactRequest struct {
@@ -313,8 +320,9 @@ func (h *ContactHandler) SuggestContacts(w http.ResponseWriter, r *http.Request)
 	}
 
 	var contacts []models.Contact
-	h.db.Where("mailbox_id = ? AND (email LIKE ? OR name LIKE ?) AND trust_level != ?",
-		mailboxID, "%"+q+"%", "%"+q+"%", "blocked").
+	escaped := "%" + escapeLike(q) + "%"
+	h.db.Where("mailbox_id = ? AND (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\') AND trust_level != ?",
+		mailboxID, escaped, escaped, "blocked").
 		Order("name ASC, email ASC").
 		Limit(10).
 		Find(&contacts)

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -14,8 +15,49 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/pipeline"
+	"golang.org/x/net/idna"
 	"gorm.io/gorm"
 )
+
+// domainNameProfile is a strict IDNA profile used to validate and normalize a
+// user-supplied domain name before it is stored. It maps the input for lookup
+// (case-folding, IDN → punycode), enforces the STD3 LDH rule and per-label
+// validity, and applies the Bidi rule. A stored domain name flows into DNS
+// lookups, MTA-STS host matching, sieve redirect allowlists and outbound routing,
+// so only a resolvable hostname may be persisted.
+var domainNameProfile = idna.New(
+	idna.MapForLookup(),
+	idna.BidiRule(),
+	idna.ValidateLabels(true),
+	idna.StrictDomainName(true),
+)
+
+// maxDomainNameLength is the RFC 1035 limit on a domain name's total length.
+const maxDomainNameLength = 253
+
+// validateDomainName normalizes and validates a user-supplied domain name,
+// returning the canonical lowercase ASCII (A-label / punycode) form to store. It
+// rejects empty input, over-long names, single-label hosts, and anything that is
+// not a valid hostname. A valid internationalized name (e.g. "münchen.test") is
+// accepted and returned in its ASCII-compatible encoding.
+func validateDomainName(name string) (string, error) {
+	name = strings.TrimSuffix(strings.TrimSpace(name), ".")
+	if name == "" {
+		return "", errors.New("domain name is required")
+	}
+	ascii, err := domainNameProfile.ToASCII(name)
+	if err != nil {
+		return "", fmt.Errorf("not a valid hostname: %w", err)
+	}
+	if len(ascii) > maxDomainNameLength {
+		return "", errors.New("domain name exceeds the maximum length")
+	}
+	// A mail domain is a fully-qualified name, never a bare single-label host.
+	if !strings.Contains(ascii, ".") {
+		return "", errors.New("domain name must be fully-qualified")
+	}
+	return strings.ToLower(ascii), nil
+}
 
 type DomainHandler struct {
 	db  *gorm.DB
@@ -27,12 +69,19 @@ func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
 }
 
 func (h *DomainHandler) List(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+
+	query := h.db.Model(&models.Domain{})
+
+	var total int64
+	query.Count(&total)
+
 	var domains []models.Domain
-	if err := h.db.Order("name ASC").Find(&domains).Error; err != nil {
+	if err := query.Order("name ASC").Limit(limit).Offset(offset).Find(&domains).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list domains")
 		return
 	}
-	respond.List(w, domains, nil)
+	respond.List(w, domains, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 type createDomainRequest struct {
@@ -52,6 +101,15 @@ func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"name": "required"})
 		return
 	}
+
+	// Reject non-hostname input before it is inserted and normalize to the
+	// canonical ASCII form (issue #202).
+	normalized, err := validateDomainName(req.Name)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_domain", "Invalid domain name: "+err.Error())
+		return
+	}
+	req.Name = normalized
 
 	if req.ServerType == "" {
 		req.ServerType = "traditional"

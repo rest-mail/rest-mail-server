@@ -40,10 +40,10 @@ func (h *LogHandler) DeliveryLog(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("domain = ?", domain)
 	}
 	if sender := r.URL.Query().Get("sender"); sender != "" {
-		query = query.Where("sender ILIKE ?", "%"+sender+"%")
+		query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(sender)+"%")
 	}
 	if recipient := r.URL.Query().Get("recipient"); recipient != "" {
-		query = query.Where("recipient ILIKE ?", "%"+recipient+"%")
+		query = query.Where("recipient ILIKE ? ESCAPE '\\'", "%"+escapeLike(recipient)+"%")
 	}
 	if since := r.URL.Query().Get("since"); since != "" {
 		if t, err := time.Parse(time.RFC3339, since); err == nil {
@@ -83,7 +83,7 @@ func (h *LogHandler) ActivityLog(w http.ResponseWriter, r *http.Request) {
 	query := h.db.Model(&models.ActivityLog{})
 
 	if actor := r.URL.Query().Get("actor"); actor != "" {
-		query = query.Where("actor ILIKE ?", "%"+actor+"%")
+		query = query.Where("actor ILIKE ? ESCAPE '\\'", "%"+escapeLike(actor)+"%")
 	}
 	if action := r.URL.Query().Get("action"); action != "" {
 		query = query.Where("action = ?", action)
