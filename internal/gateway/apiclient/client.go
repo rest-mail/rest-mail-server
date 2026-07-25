@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -377,8 +378,10 @@ type MessageDetailResponse struct {
 
 // ListMessages returns messages in a folder.
 // maxGatewayMessages caps how many messages the IMAP/POP3 gateways load per
-// folder, bounding memory for pathologically large mailboxes.
-const maxGatewayMessages = 5000
+// folder, bounding memory for pathologically large mailboxes. It is a var (not a
+// const) solely so tests can lower it to exercise the truncation path without
+// synthesizing thousands of messages.
+var maxGatewayMessages = 5000
 
 // ListMessages returns the FULL folder in oldest-first order. The IMAP/POP3
 // gateways assign sequence numbers and UIDs from this slice, so it must be
@@ -402,6 +405,14 @@ func (c *Client) ListMessages(token string, accountID uint, folder string) (*Mes
 			break
 		}
 		if len(all) >= maxGatewayMessages {
+			// The folder has more messages than the gateway will load. We keep the
+			// newest maxGatewayMessages (the API pages newest-first); the oldest
+			// become unreachable and EXISTS/STAT under-report (RFC 3501 §6.4.1 /
+			// RFC 1939 §5). That silent truncation is a known limitation, so at
+			// least make it observable to an operator.
+			slog.Warn("gateway: folder message list truncated at cap; oldest messages unreachable",
+				"account_id", accountID, "folder", folder,
+				"loaded", len(all), "cap", maxGatewayMessages)
 			break
 		}
 		cursor = resp.Pagination.Cursor

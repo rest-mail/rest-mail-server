@@ -26,7 +26,12 @@ type mockBackend struct {
 
 	local       map[string]bool // addresses CheckMailbox reports as existing
 	checkErr    map[string]bool // addresses where CheckMailbox errors (temp fail)
-	deliverFail map[string]bool // local addresses whose DeliverMessage errors
+	deliverFail map[string]bool // local addresses whose DeliverMessage errors (451)
+
+	// deliverStatus[address] = N: DeliverMessage for that local recipient returns
+	// an APIError with HTTP status N (e.g. 422 mailbox_full), letting a test drive
+	// the status-code → SMTP-reply mapping.
+	deliverStatus map[string]int
 
 	// checkErrAfter[address] = N: the first N CheckMailbox calls for that
 	// address behave normally; the (N+1)th and every later call return a
@@ -53,6 +58,7 @@ func newMockBackend() *mockBackend {
 		local:         map[string]bool{},
 		checkErr:      map[string]bool{},
 		deliverFail:   map[string]bool{},
+		deliverStatus: map[string]int{},
 		checkErrAfter: map[string]int{},
 		checkCount:    map[string]int{},
 	}
@@ -104,6 +110,9 @@ func (m *mockBackend) DeliverMessage(req *apiclient.DeliverRequest) (*apiclient.
 	defer m.mu.Unlock()
 	if m.deliverFail[req.Address] {
 		return nil, &apiclient.APIError{StatusCode: 451, Body: "temporary local failure"}
+	}
+	if status, ok := m.deliverStatus[req.Address]; ok {
+		return nil, &apiclient.APIError{StatusCode: status, Body: `{"error":"mailbox_full"}`}
 	}
 	m.deliverReqs = append(m.deliverReqs, req)
 	m.delivered = append(m.delivered, req.Address)
