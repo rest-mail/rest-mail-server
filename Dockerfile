@@ -3,12 +3,14 @@
 # (OSI-17). Bump the tag+digest together when updating.
 FROM golang:1.26-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS deps
 WORKDIR /app
+# git is required so `go mod download` can fetch module versions that are not
+# yet cached by the Go module proxy (it falls back to a direct VCS fetch).
+RUN apk add --no-cache git
 COPY go.mod go.sum ./
 RUN go mod download
 
 # ── Stage 2: builder ─────────────────────────────────────────────────
 FROM deps AS builder
-RUN apk add --no-cache git
 COPY . .
 ARG VERSION=dev
 RUN COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
