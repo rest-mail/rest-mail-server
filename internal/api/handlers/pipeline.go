@@ -373,19 +373,44 @@ func (h *PipelineHandler) ListCustomFilters(w http.ResponseWriter, r *http.Reque
 
 // CreateCustomFilter creates a new custom filter definition.
 func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Request) {
-	var cf models.CustomFilter
-	if err := json.NewDecoder(r.Body).Decode(&cf); err != nil {
+	// Decode only the client-settable fields into a dedicated request struct.
+	// Never bind straight into models.CustomFilter: its exported Domain
+	// association would be auto-saved by GORM on Create, letting a caller that
+	// holds only pipelines:write insert a Domain row without domains:write (a
+	// privilege escalation), and a client-supplied ID/timestamps would be
+	// honoured too. The domain is bound by foreign key only, never via a nested
+	// Domain object — mirroring CreatePipeline and the update handlers.
+	var req struct {
+		DomainID    uint            `json:"domain_id"`
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		FilterType  string          `json:"filter_type"`
+		Direction   string          `json:"direction"`
+		Config      json.RawMessage `json:"config"`
+		Enabled     bool            `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
 	}
 
-	if cf.Name == "" || cf.FilterType == "" || cf.Direction == "" {
+	if req.Name == "" || req.FilterType == "" || req.Direction == "" {
 		respond.ValidationError(w, map[string]string{
 			"name":        "required",
 			"filter_type": "required",
 			"direction":   "required",
 		})
 		return
+	}
+
+	cf := models.CustomFilter{
+		DomainID:    req.DomainID,
+		Name:        req.Name,
+		Description: req.Description,
+		FilterType:  req.FilterType,
+		Direction:   req.Direction,
+		Config:      req.Config,
+		Enabled:     req.Enabled,
 	}
 
 	if err := h.db.Create(&cf).Error; err != nil {
