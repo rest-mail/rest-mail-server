@@ -61,6 +61,11 @@ type session struct {
 	// Current transaction.
 	mailFrom string
 	rcptTo   []string
+	// bodyType is the SMTP BODY= parameter the client declared on MAIL FROM
+	// (7BIT/8BITMIME/BINARYMIME, or empty). It is threaded onto each outbound
+	// queue row so the delivery worker never relays 8-bit content to a next hop
+	// that does not advertise 8BITMIME (RFC 6152). Reset on every MAIL.
+	bodyType string
 }
 
 // tarpitReject records one connection-level rejection (an invalid inbound RCPT
@@ -322,7 +327,7 @@ func (s *session) rateLimitKey() string {
 // Mail starts a transaction. On submission ports it requires authentication
 // and verifies the sender is either the authenticated user or one of its
 // linked accounts.
-func (s *session) Mail(from string, _ *gosmtp.MailOptions) error {
+func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	if s.isSubmission && !s.authenticated {
 		return &gosmtp.SMTPError{
 			Code:         530,
@@ -349,6 +354,12 @@ func (s *session) Mail(from string, _ *gosmtp.MailOptions) error {
 
 	s.mailFrom = from
 	s.rcptTo = nil
+	// Remember the declared BODY= type so the outbound path can honor RFC 6152
+	// (never relay 8-bit content to a 7-bit-only next hop). Reset per transaction.
+	s.bodyType = ""
+	if opts != nil {
+		s.bodyType = string(opts.Body)
+	}
 	return nil
 }
 
@@ -588,6 +599,7 @@ func (s *session) Data(r io.Reader) error {
 				Recipient:  rcpt,
 				Domain:     recipientDomain,
 				RawMessage: string(data),
+				BodyType:   s.bodyType,
 				MessageID:  submittedMsgID,
 			}); err != nil {
 				slog.Error("smtp: failed to queue message", "from", s.mailFrom, "to", rcpt, "error", err)

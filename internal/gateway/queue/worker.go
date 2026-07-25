@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/smtp"
@@ -31,6 +32,11 @@ type SMTPError struct {
 	Code     int    // 3-digit SMTP code (e.g. 550)
 	Enhanced string // Enhanced status code (e.g. "5.1.1")
 	Message  string // Human-readable message
+	// RemoteMTA is the next-hop host whose reply produced this error, when the
+	// failure came from a specific peer (a MAIL/RCPT/DATA rejection). It is
+	// plumbed into the DSN's Remote-MTA field (RFC 3464 §2.3.5). Empty for a
+	// failure with no identified peer (e.g. a locally synthesized error).
+	RemoteMTA string
 }
 
 func (e *SMTPError) Error() string {
@@ -143,6 +149,55 @@ func computeBackoff(attempts int) time.Duration {
 		return b
 	}
 	return maxBackoff
+}
+
+// backoffJitterFraction is the maximum proportion by which computeBackoffWithJitter
+// perturbs the base delay in each direction (±20%).
+const backoffJitterFraction = 0.20
+
+// computeBackoffWithJitter returns the base exponential backoff for the Nth
+// attempt with ±20% random jitter applied, clamped to (0, 4h].
+//
+// Without jitter, many messages deferred by the same outage retry in lockstep —
+// a thundering herd that hammers a recovering MX at each backoff boundary and
+// wastes work when they all fail again together. Spreading each retry randomly
+// across a ±20% band de-synchronizes the queue. The result is clamped to the
+// same 4h cap computeBackoff enforces (so the +20% at the cap cannot push a retry
+// past it) and to a positive floor (so it never schedules in the past).
+func computeBackoffWithJitter(attempts int) time.Duration {
+	base := computeBackoff(attempts)
+	// factor in [1-frac, 1+frac).
+	factor := 1 - backoffJitterFraction + rand.Float64()*(2*backoffJitterFraction)
+	jittered := time.Duration(float64(base) * factor)
+	const maxBackoff = 4 * time.Hour
+	if jittered > maxBackoff {
+		jittered = maxBackoff
+	}
+	if jittered <= 0 {
+		jittered = time.Second
+	}
+	return jittered
+}
+
+// messageRequires8BitTransport reports whether an outbound message can only be
+// relayed over a channel that accepts 8-bit content — i.e. it must NOT be sent to
+// a next hop that does not advertise 8BITMIME (RFC 6152). This is true when the
+// submitting client declared BODY=8BITMIME or BODY=BINARYMIME, or when the raw
+// bytes actually contain a non-ASCII octet (>= 0x80) regardless of what was
+// declared (a client may under-declare). A 7-bit-clean message declared 8BITMIME
+// still relays fine to a 7-bit peer, so the byte scan avoids refusing it need-
+// lessly.
+func messageRequires8BitTransport(bodyType, raw string) bool {
+	switch strings.ToUpper(strings.TrimSpace(bodyType)) {
+	case "8BITMIME", "BINARYMIME":
+		return true
+	}
+	for i := 0; i < len(raw); i++ {
+		if raw[i] >= 0x80 {
+			return true
+		}
+	}
+	return false
 }
 
 // Worker processes outbound mail queue entries.
@@ -464,7 +519,7 @@ func (w *Worker) processOne(workerID int) {
 		return
 	}
 
-	backoff := computeBackoff(item.Attempts)
+	backoff := computeBackoffWithJitter(item.Attempts)
 
 	w.db.Model(&item).Updates(map[string]interface{}{
 		"status":          "deferred",
@@ -885,6 +940,22 @@ func withinDSNRateLimit(recentCount, maxPerWindow int) bool {
 	return recentCount < maxPerWindow
 }
 
+// recentDSNCount returns how many locally generated DSNs have been delivered into
+// mailboxID within the worker's bounce window. It counts only rows this worker
+// marked is_dsn = true, NOT every message whose sender equals
+// mailer-daemon@<hostname>: an external sender can forge that envelope-from, so
+// counting inbound rows would let an attacker inflate a target mailbox's counter
+// and suppress its legitimate bounces (the DSN rate-limit-spoof gap). is_dsn is
+// never set from the wire, so it cannot be spoofed.
+func (w *Worker) recentDSNCount(mailboxID uint) int64 {
+	var recent int64
+	w.db.Table("messages").
+		Where("mailbox_id = ? AND is_dsn = ? AND created_at > ?",
+			mailboxID, true, time.Now().Add(-w.bounceWindow)).
+		Count(&recent)
+	return recent
+}
+
 // generateBounce creates an RFC 3464 DSN (Delivery Status Notification)
 // and delivers it to the original sender's mailbox if the sender is local.
 func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
@@ -918,11 +989,7 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	// mailbox within the window, bounding a spoofed-sender mail-bombing regardless
 	// of the authentication check above.
 	if w.bounceMax > 0 {
-		var recent int64
-		w.db.Table("messages").
-			Where("mailbox_id = ? AND sender = ? AND created_at > ?",
-				senderMailbox.ID, "mailer-daemon@"+w.hostname, time.Now().Add(-w.bounceWindow)).
-			Count(&recent)
+		recent := w.recentDSNCount(senderMailbox.ID)
 		if !withinDSNRateLimit(int(recent), w.bounceMax) {
 			slog.Warn("queue: DSN rate limit exceeded for recipient, suppressing DSN",
 				"sender", item.Sender, "recent", recent, "max", w.bounceMax, "window", w.bounceWindow)
@@ -931,20 +998,86 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	}
 
 	now := time.Now()
+	lastAttempt := now
+	if item.LastAttempt != nil {
+		lastAttempt = *item.LastAttempt
+	}
+	dsn := buildDSNMessage(w.hostname, item, smtpErr, now, lastAttempt)
+
+	// Insert bounce message into sender's INBOX. is_dsn marks this row as a
+	// locally generated DSN so the per-recipient rate-limit counter counts only
+	// our own bounces, never inbound mail that merely claims a mailer-daemon@
+	// envelope-from (which an external sender could use to inflate the counter and
+	// suppress a target user's legitimate bounces).
+	bounceMsg := map[string]interface{}{
+		"mailbox_id":    senderMailbox.ID,
+		"folder":        "INBOX",
+		"sender":        "mailer-daemon@" + w.hostname,
+		"sender_name":   "Mail Delivery System",
+		"recipients_to": fmt.Sprintf(`[%q]`, rmail.SanitizeHeaderValue(item.Sender)),
+		"recipients_cc": "[]",
+		"subject":       dsn.subject,
+		"body_text":     dsn.humanPart,
+		"raw_message":   dsn.raw,
+		"is_read":       false,
+		"is_dsn":        true,
+		"size_bytes":    len(dsn.raw),
+		"received_at":   now,
+		"created_at":    now,
+		"updated_at":    now,
+	}
+
+	if err := w.db.Table("messages").Create(bounceMsg).Error; err != nil {
+		slog.Error("queue: failed to insert bounce DSN", "sender", item.Sender, "error", err)
+		return
+	}
+
+	slog.Info("queue: RFC 3464 bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
+}
+
+// builtDSN is the fully rendered bounce message plus the two fields the caller
+// stores alongside the raw form (the Subject header and the human-readable text).
+type builtDSN struct {
+	raw       string
+	subject   string
+	humanPart string
+}
+
+// buildDSNMessage renders an RFC 3464 multipart/report DSN for a failed outbound
+// item. It is pure (no DB, no clock of its own — now and lastAttempt are passed
+// in) so the header set and escaping are unit-testable.
+//
+// Every value that originates from a remote peer (smtpErr.Message, the failing
+// MX host) or from the queue row's envelope (item.Recipient / item.Sender, which
+// may carry control bytes on a poisoned row) is run through
+// mail.SanitizeHeaderValue before interpolation, so a CR/LF in a multiline SMTP
+// reply — or in a crafted recipient — cannot inject forged headers or fake
+// message/delivery-status fields into this trusted mailer-daemon message.
+//
+// The message carries Auto-Submitted: auto-generated (RFC 3834 §5) so a
+// well-behaved auto-responder does not reply to it (backscatter), and the
+// per-recipient status block carries Last-Attempt-Date (RFC 3464 §2.3.7) and,
+// when the failure named a specific next hop, Remote-MTA (RFC 3464 §2.3.5).
+func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPError, now, lastAttempt time.Time) builtDSN {
 	boundary := fmt.Sprintf("=_restmail_dsn_%d", now.UnixNano())
-	msgID := fmt.Sprintf("<dsn-%d-%d@%s>", item.ID, now.UnixNano(), w.hostname)
+	msgID := fmt.Sprintf("<dsn-%d-%d@%s>", item.ID, now.UnixNano(), hostname)
+
+	recipient := rmail.SanitizeHeaderValue(item.Recipient)
+	sender := rmail.SanitizeHeaderValue(item.Sender)
 
 	statusCode := dsnStatusCode(smtpErr)
 	diagnosticCode := "smtp; delivery failed"
+	remoteMTA := ""
 	if smtpErr != nil {
 		if smtpErr.Code > 0 {
-			diagnosticCode = fmt.Sprintf("smtp; %d %s", smtpErr.Code, smtpErr.Message)
+			diagnosticCode = fmt.Sprintf("smtp; %d %s", smtpErr.Code, rmail.SanitizeHeaderValue(smtpErr.Message))
 		} else {
-			diagnosticCode = fmt.Sprintf("smtp; %s", smtpErr.Message)
+			diagnosticCode = fmt.Sprintf("smtp; %s", rmail.SanitizeHeaderValue(smtpErr.Message))
 		}
+		remoteMTA = rmail.SanitizeHeaderValue(smtpErr.RemoteMTA)
 	}
 
-	// Extract original headers from RawMessage for Part 3
+	// Extract original headers from RawMessage for Part 3.
 	originalHeaders := item.RawMessage
 	if idx := strings.Index(originalHeaders, "\r\n\r\n"); idx >= 0 {
 		originalHeaders = originalHeaders[:idx]
@@ -952,40 +1085,42 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 		originalHeaders = originalHeaders[:idx]
 	}
 
-	// Part 1: Human-readable
+	// Part 1: Human-readable.
 	humanPart := fmt.Sprintf(
 		"This is the mail delivery system at %s.\r\n\r\n"+
 			"Your message could not be delivered to the following recipient:\r\n\r\n"+
 			"    %s\r\n\r\n"+
 			"The delivery has been attempted %d time(s).\r\n\r\n"+
 			"Error: %s\r\n",
-		w.hostname, item.Recipient, item.Attempts, diagnosticCode,
+		hostname, recipient, item.Attempts, diagnosticCode,
 	)
 
-	// Part 2: Machine-readable DSN (RFC 3464)
-	dsnPart := fmt.Sprintf(
-		"Reporting-MTA: dns; %s\r\n"+
-			"Arrival-Date: %s\r\n\r\n"+
-			"Final-Recipient: rfc822; %s\r\n"+
-			"Action: failed\r\n"+
-			"Status: %s\r\n"+
-			"Diagnostic-Code: %s\r\n",
-		w.hostname,
-		item.CreatedAt.Format(time.RFC1123Z),
-		item.Recipient,
-		statusCode,
-		diagnosticCode,
-	)
+	// Part 2: Machine-readable DSN (RFC 3464). Remote-MTA is emitted only when the
+	// failure named a specific next hop.
+	var dsnBuf strings.Builder
+	fmt.Fprintf(&dsnBuf, "Reporting-MTA: dns; %s\r\n", hostname)
+	fmt.Fprintf(&dsnBuf, "Arrival-Date: %s\r\n\r\n", item.CreatedAt.Format(time.RFC1123Z))
+	fmt.Fprintf(&dsnBuf, "Final-Recipient: rfc822; %s\r\n", recipient)
+	dsnBuf.WriteString("Action: failed\r\n")
+	fmt.Fprintf(&dsnBuf, "Status: %s\r\n", statusCode)
+	if remoteMTA != "" {
+		fmt.Fprintf(&dsnBuf, "Remote-MTA: dns; %s\r\n", remoteMTA)
+	}
+	fmt.Fprintf(&dsnBuf, "Diagnostic-Code: %s\r\n", diagnosticCode)
+	fmt.Fprintf(&dsnBuf, "Last-Attempt-Date: %s\r\n", lastAttempt.Format(time.RFC1123Z))
+	dsnPart := dsnBuf.String()
 
-	// Build full multipart/report message
-	bounceSubject := fmt.Sprintf("Undelivered Mail Returned to Sender <%s>", item.Recipient)
+	bounceSubject := fmt.Sprintf("Undelivered Mail Returned to Sender <%s>", recipient)
 
 	var b strings.Builder
-	b.WriteString("From: mailer-daemon@" + w.hostname + "\r\n")
-	b.WriteString("To: " + item.Sender + "\r\n")
+	b.WriteString("From: mailer-daemon@" + hostname + "\r\n")
+	b.WriteString("To: " + sender + "\r\n")
 	b.WriteString("Subject: " + bounceSubject + "\r\n")
 	b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
 	b.WriteString("Message-ID: " + msgID + "\r\n")
+	// RFC 3834 §5: a DSN is an automatically generated response and MUST carry
+	// Auto-Submitted so downstream auto-responders do not reply to it (backscatter).
+	b.WriteString("Auto-Submitted: auto-generated\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: multipart/report; report-type=delivery-status; boundary=\"" + boundary + "\"\r\n")
 	b.WriteString("\r\n")
@@ -1003,32 +1138,7 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 	b.WriteString(originalHeaders + "\r\n")
 	b.WriteString("--" + boundary + "--\r\n")
 
-	rawBounce := b.String()
-
-	// Insert bounce message into sender's INBOX
-	bounceMsg := map[string]interface{}{
-		"mailbox_id":    senderMailbox.ID,
-		"folder":        "INBOX",
-		"sender":        "mailer-daemon@" + w.hostname,
-		"sender_name":   "Mail Delivery System",
-		"recipients_to": fmt.Sprintf(`["%s"]`, item.Sender),
-		"recipients_cc": "[]",
-		"subject":       bounceSubject,
-		"body_text":     humanPart,
-		"raw_message":   rawBounce,
-		"is_read":       false,
-		"size_bytes":    len(rawBounce),
-		"received_at":   now,
-		"created_at":    now,
-		"updated_at":    now,
-	}
-
-	if err := w.db.Table("messages").Create(bounceMsg).Error; err != nil {
-		slog.Error("queue: failed to insert bounce DSN", "sender", item.Sender, "error", err)
-		return
-	}
-
-	slog.Info("queue: RFC 3464 bounce DSN delivered", "sender", item.Sender, "failed_recipient", item.Recipient)
+	return builtDSN{raw: b.String(), subject: bounceSubject, humanPart: humanPart}
 }
 
 // deliverToHost attempts SMTP delivery to a specific host.
@@ -1140,14 +1250,39 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 		return decision
 	}
 
+	// 8BITMIME relay guarantee (RFC 6152 §3). net/smtp appends BODY=8BITMIME to
+	// MAIL FROM only when the peer advertised 8BITMIME; when it did NOT, and this
+	// message needs 8-bit transport (it was submitted with BODY=8BITMIME/BINARYMIME,
+	// or its bytes actually contain octets >= 0x80), sending it verbatim would put
+	// undeclared, unconverted 8-bit content on a 7-bit-only channel. We do not
+	// implement on-the-fly 7-bit downconversion, so refuse this hop with a
+	// permanent 5.6.3 (conversion required but not supported). The caller tries the
+	// next MX; only if no MX offers 8BITMIME does the message bounce — never
+	// silently corrupted. Peers that advertise 8BITMIME (nearly all modern MTAs)
+	// are unaffected.
+	if ok, _ := client.Extension("8BITMIME"); !ok && messageRequires8BitTransport(item.BodyType, item.RawMessage) {
+		slog.Warn("queue: next hop lacks 8BITMIME for 8-bit message, refusing (no 7-bit downconversion)",
+			"host", host, "domain", item.Domain, "body_type", item.BodyType)
+		return &SMTPError{
+			Code:      550,
+			Enhanced:  "5.6.3",
+			Message:   "next hop does not support 8BITMIME and 7-bit conversion is not implemented",
+			RemoteMTA: host,
+		}
+	}
+
 	// Set sender
 	if err := client.Mail(item.Sender); err != nil {
-		return parseSMTPError(err)
+		se := parseSMTPError(err)
+		se.RemoteMTA = host
+		return se
 	}
 
 	// Set recipient
 	if err := client.Rcpt(item.Recipient); err != nil {
-		return parseSMTPError(err)
+		se := parseSMTPError(err)
+		se.RemoteMTA = host
+		return se
 	}
 
 	// Send data
@@ -1161,7 +1296,9 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 		return fmt.Errorf("write message to %s: %w", host, err)
 	}
 	if err := wc.Close(); err != nil {
-		return parseSMTPError(err)
+		se := parseSMTPError(err)
+		se.RemoteMTA = host
+		return se
 	}
 
 	// Quit
