@@ -6,22 +6,36 @@
 package imap
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
 	imapsrv "github.com/rest-mail/go-imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
+
+// errAccountLocked is returned when an account is temporarily banned for too
+// many recent auth failures. The go-imap engine maps any Authenticate error to a
+// tagged NO, so the message is not surfaced verbatim to the client; it exists so
+// the hard-stop path is distinguishable in code and logs.
+var errAccountLocked = errors.New("too many authentication failures")
 
 // Backend authenticates IMAP users against the rest-mail REST API.
 type Backend struct {
 	api *apiclient.Client
+	// limiter throttles brute-force per ACCOUNT, complementing the per-IP guard
+	// the go-imap server already applies. It is separate because the library's
+	// per-IP tracker cannot see a distributed attack that rotates source IPs
+	// against one account. A nil limiter disables per-account throttling.
+	limiter *connlimiter.Limiter
 }
 
-// NewBackend creates a Backend over the given API client.
-func NewBackend(api *apiclient.Client) *Backend {
-	return &Backend{api: api}
+// NewBackend creates a Backend over the given API client. limiter enables
+// per-account brute-force throttling (pass nil to disable it).
+func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
+	return &Backend{api: api, limiter: limiter}
 }
 
 var _ imapsrv.Backend = (*Backend)(nil)
@@ -29,6 +43,17 @@ var _ imapsrv.Backend = (*Backend)(nil)
 // Authenticate logs the user in via the API and returns a Mailbox scoped to the
 // resulting access token and account.
 func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
+	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
+	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
+	// lucky correct guess. The per-IP ban is enforced separately by the server.
+	if b.limiter != nil && b.limiter.IsUserBanned(user) {
+		slog.Warn("imap: auth rejected: account temporarily locked",
+			"user", maskEmail(user),
+			"event", "imap_auth_banned",
+		)
+		return nil, errAccountLocked
+	}
+
 	resp, err := b.api.Login(user, pass)
 	if err != nil {
 		// A failed IMAP login is a security-relevant event (credential stuffing /
@@ -38,7 +63,16 @@ func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
 			"user", maskEmail(user),
 			"event", "imap_auth_failed",
 		)
+		// Only a definitive credential rejection (401/403) counts against the
+		// per-account ban; a transient API/network error leaves the password
+		// unverified and must not lock the account out.
+		if b.limiter != nil && apiclient.IsAuthRejection(err) {
+			b.limiter.RecordAuthFailUser(user)
+		}
 		return nil, err
+	}
+	if b.limiter != nil {
+		b.limiter.ResetAuthUser(user)
 	}
 	return &mailbox{
 		api:       b.api,

@@ -583,7 +583,7 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 	srv := httptest.NewServer(api.handler())
 	defer srv.Close()
 
-	h := newTranscript(t, NewBackend(apiclient.New(srv.URL)))
+	h := newTranscript(t, NewBackend(apiclient.New(srv.URL), nil))
 
 	// LOGIN's tagged OK carries the post-auth capability list, which now includes
 	// UIDPLUS because *mailbox implements UIDPlusMailbox.
@@ -650,7 +650,7 @@ func TestServer_UIDExpunge_HonoursDeletedFlag(t *testing.T) {
 	srv := httptest.NewServer(api.handler())
 	defer srv.Close()
 
-	h := newTranscript(t, NewBackend(apiclient.New(srv.URL)))
+	h := newTranscript(t, NewBackend(apiclient.New(srv.URL), nil))
 	h.login("a1")
 
 	if _, st := h.command("a2", "SELECT INBOX"); !strings.Contains(st, "OK") {
