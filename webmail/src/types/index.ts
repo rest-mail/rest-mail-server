@@ -6,9 +6,10 @@ export interface User {
 
 export interface LoginResponse {
   data: {
-    access_token: string;
+    // The access token is delivered as an httpOnly cookie, never in this body.
     expires_in: number;
     user: User;
+    capabilities?: string[];
   };
 }
 

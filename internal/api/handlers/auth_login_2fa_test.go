@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -82,13 +81,10 @@ func TestLogin_2FAActive_RequiresCode(t *testing.T) {
 	if ok.Code != http.StatusOK {
 		t.Fatalf("valid-code login: status %d (%s), want 200", ok.Code, ok.Body.String())
 	}
-	var resp struct {
-		Data struct {
-			AccessToken string `json:"access_token"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(ok.Body.Bytes(), &resp); err != nil || resp.Data.AccessToken == "" {
-		t.Errorf("valid-code login did not return an access token: %v", err)
+	// The access token is delivered as the httpOnly restmail_access cookie, not
+	// the response body.
+	if tok := accessCookieValue(ok); tok == "" {
+		t.Errorf("valid-code login did not set an access cookie (body: %s)", ok.Body.String())
 	}
 }
 

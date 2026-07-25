@@ -150,20 +150,43 @@ type LoginResponse struct {
 
 // Login authenticates a mailbox user and returns an access token.
 func (c *Client) Login(email, password string) (*LoginResponse, error) {
-	body := map[string]string{"email": email, "password": password}
-	var resp LoginResponse
-	if err := c.post("/api/v1/auth/login", body, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
+	return c.login(map[string]string{"email": email, "password": password})
 }
 
 // LoginAdmin authenticates an admin user and returns an access token.
 func (c *Client) LoginAdmin(username, password string) (*LoginResponse, error) {
-	body := map[string]string{"username": username, "password": password}
-	var resp LoginResponse
-	if err := c.post("/api/v1/auth/login", body, &resp); err != nil {
+	return c.login(map[string]string{"username": username, "password": password})
+}
+
+// login POSTs credentials and extracts the access token. The API delivers the
+// token as the httpOnly restmail_access cookie (it is no longer in the response
+// body), so the token is read from the Set-Cookie header. A body access_token is
+// used as a fallback for compatibility with older servers/mocks that still
+// return it there.
+//
+// The gateway keeps sending the token as an Authorization: Bearer header on
+// subsequent calls (it holds no cookie jar), so those requests carry no cookie
+// and are transparently exempt from the API's CSRF guard.
+func (c *Client) login(body map[string]string) (*LoginResponse, error) {
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
 		return nil, err
+	}
+	httpResp, err := c.httpClient.Post(c.baseURL+"/api/v1/auth/login", "application/json", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("POST /api/v1/auth/login: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	var resp LoginResponse
+	if err := c.decodeResponse(httpResp, &resp); err != nil {
+		return nil, err
+	}
+	for _, ck := range httpResp.Cookies() {
+		if ck.Name == "restmail_access" && ck.Value != "" {
+			resp.Data.AccessToken = ck.Value
+			break
+		}
 	}
 	return &resp, nil
 }
@@ -725,19 +748,6 @@ func (c *Client) getAuth(path, token string, out interface{}) error {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
-	}
-	defer resp.Body.Close()
-	return c.decodeResponse(resp, out)
-}
-
-func (c *Client) post(path string, body interface{}, out interface{}) error {
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	resp, err := c.httpClient.Post(c.baseURL+path, "application/json", bytes.NewReader(jsonBody))
-	if err != nil {
-		return fmt.Errorf("POST %s: %w", path, err)
 	}
 	defer resp.Body.Close()
 	return c.decodeResponse(resp, out)

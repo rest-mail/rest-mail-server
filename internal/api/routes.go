@@ -366,7 +366,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.With(deliverBodyLimit).Post("/restmail/messages", restmailH.Deliver)
 
 	// ═══════════════════════════════════════════════════════════════
-	// SSE — outside JWT middleware group; handler validates Authorization: Bearer
+	// SSE — outside the JWT middleware group; the handler authenticates from the
+	// restmail_access cookie (native EventSource) or an Authorization: Bearer
+	// header. GET, so it is CSRF-exempt.
 	// ═══════════════════════════════════════════════════════════════
 	r.Get("/api/v1/accounts/{id}/events", eventH.Events)
 
@@ -375,6 +377,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
+		// Double-submit CSRF guard for cookie-authenticated browser sessions on
+		// state-changing methods; Bearer-token (gateway) callers send no cookie
+		// and are transparently exempt (see middleware.CSRF).
+		r.Use(middleware.CSRF())
 		// #184: cap the request body across the authenticated surface (send,
 		// drafts, contacts import, sieve PUT, …) so an unbounded JSON upload
 		// cannot exhaust memory. cfg.APIMaxBodyBytes <= 0 makes this a no-op.
@@ -479,6 +485,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
 		r.Use(middleware.AdminOnly)
+		// Same double-submit CSRF guard as the mailbox surface (cookie sessions
+		// only; Bearer callers exempt).
+		r.Use(middleware.CSRF())
 		// #184: same request-body cap as the mailbox surface, covering the admin
 		// JSON endpoints (pipeline create/test, custom filters, …).
 		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))

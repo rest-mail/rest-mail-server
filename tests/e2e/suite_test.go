@@ -138,6 +138,28 @@ func (c *apiClient) delete(path string) (*http.Response, error) {
 	return httpClient.Do(req)
 }
 
+// accessCookieName is the httpOnly session cookie the API sets on a successful
+// login (internal/auth.AccessCookieName). Since #194 the access token is
+// delivered ONLY as this cookie — it is no longer in the login response body —
+// so the harness reads it from the Set-Cookie header. The Go HTTP client can see
+// httpOnly cookies via resp.Cookies() (httpOnly only hides them from browser
+// JavaScript, not from the HTTP client), and the harness then replays the value
+// as an Authorization: Bearer header on subsequent calls. The middleware accepts
+// both cookie and Bearer, and the Bearer path is exempt from the CSRF check, so
+// no cookie jar or X-CSRF-Token plumbing is needed here.
+const accessCookieName = "restmail_access"
+
+// tokenFromCookies extracts the access-token value from a login response's
+// Set-Cookie header, returning "" when the cookie is absent.
+func tokenFromCookies(resp *http.Response) string {
+	for _, ck := range resp.Cookies() {
+		if ck.Name == accessCookieName {
+			return ck.Value
+		}
+	}
+	return ""
+}
+
 // loginAdmin authenticates as an RBAC admin user (admin_users table — the
 // seeded `admin` account) and stores the access token. The same endpoint
 // serves both flows: `username` selects the admin path, `email` the mailbox
@@ -155,15 +177,10 @@ func (c *apiClient) rawLoginAdmin(username, password string) error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("admin login failed (%d): %s", resp.StatusCode, body)
 	}
-	var result struct {
-		Data struct {
-			AccessToken string `json:"access_token"`
-		} `json:"data"`
+	c.token = tokenFromCookies(resp)
+	if c.token == "" {
+		return fmt.Errorf("admin login: no %s cookie in response", accessCookieName)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decode admin login: %w", err)
-	}
-	c.token = result.Data.AccessToken
 	return nil
 }
 
@@ -183,18 +200,10 @@ func (c *apiClient) rawLogin(email, password string) error {
 		return fmt.Errorf("login failed (%d): %s", resp.StatusCode, body)
 	}
 
-	var result struct {
-		Data struct {
-			AccessToken string `json:"access_token"`
-			User        struct {
-				ID uint `json:"id"`
-			} `json:"user"`
-		} `json:"data"`
+	c.token = tokenFromCookies(resp)
+	if c.token == "" {
+		return fmt.Errorf("login: no %s cookie in response", accessCookieName)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decode login response: %w", err)
-	}
-	c.token = result.Data.AccessToken
 	return nil
 }
 

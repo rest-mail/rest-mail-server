@@ -23,9 +23,14 @@ import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { useNotifications } from '@/hooks/useNotifications';
 
 function App() {
-  const { isAuthenticated, logout } = useAuthStore();
+  const { isAuthenticated, sessionChecked, checkSession, logout } = useAuthStore();
   const { view, startCompose } = useUIStore();
   const { accounts, refresh, loadFolders } = useMailStore();
+  // Restore an existing session on boot by exchanging the httpOnly refresh
+  // cookie for a fresh access cookie — no token is ever exposed to JS.
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
   // Wire up 401 handler to auto-logout
   useEffect(() => {
     setOnUnauthorized(() => {
@@ -83,6 +88,11 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isAuthenticated, startCompose]);
+
+  // Avoid flashing the login page before the boot session check resolves.
+  if (!sessionChecked) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return (

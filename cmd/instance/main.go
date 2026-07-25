@@ -461,19 +461,41 @@ func apiJSON(method, url, token string, body any, out any) error {
 }
 
 func apiLogin(api, user, pass string) (string, error) {
+	// The API delivers the access token as the httpOnly restmail_access cookie
+	// (no longer in the JSON body), so read it from the Set-Cookie header; fall
+	// back to a body access_token for older servers that still return it there.
+	b, err := json.Marshal(map[string]string{"username": user, "password": pass})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest(http.MethodPost, api+"/api/v1/auth/login", bytes.NewReader(b))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("POST %s/api/v1/auth/login: HTTP %d: %s", api, resp.StatusCode, string(data))
+	}
+	for _, ck := range resp.Cookies() {
+		if ck.Name == "restmail_access" && ck.Value != "" {
+			return ck.Value, nil
+		}
+	}
 	var res struct {
 		Data struct {
 			AccessToken string `json:"access_token"`
 		} `json:"data"`
 	}
-	if err := apiJSON(http.MethodPost, api+"/api/v1/auth/login", "",
-		map[string]string{"username": user, "password": pass}, &res); err != nil {
-		return "", err
+	if err := json.Unmarshal(data, &res); err == nil && res.Data.AccessToken != "" {
+		return res.Data.AccessToken, nil
 	}
-	if res.Data.AccessToken == "" {
-		return "", fmt.Errorf("no access token in response")
-	}
-	return res.Data.AccessToken, nil
+	return "", fmt.Errorf("no access token in login response")
 }
 
 func apiDomainID(api, token, domain string) (uint, error) {

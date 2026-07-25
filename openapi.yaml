@@ -11,14 +11,22 @@ info:
     ## Authentication & authorization
 
 
-    The API uses five distinct auth modes; each operation's `security` block and,
+    The API uses six distinct auth modes; each operation's `security` block and,
     for admin routes, its `x-required-capability` field state which applies.
 
 
-    * **JWT bearer** (`BearerAuth`) — the default for all mail-user and admin
-      operations. Obtain an access token from `POST /api/v1/auth/login`. Admin
-      operations additionally require the caller's token to carry the admin role
-      (mailbox-only tokens get `403`).
+    * **Session cookie** (`CookieAuth`) — the default for browser clients. Login
+      sets the access token as the httpOnly `restmail_access` cookie (JavaScript
+      cannot read it) plus a readable `restmail_csrf` cookie. The browser sends
+      the cookie automatically; state-changing requests must also echo the CSRF
+      value in the `X-CSRF-Token` header (double-submit), or they get `403`.
+
+    * **JWT bearer** (`BearerAuth`) — the transport for programmatic (non-browser)
+      clients. Send the access token as `Authorization: Bearer`; obtain it from
+      the `restmail_access` cookie in the login response's `Set-Cookie` header (it
+      is no longer in the login/refresh JSON body). Bearer requests send no cookie
+      and are exempt from the CSRF check. Admin operations additionally require the
+      caller's token to carry the admin role (mailbox-only tokens get `403`).
 
     * **RBAC capability** — admin operations are gated by a named capability in
       addition to the admin role. The required capability is given per operation as
@@ -131,9 +139,14 @@ tags:
   - name: "Admin: Testing"
     description: Non-production test/debug helpers (JWT + admin; admin role only, disabled in production)
 
-# Default: JWT bearer. Operations override with `security: []` (no auth) and admin
-# operations additionally carry an `x-required-capability` (see info.description).
+# Default: either the httpOnly restmail_access cookie (browser SPAs) OR a JWT
+# Authorization: Bearer header (programmatic clients). Each entry is an
+# alternative, so presenting either satisfies auth. Cookie-authenticated,
+# state-changing requests additionally require the X-CSRF-Token header (see the
+# CSRFToken parameter). Operations override with `security: []` (no auth) and
+# admin operations additionally carry an `x-required-capability`.
 security:
+  - CookieAuth: []
   - BearerAuth: []
 
 paths:
@@ -166,6 +179,11 @@ paths:
       operationId: login
       tags: [Auth]
       summary: Authenticate with email and password
+      description: >
+        On success the API sets three cookies: restmail_access (httpOnly, the
+        session token), restmail_refresh (httpOnly, scoped to /api/v1/auth), and
+        restmail_csrf (readable, for the double-submit CSRF header). The access
+        token is NOT returned in the response body.
       security: []
       requestBody:
         required: true
@@ -193,7 +211,10 @@ paths:
     post:
       operationId: logout
       tags: [Auth]
-      summary: Log out and clear refresh token cookie
+      summary: Log out — revoke the session and clear the auth cookies
+      description: >
+        Revokes the refresh token server-side and expires the restmail_access,
+        restmail_refresh and restmail_csrf cookies.
       security: []
       responses:
         "204":
@@ -1248,14 +1269,14 @@ paths:
       operationId: accountEvents
       tags: [SSE]
       summary: Server-Sent Events stream for real-time updates
-      security: []
-      parameters:
-        - name: token
-          in: query
-          required: true
-          schema:
-            type: string
-          description: JWT access token for authentication
+      description: >
+        Authenticated by the restmail_access cookie, which a native browser
+        EventSource attaches automatically — no token in the URL and none in
+        JavaScript. Programmatic clients may instead send an Authorization:
+        Bearer header. GET, so no CSRF token is required.
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
       responses:
         "200":
           description: SSE event stream
@@ -3848,13 +3869,40 @@ paths:
 
 components:
   securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: restmail_access
+      description: >
+        httpOnly session cookie set by POST /api/v1/auth/login and
+        /api/v1/auth/refresh. The browser attaches it automatically; JavaScript
+        cannot read it. This is the transport used by the web frontends. State-
+        changing requests (POST/PUT/PATCH/DELETE) additionally require the
+        double-submit CSRF header (see the CSRFToken parameter).
     BearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT access token obtained from /api/v1/auth/login
+      description: >
+        JWT access token as an Authorization: Bearer header — the transport for
+        programmatic (non-browser) clients. The token is no longer returned in
+        the login/refresh JSON body; obtain it from the restmail_access cookie in
+        the login response's Set-Cookie header. Bearer requests carry no cookie
+        and are exempt from the CSRF check.
 
   parameters:
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      schema:
+        type: string
+      description: >
+        Double-submit CSRF token. Required on state-changing requests
+        (POST/PUT/PATCH/DELETE) that authenticate via the restmail_access cookie:
+        echo the value of the readable restmail_csrf cookie (set at
+        login/refresh). Rejected with 403 when missing or mismatched. Not
+        required for Bearer-authenticated (cookie-less) requests.
     AccountId:
       name: id
       in: path
@@ -3995,13 +4043,16 @@ components:
 
     LoginResponse:
       type: object
-      required: [access_token, expires_in, user]
+      required: [expires_in, user]
+      description: >
+        Login/refresh success body. It carries NO access token: the token is
+        delivered only as the httpOnly restmail_access cookie (Set-Cookie), so
+        JavaScript cannot read it. A readable restmail_csrf cookie is set
+        alongside for the double-submit CSRF defence.
       properties:
-        access_token:
-          type: string
         expires_in:
           type: integer
-          description: Token lifetime in seconds
+          description: Access-token lifetime in seconds (lets the client schedule a refresh)
         user:
           type: object
           required: [id, email, display_name]
@@ -4013,15 +4064,36 @@ components:
               format: email
             display_name:
               type: string
+        capabilities:
+          type: array
+          description: Granted capabilities (admin users only)
+          items:
+            type: string
 
     RefreshResponse:
       type: object
-      required: [access_token, expires_in]
+      required: [expires_in, user]
+      description: >
+        Same shape and cookie behaviour as LoginResponse; the refreshed access
+        token is set as the restmail_access cookie, never returned in the body.
       properties:
-        access_token:
-          type: string
         expires_in:
           type: integer
+        user:
+          type: object
+          required: [id, email, display_name]
+          properties:
+            id:
+              type: integer
+            email:
+              type: string
+              format: email
+            display_name:
+              type: string
+        capabilities:
+          type: array
+          items:
+            type: string
 
     # ─────────────────────────────────────────────────────────────
     # Account

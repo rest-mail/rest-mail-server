@@ -5,14 +5,21 @@ import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pag
 // Examples: http://localhost:8080/api/v1, https://api.example.com/v1, http://restmail.localhost/api/v1
 const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
 
-let accessToken = '';
+// The access token is NEVER held in JavaScript. It lives only in the httpOnly
+// `restmail_access` cookie the API sets at login/refresh, which the browser
+// attaches automatically to same-origin requests (credentials: 'include').
+// JavaScript — and therefore any XSS — cannot read or exfiltrate it.
+//
+// State-changing requests must carry the double-submit CSRF token: the API also
+// sets a readable `restmail_csrf` cookie, whose value we echo in the
+// X-CSRF-Token header on mutating methods.
 
-export function setToken(token: string) {
-  accessToken = token;
-}
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-export function getToken() {
-  return accessToken;
+/** Read the readable (non-httpOnly) CSRF token the API set at login/refresh. */
+export function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)restmail_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
 }
 
 export class ApiError extends Error {
@@ -38,10 +45,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
   };
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
+  const method = (options.method || 'GET').toUpperCase();
+  if (MUTATING_METHODS.has(method)) {
+    headers['X-CSRF-Token'] = getCsrfToken();
   }
-  const res = await fetch(path, { ...options, headers });
+  // credentials: 'include' sends the httpOnly session cookie (and the CSRF
+  // cookie) with the request; the token itself is never touched by JS.
+  const res = await fetch(path, { ...options, headers, credentials: 'include' });
   if (!res.ok) {
     if (res.status === 401 && onUnauthorized) {
       onUnauthorized();
@@ -62,15 +72,35 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 // Auth
 export async function login(email: string, password: string): Promise<LoginResponse> {
+  // On success the API sets the httpOnly access cookie + readable CSRF cookie;
+  // the response body carries only identity/expiry, never the token.
   return request<LoginResponse>(`${BASE}/auth/login`, {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
 }
 
+// refreshSession exchanges the httpOnly refresh cookie for a fresh access cookie
+// on boot (and after a 401). It returns the restored user on success, or null
+// when there is no valid session. The refresh cookie is scoped to /auth, so this
+// is the one call that carries it.
+export async function refreshSession(): Promise<LoginResponse['data'] | null> {
+  const res = await fetch(`${BASE}/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as LoginResponse;
+  return body.data;
+}
+
 export async function logout(): Promise<void> {
-  await fetch(`${BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
-  accessToken = '';
+  await fetch(`${BASE}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-CSRF-Token': getCsrfToken() },
+  });
 }
 
 // Accounts

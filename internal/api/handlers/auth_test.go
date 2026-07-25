@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,15 +19,13 @@ func refreshWith(t *testing.T, jwt *auth.JWTService, refreshToken string) *auth.
 	if rec.Code != http.StatusOK {
 		t.Fatalf("refresh status %d: %s", rec.Code, rec.Body.String())
 	}
-	var resp struct {
-		Data struct {
-			AccessToken string `json:"access_token"`
-		} `json:"data"`
+	// The refreshed access token is delivered as the restmail_access cookie, not
+	// the response body.
+	tok := accessCookieValue(rec)
+	if tok == "" {
+		t.Fatalf("refresh set no access cookie: %s", rec.Body.String())
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("decode refresh response: %v", err)
-	}
-	claims, err := jwt.ValidateAccessToken(resp.Data.AccessToken)
+	claims, err := jwt.ValidateAccessToken(tok)
 	if err != nil {
 		t.Fatalf("validate refreshed access token: %v", err)
 	}

@@ -15,6 +15,18 @@ export function setUnauthorizedHandler(handler: () => void) {
   unauthorizedHandler = handler
 }
 
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
+/**
+ * Read the readable (non-httpOnly) CSRF token the API set at login/refresh. The
+ * access token itself lives in an httpOnly cookie JavaScript cannot read; this
+ * companion value is echoed in the X-CSRF-Token header on mutating requests.
+ */
+export function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)restmail_csrf=([^;]*)/)
+  return match ? decodeURIComponent(match[1]) : ''
+}
+
 /**
  * Creates an API client
  */
@@ -30,30 +42,45 @@ function createApiClient() {
     },
 
     /**
-     * Makes an authenticated API request
+     * Makes an authenticated API request.
+     *
+     * Authentication is by cookie: the browser attaches the httpOnly
+     * `restmail_access` cookie automatically (credentials: 'include'), so the
+     * token is never held in JavaScript. State-changing requests carry the
+     * double-submit CSRF token in the X-CSRF-Token header.
+     *
      * @param path - API path
      * @param options - Fetch options
-     * @param token - Optional auth token
      * @returns Fetch response
+     *
+     * A third positional argument — a legacy access token — is still accepted
+     * from existing call sites but ignored: the access token now rides in the
+     * httpOnly `restmail_access` cookie the browser attaches automatically
+     * (credentials: 'include'), so it is never held in JavaScript. It is
+     * absorbed as an unused rest parameter (and discarded) so those call sites
+     * keep compiling without a dead named parameter.
      */
     request: async (
       path: string,
       options: RequestInit = {},
-      token?: string
+      ...ignoredLegacyToken: [token?: string]
     ): Promise<Response> => {
+      void ignoredLegacyToken
       const headers = new Headers(options.headers)
-
-      if (token) {
-        headers.set('Authorization', `Bearer ${token}`)
-      }
 
       if (!headers.has('Content-Type') && options.body) {
         headers.set('Content-Type', 'application/json')
       }
 
+      const method = (options.method || 'GET').toUpperCase()
+      if (MUTATING_METHODS.has(method)) {
+        headers.set('X-CSRF-Token', getCsrfToken())
+      }
+
       const response = await fetch(`${API_BASE}${path}`, {
         ...options,
         headers,
+        credentials: 'include',
       })
 
       // Handle 401 unauthorized responses

@@ -18,6 +18,20 @@ var (
 	ErrWrongTokenType     = errors.New("wrong token type")
 )
 
+// Cookie and header names for the browser (SPA) session transport. The access
+// token is delivered ONLY as the httpOnly AccessCookieName cookie — never in a
+// response body — so page JavaScript (and thus any XSS) cannot read or
+// exfiltrate it. CSRFCookieName is its non-httpOnly companion for the
+// double-submit CSRF defence: the SPA reads it and echoes the value in
+// CSRFHeaderName on every state-changing request. RefreshCookieName carries the
+// rotation/revocation refresh token, scoped to the auth endpoints.
+const (
+	AccessCookieName  = "restmail_access"
+	RefreshCookieName = "restmail_refresh"
+	CSRFCookieName    = "restmail_csrf"
+	CSRFHeaderName    = "X-CSRF-Token"
+)
+
 // Claims represents the JWT claims for access and refresh tokens.
 type Claims struct {
 	jwt.RegisteredClaims
