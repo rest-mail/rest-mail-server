@@ -15,27 +15,27 @@ spec:
         {{- include "restmail.componentSelectorLabels" (list . "js-filter") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- include "restmail.dnsSpec" . | nindent 6 }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- include "restmail.podSecurityContext" (list . "js-filter") | nindent 8 }}
       containers:
         - name: js-filter
           image: "{{ .Values.jsFilter.image.repository }}:{{ include "restmail.imageTag" (list . .Values.jsFilter.image.tag) }}"
           imagePullPolicy: {{ include "restmail.imagePullPolicy" (list . .Values.jsFilter.image.pullPolicy) }}
-          {{- with .Values.securityContext }}
           securityContext:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- include "restmail.containerSecurityContext" (list . "js-filter") | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.jsFilter.port }}
               protocol: TCP
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           readinessProbe:
             tcpSocket:
               port: http
@@ -48,6 +48,9 @@ spec:
             periodSeconds: 30
           resources:
             {{- toYaml .Values.jsFilter.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

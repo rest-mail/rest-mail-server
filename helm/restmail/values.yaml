@@ -54,6 +54,20 @@ postgres:
   image:
     repository: postgres
     tag: "16-alpine"
+  # Serve TLS from the mounted certificate so the API/gateways can connect with
+  # a secure DB_SSLMODE (see the `db` block). Enabled by default so the chart is
+  # deployable in production with encryption on by construction. Turn this off
+  # ONLY if you also set db.sslMode=disable + db.allowInsecure=true (acknowledge
+  # an in-cluster cleartext link) or point at an external TLS-capable database.
+  tls:
+    enabled: true
+    # Certificate source. Empty reuses the shared tls.secretName; the postgres
+    # server certificate needs a SAN covering the in-cluster Service DNS name if
+    # clients use verify-full.
+    secretName: ""
+    mountPath: /certs
+    certFilename: tls.crt
+    keyFilename: tls.key
   # Reference an existing secret with keys: POSTGRES_PASSWORD, POSTGRES_USER,
   # POSTGRES_DB. Setting this disables embedded credentials below.
   existingSecret: restmail-postgres
@@ -77,6 +91,21 @@ postgres:
       cpu: 1000m
       memory: 1Gi
 
+# ── Database transport (DB_SSLMODE / DB_ALLOW_INSECURE) ────────────────────
+# The API and every gateway open a Postgres connection. In production the boot
+# validator refuses a cleartext DB link unless it is either encrypted (a secure
+# sslMode) or explicitly acknowledged. These knobs drive that decision.
+db:
+  # libpq sslmode used in the DSN. Secure modes (require / verify-ca /
+  # verify-full) encrypt DB traffic and are the production default; they require
+  # the server to serve TLS (bundled Postgres does when postgres.tls.enabled).
+  # verify-full additionally checks the server certificate hostname.
+  sslMode: require
+  # Acknowledge a cleartext DB link (sslMode disable/allow/prefer) as an
+  # already-secured/private segment. Only meaningful with an insecure sslMode;
+  # leave false whenever sslMode is a secure mode.
+  allowInsecure: false
+
 # ── REST API ──────────────────────────────────────────────────────────────
 api:
   replicaCount: 1
@@ -92,6 +121,11 @@ api:
   port: 8080
   environment: production
   logLevel: info
+  # The API process never terminates TLS itself — a front proxy/ingress does.
+  # In production the boot validator refuses to serve auth traffic in cleartext
+  # unless this acknowledges that a TLS-terminating reverse proxy fronts it.
+  # Keep true and ensure an ingress/proxy is in place (see api.ingress).
+  tlsTerminatedByProxy: true
   service:
     type: ClusterIP
     port: 8080
@@ -229,14 +263,32 @@ pop3Gateway:
       memory: 512Mi
 
 # ── Pod-level extras (security, scheduling) ───────────────────────────────
+# Every workload already gets a hardened per-component securityContext by
+# default (runAsNonRoot where the image supports it, seccompProfile
+# RuntimeDefault, all capabilities dropped, read-only rootfs where feasible).
+# The protocol gateways keep a root UID with only NET_BIND_SERVICE added,
+# because their images bind privileged ports (<1024) and carry no file
+# capabilities. The maps below are deep-merged ON TOP of those defaults (values
+# here win), so set a field only to override the baseline cluster-wide.
 podSecurityContext: {}
 securityContext: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# ── NetworkPolicy ─────────────────────────────────────────────────────────
+# Default-deny ingress+egress for all chart pods, with least-privilege allow
+# rules (DNS, API<->DB, gateway<->API/DB, public mail/API ingress, SMTP
+# outbound delivery). Requires a NetworkPolicy-enforcing CNI. Set enabled=false
+# on clusters whose CNI does not enforce policy.
+networkPolicy:
+  enabled: true
+
 # ── Service account ───────────────────────────────────────────────────────
 serviceAccount:
   create: true
   name: ""
   annotations: {}
+  # No workload talks to the Kubernetes API, so the projected token is never
+  # mounted (set on the ServiceAccount and every pod spec).
+  automountServiceAccountToken: false

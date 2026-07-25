@@ -44,6 +44,23 @@ postgres:
     database: restmail
   persistence:
     size: 5Gi
+  # The testbed Postgres serves plaintext; the API/gateways connect cleartext
+  # (development mode only warns). Keep TLS off to match the testbed substrate.
+  tls:
+    enabled: false
+
+# ── Database transport — cleartext to the testbed Postgres ────────────────
+# development environment demotes the fail-closed DB check to a warning, so a
+# cleartext link is allowed here without acknowledgement.
+db:
+  sslMode: disable
+
+# ── NetworkPolicy — off for the testbed ───────────────────────────────────
+# The testbed has its own cross-namespace network model (mailnet subnet,
+# dnsmasq at 10.99.0.10). A default-deny policy would fight it, and kind/k3s
+# CNIs vary in enforcement. Leave it to the testbed.
+networkPolicy:
+  enabled: false
 
 # ── API — dev secrets inline ──────────────────────────────────────────────
 api:

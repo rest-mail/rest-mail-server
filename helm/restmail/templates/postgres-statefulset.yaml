@@ -18,19 +18,34 @@ spec:
         {{- include "restmail.componentSelectorLabels" (list . "postgres") | nindent 8 }}
     spec:
       serviceAccountName: {{ include "restmail.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{- include "restmail.dnsSpec" . | nindent 6 }}
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.podSecurityContext }}
       securityContext:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- include "restmail.podSecurityContext" (list . "postgres") | nindent 8 }}
       containers:
         - name: postgres
           image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- include "restmail.containerSecurityContext" (list . "postgres") | nindent 12 }}
+          {{- if .Values.postgres.tls.enabled }}
+          # Serve TLS so the API/gateways can connect with a secure DB_SSLMODE
+          # (require / verify-*). The key is mounted root-owned mode 0640 and the
+          # pod's fsGroup (70, the alpine postgres gid, set in the pod
+          # securityContext) grants the postgres user group-read — the posture
+          # Postgres accepts for a root-owned key.
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file={{ .Values.postgres.tls.mountPath }}/{{ .Values.postgres.tls.certFilename }}
+            - -c
+            - ssl_key_file={{ .Values.postgres.tls.mountPath }}/{{ .Values.postgres.tls.keyFilename }}
+          {{- end }}
           ports:
             - name: postgres
               containerPort: 5432
@@ -56,6 +71,11 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+            {{- if .Values.postgres.tls.enabled }}
+            - name: tls
+              mountPath: {{ .Values.postgres.tls.mountPath }}
+              readOnly: true
+            {{- end }}
           readinessProbe:
             exec:
               command:
@@ -84,4 +104,17 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.postgres.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ default .Values.tls.secretName .Values.postgres.tls.secretName }}
+            # Root-owned 0640: no world access, group-readable by the fsGroup
+            # (postgres gid 70). Postgres refuses a key with any world bits.
+            defaultMode: 0640
+            items:
+              - key: tls.crt
+                path: {{ .Values.postgres.tls.certFilename }}
+              - key: tls.key
+                path: {{ .Values.postgres.tls.keyFilename }}
+        {{- end }}
 {{- end }}

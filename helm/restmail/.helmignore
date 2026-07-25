@@ -1,0 +1,9 @@
+# Patterns to ignore when building Helm packages.
+.DS_Store
+.git/
+.gitignore
+*.tmproj
+*.bak
+*.swp
+# Chart CI tests are run from the source tree, not shipped in the package.
+tests/
