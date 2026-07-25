@@ -6,21 +6,36 @@
 package imap
 
 import (
+	"errors"
+	"fmt"
 	"log/slog"
 
 	imapsrv "github.com/rest-mail/go-imap"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/connlimiter"
 )
+
+// errAccountLocked is returned when an account is temporarily banned for too
+// many recent auth failures. The go-imap engine maps any Authenticate error to a
+// tagged NO, so the message is not surfaced verbatim to the client; it exists so
+// the hard-stop path is distinguishable in code and logs.
+var errAccountLocked = errors.New("too many authentication failures")
 
 // Backend authenticates IMAP users against the rest-mail REST API.
 type Backend struct {
 	api *apiclient.Client
+	// limiter throttles brute-force per ACCOUNT, complementing the per-IP guard
+	// the go-imap server already applies. It is separate because the library's
+	// per-IP tracker cannot see a distributed attack that rotates source IPs
+	// against one account. A nil limiter disables per-account throttling.
+	limiter *connlimiter.Limiter
 }
 
-// NewBackend creates a Backend over the given API client.
-func NewBackend(api *apiclient.Client) *Backend {
-	return &Backend{api: api}
+// NewBackend creates a Backend over the given API client. limiter enables
+// per-account brute-force throttling (pass nil to disable it).
+func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
+	return &Backend{api: api, limiter: limiter}
 }
 
 var _ imapsrv.Backend = (*Backend)(nil)
@@ -28,6 +43,17 @@ var _ imapsrv.Backend = (*Backend)(nil)
 // Authenticate logs the user in via the API and returns a Mailbox scoped to the
 // resulting access token and account.
 func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
+	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
+	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
+	// lucky correct guess. The per-IP ban is enforced separately by the server.
+	if b.limiter != nil && b.limiter.IsUserBanned(user) {
+		slog.Warn("imap: auth rejected: account temporarily locked",
+			"user", maskEmail(user),
+			"event", "imap_auth_banned",
+		)
+		return nil, errAccountLocked
+	}
+
 	resp, err := b.api.Login(user, pass)
 	if err != nil {
 		// A failed IMAP login is a security-relevant event (credential stuffing /
@@ -37,7 +63,16 @@ func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
 			"user", maskEmail(user),
 			"event", "imap_auth_failed",
 		)
+		// Only a definitive credential rejection (401/403) counts against the
+		// per-account ban; a transient API/network error leaves the password
+		// unverified and must not lock the account out.
+		if b.limiter != nil && apiclient.IsAuthRejection(err) {
+			b.limiter.RecordAuthFailUser(user)
+		}
 		return nil, err
+	}
+	if b.limiter != nil {
+		b.limiter.ResetAuthUser(user)
 	}
 	return &mailbox{
 		api:       b.api,
@@ -137,6 +172,13 @@ func (m *mailbox) rawMessage(detail apiclient.MessageDetail) string {
 
 // Store applies a persistent flag change (STORE, or the auto-\Seen of a
 // non-peek BODY[] fetch).
+//
+// \Flagged is backed by BOTH is_flagged and is_starred so the mapping is
+// symmetric with FETCH, which folds a webmail star into \Flagged
+// (is_flagged || is_starred, see toMessage). Writing only is_flagged made
+// STORE -FLAGS \Flagged leave a starred message still flagged on the next
+// SELECT; mirroring the flag onto both columns means what you STORE is what
+// you FETCH back.
 func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
 	updates := map[string]interface{}{}
 	if f.Seen != nil {
@@ -144,6 +186,7 @@ func (m *mailbox) Store(uid uint32, f imapsrv.FlagUpdate) error {
 	}
 	if f.Flagged != nil {
 		updates["is_flagged"] = *f.Flagged
+		updates["is_starred"] = *f.Flagged
 	}
 	if f.Draft != nil {
 		updates["is_draft"] = *f.Draft
@@ -198,10 +241,16 @@ func (m *mailbox) Copy(uid uint32, dest string) error {
 }
 
 // CopyUID duplicates the message named by uid into dest by re-delivering its full
-// detail (with the raw original preserved) and then moving the new copy out of
-// INBOX if needed. It returns the new message's UID (UIDPLUS, RFC 4315) — the ID
-// the delivery assigned, which is rest-mail's UID for the copy — for the COPYUID
-// response code.
+// detail (with the raw original preserved) directly into the destination folder.
+// It returns the new message's UID (UIDPLUS, RFC 4315) — the ID the delivery
+// assigned, which is rest-mail's UID for the copy — for the COPYUID response code.
+//
+// The copy carries the source message's flags and INTERNALDATE (RFC 3501 §6.4.7
+// SHOULD preserve them) and is created directly in dest in a single delivery, so
+// there is no transient INBOX state and no separate, error-swallowing move step. A
+// delivery that produces no message (pipeline quarantine/discard, or an
+// out-of-range UID) is surfaced as an error rather than reported as a bogus
+// success carrying UID 0.
 func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	if err := validateFolder(dest); err != nil {
 		return 0, err
@@ -210,35 +259,46 @@ func (m *mailbox) CopyUID(uid uint32, dest string) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	src := detail.Data
+
+	// Preserve the source flags and internal date on the copy. \Flagged is backed
+	// by both is_flagged and is_starred, mirroring the gateway's symmetric mapping.
+	seen, flagged, starred, draft := src.IsRead, src.IsFlagged, src.IsStarred, src.IsDraft
+	received := src.ReceivedAt
 
 	deliverReq := &apiclient.DeliverRequest{
 		Address:      m.email,
-		MailboxID:    detail.Data.MailboxID,
-		Sender:       detail.Data.Sender,
-		SenderName:   detail.Data.SenderName,
-		RecipientsTo: detail.Data.RecipientsTo,
-		Subject:      detail.Data.Subject,
-		BodyText:     detail.Data.BodyText,
-		BodyHTML:     detail.Data.BodyHTML,
-		MessageID:    detail.Data.MessageID,
-		InReplyTo:    detail.Data.InReplyTo,
-		References:   detail.Data.References,
-		RawMessage:   []byte(m.rawMessage(detail.Data)),
+		MailboxID:    src.MailboxID,
+		Folder:       dest,
+		Sender:       src.Sender,
+		SenderName:   src.SenderName,
+		RecipientsTo: src.RecipientsTo,
+		Subject:      src.Subject,
+		BodyText:     src.BodyText,
+		BodyHTML:     src.BodyHTML,
+		MessageID:    src.MessageID,
+		InReplyTo:    src.InReplyTo,
+		References:   src.References,
+		RawMessage:   []byte(m.rawMessage(src)),
+		IsRead:       &seen,
+		IsFlagged:    &flagged,
+		IsStarred:    &starred,
+		IsDraft:      &draft,
+		ReceivedAt:   &received,
 	}
 
 	resp, err := m.api.DeliverMessage(deliverReq)
 	if err != nil {
 		return 0, err
 	}
-	if resp == nil {
-		return 0, nil
+	if resp == nil || resp.Data.ID == 0 {
+		return 0, fmt.Errorf("imap: COPY to %q produced no stored message (quarantined or discarded)", dest)
 	}
-
-	// Move the new message to the destination folder if not INBOX
-	if dest != "INBOX" {
-		_ = m.api.UpdateMessage(m.token, resp.Data.ID, map[string]interface{}{"folder": dest})
+	newUID := toUID(resp.Data.ID)
+	if newUID == 0 {
+		return 0, fmt.Errorf("imap: COPY to %q assigned an out-of-range UID (%d)", dest, resp.Data.ID)
 	}
-	return toUID(resp.Data.ID), nil
+	return newUID, nil
 }
 
 // Append delivers raw RFC 2822 bytes into dest (base Mailbox.Append). It delegates
@@ -252,6 +312,12 @@ func (m *mailbox) Append(dest string, f imapsrv.FlagUpdate, raw []byte) error {
 // client supplied to the newly delivered message, and returns that message's UID
 // (UIDPLUS, RFC 4315) — the ID the delivery assigned, which is rest-mail's UID —
 // for the APPENDUID response code.
+//
+// The message is created directly in dest with its flags in a single delivery, so
+// there is no transient INBOX state and no separate, error-swallowing move/flag
+// step. A delivery that produces no message (pipeline quarantine/discard, or an
+// out-of-range UID) is surfaced as an error rather than reported as a bogus
+// success carrying UID 0.
 func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint32, error) {
 	if err := validateFolder(dest); err != nil {
 		return 0, err
@@ -261,6 +327,7 @@ func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint
 
 	deliverReq := &apiclient.DeliverRequest{
 		Address:    m.email,
+		Folder:     dest,
 		Sender:     m.email,
 		SenderName: senderName,
 		Subject:    subject,
@@ -270,34 +337,32 @@ func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint
 		RawMessage: raw,
 	}
 
+	// Apply the client-supplied APPEND flags at creation time. \Flagged writes both
+	// is_flagged and is_starred so it round-trips through FETCH's
+	// is_flagged || is_starred fold, matching Store's symmetric mapping.
+	if f.Seen != nil {
+		deliverReq.IsRead = f.Seen
+	}
+	if f.Flagged != nil {
+		deliverReq.IsFlagged = f.Flagged
+		deliverReq.IsStarred = f.Flagged
+	}
+	if f.Draft != nil {
+		deliverReq.IsDraft = f.Draft
+	}
+
 	resp, err := m.api.DeliverMessage(deliverReq)
 	if err != nil {
 		return 0, err
 	}
-	if resp == nil {
-		return 0, nil
+	if resp == nil || resp.Data.ID == 0 {
+		return 0, fmt.Errorf("imap: APPEND to %q produced no stored message (quarantined or discarded)", dest)
 	}
-
-	// Move to the target folder if not INBOX
-	if dest != "INBOX" {
-		_ = m.api.UpdateMessage(m.token, resp.Data.ID, map[string]interface{}{"folder": dest})
+	newUID := toUID(resp.Data.ID)
+	if newUID == 0 {
+		return 0, fmt.Errorf("imap: APPEND to %q assigned an out-of-range UID (%d)", dest, resp.Data.ID)
 	}
-
-	// Apply supplied flags to the delivered message
-	updates := map[string]interface{}{}
-	if f.Seen != nil && *f.Seen {
-		updates["is_read"] = true
-	}
-	if f.Flagged != nil && *f.Flagged {
-		updates["is_flagged"] = true
-	}
-	if f.Draft != nil && *f.Draft {
-		updates["is_draft"] = true
-	}
-	if len(updates) > 0 {
-		_ = m.api.UpdateMessage(m.token, resp.Data.ID, updates)
-	}
-	return toUID(resp.Data.ID), nil
+	return newUID, nil
 }
 
 // UIDValidity reports the UIDVALIDITY for a folder (UIDPlusMailbox, RFC 4315).

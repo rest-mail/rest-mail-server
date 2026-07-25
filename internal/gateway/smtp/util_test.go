@@ -215,7 +215,7 @@ func TestExtractEmailFromHeader(t *testing.T) {
 
 func TestParseRawMessage_SimpleText(t *testing.T) {
 	raw := "Subject: Hello\r\nFrom: Alice <alice@example.com>\r\nTo: bob@example.com\r\nMessage-ID: <msg1@example.com>\r\n\r\nThis is the body."
-	subject, bodyText, bodyHTML, messageID, senderName, _, _, toList, _ := parseRawMessage([]byte(raw))
+	subject, bodyText, bodyHTML, messageID, senderName, _, _, toList, _, fromAddr := parseRawMessage([]byte(raw))
 	if subject != "Hello" {
 		t.Errorf("subject = %q, want %q", subject, "Hello")
 	}
@@ -231,6 +231,9 @@ func TestParseRawMessage_SimpleText(t *testing.T) {
 	if senderName != "Alice" {
 		t.Errorf("senderName = %q, want %q", senderName, "Alice")
 	}
+	if fromAddr != "alice@example.com" {
+		t.Errorf("fromAddr = %q, want %q", fromAddr, "alice@example.com")
+	}
 	if len(toList) != 1 || toList[0] != "bob@example.com" {
 		t.Errorf("toList = %v, want [bob@example.com]", toList)
 	}
@@ -238,7 +241,7 @@ func TestParseRawMessage_SimpleText(t *testing.T) {
 
 func TestParseRawMessage_HTMLContentType(t *testing.T) {
 	raw := "Subject: HTML Test\r\nContent-Type: text/html\r\n\r\n<h1>Hello</h1>"
-	_, bodyText, bodyHTML, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+	_, bodyText, bodyHTML, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
 	if bodyHTML != "<h1>Hello</h1>" {
 		t.Errorf("bodyHTML = %q, want %q", bodyHTML, "<h1>Hello</h1>")
 	}
@@ -249,7 +252,7 @@ func TestParseRawMessage_HTMLContentType(t *testing.T) {
 
 func TestParseRawMessage_LFOnly(t *testing.T) {
 	raw := "Subject: LF Test\nFrom: test@example.com\n\nBody here."
-	subject, bodyText, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+	subject, bodyText, _, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
 	if subject != "LF Test" {
 		t.Errorf("subject = %q, want %q", subject, "LF Test")
 	}
@@ -260,7 +263,7 @@ func TestParseRawMessage_LFOnly(t *testing.T) {
 
 func TestParseRawMessage_FoldedHeaders(t *testing.T) {
 	raw := "Subject: This is a very\r\n long subject line\r\nTo: alice@example.com\r\n\r\nBody."
-	subject, _, _, _, _, _, _, toList, _ := parseRawMessage([]byte(raw))
+	subject, _, _, _, _, _, _, toList, _, _ := parseRawMessage([]byte(raw))
 	expected := "This is a very long subject line"
 	if subject != expected {
 		t.Errorf("subject = %q, want %q", subject, expected)
@@ -272,7 +275,7 @@ func TestParseRawMessage_FoldedHeaders(t *testing.T) {
 
 func TestParseRawMessage_MultipleToCc(t *testing.T) {
 	raw := "To: Alice <alice@a.com>, Bob <bob@b.com>\r\nCc: Carol <carol@c.com>, dave@d.com\r\n\r\nBody."
-	_, _, _, _, _, _, _, toList, ccList := parseRawMessage([]byte(raw))
+	_, _, _, _, _, _, _, toList, ccList, _ := parseRawMessage([]byte(raw))
 	if len(toList) != 2 {
 		t.Fatalf("toList len = %d, want 2", len(toList))
 	}
@@ -289,7 +292,7 @@ func TestParseRawMessage_MultipleToCc(t *testing.T) {
 
 func TestParseRawMessage_InReplyToAndReferences(t *testing.T) {
 	raw := "In-Reply-To: <orig@example.com>\r\nReferences: <orig@example.com> <reply@example.com>\r\n\r\nBody."
-	_, _, _, _, _, inReplyTo, references, _, _ := parseRawMessage([]byte(raw))
+	_, _, _, _, _, inReplyTo, references, _, _, _ := parseRawMessage([]byte(raw))
 	if inReplyTo != "orig@example.com" {
 		t.Errorf("inReplyTo = %q, want %q", inReplyTo, "orig@example.com")
 	}
@@ -300,7 +303,7 @@ func TestParseRawMessage_InReplyToAndReferences(t *testing.T) {
 
 func TestParseRawMessage_NoBody(t *testing.T) {
 	raw := "Subject: Headers Only"
-	subject, bodyText, bodyHTML, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+	subject, bodyText, bodyHTML, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
 	if subject != "Headers Only" {
 		t.Errorf("subject = %q, want %q", subject, "Headers Only")
 	}
@@ -314,15 +317,18 @@ func TestParseRawMessage_NoBody(t *testing.T) {
 
 func TestParseRawMessage_QuotedSenderName(t *testing.T) {
 	raw := "From: \"Smith, Alice\" <alice@example.com>\r\n\r\nBody."
-	_, _, _, _, senderName, _, _, _, _ := parseRawMessage([]byte(raw))
+	_, _, _, _, senderName, _, _, _, _, fromAddr := parseRawMessage([]byte(raw))
 	if senderName != "Smith, Alice" {
 		t.Errorf("senderName = %q, want %q", senderName, "Smith, Alice")
+	}
+	if fromAddr != "alice@example.com" {
+		t.Errorf("fromAddr = %q, want %q", fromAddr, "alice@example.com")
 	}
 }
 
 func TestParseRawMessage_EmptyInput(t *testing.T) {
-	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList := parseRawMessage([]byte(""))
-	if subject != "" || bodyText != "" || bodyHTML != "" || messageID != "" || senderName != "" || inReplyTo != "" || references != "" {
+	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr := parseRawMessage([]byte(""))
+	if subject != "" || bodyText != "" || bodyHTML != "" || messageID != "" || senderName != "" || inReplyTo != "" || references != "" || fromAddr != "" {
 		t.Errorf("expected all empty strings for empty input")
 	}
 	if len(toList) != 0 || len(ccList) != 0 {
@@ -332,7 +338,7 @@ func TestParseRawMessage_EmptyInput(t *testing.T) {
 
 func TestParseRawMessage_TabFolding(t *testing.T) {
 	raw := "Subject: Folded\r\n\twith tab\r\n\r\nBody."
-	subject, _, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+	subject, _, _, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
 	expected := "Folded with tab"
 	if subject != expected {
 		t.Errorf("subject = %q, want %q", subject, expected)
@@ -438,7 +444,7 @@ func TestParseRawMessage_MultipartMessage(t *testing.T) {
 		"<p>HTML body</p>\r\n" +
 		"--" + boundary + "--\r\n"
 
-	subject, bodyText, bodyHTML, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+	subject, bodyText, bodyHTML, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
 	if subject != "Multipart" {
 		t.Errorf("subject = %q, want %q", subject, "Multipart")
 	}

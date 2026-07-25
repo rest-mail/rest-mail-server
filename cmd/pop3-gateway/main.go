@@ -143,7 +143,7 @@ func main() {
 	bancheck.Wire(limiter, database, "pop3")
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
-	pop3Server := pop3srv.NewServer(pop3.NewBackend(api), tlsConfig, limiter)
+	pop3Server := pop3srv.NewServer(pop3.NewBackend(api, limiter), tlsConfig, limiter)
 	if err := pop3Server.ListenAndServe(pop3srv.Ports{
 		POP3:    cfg.POP3Port,
 		POP3TLS: cfg.POP3TLSPort,

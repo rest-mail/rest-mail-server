@@ -28,23 +28,44 @@ type mockBackend struct {
 	checkErr    map[string]bool // addresses where CheckMailbox errors (temp fail)
 	deliverFail map[string]bool // local addresses whose DeliverMessage errors
 
+	// checkErrAfter[address] = N: the first N CheckMailbox calls for that
+	// address behave normally; the (N+1)th and every later call return a
+	// transient error. Models an API outage that strikes between the RCPT-time
+	// check (call 1) and the DATA-time re-check (call 2) for the same recipient.
+	checkErrAfter map[string]int
+	checkCount    map[string]int // per-address CheckMailbox invocation count
+
+	// loginErr, when non-nil, is returned by Login instead of verifying
+	// credentials — used to simulate a transient API/network failure.
+	loginErr   error
+	loginCalls int // number of times Login was invoked (brute-force hard-stop assertions)
+
 	delivered   []string                    // recorded successful local deliveries (by Address)
 	deliverReqs []*apiclient.DeliverRequest // full deliver requests, for asserting captured fields
 }
 
 func newMockBackend() *mockBackend {
 	return &mockBackend{
-		user:        "alice@example.com",
-		pass:        "s3cret",
-		token:       "tok-alice",
-		accountID:   42,
-		local:       map[string]bool{},
-		checkErr:    map[string]bool{},
-		deliverFail: map[string]bool{},
+		user:          "alice@example.com",
+		pass:          "s3cret",
+		token:         "tok-alice",
+		accountID:     42,
+		local:         map[string]bool{},
+		checkErr:      map[string]bool{},
+		deliverFail:   map[string]bool{},
+		checkErrAfter: map[string]int{},
+		checkCount:    map[string]int{},
 	}
 }
 
 func (m *mockBackend) Login(email, password string) (*apiclient.LoginResponse, error) {
+	m.mu.Lock()
+	m.loginCalls++
+	loginErr := m.loginErr
+	m.mu.Unlock()
+	if loginErr != nil {
+		return nil, loginErr
+	}
 	if email != m.user || password != m.pass {
 		return nil, &apiclient.APIError{StatusCode: 401, Body: "invalid credentials"}
 	}
@@ -55,10 +76,21 @@ func (m *mockBackend) Login(email, password string) (*apiclient.LoginResponse, e
 	return resp, nil
 }
 
+// loginCallCount returns how many times Login has been invoked.
+func (m *mockBackend) loginCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.loginCalls
+}
+
 func (m *mockBackend) CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.checkCount[address]++
 	if m.checkErr[address] {
+		return nil, &apiclient.APIError{StatusCode: 503, Body: "service unavailable"}
+	}
+	if n, ok := m.checkErrAfter[address]; ok && m.checkCount[address] > n {
 		return nil, &apiclient.APIError{StatusCode: 503, Body: "service unavailable"}
 	}
 	resp := &apiclient.MailboxCheckResponse{}
@@ -171,13 +203,14 @@ func (s *mockStore) queued() []OutboundMessage {
 // ── Transcript harness ────────────────────────────────────────────────
 
 type smtpHarness struct {
-	t     *testing.T
-	back  *mockBackend
-	store *mockStore
-	conn  net.Conn
-	cr    *bufio.Reader
-	cw    *bufio.Writer
-	done  chan struct{}
+	t       *testing.T
+	back    *mockBackend
+	store   *mockStore
+	limiter *connlimiter.Limiter
+	conn    net.Conn
+	cr      *bufio.Reader
+	cw      *bufio.Writer
+	done    chan struct{}
 }
 
 // newSMTPHarness builds a transcript harness. Optional configure funcs run on
@@ -205,13 +238,14 @@ func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmiss
 	}()
 
 	h := &smtpHarness{
-		t:     t,
-		back:  back,
-		store: store,
-		conn:  client,
-		cr:    bufio.NewReader(client),
-		cw:    bufio.NewWriter(client),
-		done:  done,
+		t:       t,
+		back:    back,
+		store:   store,
+		limiter: limiter,
+		conn:    client,
+		cr:      bufio.NewReader(client),
+		cw:      bufio.NewWriter(client),
+		done:    done,
 	}
 	t.Cleanup(func() {
 		_ = client.Close()

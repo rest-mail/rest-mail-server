@@ -14,14 +14,15 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
 	rmime "github.com/restmail/restmail/internal/mime"
+	"github.com/restmail/restmail/internal/outbound"
 	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/restmail/restmail/internal/ratelimit"
 	"gorm.io/gorm"
 )
 
@@ -31,10 +32,29 @@ type MessageHandler struct {
 	engine    *pipeline.Engine
 	masterKey string
 	recorder  traceRecorder
+
+	// Send-path abuse limits (#184), configured from config in routes.go. A single
+	// compromised webmail credential must not be able to fan out unlimited bulk
+	// mail. maxRecipients <= 0 disables the per-message recipient cap; sendLimiter
+	// is nil when the per-account send rate limit is disabled (a nil limiter allows
+	// every request).
+	maxRecipients int
+	sendLimiter   *ratelimit.SubmissionLimiter
 }
 
 func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
 	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey, recorder: recorder}
+}
+
+// SetSendLimits configures the send-path abuse limits (#184): the per-message
+// recipient cap and the per-account send rate limiter. Both the draft-send and
+// forward paths delegate to SendMessage, so configuring it once here covers
+// every webmail/API send entry point. Call before the router serves traffic;
+// maxRecipients <= 0 disables the recipient cap and a nil limiter disables
+// rate limiting.
+func (h *MessageHandler) SetSendLimits(maxRecipients int, limiter *ratelimit.SubmissionLimiter) {
+	h.maxRecipients = maxRecipients
+	h.sendLimiter = limiter
 }
 
 // recordTrace hands a MessageTrace to the async recorder when one is configured.
@@ -55,40 +75,11 @@ func (h *MessageHandler) recordTrace(t models.MessageTrace) {
 // key configured but it cannot be loaded (OSI-8: an encrypted-at-rest key that
 // fails to decrypt), it returns an error so the caller fails closed (temp-fail)
 // rather than sending the message unsigned.
+//
+// The signing itself lives in internal/outbound.SignDKIM, shared with the queue
+// worker so submitted mail is signed by the same code (#171).
 func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, error) {
-	if senderDomain == "" {
-		return raw, nil
-	}
-	var domain models.Domain
-	if err := h.db.Where("name = ?", senderDomain).First(&domain).Error; err != nil ||
-		domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
-		return raw, nil
-	}
-	// OSI-8: decrypt the at-rest key, failing CLOSED. An encrypted key that cannot
-	// be decrypted (wrong/missing MASTER_KEY or corrupt ciphertext) is a
-	// transient/config fault — surface it so the send temp-fails instead of
-	// silently going out unsigned. A legacy plaintext key loads as-is.
-	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, h.masterKey)
-	if err != nil {
-		slog.Error("dkim sign: key load failed (fail-closed)", "domain", senderDomain, "error", err)
-		return "", err
-	}
-	priv, err := dkim.ParsePrivateKey(keyPEM)
-	if err != nil {
-		slog.Warn("dkim sign: parse key failed", "domain", senderDomain, "error", err)
-		return raw, nil
-	}
-	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
-		Domain:     senderDomain,
-		Selector:   domain.DKIMSelector,
-		PrivateKey: priv,
-		Time:       time.Now().Unix(),
-	})
-	if err != nil {
-		slog.Warn("dkim sign failed", "domain", senderDomain, "error", err)
-		return raw, nil
-	}
-	return "DKIM-Signature: " + val + "\r\n" + raw, nil
+	return outbound.SignDKIM(h.db, h.masterKey, senderDomain, raw)
 }
 
 // ListMessages returns messages in a folder with cursor-based pagination.
@@ -224,6 +215,7 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		IsRead    *bool   `json:"is_read"`
 		IsFlagged *bool   `json:"is_flagged"`
 		IsStarred *bool   `json:"is_starred"`
+		IsDraft   *bool   `json:"is_draft"`
 		Folder    *string `json:"folder"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -240,6 +232,12 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.IsStarred != nil {
 		updates["is_starred"] = *req.IsStarred
+	}
+	// Persist \Draft. The IMAP gateway maps \Draft onto is_draft (APPEND and
+	// STORE); without this field the key was silently dropped, so the draft flag
+	// was lost on the next SELECT while PERMANENTFLAGS still advertised \Draft.
+	if req.IsDraft != nil {
+		updates["is_draft"] = *req.IsDraft
 	}
 	if req.Folder != nil {
 		updates["folder"] = *req.Folder
@@ -260,6 +258,7 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 				"is_read":    msg.IsRead,
 				"is_flagged": msg.IsFlagged,
 				"is_starred": msg.IsStarred,
+				"is_draft":   msg.IsDraft,
 			},
 		})
 
@@ -401,6 +400,20 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Per-message recipient cap (#184): a single API send must not fan out to an
+	// unbounded number of recipients — each becomes one queue row holding a full
+	// copy of the message, so an uncapped recipient list is a queue/storage
+	// amplification vector. Counted across to+cc+bcc and mirrored on the SMTP
+	// submission path (which caps RCPT TO per transaction). Checked before any DB
+	// work so an oversized fan-out is rejected cheaply. maxRecipients <= 0 disables.
+	if h.maxRecipients > 0 {
+		if total := len(req.To) + len(req.Cc) + len(req.Bcc); total > h.maxRecipients {
+			respond.Error(w, http.StatusBadRequest, "too_many_recipients",
+				fmt.Sprintf("too many recipients: %d exceeds the per-message limit of %d", total, h.maxRecipients))
+			return
+		}
+	}
+
 	// Validate every address before it is serialized into the DKIM-signed
 	// To:/Cc: headers or queued as an SMTP envelope recipient. Without this a
 	// recipient like "victim@real.com>\r\nRCPT TO:<attacker@evil.com" is written
@@ -427,6 +440,22 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rmail.ValidateAddress(req.From); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
+		return
+	}
+
+	// Per-account send rate limit (#184): cap how many messages one authenticated
+	// webmail account may send per minute/hour, mirroring the SMTP submission cap
+	// (#171) so a compromised credential cannot flood outbound mail through the API
+	// any more than through submission. Keyed on the authenticated account (not the
+	// From address, which the caller can rotate among its authorized senders), and
+	// checked here — after cheap validation, before the send commits — so a
+	// throttled request enqueues nothing. A nil limiter (feature disabled) allows
+	// every request. Both the draft-send and forward paths delegate to SendMessage,
+	// so they inherit this cap.
+	if !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.WebmailAccountID), 10)) {
+		w.Header().Set("Retry-After", "60")
+		respond.Error(w, http.StatusTooManyRequests, "rate_limited",
+			"Account send rate limit exceeded; try again later")
 		return
 	}
 
@@ -899,6 +928,20 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		RawMessage []byte `json:"raw_message"`
 		ClientIP   string `json:"client_ip"`
 		HeloName   string `json:"helo_name"`
+		// Folder is the destination folder the message must be created in (empty =
+		// INBOX). Set by the IMAP gateway's COPY/APPEND so the message is created
+		// directly in its destination in one atomic delivery, rather than delivered
+		// to INBOX and then moved. Flags and ReceivedAt (INTERNALDATE) let COPY
+		// preserve the source message's flags/internal date and APPEND apply the
+		// client-supplied flags at creation time. A nil flag pointer / nil (or zero)
+		// ReceivedAt keeps the delivery default, so ordinary inbound mail is
+		// unaffected.
+		Folder     string     `json:"folder"`
+		IsRead     *bool      `json:"is_read"`
+		IsFlagged  *bool      `json:"is_flagged"`
+		IsStarred  *bool      `json:"is_starred"`
+		IsDraft    *bool      `json:"is_draft"`
+		ReceivedAt *time.Time `json:"received_at"`
 		// Inbound transport-security metrics (always-on, inbound-MX only). A nil
 		// ReceivedTLS means the caller is not an inbound-MX delivery, persisted as
 		// NULL. TLSCipher is accepted for wire completeness but only the version is
@@ -945,6 +988,12 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 		RawMessage:   string(req.RawMessage),
 		ClientIP:     req.ClientIP,
 		HeloName:     req.HeloName,
+		Folder:       req.Folder,
+		IsRead:       req.IsRead,
+		IsFlagged:    req.IsFlagged,
+		IsStarred:    req.IsStarred,
+		IsDraft:      req.IsDraft,
+		ReceivedAt:   req.ReceivedAt,
 		ReceivedTLS:  req.ReceivedTLS,
 		TLSVersion:   req.TLSVersion,
 	})
@@ -1830,6 +1879,18 @@ type localDeliveryParams struct {
 	RawMessage   string
 	ClientIP     string
 	HeloName     string
+	// Folder is the destination folder the message is created in (empty = INBOX).
+	// Set by the IMAP gateway's COPY/APPEND so the message lands directly in its
+	// destination. The flag pointers and ReceivedAt let COPY preserve the source
+	// message's flags and INTERNALDATE and APPEND apply the client-supplied flags;
+	// a nil flag / nil-or-zero ReceivedAt keeps the delivery default, so ordinary
+	// inbound mail (which never sets them) is unaffected.
+	Folder     string
+	IsRead     *bool
+	IsFlagged  *bool
+	IsStarred  *bool
+	IsDraft    *bool
+	ReceivedAt *time.Time
 	// Inbound transport-security (always-on, inbound-MX only). Nil ReceivedTLS =
 	// not an inbound-MX delivery (local send / IMAP APPEND / submission) →
 	// persisted as NULL, never counted as a plaintext arrival.
@@ -2092,9 +2153,16 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	threadID = rmail.CanonicalID(threadID)
 
 	// ── Create message ───────────────────────────────────────────────
+	// The destination folder defaults to INBOX; the IMAP gateway sets params.Folder
+	// on COPY/APPEND so the message is created directly in its destination instead
+	// of being delivered to INBOX and then moved (a non-atomic two-call flow).
+	folder := params.Folder
+	if folder == "" {
+		folder = "INBOX"
+	}
 	msg := models.Message{
 		MailboxID:    mailbox.ID,
-		Folder:       "INBOX",
+		Folder:       folder,
 		MsgID:        params.MessageID,
 		InReplyTo:    params.InReplyTo,
 		References:   params.References,
@@ -2119,7 +2187,51 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		TLSVersion:  params.TLSVersion,
 	}
 
-	if err := h.db.Create(&msg).Error; err != nil {
+	// Apply IMAP flags / INTERNALDATE the gateway carried through: COPY preserves
+	// the source message's flags and internal date (RFC 3501 §6.4.7); APPEND
+	// applies the client-supplied flags. A nil flag pointer leaves the model
+	// default; a nil-or-zero ReceivedAt leaves the column's `default:now()` to fill
+	// the internal date, so ordinary inbound mail keeps arriving stamped with now().
+	if params.IsRead != nil {
+		msg.IsRead = *params.IsRead
+	}
+	if params.IsFlagged != nil {
+		msg.IsFlagged = *params.IsFlagged
+	}
+	if params.IsStarred != nil {
+		msg.IsStarred = *params.IsStarred
+	}
+	if params.IsDraft != nil {
+		msg.IsDraft = *params.IsDraft
+	}
+	if params.ReceivedAt != nil && !params.ReceivedAt.IsZero() {
+		msg.ReceivedAt = *params.ReceivedAt
+	}
+
+	// Create the message and bump quota in one transaction so a COPY/APPEND (or
+	// inbound delivery) never leaves a half-written row or quota that disagrees
+	// with the stored message: either both commit or neither does. The message now
+	// lands directly in its destination folder, so there is no transient INBOX
+	// state and no separate, swallow-prone move step. Any write error rolls the
+	// whole delivery back and is surfaced to the caller rather than swallowed; a
+	// quota row that does not exist yet matches zero rows, which is not an error,
+	// so ordinary deliveries are unaffected.
+	if err := h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&msg).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
+			"subject_bytes": gorm.Expr("subject_bytes + ?", len(params.Subject)),
+			"body_bytes":    gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
+			"message_count": gorm.Expr("message_count + 1"),
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes)).Error; err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return nil, fmt.Errorf("failed to create message: %w", err)
 	}
 
@@ -2134,14 +2246,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		deliveredTrace.MessageID = &mid
 		h.recordTrace(buildTrace(*deliveredTrace))
 	}
-
-	// ── Update quota ─────────────────────────────────────────────────
-	h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
-		"subject_bytes": gorm.Expr("subject_bytes + ?", len(params.Subject)),
-		"body_bytes":    gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
-		"message_count": gorm.Expr("message_count + 1"),
-	})
-	h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes))
 
 	// ── Persist attachments ──────────────────────────────────────────
 	if emailJSON != nil {
