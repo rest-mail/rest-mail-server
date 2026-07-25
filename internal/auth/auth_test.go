@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const (
@@ -169,6 +171,87 @@ func TestValidateToken_Expired(t *testing.T) {
 	_, err = svc.ValidateToken(pair.AccessToken)
 	if !errors.Is(err, ErrTokenExpired) {
 		t.Errorf("ValidateToken(expired) error = %v; want %v", err, ErrTokenExpired)
+	}
+}
+
+// signRawClaims mints a token from arbitrary claims, signed with testSecret, so
+// tests can forge a token whose issuer differs from the one the service pins.
+func signRawClaims(t *testing.T, c Claims) string {
+	t.Helper()
+	s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString([]byte(testSecret))
+	if err != nil {
+		t.Fatalf("sign raw claims: %v", err)
+	}
+	return s
+}
+
+// TestValidateToken_IssuerValidated is the #204 defense-in-depth guard: even with
+// a correctly-signed, unexpired, correctly-typed token, a wrong or missing `iss`
+// claim is rejected. Only the pinned issuer passes.
+func TestValidateToken_IssuerValidated(t *testing.T) {
+	svc := newTestService()
+	now := time.Now()
+	claimsWithIssuer := func(iss string) Claims {
+		return Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   fmt.Sprintf("mailbox:%d", testMailboxID),
+				Issuer:    iss,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+			},
+			MailboxID: testMailboxID,
+			UserType:  "mailbox",
+			TokenType: "access",
+		}
+	}
+
+	// Wrong issuer -> rejected even though the signature, expiry, and type are fine.
+	if _, err := svc.ValidateToken(signRawClaims(t, claimsWithIssuer("evil-issuer"))); !errors.Is(err, ErrInvalidToken) {
+		t.Errorf("wrong issuer: err = %v; want %v", err, ErrInvalidToken)
+	}
+
+	// Missing issuer -> rejected (issuer is required, not merely compared when present).
+	if _, err := svc.ValidateToken(signRawClaims(t, claimsWithIssuer(""))); !errors.Is(err, ErrInvalidToken) {
+		t.Errorf("missing issuer: err = %v; want %v", err, ErrInvalidToken)
+	}
+
+	// Correct (pinned) issuer -> passes.
+	if _, err := svc.ValidateToken(signRawClaims(t, claimsWithIssuer(TokenIssuer))); err != nil {
+		t.Errorf("correct issuer: unexpected err = %v", err)
+	}
+}
+
+// TestMintedTokensCarryPinnedIssuer confirms both mailbox and admin token pairs
+// are minted with the issuer the validator pins, so the round trip is consistent.
+func TestMintedTokensCarryPinnedIssuer(t *testing.T) {
+	svc := newTestService()
+
+	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	if err != nil {
+		t.Fatalf("GenerateTokenPair: %v", err)
+	}
+	for _, tok := range []string{pair.AccessToken, pair.RefreshToken} {
+		claims, err := svc.ValidateToken(tok)
+		if err != nil {
+			t.Fatalf("ValidateToken: %v", err)
+		}
+		if claims.Issuer != TokenIssuer {
+			t.Errorf("mailbox token Issuer = %q; want %q", claims.Issuer, TokenIssuer)
+		}
+	}
+
+	admin, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	if err != nil {
+		t.Fatalf("GenerateAdminTokenPair: %v", err)
+	}
+	for _, tok := range []string{admin.AccessToken, admin.RefreshToken} {
+		claims, err := svc.ValidateToken(tok)
+		if err != nil {
+			t.Fatalf("ValidateToken(admin): %v", err)
+		}
+		if claims.Issuer != TokenIssuer {
+			t.Errorf("admin token Issuer = %q; want %q", claims.Issuer, TokenIssuer)
+		}
 	}
 }
 
