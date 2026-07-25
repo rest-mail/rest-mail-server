@@ -194,17 +194,8 @@ func scaffoldCmd(args []string) {
 		fatal("scaffold: %v", err)
 	}
 
-	if err := os.MkdirAll(target, 0o755); err != nil {
+	if err := writeScaffold(target, res); err != nil {
 		fatal("scaffold: %v", err)
-	}
-	for name, data := range map[string][]byte{
-		"manifest.yml": res.Manifest,
-		"config.env":   res.Config,
-		"secrets.env":  res.Secrets,
-	} {
-		if err := os.WriteFile(filepath.Join(target, name), data, 0o644); err != nil {
-			fatal("scaffold: write %s: %v", name, err)
-		}
 	}
 
 	fmt.Fprintf(os.Stderr, "scaffolded %s (profile %s, project rest-mail-%s)\n", domain, res.Profile, res.Slug)
@@ -216,6 +207,31 @@ func scaffoldCmd(args []string) {
 		fmt.Fprintf(os.Stderr, "  %-13s %s\n", name, ip)
 	}
 	fmt.Fprintf(os.Stderr, "  files: %s/{manifest.yml,config.env,secrets.env}\n", target)
+}
+
+// writeScaffold writes the three scaffolded instance files under target.
+// secrets.env holds the generated DB password, JWT secret, and master key, so
+// it is created owner-only (0600) — never world-readable — while the
+// secret-free manifest.yml and config.env stay 0644 (#195).
+func writeScaffold(target string, res *instance.ScaffoldResult) error {
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		return err
+	}
+	files := []struct {
+		name string
+		data []byte
+		mode os.FileMode
+	}{
+		{"manifest.yml", res.Manifest, 0o644},
+		{"config.env", res.Config, 0o644},
+		{"secrets.env", res.Secrets, 0o600},
+	}
+	for _, f := range files {
+		if err := os.WriteFile(filepath.Join(target, f.name), f.data, f.mode); err != nil {
+			return fmt.Errorf("write %s: %w", f.name, err)
+		}
+	}
+	return nil
 }
 
 func renderCmd(args []string) {

@@ -187,13 +187,24 @@ tasks:
       - |
         echo "  starting grafana ({{.GRAFANA_NAME}} @ {{.GRAFANA_IP}})"
         docker rm -f {{.GRAFANA_NAME}} >$OUTPUT 2>&1 || true
+        # The admin password goes through a 0600 env-file rather than an -e flag,
+        # so it never sits on the `docker run` command line (host process list,
+        # shell history, CI logs). Removed once docker has read it.
+        mkdir -p {{.ROOT_DIR}}/.cache
+        SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.GRAFANA_NAME}}.secrets.env"
+        trap 'rm -f "$SECRETS_ENV"' EXIT
+        rm -f "$SECRETS_ENV"
+        # Create empty, chmod 0600, THEN write the secret (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
+        chmod 600 "$SECRETS_ENV"
+        printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "{{.GRAFANA_ADMIN_PASSWORD}}" > "$SECRETS_ENV"
         docker run -d --name {{.GRAFANA_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.GRAFANA_IP}} \
           -p {{.GRAFANA_PORT}}:3000 \
           -e GF_SECURITY_ADMIN_USER={{.GRAFANA_ADMIN_USER}} \
-          -e GF_SECURITY_ADMIN_PASSWORD={{.GRAFANA_ADMIN_PASSWORD}} \
+          --env-file "$SECRETS_ENV" \
           -e GF_USERS_ALLOW_SIGN_UP=false \
           -v "$(pwd)/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro" \
           -v "$(pwd)/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro" \
@@ -232,11 +243,23 @@ tasks:
       - |
         echo "  starting postgres-exporter ({{.POSTGRES_EXPORTER_NAME}} @ {{.POSTGRES_EXPORTER_IP}})"
         docker rm -f {{.POSTGRES_EXPORTER_NAME}} >$OUTPUT 2>&1 || true
+        # DATA_SOURCE_NAME embeds the DB password, so it goes through a 0600
+        # env-file rather than an -e flag — never on the `docker run` command
+        # line (host process list, shell history, CI logs). Removed after read.
+        mkdir -p {{.ROOT_DIR}}/.cache
+        SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.POSTGRES_EXPORTER_NAME}}.secrets.env"
+        trap 'rm -f "$SECRETS_ENV"' EXIT
+        rm -f "$SECRETS_ENV"
+        # Create empty, chmod 0600, THEN write the secret (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
+        chmod 600 "$SECRETS_ENV"
+        printf 'DATA_SOURCE_NAME=postgresql://%s:%s@%s:5432/%s?sslmode=disable\n' \
+          "{{.MONITORING_DB_USER}}" "{{.MONITORING_DB_PASS}}" "{{.MONITORING_DB_HOST}}" "{{.MONITORING_DB_NAME}}" > "$SECRETS_ENV"
         docker run -d --name {{.POSTGRES_EXPORTER_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.POSTGRES_EXPORTER_IP}} \
-          -e DATA_SOURCE_NAME="postgresql://{{.MONITORING_DB_USER}}:{{.MONITORING_DB_PASS}}@{{.MONITORING_DB_HOST}}:5432/{{.MONITORING_DB_NAME}}?sslmode=disable" \
+          --env-file "$SECRETS_ENV" \
           {{.POSTGRES_EXPORTER_IMAGE}} >$OUTPUT 2>&1
 
   postgres-exporter:down:

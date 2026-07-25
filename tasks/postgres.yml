@@ -66,6 +66,17 @@ tasks:
           --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
           --cap-add SETGID --cap-add SETUID \
           --pids-limit 256 --memory 512m --cpus 1"
+        # POSTGRES_PASSWORD goes through a 0600 env-file rather than an -e flag,
+        # so it never sits on the `docker run` command line (host process list,
+        # shell history, CI logs). Removed once docker has read it.
+        mkdir -p {{.ROOT_DIR}}/.cache
+        SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.POSTGRES_CONTAINER_NAME}}.secrets.env"
+        trap 'rm -f "$SECRETS_ENV"' EXIT
+        rm -f "$SECRETS_ENV"
+        # Create empty, chmod 0600, THEN write the secret (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
+        chmod 600 "$SECRETS_ENV"
+        printf 'POSTGRES_PASSWORD=%s\n' "{{.POSTGRES_DB_PASS}}" > "$SECRETS_ENV"
         docker run -d --name {{.POSTGRES_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
@@ -73,7 +84,7 @@ tasks:
           --ip {{.POSTGRES_IP}} \
           -e POSTGRES_DB={{.POSTGRES_DB_NAME}} \
           -e POSTGRES_USER={{.POSTGRES_DB_USER}} \
-          -e POSTGRES_PASSWORD={{.POSTGRES_DB_PASS}} \
+          --env-file "$SECRETS_ENV" \
           -v {{.POSTGRES_DATA_VOLUME}}:/var/lib/postgresql/data \
           --health-cmd 'pg_isready -U {{.POSTGRES_DB_USER}}' \
           --health-interval 10s \

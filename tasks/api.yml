@@ -101,6 +101,19 @@ tasks:
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --pids-limit 1024 --memory 2g --cpus 2"
+        # Secrets (DB_PASS/JWT_SECRET/MASTER_KEY) are handed to the container via
+        # a 0600 env-file rather than -e flags, so they never sit on the
+        # `docker run` command line (host process list, shell history, CI logs)
+        # or on disk world-readably. The file is removed once docker has read it.
+        SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.API_CONTAINER_NAME}}.secrets.env"
+        trap 'rm -f "$SECRETS_ENV"' EXIT
+        rm -f "$SECRETS_ENV"
+        # Create empty, chmod 0600, THEN write the secrets (Task's shell lacks umask).
+        : > "$SECRETS_ENV"
+        chmod 600 "$SECRETS_ENV"
+        printf 'DB_PASS=%s\n'    "{{.API_DB_PASS}}"    >  "$SECRETS_ENV"
+        printf 'JWT_SECRET=%s\n' "{{.API_JWT_SECRET}}" >> "$SECRETS_ENV"
+        printf 'MASTER_KEY=%s\n' "{{.API_MASTER_KEY}}" >> "$SECRETS_ENV"
         docker run -d --name {{.API_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
@@ -118,10 +131,8 @@ tasks:
           -e DB_PORT={{.API_DB_PORT}} \
           -e DB_NAME={{.API_DB_NAME}} \
           -e DB_USER={{.API_DB_USER}} \
-          -e DB_PASS={{.API_DB_PASS}} \
           -e API_PORT={{.API_PORT}} \
-          -e JWT_SECRET={{.API_JWT_SECRET}} \
-          -e MASTER_KEY={{.API_MASTER_KEY}} \
+          --env-file "$SECRETS_ENV" \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
           -e LOG_LEVEL={{.API_LOG_LEVEL}} \
           -e INTERNAL_MTLS_ENABLED={{.API_INTERNAL_MTLS}} \
