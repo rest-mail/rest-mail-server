@@ -15,8 +15,56 @@ import (
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
+
+// validateSievePipelineFilters install-validates every embedded Sieve script in
+// a domain pipeline's raw filter list, using the SAME gate the per-mailbox Sieve
+// save path uses (filters.ValidateSieveForInstall: parse + a safe, side-effect-
+// free dry-run). raw is the pipelines.filters JSON — an array of
+// pipeline.FilterConfig; each element whose Name is "sieve" carries a
+// {"script": ...} config.
+//
+// It returns the FIRST script's *filters.SieveInstallError (nil when all are
+// safe) so the admin save can be rejected with an actionable HTTP 400 BEFORE the
+// config is persisted. Without this an admin's broken domain Sieve is stored and
+// only fails at DELIVERY — where the filter fails to build and the engine's
+// fail-closed policy DEFERS every message for the entire domain (see
+// engine.Execute / filterErrorAction), silently, for as long as the bad config
+// lives.
+//
+// Scope is deliberately narrow: only Sieve blocks are inspected. Unrelated
+// malformed filter JSON is NOT this helper's concern (it is handled at build /
+// test time), so a filter list that does not unmarshal is treated as "no Sieve
+// to validate" (nil) rather than being rejected here — that preserves the
+// existing create/update contract for every non-Sieve shape. Every Sieve block
+// is validated regardless of its `enabled` flag: a disabled-but-invalid block
+// would fail the moment an operator enables it, so it is rejected at save too.
+func validateSievePipelineFilters(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	var fcs []pipeline.FilterConfig
+	if err := json.Unmarshal(raw, &fcs); err != nil {
+		return nil // not our concern: only surface Sieve validation errors
+	}
+	for _, fc := range fcs {
+		if fc.Name != "sieve" || len(fc.Config) == 0 {
+			continue
+		}
+		var cfg struct {
+			Script string `json:"script"`
+		}
+		if err := json.Unmarshal(fc.Config, &cfg); err != nil {
+			continue // a config that is not a sieve script object: nothing to validate
+		}
+		if err := filters.ValidateSieveForInstall(cfg.Script); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 type PipelineHandler struct {
 	db     *gorm.DB
@@ -138,6 +186,14 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Install-validate every embedded Sieve script BEFORE persisting: a broken
+	// domain Sieve fails to build at delivery and, under the engine's fail-closed
+	// policy, would defer the whole domain's mail. Reject it now with HTTP 400.
+	if err := validateSievePipelineFilters(req.Filters); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_sieve", err.Error())
+		return
+	}
+
 	p := models.Pipeline{
 		DomainID:  req.DomainID,
 		Direction: req.Direction,
@@ -177,6 +233,12 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.Filters != nil {
+		// Same install-time Sieve gate as CreatePipeline: reject a broken embedded
+		// Sieve with HTTP 400 and leave the stored config untouched.
+		if err := validateSievePipelineFilters(req.Filters); err != nil {
+			respond.Error(w, http.StatusBadRequest, "invalid_sieve", err.Error())
+			return
+		}
 		p.Filters = req.Filters
 	}
 	if req.Active != nil {
