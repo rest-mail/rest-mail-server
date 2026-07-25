@@ -351,6 +351,39 @@ func (s *session) Mail(from string, _ *gosmtp.MailOptions) error {
 	return nil
 }
 
+// authorizeFromHeader enforces that an authenticated submitter's message From:
+// header address is one the account is authorized to send as: its own login
+// identity, or a linked address (the same linked_accounts -> mailboxes lookup as
+// the MAIL FROM check). A From header for an address the account does not own —
+// or a missing/unparseable From — is rejected 550, preventing header-level
+// spoofing (#181). Like Mail(), a store lookup error is treated as "not
+// authorized"; both the authenticated user and the offending From are masked in
+// logs since a mismatch is a spoofing signal.
+func (s *session) authorizeFromHeader(fromAddr string) error {
+	if fromAddr == "" {
+		slog.Warn("smtp: submission rejected: no usable From header", "auth_user", maskEmail(s.authEmail))
+		return &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 6, 0},
+			Message:      "A valid From header is required",
+		}
+	}
+	if fromAddr == s.authEmail {
+		return nil
+	}
+	authorized, err := s.store.SenderAuthorized(s.accountID, fromAddr)
+	if err != nil || !authorized {
+		slog.Warn("smtp: From header not authorized",
+			"auth_user", maskEmail(s.authEmail), "header_from", maskEmail(fromAddr), "error", err)
+		return &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 7, 1},
+			Message:      "From header address not authorized for this account",
+		}
+	}
+	return nil
+}
+
 // Rcpt accepts a recipient. Local recipients (per Backend.CheckMailbox) are
 // always accepted; unknown recipients are accepted for outbound queueing on
 // authenticated submission and rejected 550 on inbound.
@@ -433,7 +466,20 @@ func (s *session) Data(r io.Reader) error {
 	}
 
 	// Parse the message and deliver to each recipient.
-	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList := parseRawMessage(data)
+	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr := parseRawMessage(data)
+
+	// #181: on the authenticated submission path the message From: header must
+	// belong to an identity the account may send as — mirroring the MAIL FROM
+	// check in Mail(). The envelope check alone does not catch an authenticated
+	// user forging From: "CEO" <ceo@example.com>, which recipients' clients
+	// display and which would otherwise be stored/relayed verbatim. Enforced
+	// here, before anything is delivered, queued, or persisted, so a rejected
+	// spoof commits nothing.
+	if s.isSubmission && s.authenticated {
+		if err := s.authorizeFromHeader(fromAddr); err != nil {
+			return err
+		}
+	}
 
 	if messageID == "" {
 		messageID = rmail.GenerateMessageID(rmail.DomainFromAddress(s.mailFrom))
