@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
@@ -83,14 +84,14 @@ func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the script syntax
-	if req.Script != "" {
-		if err := filters.ValidateSieve(req.Script); err != nil {
-			respond.ValidationError(w, map[string]string{
-				"script": err.Error(),
-			})
-			return
-		}
+	// Validate at INSTALL time: parse + a safe, side-effect-free dry-run. A script
+	// that fails here is rejected NOW with HTTP 400 and an actionable message
+	// (parse error + the extension missing a `require`, or the dry-run failure) and
+	// is NOT stored — moving the failure off the delivery path, where a bad script
+	// fails closed and silently defers the mailbox's mail.
+	if err := filters.ValidateSieveForInstall(req.Script); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_sieve", err.Error())
+		return
 	}
 
 	active := true
@@ -98,15 +99,23 @@ func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
 		active = *req.Active
 	}
 
+	// Record the "validated at install" marker: the sha256 hex of the exact stored
+	// bytes and the validation time. The delivery path re-verifies this hash before
+	// trusting the script (see filters.newSieveFilter).
+	now := time.Now()
+	scriptHash := filters.HashSieveScript(req.Script)
+
 	// Upsert
 	var script models.SieveScript
 	result := h.db.Where("mailbox_id = ?", mailboxID).First(&script)
 	if result.Error != nil {
 		// Create new
 		script = models.SieveScript{
-			MailboxID: uint(mailboxID),
-			Script:    req.Script,
-			Active:    active,
+			MailboxID:   uint(mailboxID),
+			Script:      req.Script,
+			ScriptHash:  scriptHash,
+			ValidatedAt: &now,
+			Active:      active,
 		}
 		if err := h.db.Create(&script).Error; err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create script")
@@ -118,6 +127,8 @@ func (h *SieveHandler) PutScript(w http.ResponseWriter, r *http.Request) {
 
 	// Update existing
 	script.Script = req.Script
+	script.ScriptHash = scriptHash
+	script.ValidatedAt = &now
 	script.Active = active
 	if err := h.db.Save(&script).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update script")
@@ -159,7 +170,9 @@ func (h *SieveHandler) ValidateScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := filters.ValidateSieve(req.Script); err != nil {
+	// Same gate as install (PutScript): parse + a safe dry-run, so "validate"
+	// reports exactly what "save" would accept.
+	if err := filters.ValidateSieveForInstall(req.Script); err != nil {
 		respond.Data(w, http.StatusOK, map[string]interface{}{
 			"valid":   false,
 			"message": err.Error(),

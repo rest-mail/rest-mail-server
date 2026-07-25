@@ -3,9 +3,11 @@ package filters
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -34,8 +36,16 @@ type SieveRedirectPolicy struct {
 var defaultSieveRedirectPolicy = SieveRedirectPolicy{}
 
 // sieveConfig holds the Sieve script for this filter.
+//
+// ScriptHash/MailboxID are populated when the config carries a per-mailbox
+// script that was validated at install time (see models.SieveScript): ScriptHash
+// is the sha256 hex recorded then, MailboxID identifies the owner for logging.
+// Both are optional — a domain-level or legacy config omits them and skips the
+// delivery-time trust check (parse-only, the pre-existing behavior).
 type sieveConfig struct {
-	Script string `json:"script"`
+	Script     string `json:"script"`
+	ScriptHash string `json:"script_hash,omitempty"`
+	MailboxID  uint   `json:"mailbox_id,omitempty"`
 }
 
 // sieveFilter runs a Sieve (RFC 5228) script against each message. The parser
@@ -79,8 +89,36 @@ func newSieveFilter(config []byte, policy SieveRedirectPolicy) (pipeline.Filter,
 		return &sieveFilter{redirect: policy}, nil
 	}
 
+	// Delivery-time trust (install-time validation counterpart): a per-mailbox
+	// script carries the sha256 hash recorded when it passed install validation.
+	// If the current bytes no longer match that hash the row drifted out-of-band
+	// (edited/corrupted/tampered) and was never re-validated. Fail closed — as an
+	// unparseable script already does — but log a clear WARNING naming the mailbox
+	// so an operator sees WHY the mailbox's mail is deferring, rather than a silent
+	// defer. An empty ScriptHash means "no validated marker" (legacy/domain-level
+	// config): skip the check and parse as before.
+	if cfg.ScriptHash != "" {
+		if actual := HashSieveScript(cfg.Script); actual != cfg.ScriptHash {
+			slog.Warn("sieve: stored script no longer matches its validated hash; failing closed",
+				"mailbox_id", cfg.MailboxID,
+				"expected_hash", cfg.ScriptHash,
+				"actual_hash", actual,
+			)
+			return nil, fmt.Errorf("sieve script hash mismatch (mailbox_id=%d): stored script no longer matches its validated install-time hash", cfg.MailboxID)
+		}
+	}
+
 	script, err := sieve.Parse(cfg.Script)
 	if err != nil {
+		// A previously-validated script that no longer parses is also drift worth
+		// surfacing (a require was stripped, the parser tightened, …). Fail closed
+		// as before, but make it visible for the same reason as a hash mismatch.
+		if cfg.ScriptHash != "" {
+			slog.Warn("sieve: previously-validated stored script no longer parses; failing closed",
+				"mailbox_id", cfg.MailboxID,
+				"error", err,
+			)
+		}
 		return nil, fmt.Errorf("parse sieve: %w", err)
 	}
 
@@ -468,4 +506,168 @@ func vacationDedupKey(sender string) string {
 // ValidateSieve checks if a Sieve script is syntactically valid.
 func ValidateSieve(script string) error {
 	return sieve.Validate(script)
+}
+
+// HashSieveScript returns the lowercase sha256 hex of the exact script bytes.
+// It is the canonical hash used both to record the "validated at install" marker
+// (models.SieveScript.ScriptHash) and to re-verify it at delivery. See the note
+// on models.SieveScript: sha256 is integrity / drift-detection, not
+// tamper-evidence — a future HMAC-with-server-key upgrade would make the marker
+// tamper-evident.
+func HashSieveScript(script string) string {
+	sum := sha256.Sum256([]byte(script))
+	return hex.EncodeToString(sum[:])
+}
+
+// missingRequireRe extracts the capability name from a go-sieve "... requires
+// \"X\" to be declared with require" parse error, so an install-time rejection
+// can tell the user exactly which extension needs a `require`.
+//
+// NOTE (PR #249 overlap): cmd/sieve-migrate has a parallel extractor
+// (extractMissingCap) it uses for its offline repair scanner. The two are kept
+// independent for now — cmd/sieve-migrate is a separate `package main` this
+// server package cannot import — and can be unified into a shared helper once
+// that tool lands. Both target the same parser error string, so they stay in
+// lockstep with the pinned go-sieve version.
+var missingRequireRe = regexp.MustCompile(`requires "([^"]+)" to be declared with require`)
+
+// missingRequireCap returns the undeclared extension a go-sieve parse error names,
+// or "" when the error is not a missing-require error.
+func missingRequireCap(err error) string {
+	if err == nil {
+		return ""
+	}
+	if m := missingRequireRe.FindStringSubmatch(err.Error()); len(m) == 2 {
+		return m[1]
+	}
+	return ""
+}
+
+// SieveInstallError is a structured install-time validation failure. Stage is
+// "parse" (syntax / undeclared extension) or "dryrun" (a runtime error surfaced
+// by evaluating the script against a synthetic message). MissingRequire names the
+// extension lacking a `require` when the parser could determine it. Error()
+// renders an actionable message the API returns verbatim (HTTP 400).
+type SieveInstallError struct {
+	Stage          string
+	MissingRequire string
+	Err            error
+}
+
+func (e *SieveInstallError) Error() string {
+	if e.Stage == "dryrun" {
+		return fmt.Sprintf("sieve script failed a safe dry-run: %v", e.Err)
+	}
+	if e.MissingRequire != "" {
+		return fmt.Sprintf("sieve parse error: %v (the script uses an extension it does not declare — add: require \"%s\";)", e.Err, e.MissingRequire)
+	}
+	return fmt.Sprintf("sieve parse error: %v", e.Err)
+}
+
+func (e *SieveInstallError) Unwrap() error { return e.Err }
+
+// ValidateSieveForInstall is the install-time gate: it parses the script and then
+// runs it in a safe, side-effect-free dry-run against a synthetic message, so
+// both syntax errors AND runtime errors are caught at install (returned to the
+// user immediately) instead of at delivery (where a bad script fails closed and
+// silently defers the mailbox's mail). It returns a *SieveInstallError on
+// failure and nil when the script is safe to store.
+//
+// An empty script is trivially valid (the filter treats it as "no rules").
+func ValidateSieveForInstall(script string) error {
+	if strings.TrimSpace(script) == "" {
+		return nil
+	}
+	parsed, err := sieve.Parse(script)
+	if err != nil {
+		return &SieveInstallError{Stage: "parse", MissingRequire: missingRequireCap(err), Err: err}
+	}
+	if err := dryRunSieve(parsed); err != nil {
+		return &SieveInstallError{Stage: "dryrun", Err: err}
+	}
+	return nil
+}
+
+// dryRunSieve evaluates a parsed script against a synthetic message with a
+// recording no-op executor, surfacing runtime failures at install time. It
+// performs NO side effects: no delivery, no redirect, no auto-reply. Two things
+// count as a dry-run failure: the evaluator panicking (recovered here into an
+// error, defensive against a future parser/evaluator regression), and an action
+// the recording executor rejects as unrunnable (currently a redirect whose
+// target has no parseable domain — which the delivery executor silently denies,
+// so surfacing it at install turns a silent no-op into immediate feedback).
+func dryRunSieve(script *sieve.Script) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("sieve evaluation panicked: %v", r)
+		}
+	}()
+	exec := &recordingExecutor{}
+	_ = script.Evaluate(dryRunMessage(), exec)
+	return exec.err
+}
+
+// dryRunMessage is the minimal synthetic RFC 5322 message the install-time
+// dry-run evaluates against. It carries enough structure (envelope, common
+// headers, a plain-text body) that address/header/envelope/body/size tests all
+// have something to evaluate without reaching into real mail.
+func dryRunMessage() *sieve.Message {
+	return &sieve.Message{
+		Headers: sieve.Headers{
+			Subject:   "Sieve install validation",
+			From:      []sieve.Address{{Name: "Test Sender", Address: "sender@example.com"}},
+			To:        []sieve.Address{{Address: "recipient@example.com"}},
+			MessageID: "<install-validation@example.com>",
+			Date:      "Mon, 02 Jan 2006 15:04:05 -0700",
+			Raw: map[string][]string{
+				"From":    {"Test Sender <sender@example.com>"},
+				"To":      {"recipient@example.com"},
+				"Subject": {"Sieve install validation"},
+			},
+		},
+		Envelope: sieve.Envelope{
+			From: "sender@example.com",
+			To:   []string{"recipient@example.com"},
+		},
+		Body: sieve.Body{
+			ContentType: "text/plain",
+			Content:     "This is a synthetic message used to dry-run a Sieve script at install time.",
+		},
+	}
+}
+
+// recordingExecutor implements sieve.Executor for the install-time dry-run: it
+// records the actions a script would take and performs NO real side effect. It
+// also flags an action that cannot run as a dry-run error via err — currently a
+// redirect to an address with no parseable domain, which the delivery-time
+// executor (metadataExecutor.Redirect) denies as an OSI-13 guard; surfacing it
+// here turns that silent denial into an install-time rejection.
+type recordingExecutor struct {
+	actions []string
+	err     error
+}
+
+func (e *recordingExecutor) Keep() { e.actions = append(e.actions, "keep") }
+
+func (e *recordingExecutor) FileInto(folder string, create bool) {
+	e.actions = append(e.actions, "fileinto:"+folder)
+}
+
+func (e *recordingExecutor) Redirect(addr string) {
+	e.actions = append(e.actions, "redirect:"+addr)
+	if domainOf(addr) == "" && e.err == nil {
+		e.err = fmt.Errorf("redirect target %q is not a valid email address (no domain)", addr)
+	}
+}
+
+func (e *recordingExecutor) Flag(op string, flags []string) {
+	e.actions = append(e.actions, op+":"+strings.Join(flags, " "))
+}
+
+func (e *recordingExecutor) Vacation(v sieve.Vacation) {
+	e.actions = append(e.actions, "vacation:"+v.ReplyTo)
+}
+
+func (e *recordingExecutor) Notify(method, message string) {
+	e.actions = append(e.actions, "notify:"+method)
 }

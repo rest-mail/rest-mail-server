@@ -141,8 +141,8 @@ func (Contact) TableName() string { return "contacts" }
 type DomainSenderRule struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	DomainID  uint      `gorm:"not null;index" json:"domain_id"`
-	Pattern   string    `gorm:"size:255;not null" json:"pattern"`   // "spam@evil.com" or "@evil.com"
-	ListType  string    `gorm:"size:10;not null" json:"list_type"`  // "allow" or "block"
+	Pattern   string    `gorm:"size:255;not null" json:"pattern"`  // "spam@evil.com" or "@evil.com"
+	ListType  string    `gorm:"size:10;not null" json:"list_type"` // "allow" or "block"
 	Reason    string    `gorm:"type:text" json:"reason,omitempty"`
 	CreatedBy *uint     `json:"created_by,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
@@ -248,13 +248,34 @@ type Attachment struct {
 func (Attachment) TableName() string { return "attachments" }
 
 // SieveScript stores per-mailbox Sieve filter scripts.
+//
+// ScriptHash/ValidatedAt are the "validated at install" marker: when a script
+// passes install-time validation (parse + a side-effect-free dry-run) the API
+// records the sha256 hex of the exact stored Script bytes and the time it was
+// validated. The delivery path re-hashes Script and compares: a match means the
+// bytes are exactly what was validated (proceed); a mismatch means the row
+// drifted out-of-band (edited/corrupted/tampered) and was never re-validated, so
+// delivery fails closed and logs a warning instead of silently deferring mail.
+//
+// NOTE: sha256 alone is integrity / drift-detection, not tamper-evidence —
+// anyone who can write the script column can recompute the hash. A future
+// upgrade could HMAC the script with a server-held key to make the marker
+// tamper-evident; the 64-char column already fits a sha256 HMAC.
+//
+// Legacy rows created before this column existed carry an empty ScriptHash; the
+// delivery trust check treats an empty hash as "no marker to verify" and behaves
+// exactly as before (parse-only). The hash is backfilled lazily the next time the
+// script is saved through the API, so existing valid scripts keep working with no
+// data migration.
 type SieveScript struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	MailboxID uint      `gorm:"not null;uniqueIndex" json:"mailbox_id"`
-	Script    string    `gorm:"type:text;not null" json:"script"`
-	Active    bool      `gorm:"default:true" json:"active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          uint       `gorm:"primaryKey" json:"id"`
+	MailboxID   uint       `gorm:"not null;uniqueIndex" json:"mailbox_id"`
+	Script      string     `gorm:"type:text;not null" json:"script"`
+	ScriptHash  string     `gorm:"size:64" json:"script_hash"`
+	ValidatedAt *time.Time `json:"validated_at,omitempty"`
+	Active      bool       `gorm:"default:true" json:"active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 
 	Mailbox Mailbox `gorm:"foreignKey:MailboxID" json:"-"`
 }
