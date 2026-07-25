@@ -647,6 +647,14 @@ func (s *session) Data(r io.Reader) error {
 				switch {
 				case apiErr.StatusCode == 403 || apiErr.StatusCode == 550:
 					failCode, failEnhanced, failMsg = 550, gosmtp.EnhancedCode{5, 7, 1}, "Rejected by policy"
+				case apiErr.StatusCode == 422:
+					// Recipient mailbox is over quota (the API answers HTTP 422
+					// mailbox_full). Map to the RFC 3463 §3.2 mailbox-full status so
+					// the sending MTA gets a machine-readable quota signal and retries
+					// (the mailbox may be cleared), rather than an opaque 451 that
+					// hides the cause. 452 4.2.2 is the transient form (retry); a
+					// policy-permanent full mailbox would be 552 5.2.2.
+					failCode, failEnhanced, failMsg = 452, gosmtp.EnhancedCode{4, 2, 2}, "Mailbox full"
 				case apiErr.StatusCode == 503 || apiErr.StatusCode == 451:
 					failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Try again later"
 				default:

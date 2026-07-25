@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"strings"
@@ -70,6 +71,20 @@ func toUID(id uint) uint32 {
 		return 0
 	}
 	return uint32(id)
+}
+
+// normalizeToCRLF rewrites bare LF line endings to CRLF, leaving existing CRLF
+// intact (idempotent). It is applied to raw bytes accepted at APPEND ingest so
+// the stored message is CRLF-framed: an LF-only message would otherwise break
+// POP3 RETR/TOP framing (go-pop3 splits on CRLF, and bare-LF dot-lines are not
+// dot-stuffed, risking premature termination) and diverge from the CRLF wire
+// form every other stored message uses. It collapses CRLF to LF first, then
+// expands every LF to CRLF, so already-CRLF input is unchanged and a mixed
+// message is made uniform without doubling terminators.
+func normalizeToCRLF(b []byte) []byte {
+	b = bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n"))
+	b = bytes.ReplaceAll(b, []byte("\n"), []byte("\r\n"))
+	return b
 }
 
 // buildRawMessage constructs a simplified RFC 2822 message from API data.

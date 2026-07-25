@@ -134,10 +134,12 @@ func (m *mailbox) Messages(folder string) ([]imapsrv.Message, error) {
 // Starred folds into \Flagged, matching the previous gateway's flag mapping.
 // Size uses WireSize: the exact stored-raw octet count when the server has
 // one (RFC 3501 requires RFC822.SIZE to be the transmitted size exactly),
-// falling back to size_bytes for messages without a stored raw.
+// falling back to size_bytes for messages without a stored raw. The UID uses
+// toUID, the same 32-bit clamp APPENDUID/COPYUID apply, so an ID past the UID
+// space clamps to 0 rather than wrapping to a small, wrong UID.
 func toMessage(msg apiclient.MessageSummary) imapsrv.Message {
 	return imapsrv.Message{
-		UID:     uint32(msg.ID),
+		UID:     toUID(msg.ID),
 		Size:    msg.WireSize(),
 		Seen:    msg.IsRead,
 		Flagged: msg.IsFlagged || msg.IsStarred,
@@ -322,6 +324,13 @@ func (m *mailbox) AppendUID(dest string, f imapsrv.FlagUpdate, raw []byte) (uint
 	if err := validateFolder(dest); err != nil {
 		return 0, err
 	}
+	// Normalize line endings to CRLF at ingest. An APPEND'd LF-only message would
+	// otherwise be stored with bare LFs, breaking POP3 RETR/TOP framing (go-pop3
+	// splits on CRLF and does not dot-stuff bare-LF lines, risking premature
+	// termination) and diverging from the CRLF wire form of every other stored
+	// message. Done before parsing/storing so both the parsed fields and the
+	// persisted raw are consistent.
+	raw = normalizeToCRLF(raw)
 	// Parse basic headers from raw message for the structured delivery fields.
 	subject, bodyText, bodyHTML, messageID, senderName := parseBasicHeaders(raw)
 
