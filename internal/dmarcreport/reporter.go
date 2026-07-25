@@ -147,10 +147,24 @@ func aggregateRecords(records []models.DMARCAggregateRecord) []dmarc.AggregateRe
 			SourceIP:    r.SourceIP,
 			HeaderFrom:  r.HeaderFrom,
 			Disposition: r.Disposition,
-			DKIMResult:  r.DKIMResult,
-			DKIMAligned: r.DKIMAligned,
-			SPFResult:   r.SPFResult,
-			SPFAligned:  r.SPFAligned,
+			// go-dmarc v0.2.0 reshaped the scalar DKIM/SPF result+alignment into
+			// per-mechanism slices (DKIMAuth/SPFAuth). This store keeps only one
+			// DKIM and one SPF outcome per message, so each maps to a single-element
+			// slice. The result and alignment values — which drive policy_evaluated —
+			// are preserved exactly. The store never recorded the signature's d=
+			// selector nor the SPF-checked (mfrom/HELO) domain, so those best-effort
+			// to the reported-on domain; SPF scope is the envelope MAIL FROM ("mfrom").
+			DKIM: []dmarc.DKIMAuth{{
+				Domain:  r.Domain,
+				Result:  r.DKIMResult,
+				Aligned: r.DKIMAligned,
+			}},
+			SPF: []dmarc.SPFAuth{{
+				Domain:  r.Domain,
+				Scope:   "mfrom",
+				Result:  r.SPFResult,
+				Aligned: r.SPFAligned,
+			}},
 		}
 	}
 	return out

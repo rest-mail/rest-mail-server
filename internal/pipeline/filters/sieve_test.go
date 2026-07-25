@@ -103,7 +103,10 @@ func TestSieve_Discard(t *testing.T) {
 }
 
 func TestSieve_Reject(t *testing.T) {
-	script := `if header :is "Subject" "Test message" {
+	// go-sieve v0.2.0 enforces RFC 5228 require: the reject action (RFC 5429)
+	// must be declared before use, otherwise the script is a parse error.
+	script := `require "reject";
+if header :is "Subject" "Test message" {
   reject "Not accepted";
 }`
 	result := runSieve(t, script, sieveEmail())

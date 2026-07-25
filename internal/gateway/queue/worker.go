@@ -1238,13 +1238,20 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 	// MTA-STS enforcement decision point. Under enforce this refuses cleartext
 	// or an unverified certificate by returning a deferrable *EnforceError
 	// (starttls succeeding under enforce implies the cert verified for host).
+	// go-mtasts v0.2.0 removed the caller-supplied Mode override: Evaluate now
+	// gates on the discovered Policy.Mode (RFC 8461 §5). Our operator-facing
+	// downgrade — deliver anyway when MTA-STS enforcement is globally disabled —
+	// is expressed via AllowInsecureDowngrade instead. It is set exactly when the
+	// old code downgraded enforce→testing (i.e. !w.stsEnforce), preserving prior
+	// behaviour; with stsEnforce on it stays false so an enforce policy fails
+	// closed, the secure default.
 	if decision := mtasts.Evaluate(mtasts.EvalInput{
-		Policy:    stsPolicy,
-		Mode:      mode,
-		Domain:    item.Domain,
-		MXHost:    host,
-		STARTTLS:  starttls,
-		CertValid: starttls,
+		Policy:                 stsPolicy,
+		Domain:                 item.Domain,
+		MXHost:                 host,
+		STARTTLS:               starttls,
+		CertValid:              starttls,
+		AllowInsecureDowngrade: !w.stsEnforce,
 	}); decision != nil {
 		slog.Warn("queue: MTA-STS enforce — refusing delivery", "host", host, "domain", item.Domain, "error", decision)
 		return decision
