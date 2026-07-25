@@ -51,16 +51,21 @@ function createApiClient() {
      *
      * @param path - API path
      * @param options - Fetch options
-     * @param _token - Deprecated no-op. The token now rides in the httpOnly
-     *   cookie; this parameter is retained only so existing call sites compile
-     *   unchanged, and its value is ignored.
      * @returns Fetch response
+     *
+     * A third positional argument — a legacy access token — is still accepted
+     * from existing call sites but ignored: the access token now rides in the
+     * httpOnly `restmail_access` cookie the browser attaches automatically
+     * (credentials: 'include'), so it is never held in JavaScript. It is
+     * absorbed as an unused rest parameter (and discarded) so those call sites
+     * keep compiling without a dead named parameter.
      */
     request: async (
       path: string,
       options: RequestInit = {},
-      _token?: string
+      ...ignoredLegacyToken: [token?: string]
     ): Promise<Response> => {
+      void ignoredLegacyToken
       const headers = new Headers(options.headers)
 
       if (!headers.has('Content-Type') && options.body) {

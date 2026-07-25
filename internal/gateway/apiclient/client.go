@@ -753,19 +753,6 @@ func (c *Client) getAuth(path, token string, out interface{}) error {
 	return c.decodeResponse(resp, out)
 }
 
-func (c *Client) post(path string, body interface{}, out interface{}) error {
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-	resp, err := c.httpClient.Post(c.baseURL+path, "application/json", bytes.NewReader(jsonBody))
-	if err != nil {
-		return fmt.Errorf("POST %s: %w", path, err)
-	}
-	defer resp.Body.Close()
-	return c.decodeResponse(resp, out)
-}
-
 func (c *Client) postAuth(path, token string, body interface{}, out interface{}) error {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
