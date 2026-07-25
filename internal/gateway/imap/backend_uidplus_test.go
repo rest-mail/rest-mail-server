@@ -30,12 +30,17 @@ import (
 // APPENDUID / COPYUID must report.
 
 type fakeMsg struct {
-	id       uint
-	folder   string
-	raw      string
-	subject  string
-	sender   string
-	senderNm string
+	id         uint
+	folder     string
+	raw        string
+	subject    string
+	sender     string
+	senderNm   string
+	isRead     bool
+	isFlagged  bool
+	isStarred  bool
+	isDraft    bool
+	receivedAt time.Time
 }
 
 type patchRecord struct {
@@ -44,11 +49,18 @@ type patchRecord struct {
 }
 
 type fakeAPI struct {
-	mu      sync.Mutex
-	nextID  uint
-	msgs    map[uint]*fakeMsg
-	patches []patchRecord
-	deletes []uint
+	mu       sync.Mutex
+	nextID   uint
+	msgs     map[uint]*fakeMsg
+	patches  []patchRecord
+	deletes  []uint
+	delivers []apiclient.DeliverRequest
+	// deliverStatus, when non-zero, is the HTTP status the deliver endpoint
+	// returns instead of a normal 200; deliverBody is the JSON body to send with
+	// it. Together they let a test simulate a quarantined/discarded delivery
+	// (200 with no data.id) or a hard delivery failure.
+	deliverStatus int
+	deliverBody   interface{}
 }
 
 func newFakeAPI() *fakeAPI {
@@ -167,17 +179,73 @@ func (f *fakeAPI) deliver(w http.ResponseWriter, r *http.Request) {
 	var req apiclient.DeliverRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	f.mu.Lock()
+	f.delivers = append(f.delivers, req)
+	// A test may force the delivery outcome: a 200 with no data.id models a
+	// pipeline quarantine/discard; a >=400 status models a hard failure.
+	if f.deliverStatus != 0 {
+		status, body := f.deliverStatus, f.deliverBody
+		f.mu.Unlock()
+		w.WriteHeader(status)
+		if body != nil {
+			writeJSON(w, body)
+		}
+		return
+	}
 	id := f.nextID
 	f.nextID++
-	f.msgs[id] = &fakeMsg{
-		id: id, folder: "INBOX", raw: string(req.RawMessage),
+	// The message is created directly in its destination folder (empty = INBOX),
+	// carrying whatever flags / internal date the delivery specified.
+	folder := req.Folder
+	if folder == "" {
+		folder = "INBOX"
+	}
+	m := &fakeMsg{
+		id: id, folder: folder, raw: string(req.RawMessage),
 		subject: req.Subject, sender: req.Sender, senderNm: req.SenderName,
 	}
+	if req.IsRead != nil {
+		m.isRead = *req.IsRead
+	}
+	if req.IsFlagged != nil {
+		m.isFlagged = *req.IsFlagged
+	}
+	if req.IsStarred != nil {
+		m.isStarred = *req.IsStarred
+	}
+	if req.IsDraft != nil {
+		m.isDraft = *req.IsDraft
+	}
+	if req.ReceivedAt != nil {
+		m.receivedAt = *req.ReceivedAt
+	}
+	f.msgs[id] = m
 	f.mu.Unlock()
 	var dr apiclient.DeliverResponse
 	dr.Data.ID = id
 	dr.Data.Subject = req.Subject
 	writeJSON(w, dr)
+}
+
+// lastDeliver returns the most recent DeliverRequest the gateway sent, for
+// asserting COPY/APPEND carried the folder, flags and internal date.
+func (f *fakeAPI) lastDeliver(t *testing.T) apiclient.DeliverRequest {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.delivers) == 0 {
+		t.Fatal("no delivery was made")
+	}
+	return f.delivers[len(f.delivers)-1]
+}
+
+// folderOf returns the folder a stored message currently lives in, or "".
+func folderOf(api *fakeAPI, id uint) string {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if m := api.msgs[id]; m != nil {
+		return m.folder
+	}
+	return ""
 }
 
 func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
@@ -189,6 +257,10 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	received := m.receivedAt
+	if received.IsZero() {
+		received = fakeReceivedAt
+	}
 	var dr apiclient.MessageDetailResponse
 	dr.Data.MessageSummary = apiclient.MessageSummary{
 		ID:         m.id,
@@ -197,7 +269,11 @@ func (f *fakeAPI) getMessage(w http.ResponseWriter, r *http.Request) {
 		Sender:     m.sender,
 		SenderName: m.senderNm,
 		RawSize:    len(m.raw),
-		ReceivedAt: fakeReceivedAt,
+		IsRead:     m.isRead,
+		IsFlagged:  m.isFlagged,
+		IsStarred:  m.isStarred,
+		IsDraft:    m.isDraft,
+		ReceivedAt: received,
 	}
 	writeJSON(w, dr)
 }
@@ -309,8 +385,8 @@ func TestCopyUID_ReturnsDeliveredUID(t *testing.T) {
 	if uid != 777 {
 		t.Fatalf("CopyUID uid = %d, want 777 (the new copy's delivered ID)", uid)
 	}
-	if got := folderPatched(api, 777); got != "Archive" {
-		t.Errorf("copy relocated to %q, want Archive", got)
+	if got := folderOf(api, 777); got != "Archive" {
+		t.Errorf("copy created in %q, want Archive", got)
 	}
 }
 
@@ -343,8 +419,8 @@ func TestMoveUID_AssignsFreshDestinationUID(t *testing.T) {
 	if !api.exists(500) {
 		t.Errorf("MoveUID did not deliver the moved message into the destination")
 	}
-	if got := folderPatched(api, 500); got != "Archive" {
-		t.Errorf("moved copy relocated to %q, want Archive", got)
+	if got := folderOf(api, 500); got != "Archive" {
+		t.Errorf("moved copy created in %q, want Archive", got)
 	}
 }
 
@@ -392,8 +468,8 @@ func TestBaseMethods_DelegateToUIDForms(t *testing.T) {
 	if !api.deleted(2) {
 		t.Errorf("base Move left source message 2 in place")
 	}
-	if got := folderPatched(api, 602); got != "Trash" {
-		t.Errorf("base Move relocated the moved copy to %q, want Trash", got)
+	if got := folderOf(api, 602); got != "Trash" {
+		t.Errorf("base Move created the moved copy in %q, want Trash", got)
 	}
 }
 
@@ -507,7 +583,7 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 	srv := httptest.NewServer(api.handler())
 	defer srv.Close()
 
-	h := newTranscript(t, NewBackend(apiclient.New(srv.URL)))
+	h := newTranscript(t, NewBackend(apiclient.New(srv.URL), nil))
 
 	// LOGIN's tagged OK carries the post-auth capability list, which now includes
 	// UIDPLUS because *mailbox implements UIDPlusMailbox.
@@ -542,8 +618,8 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 	if !strings.Contains(st, "[COPYUID 1 1 101]") {
 		t.Errorf("COPY status = %q, want [COPYUID 1 1 101]", st)
 	}
-	if got := folderPatched(api, 101); got != "Archive" {
-		t.Errorf("copy relocated to %q, want Archive", got)
+	if got := folderOf(api, 101); got != "Archive" {
+		t.Errorf("copy created in %q, want Archive", got)
 	}
 
 	// MOVE re-delivers the message into the destination, so it reports an untagged
@@ -560,8 +636,8 @@ func TestServer_UIDPlus_CapabilityAndResponseCodes(t *testing.T) {
 	if !strings.Contains(st, "OK") {
 		t.Errorf("MOVE status = %q", st)
 	}
-	if got := folderPatched(api, 102); got != "Trash" {
-		t.Errorf("moved copy relocated to %q, want Trash", got)
+	if got := folderOf(api, 102); got != "Trash" {
+		t.Errorf("moved copy created in %q, want Trash", got)
 	}
 	if !api.deleted(1) {
 		t.Errorf("MOVE did not remove the source message 1")
@@ -574,7 +650,7 @@ func TestServer_UIDExpunge_HonoursDeletedFlag(t *testing.T) {
 	srv := httptest.NewServer(api.handler())
 	defer srv.Close()
 
-	h := newTranscript(t, NewBackend(apiclient.New(srv.URL)))
+	h := newTranscript(t, NewBackend(apiclient.New(srv.URL), nil))
 	h.login("a1")
 
 	if _, st := h.command("a2", "SELECT INBOX"); !strings.Contains(st, "OK") {

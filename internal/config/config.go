@@ -100,6 +100,26 @@ type Config struct {
 	PipelineTestRateLimitRPS     float64 // sustained requests/sec per client IP
 	PipelineTestRateLimitBurst   int     // bucket capacity (max short burst) per client IP
 
+	// Authenticated-API request-body cap (#184): the maximum request body, in
+	// bytes, accepted on the authenticated API surface (send, drafts, contacts
+	// import, sieve PUT, pipeline create/test, …). Enforced with
+	// http.MaxBytesReader plus a Content-Length fast-fail so an unbounded JSON
+	// upload cannot exhaust memory. 0 disables the cap; a negative value is a
+	// startup configuration error. The default scales with SMTPMaxMessageSize so
+	// a legitimate max-size compose is never rejected.
+	APIMaxBodyBytes int64
+
+	// Webmail/API send-path limits (#184): a per-message recipient cap and a
+	// per-account send rate limit on POST /messages/send (and the draft-send /
+	// forward paths that delegate to it). They mirror the SMTP submission caps
+	// (#171) so a single compromised webmail credential cannot fan out unlimited
+	// bulk mail — one queue row per recipient, each a full copy of the message.
+	// APIMaxRecipientsPerMessage <= 0 disables the recipient cap; a per-tier send
+	// rate <= 0 disables that tier.
+	APIMaxRecipientsPerMessage int
+	APISendRateLimitPerMinute  int
+	APISendRateLimitPerHour    int
+
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
@@ -305,6 +325,18 @@ type Config struct {
 	// internal-mTLS CA (that is INTERNAL_MTLS_CA_CERT); it is the general outbound
 	// trust anchor.
 	TrustedCACertPath string
+
+	// ════════════════════════════════════════════════════════════════════
+	// TLS-RPT ingestion rate limit (issue #183) — appended additively; keep
+	// contiguous to ease rebasing alongside other in-flight config.go work.
+	// ════════════════════════════════════════════════════════════════════
+	//
+	// The unauthenticated TLS-RPT ingestion endpoint (POST /.well-known/smtp-tlsrpt)
+	// is throttled per client IP so it cannot be used to flood storage with reports.
+	// Same dependency-free per-IP token bucket as the auth/pipeline-test limiters.
+	TLSRPTRateLimitEnabled bool
+	TLSRPTRateLimitRPS     float64 // sustained requests/sec per client IP
+	TLSRPTRateLimitBurst   int     // bucket capacity (max short burst) per client IP
 }
 
 // DefaultHSTSMaxAgeSeconds is the Strict-Transport-Security max-age used when
@@ -349,6 +381,30 @@ const (
 const (
 	DefaultPipelineTestRateLimitRPS   = 2.0
 	DefaultPipelineTestRateLimitBurst = 10
+)
+
+// API send-path limit defaults (#184) for the webmail/API send surface. They
+// mirror the shared SMTP submission caps (ratelimit.DefaultPerMinute /
+// ratelimit.DefaultPerHour) so submission (587/465) and the webmail/API send
+// path cap a sender's outbound volume the same way: 100 recipients per message,
+// 20 messages/minute and 100 messages/hour per account. Overridden by
+// API_MAX_RECIPIENTS_PER_MESSAGE / API_SEND_RATE_LIMIT_PER_MINUTE /
+// API_SEND_RATE_LIMIT_PER_HOUR.
+const (
+	DefaultAPIMaxRecipientsPerMessage = 100
+	DefaultAPISendRateLimitPerMinute  = 20
+	DefaultAPISendRateLimitPerHour    = 100
+)
+
+// DefaultTLSRPTRateLimitRPS / DefaultTLSRPTRateLimitBurst are the per-client-IP
+// throttle defaults for the unauthenticated TLS-RPT ingestion endpoint (issue
+// #183) when TLSRPT_RATE_LIMIT_RPS / TLSRPT_RATE_LIMIT_BURST are unset. TLS-RPT
+// reports arrive at most a few times a day per sender, so 1 sustained request/sec
+// with a burst of 10 leaves legitimate reporters ample headroom while capping an
+// automated flood to a trickle.
+const (
+	DefaultTLSRPTRateLimitRPS   = 1.0
+	DefaultTLSRPTRateLimitBurst = 10
 )
 
 // TraceRetention returns the per-message trace retention window as a Duration
@@ -462,6 +518,30 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("SMTP_MAX_MESSAGE_SIZE must be a positive number of bytes (a maximum message size must always exist), got %d", smtpMax)
 	}
 	cfg.SMTPMaxMessageSize = smtpMax
+
+	// Authenticated-API request-body cap (#184). Same strictness rationale as the
+	// SMTP max message size: a malformed value is a hard startup error, never a
+	// silent fallback. 0 explicitly disables the cap. The default scales with the
+	// configured max message size (2× plus 1 MiB scaffolding headroom, mirroring
+	// InternalDeliveryBodyLimit) so a legitimate max-size compose is accepted while
+	// an unbounded upload cannot buffer without limit.
+	defaultAPIBody := smtpMax*2 + 1*1024*1024
+	apiBody, err := getEnvInt64Strict("API_MAX_BODY_BYTES", defaultAPIBody, "bytes")
+	if err != nil {
+		return nil, err
+	}
+	if apiBody < 0 {
+		return nil, fmt.Errorf("API_MAX_BODY_BYTES must be a non-negative number of bytes (0 disables the cap), got %d", apiBody)
+	}
+	cfg.APIMaxBodyBytes = apiBody
+
+	// Webmail/API send-path limits (#184): recipient cap + per-account send rate.
+	// These are lenient getEnvInt knobs (a per-tier value of 0 simply disables that
+	// tier) rather than hard startup errors — they are volume caps, not a
+	// must-always-exist security invariant like the max message size.
+	cfg.APIMaxRecipientsPerMessage = getEnvInt("API_MAX_RECIPIENTS_PER_MESSAGE", DefaultAPIMaxRecipientsPerMessage)
+	cfg.APISendRateLimitPerMinute = getEnvInt("API_SEND_RATE_LIMIT_PER_MINUTE", DefaultAPISendRateLimitPerMinute)
+	cfg.APISendRateLimitPerHour = getEnvInt("API_SEND_RATE_LIMIT_PER_HOUR", DefaultAPISendRateLimitPerHour)
 
 	// Anti-slowloris message-transfer policy. Same strictness rationale as the
 	// max message size: these are security knobs, so a malformed value is a
@@ -647,6 +727,24 @@ func Load() (*Config, error) {
 		}
 	}
 	cfg.PipelineTestRateLimitRPS = pipelineTestRPS
+
+	// TLS-RPT ingestion rate limit (issue #183): same strict-parse + enabled-only
+	// positivity rules as the auth/pipeline-test limiters above.
+	cfg.TLSRPTRateLimitEnabled = getEnvBool("TLSRPT_RATE_LIMIT_ENABLED", true)
+	cfg.TLSRPTRateLimitBurst = getEnvInt("TLSRPT_RATE_LIMIT_BURST", DefaultTLSRPTRateLimitBurst)
+	tlsRPTRPS, err := getEnvFloatStrict("TLSRPT_RATE_LIMIT_RPS", DefaultTLSRPTRateLimitRPS)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.TLSRPTRateLimitEnabled {
+		if tlsRPTRPS <= 0 {
+			return nil, fmt.Errorf("TLSRPT_RATE_LIMIT_RPS must be positive, got %v", tlsRPTRPS)
+		}
+		if cfg.TLSRPTRateLimitBurst <= 0 {
+			return nil, fmt.Errorf("TLSRPT_RATE_LIMIT_BURST must be positive, got %d", cfg.TLSRPTRateLimitBurst)
+		}
+	}
+	cfg.TLSRPTRateLimitRPS = tlsRPTRPS
 
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)
@@ -850,6 +948,14 @@ func getEnvDuration(key string, fallback time.Duration) time.Duration {
 // never silently pass mail. Override with PIPELINE_FILTER_ERROR_ACTION.
 const DefaultPipelineFilterErrorAction = "defer"
 
+// DefaultPipelineFilterTimeoutSeconds is the per-filter execution backstop: a
+// single filter may run this long before the engine abandons it and routes the
+// step through the fail-closed policy above. It is a safety net against a hung
+// or deadlocked filter wedging delivery, deliberately set above every built-in
+// filter's own I/O timeout (the slowest being clamav/rspamd at 30s) so it never
+// preempts a legitimately slow scan. Override with PIPELINE_FILTER_TIMEOUT_SECONDS.
+const DefaultPipelineFilterTimeoutSeconds = 60
+
 // RestmailDeliverAuthSettings configures server-to-server authentication on the
 // RESTMAIL inbound-delivery endpoint POST /restmail/messages (OSI-3). Without
 // it any host can inject a spoofed-From message into a local mailbox
@@ -922,6 +1028,21 @@ func (c *Config) PipelineFilterErrorAction() string {
 	default:
 		return DefaultPipelineFilterErrorAction
 	}
+}
+
+// PipelineFilterTimeout returns the per-filter execution backstop applied by the
+// pipeline engine. A single filter that runs longer than this is abandoned and
+// its step routed through PipelineFilterErrorAction (fail-closed by default), so
+// a hung filter cannot wedge delivery. Set with PIPELINE_FILTER_TIMEOUT_SECONDS
+// (a whole number of seconds). A malformed or non-positive value falls back to
+// the secure default rather than disabling the backstop — an unparseable knob
+// must never remove the protection.
+func (c *Config) PipelineFilterTimeout() time.Duration {
+	secs := getEnvInt("PIPELINE_FILTER_TIMEOUT_SECONDS", DefaultPipelineFilterTimeoutSeconds)
+	if secs <= 0 {
+		secs = DefaultPipelineFilterTimeoutSeconds
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // END inbound-path security hardening
@@ -1664,4 +1785,27 @@ func (c *Config) enforceSecurityFindings(scope string, findings []string) error 
 }
 
 // END listener secure-by-construction (secure-by-construction epic)
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN trusted-ARC-sealer allowlist (#178)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The setting is read lazily through a *Config accessor over
+// the getEnvSlice helper above; the Config struct and Load() are untouched.
+// ══════════════════════════════════════════════════════════════════════════
+
+// TrustedARCSealers returns the allowlist of ARC sealing domains (the d= of the
+// most recent ARC-Seal) whose passing ARC chain may override a DMARC failure
+// (#178). RFC 8617 makes an ARC "pass" meaningful only when it comes from a
+// sealer you trust: without this gate an attacker running their own ARC sealer
+// could seal spoofed mail and launder it past the From domain's
+// p=reject/quarantine. The default is EMPTY — no sealer is trusted, so ARC stays
+// purely informational and never overrides DMARC unless an operator explicitly
+// lists a sealer. Set with TRUSTED_ARC_SEALERS (comma-separated domains).
+func (c *Config) TrustedARCSealers() []string {
+	return getEnvSlice("TRUSTED_ARC_SEALERS", nil)
+}
+
+// END trusted-ARC-sealer allowlist
 // ══════════════════════════════════════════════════════════════════════════

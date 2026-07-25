@@ -20,6 +20,7 @@ import (
 	"github.com/restmail/restmail/internal/netallow"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
+	"github.com/restmail/restmail/internal/ratelimit"
 	"github.com/restmail/restmail/internal/trace"
 	"github.com/restmail/restmail/internal/version"
 	"gorm.io/gorm"
@@ -147,6 +148,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
 	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db, cfg.MasterKey))
 	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
+	// #178: bind dmarc_check to the deployment's trusted-ARC-sealer allowlist,
+	// overriding the empty-allowlist default from init(). A passing ARC chain
+	// overrides a DMARC failure only when its sealing domain is allowlisted; the
+	// default (empty) keeps ARC informational so an untrusted sealer cannot bypass
+	// the From domain's p=reject/quarantine.
+	pipeline.DefaultRegistry.Register("dmarc_check", filters.NewDMARCCheckWithSealers(cfg.TrustedARCSealers()))
 	// OSI-13: bind the sieve filter to the deployment's redirect allowlist,
 	// overriding the deny-external default baked into the init() registration.
 	sieveRedirect := cfg.SieveRedirect()
@@ -176,6 +183,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	filterErrAction := pipeline.Action(cfg.PipelineFilterErrorAction())
 	pipelineEngine.SetFilterErrorAction(filterErrAction)
 	previewEngine.SetFilterErrorAction(filterErrAction)
+	// Per-filter execution backstop: a hung/deadlocked filter is abandoned after
+	// this and routed through the fail-closed policy above, so it can never wedge
+	// delivery. Combined with the engine's panic recovery, a single misbehaving
+	// filter is always contained to its own step.
+	filterTimeout := cfg.PipelineFilterTimeout()
+	pipelineEngine.SetFilterTimeout(filterTimeout)
+	previewEngine.SetFilterTimeout(filterTimeout)
 
 	// Async per-message trace recorder: durable MessageTrace rows are written off
 	// the hot path by one background goroutine, so a slow/failed DB drops traces
@@ -193,6 +207,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	traceRecorder.Start()
 
 	messageH := handlers.NewMessageHandler(db, broker, pipelineEngine, cfg.MasterKey, traceRecorder)
+	// Send-path abuse limits (#184): a per-message recipient cap and a per-account
+	// send rate limiter, mirroring the SMTP submission caps (#171) so the webmail/API
+	// send path (and the draft-send / forward paths that delegate to it) cannot be
+	// used to fan out unlimited bulk mail. The limiter is shared across all requests.
+	messageH.SetSendLimits(
+		cfg.APIMaxRecipientsPerMessage,
+		ratelimit.NewSubmissionLimiter(cfg.APISendRateLimitPerMinute, cfg.APISendRateLimitPerHour),
+	)
 	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
 	restmailDeliverAuth := cfg.RestmailDeliverAuth()
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder, handlers.RestmailTarpitConfig{
@@ -253,8 +275,20 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	// ═══════════════════════════════════════════════════════════════
 	// TLS-RPT report ingestion (no auth — receives reports from external MTAs per RFC 8460)
+	//
+	// Unauthenticated, so it is throttled per client IP (issue #183) to stop it
+	// being used as a storage write-amplification vector. The handler additionally
+	// caps the body size and the number of policy entries, and stores reports only
+	// for domains this server hosts.
 	// ═══════════════════════════════════════════════════════════════
-	r.Post("/.well-known/smtp-tlsrpt", tlsrptH.ReceiveReport)
+	tlsrptThrottle := func(next http.Handler) http.Handler { return next }
+	if cfg.TLSRPTRateLimitEnabled {
+		tlsrptThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+			RPS:   cfg.TLSRPTRateLimitRPS,
+			Burst: cfg.TLSRPTRateLimitBurst,
+		})
+	}
+	r.With(tlsrptThrottle).Post("/.well-known/smtp-tlsrpt", tlsrptH.ReceiveReport)
 
 	// ═══════════════════════════════════════════════════════════════
 	// ACME HTTP-01 challenge (no auth — served to ACME CA for domain validation)
@@ -339,6 +373,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
+		// #184: cap the request body across the authenticated surface (send,
+		// drafts, contacts import, sieve PUT, …) so an unbounded JSON upload
+		// cannot exhaust memory. cfg.APIMaxBodyBytes <= 0 makes this a no-op.
+		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
 
 		// Two-factor auth (OSI-19) — an authenticated account manages its own
 		// TOTP enrollment. Available to both mailbox and admin tokens (no
@@ -348,12 +386,21 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
 		r.Post("/api/v1/auth/2fa/disable", twofaH.Disable)
 
-		// Linked accounts
+		// Linked accounts.
+		//
+		// LinkAccount and TestConnection each verify a supplied address+password
+		// against a mailbox and reveal correctness (200 vs 401). Left unthrottled
+		// they are online password-guessing oracles a holder of any valid
+		// low-privilege token could hammer to brute-force arbitrary credentials,
+		// bypassing the login rate limit entirely. They share the SAME per-client-IP
+		// auth throttle as /auth/login and /auth/refresh (same limiter instance), so
+		// a wrong guess consumes the same budget as a failed login and cannot be used
+		// to sidestep it. The read/list/unlink routes carry no such risk.
 		r.Get("/api/v1/accounts", accountH.ListAccounts)
 		r.Get("/api/v1/accounts/{id}", accountH.GetAccount)
-		r.Post("/api/v1/accounts", accountH.LinkAccount)
+		r.With(authThrottle).Post("/api/v1/accounts", accountH.LinkAccount)
 		r.Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
-		r.Post("/api/v1/accounts/test-connection", accountH.TestConnection)
+		r.With(authThrottle).Post("/api/v1/accounts/test-connection", accountH.TestConnection)
 
 		// Folders
 		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
@@ -430,6 +477,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
 		r.Use(middleware.AdminOnly)
+		// #184: same request-body cap as the mailbox surface, covering the admin
+		// JSON endpoints (pipeline create/test, custom filters, …).
+		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
 		needs := middleware.RequireCapability
 
 		// Dashboard stats — visible to every admin role

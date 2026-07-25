@@ -49,8 +49,10 @@ func (f *domainAllowlistFilter) Execute(_ context.Context, email *pipeline.Email
 	}
 
 	senderDomain := ""
+	senderDomainBare := ""
 	if parts := strings.SplitN(sender, "@", 2); len(parts) == 2 {
 		senderDomain = "@" + parts[1]
+		senderDomainBare = parts[1]
 	}
 
 	// Check for each recipient's domain
@@ -95,14 +97,26 @@ func (f *domainAllowlistFilter) Execute(_ context.Context, email *pipeline.Email
 			Count(&allowCount)
 
 		if allowCount > 0 {
+			// A match may skip spam/greylist scanning ONLY when the sender's
+			// identity is actually authenticated and aligned to its domain (SPF or
+			// DKIM). Otherwise a spoofer who forges an allowlisted envelope-from
+			// would reuse the entry to bypass scanning entirely (#177). An
+			// unauthenticated match still passes the allowlist (no reject) but is
+			// scanned like any other mail.
+			skip := []string{"rspamd", "spamassassin", "greylist"}
+			detail := fmt.Sprintf("sender %s allowed for domain %s", sender, rcptDomain)
+			if !senderAuthenticated(email, senderDomainBare) {
+				skip = nil
+				detail += " (unauthenticated sender: scanning not skipped)"
+			}
 			return &pipeline.FilterResult{
 				Type:        pipeline.FilterTypeAction,
 				Action:      pipeline.ActionContinue,
-				SkipFilters: []string{"rspamd", "spamassassin", "greylist"},
+				SkipFilters: skip,
 				Log: pipeline.FilterLog{
 					Filter: "domain_allowlist",
 					Result: "allowed",
-					Detail: fmt.Sprintf("sender %s allowed for domain %s", sender, rcptDomain),
+					Detail: detail,
 				},
 			}, nil
 		}

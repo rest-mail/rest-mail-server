@@ -35,6 +35,7 @@ var allEnvKeys = []string{
 	"TRACE_RETENTION_DAYS", "TRACE_SAMPLE_RATE", "TRACE_MAX_ROWS", "ROLLUP_INTERVAL",
 	"ENVIRONMENT",
 	"SECURITY_HEADERS_ENABLED", "HSTS_MAX_AGE_SECONDS",
+	"PIPELINE_FILTER_ERROR_ACTION", "PIPELINE_FILTER_TIMEOUT_SECONDS",
 	"INTERNAL_DELIVERY_FLOOR_RATE",
 	"DB_SSLMODE", "DB_ALLOW_INSECURE",
 	"QUEUE_TLS_INSECURE", "API_TLS_TERMINATED_BY_PROXY",
@@ -825,4 +826,38 @@ func TestLoad_TarpitInvalid(t *testing.T) {
 			t.Errorf("Load() with %s=%q should fail", tc.key, tc.val)
 		}
 	}
+}
+
+// TestPipelineFilterTimeout covers the per-filter execution backstop knob: the
+// documented default when unset, an explicit override, and the secure-default
+// fallback for non-positive / malformed values (the backstop is never disabled
+// by an unparseable knob).
+func TestPipelineFilterTimeout(t *testing.T) {
+	cfg := &Config{}
+	want := time.Duration(DefaultPipelineFilterTimeoutSeconds) * time.Second
+
+	t.Run("default when unset", func(t *testing.T) {
+		clearEnv(t)
+		if got := cfg.PipelineFilterTimeout(); got != want {
+			t.Errorf("PipelineFilterTimeout() = %v, want default %v", got, want)
+		}
+	})
+
+	t.Run("override", func(t *testing.T) {
+		clearEnv(t)
+		t.Setenv("PIPELINE_FILTER_TIMEOUT_SECONDS", "15")
+		if got := cfg.PipelineFilterTimeout(); got != 15*time.Second {
+			t.Errorf("PipelineFilterTimeout() = %v, want 15s", got)
+		}
+	})
+
+	t.Run("non-positive and malformed fall back to secure default", func(t *testing.T) {
+		for _, bad := range []string{"0", "-5", "abc", "1m"} {
+			clearEnv(t)
+			t.Setenv("PIPELINE_FILTER_TIMEOUT_SECONDS", bad)
+			if got := cfg.PipelineFilterTimeout(); got != want {
+				t.Errorf("PipelineFilterTimeout() with %q = %v, want default %v (backstop never disabled)", bad, got, want)
+			}
+		}
+	})
 }

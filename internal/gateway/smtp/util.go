@@ -67,8 +67,11 @@ func splitHostPort(addr string) (string, string, error) {
 	return addr[:last], addr[last+1:], nil
 }
 
-// parseRawMessage parses an RFC 2822 message to extract key headers and body parts.
-func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string) {
+// parseRawMessage parses an RFC 2822 message to extract key headers and body
+// parts. fromAddr is the bare address of the From header (see
+// extractEmailFromHeader), used on the authenticated submission path to bind the
+// header From to an identity the account is authorized to send as.
+func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string, fromAddr string) {
 	msg := string(data)
 
 	// Split headers and body at the first blank line
@@ -114,6 +117,7 @@ func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, sende
 				senderName = strings.TrimSpace(from[:idx])
 				senderName = strings.Trim(senderName, "\"")
 			}
+			fromAddr = extractEmailFromHeader(from)
 		} else if strings.HasPrefix(lower, "in-reply-to:") {
 			inReplyTo = strings.TrimSpace(line[12:])
 			inReplyTo = strings.Trim(inReplyTo, "<>")

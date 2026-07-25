@@ -119,6 +119,9 @@ func TestSMTP_Submission_NoReceivedTLS(t *testing.T) {
 	back := newMockBackend()
 	back.local["bob@example.com"] = true
 	store := newMockStore()
+	// testBody's From: header (sender@remote.test) is an authorized linked
+	// address, so the #181 From-header check accepts the submission.
+	store.authorized["sender@remote.test"] = true
 
 	h := newSMTPHarness(t, back, store, true) // submission
 	h.ehlo()

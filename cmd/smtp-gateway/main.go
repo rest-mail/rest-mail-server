@@ -219,6 +219,9 @@ func main() {
 	}
 
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
+	// #171: the worker DKIM-signs outbound mail that arrived unsigned (SMTP
+	// submission), which needs the key to decrypt the domain's at-rest DKIM key.
+	queueWorker.SetMasterKey(cfg.MasterKey)
 	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
 	queueWorker.SetBounceRateLimit(cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
 	// OSI-7: size-aware per-attempt send budget + matching reclaim interval. The

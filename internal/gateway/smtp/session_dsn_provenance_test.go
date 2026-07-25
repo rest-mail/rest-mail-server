@@ -12,6 +12,9 @@ func TestSMTP_DSNProvenance_RemoteSubmissionLinksMessage(t *testing.T) {
 	back := newMockBackend()
 	// carol@remote.test is not local, so it is enqueued for outbound delivery.
 	store := newMockStore()
+	// testBody's From: header is sender@remote.test — an authorized linked
+	// address of the account, so the #181 From-header check accepts it.
+	store.authorized["sender@remote.test"] = true
 
 	h := newSMTPHarness(t, back, store, true) // submission
 	h.ehlo()
@@ -56,6 +59,9 @@ func TestSMTP_DSNProvenance_LocalOnlyDoesNotPersist(t *testing.T) {
 	back := newMockBackend()
 	back.local["bob@local.test"] = true
 	store := newMockStore()
+	// testBody's From: header (sender@remote.test) is an authorized linked
+	// address, so the #181 From-header check accepts the submission.
+	store.authorized["sender@remote.test"] = true
 
 	h := newSMTPHarness(t, back, store, true) // submission
 	h.ehlo()

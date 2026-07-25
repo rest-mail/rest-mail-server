@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -217,6 +218,31 @@ type DeliverRequest struct {
 	RawMessage []byte `json:"raw_message,omitempty"`
 	ClientIP   string `json:"client_ip,omitempty"`
 	HeloName   string `json:"helo_name,omitempty"`
+
+	// Folder is the destination folder the message must be created in. Empty
+	// means INBOX. The IMAP gateway sets it on COPY/APPEND so the message is
+	// created directly in its destination in a single atomic delivery, instead
+	// of being delivered to INBOX and then moved — a non-atomic two-call flow
+	// that could strand the message in INBOX (visible to IDLE/SSE) or, on a
+	// swallowed move error, leave it there permanently despite an OK response.
+	Folder string `json:"folder,omitempty"`
+
+	// IMAP flags to apply to the newly created message. COPY sets them from the
+	// source message so its flags are preserved (RFC 3501 §6.4.7); APPEND sets
+	// them from the client-supplied flag list. A nil pointer means "leave at the
+	// delivery default" (unread / unflagged / not a draft), so ordinary inbound
+	// mail that never sets them is unaffected. \Flagged is mirrored onto both
+	// IsFlagged and IsStarred to match the gateway's symmetric flag mapping.
+	IsRead    *bool `json:"is_read,omitempty"`
+	IsFlagged *bool `json:"is_flagged,omitempty"`
+	IsStarred *bool `json:"is_starred,omitempty"`
+	IsDraft   *bool `json:"is_draft,omitempty"`
+
+	// ReceivedAt carries the message's INTERNALDATE. COPY sets it to the source
+	// message's internal date so the copy preserves it (RFC 3501 §6.4.7); a nil
+	// (or zero) value means "use delivery time", which is correct for ordinary
+	// inbound mail and for APPEND without an explicit date-time.
+	ReceivedAt *time.Time `json:"received_at,omitempty"`
 
 	// Inbound transport-security metrics, populated only by the inbound-MX
 	// (port 25) SMTP path so the operator can always see how much mail arrives
@@ -431,9 +457,12 @@ func (c *Client) UpdateMessage(token string, msgID uint, updates map[string]inte
 	return c.patchAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token, updates, nil)
 }
 
-// DeleteMessage deletes a message.
+// DeleteMessage permanently deletes a message. The gateway serves IMAP EXPUNGE /
+// CLOSE and POP3 QUIT-DELE (and the delete half of a MOVE) — protocols with no
+// trash stage — so the delete must be permanent: it reclaims quota and removes
+// the row rather than soft-deleting it into an unreachable, still-counted state.
 func (c *Client) DeleteMessage(token string, msgID uint) error {
-	return c.deleteAuth(fmt.Sprintf("/api/v1/messages/%d", msgID), token)
+	return c.deleteAuth(fmt.Sprintf("/api/v1/messages/%d?permanent=true", msgID), token)
 }
 
 // ── Quota ─────────────────────────────────────────────────────────────
@@ -790,4 +819,18 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("API error %d: %s", e.StatusCode, e.Body)
+}
+
+// IsAuthRejection reports whether err is a DEFINITIVE credential rejection from
+// the auth API — an HTTP 401 or 403. Only these count as a brute-force signal:
+// transient failures (5xx, network/DNS/timeout errors, connection refused) leave
+// credentials unverified and must NOT accrue against the auth-failure ban, or a
+// brief API outage would lock out legitimate clients. A nil error is not a
+// rejection.
+func IsAuthRejection(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden
+	}
+	return false
 }

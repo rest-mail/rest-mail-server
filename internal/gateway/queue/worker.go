@@ -21,6 +21,7 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
+	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -115,6 +116,13 @@ const staleDeliveringTimeout = 15 * time.Minute
 // fixed 30 s deadline, so behavior is unchanged until wired to the config.
 func defaultSendDeadline(int64) time.Duration { return 30 * time.Second }
 
+// maxRESTMAILErrorBody caps how much of a non-2xx RESTMAIL response body is read
+// into the delivery error (#169). The endpoint is attacker-advertised (an MX's
+// RESTMAIL EHLO keyword), so an unbounded read of the error body would let a
+// hostile endpoint exhaust worker memory; 64 KiB is far more than any legitimate
+// error payload needs.
+const maxRESTMAILErrorBody = 64 << 10
+
 // computeBackoff returns the retry delay for the Nth delivery attempt:
 // exponential (1m, 2m, 4m, 8m, ...) capped at 4 hours.
 //
@@ -148,6 +156,11 @@ type Worker struct {
 	sts          *mtasts.Resolver
 	shutdown     chan struct{}
 	wg           sync.WaitGroup
+
+	// masterKey decrypts the domain's at-rest DKIM private key when the worker
+	// signs an outbound message that arrived unsigned (SMTP submission, #171).
+	// Empty when DKIM keys are stored as legacy plaintext (encryption disabled).
+	masterKey string
 
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
 	// may be delivered into a single recipient mailbox within bounceWindow;
@@ -223,6 +236,26 @@ func (w *Worker) SetTLSInsecure(insecure bool) {
 // destinations; enabling it disables the outbound SSRF guard entirely.
 func (w *Worker) SetAllowPrivateDestinations(allow bool) {
 	w.allowPrivateDest = allow
+}
+
+// SetMasterKey provides the key used to decrypt at-rest DKIM private keys so the
+// worker can DKIM-sign outbound messages that arrived unsigned (#171). Pass the
+// empty string when DKIM keys are stored as legacy plaintext.
+func (w *Worker) SetMasterKey(key string) {
+	w.masterKey = key
+}
+
+// prepareOutbound applies the outbound transforms to a queue row's raw message
+// immediately before it is written to the wire: the Bcc header is stripped and,
+// when the message arrived unsigned, it is DKIM-signed with the sender domain's
+// key. This is the single choke point every outbound message passes through, so
+// SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
+// API path applies at submission (#171); the transforms are idempotent, so
+// already-prepared API mail passes through unchanged. It returns an error only
+// when a configured DKIM key cannot be loaded, so the caller fails closed
+// (defer/retry) rather than relaying the message unsigned.
+func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
+	return outbound.Prepare(w.db, w.masterKey, rmail.DomainFromAddress(item.Sender), item.RawMessage)
 }
 
 // newGuardedDialer builds a net.Dialer whose Control hook refuses to connect to
@@ -481,44 +514,11 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 
 	firstHost := strings.TrimSuffix(mxRecords[0].Host, ".")
 
-	// Check capability cache before EHLO probe. The cached entry is bound to the
-	// MX host that advertised it (OSI-20): a hit requires the stored row to be
-	// for THIS domain's current primary MX host and still within its TTL. If the
-	// primary MX has changed since the entry was learned, capabilityApplies
-	// returns false and we re-probe rather than trusting a capability advertised
-	// by a different (possibly rogue) host.
-	var cap models.RESTMAILCapability
-	found := w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
-	cacheHit := found && capabilityApplies(cap, item.Domain, firstHost, time.Now())
-
-	if cacheHit {
-		if cap.Supported {
-			slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "url", cap.EndpointURL)
-			err := w.deliverRESTMAILHTTPS(cap.EndpointURL, item)
-			if err == nil {
-				return nil
-			}
-			slog.Warn("queue: cached RESTMAIL delivery failed, invalidating cache",
-				"domain", item.Domain, "error", err)
-			w.db.Where("domain = ?", item.Domain).Delete(&models.RESTMAILCapability{})
-			// Fall through to SMTP
-		}
-		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
-	} else {
-		// No cache or expired — do EHLO probe
-		upgraded, err := w.tryRESTMAIL(firstHost, item)
-		if upgraded && err == nil {
-			return nil // RESTMAIL delivery succeeded
-		}
-		if upgraded && err != nil {
-			slog.Warn("queue: RESTMAIL delivery failed, falling back to SMTP",
-				"host", firstHost, "error", err)
-		}
-	}
-
-	// Discover the recipient domain's MTA-STS policy (RFC 8461). Discovery is
-	// fail-open: a missing/unreachable policy leaves stsPolicy nil and delivery
-	// proceeds with ordinary opportunistic TLS.
+	// Discover the recipient domain's MTA-STS policy (RFC 8461) BEFORE choosing a
+	// delivery path, so an enforce-mode policy gates EVERY outbound path — the
+	// plaintext EHLO-advertised RESTMAIL upgrade as well as the SMTP fallback
+	// (#168). Discovery is fail-open: a missing/unreachable policy leaves stsPolicy
+	// nil and delivery proceeds with ordinary opportunistic TLS.
 	var stsPolicy *mtasts.Policy
 	stsCtx, stsCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	policy, err := w.sts.Resolve(stsCtx, item.Domain)
@@ -535,6 +535,50 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// Whether an enforce policy is actively enforced by this worker. When
 	// enforcement is disabled, an enforce policy behaves like "testing".
 	enforcing := stsPolicy != nil && stsPolicy.Mode == mtasts.ModeEnforce && w.stsEnforce
+
+	// RESTMAIL upgrade path, gated by the MTA-STS policy resolved above (#168). The
+	// capability cache entry is bound to the MX host that advertised it (OSI-20): a
+	// hit requires the stored row to be for THIS domain's current primary MX host
+	// and still within its TTL. Under an enforce-mode policy the advertised endpoint
+	// is untrusted (learned over cleartext port 25), so restmailUpgradePermitted
+	// must approve it — HTTPS and host named by the policy — before we deliver over
+	// it; otherwise we skip the upgrade and use the policy-guarded SMTP fallback.
+	var cap models.RESTMAILCapability
+	found := w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
+	cacheHit := found && capabilityApplies(cap, item.Domain, firstHost, time.Now())
+
+	if cacheHit {
+		if cap.Supported {
+			if restmailUpgradePermitted(cap.EndpointURL, stsPolicy, enforcing) {
+				slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "url", cap.EndpointURL)
+				err := w.deliverRESTMAILHTTPS(cap.EndpointURL, item, enforcing)
+				if err == nil {
+					return nil
+				}
+				slog.Warn("queue: cached RESTMAIL delivery failed, invalidating cache",
+					"domain", item.Domain, "error", err)
+				w.db.Where("domain = ?", item.Domain).Delete(&models.RESTMAILCapability{})
+				// Fall through to SMTP
+			} else {
+				// Enforce-mode policy does not name this cleartext-advertised
+				// endpoint (or it is non-HTTPS): refuse the upgrade and deliver over
+				// the policy-guarded SMTP path instead of intercepting in cleartext.
+				slog.Warn("queue: MTA-STS enforce — cached RESTMAIL endpoint not permitted by policy, using SMTP",
+					"domain", item.Domain, "url", cap.EndpointURL)
+			}
+		}
+		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
+	} else {
+		// No cache or expired — do EHLO probe (gated by the policy inside tryRESTMAIL).
+		upgraded, err := w.tryRESTMAIL(firstHost, item, stsPolicy, enforcing)
+		if upgraded && err == nil {
+			return nil // RESTMAIL delivery succeeded
+		}
+		if upgraded && err != nil {
+			slog.Warn("queue: RESTMAIL delivery failed, falling back to SMTP",
+				"host", firstHost, "error", err)
+		}
+	}
 
 	// Fall back to SMTP delivery
 	var lastErr error
@@ -575,6 +619,49 @@ func capabilityApplies(c models.RESTMAILCapability, domain, mxHost string, now t
 	return c.Domain == domain && c.MXHost == mxHost && c.ExpiresAt.After(now)
 }
 
+// restmailUpgradePermitted reports whether the plaintext-EHLO-advertised RESTMAIL
+// endpoint may be used for a delivery under the recipient's MTA-STS policy (#168).
+//
+// The RESTMAIL capability keyword and its endpoint URL are learned over cleartext
+// port 25, so they are attacker-influenceable. When no enforce-mode policy is in
+// effect (enforcing == false) the upgrade is permitted, preserving opportunistic
+// behavior. Under an enforce-mode policy the endpoint is untrusted input and is
+// permitted only when it is served over HTTPS AND its host is named by the
+// (MTA-STS-authenticated) policy MX set. That stops an on-path attacker from
+// injecting a rogue RESTMAIL endpoint — even a cleartext http:// one — and
+// intercepting enforce-mode mail in cleartext, exactly what MTA-STS prevents.
+//
+// The endpoint is normalized the same way deliverRESTMAILHTTPS normalizes it: a
+// scheme-less value is treated as https, so a bare "host/path" is judged on its
+// host, and a hostile "http://…" is judged (and refused) on its explicit scheme.
+func restmailUpgradePermitted(endpointURL string, stsPolicy *mtasts.Policy, enforcing bool) bool {
+	if !enforcing {
+		return true
+	}
+	// Enforcing implies a policy was resolved; be defensive if it is somehow nil.
+	if stsPolicy == nil {
+		return false
+	}
+	raw := endpointURL
+	if !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "https" {
+		return false
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return false
+	}
+	// The endpoint host must be named by the policy MX set (RFC 8461 §4.1
+	// matching, wildcards included), the same trust anchor the SMTP path uses.
+	return stsPolicy.MatchesMX(host)
+}
+
 // cacheCapability stores a RESTMAIL capability probe result in the database,
 // bound to the MX host that advertised it (OSI-20). Only one row is kept per
 // domain; probing a new primary MX replaces the previous host's entry.
@@ -601,7 +688,20 @@ func (w *Worker) cacheCapability(domain, mxHost string, supported bool, endpoint
 }
 
 // deliverRESTMAILHTTPS sends the message via HTTPS POST to a known RESTMAIL endpoint.
-func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQueue) error {
+//
+// forceTLSVerify forces server-certificate verification on regardless of the
+// worker's tlsInsecure dev flag. The caller sets it when delivering under an
+// enforce-mode MTA-STS policy (#168), so the "verified HTTPS" half of the enforce
+// guarantee holds on the RESTMAIL hop just as it does on the STARTTLS SMTP path.
+func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQueue, forceTLSVerify bool) error {
+	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
+	// that cannot be loaded so the send retries rather than going out unsigned.
+	prepared, err := w.prepareOutbound(item)
+	if err != nil {
+		return fmt.Errorf("prepare outbound message: %w", err)
+	}
+	item.RawMessage = prepared
+
 	payload := map[string]interface{}{
 		"from":        item.Sender,
 		"to":          []string{item.Recipient},
@@ -637,7 +737,7 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 		Timeout: w.sendDeadline(int64(len(item.RawMessage))),
 		Transport: &http.Transport{
 			DialContext:         dialer.DialContext,
-			TLSClientConfig:     &tls.Config{InsecureSkipVerify: w.tlsInsecure},
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: w.tlsInsecure && !forceTLSVerify}, //nolint:gosec // enforce path forces verification
 			TLSHandshakeTimeout: 10 * time.Second,
 		},
 		// Do not follow redirects (#167): a 30x could otherwise downgrade
@@ -657,36 +757,25 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 		return nil
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	// Cap the error body read: the endpoint is attacker-advertised (an MX's
+	// RESTMAIL EHLO keyword), so an unbounded read would let a hostile endpoint
+	// exhaust worker memory with a huge response (#169).
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRESTMAILErrorBody))
 	return fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
 }
 
-// tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found,
-// it delivers the message via HTTPS POST instead of SMTP.
+// tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found — and the
+// recipient's MTA-STS policy permits the upgrade (#168) — it delivers the message
+// via HTTPS POST instead of SMTP.
 // Returns (true, nil) on successful RESTMAIL delivery,
 // (true, err) if RESTMAIL was detected but delivery failed,
-// (false, nil) if the host does not support RESTMAIL.
-func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded bool, err error) {
-	dialer := w.newGuardedDialer(10 * time.Second)
-	conn, err := dialer.Dial("tcp", host+":25")
-	if err != nil {
-		return false, nil // Can't connect, let SMTP path handle it
+// (false, nil) if the host does not support RESTMAIL, or an enforce-mode policy
+// does not permit the advertised endpoint (caller falls back to the SMTP path).
+func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
+	probed, ok, restmailURL := w.probeRESTMAIL(host+":25", host)
+	if !probed {
+		return false, nil // Can't connect / probe failed, let SMTP path handle it
 	}
-
-	client, err := smtp.NewClient(conn, host)
-	if err != nil {
-		conn.Close()
-		return false, nil
-	}
-
-	if err := client.Hello(w.hostname); err != nil {
-		_ = client.Close()
-		return false, nil
-	}
-
-	ok, restmailURL := client.Extension("RESTMAIL")
-	_ = client.Quit()
-	_ = client.Close()
 
 	if !ok || restmailURL == "" {
 		w.cacheCapability(item.Domain, host, false, "")
@@ -696,11 +785,68 @@ func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue) (upgraded b
 	slog.Info("queue: RESTMAIL capability detected", "host", host, "url", restmailURL)
 	w.cacheCapability(item.Domain, host, true, restmailURL)
 
-	err = w.deliverRESTMAILHTTPS(restmailURL, item)
+	// The endpoint was advertised over cleartext port 25 (EHLO), so it is untrusted.
+	// Under an enforce-mode MTA-STS policy only deliver to it when it is named by the
+	// policy and served over HTTPS (#168); otherwise report "not upgraded" so the
+	// caller delivers over the policy-guarded SMTP path rather than in the clear.
+	if !restmailUpgradePermitted(restmailURL, stsPolicy, enforcing) {
+		slog.Warn("queue: MTA-STS enforce — probed RESTMAIL endpoint not permitted by policy, using SMTP",
+			"host", host, "url", restmailURL)
+		return false, nil
+	}
+
+	err = w.deliverRESTMAILHTTPS(restmailURL, item, enforcing)
 	if err != nil {
 		return true, err
 	}
 	return true, nil
+}
+
+// probeRESTMAIL dials addr and runs the RESTMAIL capability probe against it:
+// read the SMTP greeting, EHLO, check for the RESTMAIL extension, then QUIT.
+// serverName is passed to smtp.NewClient (the TLS server name, informational
+// until STARTTLS). It reports (probed, supported, endpointURL):
+//   - probed is true only when the greeting+EHLO handshake completed and the
+//     remote gave a definitive RESTMAIL answer. When probed is false the socket
+//     or handshake failed and the caller falls through to plain SMTP without
+//     caching a capability result.
+//   - supported / endpointURL carry the RESTMAIL extension result when probed.
+//
+// The ENTIRE probe conversation is bounded by a single absolute deadline set on
+// the socket immediately after dial, before smtp.NewClient reads the greeting.
+// net/smtp installs no deadlines of its own, so without this a remote that
+// accepts the TCP connection and then stays silent would park this worker
+// goroutine forever: the queue row is reclaimed and re-probed on a timer, leaking
+// a goroutine each cycle, so a single silent MX can drain the worker pool and
+// wedge the outbound queue until restart (#169). The probe transfers no message
+// body, so it uses the base per-attempt budget (sendDeadline(0)), which stays far
+// below the reclaim interval.
+func (w *Worker) probeRESTMAIL(addr, serverName string) (probed, supported bool, endpointURL string) {
+	dialer := w.newGuardedDialer(10 * time.Second)
+	conn, err := dialer.Dial("tcp", addr)
+	if err != nil {
+		return false, false, ""
+	}
+
+	// Bound the whole probe with one absolute deadline, set before smtp.NewClient
+	// reads the greeting, so a silent remote cannot wedge this goroutine (#169).
+	_ = conn.SetDeadline(time.Now().Add(w.sendDeadline(0)))
+
+	client, err := smtp.NewClient(conn, serverName)
+	if err != nil {
+		conn.Close()
+		return false, false, ""
+	}
+
+	if err := client.Hello(w.hostname); err != nil {
+		_ = client.Close()
+		return false, false, ""
+	}
+
+	ok, restmailURL := client.Extension("RESTMAIL")
+	_ = client.Quit()
+	_ = client.Close()
+	return true, ok, restmailURL
 }
 
 // bounceSenderAuthorized reports whether a DSN for a failed outbound item may be
@@ -896,6 +1042,14 @@ func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
 //   - testing / none / no policy: opportunistic TLS as before; a would-fail
 //     under "testing" is logged but delivery proceeds.
 func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
+	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
+	// that cannot be loaded so the send retries rather than going out unsigned.
+	prepared, err := w.prepareOutbound(item)
+	if err != nil {
+		return fmt.Errorf("prepare outbound message: %w", err)
+	}
+	item.RawMessage = prepared
+
 	// Size-aware whole-attempt budget (OSI-7): the fixed 30 s could not transfer
 	// a large-but-permitted message's DATA phase. The deadline scales with the
 	// message size and stays strictly below w.reclaim, so a slow large send

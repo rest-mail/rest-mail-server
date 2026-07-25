@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/restmail/restmail/internal/ratelimit"
 )
 
 // defaultMaxMessageSize is the maximum accepted message size, in bytes, when
@@ -39,7 +40,9 @@ type session struct {
 	api          Backend
 	store        Store
 	limiter      *connlimiter.Limiter
-	isSubmission bool // port 587/465 requires AUTH
+	subLimiter   *ratelimit.SubmissionLimiter // per-account submission cap (nil = disabled)
+	hostname     string                       // this server's host name, stamped into the Received header
+	isSubmission bool                         // port 587/465 requires AUTH
 
 	// Anti-abuse tarpit: the connection-scoped context is cancelled on server
 	// shutdown so an in-flight tarpit sleep aborts rather than blocking the
@@ -218,10 +221,40 @@ func (l *loginSASLServer) Next(response []byte) (challenge []byte, done bool, er
 	return nil, true, l.authenticate(l.username, string(response))
 }
 
+// tooManyAuthFailures is the 421 reply sent when a client or the targeted
+// account is banned. 421 closes the connection, so a banned attacker cannot keep
+// pipelining AUTH commands down the same session.
+var tooManyAuthFailures = &gosmtp.SMTPError{
+	Code:         421,
+	EnhancedCode: gosmtp.EnhancedCode{4, 7, 0},
+	Message:      "Too many authentication failures",
+}
+
 // login authenticates against the REST API and tracks failures in the
 // connection limiter so repeated bad credentials lead to a ban.
+//
+// Brute-force protection is layered: failures are throttled BOTH per source IP
+// and per targeted account, so neither a single host hammering many accounts nor
+// a rotating botnet hammering one account slips through. A ban is a HARD stop —
+// once the IP or the account is banned the request is rejected outright, WITHOUT
+// calling the auth API. That keeps a banned attacker off the backend and means a
+// ban is never lifted by a lucky correct guess, because no guess is verified
+// while banned.
 func (s *session) login(username, password string) error {
 	ip := extractIP(s.remoteAddr())
+
+	// Hard stop before any API call: reject a banned client or a banned target
+	// account without verifying the password.
+	if s.limiter.IsBanned(ip) || s.limiter.IsUserBanned(username) {
+		slog.Warn("smtp: auth rejected: banned",
+			"remote", s.remoteAddr(),
+			"user", maskEmail(username),
+			"event", "smtp_auth_banned",
+			"ip", ip,
+		)
+		s.tarpitReject()
+		return tooManyAuthFailures
+	}
 
 	resp, err := s.api.Login(username, password)
 	if err != nil {
@@ -235,17 +268,27 @@ func (s *session) login(username, password string) error {
 			"event", "smtp_auth_failed",
 			"ip", ip,
 		)
-		s.limiter.RecordAuthFail(ip)
-		// A failed AUTH is a brute-force signal: feed the tarpit so repeated
-		// bad credentials on one connection are progressively slowed (the
-		// connlimiter's cross-connection ban is the separate hard stop below).
-		s.tarpitReject()
-		if s.limiter.IsBanned(ip) {
+
+		// Only a DEFINITIVE credential rejection (401/403) is a brute-force signal.
+		// A transient API/network error leaves the password unverified, so it must
+		// not accrue against the ban — otherwise a brief API outage would ban
+		// legitimate clients' IPs and accounts. Surface it as a temporary failure.
+		if !apiclient.IsAuthRejection(err) {
 			return &gosmtp.SMTPError{
-				Code:         421,
+				Code:         454,
 				EnhancedCode: gosmtp.EnhancedCode{4, 7, 0},
-				Message:      "Too many authentication failures",
+				Message:      "Temporary authentication failure, try again later",
 			}
+		}
+
+		// Count the failure against both the source IP and the target account, then
+		// feed the tarpit so repeated bad credentials on one connection are
+		// progressively slowed.
+		s.limiter.RecordAuthFail(ip)
+		s.limiter.RecordAuthFailUser(username)
+		s.tarpitReject()
+		if s.limiter.IsBanned(ip) || s.limiter.IsUserBanned(username) {
+			return tooManyAuthFailures
 		}
 		return &gosmtp.SMTPError{
 			Code:         535,
@@ -255,12 +298,25 @@ func (s *session) login(username, password string) error {
 	}
 
 	s.limiter.ResetAuth(ip)
+	s.limiter.ResetAuthUser(username)
 	s.authenticated = true
 	s.authEmail = username
 	s.accountID = resp.Data.User.ID
 
 	slog.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
 	return nil
+}
+
+// rateLimitKey identifies the account a submission is charged against for the
+// per-account rate limit. Linked accounts share one webmail account id, so a
+// compromised credential is capped as a single principal regardless of which of
+// its authorized From addresses it sends as. It falls back to the authenticated
+// login when no account id is set.
+func (s *session) rateLimitKey() string {
+	if s.accountID != 0 {
+		return fmt.Sprintf("acct:%d", s.accountID)
+	}
+	return "user:" + s.authEmail
 }
 
 // Mail starts a transaction. On submission ports it requires authentication
@@ -293,6 +349,39 @@ func (s *session) Mail(from string, _ *gosmtp.MailOptions) error {
 
 	s.mailFrom = from
 	s.rcptTo = nil
+	return nil
+}
+
+// authorizeFromHeader enforces that an authenticated submitter's message From:
+// header address is one the account is authorized to send as: its own login
+// identity, or a linked address (the same linked_accounts -> mailboxes lookup as
+// the MAIL FROM check). A From header for an address the account does not own —
+// or a missing/unparseable From — is rejected 550, preventing header-level
+// spoofing (#181). Like Mail(), a store lookup error is treated as "not
+// authorized"; both the authenticated user and the offending From are masked in
+// logs since a mismatch is a spoofing signal.
+func (s *session) authorizeFromHeader(fromAddr string) error {
+	if fromAddr == "" {
+		slog.Warn("smtp: submission rejected: no usable From header", "auth_user", maskEmail(s.authEmail))
+		return &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 6, 0},
+			Message:      "A valid From header is required",
+		}
+	}
+	if fromAddr == s.authEmail {
+		return nil
+	}
+	authorized, err := s.store.SenderAuthorized(s.accountID, fromAddr)
+	if err != nil || !authorized {
+		slog.Warn("smtp: From header not authorized",
+			"auth_user", maskEmail(s.authEmail), "header_from", maskEmail(fromAddr), "error", err)
+		return &gosmtp.SMTPError{
+			Code:         550,
+			EnhancedCode: gosmtp.EnhancedCode{5, 7, 1},
+			Message:      "From header address not authorized for this account",
+		}
+	}
 	return nil
 }
 
@@ -362,8 +451,36 @@ func (s *session) Data(r io.Reader) error {
 		}
 	}
 
+	// Per-account submission rate limit (#171): a compromised credential must not
+	// be able to flood outbound mail. Enforced after the body is fully read (so the
+	// DATA stream is consumed) and before any recipient is delivered or queued, so a
+	// throttled message commits nothing. Only authenticated submission is limited;
+	// inbound-MX (port 25) has no account to key on.
+	if s.isSubmission && s.authenticated && !s.subLimiter.Allow(s.rateLimitKey()) {
+		slog.Warn("smtp: submission rate limit exceeded",
+			"user", s.authEmail, "account_id", s.accountID, "event", "smtp_submission_rate_limited")
+		return &gosmtp.SMTPError{
+			Code:         451,
+			EnhancedCode: gosmtp.EnhancedCode{4, 7, 1},
+			Message:      "Account rate limit exceeded, try again later",
+		}
+	}
+
 	// Parse the message and deliver to each recipient.
-	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList := parseRawMessage(data)
+	subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references, toList, ccList, fromAddr := parseRawMessage(data)
+
+	// #181: on the authenticated submission path the message From: header must
+	// belong to an identity the account may send as — mirroring the MAIL FROM
+	// check in Mail(). The envelope check alone does not catch an authenticated
+	// user forging From: "CEO" <ceo@example.com>, which recipients' clients
+	// display and which would otherwise be stored/relayed verbatim. Enforced
+	// here, before anything is delivered, queued, or persisted, so a rejected
+	// spoof commits nothing.
+	if s.isSubmission && s.authenticated {
+		if err := s.authorizeFromHeader(fromAddr); err != nil {
+			return err
+		}
+	}
 
 	if messageID == "" {
 		messageID = rmail.GenerateMessageID(rmail.DomainFromAddress(s.mailFrom))
@@ -376,6 +493,27 @@ func (s *session) Data(r io.Reader) error {
 	// it; on submission these stay nil/empty (see inboundTransportSecurity).
 	tlsState, isTLS := s.conn.TLSConnectionState()
 	receivedTLS, tlsVersion, tlsCipher := inboundTransportSecurity(s.isSubmission, tlsState, isTLS)
+
+	// Prepend our trace (Received) header (RFC 5321 §4.4): an SMTP server that
+	// accepts a message for delivery or further processing MUST insert trace
+	// information at the top of the content, so this hop is visible in the
+	// Received chain (loop detection, DMARC/ARC alignment) and the server behaves
+	// like a mainstream MTA. Stamped once onto the raw bytes here so it flows to
+	// every downstream use — local delivery, the outbound queue, and the persisted
+	// submission reference — identically. It sits above any DKIM-Signature, which
+	// is standard and does not invalidate existing signatures. The "for" clause is
+	// emitted only for a single recipient (see singleRecipient) so a Bcc recipient
+	// is never disclosed to the others.
+	received := rmail.BuildReceivedHeader(rmail.ReceivedInfo{
+		From:      s.conn.Hostname(),
+		RemoteIP:  extractIP(s.remoteAddr()),
+		By:        s.hostname,
+		With:      receivedWith(isTLS, s.authenticated),
+		ID:        rmail.GenerateQueueID(),
+		For:       singleRecipient(s.rcptTo),
+		Timestamp: time.Now(),
+	})
+	data = append([]byte(received), data...)
 
 	accepted := 0
 	failed := 0
@@ -391,7 +529,21 @@ func (s *session) Data(r io.Reader) error {
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient.
 		check, err := s.api.CheckMailbox(rcpt)
-		if err != nil || !check.Data.Exists {
+		if err != nil {
+			// Classification failed: we cannot tell whether this recipient is
+			// local or remote. Do NOT fall through to the outbound queue — a
+			// local recipient (this is the inbound-MX path) would then be
+			// relayed externally (a leak) or MX-delivered back to ourselves.
+			// Tempfail (451) so the sender retries once the API recovers,
+			// matching the RCPT-time path. The default fail reply is already a
+			// 451, so counting this recipient as failed yields the right reply
+			// when nothing else commits.
+			slog.Error("smtp: API error re-checking mailbox at DATA time; tempfailing to avoid misroute",
+				"from", s.mailFrom, "to", rcpt, "error", err)
+			failed++
+			continue
+		}
+		if !check.Data.Exists {
 			// Non-local: insert into the outbound queue for the queue worker.
 			recipientDomain := rcpt
 			if idx := strings.LastIndex(rcpt, "@"); idx >= 0 {

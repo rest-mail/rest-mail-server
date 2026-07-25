@@ -154,14 +154,19 @@ func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the mailbox exists and credentials are correct
+	// Verify the mailbox exists and the credentials are correct. As with the login
+	// path, a lookup miss does NOT short-circuit: run one bcrypt comparison against a
+	// dummy hash so an unknown or inactive address is timing-indistinguishable from a
+	// wrong password, closing the enumeration side-channel a plain lookup-then-compare
+	// would reopen.
 	var mailbox models.Mailbox
-	if err := h.db.Where("address = ? AND active = ?", req.Address, true).First(&mailbox).Error; err != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
-		return
+	lookupErr := h.db.Where("address = ? AND active = ?", req.Address, true).First(&mailbox).Error
+	passwordHash := auth.DummyPasswordHash
+	if lookupErr == nil {
+		passwordHash = mailbox.Password
 	}
-
-	if err := auth.CheckPassword(req.Password, mailbox.Password); err != nil {
+	pwErr := auth.CheckPassword(req.Password, passwordHash)
+	if lookupErr != nil || pwErr != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
 		return
 	}
@@ -237,13 +242,17 @@ func (h *AccountHandler) TestConnection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// A lookup miss runs the same dummy-hash bcrypt comparison as a wrong password
+	// (see LinkAccount), so an unknown/inactive address cannot be told apart from a
+	// wrong password by timing.
 	var mailbox models.Mailbox
-	if err := h.db.Where("address = ? AND active = ?", req.Address, true).First(&mailbox).Error; err != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
-		return
+	lookupErr := h.db.Where("address = ? AND active = ?", req.Address, true).First(&mailbox).Error
+	passwordHash := auth.DummyPasswordHash
+	if lookupErr == nil {
+		passwordHash = mailbox.Password
 	}
-
-	if err := auth.CheckPassword(req.Password, mailbox.Password); err != nil {
+	pwErr := auth.CheckPassword(req.Password, passwordHash)
+	if lookupErr != nil || pwErr != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
 		return
 	}
