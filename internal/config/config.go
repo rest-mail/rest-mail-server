@@ -464,11 +464,11 @@ func Load() (*Config, error) {
 		Environment: getEnv("ENVIRONMENT", "development"),
 	}
 
-	if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.Environment == "production" {
+	if cfg.JWTSecret == "dev-secret-change-in-production" && cfg.IsProduction() {
 		return nil, fmt.Errorf("JWT_SECRET must be set in production")
 	}
 
-	if cfg.MasterKey == "" && cfg.Environment == "production" {
+	if cfg.MasterKey == "" && cfg.IsProduction() {
 		return nil, fmt.Errorf("MASTER_KEY must be set in production")
 	}
 
@@ -1177,9 +1177,10 @@ func (c *Config) StaleDeliveringReclaim() time.Duration {
 // validateSecurityConfig, which is called once from Load() (see the clearly
 // marked call there, just before it returns).
 //
-// Enforcement split: in PRODUCTION (ENVIRONMENT=="production", the exact value
-// the two pre-existing JWT/MASTER_KEY checks in Load already key on) an insecure
-// value is a hard startup error — the process refuses to boot rather than run
+// Enforcement split: in PRODUCTION (Config.IsProduction — the trimmed,
+// case-insensitive "prod" family the two pre-existing JWT/MASTER_KEY checks in
+// Load also key on) an insecure value is a hard startup error — the process
+// refuses to boot rather than run
 // insecurely. In every OTHER environment (development/test — the testbed/e2e
 // default) the identical finding is logged as a warning and boot proceeds, so
 // local development and the e2e stack are unaffected. Validation only INSPECTS
@@ -1205,10 +1206,24 @@ const MinMasterKeyLength = 16
 // default used by getEnv("JWT_SECRET", ...) in Load.
 const legacyDefaultJWTSecret = "dev-secret-change-in-production"
 
-// isProductionEnv reports whether enforcement is active. It mirrors the exact
-// string comparison the two pre-existing secret checks in Load use, so the whole
-// package treats "production" identically (and development/test only warn).
-func (c *Config) isProductionEnv() bool { return c.Environment == "production" }
+// IsProduction reports whether ENVIRONMENT names a production deployment. It is
+// the single, typo-resistant answer every fail-closed security gate keys on: the
+// value is trimmed and matched case-insensitively against the whole "prod" family
+// ("prod", "PROD", "Production", "production-eu", …). A casing typo or a rebranded
+// suffix must never silently drop production hardening, so the match deliberately
+// errs toward enforcing MORE (secure-by-construction), never less.
+//
+// Issue #196: enforcement previously keyed on the exact string "production", so
+// "Production"/"PRODUCTION"/"prod" booted with warnings only — silently dropping
+// weak-secret, TLS-keypair, listener-security and cleartext-DB fail-closed checks.
+func (c *Config) IsProduction() bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(c.Environment)), "prod")
+}
+
+// isProductionEnv is the internal alias every enforcement site in this package
+// keys on; it defers to IsProduction so config and the API handlers share one
+// definition of "production" (and development/test only warn).
+func (c *Config) isProductionEnv() bool { return c.IsProduction() }
 
 // validateSecurityConfig performs boot-time validation of the security-critical
 // configuration and applies the production-enforce / development-warn split. It
@@ -1458,8 +1473,9 @@ func (c *Config) RollupDownsampleInterval() time.Duration {
 // (via the shared isProductionEnv method). Load() is deliberately NOT changed:
 // enforcement is process-specific (each protocol gateway runs different
 // listeners), so each cmd/*/main.go calls ValidateListenerSecurity with its own
-// role right after config.Load(). In PRODUCTION (ENVIRONMENT=="production") an
-// insecure listener/knob is a hard boot error; in development/test (the testbed
+// role right after config.Load(). In PRODUCTION (Config.IsProduction — the
+// trimmed, case-insensitive "prod" family) an insecure listener/knob is a hard
+// boot error; in development/test (the testbed
 // & e2e default) the identical finding is a slog.Warn and boot proceeds
 // unchanged — no new boot error can fire outside production.
 //

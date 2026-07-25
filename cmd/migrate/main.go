@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/config"
@@ -27,7 +28,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := db.AutoMigrate(database); err != nil {
+	// The migrate tool is the controlled, deploy-time entry point where destructive
+	// one-time upgrades (e.g. the linked_accounts dedupe) may run — but only when
+	// the operator explicitly opts in with DB_ALLOW_DESTRUCTIVE_MIGRATIONS=true.
+	// Without it, this run is additive-only, exactly like a server boot (issue #196).
+	allowDestructive := strings.EqualFold(strings.TrimSpace(os.Getenv("DB_ALLOW_DESTRUCTIVE_MIGRATIONS")), "true")
+	if allowDestructive {
+		slog.Warn("destructive migrations enabled (DB_ALLOW_DESTRUCTIVE_MIGRATIONS=true): one-time data-collapsing steps may run")
+	}
+
+	if err := db.AutoMigrate(database, allowDestructive); err != nil {
 		slog.Error("migration failed", "error", err)
 		os.Exit(1)
 	}
