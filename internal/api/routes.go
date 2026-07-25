@@ -113,7 +113,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Use(metrics.HTTPMetrics)
 
 	// Initialize handlers
-	healthH := handlers.NewHealthHandler(db)
+	healthH := handlers.NewHealthHandler(db, jwtService)
 	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey)
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled)
 	domainH := handlers.NewDomainHandler(db, dnsProvider)
@@ -251,7 +251,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Get("/api/docs/openapi.yaml", OpenAPISpecHandler())
 
 	// ═══════════════════════════════════════════════════════════════
-	// Health (no auth)
+	// Health — public liveness probe (no auth, always 200 when up). The handler
+	// additionally surfaces the certificate inventory/expiry, but ONLY to a valid
+	// admin token; unauthenticated callers receive the liveness response only.
 	// ═══════════════════════════════════════════════════════════════
 	r.Get("/api/health", healthH.Health)
 
