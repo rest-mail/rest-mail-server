@@ -490,6 +490,16 @@ with the gateway→API handshake enforced. Existing manifests that don't set the
 flag are unaffected. This is the secure-by-default-for-new-deployments posture
 without breaking the bare binary.
 
+**Production boot refuses the exposed posture.** Because those two routes trust a
+caller-supplied `client_ip`/`helo_name` and are tokenless when served on the
+public listener, running with `INTERNAL_MTLS_ENABLED=false` in production
+(`ENVIRONMENT=production`) is refused at boot: the API exits with an error naming
+the exposure. Enable internal mTLS, or — if a firewall / Kubernetes NetworkPolicy
+already restricts the API port to trusted gateways — acknowledge that out-of-band
+trust boundary with `INTERNAL_ROUTES_ALLOW_PUBLIC=true`. In development/test (the
+testbed and e2e default) the same posture only logs a warning and boots, so local
+use is unchanged.
+
 When **enabled**, the API serves only those two routes on a dedicated listener
 (`INTERNAL_MTLS_PORT`, default `8443`) that requires
 `tls.RequireAndVerifyClientCert` against the internal CA, and withholds them
@@ -508,6 +518,7 @@ submission would break.
 | Variable                    | Default   | Side    | Description                              |
 |-----------------------------|-----------|---------|------------------------------------------|
 | `INTERNAL_MTLS_ENABLED`     | `false`   | both    | Master switch                            |
+| `INTERNAL_ROUTES_ALLOW_PUBLIC` | `false` | API   | Acknowledge serving the two machine routes unauthenticated on the public listener (mTLS off); required to boot in production without mTLS |
 | `INTERNAL_MTLS_PORT`        | `8443`    | API     | Dedicated internal listener port         |
 | `API_BASE_URL`              | `http://localhost:8080` | gateway | PUBLIC listener (Login + user routes) — stays public |
 | `API_INTERNAL_BASE_URL`     | *(empty)* | gateway | Internal mTLS listener (the two machine routes only) |
