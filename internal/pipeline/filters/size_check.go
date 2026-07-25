@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	rmconfig "github.com/restmail/restmail/internal/config"
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
 )
@@ -39,7 +40,11 @@ func NewSizeCheck(config []byte) (pipeline.Filter, error) {
 		maxSize = cfg.MaxSizeMB * 1024 * 1024
 	}
 	if maxSize <= 0 {
-		maxSize = 25 * 1024 * 1024 // 25MB default
+		// Align the unconfigured default with the SMTP ingress limit. The old
+		// 25 MB default was unreachable: the ingress rejects anything over
+		// DefaultSMTPMaxMessageSize before the pipeline runs, so a message could
+		// never reach this filter at a size above it (issue #201).
+		maxSize = rmconfig.DefaultSMTPMaxMessageSize
 	}
 	return &sizeCheckFilter{maxSize: maxSize}, nil
 }

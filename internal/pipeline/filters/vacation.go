@@ -158,6 +158,14 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 
 // buildVacationReply constructs an RFC 2822 vacation auto-reply with RFC 3834 headers.
 func buildVacationReply(from, to, subject, body, inReplyTo string) string {
+	// The incoming Message-ID reaches In-Reply-To/References; on the RESTMAIL path
+	// it originates from the caller-supplied req.MessageID and is attacker-
+	// influenced. Strip control characters so a CRLF cannot inject extra headers
+	// (e.g. a Bcc:) into this outbound reply (issue #201). Subject also flows from
+	// the mailbox config, so sanitize it for the same reason.
+	inReplyTo = sanitizeHeaderValue(inReplyTo)
+	subject = sanitizeHeaderValue(subject)
+
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + to + "\r\n")
@@ -202,14 +210,27 @@ func (f *vacationFilter) shouldSuppress(sender string, email *pipeline.EmailJSON
 		return "sender contains no-reply"
 	}
 
-	// 3. Auto-Submitted header (RFC 3834 section 2).
+	// 3. Auto-Submitted header (RFC 3834 §2 / RFC 5230 §4.6). Any value other than
+	//    "no" marks the message as auto-generated and MUST NOT be auto-replied to.
+	//    The value is a keyword optionally followed by ";"-separated parameters
+	//    (e.g. "auto-generated (from a filter)"), so compare only the keyword —
+	//    this now also catches auto-notified and any future/parameterized keyword,
+	//    not just the two exact strings matched before.
 	if vals := f.rawHeader(email, "Auto-Submitted"); len(vals) > 0 {
 		for _, v := range vals {
-			v = strings.TrimSpace(strings.ToLower(v))
-			if v == "auto-replied" || v == "auto-generated" {
-				return fmt.Sprintf("Auto-Submitted: %s", v)
+			keyword := autoSubmittedKeyword(v)
+			if keyword != "" && keyword != "no" {
+				return fmt.Sprintf("Auto-Submitted: %s", keyword)
 			}
 		}
+	}
+
+	// 3b. Backscatter guard: do not auto-reply to a sender whose SPF/DMARC failed.
+	//     The reply would go to the (likely forged) envelope sender — classic
+	//     backscatter. The signal is the Authentication-Results the spf_check /
+	//     dmarc_check filters recorded earlier in the pipeline.
+	if reason := authFailureReason(email); reason != "" {
+		return reason
 	}
 
 	// 4. Precedence header.
@@ -230,6 +251,75 @@ func (f *vacationFilter) shouldSuppress(sender string, email *pipeline.EmailJSON
 	}
 
 	return ""
+}
+
+// autoSubmittedKeyword returns the lower-cased leading keyword of an
+// Auto-Submitted header value, dropping any ";"-separated parameters and
+// trailing "(comment)" text (RFC 3834 §5). Returns "" for an empty value.
+func autoSubmittedKeyword(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	if i := strings.IndexAny(v, "; ("); i >= 0 {
+		v = v[:i]
+	}
+	return strings.TrimSpace(v)
+}
+
+// authFailureReason returns a non-empty reason when the message's
+// Authentication-Results indicate an SPF or DMARC failure, so the vacation
+// responder can suppress a backscatter reply. It is deliberately conservative:
+// any spf=fail/softfail or dmarc=fail token anywhere in the recorded results is
+// enough to hold the reply (fail-safe — a false positive only means "no
+// auto-reply", never a lost message).
+func authFailureReason(email *pipeline.EmailJSON) string {
+	var results []string
+	results = append(results, rawAuthResults(email)...)
+	if email.Headers.Extra != nil {
+		if v := email.Headers.Extra["Authentication-Results"]; v != "" {
+			results = append(results, v)
+		}
+	}
+	for _, ar := range results {
+		lc := strings.ToLower(ar)
+		switch {
+		case strings.Contains(lc, "spf=fail"):
+			return "sender failed SPF (backscatter guard)"
+		case strings.Contains(lc, "spf=softfail"):
+			return "sender soft-failed SPF (backscatter guard)"
+		case strings.Contains(lc, "dmarc=fail"):
+			return "sender failed DMARC (backscatter guard)"
+		}
+	}
+	return ""
+}
+
+// rawAuthResults returns every Authentication-Results value from the Raw
+// headers, case-insensitively.
+func rawAuthResults(email *pipeline.EmailJSON) []string {
+	if email.Headers.Raw == nil {
+		return nil
+	}
+	var out []string
+	for k, v := range email.Headers.Raw {
+		if strings.EqualFold(k, "Authentication-Results") {
+			out = append(out, v...)
+		}
+	}
+	return out
+}
+
+// sanitizeHeaderValue strips CR and LF (and other C0 control characters except
+// tab) from a value destined for a single header line, preventing header
+// injection when the value is attacker-influenced (issue #201).
+func sanitizeHeaderValue(v string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' {
+			return -1
+		}
+		if r < 0x20 && r != '\t' {
+			return -1
+		}
+		return r
+	}, v)
 }
 
 // rawHeader performs a case-insensitive lookup in the Raw headers map.

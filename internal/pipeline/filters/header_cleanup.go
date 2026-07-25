@@ -22,6 +22,10 @@ func (f *headerCleanupFilter) Type() pipeline.FilterType { return pipeline.Filte
 
 func (f *headerCleanupFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
+	// Clone the Raw map before deleting from it: `modified := *email` shares it
+	// with the caller's original, so an in-place delete would strip these headers
+	// from the input too (issue #201).
+	modified.Headers.Raw = cloneRawHeaders(email.Headers.Raw)
 
 	// Remove internal/sensitive headers
 	internalHeaders := []string{
@@ -31,10 +35,8 @@ func (f *headerCleanupFilter) Execute(_ context.Context, email *pipeline.EmailJS
 		"Bcc",
 	}
 
-	if modified.Headers.Raw != nil {
-		for _, h := range internalHeaders {
-			delete(modified.Headers.Raw, h)
-		}
+	for _, h := range internalHeaders {
+		delete(modified.Headers.Raw, h)
 	}
 
 	// Clear BCC from structured headers (should be envelope-only)

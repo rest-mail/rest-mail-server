@@ -666,8 +666,22 @@ func (e *recordingExecutor) Flag(op string, flags []string) {
 
 func (e *recordingExecutor) Vacation(v sieve.Vacation) {
 	e.actions = append(e.actions, "vacation:"+v.ReplyTo)
+	// The delivery path records vacation metadata but no consumer ever sends the
+	// reply, so a `vacation` action silently no-ops. Reject it at install rather
+	// than accept a script we won't honour (issue #201). Mailbox out-of-office is
+	// configured via the vacation_configs table + the `vacation` pipeline filter,
+	// not via a Sieve vacation action.
+	if e.err == nil {
+		e.err = fmt.Errorf("the Sieve 'vacation' action is not supported by this server (configure out-of-office via the mailbox vacation settings instead)")
+	}
 }
 
 func (e *recordingExecutor) Notify(method, message string) {
 	e.actions = append(e.actions, "notify:"+method)
+	// `notify` (RFC 5435) has no delivery consumer either. The parser already
+	// rejects the enotify/notify extensions, so this is belt-and-suspenders for a
+	// future parser that accepts them (issue #201).
+	if e.err == nil {
+		e.err = fmt.Errorf("the Sieve 'notify' action is not supported by this server")
+	}
 }
