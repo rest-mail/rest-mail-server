@@ -32,16 +32,15 @@ func NewTestHandler(db *gorm.DB, cfg *config.Config) *TestHandler {
 // productionLocked reports whether the destructive/abusable test endpoints
 // (reset, seed, snapshot/restore, send, probe, verify) must be refused.
 //
-// The gate fails CLOSED on any production-like ENVIRONMENT value:
-// case-insensitive and matching the whole "prod…" family ("prod", "PROD",
-// "Production", "production-eu", …). Previously it compared against the exact
-// string "production", so a rebranded or mistyped value (e.g. ENVIRONMENT=prod)
-// would silently leave these endpoints ENABLED on a production deployment
-// (CWE-489). Non-production environments (development/test/staging) are
+// The gate fails CLOSED on any production-like ENVIRONMENT value via the shared
+// Config.IsProduction predicate: trimmed, case-insensitive, matching the whole
+// "prod…" family ("prod", "PROD", "Production", "production-eu", …). Keying on the
+// exact string "production" would let a rebranded or mistyped value (e.g.
+// ENVIRONMENT=prod) silently leave these endpoints ENABLED on a production
+// deployment (CWE-489). Non-production environments (development/test/staging) are
 // unaffected.
 func (h *TestHandler) productionLocked() bool {
-	env := strings.ToLower(strings.TrimSpace(h.cfg.Environment))
-	return strings.HasPrefix(env, "prod")
+	return h.cfg.IsProduction()
 }
 
 // SendTestEmail sends a test email from one mailbox to another.

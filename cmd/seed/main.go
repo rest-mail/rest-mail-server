@@ -40,7 +40,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := db.AutoMigrate(database); err != nil {
+	// Seeding is additive-only (allowDestructive=false); it never issues
+	// destructive DML (issue #196).
+	if err := db.AutoMigrate(database, false); err != nil {
 		slog.Error("failed to migrate", "error", err)
 		os.Exit(1)
 	}

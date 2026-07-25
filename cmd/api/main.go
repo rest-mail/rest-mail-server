@@ -105,8 +105,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Run auto-migration
-	if err := db.AutoMigrate(database); err != nil {
+	// Run auto-migration. Boot is ADDITIVE-only (allowDestructive=false): the API
+	// never issues destructive DML at startup, so a rolling deploy cannot have
+	// whichever version boots first silently rewrite data. Destructive one-time
+	// upgrades are the migrate tool's job (issue #196).
+	if err := db.AutoMigrate(database, false); err != nil {
 		slog.Error("failed to run database migration", "error", err)
 		os.Exit(1)
 	}
