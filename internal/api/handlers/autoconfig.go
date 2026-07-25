@@ -146,31 +146,54 @@ func (h *AutoconfigHandler) MicrosoftAutodiscover(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Build Autodiscover response
+	// Build the Autodiscover response through encoding/xml so the
+	// caller-controlled email/local-part is XML-escaped rather than reflected into
+	// the response as markup (element injection). The namespaces are carried as
+	// explicit xmlns attributes to reproduce the exact two-namespace document
+	// shape Outlook expects. Mirrors the safe Mozilla path above.
+	type adProtocol struct {
+		Type       string `xml:"Type"`
+		Server     string `xml:"Server"`
+		Port       int    `xml:"Port"`
+		SSL        string `xml:"SSL,omitempty"`
+		Encryption string `xml:"Encryption,omitempty"`
+		LoginName  string `xml:"LoginName"`
+	}
+	type adAccount struct {
+		AccountType string       `xml:"AccountType"`
+		Action      string       `xml:"Action"`
+		Protocol    []adProtocol `xml:"Protocol"`
+	}
+	type adResponse struct {
+		XMLName xml.Name  `xml:"Response"`
+		Xmlns   string    `xml:"xmlns,attr"`
+		Account adAccount `xml:"Account"`
+	}
+	type adRoot struct {
+		XMLName  xml.Name   `xml:"Autodiscover"`
+		Xmlns    string     `xml:"xmlns,attr"`
+		Response adResponse `xml:"Response"`
+	}
+
+	resp := adRoot{
+		Xmlns: "http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006",
+		Response: adResponse{
+			Xmlns: "http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a",
+			Account: adAccount{
+				AccountType: "email",
+				Action:      "settings",
+				Protocol: []adProtocol{
+					{Type: "IMAP", Server: domainName, Port: 993, SSL: "on", LoginName: email},
+					{Type: "SMTP", Server: domainName, Port: 587, Encryption: "TLS", LoginName: email},
+				},
+			},
+		},
+	}
+
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="utf-8"?>
-<Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006">
-  <Response xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a">
-    <Account>
-      <AccountType>email</AccountType>
-      <Action>settings</Action>
-      <Protocol>
-        <Type>IMAP</Type>
-        <Server>%s</Server>
-        <Port>993</Port>
-        <SSL>on</SSL>
-        <LoginName>%s</LoginName>
-      </Protocol>
-      <Protocol>
-        <Type>SMTP</Type>
-        <Server>%s</Server>
-        <Port>587</Port>
-        <Encryption>TLS</Encryption>
-        <LoginName>%s</LoginName>
-      </Protocol>
-    </Account>
-  </Response>
-</Autodiscover>
-`, domainName, email, domainName, email)
+	fmt.Fprint(w, xml.Header)
+	enc := xml.NewEncoder(w)
+	enc.Indent("", "  ")
+	_ = enc.Encode(resp)
 }

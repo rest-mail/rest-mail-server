@@ -259,7 +259,7 @@ func (h *TLSReportHandler) ListReports(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if reportingOrg := r.URL.Query().Get("reporting_org"); reportingOrg != "" {
-		query = query.Where("reporting_org ILIKE ?", "%"+reportingOrg+"%")
+		query = query.Where("reporting_org ILIKE ? ESCAPE '\\'", "%"+escapeLike(reportingOrg)+"%")
 	}
 
 	var total int64

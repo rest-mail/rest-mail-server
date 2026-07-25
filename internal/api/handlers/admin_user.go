@@ -83,7 +83,8 @@ type updateAdminUserRequest struct {
 func (h *AdminUserHandler) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
 	repo := repositories.NewAdminUserRepository(h.db)
 
-	users, err := repo.List()
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+	users, total, err := repo.ListUsers(limit, offset)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch admin users")
 		return
@@ -121,7 +122,7 @@ func (h *AdminUserHandler) ListAdminUsers(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	respond.Data(w, http.StatusOK, response)
+	respond.List(w, response, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 // GetAdminUser returns a single admin user by ID

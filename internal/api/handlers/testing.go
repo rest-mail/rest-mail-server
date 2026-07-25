@@ -177,7 +177,7 @@ func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
 	for {
 		query := h.db.Where("mailbox_id = ? AND folder = ?", mailbox.ID, "INBOX")
 		if subject != "" {
-			query = query.Where("subject LIKE ?", "%"+subject+"%")
+			query = query.Where("subject LIKE ? ESCAPE '\\'", "%"+escapeLike(subject)+"%")
 		}
 		if messageID != "" {
 			query = query.Where("message_id = ?", messageID)

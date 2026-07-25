@@ -21,12 +21,17 @@ func NewWebmailAccountHandler(db *gorm.DB) *WebmailAccountHandler {
 
 // List returns all webmail accounts (admin).
 func (h *WebmailAccountHandler) List(w http.ResponseWriter, r *http.Request) {
+	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+
+	var total int64
+	h.db.Model(&models.WebmailAccount{}).Count(&total)
+
 	var accounts []models.WebmailAccount
-	if err := h.db.Preload("PrimaryMailbox").Preload("LinkedAccounts.Mailbox").Find(&accounts).Error; err != nil {
+	if err := h.db.Preload("PrimaryMailbox").Preload("LinkedAccounts.Mailbox").Limit(limit).Offset(offset).Find(&accounts).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list webmail accounts")
 		return
 	}
-	respond.List(w, accounts, nil)
+	respond.List(w, accounts, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
 // Create creates a webmail account for an existing mailbox (admin).

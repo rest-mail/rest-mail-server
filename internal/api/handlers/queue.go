@@ -32,10 +32,10 @@ func (h *QueueHandler) ListQueue(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("domain = ?", domain)
 	}
 	if sender := r.URL.Query().Get("sender"); sender != "" {
-		query = query.Where("sender ILIKE ?", "%"+sender+"%")
+		query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(sender)+"%")
 	}
 	if recipient := r.URL.Query().Get("recipient"); recipient != "" {
-		query = query.Where("recipient ILIKE ?", "%"+recipient+"%")
+		query = query.Where("recipient ILIKE ? ESCAPE '\\'", "%"+escapeLike(recipient)+"%")
 	}
 
 	limit := 50

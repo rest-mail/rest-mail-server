@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -58,6 +59,25 @@ func resolveAttachmentPath(root, storageRef string) (string, error) {
 		return "", errAttachmentPathEscape
 	}
 	return realPath, nil
+}
+
+// contentDispositionAttachment builds a safe Content-Disposition header value for
+// an attachment download from a sender-controlled filename. Control characters
+// (including CR/LF header-injection attempts) are stripped, and the name is
+// encoded with mime.FormatMediaType (RFC 2045/2231 quoting), so a filename
+// containing quotes or other metacharacters cannot break out of the header
+// (issue #202). Falls back to a generic value if the name cannot be encoded.
+func contentDispositionAttachment(filename string) string {
+	filename = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, filename)
+	if cd := mime.FormatMediaType("attachment", map[string]string{"filename": filename}); cd != "" {
+		return cd
+	}
+	return "attachment"
 }
 
 // AttachmentHandler handles attachment retrieval.
@@ -135,7 +155,7 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 	}
 
 	w.Header().Set("Content-Type", att.ContentType)
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+att.Filename+"\"")
+	w.Header().Set("Content-Disposition", contentDispositionAttachment(att.Filename))
 	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
 
 	http.ServeContent(w, r, att.Filename, stat.ModTime(), file)
