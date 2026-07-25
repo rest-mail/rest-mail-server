@@ -143,7 +143,7 @@ func main() {
 	bancheck.Wire(limiter, database, "imap")
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
-	imapServer := imapsrv.NewServer(cfg.GatewayHostname, imap.NewBackend(api), tlsConfig, limiter)
+	imapServer := imapsrv.NewServer(cfg.GatewayHostname, imap.NewBackend(api, limiter), tlsConfig, limiter)
 	if err := imapServer.ListenAndServe(imapsrv.Ports{
 		IMAP:    cfg.IMAPPort,
 		IMAPTLS: cfg.IMAPTLSPort,

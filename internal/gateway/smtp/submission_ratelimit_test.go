@@ -53,34 +53,8 @@ func TestSubmissionRateLimited(t *testing.T) {
 	}
 }
 
-// TestSubmissionRateLimit_PerAccountKey checks the limiter counts by account key
-// so linked From addresses of one account share the cap (a compromised
-// credential cannot multiply its allowance by rotating authorized senders).
-func TestSubmissionRateLimit_PerAccountKey(t *testing.T) {
-	l := newSubmissionRateLimiter(2, 100)
-	if !l.Allow("acct:1") {
-		t.Fatal("first under the cap should be allowed")
-	}
-	if !l.Allow("acct:1") {
-		t.Fatal("second under the cap should be allowed")
-	}
-	if l.Allow("acct:1") {
-		t.Fatal("third over the cap should be denied")
-	}
-	// A different account is independent.
-	if !l.Allow("acct:2") {
-		t.Fatal("a different account must have its own budget")
-	}
-}
-
-// TestSubmissionRateLimiter_NilAllowsAll documents that a session without a
-// limiter (nil) is never throttled, so unit tests that build a bare session are
-// unaffected.
-func TestSubmissionRateLimiter_NilAllowsAll(t *testing.T) {
-	var l *submissionRateLimiter
-	for i := 0; i < 1000; i++ {
-		if !l.Allow("acct:1") {
-			t.Fatal("nil limiter must allow every request")
-		}
-	}
-}
+// The limiter type's own unit tests (per-account keying, nil-allows-all) live
+// with the shared implementation now that it was extracted into
+// internal/ratelimit (#184): see internal/ratelimit/submission_test.go. This
+// file keeps the SMTP-integration guard above, which exercises the limiter
+// through a real authenticated submission transaction.

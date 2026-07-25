@@ -118,6 +118,9 @@ func TestSMTP_InboundStampsReceived(t *testing.T) {
 func TestSMTP_SubmissionOutboundStampsReceived(t *testing.T) {
 	back := newMockBackend()
 	store := newMockStore()
+	// testBody's From: header (sender@remote.test) is an authorized linked
+	// address, so the #181 From-header check accepts the submission.
+	store.authorized["sender@remote.test"] = true
 
 	h := newSMTPHarness(t, back, store, true) // submission (587)
 	h.ehlo()

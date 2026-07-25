@@ -100,6 +100,26 @@ type Config struct {
 	PipelineTestRateLimitRPS     float64 // sustained requests/sec per client IP
 	PipelineTestRateLimitBurst   int     // bucket capacity (max short burst) per client IP
 
+	// Authenticated-API request-body cap (#184): the maximum request body, in
+	// bytes, accepted on the authenticated API surface (send, drafts, contacts
+	// import, sieve PUT, pipeline create/test, …). Enforced with
+	// http.MaxBytesReader plus a Content-Length fast-fail so an unbounded JSON
+	// upload cannot exhaust memory. 0 disables the cap; a negative value is a
+	// startup configuration error. The default scales with SMTPMaxMessageSize so
+	// a legitimate max-size compose is never rejected.
+	APIMaxBodyBytes int64
+
+	// Webmail/API send-path limits (#184): a per-message recipient cap and a
+	// per-account send rate limit on POST /messages/send (and the draft-send /
+	// forward paths that delegate to it). They mirror the SMTP submission caps
+	// (#171) so a single compromised webmail credential cannot fan out unlimited
+	// bulk mail — one queue row per recipient, each a full copy of the message.
+	// APIMaxRecipientsPerMessage <= 0 disables the recipient cap; a per-tier send
+	// rate <= 0 disables that tier.
+	APIMaxRecipientsPerMessage int
+	APISendRateLimitPerMinute  int
+	APISendRateLimitPerHour    int
+
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
@@ -363,6 +383,19 @@ const (
 	DefaultPipelineTestRateLimitBurst = 10
 )
 
+// API send-path limit defaults (#184) for the webmail/API send surface. They
+// mirror the shared SMTP submission caps (ratelimit.DefaultPerMinute /
+// ratelimit.DefaultPerHour) so submission (587/465) and the webmail/API send
+// path cap a sender's outbound volume the same way: 100 recipients per message,
+// 20 messages/minute and 100 messages/hour per account. Overridden by
+// API_MAX_RECIPIENTS_PER_MESSAGE / API_SEND_RATE_LIMIT_PER_MINUTE /
+// API_SEND_RATE_LIMIT_PER_HOUR.
+const (
+	DefaultAPIMaxRecipientsPerMessage = 100
+	DefaultAPISendRateLimitPerMinute  = 20
+	DefaultAPISendRateLimitPerHour    = 100
+)
+
 // DefaultTLSRPTRateLimitRPS / DefaultTLSRPTRateLimitBurst are the per-client-IP
 // throttle defaults for the unauthenticated TLS-RPT ingestion endpoint (issue
 // #183) when TLSRPT_RATE_LIMIT_RPS / TLSRPT_RATE_LIMIT_BURST are unset. TLS-RPT
@@ -485,6 +518,30 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("SMTP_MAX_MESSAGE_SIZE must be a positive number of bytes (a maximum message size must always exist), got %d", smtpMax)
 	}
 	cfg.SMTPMaxMessageSize = smtpMax
+
+	// Authenticated-API request-body cap (#184). Same strictness rationale as the
+	// SMTP max message size: a malformed value is a hard startup error, never a
+	// silent fallback. 0 explicitly disables the cap. The default scales with the
+	// configured max message size (2× plus 1 MiB scaffolding headroom, mirroring
+	// InternalDeliveryBodyLimit) so a legitimate max-size compose is accepted while
+	// an unbounded upload cannot buffer without limit.
+	defaultAPIBody := smtpMax*2 + 1*1024*1024
+	apiBody, err := getEnvInt64Strict("API_MAX_BODY_BYTES", defaultAPIBody, "bytes")
+	if err != nil {
+		return nil, err
+	}
+	if apiBody < 0 {
+		return nil, fmt.Errorf("API_MAX_BODY_BYTES must be a non-negative number of bytes (0 disables the cap), got %d", apiBody)
+	}
+	cfg.APIMaxBodyBytes = apiBody
+
+	// Webmail/API send-path limits (#184): recipient cap + per-account send rate.
+	// These are lenient getEnvInt knobs (a per-tier value of 0 simply disables that
+	// tier) rather than hard startup errors — they are volume caps, not a
+	// must-always-exist security invariant like the max message size.
+	cfg.APIMaxRecipientsPerMessage = getEnvInt("API_MAX_RECIPIENTS_PER_MESSAGE", DefaultAPIMaxRecipientsPerMessage)
+	cfg.APISendRateLimitPerMinute = getEnvInt("API_SEND_RATE_LIMIT_PER_MINUTE", DefaultAPISendRateLimitPerMinute)
+	cfg.APISendRateLimitPerHour = getEnvInt("API_SEND_RATE_LIMIT_PER_HOUR", DefaultAPISendRateLimitPerHour)
 
 	// Anti-slowloris message-transfer policy. Same strictness rationale as the
 	// max message size: these are security knobs, so a malformed value is a

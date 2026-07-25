@@ -22,6 +22,7 @@ import (
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/outbound"
 	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/restmail/restmail/internal/ratelimit"
 	"gorm.io/gorm"
 )
 
@@ -31,10 +32,29 @@ type MessageHandler struct {
 	engine    *pipeline.Engine
 	masterKey string
 	recorder  traceRecorder
+
+	// Send-path abuse limits (#184), configured from config in routes.go. A single
+	// compromised webmail credential must not be able to fan out unlimited bulk
+	// mail. maxRecipients <= 0 disables the per-message recipient cap; sendLimiter
+	// is nil when the per-account send rate limit is disabled (a nil limiter allows
+	// every request).
+	maxRecipients int
+	sendLimiter   *ratelimit.SubmissionLimiter
 }
 
 func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
 	return &MessageHandler{db: db, broker: broker, engine: engine, masterKey: masterKey, recorder: recorder}
+}
+
+// SetSendLimits configures the send-path abuse limits (#184): the per-message
+// recipient cap and the per-account send rate limiter. Both the draft-send and
+// forward paths delegate to SendMessage, so configuring it once here covers
+// every webmail/API send entry point. Call before the router serves traffic;
+// maxRecipients <= 0 disables the recipient cap and a nil limiter disables
+// rate limiting.
+func (h *MessageHandler) SetSendLimits(maxRecipients int, limiter *ratelimit.SubmissionLimiter) {
+	h.maxRecipients = maxRecipients
+	h.sendLimiter = limiter
 }
 
 // recordTrace hands a MessageTrace to the async recorder when one is configured.
@@ -380,6 +400,20 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Per-message recipient cap (#184): a single API send must not fan out to an
+	// unbounded number of recipients — each becomes one queue row holding a full
+	// copy of the message, so an uncapped recipient list is a queue/storage
+	// amplification vector. Counted across to+cc+bcc and mirrored on the SMTP
+	// submission path (which caps RCPT TO per transaction). Checked before any DB
+	// work so an oversized fan-out is rejected cheaply. maxRecipients <= 0 disables.
+	if h.maxRecipients > 0 {
+		if total := len(req.To) + len(req.Cc) + len(req.Bcc); total > h.maxRecipients {
+			respond.Error(w, http.StatusBadRequest, "too_many_recipients",
+				fmt.Sprintf("too many recipients: %d exceeds the per-message limit of %d", total, h.maxRecipients))
+			return
+		}
+	}
+
 	// Validate every address before it is serialized into the DKIM-signed
 	// To:/Cc: headers or queued as an SMTP envelope recipient. Without this a
 	// recipient like "victim@real.com>\r\nRCPT TO:<attacker@evil.com" is written
@@ -406,6 +440,22 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rmail.ValidateAddress(req.From); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
+		return
+	}
+
+	// Per-account send rate limit (#184): cap how many messages one authenticated
+	// webmail account may send per minute/hour, mirroring the SMTP submission cap
+	// (#171) so a compromised credential cannot flood outbound mail through the API
+	// any more than through submission. Keyed on the authenticated account (not the
+	// From address, which the caller can rotate among its authorized senders), and
+	// checked here — after cheap validation, before the send commits — so a
+	// throttled request enqueues nothing. A nil limiter (feature disabled) allows
+	// every request. Both the draft-send and forward paths delegate to SendMessage,
+	// so they inherit this cap.
+	if !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.WebmailAccountID), 10)) {
+		w.Header().Set("Retry-After", "60")
+		respond.Error(w, http.StatusTooManyRequests, "rate_limited",
+			"Account send rate limit exceeded; try again later")
 		return
 	}
 
