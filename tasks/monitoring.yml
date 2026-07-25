@@ -39,7 +39,10 @@ vars:
   GRAFANA_IP: '{{.GRAFANA_IP | default "10.99.0.31"}}'
   GRAFANA_PORT: '{{.GRAFANA_PORT | default "3001"}}'
   GRAFANA_ADMIN_USER: '{{.GRAFANA_ADMIN_USER | default "admin"}}'
-  GRAFANA_ADMIN_PASSWORD: '{{.GRAFANA_ADMIN_PASSWORD | default "restmail"}}'
+  # No hardcoded default: a Grafana admin password MUST be supplied via
+  # GRAFANA_ADMIN_PASSWORD. grafana:up refuses to start without it (guard below),
+  # so the stack can never come up on well-known credentials.
+  GRAFANA_ADMIN_PASSWORD: '{{.GRAFANA_ADMIN_PASSWORD | default ""}}'
   GRAFANA_NAME: '{{.MONITORING_PROJECT}}-grafana'
   GRAFANA_DATA_VOLUME: '{{.MONITORING_PROJECT}}-grafana-data'
 
@@ -70,9 +73,9 @@ tasks:
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  monitoring stack ready"
         echo ""
-        echo "  Prometheus       →  http://localhost:{{.PROMETHEUS_PORT}}  ({{.PROMETHEUS_IP}})"
+        echo "  Prometheus       →  http://prometheus:9090  ({{.PROMETHEUS_IP}}, mailnet-internal — not published to host)"
         echo "  Grafana          →  http://localhost:{{.GRAFANA_PORT}}  ({{.GRAFANA_IP}})"
-        echo "                      user: {{.GRAFANA_ADMIN_USER}}  pass: {{.GRAFANA_ADMIN_PASSWORD}}"
+        echo "                      user: {{.GRAFANA_ADMIN_USER}}  pass: (as set via GRAFANA_ADMIN_PASSWORD)"
         echo "  postgres-exporter→  {{.POSTGRES_EXPORTER_IP}}  (scraped by prometheus)"
         echo ""
         echo "  task monitoring:logs        list per-service log commands"
@@ -134,19 +137,26 @@ tasks:
       - |
         echo "  starting prometheus ({{.PROMETHEUS_NAME}} @ {{.PROMETHEUS_IP}})"
         docker rm -f {{.PROMETHEUS_NAME}} >$OUTPUT 2>&1 || true
+        # Prometheus is reachable ONLY on the mailnet (static IP + the DNS name
+        # `prometheus`), which is how Grafana scrapes it. It is deliberately NOT
+        # published to the host: an unauthenticated :9090 is both a metrics
+        # data-disclosure surface and, with the lifecycle/admin APIs, a remote
+        # control surface.
+        #   * no `-p …:9090`               — not bound on any host interface
+        #   * --web.enable-lifecycle OFF   — no remote POST /-/reload or /-/quit
+        #                                    (off by default; never enabled here)
+        #   * admin API stays off (default) — no remote TSDB delete/snapshot
         docker run -d --name {{.PROMETHEUS_NAME}} \
           --restart unless-stopped \
           --network {{.MONITORING_NETWORK}} \
           --ip {{.PROMETHEUS_IP}} \
           --dns {{.PROMETHEUS_DNS}} \
-          -p {{.PROMETHEUS_PORT}}:9090 \
           -v "$(pwd)/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
           -v "$(pwd)/monitoring/alerting-rules.yml:/etc/prometheus/alerting-rules.yml:ro" \
           -v {{.PROMETHEUS_DATA_VOLUME}}:/prometheus \
           {{.PROMETHEUS_IMAGE}} \
           --config.file=/etc/prometheus/prometheus.yml \
-          --storage.tsdb.retention.time=30d \
-          --web.enable-lifecycle >$OUTPUT 2>&1
+          --storage.tsdb.retention.time=30d >$OUTPUT 2>&1
 
   prometheus:down:
     desc: Stop and remove the prometheus container (preserves the data volume)
@@ -185,6 +195,12 @@ tasks:
           docker tag {{.GRAFANA_UPSTREAM_IMAGE}} {{.GRAFANA_IMAGE}}
         fi
       - |
+        if [ -z "{{.GRAFANA_ADMIN_PASSWORD}}" ]; then
+          echo "  ERROR: GRAFANA_ADMIN_PASSWORD is required (no default)." >&2
+          echo "         Grafana will not start on well-known credentials." >&2
+          echo "         Set it, e.g.  GRAFANA_ADMIN_PASSWORD=... task monitoring:up" >&2
+          exit 1
+        fi
         echo "  starting grafana ({{.GRAFANA_NAME}} @ {{.GRAFANA_IP}})"
         docker rm -f {{.GRAFANA_NAME}} >$OUTPUT 2>&1 || true
         # The admin password goes through a 0600 env-file rather than an -e flag,
