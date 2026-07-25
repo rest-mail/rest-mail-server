@@ -2,13 +2,13 @@
 
 This document consolidates every plan, stage document, and reference guide that previously lived across `docs/`, `docs/plans/`, and `docs/stages/`. It is the single source of truth for what the project is, what works today, how it was built, and what remains.
 
-The original plan and stage documents have since been retired; this manual is their consolidated replacement.
+The original plan and stage documents have since been retired — completed work is tracked as GitHub issues and their history remains in git — so their content is consolidated here rather than kept as separate files.
 
 ---
 
 ## 1. Overview
 
-RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, and a pluggable pipeline engine (16+ built-in filters plus JavaScript and Sieve custom filters). Email authentication and policy — DKIM, ARC, DMARC, MTA-STS, and Sieve — are provided by the extracted libraries `rest-mail/{dkim,arc,dmarc,mtasts,sieve}`. The standalone mail-server auditing CLI (Instant Mail Check) now lives in its own repository (see §4.5).
+RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, and a pluggable pipeline engine (23 built-in filters, including JavaScript and Sieve custom-script filters). Email authentication and policy — DKIM, ARC, DMARC, MTA-STS, and Sieve — are provided by the extracted libraries `rest-mail/{dkim,arc,dmarc,mtasts,sieve}`. The standalone mail-server auditing CLI (Instant Mail Check) now lives in its own repository (see §4.5).
 
 The development testbed simulates parallel mail domains: reference `mail1.test` and `mail2.test` run traditional Postfix + Dovecot (from the separate `rest-mail/reference-mailserver` project), while `restmail.test` routes through the RESTMAIL gateways. They exist to verify cross-domain delivery, anti-spoofing, and protocol compatibility in a realistic environment.
 
@@ -34,12 +34,13 @@ projects/             Dockerfiles and config templates (dnsmasq, smtp/imap/pop3
 Taskfile.yml          Task runner for dev/build/test workflows (per-service
 tasks/                image + container tasks; run `task --list`)
 tests/e2e/            End-to-end integration test suite
-docs/                 This manual + reference docs
+docs/                 This manual + reference docs (adapter-filters,
+                      dns-providers, fail2ban-setup, proxy-protocol)
 ```
 
 ### Development environment notes
 
-- The shared docker network `mailnet` uses subnet **`10.99.0.0/16`** (moved from `172.20.0.0/16` on 2026-04-22 to avoid host-level collisions with docker's default auto-allocation pool). It is created by `task testbed:bootstrap` / `task testbed:up`.
+- The shared docker network `mailnet` uses subnet **`10.99.0.0/16`** (moved from `172.20.0.0/16` on 2026-04-22 to avoid host-level collisions with docker's default auto-allocation pool). It is created by `task testbed:init` (first-run clone/link) / `task testbed:up`.
 - Static IPs are load-bearing, not defensive: `dnsmasq` publishes A records at specific IPs, SPF records embed literal IPs (`v=spf1 ip4:10.99.0.13 -all`), and the reference Postfix `mynetworks` uses the CIDR. Do not switch to docker service-name DNS without reworking the mail-internet simulation.
 - The stack is no longer a single `docker-compose.yml`: each service is its own container image managed by discrete Taskfile tasks (`task <service>:up` / `:down`), started against the shared testbed. Run `task --list` for the full catalog and `task status` for current state.
 
@@ -171,8 +172,8 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - Aliases: standard CRUD
 - Webmail accounts: list, create, link primary mailbox, delete
 - Queue: list + filters (status, domain, sender, recipient, attempts), `GET /:id`, `POST /:id/retry`, `POST /:id/bounce`, `DELETE /:id`, plus bulk endpoints `POST /bulk-retry`, `POST /bulk-bounce`, `DELETE /bulk-delete` (accept `ids[]` up to 1000 or `filter{status, domain, sender, recipient}`)
-- Pipelines: `GET /pipelines`, `GET/:domain/:direction`, `PUT /:domain/:direction` (upsert), `DELETE /:domain/:direction`, `POST /:domain/:direction/test`
-- Custom filters: `GET/POST /filters`, `GET/PUT/DELETE /:id`, `POST /:id/test`, `GET /filters:builtin`, `GET /filters:builtin/:name`
+- Pipelines: `GET/POST /pipelines`, `PATCH/DELETE /pipelines/:id`, `POST /pipelines/test`, `POST /pipelines/test-filter`, `GET /pipelines/logs`, `GET /pipelines/analytics`. Each pipeline is still per-domain, per-direction (the model carries `domain_id` + `direction`), but the API addresses pipelines by numeric id.
+- Custom filters: `GET/POST /custom-filters`, `POST /custom-filters/validate`, `GET/PATCH/DELETE /custom-filters/:id`, `POST /custom-filters/:id/test`
 - DKIM: `GET /dkim`, `GET/POST/DELETE /:domain`, `DELETE /:domain/:selector`, `GET /:domain/dns`
 - Certificates: `GET /certs`, `GET/POST/DELETE /:domain`, `POST /:domain/provision` (ACME), `POST /:domain/renew`
 - IP bans: `GET /bans?protocol=&active=`, `POST`, `DELETE /:id`, `DELETE /ip/:ip`
@@ -180,7 +181,7 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - MTA-STS: `GET /domains/:id/mta-sts`, `PUT`, `DELETE`
 - TLS-RPT: `GET /tls-reports?domain_id=&policy_type=&reporting_org=`
 - Stats: `GET /stats` (dashboard)
-- Admin-user management: **endpoints missing — see §5 Outstanding**
+- Admin users (RBAC): `GET/POST /admin-users`, `GET/PUT/DELETE /admin-users/:id`, `GET /roles`, `GET /capabilities`
 
 #### Server-to-server (RESTMAIL protocol, unauthenticated body verified by DKIM/SPF/DMARC)
 - `GET /restmail/capabilities`
@@ -198,7 +199,7 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - `POST /api/v1/test/reset`, `POST /api/v1/test/seed`, `POST /api/v1/test/snapshot`, `POST /api/v1/test/restore/:snapshot`
 - `GET /metrics` — Prometheus
 
-OpenAPI 3.1 spec: `/api/docs/openapi.yaml`; Swagger UI at `/api/docs`. 108 documented operations.
+OpenAPI 3.1 spec: `/api/docs/openapi.yaml`; Swagger UI at `/api/docs`. 146 documented operations.
 
 ### 4.2 Pipeline engine & filters
 
@@ -206,7 +207,7 @@ Per-domain, per-direction (inbound / outbound) filter chains. Configured via `/a
 
 Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defer`. SMTP gateway maps these to reply codes 250 / 550 / silent discard / 200 / 451 respectively.
 
-#### Built-in filters (≥ 20)
+#### Built-in filters (23)
 
 | Filter | Type | Notes |
 |--------|------|-------|
@@ -216,10 +217,10 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `dmarc_check` | Check | DMARC policy enforcement |
 | `arc_verify` | Check | ARC chain verification |
 | `arc_seal` | Transform | ARC seal generation |
-| `spam_score` | Check | Configurable thresholds |
 | `rate_limit` | Check | Per-sender/domain |
-| `size_limit` / `size_check` | Check | Message size ceiling |
-| `attachment_check` | Check | Blocked file types |
+| `size_check` | Check | Message size ceiling |
+| `header_validate` | Check | Require From/Date/Message-ID; reject header-injection attempts |
+| `header_cleanup` | Transform | Strip internal headers (`X-RestMail-Internal`, `X-Pipeline-ID`, `X-Queue-ID`) and clear BCC on outbound |
 | `greylist` | Check | DB-backed |
 | `recipient_check` | Check | Verify recipient exists + quota |
 | `sender_verify` | Check | Sender domain callback |
@@ -234,7 +235,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum |
 | `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected |
 
-DB-backed filters (greylist, vacation, domain_allowlist, contact_whitelist, recipient_check, sender_verify) are explicitly `pipeline.DefaultRegistry.Register()`'d in [internal/api/routes.go](../internal/api/routes.go) after their blank imports fire `init()`.
+Filters that need runtime dependencies — the DB-backed ones (greylist, vacation, domain_allowlist, contact_whitelist, recipient_check, sender_verify) and the signing filters that read keys and require the master key (dkim_sign, arc_seal) — are explicitly `pipeline.DefaultRegistry.Register()`'d in [internal/api/routes.go](../internal/api/routes.go). The remaining built-ins self-register via `init()` in [internal/pipeline/filters/](../internal/pipeline/filters/) on blank import.
 
 #### Pipeline DB context
 Pipeline context carries `*gorm.DB` via `context.WithValue()`; filters access via `pipeline.DBFromContext()`. This lets filters query tables (e.g. `extract_attachments` checks the `attachments.checksum` index to dedup).
@@ -333,26 +334,29 @@ Located at [admin/](../admin/). Served on `:3002` or through `/admin` on the rev
 
 #### Structure
 ```
-admin/app/
+admin/src/
 ├── routes/
 │   ├── __root.tsx, index.tsx, login.tsx
 │   ├── dashboard/index.tsx
 │   ├── domains/{index,$id,new}.tsx
 │   ├── mailboxes/{index,$id,new}.tsx
-│   ├── aliases/{index,new}.tsx           (frontend planned, see §5)
-│   ├── queue/{index,$id}.tsx             ✅ Stage 4 complete
-│   ├── pipelines/...                     (see §5)
-│   ├── admin-users/...                   (frontend done, backend missing — §5)
-│   ├── settings/...                      (see §5)
-│   └── logs/{activity,delivery}.tsx
-├── components/ui, layout, auth, domains, mailboxes, queue, ...
+│   ├── aliases/{index,$id,new}.tsx
+│   ├── queue/{index,$id}.tsx
+│   ├── pipelines/{index,$id,new,logs}.tsx
+│   ├── custom-filters/{index,$id,new}.tsx
+│   ├── admin-users/{index,$id,new}.tsx
+│   ├── settings/{index,dkim,certificates,bans,tls-reports,mta-sts}.tsx
+│   └── messages/$id/...
+├── components/  (dashboard, domains, layout, mailboxes, pipelines, queue)
 ├── lib/
-│   ├── api/ (client.ts + per-resource modules)
-│   ├── stores/ (authStore, domainStore, mailboxStore, aliasStore, queueStore,
-│   │            pipelineStore, adminUserStore, uiStore, etc.)
-│   ├── hooks/ (useAuth, useCapabilities, useApiMutation)
-│   └── types/
-└── router.tsx, ssr.tsx
+│   ├── api.ts   (axios client + per-resource calls)
+│   └── stores/  (authStore, domainStore, mailboxStore, aliasStore, queueStore,
+│                 pipelineStore, customFilterStore, filterRegistryStore,
+│                 adminUserStore, dkimStore, certificateStore, banStore,
+│                 tlsReportStore, mtastsStore, dashboardStore, analyticsStore,
+│                 uiStore)
+├── main.tsx, router.tsx, routeTree.gen.ts
+└── styles.css
 ```
 
 #### Implemented features
@@ -380,43 +384,28 @@ Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../moni
 
 ## 5. Outstanding Work
 
+> **Status note (2026-07 refresh):** much of the admin UI described below as outstanding has since been built. `admin/src/routes/` and `admin/src/lib/stores/` now ship pages and stores for aliases, pipelines, custom filters, admin-users (RBAC), and every settings subsection (DKIM, certificates, IP bans, TLS-RPT, MTA-STS), and the admin-user backend has landed (§5.1). The per-stage detail below is retained as historical planning context; each item still needs verification against the code before being treated as fully done.
+
 ### 5.1 Critical blockers
 
-#### Admin-user backend (`AdminUserHandler`) — blocks Stage 6 RBAC UI
-Frontend is 100 % complete (`adminUserStore`, routes at `admin/app/routes/admin-users/`, forms), but the API returns 404 for all calls.
-
-**To unblock, add to [internal/api/handlers/admin_user.go](../internal/api/handlers/admin_user.go) (new file):**
-- `ListAdminUsers`, `GetAdminUser`, `CreateAdminUser`, `UpdateAdminUser`, `DeleteAdminUser`, `ListRoles`, `ListCapabilities`
-- Response types include roles array; password hashing via `auth.HashPassword()`; role assignment via `repo.AssignRoles()`
-
-**Routes to register in [internal/api/routes.go](../internal/api/routes.go):**
+None outstanding. The former blocker — the admin-user (RBAC) management backend — has landed. The handler is at [internal/api/handlers/admin_user.go](../internal/api/handlers/admin_user.go), with routes registered in [internal/api/routes.go](../internal/api/routes.go):
 ```
 GET    /api/v1/admin/admin-users
 POST   /api/v1/admin/admin-users
 GET    /api/v1/admin/admin-users/{id}
-PATCH  /api/v1/admin/admin-users/{id}
+PUT    /api/v1/admin/admin-users/{id}
 DELETE /api/v1/admin/admin-users/{id}
 GET    /api/v1/admin/roles
 GET    /api/v1/admin/capabilities
 ```
 
-**Capability middleware** at [internal/api/middleware/capability.go](../internal/api/middleware/capability.go) (new):
-```go
-func RequireCapability(capability string) func(http.Handler) http.Handler
-func RequireAnyCapability(capabilities ...string) func(http.Handler) http.Handler
-```
-
-Standard capability set: `users:read`, `users:write`, `users:delete`, plus the wildcard `*`.
-
-Verify repo methods exist: `List()`, `GetByID()`, `Create()`, `Update()`, `UpdatePassword()`, `Delete()`, `GetRoles()`, `AssignRoles()`, `ListRoles()`, `ListCapabilities()`, `GetCapabilities()`.
-
-Estimated effort: 2–3 days backend, 1–2 days frontend integration.
+Routes are capability-gated with a `needs(...)` helper against the taxonomy in [internal/api/middleware/capabilities.go](../internal/api/middleware/capabilities.go) — `users:read`, `users:write`, `users:delete`, plus the wildcard `*`. The matching admin UI ships at `admin/src/routes/admin-users/`.
 
 ### 5.2 High-priority next
 
 #### Stage 5 — Pipelines & Filters UI (frontend only; backend ready)
 Backend APIs already work. Need:
-- Stores: `pipelineStore`, `customFilterStore`, `filterRegistryStore` (static metadata for 20+ built-ins)
+- Stores: `pipelineStore`, `customFilterStore`, `filterRegistryStore` (static metadata for the 23 built-ins)
 - Routes: `/pipelines/{,new,$id,$id/test,logs}`, `/custom-filters/{,new,$id,$id/test}`
 - Visual filter builder (drag-drop) using `@dnd-kit/core` + `@dnd-kit/sortable`
 - Code editor for JS filters using `@monaco-editor/react`
@@ -786,13 +775,12 @@ For historical reference, source documents were:
 | §5.4 EAI | EAI_PLAN.md |
 | Stage 4 complete (§2 Changelog) | STAGE_4_CHECKLIST.md, STAGE_4_FEATURES.md, STAGE_4_IMPLEMENTATION_COMPLETE.md, STAGE_4_SUMMARY.md, STAGE_4_TESTING_GUIDE.md, STAGE_4_QUEUE_MANAGEMENT.md |
 
-These original documents have since been retired; their content is consolidated into this manual (see §10).
+These source documents have since been removed from the repository — completed work is tracked as GitHub issues, and their history remains in git (see §10).
 
 ---
 
 ## 10. Document maintenance
 
-- This manual supersedes the archived plan documents; update it when a feature lands or a gap is identified.
+- This manual supersedes the retired plan documents; update it when a feature lands or a gap is identified.
 - When a Feb-2026 design doc item (§5.3) is verified in code, move it into §4 with concrete file paths.
-- When Stage 6 admin-user backend lands, move it from §5.1 to §4.1 and §4.7.
-- `docs/INSTANT-MAIL-CHECK.md`, `docs/adapter-filters.md`, `docs/dns-providers.md`, `docs/fail2ban-setup.md`, `docs/proxy-protocol.md` remain as-is — they are operational guides summarized in §4 but still useful at full length.
+- `docs/adapter-filters.md`, `docs/dns-providers.md`, `docs/fail2ban-setup.md`, `docs/proxy-protocol.md` remain as-is — they are operational guides summarized in §4 but still useful at full length.
