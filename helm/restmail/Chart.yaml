@@ -9,8 +9,8 @@ description: |
   by an external operator (e.g. cert-manager). For local kind/k3s development
   against the rest-mail/testbed substrate, see values-dev.yaml.
 type: application
-version: 0.3.0
-appVersion: "2026.04.28"
+version: 0.3.1
+appVersion: "2026.07.26"
 keywords:
   - mail
   - smtp
