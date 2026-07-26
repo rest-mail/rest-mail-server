@@ -30,6 +30,14 @@ type numberedEvent struct {
 
 const ringSize = 64
 
+// DefaultMaxSSEStreamsPerAccount bounds the number of concurrent SSE streams a
+// single account may hold open. Each stream costs a goroutine, a file
+// descriptor, and a broker subscription channel, so without a cap one account
+// (or a stolen token) could open unbounded streams and exhaust server resources
+// (#204). The default is generous for legitimate multi-tab / multi-device use
+// while still bounding abuse.
+const DefaultMaxSSEStreamsPerAccount = 8
+
 // mailboxState tracks the event counter and ring buffer for one mailbox.
 type mailboxState struct {
 	counter atomic.Uint64
@@ -44,13 +52,59 @@ type SSEBroker struct {
 	mu          sync.RWMutex
 	subscribers map[uint]map[chan numberedEvent]struct{}
 	states      sync.Map // uint (mailboxID) -> *mailboxState
+
+	// maxStreams caps concurrent SSE streams per mailbox (#204). active tracks
+	// the current count per mailbox; both are guarded by activeMu, kept separate
+	// from mu so the acquire/release accounting never contends with event fan-out.
+	maxStreams int
+	activeMu   sync.Mutex
+	active     map[uint]int
 }
 
-// NewSSEBroker creates a new SSEBroker ready for use.
+// NewSSEBroker creates a new SSEBroker ready for use, with the default
+// per-account concurrent-stream cap.
 func NewSSEBroker() *SSEBroker {
+	return newSSEBroker(DefaultMaxSSEStreamsPerAccount)
+}
+
+// newSSEBroker builds a broker with an explicit per-account stream cap. A
+// non-positive cap falls back to the default so the broker is always bounded.
+func newSSEBroker(maxStreams int) *SSEBroker {
+	if maxStreams <= 0 {
+		maxStreams = DefaultMaxSSEStreamsPerAccount
+	}
 	return &SSEBroker{
 		subscribers: make(map[uint]map[chan numberedEvent]struct{}),
+		maxStreams:  maxStreams,
+		active:      make(map[uint]int),
 	}
+}
+
+// AcquireStream reserves one concurrent-stream slot for mailboxID. It returns
+// false without reserving when the per-account cap is already reached. Every
+// successful AcquireStream MUST be paired with exactly one ReleaseStream (on
+// disconnect) so the slot is returned.
+func (b *SSEBroker) AcquireStream(mailboxID uint) bool {
+	b.activeMu.Lock()
+	defer b.activeMu.Unlock()
+	if b.active[mailboxID] >= b.maxStreams {
+		return false
+	}
+	b.active[mailboxID]++
+	return true
+}
+
+// ReleaseStream returns a slot previously taken by AcquireStream. It is safe to
+// call once per successful acquire; the per-mailbox entry is dropped when it
+// reaches zero so the map cannot grow without bound.
+func (b *SSEBroker) ReleaseStream(mailboxID uint) {
+	b.activeMu.Lock()
+	defer b.activeMu.Unlock()
+	if b.active[mailboxID] <= 1 {
+		delete(b.active, mailboxID)
+		return
+	}
+	b.active[mailboxID]--
 }
 
 // Subscribe creates a buffered channel for the given mailbox ID and registers
@@ -209,6 +263,17 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
+
+	// 3a. Per-account concurrency cap (#204): bound the number of simultaneous
+	// SSE streams for this mailbox so one account (or a stolen token) cannot open
+	// unbounded streams and exhaust goroutines/FDs. Reserve a slot now that the
+	// caller is authorized for this mailbox; release it on disconnect. Over the
+	// cap we reject with 503 rather than accept without bound.
+	if !h.broker.AcquireStream(mailboxID) {
+		respond.Error(w, http.StatusServiceUnavailable, "too_many_streams", "Too many concurrent event streams for this account")
+		return
+	}
+	defer h.broker.ReleaseStream(mailboxID)
 
 	// 4. Ensure the response writer supports flushing
 	flusher, ok := w.(http.Flusher)
