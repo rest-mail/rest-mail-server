@@ -1,11 +1,19 @@
 import { Outlet, createRootRoute, useNavigate } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { TanStackDevtools } from '@tanstack/react-devtools'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { setUnauthorizedHandler } from '../lib/api'
 import { useAuthStore } from '../lib/stores/authStore'
 
 import '../styles.css'
+
+// Devtools are loaded ONLY in development, via a dev-gated dynamic import. In a
+// production build `import.meta.env.DEV` is statically `false`, so the ternary
+// folds to the no-op component and the `import()` (with the devtools packages)
+// is dropped from the bundle entirely — they never ship to users.
+const DevTools = import.meta.env.DEV
+  ? lazy(() =>
+      import('../components/DevTools').then((m) => ({ default: m.DevTools })),
+    )
+  : () => null
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -53,17 +61,9 @@ function RootComponent() {
   return (
     <>
       <Outlet />
-      <TanStackDevtools
-        config={{
-          position: 'bottom-right',
-        }}
-        plugins={[
-          {
-            name: 'TanStack Router',
-            render: <TanStackRouterDevtoolsPanel />,
-          },
-        ]}
-      />
+      <Suspense fallback={null}>
+        <DevTools />
+      </Suspense>
     </>
   )
 }

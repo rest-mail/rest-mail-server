@@ -20,6 +20,7 @@ import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CustomFiltersIndexRouteImport } from './routes/custom-filters/index'
 import { Route as AliasesIndexRouteImport } from './routes/aliases/index'
 import { Route as AdminUsersIndexRouteImport } from './routes/admin-users/index'
+import { Route as SettingsTwoFactorRouteImport } from './routes/settings/two-factor'
 import { Route as SettingsTlsReportsRouteImport } from './routes/settings/tls-reports'
 import { Route as SettingsMtaStsRouteImport } from './routes/settings/mta-sts'
 import { Route as SettingsDkimRouteImport } from './routes/settings/dkim'
@@ -94,6 +95,11 @@ const AliasesIndexRoute = AliasesIndexRouteImport.update({
 const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
   id: '/admin-users/',
   path: '/admin-users/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsTwoFactorRoute = SettingsTwoFactorRouteImport.update({
+  id: '/settings/two-factor',
+  path: '/settings/two-factor',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsTlsReportsRoute = SettingsTlsReportsRouteImport.update({
@@ -219,6 +225,7 @@ export interface FileRoutesByFullPath {
   '/settings/dkim': typeof SettingsDkimRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
+  '/settings/two-factor': typeof SettingsTwoFactorRoute
   '/admin-users/': typeof AdminUsersIndexRoute
   '/aliases/': typeof AliasesIndexRoute
   '/custom-filters/': typeof CustomFiltersIndexRoute
@@ -252,6 +259,7 @@ export interface FileRoutesByTo {
   '/settings/dkim': typeof SettingsDkimRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
+  '/settings/two-factor': typeof SettingsTwoFactorRoute
   '/admin-users': typeof AdminUsersIndexRoute
   '/aliases': typeof AliasesIndexRoute
   '/custom-filters': typeof CustomFiltersIndexRoute
@@ -286,6 +294,7 @@ export interface FileRoutesById {
   '/settings/dkim': typeof SettingsDkimRoute
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
+  '/settings/two-factor': typeof SettingsTwoFactorRoute
   '/admin-users/': typeof AdminUsersIndexRoute
   '/aliases/': typeof AliasesIndexRoute
   '/custom-filters/': typeof CustomFiltersIndexRoute
@@ -321,6 +330,7 @@ export interface FileRouteTypes {
     | '/settings/dkim'
     | '/settings/mta-sts'
     | '/settings/tls-reports'
+    | '/settings/two-factor'
     | '/admin-users/'
     | '/aliases/'
     | '/custom-filters/'
@@ -354,6 +364,7 @@ export interface FileRouteTypes {
     | '/settings/dkim'
     | '/settings/mta-sts'
     | '/settings/tls-reports'
+    | '/settings/two-factor'
     | '/admin-users'
     | '/aliases'
     | '/custom-filters'
@@ -387,6 +398,7 @@ export interface FileRouteTypes {
     | '/settings/dkim'
     | '/settings/mta-sts'
     | '/settings/tls-reports'
+    | '/settings/two-factor'
     | '/admin-users/'
     | '/aliases/'
     | '/custom-filters/'
@@ -421,6 +433,7 @@ export interface RootRouteChildren {
   SettingsDkimRoute: typeof SettingsDkimRoute
   SettingsMtaStsRoute: typeof SettingsMtaStsRoute
   SettingsTlsReportsRoute: typeof SettingsTlsReportsRoute
+  SettingsTwoFactorRoute: typeof SettingsTwoFactorRoute
   AdminUsersIndexRoute: typeof AdminUsersIndexRoute
   AliasesIndexRoute: typeof AliasesIndexRoute
   CustomFiltersIndexRoute: typeof CustomFiltersIndexRoute
@@ -510,6 +523,13 @@ declare module '@tanstack/react-router' {
       path: '/admin-users'
       fullPath: '/admin-users/'
       preLoaderRoute: typeof AdminUsersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/two-factor': {
+      id: '/settings/two-factor'
+      path: '/settings/two-factor'
+      fullPath: '/settings/two-factor'
+      preLoaderRoute: typeof SettingsTwoFactorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/tls-reports': {
@@ -677,6 +697,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsDkimRoute: SettingsDkimRoute,
   SettingsMtaStsRoute: SettingsMtaStsRoute,
   SettingsTlsReportsRoute: SettingsTlsReportsRoute,
+  SettingsTwoFactorRoute: SettingsTwoFactorRoute,
   AdminUsersIndexRoute: AdminUsersIndexRoute,
   AliasesIndexRoute: AliasesIndexRoute,
   CustomFiltersIndexRoute: CustomFiltersIndexRoute,

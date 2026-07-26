@@ -24,6 +24,12 @@ function SettingsPage() {
 
   const settingsCards = [
     {
+      title: 'Two-Factor Authentication',
+      description: 'Protect your admin account with a TOTP authenticator app',
+      icon: '🔐',
+      link: '/settings/two-factor',
+    },
+    {
       title: 'DKIM Keys',
       description: 'Manage DKIM signing keys for email authentication',
       icon: '🔑',
