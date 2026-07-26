@@ -32,7 +32,11 @@ func runSievePolicy(t *testing.T, policy SieveRedirectPolicy, target string) str
 	if result.Message == nil {
 		return ""
 	}
-	return result.Message.Metadata["redirect_to"]
+	targets := decodeRedirectTargets(t, result.Message.Metadata["redirect_to"])
+	if len(targets) == 0 {
+		return ""
+	}
+	return targets[0]
 }
 
 // TestSieveRedirect_SameDomainAlwaysAllowed: the recipient is
