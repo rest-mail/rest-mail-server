@@ -70,14 +70,71 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+// requestNoContent is for endpoints that reply 204 No Content (nothing to parse)
+// and whose 401 is a domain error — e.g. a wrong 2FA code — rather than an
+// expired session. It therefore deliberately does NOT invoke the global
+// unauthorized handler, which would otherwise log the user out mid-flow.
+async function requestNoContent(path: string, options: RequestInit = {}): Promise<void> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string> || {}),
+  };
+  const method = (options.method || 'GET').toUpperCase();
+  if (MUTATING_METHODS.has(method)) {
+    headers['X-CSRF-Token'] = getCsrfToken();
+  }
+  const res = await fetch(path, { ...options, headers, credentials: 'include' });
+  if (!res.ok) {
+    const body = await res.text();
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.error) {
+        throw new ApiError(res.status, parsed.error.code || 'unknown', parsed.error.message || body);
+      }
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+    }
+    throw new ApiError(res.status, 'unknown', `API error ${res.status}: ${body}`);
+  }
+}
+
 // Auth
-export async function login(email: string, password: string): Promise<LoginResponse> {
+
+/** A TOTP code or a one-time recovery code, for 2FA-gated login and disable. */
+export interface SecondFactor {
+  totp_code?: string;
+  recovery_code?: string;
+}
+
+export async function login(email: string, password: string, second?: SecondFactor): Promise<LoginResponse> {
   // On success the API sets the httpOnly access cookie + readable CSRF cookie;
   // the response body carries only identity/expiry, never the token.
-  return request<LoginResponse>(`${BASE}/auth/login`, {
+  //
+  // When the account has 2FA active and no second factor was supplied, the API
+  // answers 401 with error code "totp_required". We deliberately do NOT route
+  // this through request(): a wrong-password or 2FA 401 during login is a
+  // form-validation failure, not an expired session, so it must never fire the
+  // global unauthorized handler (which would toast "session expired").
+  const res = await fetch(`${BASE}/auth/login`, {
     method: 'POST',
-    body: JSON.stringify({ email, password }),
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, ...second }),
   });
+  if (!res.ok) {
+    const body = await res.text();
+    let code = 'unknown';
+    let message = body;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.error) {
+        code = parsed.error.code || 'unknown';
+        message = parsed.error.message || body;
+      }
+    } catch { /* non-JSON error body */ }
+    throw new ApiError(res.status, code, message);
+  }
+  return res.json();
 }
 
 // refreshSession exchanges the httpOnly refresh cookie for a fresh access cookie
@@ -100,6 +157,51 @@ export async function logout(): Promise<void> {
     method: 'POST',
     credentials: 'include',
     headers: { 'X-CSRF-Token': getCsrfToken() },
+  });
+}
+
+// ── Two-factor authentication (TOTP) ──
+// The server (see two_factor.go) fully supports per-account TOTP: status →
+// enroll → confirm → disable, all keyed on the caller's own session.
+
+export interface TwoFactorStatus {
+  /** True once a confirmed enrollment gates login. */
+  enabled: boolean;
+  /** True when an enrollment exists but has not been confirmed yet. */
+  pending: boolean;
+}
+
+export interface TwoFactorEnrollment {
+  /** base32 TOTP secret, for manual entry into an authenticator app. */
+  secret: string;
+  /** otpauth:// provisioning URI (the QR-code payload). */
+  otpauth_url: string;
+  /** One-time recovery codes, returned ONCE at enrollment. */
+  recovery_codes: string[];
+}
+
+export async function getTwoFactorStatus(): Promise<{ data: TwoFactorStatus }> {
+  return request(`${BASE}/auth/2fa`);
+}
+
+/** Begin enrollment: mints a pending TOTP secret + recovery codes. */
+export async function enrollTwoFactor(): Promise<{ data: TwoFactorEnrollment }> {
+  return request(`${BASE}/auth/2fa/enroll`, { method: 'POST' });
+}
+
+/** Confirm enrollment by verifying a first code; flips 2FA active (204). */
+export async function confirmTwoFactor(code: string): Promise<void> {
+  await requestNoContent(`${BASE}/auth/2fa/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+}
+
+/** Disable 2FA; requires a current TOTP code or an unused recovery code (204). */
+export async function disableTwoFactor(proof: SecondFactor): Promise<void> {
+  await requestNoContent(`${BASE}/auth/2fa/disable`, {
+    method: 'POST',
+    body: JSON.stringify(proof),
   });
 }
 

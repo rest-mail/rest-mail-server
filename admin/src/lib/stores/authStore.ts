@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { apiV1 } from '../api'
+import type { SecondFactor } from '../twoFactor'
 
 interface User {
   username: string
@@ -20,15 +21,21 @@ interface AuthState {
   accessToken: string | null
   isAuthenticated: boolean
   isLoading: boolean
+  // totpRequired flips true when the API answered a login with a 2FA challenge
+  // (error code "totp_required"); the login form then collects the second factor
+  // and retries. It stays false for accounts without 2FA.
+  totpRequired: boolean
   error: string | null
 
   // Actions
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string, second?: SecondFactor) => Promise<void>
   logout: () => void
   checkSession: () => Promise<void>
   setUser: (user: User | null) => void
   setAccessToken: (token: string | null) => void
   clearError: () => void
+  // resetTotpChallenge returns the login form to the credentials step.
+  resetTotpChallenge: () => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -38,9 +45,10 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       isAuthenticated: false,
       isLoading: false,
+      totpRequired: false,
       error: null,
 
-      login: async (username: string, password: string) => {
+      login: async (username: string, password: string, second?: SecondFactor) => {
         set({ isLoading: true, error: null })
 
         try {
@@ -53,12 +61,20 @@ export const useAuthStore = create<AuthState>()(
             body: JSON.stringify({
               username,
               password,
+              ...second,
             }),
           })
 
           if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || 'Login failed')
+            const body = await response.json().catch(() => ({}))
+            // A 2FA-active account answers the first (single-factor) attempt with
+            // a totp_required challenge — a prompt for the second factor, not an
+            // error to display.
+            if (body?.error?.code === 'totp_required') {
+              set({ totpRequired: true, isLoading: false, error: null })
+              return
+            }
+            throw new Error(body?.error?.message || 'Login failed')
           }
 
           const response_data = await response.json()
@@ -77,8 +93,12 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             isLoading: false,
             error: null,
+            totpRequired: false,
           })
         } catch (error) {
+          // Leave totpRequired untouched: if the user is on the 2FA step and
+          // submits a wrong code (a generic 401), they must stay on that step
+          // with the error shown, not get bounced back to the password form.
           set({
             error: error instanceof Error ? error.message : 'Login failed',
             isLoading: false,
@@ -87,6 +107,8 @@ export const useAuthStore = create<AuthState>()(
           throw error
         }
       },
+
+      resetTotpChallenge: () => set({ totpRequired: false, error: null }),
 
       // checkSession restores a session on boot (and after the persisted flag
       // says we were logged in) by exchanging the httpOnly refresh cookie for a

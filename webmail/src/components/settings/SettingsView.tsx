@@ -8,14 +8,16 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { VacationView } from '@/components/settings/VacationView';
-import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, Trash2 } from 'lucide-react';
+import { TwoFactorView } from '@/components/settings/TwoFactorView';
+import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, Trash2, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type Tab = 'general' | 'accounts' | 'notifications';
+type Tab = 'general' | 'accounts' | 'security' | 'notifications';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'general',       label: 'General',       icon: <Settings className="w-4 h-4" /> },
   { id: 'accounts',      label: 'Accounts',      icon: <Users className="w-4 h-4" /> },
+  { id: 'security',      label: 'Security',      icon: <ShieldCheck className="w-4 h-4" /> },
   { id: 'notifications', label: 'Notifications', icon: <Bell className="w-4 h-4" /> },
 ];
 
@@ -48,6 +50,7 @@ export function SettingsView() {
       <div className="flex-1 overflow-auto p-6">
         {tab === 'general'       && <GeneralTab />}
         {tab === 'accounts'      && <AccountsTab />}
+        {tab === 'security'      && <TwoFactorView />}
         {tab === 'notifications' && <NotificationsTab />}
       </div>
     </div>
