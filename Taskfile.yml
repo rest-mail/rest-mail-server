@@ -656,37 +656,32 @@ tasks:
       - docker ps -a --filter "name=^/{{.RESTMAIL_PROJECT}}-"
 
   status:
-    desc: 'Show what is running and where (toggles + per-service state + URLs). Public, runnable any time.'
+    desc: 'Fleet view: all rest-mail instances + reference servers + testbed + orphans. Narrow with ONLY=<instance>. Public, runnable any time.'
+    vars:
+      ONLY: '{{.ONLY | default ""}}'
     cmds:
       - |
-        proj="{{.RESTMAIL_PROJECT}}"
-        host="{{.RESTMAIL_PROXY_HOST}}"
-        api_port="{{.MAIL3_API_PORT}}"
-        smtp_in="{{.MAIL3_SMTP_PORT_INBOUND}}"
-        smtp_sub="{{.MAIL3_SMTP_PORT_SUBMISSION}}"
-        smtp_subtls="{{.MAIL3_SMTP_PORT_SUBMISSION_TLS}}"
-        imap_p="{{.MAIL3_IMAP_PORT}}"
-        imap_tls="{{.MAIL3_IMAP_TLS_PORT}}"
-        pop3_p="{{.MAIL3_POP3_PORT}}"
-        pop3_tls="{{.MAIL3_POP3_TLS_PORT}}"
+        # Fleet-wide by default. Narrow to one rest-mail instance with
+        # `task status ONLY=<instance>` (a non-default INSTANCE= also narrows).
+        narrow="{{.ONLY}}"
+        [ -z "$narrow" ] && [ "{{.INSTANCE}}" != "restmail.test" ] && narrow="{{.INSTANCE}}"
 
         # ── helpers ────────────────────────────────────────────────────
         running() {
-          state=$(docker inspect --format '{{`{{.State.Running}}`}}' "$1" 2>/dev/null || echo missing)
+          # Strip whitespace so a missing container (docker inspect can emit a
+          # stray newline before failing) collapses to "" and hits the wildcard.
+          state=$(docker inspect --format '{{`{{.State.Running}}`}}' "$1" 2>/dev/null | tr -d '[:space:]')
           case "$state" in
-            true)    printf "● up    " ;;
-            false)   printf "○ down  " ;;
-            missing) printf "· absent" ;;
+            true)  printf "● up    " ;;
+            false) printf "○ down  " ;;
+            *)     printf "· absent" ;;
           esac
         }
-
         # Read a docker-proxy.<ns>.<key> label; empty string if missing/down.
         plabel() {
           docker inspect --format "{{`{{index .Config.Labels`}} \"docker-proxy.$2.$3\"{{`}}`}}" "$1" 2>/dev/null || true
         }
-
         # Build the proxy URL for a service from its container labels.
-        # Args: container, label-namespace
         proxy_url() {
           h=$(plabel "$1" "$2" host)
           p=$(plabel "$1" "$2" path)
@@ -694,48 +689,98 @@ tasks:
           [ -z "$p" ] && p=/
           echo "http://${h}${p}"
         }
-
+        # row: name, container, proxy-label-ns (or ""), direct-suffix
         row() {
-          # name, container, label-ns, direct-suffix
           state=$(running "$2")
-          if [ -n "$3" ]; then
-            url=$(proxy_url "$2" "$3")
-          else
-            url="—"
-          fi
-          printf "    %-10s %-10s %-42s %s\n" "$1" "$state" "$url" "$4"
+          if [ -n "$3" ]; then url=$(proxy_url "$2" "$3"); else url="—"; fi
+          printf "      %-10s %-9s %-38s %s\n" "$1" "$state" "$url" "$4"
         }
 
-        # ── toggles ────────────────────────────────────────────────────
+        # ── toggles / legend ───────────────────────────────────────────
         echo ""
-        echo "  Toggles:"
-        echo "    website  → ${WEBSITE_MODE:-prod}    (override: task project:toggle -- website=dev|prod)"
-        echo ""
+        echo "  Toggles:  website → ${WEBSITE_MODE:-prod}   (task project:toggle -- website=dev|prod)"
+        echo "  Legend:   ● up   ○ down   · absent"
 
-        # ── services ───────────────────────────────────────────────────
-        echo "  Services:"
-        printf "    %-10s %-10s %-42s %s\n" "name" "state" "proxy URL" "direct"
-        printf "    %-10s %-10s %-42s %s\n" "----" "-----" "---------" "------"
-        row "postgres"  "${proj}-postgres"      ""        "internal :5432"
-        row "js-filter" "${proj}-js-filter"     ""        "internal"
-        row "api"       "${proj}-api"           "api"     ":${api_port} direct"
-        row "smtp-gw"   "${proj}-smtp-gateway"  ""        ":${smtp_in} :${smtp_sub} :${smtp_subtls}"
-        row "imap-gw"   "${proj}-imap-gateway"  ""        ":${imap_p} :${imap_tls}"
-        row "pop3-gw"   "${proj}-pop3-gateway"  ""        ":${pop3_p} :${pop3_tls}"
-        row "webmail"   "${proj}-webmail"       "webmail" ""
-        row "admin"     "${proj}-admin"         "admin"   ""
-        row "website"   "${proj}-website"       "website" "(separate subproject — task website:init|up)"
+        # ── rest-mail instances (one block per instances/<domain>) ─────
         echo ""
+        echo "  rest-mail instances:"
+        inst_found=0
+        for d in instances/*/; do
+          [ -f "${d}config.env" ] || continue
+          inst=$(basename "$d")
+          [ -n "$narrow" ] && [ "$inst" != "$narrow" ] && continue
+          inst_found=1
+          (
+            set -a; . "${d}config.env" 2>/dev/null || true
+            [ -f "${d}secrets.env" ] && . "${d}secrets.env" 2>/dev/null || true
+            set +a
+            proj="${RESTMAIL_PROJECT:-$inst}"
+            echo ""
+            echo "    ▸ ${inst}  (project ${proj})"
+            row "postgres"  "${proj}-postgres"      ""        "internal :5432"
+            row "js-filter" "${proj}-js-filter"     ""        "internal"
+            row "api"       "${proj}-api"           "api"     ":${MAIL3_API_PORT} direct"
+            row "smtp-gw"   "${proj}-smtp-gateway"  ""        ":${MAIL3_SMTP_PORT_INBOUND} :${MAIL3_SMTP_PORT_SUBMISSION} :${MAIL3_SMTP_PORT_SUBMISSION_TLS}"
+            row "imap-gw"   "${proj}-imap-gateway"  ""        ":${MAIL3_IMAP_PORT} :${MAIL3_IMAP_TLS_PORT}"
+            row "pop3-gw"   "${proj}-pop3-gateway"  ""        ":${MAIL3_POP3_PORT} :${MAIL3_POP3_TLS_PORT}"
+            row "webmail"   "${proj}-webmail"       "webmail" ""
+            row "admin"     "${proj}-admin"         "admin"   ""
+            row "website"   "${proj}-website"       "website" "(separate subproject)"
+          )
+        done
+        if [ "$inst_found" = 0 ]; then
+          if [ -n "$narrow" ]; then echo "    (no instance '$narrow' under instances/)"
+          else echo "    (none configured — run task testbed:init, or task instance:scaffold DOMAIN=mail4.test)"; fi
+        fi
 
-        # ── help footer ────────────────────────────────────────────────
-        echo "  Setup:"
-        echo "    task project:proxy:help     ddt setup or DIY requirements"
-        echo "    task project:check          probe proxy URLs from this host"
+        # Fleet-wide sections below; skipped when narrowing to one instance.
+        if [ -z "$narrow" ]; then
+          # ── reference servers (mailref-<cfg>-<daemon>) ────────────────
+          echo ""
+          echo "  reference servers:"
+          ref_cfgs=$( { docker ps -a --format '{{`{{.Names}}`}}' 2>/dev/null | grep -oE '^mailref-[^-]+-' | sed -E 's/^mailref-(.*)-$/\1/'; ls -1 .workspace/reference-mailserver/configs/ 2>/dev/null; } | sort -u )
+          if [ -z "$ref_cfgs" ]; then
+            echo "    (none — task mailserver:init, then task -d .workspace/reference-mailserver up CONFIG=mail1)"
+          else
+            for cfg in $ref_cfgs; do
+              echo ""
+              echo "    ▸ ${cfg}"
+              for daemon in postfix dovecot rspamd fail2ban postgres; do
+                row "$daemon" "mailref-${cfg}-${daemon}" "" ""
+              done
+            done
+          fi
+
+          # ── testbed (shared substrate) ────────────────────────────────
+          echo ""
+          echo "  testbed:"
+          row "dnsmasq" "testbed-dnsmasq" "" ""
+          net=$(docker network ls --format '{{`{{.Name}}`}}' 2>/dev/null | grep -q mailnet && echo "● present" || echo "· absent")
+          printf "      %-10s %s\n" "mailnet" "$net"
+
+          # ── orphans: rest-mail service containers owned by no instance ─
+          echo ""
+          echo "  orphans:"
+          known=""
+          for d in instances/*/; do
+            [ -f "${d}config.env" ] || continue
+            known="$known $(set -a; . "${d}config.env" 2>/dev/null; echo "$RESTMAIL_PROJECT")"
+          done
+          orphans=$(docker ps --format '{{`{{.Names}}`}}' 2>/dev/null | grep -vE '^(mailref-|testbed-)' | grep -E -- '-(api|postgres|js-filter|smtp-gateway|imap-gateway|pop3-gateway|webmail|admin)$' | while read c; do
+            owned=0; for p in $known; do case "$c" in ${p}-*) owned=1 ;; esac; done
+            { [ "$owned" = 0 ] && echo "$c"; } || true
+          done || true)
+          if [ -z "$orphans" ]; then echo "    (none)"
+          else echo "$orphans" | sed 's/^/    ⚠ /'; echo "    → task purge  removes all rest-mail-* containers (keeps volumes)"; fi
+        fi
+
+        # ── footer ─────────────────────────────────────────────────────
         echo ""
         echo "  Common:"
-        echo "    task <service>:logs         tail one service's logs"
-        echo "    task restmail:up      bring up the full stack"
-        echo "    task restmail:down    stop the stack (preserves volumes)"
+        echo "    task status ONLY=<instance>    focus one rest-mail instance"
+        echo "    task restmail:up | :down       the default instance (restmail.test)"
+        echo "    task -d .workspace/reference-mailserver up|down CONFIG=mail1   a reference server"
+        echo "    task <service>:logs            tail one service's logs"
         echo ""
 
   # ════════════════════════════════════════════════════════
