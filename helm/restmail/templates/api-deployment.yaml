@@ -40,6 +40,11 @@ spec:
             - name: http
               containerPort: {{ .Values.api.port }}
               protocol: TCP
+            {{- if .Values.internalMtls.enabled }}
+            - name: internal-mtls
+              containerPort: {{ .Values.internalMtls.port }}
+              protocol: TCP
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "restmail.componentName" (list . "api") }}
@@ -55,10 +60,16 @@ spec:
                 secretKeyRef:
                   name: {{ include "restmail.api.secretName" . }}
                   key: MASTER_KEY
+            {{- if .Values.internalMtls.enabled }}
+            {{- include "restmail.internalMtls.serverEnv" . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - name: tls
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
+            {{- if .Values.internalMtls.enabled }}
+            {{- include "restmail.internalMtls.volumeMount" . | nindent 12 }}
+            {{- end }}
             {{- if .Values.api.attachments.persistence.enabled }}
             - name: attachments
               mountPath: /attachments
@@ -83,6 +94,9 @@ spec:
         - name: tls
           secret:
             secretName: {{ .Values.tls.secretName }}
+        {{- if .Values.internalMtls.enabled }}
+        {{- include "restmail.internalMtls.volume" (list . "server") | nindent 8 }}
+        {{- end }}
         {{- if .Values.api.attachments.persistence.enabled }}
         - name: attachments
           persistentVolumeClaim:
