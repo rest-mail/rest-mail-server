@@ -94,6 +94,24 @@ spec:
     - ports:
         - protocol: TCP
           port: {{ .Values.api.port }}
+    {{- if .Values.internalMtls.enabled }}
+    # Internal mTLS listener: the gateway-facing machine routes are served here
+    # under RequireAndVerifyClientCert, and only the three protocol gateways
+    # dial it. Restrict this port to those pods (defence in depth atop mTLS).
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "restmail.componentSelectorLabels" (list . "imap-gateway") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "restmail.componentSelectorLabels" (list . "pop3-gateway") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.internalMtls.port }}
+    {{- end }}
   egress:
     {{- if .Values.postgres.enabled }}
     - to:
@@ -173,6 +191,10 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.api.port }}
+        {{- if .Values.internalMtls.enabled }}
+        - protocol: TCP
+          port: {{ .Values.internalMtls.port }}
+        {{- end }}
     {{- if .Values.postgres.enabled }}
     - to:
         - podSelector:
@@ -225,6 +247,10 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.api.port }}
+        {{- if .Values.internalMtls.enabled }}
+        - protocol: TCP
+          port: {{ .Values.internalMtls.port }}
+        {{- end }}
     {{- if .Values.postgres.enabled }}
     - to:
         - podSelector:
@@ -263,6 +289,10 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.api.port }}
+        {{- if .Values.internalMtls.enabled }}
+        - protocol: TCP
+          port: {{ .Values.internalMtls.port }}
+        {{- end }}
     {{- if .Values.postgres.enabled }}
     - to:
         - podSelector:

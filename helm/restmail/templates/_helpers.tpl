@@ -241,6 +241,15 @@ shipping a chart that crash-loops on the DB handshake.
 {{- if and .Values.postgres.enabled $secureMode (not .Values.postgres.tls.enabled) -}}
 {{- fail "db.sslMode requires TLS but the bundled Postgres has postgres.tls.enabled=false. Enable postgres.tls.enabled, or set db.sslMode=disable together with db.allowInsecure=true to acknowledge the in-cluster cleartext link." -}}
 {{- end -}}
+{{- /*
+Secure-by-construction: in production the API's gateway-facing internal routes
+must be protected. Either internal mTLS is on, or the operator acknowledges an
+out-of-band network trust boundary. Neither → the API would refuse to boot, so
+fail rendering early with an actionable message instead of shipping a crash-loop.
+*/ -}}
+{{- if and (eq .Values.api.environment "production") (not .Values.internalMtls.enabled) (not .Values.api.internalRoutesAllowPublic) -}}
+{{- fail "internalMtls.enabled=false requires api.internalRoutesAllowPublic=true in production: the API refuses to serve its gateway-facing routes unauthenticated unless you acknowledge an out-of-band network trust boundary (NetworkPolicy/firewall). Enable internalMtls (recommended), or set api.internalRoutesAllowPublic=true." -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -307,4 +316,94 @@ Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 {{- end -}}
 {{- $merged := merge (deepCopy $root.Values.securityContext) $base -}}
 {{- toYaml $merged -}}
+{{- end -}}
+
+{{/*
+Internal mTLS: Secret name (operator-provided existingSecret, else chart-generated).
+*/}}
+{{- define "restmail.internalMtls.secretName" -}}
+{{- if .Values.internalMtls.existingSecret -}}
+{{- .Values.internalMtls.existingSecret -}}
+{{- else -}}
+{{- printf "%s-internal-mtls" (include "restmail.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Internal mTLS: the URL the gateways use for the two tokenless machine calls
+(recipient existence + inbound delivery), served on the API's mTLS listener.
+*/}}
+{{- define "restmail.internalMtls.url" -}}
+https://{{ include "restmail.componentName" (list . "api") }}:{{ .Values.internalMtls.port }}
+{{- end -}}
+
+{{/*
+Internal mTLS env for the API (server role): enable, listener port, and the
+mounted CA + server keypair paths.
+*/}}
+{{- define "restmail.internalMtls.serverEnv" -}}
+- name: INTERNAL_MTLS_ENABLED
+  value: "true"
+- name: INTERNAL_MTLS_PORT
+  value: {{ .Values.internalMtls.port | quote }}
+- name: INTERNAL_MTLS_CA_CERT
+  value: {{ printf "%s/ca.crt" .Values.internalMtls.mountPath | quote }}
+- name: INTERNAL_MTLS_SERVER_CERT
+  value: {{ printf "%s/server.crt" .Values.internalMtls.mountPath | quote }}
+- name: INTERNAL_MTLS_SERVER_KEY
+  value: {{ printf "%s/server.key" .Values.internalMtls.mountPath | quote }}
+{{- end -}}
+
+{{/*
+Internal mTLS env for the gateways (client role): enable, the mounted CA +
+client keypair paths, and the internal base URL of the API's mTLS listener. The
+public API_BASE_URL (plaintext, token calls) stays untouched.
+*/}}
+{{- define "restmail.internalMtls.clientEnv" -}}
+- name: INTERNAL_MTLS_ENABLED
+  value: "true"
+- name: INTERNAL_MTLS_CA_CERT
+  value: {{ printf "%s/ca.crt" .Values.internalMtls.mountPath | quote }}
+- name: INTERNAL_MTLS_CLIENT_CERT
+  value: {{ printf "%s/client.crt" .Values.internalMtls.mountPath | quote }}
+- name: INTERNAL_MTLS_CLIENT_KEY
+  value: {{ printf "%s/client.key" .Values.internalMtls.mountPath | quote }}
+- name: API_INTERNAL_BASE_URL
+  value: {{ include "restmail.internalMtls.url" . | quote }}
+{{- end -}}
+
+{{/*
+Internal mTLS volumeMount (shared by API + gateways).
+*/}}
+{{- define "restmail.internalMtls.volumeMount" -}}
+- name: internal-mtls
+  mountPath: {{ .Values.internalMtls.mountPath }}
+  readOnly: true
+{{- end -}}
+
+{{/*
+Internal mTLS volume projecting only the keys a role needs (least privilege):
+"server" → ca+server, "client" → ca+client. Usage:
+{{ include "restmail.internalMtls.volume" (list . "server") }}
+*/}}
+{{- define "restmail.internalMtls.volume" -}}
+{{- $root := index . 0 -}}
+{{- $role := index . 1 -}}
+- name: internal-mtls
+  secret:
+    secretName: {{ include "restmail.internalMtls.secretName" $root }}
+    items:
+      - key: ca.crt
+        path: ca.crt
+{{- if eq $role "server" }}
+      - key: server.crt
+        path: server.crt
+      - key: server.key
+        path: server.key
+{{- else }}
+      - key: client.crt
+        path: client.crt
+      - key: client.key
+        path: client.key
+{{- end }}
 {{- end -}}

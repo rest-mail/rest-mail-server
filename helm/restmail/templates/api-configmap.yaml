@@ -12,3 +12,8 @@ data:
   # production the boot validator refuses to serve cleartext auth traffic unless
   # this acknowledgement is set. Keep a TLS-terminating reverse proxy in front.
   API_TLS_TERMINATED_BY_PROXY: {{ .Values.api.tlsTerminatedByProxy | quote }}
+  {{- if and (not .Values.internalMtls.enabled) .Values.api.internalRoutesAllowPublic }}
+  # Internal mTLS is disabled; the operator acknowledges an out-of-band network
+  # trust boundary protects the gateway-facing routes on the public listener.
+  INTERNAL_ROUTES_ALLOW_PUBLIC: "true"
+  {{- end }}
