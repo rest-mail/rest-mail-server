@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { apiV1, apiUrl, apiRequest, setUnauthorizedHandler } from './api'
+import { apiV1, apiUrl, apiRequest, setUnauthorizedHandler, resolveApiBase, DEFAULT_API_BASE } from './api'
 
 // VITE_API_URL is pinned to https://api.test by vitest.config.ts, so every
 // assertion below is against that fixed base.
@@ -123,5 +123,42 @@ describe('401 handling', () => {
 describe('legacy aliases', () => {
   it('apiRequest is the same function as apiV1.request', () => {
     expect(apiRequest).toBe(apiV1.request)
+  })
+})
+
+describe('resolveApiBase', () => {
+  // The bug this replaces: `import.meta.env.VITE_API_URL` was used verbatim, so
+  // an unset value (every prod build) yielded `undefined` and every request went
+  // to `undefined/...`. The resolver must never return `undefined` and must
+  // default to a same-origin path.
+  it('defaults to the same-origin base when unset', () => {
+    expect(resolveApiBase(undefined)).toBe(DEFAULT_API_BASE)
+    expect(DEFAULT_API_BASE).toBe('/api/v1')
+  })
+
+  it('never yields the string "undefined"', () => {
+    expect(resolveApiBase(undefined)).not.toContain('undefined')
+  })
+
+  it('treats a blank or slash-only value as unset (same-origin default)', () => {
+    expect(resolveApiBase('')).toBe(DEFAULT_API_BASE)
+    expect(resolveApiBase('   ')).toBe(DEFAULT_API_BASE)
+    expect(resolveApiBase('/')).toBe(DEFAULT_API_BASE)
+  })
+
+  it('keeps a valid root-relative override and trims trailing slashes', () => {
+    expect(resolveApiBase('/api/v2')).toBe('/api/v2')
+    expect(resolveApiBase('/api/v1/')).toBe('/api/v1')
+  })
+
+  it('keeps a valid absolute http(s) override and trims trailing slashes', () => {
+    expect(resolveApiBase('https://api.test/')).toBe('https://api.test')
+    expect(resolveApiBase('http://restmail.localhost/api/v1')).toBe('http://restmail.localhost/api/v1')
+  })
+
+  it('throws (fails loud) on a malformed, set value', () => {
+    expect(() => resolveApiBase('undefined')).toThrow(/Invalid VITE_API_URL/)
+    expect(() => resolveApiBase('localhost:8080')).toThrow(/Invalid VITE_API_URL/)
+    expect(() => resolveApiBase('ftp://example.com')).toThrow(/Invalid VITE_API_URL/)
   })
 })

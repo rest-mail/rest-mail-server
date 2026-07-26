@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { API_BASE } from '../api/base';
 
 export interface SSEEvent {
   type: string;
@@ -6,10 +7,6 @@ export interface SSEEvent {
 }
 
 const EVENT_TYPES = ['new_message', 'folder_update', 'message_updated', 'message_deleted', 'message_sent'];
-
-function apiBase(): string {
-  return (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
-}
 
 /**
  * Open a native EventSource for one account. Authentication is by cookie: the
@@ -20,7 +17,7 @@ function apiBase(): string {
  * Returns a cleanup function that closes the stream.
  */
 function openStream(accountId: number, onEvent: (e: SSEEvent) => void): () => void {
-  const url = `${apiBase()}/accounts/${accountId}/events`;
+  const url = `${API_BASE}/accounts/${accountId}/events`;
   const es = new EventSource(url, { withCredentials: true });
 
   const handler = (type: string) => (evt: MessageEvent) => {
