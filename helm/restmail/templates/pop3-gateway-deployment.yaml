@@ -53,10 +53,16 @@ spec:
             {{- include "restmail.apiCredsEnv" . | nindent 12 }}
             {{- include "restmail.dbEnv" . | nindent 12 }}
             {{- include "restmail.tlsEnv" . | nindent 12 }}
+            {{- if .Values.internalMtls.enabled }}
+            {{- include "restmail.internalMtls.clientEnv" . | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - name: tls
               mountPath: {{ .Values.tls.mountPath }}
               readOnly: true
+            {{- if .Values.internalMtls.enabled }}
+            {{- include "restmail.internalMtls.volumeMount" . | nindent 12 }}
+            {{- end }}
             - name: tmp
               mountPath: /tmp
           readinessProbe:
@@ -80,6 +86,9 @@ spec:
                 path: {{ .Values.tls.certFilename }}
               - key: tls.key
                 path: {{ .Values.tls.keyFilename }}
+        {{- if .Values.internalMtls.enabled }}
+        {{- include "restmail.internalMtls.volume" (list . "client") | nindent 8 }}
+        {{- end }}
         - name: tmp
           emptyDir: {}
       {{- with .Values.nodeSelector }}

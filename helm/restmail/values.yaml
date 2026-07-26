@@ -106,6 +106,27 @@ db:
   # leave false whenever sslMode is a secure mode.
   allowInsecure: false
 
+# ── Internal mTLS (gateways ⇄ API machine channel) ─────────────────────────
+# The API's gateway-facing routes — GET /api/mailboxes (recipient-existence
+# oracle) and POST /api/v1/messages/deliver (inbound delivery trusting a
+# caller-supplied client_ip/helo) — are machine-to-machine, not user-facing.
+# With mTLS enabled the API serves them ONLY on a mutually authenticated TLS
+# listener (never the public API port), and the gateways present a client
+# certificate to reach it. This is the secure-by-construction default. Disabling
+# it makes the API refuse to boot in production unless api.internalRoutesAllowPublic
+# acknowledges an out-of-band network trust boundary (NetworkPolicy/firewall).
+internalMtls:
+  enabled: true
+  # Port of the API's dedicated internal mTLS listener (separate from api.port).
+  port: 8443
+  # In-pod mount path for the CA + certificate material.
+  mountPath: /etc/restmail/internal-mtls
+  # Bring your own trust material (e.g. cert-manager) via a Secret with keys
+  # ca.crt, server.crt, server.key, client.crt, client.key. Empty → the chart
+  # mints a self-signed internal CA and server/client certs on first install and
+  # reuses them across upgrades.
+  existingSecret: ""
+
 # ── REST API ──────────────────────────────────────────────────────────────
 api:
   replicaCount: 1
@@ -126,6 +147,12 @@ api:
   # unless this acknowledges that a TLS-terminating reverse proxy fronts it.
   # Keep true and ensure an ingress/proxy is in place (see api.ingress).
   tlsTerminatedByProxy: true
+  # Only consulted when internalMtls.enabled=false. Acknowledges that an
+  # out-of-band network trust boundary (a NetworkPolicy or firewall restricting
+  # the API port to the gateways) protects the gateway-facing internal routes,
+  # so the API may serve them unauthenticated on the public listener. Without
+  # either mTLS or this acknowledgement, the API refuses to boot in production.
+  internalRoutesAllowPublic: false
   service:
     type: ClusterIP
     port: 8080

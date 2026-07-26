@@ -13,3 +13,9 @@ spec:
       port: {{ .Values.api.service.port }}
       targetPort: http
       protocol: TCP
+    {{- if .Values.internalMtls.enabled }}
+    - name: internal-mtls
+      port: {{ .Values.internalMtls.port }}
+      targetPort: internal-mtls
+      protocol: TCP
+    {{- end }}
