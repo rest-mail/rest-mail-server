@@ -4,7 +4,10 @@
 # pid/mem/cpu limits to contain admin-authored filter scripts.
 FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
 
-RUN addgroup -S jsfilter && adduser -S jsfilter -G jsfilter
+# Fixed numeric UID/GID so an orchestrator enforcing runAsNonRoot can verify the
+# user is non-root — a NAMED user cannot be verified and fails to start under a
+# runAsNonRoot policy (e.g. Kubernetes CreateContainerConfigError).
+RUN addgroup -S -g 10001 jsfilter && adduser -S -u 10001 -G jsfilter jsfilter
 
 WORKDIR /app
 
@@ -12,7 +15,7 @@ COPY server.js .
 COPY worker.js .
 COPY package.json .
 
-USER jsfilter
+USER 10001
 
 EXPOSE 3100
 
