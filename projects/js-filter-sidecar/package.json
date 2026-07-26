@@ -4,5 +4,11 @@
   "private": true,
   "description": "Sandboxed JavaScript filter execution for restmail pipeline",
   "main": "server.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {}
 }
