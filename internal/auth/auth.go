@@ -32,6 +32,13 @@ const (
 	CSRFHeaderName    = "X-CSRF-Token"
 )
 
+// TokenIssuer is the `iss` claim stamped into every minted token and the value
+// the parser pins on validation (#204 defense in depth). Beyond the HMAC-alg
+// pin, the exp check, and the access/refresh token_type separation, requiring a
+// matching issuer means a token minted for some other system that happens to
+// share this secret cannot be replayed here.
+const TokenIssuer = "restmail"
+
 // Claims represents the JWT claims for access and refresh tokens.
 type Claims struct {
 	jwt.RegisteredClaims
@@ -39,9 +46,9 @@ type Claims struct {
 	WebmailAccountID uint     `json:"webmail_account_id,omitempty"` // For mailbox users
 	MailboxID        uint     `json:"mailbox_id,omitempty"`         // For mailbox users
 	UserType         string   `json:"user_type"`                    // "mailbox" or "admin"
-	AdminUserID      uint     `json:"admin_user_id,omitempty"`    // For admin users
-	Username         string   `json:"username,omitempty"`         // For admin users
-	Capabilities     []string `json:"capabilities,omitempty"`     // For admin users
+	AdminUserID      uint     `json:"admin_user_id,omitempty"`      // For admin users
+	Username         string   `json:"username,omitempty"`           // For admin users
+	Capabilities     []string `json:"capabilities,omitempty"`       // For admin users
 	TokenType        string   `json:"token_type"`
 }
 
@@ -62,9 +69,12 @@ type TokenPair struct {
 
 // JWTService handles JWT token creation and validation.
 type JWTService struct {
-	secret       []byte
-	accessExpiry time.Duration
+	secret        []byte
+	accessExpiry  time.Duration
 	refreshExpiry time.Duration
+	// issuer is the `iss` claim minted into every token and pinned on
+	// validation. It defaults to TokenIssuer.
+	issuer string
 }
 
 // NewJWTService creates a new JWT service.
@@ -73,6 +83,7 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 		secret:        []byte(secret),
 		accessExpiry:  accessExpiry,
 		refreshExpiry: refreshExpiry,
+		issuer:        TokenIssuer,
 	}
 }
 
@@ -86,7 +97,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 	accessClaims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprintf("mailbox:%d", mailboxID),
-			Issuer:    "restmail",
+			Issuer:    s.issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessExpiry)),
 		},
@@ -113,7 +124,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
 			Subject:   fmt.Sprintf("mailbox:%d", mailboxID),
-			Issuer:    "restmail",
+			Issuer:    s.issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(refreshExpiry),
 		},
@@ -147,7 +158,7 @@ func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, c
 	accessClaims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprintf("admin:%d", adminUserID),
-			Issuer:    "restmail",
+			Issuer:    s.issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessExpiry)),
 		},
@@ -174,7 +185,7 @@ func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, c
 		RegisteredClaims: jwt.RegisteredClaims{
 			ID:        jti,
 			Subject:   fmt.Sprintf("admin:%d", adminUserID),
-			Issuer:    "restmail",
+			Issuer:    s.issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(refreshExpiry),
 		},
@@ -218,7 +229,12 @@ func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.secret, nil
-	})
+	},
+		// Pin the issuer (#204): a token whose `iss` is wrong or absent is
+		// rejected, in addition to the existing signing-method, expiry, and
+		// token_type checks. WithIssuer treats a missing/empty iss as a failure.
+		jwt.WithIssuer(s.issuer),
+	)
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return nil, ErrTokenExpired
