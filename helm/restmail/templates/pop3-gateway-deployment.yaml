@@ -50,6 +50,7 @@ spec:
               value: {{ .Values.pop3Gateway.logLevel | quote }}
             - name: ENVIRONMENT
               value: {{ .Values.pop3Gateway.environment | quote }}
+            {{- include "restmail.apiCredsEnv" . | nindent 12 }}
             {{- include "restmail.dbEnv" . | nindent 12 }}
             {{- include "restmail.tlsEnv" . | nindent 12 }}
           volumeMounts:

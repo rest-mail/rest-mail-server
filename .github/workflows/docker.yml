@@ -3,7 +3,10 @@ name: Docker Build & Push
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    # SemVer tags (console binaries) and CalVer product-image releases
+    # (YYYY.MM.DD[.N]) both trigger a publish. The CalVer tag is what the Helm
+    # chart's appVersion pins, so a release = pushing that git tag.
+    tags: ["v*", "[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*"]
 
 permissions:
   contents: read
@@ -11,12 +14,22 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/restmail
+  # One image per component under the owner namespace: ghcr.io/<owner>/<component>
+  # (e.g. ghcr.io/rest-mail/api). This must match the image repositories the Helm
+  # chart pulls (helm/restmail/values.yaml).
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}
 
 jobs:
   build-and-push:
     name: Build & Push
     runs-on: ubuntu-latest
+    # Product images are CalVer, the console binaries below are SemVer, and the
+    # two release-artifact classes are mutually exclusive by tag type. Build the
+    # images on main (continuous dev images) and on a CalVer release tag, but NOT
+    # on a SemVer v* tag — that tag releases only the console binaries.
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      (startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v'))
     strategy:
       matrix:
         include:
@@ -32,6 +45,9 @@ jobs:
           - image: pop3-gateway
             dockerfile: projects/pop3-gateway/Dockerfile
             context: .
+          - image: js-filter
+            dockerfile: projects/js-filter-sidecar/Dockerfile
+            context: projects/js-filter-sidecar
           - image: webmail
             dockerfile: webmail/Dockerfile
             context: ./webmail
@@ -53,12 +69,16 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          # event=tag emits the git tag verbatim, preserving a CalVer tag's leading
+          # zeros (2026.04.28) that type=semver would strip to 2026.4.28 and so no
+          # longer match the chart's appVersion. Branch pushes tag the dev image
+          # (main); every push also carries the commit sha; :latest tracks main.
           tags: |
             type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=tag
             type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
