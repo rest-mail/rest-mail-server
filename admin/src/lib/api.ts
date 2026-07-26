@@ -2,7 +2,46 @@
  * API client utility for REST Mail admin
  */
 
-const API_BASE = import.meta.env.VITE_API_URL
+export const DEFAULT_API_BASE = '/api/v1'
+
+/**
+ * Resolve the REST API base URL.
+ *
+ * The API is same-origin with the admin app: #257 moved auth to httpOnly
+ * cookies and the nginx CSP is `connect-src 'self'`, so every request must stay
+ * on the app's own origin (a cross-origin base would also drop the
+ * SameSite=Strict session cookie). The default base is therefore a
+ * root-relative path — correct-by-construction in every deployment, and never
+ * `undefined`.
+ *
+ * Previously `API_BASE` was `import.meta.env.VITE_API_URL` verbatim. In prod the
+ * value is never baked (the image build passes no VITE_API_URL build-arg), so
+ * `API_BASE` was `undefined` and every request went to `undefined/...`. That
+ * soft failure is what this resolver removes.
+ *
+ * VITE_API_URL may still override the default (e.g. a cross-origin dev backend),
+ * but only with a valid value — a root-relative path or an absolute http(s)
+ * URL. A set-but-malformed value fails loud at module load rather than building
+ * broken request URLs.
+ *
+ * - unset / blank / `"/"` → {@link DEFAULT_API_BASE}
+ * - a root-relative path or absolute http(s) URL → used as-is (trailing slash trimmed)
+ * - anything else (a bare host, the literal `"undefined"`, …) → throws
+ */
+export function resolveApiBase(raw: string | undefined): string {
+  const base = (raw ?? '').trim().replace(/\/+$/, '')
+  if (base === '') return DEFAULT_API_BASE
+  if (!base.startsWith('/') && !/^https?:\/\/\S+$/i.test(base)) {
+    throw new Error(
+      `Invalid VITE_API_URL: ${JSON.stringify(raw)}. Expected a root-relative ` +
+        `path such as "/api/v1" or an absolute http(s) URL; unset it to use the ` +
+        `same-origin default.`,
+    )
+  }
+  return base
+}
+
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_URL)
 
 // Global 401 handler
 let unauthorizedHandler: (() => void) | null = null
@@ -94,7 +133,7 @@ function createApiClient() {
 }
 
 /**
- * API client using VITE_API_URL environment variable
+ * API client rooted at the resolved same-origin API base (see resolveApiBase).
  */
 export const apiV1 = createApiClient()
 

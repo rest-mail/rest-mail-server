@@ -1,9 +1,9 @@
 import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment } from '../types';
+import { API_BASE as BASE } from './base';
 
-// Complete API URL is configurable via VITE_API_URL environment variable
-// Must be a complete URL - can be same-origin or cross-origin
-// Examples: http://localhost:8080/api/v1, https://api.example.com/v1, http://restmail.localhost/api/v1
-const BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1').replace(/\/+$/, '');
+// BASE is the same-origin API path (default `/api/v1`); see ./base for how it is
+// resolved and why a missing/invalid VITE_API_URL no longer falls back to a
+// plaintext localhost URL.
 
 // The access token is NEVER held in JavaScript. It lives only in the httpOnly
 // `restmail_access` cookie the API sets at login/refresh, which the browser
