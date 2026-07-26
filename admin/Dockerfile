@@ -20,13 +20,9 @@ RUN npm run build
 FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 AS prod
 ARG NGINX_BASE_PATH=/admin
 COPY --from=build /app/dist /usr/share/nginx/html${NGINX_BASE_PATH}
-RUN echo 'server { \
-    listen 80; \
-    location /admin { \
-        alias /usr/share/nginx/html/admin; \
-        try_files $uri $uri/ /admin/index.html; \
-        add_header Cache-Control "no-cache"; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
+# Serving config now lives in a real file (was an inline `RUN echo`) so it can
+# carry a multi-value Content-Security-Policy and the other security headers
+# without shell-quoting hazards. Still serves /admin exactly as before.
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
