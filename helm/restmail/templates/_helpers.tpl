@@ -192,6 +192,24 @@ TLS env block — paths inside the gateway pod.
 {{- end -}}
 
 {{/*
+API credential env (JWT_SECRET + MASTER_KEY), sourced from the API Secret.
+The shared config loader requires both in production, so the protocol gateways
+need them too — not just the API. Reused across api + all three gateways.
+*/}}
+{{- define "restmail.apiCredsEnv" -}}
+- name: JWT_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "restmail.api.secretName" . }}
+      key: JWT_SECRET
+- name: MASTER_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "restmail.api.secretName" . }}
+      key: MASTER_KEY
+{{- end -}}
+
+{{/*
 Pod DNS spec — applied to every pod template.
 */}}
 {{- define "restmail.dnsSpec" -}}
@@ -247,7 +265,11 @@ Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
 {{- if eq $comp "api" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "fsGroup" 10001) -}}
 {{- else if eq $comp "js-filter" -}}
-{{- $base = merge $base (dict "runAsNonRoot" true) -}}
+{{- /* A numeric runAsUser is required: the image declares a NAMED user
+       (USER jsfilter), which the kubelet cannot verify as non-root under
+       runAsNonRoot=true (it fails CreateContainerConfigError). Pin the same
+       UID the Dockerfile assigns jsfilter. */ -}}
+{{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "fsGroup" 10001) -}}
 {{- else if eq $comp "postgres" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 70 "runAsGroup" 70 "fsGroup" 70) -}}
 {{- end -}}
