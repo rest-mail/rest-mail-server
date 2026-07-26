@@ -5,8 +5,8 @@ is the whole point of this file:
 
 - **Live reference** describes how rest-mail works **today**. It is kept current;
   treat it as authoritative.
-- **Dated snapshots** and most of **upstream** are **point-in-time history**.
-  They were true when written and are never updated afterward.
+- **Dated snapshots** are **point-in-time history**. They were true when
+  written and are never updated afterward.
 
 > **Anti-rot contract.** Anything under `review/` and `security-review/` is a
 > historical snapshot. **Do not read it as
@@ -38,12 +38,12 @@ of their date only.
 | `review/2026-04-29-deep-review/**` | The 2026-04-29 deep review (architecture assessment, feature gaps, the "ugly side", security and compliance, operations gaps). |
 | `security-review/**` | The Instant Mail Check security review. Point-in-time findings; check current code before acting on any item. |
 
-## Upstream
+## Ecosystem
 
-Conventions and PRs relating to the wider `rest-mail` org (the extracted
-libraries and reference images this repo composes).
+Conventions for the wider `rest-mail` org — the extracted libraries and
+reference images this repo composes. These are first-party components rest-mail
+publishes and consumes, not a parent/upstream project.
 
 | File | What it is | Status |
 |------|------------|--------|
-| [`upstream/CONVENTIONS.md`](upstream/CONVENTIONS.md) | The cross-repo conventions every `reference-*` image and extracted library obeys. | Reference |
-| [`upstream/AUDIT.md`](upstream/AUDIT.md) | The 2026-04-28 audit that scoped what to extract from the monorepo. | Historical snapshot |
+| [`ecosystem/CONVENTIONS.md`](ecosystem/CONVENTIONS.md) | The cross-repo conventions every `reference-*` image and extracted library obeys. | Reference |
