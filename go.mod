@@ -19,11 +19,11 @@ require (
 	github.com/rest-mail/go-arc v0.2.3
 	github.com/rest-mail/go-dkim v0.2.1
 	github.com/rest-mail/go-dmarc v0.3.0
-	github.com/rest-mail/go-imap v0.3.0
+	github.com/rest-mail/go-imap v0.4.0
 	github.com/rest-mail/go-mtasts v0.2.1
 	github.com/rest-mail/go-pop3 v0.2.0
 	github.com/rest-mail/go-sieve v0.3.0
-	github.com/rest-mail/go-smtp v0.28.2
+	github.com/rest-mail/go-smtp v0.28.3
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.50.0
 	golang.org/x/net v0.53.0

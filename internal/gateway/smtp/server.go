@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log/slog"
-	"math"
 	"net"
 	"sync"
 	"time"
@@ -182,16 +181,17 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 	srv.TLSConfig = s.tlsConfig
 	srv.MaxMessageBytes = s.maxMessageBytes
 	srv.MaxRecipients = maxRecipients
-	// go-smtp defaults MaxLineLength to 2000 and keeps the limit active during
-	// DATA, which would reject real-world messages with unwrapped long lines
-	// (8-bit text, HTML) that the previous engine accepted — Postfix wraps
-	// rather than rejects these. We impose no practical line limit so message
-	// size (MaxMessageBytes) stays the sole bound — including for oversized
-	// messages, which the server must read past the size limit to reject with a
-	// clean 552 (a line-length rejection would pre-empt that). An explicit large
-	// value is required rather than 0: go-smtp normalizes an unset MaxLineLength
-	// of 0 to its 2000 default, so 0 no longer means "unlimited".
-	srv.MaxLineLength = math.MaxInt
+	// go-smtp v0.28.3 applies MaxLineLength to COMMAND lines only: the per-line
+	// limit is disabled for the duration of the DATA body read (mirroring BDAT),
+	// so a message with unwrapped long lines (8-bit text, HTML — Postfix wraps
+	// rather than rejects these) still flows through DATA under MaxMessageBytes,
+	// the sole size bound, while pre-auth command input is capped against memory
+	// exhaustion. We set 64 KiB: comfortably above any legitimate SMTP command
+	// (the longest realistic ones are long AUTH SASL blobs and address paths,
+	// well under that) yet a hard ceiling on an unauthenticated peer dribbling an
+	// unbounded command line. An explicit value is required rather than 0:
+	// go-smtp normalizes an unset MaxLineLength of 0 to its 2000 default.
+	srv.MaxLineLength = 64 << 10 // 64 KiB — bounds command lines; DATA body stays unbounded
 	// These are PER-COMMAND idle timeouts, not a whole-DATA ceiling. During a
 	// message-body transfer the session arms the transferRateConn wrapper, which
 	// OWNS the read deadline and swallows this ReadTimeout (see transfer_rate.go):
