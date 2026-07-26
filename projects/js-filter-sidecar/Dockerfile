@@ -9,6 +9,7 @@ RUN addgroup -S jsfilter && adduser -S jsfilter -G jsfilter
 WORKDIR /app
 
 COPY server.js .
+COPY worker.js .
 COPY package.json .
 
 USER jsfilter
