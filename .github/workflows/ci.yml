@@ -186,3 +186,50 @@ jobs:
 
       - name: Test
         run: npm run test
+
+  # The gate — the one context worth requiring on main, mirroring what e2e.yml
+  # already does with `E2E (full topology)`.
+  #
+  # Branch protection requires checks BY NAME, so requiring the jobs above means
+  # every job name is load-bearing: renaming one, splitting one into a matrix, or
+  # letting one skip leaves a required check that never reports, which reads as
+  # "expected — waiting for status to be reported" forever. Admins are not exempt,
+  # and there is no failure to click. It has already happened here once, when
+  # `Build` became `Build (cmd/api)` and friends.
+  #
+  # This job always runs and fails only if a job that actually ran did not
+  # succeed, so a skipped job is not a block. Requiring it — and nothing else
+  # from this workflow — makes the 13 job names above free to change.
+  ci:
+    name: CI
+    needs: [lint, test, build, helm, webmail, admin]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verdict
+        env:
+          RESULTS: |
+            lint=${{ needs.lint.result }}
+            test=${{ needs.test.result }}
+            build=${{ needs.build.result }}
+            helm=${{ needs.helm.result }}
+            webmail=${{ needs.webmail.result }}
+            admin=${{ needs.admin.result }}
+        run: |
+          set -euo pipefail
+          # `needs.build.result` covers the whole matrix: it is `success` only
+          # when every target built.
+          fail=0
+          while IFS='=' read -r job result; do
+            [ -n "$job" ] || continue
+            printf '  %-8s %s\n' "$job" "$result"
+            case "$result" in
+              success | skipped) ;;
+              *) fail=1 ;;
+            esac
+          done <<< "$RESULTS"
+          if [ "$fail" = 1 ]; then
+            echo "::error::a job did not succeed" >&2
+            exit 1
+          fi
+          echo "  all jobs that ran passed"
