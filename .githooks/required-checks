@@ -1,0 +1,15 @@
+# What must pass before main takes a merge — read by github-guard, which applies
+# it to branch protection.
+#
+# One always-run gate per workflow, each of which reports even when the jobs it
+# guards were skipped:
+#
+#   CI                    ci.yml   — lint, test, the build matrix, helm, webmail, admin
+#   E2E (full topology)   e2e.yml  — the heavy suite, or its documented docs-only skip
+#
+# Requiring these two instead of all 16 job names means a job can be renamed,
+# split into a matrix or made conditional without leaving a required check that
+# never reports — which blocks every pull request, admins included, with no
+# failure to point at.
+CI
+E2E (full topology)
