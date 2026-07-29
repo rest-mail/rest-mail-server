@@ -46,7 +46,10 @@ func testStage13ImapIdle(t *testing.T) {
 
 	t.Run("IDLE_RequiresAuth", func(t *testing.T) {
 		// Verify that IDLE requires authentication
-		conn, err := net.DialTimeout("tcp", restmailIMAPAddr, 10*time.Second)
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
+		// Held as net.Conn: the deferred Close and the SetDeadline calls below read as
+		// ordinary connection handling that way, which is how the rest of the suite does it.
+		var conn net.Conn = tlsConn
 		if err != nil {
 			t.Skipf("Cannot connect to IMAP %s: %v", restmailIMAPAddr, err)
 		}
@@ -108,7 +111,10 @@ func testStage13ImapIdle(t *testing.T) {
 		// 4. Send DONE to terminate IDLE
 		// 5. Receive tagged OK response
 
-		conn, err := net.DialTimeout("tcp", restmailIMAPAddr, 10*time.Second)
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
+		// Held as net.Conn: the deferred Close and the SetDeadline calls below read as
+		// ordinary connection handling that way, which is how the rest of the suite does it.
+		var conn net.Conn = tlsConn
 		if err != nil {
 			t.Skipf("Cannot connect to IMAP %s: %v", restmailIMAPAddr, err)
 		}
@@ -124,7 +130,6 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// The product IMAP gateway requires STARTTLS before LOGIN.
-		conn, reader = rawIMAPStartTLS(t, conn, reader)
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
@@ -185,7 +190,10 @@ func testStage13ImapIdle(t *testing.T) {
 		// 4. Wait for EXISTS notification
 		// 5. Send DONE
 
-		conn, err := net.DialTimeout("tcp", restmailIMAPAddr, 10*time.Second)
+		tlsConn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", restmailIMAPAddr, &tls.Config{InsecureSkipVerify: true})
+		// Held as net.Conn: the deferred Close and the SetDeadline calls below read as
+		// ordinary connection handling that way, which is how the rest of the suite does it.
+		var conn net.Conn = tlsConn
 		if err != nil {
 			t.Skipf("Cannot connect to IMAP %s: %v", restmailIMAPAddr, err)
 		}
@@ -201,7 +209,6 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// The product IMAP gateway requires STARTTLS before LOGIN.
-		conn, reader = rawIMAPStartTLS(t, conn, reader)
 
 		// LOGIN
 		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")

@@ -165,7 +165,9 @@ func TestSMTP_TransferRate_FailOpenUnexpectedWrapping(t *testing.T) {
 
 	client, server := net.Pipe()
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 1000})
-	s := NewServer("smtp.test", back, nil, store, limiter)
+	// TLS as production has it, but the listener deliberately NOT wrapped: the point
+	// is what happens when the rate tracker is missing, not what happens without TLS.
+	s := NewServer("smtp.test", back, harnessTLSConfig(t), store, limiter)
 	srv := s.newSMTPServer(false)
 
 	listener := newOneConnListener(server) // deliberately NOT wrapped
@@ -186,6 +188,7 @@ func TestSMTP_TransferRate_FailOpenUnexpectedWrapping(t *testing.T) {
 	if _, final := h.readReply(); !strings.HasPrefix(final, "220") {
 		t.Fatalf("greeting = %q, want 220...", final)
 	}
+	h.upgradeTLS(client)
 	h.ehlo()
 	if r := h.cmd("MAIL FROM:<sender@remote.test>"); replyCode(r) != "250" {
 		t.Fatalf("MAIL FROM = %q", r)

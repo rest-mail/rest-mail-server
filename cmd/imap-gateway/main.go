@@ -145,8 +145,8 @@ func main() {
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
 	imapServer := imapsrv.NewServer(cfg.GatewayHostname, imap.NewBackend(api, limiter), tlsConfig, limiter)
+	// IMAP is left zero, which the library skips: there is no cleartext listener on 143.
 	if err := imapServer.ListenAndServe(imapsrv.Ports{
-		IMAP:    cfg.IMAPPort,
 		IMAPTLS: cfg.IMAPTLSPort,
 	}); err != nil {
 		slog.Error("failed to start IMAP server", "error", err)
@@ -155,7 +155,7 @@ func main() {
 
 	slog.Info("IMAP gateway started",
 		"hostname", cfg.GatewayHostname,
-		"ports", []int{cfg.IMAPPort, cfg.IMAPTLSPort},
+		"ports", []int{cfg.IMAPTLSPort},
 	)
 
 	quit := make(chan os.Signal, 1)

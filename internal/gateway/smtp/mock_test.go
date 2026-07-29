@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/restmail/restmail/internal/mtls/mtlstest"
 )
 
 // mockBackend is an in-memory Backend: it decides recipient locality and
@@ -222,16 +224,59 @@ type smtpHarness struct {
 	done    chan struct{}
 }
 
-// newSMTPHarness builds a transcript harness. Optional configure funcs run on
-// the *Server before the go-smtp server is built, mirroring how production
-// applies settings (e.g. SetMaxMessageSize) between NewServer and listen.
+// harnessTLSConfig issues a throwaway server keypair so the harness can present TLS the
+// way production does. Without one, go-smtp does not advertise STARTTLS and sets
+// AllowInsecureAuth, so a plaintext harness exercised a configuration that cannot exist
+// in a deployment.
+func harnessTLSConfig(t *testing.T) *tls.Config {
+	t.Helper()
+	ca, err := mtlstest.NewCA("harness-ca")
+	if err != nil {
+		t.Fatalf("test CA: %v", err)
+	}
+	certPEM, keyPEM, err := ca.IssueServer("smtp.test", []string{"smtp.test"}, nil,
+		time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("issue server cert: %v", err)
+	}
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("keypair: %v", err)
+	}
+	return &tls.Config{Certificates: []tls.Certificate{pair}, MinVersion: tls.VersionTLS12}
+}
+
+// newSMTPHarness builds a harness whose session is encrypted, as every deployed listener
+// is: implicit TLS on 465/993/995, and STARTTLS before anything is accepted on 25. Mail
+// is not accepted in the clear, so a cleartext harness could not complete a transaction
+// at all.
+//
+// Use newCleartextSMTPHarness for the tests that are specifically about what a cleartext
+// session is refused.
+//
+// Optional configure funcs run on the *Server before the go-smtp server is built,
+// mirroring how production applies settings (e.g. SetMaxMessageSize) between NewServer
+// and listen.
 func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmission bool, configure ...func(*Server)) *smtpHarness {
+	t.Helper()
+	return newSMTPHarnessTLS(t, back, store, isSubmission, true, configure...)
+}
+
+// newCleartextSMTPHarness builds a harness that stops before STARTTLS. The server still
+// offers TLS — it is the client that has not upgraded — which is the state a peer is in
+// when it connects to port 25.
+func newCleartextSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmission bool, configure ...func(*Server)) *smtpHarness {
+	t.Helper()
+	return newSMTPHarnessTLS(t, back, store, isSubmission, false, configure...)
+}
+
+func newSMTPHarnessTLS(t *testing.T, back *mockBackend, store *mockStore, isSubmission, upgrade bool, configure ...func(*Server)) *smtpHarness {
 	t.Helper()
 	client, server := net.Pipe()
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 1000})
 	// Build the go-smtp server exactly as production does (same construction
 	// path), then serve the pipe's server end as a single connection.
-	s := NewServer("smtp.test", back, nil, store, limiter)
+	s := NewServer("smtp.test", back, harnessTLSConfig(t), store, limiter)
 	for _, fn := range configure {
 		fn(s)
 	}
@@ -270,7 +315,37 @@ func newSMTPHarness(t *testing.T, back *mockBackend, store *mockStore, isSubmiss
 	if _, final := h.readReply(); !strings.HasPrefix(final, "220") {
 		t.Fatalf("greeting = %q, want 220...", final)
 	}
+
+	if upgrade {
+		h.upgradeTLS(client)
+	}
+
 	return h
+}
+
+// upgradeTLS runs EHLO, STARTTLS and the handshake, then points the harness at the
+// encrypted connection. A second EHLO afterwards — which most tests do — is normal and
+// required after an upgrade, since the advertised extensions can change.
+func (h *smtpHarness) upgradeTLS(raw net.Conn) {
+	h.t.Helper()
+	if _, final := h.readReplyAfter("EHLO harness.test"); replyCode(final) != "250" {
+		h.t.Fatalf("EHLO before STARTTLS = %q", final)
+	}
+	if r := h.cmd("STARTTLS"); replyCode(r) != "220" {
+		h.t.Fatalf("STARTTLS = %q, want 220 — the server under test should be offering TLS", r)
+	}
+	tlsConn := tls.Client(raw, &tls.Config{
+		ServerName: "smtp.test",
+		// The CA is generated per harness and thrown away; verifying against it here
+		// would only re-test crypto/tls.
+		InsecureSkipVerify: true,
+	})
+	if err := tlsConn.Handshake(); err != nil {
+		h.t.Fatalf("TLS handshake: %v", err)
+	}
+	h.conn = tlsConn
+	h.cr = bufio.NewReader(tlsConn)
+	h.cw = bufio.NewWriter(tlsConn)
 }
 
 func (h *smtpHarness) readLine() string {

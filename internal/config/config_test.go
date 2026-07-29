@@ -135,23 +135,16 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.APIBaseURL != "http://localhost:8080" {
 		t.Errorf("APIBaseURL = %q, want %q", cfg.APIBaseURL, "http://localhost:8080")
 	}
+	// There are no cleartext client ports to assert defaults for: submission is 465,
+	// IMAP 993, POP3 995. Only 25 is reachable in the clear, and only as far as STARTTLS.
 	if cfg.SMTPPortInbound != 25 {
 		t.Errorf("SMTPPortInbound = %d, want %d", cfg.SMTPPortInbound, 25)
-	}
-	if cfg.SMTPPortSubmission != 587 {
-		t.Errorf("SMTPPortSubmission = %d, want %d", cfg.SMTPPortSubmission, 587)
 	}
 	if cfg.SMTPPortSubmissionTLS != 465 {
 		t.Errorf("SMTPPortSubmissionTLS = %d, want %d", cfg.SMTPPortSubmissionTLS, 465)
 	}
-	if cfg.IMAPPort != 143 {
-		t.Errorf("IMAPPort = %d, want %d", cfg.IMAPPort, 143)
-	}
 	if cfg.IMAPTLSPort != 993 {
 		t.Errorf("IMAPTLSPort = %d, want %d", cfg.IMAPTLSPort, 993)
-	}
-	if cfg.POP3Port != 110 {
-		t.Errorf("POP3Port = %d, want %d", cfg.POP3Port, 110)
 	}
 	if cfg.POP3TLSPort != 995 {
 		t.Errorf("POP3TLSPort = %d, want %d", cfg.POP3TLSPort, 995)

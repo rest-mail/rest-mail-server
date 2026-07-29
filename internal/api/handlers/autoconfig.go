@@ -20,6 +20,84 @@ func NewAutoconfigHandler(db *gorm.DB) *AutoconfigHandler {
 
 // MozillaAutoconfig serves Mozilla Thunderbird autoconfig XML.
 // GET /mail/config-v1.1.xml?emailaddress=user@domain
+// The ports rest-mail advertises to mail clients. Client access is implicit TLS only —
+// there is no listener on 587, 143 or 110 — and autoconfig is where that has to be
+// stated, because whatever a client reads here is what it saves and keeps using.
+//
+// socketType SSL means "TLS from the first byte". STARTTLS would tell the client to
+// connect in the clear and hope the upgrade happens.
+const (
+	autoconfigIMAPPort = 993
+	autoconfigSMTPPort = 465
+)
+
+type acServer struct {
+	XMLName        xml.Name `xml:"incomingServer"`
+	Type           string   `xml:"type,attr"`
+	Hostname       string   `xml:"hostname"`
+	Port           int      `xml:"port"`
+	SocketType     string   `xml:"socketType"`
+	Authentication string   `xml:"authentication"`
+	Username       string   `xml:"username"`
+}
+
+type acOutServer struct {
+	XMLName        xml.Name `xml:"outgoingServer"`
+	Type           string   `xml:"type,attr"`
+	Hostname       string   `xml:"hostname"`
+	Port           int      `xml:"port"`
+	SocketType     string   `xml:"socketType"`
+	Authentication string   `xml:"authentication"`
+	Username       string   `xml:"username"`
+}
+
+type acEmailProvider struct {
+	XMLName     xml.Name    `xml:"emailProvider"`
+	ID          string      `xml:"id,attr"`
+	Domain      string      `xml:"domain"`
+	DisplayName string      `xml:"displayName"`
+	Incoming    acServer    `xml:"incomingServer"`
+	Outgoing    acOutServer `xml:"outgoingServer"`
+}
+
+type acClientConfig struct {
+	XMLName  xml.Name        `xml:"clientConfig"`
+	Version  string          `xml:"version,attr"`
+	Provider acEmailProvider `xml:"emailProvider"`
+}
+
+// mozillaClientConfig builds the Thunderbird autoconfig document for a domain. Split out
+// from the handler so what it advertises can be asserted without a database, since the
+// ports have nothing to do with one.
+func mozillaClientConfig(domainName string) acClientConfig {
+	return acClientConfig{
+		Version: "1.1",
+		Provider: acEmailProvider{
+			ID:          domainName,
+			Domain:      domainName,
+			DisplayName: domainName + " Mail",
+			Incoming: acServer{
+				Type:     "imap",
+				Hostname: domainName,
+				Port:     autoconfigIMAPPort,
+				// The password travels inside TLS; "cleartext" here describes the SASL
+				// mechanism, not the connection.
+				SocketType:     "SSL",
+				Authentication: "password-cleartext",
+				Username:       "%EMAILADDRESS%",
+			},
+			Outgoing: acOutServer{
+				Type:           "smtp",
+				Hostname:       domainName,
+				Port:           autoconfigSMTPPort,
+				SocketType:     "SSL",
+				Authentication: "password-cleartext",
+				Username:       "%EMAILADDRESS%",
+			},
+		},
+	}
+}
+
 func (h *AutoconfigHandler) MozillaAutoconfig(w http.ResponseWriter, r *http.Request) {
 	email := r.URL.Query().Get("emailaddress")
 	if email == "" {
@@ -40,62 +118,7 @@ func (h *AutoconfigHandler) MozillaAutoconfig(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	type Server struct {
-		XMLName        xml.Name `xml:"incomingServer"`
-		Type           string   `xml:"type,attr"`
-		Hostname       string   `xml:"hostname"`
-		Port           int      `xml:"port"`
-		SocketType     string   `xml:"socketType"`
-		Authentication string   `xml:"authentication"`
-		Username       string   `xml:"username"`
-	}
-	type OutServer struct {
-		XMLName        xml.Name `xml:"outgoingServer"`
-		Type           string   `xml:"type,attr"`
-		Hostname       string   `xml:"hostname"`
-		Port           int      `xml:"port"`
-		SocketType     string   `xml:"socketType"`
-		Authentication string   `xml:"authentication"`
-		Username       string   `xml:"username"`
-	}
-	type EmailProvider struct {
-		XMLName     xml.Name  `xml:"emailProvider"`
-		ID          string    `xml:"id,attr"`
-		Domain      string    `xml:"domain"`
-		DisplayName string    `xml:"displayName"`
-		Incoming    Server    `xml:"incomingServer"`
-		Outgoing    OutServer `xml:"outgoingServer"`
-	}
-	type ClientConfig struct {
-		XMLName  xml.Name      `xml:"clientConfig"`
-		Version  string        `xml:"version,attr"`
-		Provider EmailProvider `xml:"emailProvider"`
-	}
-
-	config := ClientConfig{
-		Version: "1.1",
-		Provider: EmailProvider{
-			ID:          domainName,
-			Domain:      domainName,
-			DisplayName: domainName + " Mail",
-			Incoming: Server{
-				Type:           "imap",
-				Hostname:       domainName,
-				Port:           993,
-				SocketType:     "SSL",
-				Authentication: "password-cleartext",
-				Username:       "%EMAILADDRESS%",
-			},
-			Outgoing: OutServer{
-				Type:           "smtp",
-				Hostname:       domainName,
-				Port:           587,
-				SocketType:     "STARTTLS",
-				Authentication: "password-cleartext",
-				Username:       "%EMAILADDRESS%",
-			},
-		},
-	}
+	config := mozillaClientConfig(domainName)
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -107,6 +130,56 @@ func (h *AutoconfigHandler) MozillaAutoconfig(w http.ResponseWriter, r *http.Req
 
 // MicrosoftAutodiscover serves Microsoft Outlook Autodiscover XML.
 // POST /autodiscover/autodiscover.xml
+type adProtocol struct {
+	Type       string `xml:"Type"`
+	Server     string `xml:"Server"`
+	Port       int    `xml:"Port"`
+	SSL        string `xml:"SSL,omitempty"`
+	Encryption string `xml:"Encryption,omitempty"`
+	LoginName  string `xml:"LoginName"`
+}
+
+type adAccount struct {
+	AccountType string       `xml:"AccountType"`
+	Action      string       `xml:"Action"`
+	Protocol    []adProtocol `xml:"Protocol"`
+}
+
+type adResponse struct {
+	XMLName xml.Name  `xml:"Response"`
+	Xmlns   string    `xml:"xmlns,attr"`
+	Account adAccount `xml:"Account"`
+}
+
+type adRoot struct {
+	XMLName  xml.Name   `xml:"Autodiscover"`
+	Xmlns    string     `xml:"xmlns,attr"`
+	Response adResponse `xml:"Response"`
+}
+
+// autodiscoverResponse builds the Outlook Autodiscover document. Extracted from the
+// handler for the same reason as mozillaClientConfig: the advertised ports are worth
+// asserting and have nothing to do with the database.
+//
+// SSL=on with Encryption=SSL is implicit TLS. Encryption=TLS is how the schema spells
+// STARTTLS, which is what this used to send for SMTP on 587.
+func autodiscoverResponse(domainName, email string) adRoot {
+	return adRoot{
+		Xmlns: "http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006",
+		Response: adResponse{
+			Xmlns: "http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a",
+			Account: adAccount{
+				AccountType: "email",
+				Action:      "settings",
+				Protocol: []adProtocol{
+					{Type: "IMAP", Server: domainName, Port: autoconfigIMAPPort, SSL: "on", Encryption: "SSL", LoginName: email},
+					{Type: "SMTP", Server: domainName, Port: autoconfigSMTPPort, SSL: "on", Encryption: "SSL", LoginName: email},
+				},
+			},
+		},
+	}
+}
+
 func (h *AutoconfigHandler) MicrosoftAutodiscover(w http.ResponseWriter, r *http.Request) {
 	// Parse the request to get the email address
 	type AutodiscoverRequest struct {
@@ -151,44 +224,7 @@ func (h *AutoconfigHandler) MicrosoftAutodiscover(w http.ResponseWriter, r *http
 	// the response as markup (element injection). The namespaces are carried as
 	// explicit xmlns attributes to reproduce the exact two-namespace document
 	// shape Outlook expects. Mirrors the safe Mozilla path above.
-	type adProtocol struct {
-		Type       string `xml:"Type"`
-		Server     string `xml:"Server"`
-		Port       int    `xml:"Port"`
-		SSL        string `xml:"SSL,omitempty"`
-		Encryption string `xml:"Encryption,omitempty"`
-		LoginName  string `xml:"LoginName"`
-	}
-	type adAccount struct {
-		AccountType string       `xml:"AccountType"`
-		Action      string       `xml:"Action"`
-		Protocol    []adProtocol `xml:"Protocol"`
-	}
-	type adResponse struct {
-		XMLName xml.Name  `xml:"Response"`
-		Xmlns   string    `xml:"xmlns,attr"`
-		Account adAccount `xml:"Account"`
-	}
-	type adRoot struct {
-		XMLName  xml.Name   `xml:"Autodiscover"`
-		Xmlns    string     `xml:"xmlns,attr"`
-		Response adResponse `xml:"Response"`
-	}
-
-	resp := adRoot{
-		Xmlns: "http://schemas.microsoft.com/exchange/autodiscover/responseschema/2006",
-		Response: adResponse{
-			Xmlns: "http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a",
-			Account: adAccount{
-				AccountType: "email",
-				Action:      "settings",
-				Protocol: []adProtocol{
-					{Type: "IMAP", Server: domainName, Port: 993, SSL: "on", LoginName: email},
-					{Type: "SMTP", Server: domainName, Port: 587, Encryption: "TLS", LoginName: email},
-				},
-			},
-		},
-	}
+	resp := autodiscoverResponse(domainName, email)
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

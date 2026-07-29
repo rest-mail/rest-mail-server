@@ -25,17 +25,22 @@ import (
 //     container — until the reference fragments grow imap./pop3. subdomain
 //     records, the suite dials dovecot's static IP directly.
 var (
-	apiBaseURL         = envOr("API_BASE_URL", "http://10.99.0.20:8080")
-	mail1SMTPAddr      = envOr("MAIL1_SMTP_ADDR", "mail1.test:25")
-	mail2SMTPAddr      = envOr("MAIL2_SMTP_ADDR", "mail2.test:25")
-	restmailSMTPAddr   = envOr("RESTMAIL_SMTP_ADDR", "restmail.test:25")
-	mail1IMAPAddr      = envOr("MAIL1_IMAP_ADDR", "10.99.0.111:143")
-	mail2IMAPAddr      = envOr("MAIL2_IMAP_ADDR", "10.99.0.112:143")
-	restmailIMAPAddr   = envOr("RESTMAIL_IMAP_ADDR", "imap.restmail.test:143")
-	mail1POP3Addr      = envOr("MAIL1_POP3_ADDR", "10.99.0.111:110")
-	restmailPOP3Addr   = envOr("RESTMAIL_POP3_ADDR", "pop3.restmail.test:110")
+	apiBaseURL       = envOr("API_BASE_URL", "http://10.99.0.20:8080")
+	mail1SMTPAddr    = envOr("MAIL1_SMTP_ADDR", "mail1.test:25")
+	mail2SMTPAddr    = envOr("MAIL2_SMTP_ADDR", "mail2.test:25")
+	restmailSMTPAddr = envOr("RESTMAIL_SMTP_ADDR", "restmail.test:25")
+	// The reference servers keep the legacy cleartext ports on purpose: they are the
+	// simulated internet rest-mail has to interoperate with, and postfix/dovecot there
+	// still offer 143/110/587 with STARTTLS.
+	mail1IMAPAddr = envOr("MAIL1_IMAP_ADDR", "10.99.0.111:143")
+	mail2IMAPAddr = envOr("MAIL2_IMAP_ADDR", "10.99.0.112:143")
+	mail1POP3Addr = envOr("MAIL1_POP3_ADDR", "10.99.0.111:110")
+	// rest-mail's own client access is implicit TLS only — there is nothing listening on
+	// 143, 110 or 587 to connect to.
+	restmailIMAPAddr   = envOr("RESTMAIL_IMAP_ADDR", "imap.restmail.test:993")
+	restmailPOP3Addr   = envOr("RESTMAIL_POP3_ADDR", "pop3.restmail.test:995")
 	mail1SubmitAddr    = envOr("MAIL1_SUBMIT_ADDR", "mail1.test:587")
-	restmailSubmitAddr = envOr("RESTMAIL_SUBMIT_ADDR", "restmail.test:587")
+	restmailSubmitAddr = envOr("RESTMAIL_SUBMIT_ADDR", "restmail.test:465")
 	adminPassword      = envOr("ADMIN_PASSWORD", "password123")
 )
 

@@ -128,19 +128,18 @@ func (s *Server) SetSubmissionRateLimit(perMinute, perHour int) {
 	s.subLimiter = ratelimit.NewSubmissionLimiter(perMinute, perHour)
 }
 
-// ListenAndServe starts SMTP listeners on the specified ports.
-// - port 25: inbound MTA (STARTTLS)
-// - port 587: submission (STARTTLS + AUTH required)
-// - port 465: submission (implicit TLS + AUTH required)
+// ListenAndServe starts SMTP listeners on the specified ports. A zero port is skipped.
+//   - port 25: inbound MTA. Advertises STARTTLS and refuses the transaction until it has
+//     been used, since relay from other MTAs begins in cleartext and upgrades.
+//   - port 465: submission, implicit TLS, AUTH required.
+//
+// There is no cleartext submission listener. RFC 8314 prefers implicit TLS over
+// STARTTLS-on-587 and deprecates the cleartext path, and a server that offers both only
+// offers an attacker the weaker one.
 func (s *Server) ListenAndServe(ports SMTPPorts) error {
 	if ports.Inbound > 0 {
 		if err := s.listen(ports.Inbound, false, false); err != nil {
 			return fmt.Errorf("failed to listen on port %d: %w", ports.Inbound, err)
-		}
-	}
-	if ports.Submission > 0 {
-		if err := s.listen(ports.Submission, true, false); err != nil {
-			return fmt.Errorf("failed to listen on port %d: %w", ports.Submission, err)
 		}
 	}
 	if ports.SubmissionTLS > 0 {
@@ -151,11 +150,11 @@ func (s *Server) ListenAndServe(ports SMTPPorts) error {
 	return nil
 }
 
-// SMTPPorts defines the ports for each SMTP service.
+// SMTPPorts defines the ports for each SMTP service. There is deliberately no field for
+// 587: cleartext submission is not something this server can be asked to do.
 type SMTPPorts struct {
-	Inbound       int // 25
-	Submission    int // 587
-	SubmissionTLS int // 465
+	Inbound       int // 25, inbound relay
+	SubmissionTLS int // 465, implicit TLS
 }
 
 // newSMTPServer builds the go-smtp server used for every listener of the

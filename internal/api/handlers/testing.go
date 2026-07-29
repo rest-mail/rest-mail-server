@@ -243,14 +243,18 @@ func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
 
 	for _, svc := range req.Services {
 		switch strings.ToLower(svc) {
+		// The probes follow the listeners. Client access is implicit TLS, so
+		// smtp_submission, imap and pop3 mean 465, 993 and 995 — there is nothing on
+		// 587, 143 or 110 to reach. `smtp` is inbound relay on 25, the one listener a
+		// plain TCP probe still describes accurately.
 		case "smtp":
 			results["smtp"] = probeTCP(req.Host, h.cfg.SMTPPortInbound, timeout)
 		case "smtp_submission":
-			results["smtp_submission"] = probeTCP(req.Host, h.cfg.SMTPPortSubmission, timeout)
+			results["smtp_submission"] = probeTCP(req.Host, h.cfg.SMTPPortSubmissionTLS, timeout)
 		case "imap":
-			results["imap"] = probeTCP(req.Host, h.cfg.IMAPPort, timeout)
+			results["imap"] = probeTCP(req.Host, h.cfg.IMAPTLSPort, timeout)
 		case "pop3":
-			results["pop3"] = probeTCP(req.Host, h.cfg.POP3Port, timeout)
+			results["pop3"] = probeTCP(req.Host, h.cfg.POP3TLSPort, timeout)
 		case "dns":
 			results["dns"] = probeDNS("mail1.test", timeout)
 		case "db":

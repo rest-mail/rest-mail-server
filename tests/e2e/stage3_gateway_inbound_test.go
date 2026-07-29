@@ -50,7 +50,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 
-		sc.ehlo(t, "test.local")
+		sc.starttlsIfOffered(t, "test.local")
 		sc.sendExpect(t, "MAIL FROM:<alice@mail1.test>", "250")
 
 		// RCPT TO for unknown user should be rejected
@@ -104,16 +104,12 @@ func testStage3GatewayInbound(t *testing.T) {
 	t.Run("Mail3_SmtpSubmissionAuth", func(t *testing.T) {
 		subject := fmt.Sprintf("test-gw-submit-%d", time.Now().UnixNano())
 
-		sc := dialSMTP(t, restmailSubmitAddr)
+		sc := dialSMTPTLS(t, restmailSubmitAddr)
 		defer sc.close()
 
+		// Already TLS: this is an implicit-TLS port, so there is no STARTTLS to
+		// advertise and nothing to upgrade.
 		caps := sc.ehlo(t, "test.local")
-
-		// Try STARTTLS if available
-		if hasCapability(caps, "STARTTLS") {
-			sc.starttls(t)
-			caps = sc.ehlo(t, "test.local")
-		}
 
 		if !hasCapability(caps, "AUTH") {
 			t.Fatal("gateway submission port does not advertise AUTH")
@@ -140,7 +136,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_SmtpSubmissionRequiresAuth", func(t *testing.T) {
-		sc := dialSMTP(t, restmailSubmitAddr)
+		sc := dialSMTPTLS(t, restmailSubmitAddr)
 		defer sc.close()
 
 		sc.ehlo(t, "test.local")
@@ -464,15 +460,12 @@ func testStage3GatewayInbound(t *testing.T) {
 	})
 
 	t.Run("Mail3_SmtpSubmissionBadCredentials", func(t *testing.T) {
-		sc := dialSMTP(t, restmailSubmitAddr)
+		sc := dialSMTPTLS(t, restmailSubmitAddr)
 		defer sc.close()
 
-		caps := sc.ehlo(t, "test.local")
-
-		if hasCapability(caps, "STARTTLS") {
-			sc.starttls(t)
-			sc.ehlo(t, "test.local")
-		}
+		// Already TLS: this is an implicit-TLS port, so there is no STARTTLS to
+		// advertise and nothing to upgrade.
+		sc.ehlo(t, "test.local")
 
 		// AUTH PLAIN with wrong password
 		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@restmail.test\x00wrongpassword"))
