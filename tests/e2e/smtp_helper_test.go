@@ -117,7 +117,10 @@ func sendMailViaSMTP(t *testing.T, smtpAddr, from, to, subject, body string) {
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		sc := dialSMTP(t, smtpAddr)
-		sc.ehlo(t, "test.local")
+		// Upgrade whenever the peer offers it. rest-mail refuses a transaction on a
+		// cleartext session, and the reference MTAs accept the upgrade happily — which is
+		// also what a real sending MTA does.
+		sc.starttlsIfOffered(t, "test.local")
 		sc.sendExpect(t, "MAIL FROM:<"+from+">", "250")
 		sc.sendExpect(t, "RCPT TO:<"+to+">", "250")
 		sc.sendExpect(t, "DATA", "354")
@@ -155,6 +158,22 @@ func (sc *smtpConn) starttls(t *testing.T) {
 	sc.reader = bufio.NewReader(tlsConn)
 }
 
+// starttlsIfOffered EHLOs and upgrades when the peer advertises STARTTLS, then EHLOs
+// again because the extension list changes after an upgrade.
+//
+// Opportunistic on purpose: it is used against both rest-mail, which refuses a cleartext
+// transaction, and the reference MTAs, where the upgrade is optional. A sending MTA on
+// the real internet behaves the same way.
+func (sc *smtpConn) starttlsIfOffered(t *testing.T, domain string) {
+	t.Helper()
+	caps := sc.ehlo(t, domain)
+	if !hasCapability(caps, "STARTTLS") {
+		return
+	}
+	sc.starttls(t)
+	sc.ehlo(t, domain)
+}
+
 // authPlain sends AUTH PLAIN with base64-encoded credentials.
 func (sc *smtpConn) authPlain(t *testing.T, user, pass string) {
 	t.Helper()
@@ -162,7 +181,9 @@ func (sc *smtpConn) authPlain(t *testing.T, user, pass string) {
 	sc.sendExpect(t, "AUTH PLAIN "+cred, "235")
 }
 
-// sendMailViaSubmission sends an email via the submission port (587) with STARTTLS + AUTH PLAIN.
+// sendMailViaSubmission sends an email via a STARTTLS submission port (587) with AUTH
+// PLAIN. This is for the REFERENCE servers, which still run cleartext-then-upgrade
+// submission — rest-mail's submission is implicit TLS on 465, reached with dialSMTPTLS.
 func sendMailViaSubmission(t *testing.T, submitAddr, from, to, user, pass, subject, body string) {
 	t.Helper()
 	sc := dialSMTP(t, submitAddr)
@@ -198,8 +219,8 @@ func sendRawMailViaSMTP(t *testing.T, smtpAddr, from, to, rawMsg string) {
 	t.Helper()
 	sc := dialSMTP(t, smtpAddr)
 	defer sc.close()
-
-	sc.ehlo(t, "test.local")
+	// starttlsIfOffered has already sent EHLO, and again after the upgrade.
+	sc.starttlsIfOffered(t, "test.local")
 	sc.sendExpect(t, "MAIL FROM:<"+from+">", "250")
 	sc.sendExpect(t, "RCPT TO:<"+to+">", "250")
 	sc.sendExpect(t, "DATA", "354")
@@ -291,21 +312,6 @@ func (ic *imapConn) login(t *testing.T, user, pass string) {
 	}
 }
 
-// starttls upgrades the IMAP connection to TLS.
-func (ic *imapConn) starttls(t *testing.T) {
-	t.Helper()
-	result, _ := ic.command(t, "STARTTLS")
-	if !strings.Contains(result, "OK") {
-		t.Fatalf("IMAP STARTTLS failed: %s", result)
-	}
-	tlsConn := tls.Client(ic.conn, &tls.Config{InsecureSkipVerify: true})
-	if err := tlsConn.Handshake(); err != nil {
-		t.Fatalf("IMAP TLS handshake failed: %v", err)
-	}
-	ic.conn = tlsConn
-	ic.reader = bufio.NewReader(tlsConn)
-}
-
 // fetchBody sends FETCH n (BODY[]) and returns all response lines joined.
 func (ic *imapConn) fetchBody(t *testing.T, seqNum int) string {
 	t.Helper()
@@ -369,18 +375,6 @@ func (pc *pop3Conn) sendExpect(t *testing.T, cmd string, expectedPrefix string) 
 		t.Fatalf("POP3 %q: expected %s, got: %s", cmd, expectedPrefix, resp)
 	}
 	return resp
-}
-
-// stls upgrades the POP3 connection to TLS.
-func (pc *pop3Conn) stls(t *testing.T) {
-	t.Helper()
-	pc.sendExpect(t, "STLS", "+OK")
-	tlsConn := tls.Client(pc.conn, &tls.Config{InsecureSkipVerify: true})
-	if err := tlsConn.Handshake(); err != nil {
-		t.Fatalf("POP3 TLS handshake failed: %v", err)
-	}
-	pc.conn = tlsConn
-	pc.reader = bufio.NewReader(tlsConn)
 }
 
 // capa sends CAPA and returns the capability lines.
@@ -475,36 +469,50 @@ func waitForImapMessage(t *testing.T, imapAddr, user, pass, subject string, time
 	}
 }
 
-// dialIMAPTLS dials an IMAP endpoint and immediately upgrades via STARTTLS.
-// The product's IMAP gateway (correctly) refuses plaintext authentication.
+// dialIMAPTLS dials an implicit-TLS IMAP endpoint (993). It used to connect in the clear
+// on 143 and issue STARTTLS; there is no 143 to connect to any more.
 func dialIMAPTLS(t *testing.T, addr string) *imapConn {
-	ic := dialIMAP(t, addr)
-	ic.starttls(t)
+	t.Helper()
+	conn := dialTLS(t, addr)
+	ic := &imapConn{conn: conn, reader: bufio.NewReader(conn)}
+	if greeting := ic.readLine(t); !strings.Contains(greeting, "OK") {
+		t.Fatalf("IMAP greeting = %q, want OK", greeting)
+	}
 	return ic
 }
 
-// dialPOP3TLS dials a POP3 endpoint and immediately upgrades via STLS.
-// The product's POP3 gateway (correctly) refuses plaintext authentication.
+// dialPOP3TLS dials an implicit-TLS POP3 endpoint (995). Previously 110 plus STLS.
 func dialPOP3TLS(t *testing.T, addr string) *pop3Conn {
-	pc := dialPOP3(t, addr)
-	pc.stls(t)
+	t.Helper()
+	conn := dialTLS(t, addr)
+	pc := &pop3Conn{conn: conn, reader: bufio.NewReader(conn)}
+	if greeting := pc.readLine(t); !strings.HasPrefix(greeting, "+OK") {
+		t.Fatalf("POP3 greeting = %q, want +OK", greeting)
+	}
 	return pc
 }
 
-// rawIMAPStartTLS issues STARTTLS on a raw IMAP net.Conn and upgrades it to
-// TLS. The IDLE stage uses a raw connection (the imapConn helper doesn't model
-// a long-lived IDLE session), and the product IMAP gateway requires TLS before
-// LOGIN. Returns the upgraded conn + a fresh reader over it.
-func rawIMAPStartTLS(t *testing.T, conn net.Conn, reader *bufio.Reader) (net.Conn, *bufio.Reader) {
+// dialSMTPTLS dials an implicit-TLS SMTP endpoint (465, submission). Previously 587 plus
+// STARTTLS, which no longer exists on rest-mail.
+func dialSMTPTLS(t *testing.T, addr string) *smtpConn {
 	t.Helper()
-	fmt.Fprintf(conn, "S001 STARTTLS\r\n")
-	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
-	if resp := readUntilTagRaw(t, reader, "S001"); !strings.Contains(resp, "OK") {
-		t.Fatalf("STARTTLS failed: %s", resp)
+	conn := dialTLS(t, addr)
+	sc := &smtpConn{conn: conn, reader: bufio.NewReader(conn)}
+	if greeting := sc.readLine(t); !strings.HasPrefix(greeting, "220") {
+		t.Fatalf("SMTP greeting = %q, want 220", greeting)
 	}
-	tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
-	if err := tlsConn.Handshake(); err != nil {
-		t.Fatalf("IMAP TLS handshake failed: %v", err)
+	return sc
+}
+
+// dialTLS opens a TLS connection to a testbed listener. Certificates come from the
+// testbed's own CA, so verification is skipped rather than teaching every test about it —
+// what is under test is the protocol, not the chain.
+func dialTLS(t *testing.T, addr string) net.Conn {
+	t.Helper()
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}, "tcp", addr,
+		&tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		t.Fatalf("dial TLS %s: %v", addr, err)
 	}
-	return tlsConn, bufio.NewReader(tlsConn)
+	return conn
 }

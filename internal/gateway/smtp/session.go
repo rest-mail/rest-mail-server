@@ -328,6 +328,23 @@ func (s *session) rateLimitKey() string {
 // and verifies the sender is either the authenticated user or one of its
 // linked accounts.
 func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
+	// No mail is accepted in the clear, on any listener.
+	//
+	// Port 25 is the one that cannot be implicit TLS and still receive from other MTAs,
+	// since relay begins in cleartext and upgrades — so STARTTLS is advertised there and
+	// the transaction is refused until it has been used. Everywhere else the connection
+	// is already TLS before the first command, and this costs nothing.
+	//
+	// The gate is on the transaction rather than the connection deliberately: EHLO,
+	// NOOP, RSET and STARTTLS itself must work, or a peer has no way to upgrade.
+	if _, isTLS := s.conn.TLSConnectionState(); !isTLS {
+		return &gosmtp.SMTPError{
+			Code:         530,
+			EnhancedCode: gosmtp.EnhancedCode{5, 7, 0},
+			Message:      "Must issue a STARTTLS command first",
+		}
+	}
+
 	if s.isSubmission && !s.authenticated {
 		return &gosmtp.SMTPError{
 			Code:         530,

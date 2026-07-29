@@ -103,7 +103,7 @@ func testStage5Indistinguishability(t *testing.T) {
 
 		sc3 := dialSMTP(t, restmailSMTPAddr)
 		defer sc3.close()
-		sc3.ehlo(t, "test.local")
+		sc3.starttlsIfOffered(t, "test.local")
 
 		for _, step := range steps3 {
 			resp := sc3.sendExpect(t, step.cmd, step.expectedCode)
@@ -115,7 +115,7 @@ func testStage5Indistinguishability(t *testing.T) {
 	t.Run("SmtpEdgeCases", func(t *testing.T) {
 		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
-		sc.ehlo(t, "test.local")
+		sc.starttlsIfOffered(t, "test.local")
 
 		// RSET mid-conversation
 		sc.sendExpect(t, "MAIL FROM:<a@b.com>", "250")
@@ -307,20 +307,25 @@ func testStage5Indistinguishability(t *testing.T) {
 		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		// Check CAPABILITY for STARTTLS
+		// The capability line is still worth asserting, just not for STARTTLS: on an
+		// implicit-TLS port there is nothing to upgrade, and skipping on its absence
+		// would have left this test permanently not running. What matters is that the
+		// session can authenticate at all.
 		_, lines := ic.command(t, "CAPABILITY")
+		// The UNTAGGED line is the capability list; the tagged one is just
+		// "A001 OK CAPABILITY completed". Matching any line containing "CAPABILITY"
+		// picked the completion, so an assertion against it passed no matter what the
+		// server actually advertised.
 		capLine := ""
 		for _, l := range lines {
-			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
+			if strings.HasPrefix(strings.TrimSpace(l), "*") && strings.Contains(strings.ToUpper(l), "CAPABILITY") {
 				capLine = l
 			}
 		}
-		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
-			t.Skipf("restmail IMAP does not advertise STARTTLS: %s", capLine)
+		if !strings.Contains(strings.ToUpper(capLine), "AUTH=PLAIN") {
+			t.Fatalf("IMAP does not offer AUTH=PLAIN on its TLS port: %s", capLine)
 		}
-
-		ic.starttls(t)
-		t.Log("IMAP STARTTLS handshake successful")
+		t.Logf("IMAP implicit-TLS session established: %s", capLine)
 
 		// LOGIN over TLS
 		ic.login(t, "testuser@restmail.test", adminPassword)
@@ -337,19 +342,15 @@ func testStage5Indistinguishability(t *testing.T) {
 		pc := dialPOP3TLS(t, restmailPOP3Addr)
 		defer pc.close()
 
+		// STLS must NOT be advertised: this is an implicit-TLS port, so offering an
+		// in-band upgrade would mean the server thinks it is running in the clear.
 		caps := pc.capa(t)
-		foundSTLS := false
-		for _, cap := range caps {
-			if strings.ToUpper(strings.TrimSpace(cap)) == "STLS" {
-				foundSTLS = true
+		for _, capability := range caps {
+			if strings.ToUpper(strings.TrimSpace(capability)) == "STLS" {
+				t.Errorf("POP3 advertises STLS on its implicit-TLS port: %v", caps)
 			}
 		}
-		if !foundSTLS {
-			t.Skipf("restmail POP3 does not advertise STLS: %v", caps)
-		}
-
-		pc.stls(t)
-		t.Log("POP3 STLS handshake successful")
+		t.Logf("POP3 implicit-TLS session established: %v", caps)
 
 		// Auth over TLS
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
@@ -364,7 +365,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
 
-		sc.ehlo(t, "test.local")
+		sc.starttlsIfOffered(t, "test.local")
 		sc.sendExpect(t, "MAIL FROM:<test@test.local>", "250")
 		sc.sendExpect(t, "RCPT TO:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
@@ -395,20 +396,19 @@ func testStage5Indistinguishability(t *testing.T) {
 		}
 	})
 
-	t.Run("SmtpAuthAfterStarttls_Mail3", func(t *testing.T) {
-		sc := dialSMTP(t, restmailSubmitAddr)
+	t.Run("SmtpAuthOverImplicitTLS_Mail3", func(t *testing.T) {
+		// 465 is implicit TLS: the session is encrypted before EHLO, so there is no
+		// STARTTLS to wait for. Skipping on its absence, as this did, would have meant
+		// the test never ran again.
+		sc := dialSMTPTLS(t, restmailSubmitAddr)
 		defer sc.close()
 
 		caps := sc.ehlo(t, "test.local")
-		if !hasCapability(caps, "STARTTLS") {
-			t.Skip("restmail submission does not advertise STARTTLS")
+		if hasCapability(caps, "STARTTLS") {
+			t.Errorf("submission advertises STARTTLS on its implicit-TLS port: %v", caps)
 		}
-
-		sc.starttls(t)
-		caps = sc.ehlo(t, "test.local")
-
 		if !hasCapability(caps, "AUTH") {
-			t.Fatal("restmail submission does not advertise AUTH after STARTTLS")
+			t.Fatal("restmail submission does not advertise AUTH")
 		}
 
 		// Good credentials should succeed
@@ -429,15 +429,11 @@ func testStage5Indistinguishability(t *testing.T) {
 		sc.sendExpect(t, "QUIT", "221")
 	})
 
-	t.Run("SmtpBadAuthAfterStarttls_Mail3", func(t *testing.T) {
-		sc := dialSMTP(t, restmailSubmitAddr)
+	t.Run("SmtpBadAuthOverImplicitTLS_Mail3", func(t *testing.T) {
+		sc := dialSMTPTLS(t, restmailSubmitAddr)
 		defer sc.close()
 
-		caps := sc.ehlo(t, "test.local")
-		if hasCapability(caps, "STARTTLS") {
-			sc.starttls(t)
-			sc.ehlo(t, "test.local")
-		}
+		sc.ehlo(t, "test.local")
 
 		cred := base64.StdEncoding.EncodeToString([]byte("\x00testuser@restmail.test\x00wrongpassword"))
 		sc.send(t, "AUTH PLAIN "+cred)
@@ -455,18 +451,21 @@ func testStage5Indistinguishability(t *testing.T) {
 		defer ic.close()
 
 		_, lines := ic.command(t, "CAPABILITY")
+		// The UNTAGGED line is the capability list; the tagged one is just
+		// "A001 OK CAPABILITY completed". Matching any line containing "CAPABILITY"
+		// picked the completion, so an assertion against it passed no matter what the
+		// server actually advertised.
 		capLine := ""
 		for _, l := range lines {
-			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
+			if strings.HasPrefix(strings.TrimSpace(l), "*") && strings.Contains(strings.ToUpper(l), "CAPABILITY") {
 				capLine = l
 			}
 		}
-		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
-			t.Skipf("restmail IMAP does not advertise STARTTLS: %s", capLine)
+		// STARTTLS must NOT be advertised on an implicit-TLS port: offering an in-band
+		// upgrade would mean the server thinks it is running in the clear.
+		if strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
+			t.Errorf("IMAP advertises STARTTLS on its implicit-TLS port: %s", capLine)
 		}
-
-		ic.starttls(t)
-
 		// LOGIN with good credentials
 		ic.login(t, "testuser@restmail.test", adminPassword)
 
@@ -483,18 +482,21 @@ func testStage5Indistinguishability(t *testing.T) {
 		defer ic.close()
 
 		_, lines := ic.command(t, "CAPABILITY")
+		// The UNTAGGED line is the capability list; the tagged one is just
+		// "A001 OK CAPABILITY completed". Matching any line containing "CAPABILITY"
+		// picked the completion, so an assertion against it passed no matter what the
+		// server actually advertised.
 		capLine := ""
 		for _, l := range lines {
-			if strings.Contains(strings.ToUpper(l), "CAPABILITY") {
+			if strings.HasPrefix(strings.TrimSpace(l), "*") && strings.Contains(strings.ToUpper(l), "CAPABILITY") {
 				capLine = l
 			}
 		}
-		if !strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
-			t.Skipf("restmail IMAP does not advertise STARTTLS: %s", capLine)
+		// STARTTLS must NOT be advertised on an implicit-TLS port: offering an in-band
+		// upgrade would mean the server thinks it is running in the clear.
+		if strings.Contains(strings.ToUpper(capLine), "STARTTLS") {
+			t.Errorf("IMAP advertises STARTTLS on its implicit-TLS port: %s", capLine)
 		}
-
-		ic.starttls(t)
-
 		// LOGIN with bad credentials — should fail
 		result, _ := ic.command(t, "LOGIN testuser@restmail.test wrongpassword")
 		if strings.Contains(result, "OK") {
@@ -507,19 +509,13 @@ func testStage5Indistinguishability(t *testing.T) {
 		pc := dialPOP3TLS(t, restmailPOP3Addr)
 		defer pc.close()
 
+		// STLS must NOT be advertised on an implicit-TLS port.
 		caps := pc.capa(t)
-		foundSTLS := false
-		for _, cap := range caps {
-			if strings.ToUpper(strings.TrimSpace(cap)) == "STLS" {
-				foundSTLS = true
+		for _, capability := range caps {
+			if strings.ToUpper(strings.TrimSpace(capability)) == "STLS" {
+				t.Errorf("POP3 advertises STLS on its implicit-TLS port: %v", caps)
 			}
 		}
-		if !foundSTLS {
-			t.Skipf("restmail POP3 does not advertise STLS: %v", caps)
-		}
-
-		pc.stls(t)
-
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
 		resp := pc.sendExpect(t, "PASS wrongpassword", "-ERR")
 		t.Logf("POP3 bad credentials after STLS correctly rejected: %s", resp)

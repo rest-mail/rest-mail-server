@@ -122,7 +122,7 @@ func TestSMTP_SubmissionOutboundStampsReceived(t *testing.T) {
 	// address, so the #181 From-header check accepts the submission.
 	store.authorized["sender@remote.test"] = true
 
-	h := newSMTPHarness(t, back, store, true) // submission (587)
+	h := newSMTPHarness(t, back, store, true) // submission, as port 465
 	h.ehlo()
 	if r := h.authPlain(back.user, back.pass); replyCode(r) != "235" {
 		t.Fatalf("AUTH = %q", r)
@@ -141,6 +141,7 @@ func TestSMTP_SubmissionOutboundStampsReceived(t *testing.T) {
 	if len(queued) != 1 {
 		t.Fatalf("enqueued %d, want 1", len(queued))
 	}
-	// Authenticated, no TLS in the harness → ESMTPA.
-	assertReceivedTrace(t, queued[0].RawMessage, "ESMTPA", "carol@remote.test")
+	// Authenticated over TLS → ESMTPSA (RFC 3848). It was ESMTPA while the harness ran
+	// in the clear, which no listener does: submission is implicit TLS.
+	assertReceivedTrace(t, queued[0].RawMessage, "ESMTPSA", "carol@remote.test")
 }

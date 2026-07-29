@@ -76,39 +76,33 @@ func TestInboundTransportSecurity_Submission(t *testing.T) {
 	}
 }
 
-// TestSMTP_InboundPlaintext_CapturesReceivedTLS drives a full plaintext inbound
-// (port 25) DATA transaction over the transcript harness and asserts the
-// DeliverRequest carries ReceivedTLS = false (non-nil) — the connection was not
-// encrypted, but the message is still counted as an inbound-MX arrival.
-func TestSMTP_InboundPlaintext_CapturesReceivedTLS(t *testing.T) {
+// TestSMTP_InboundPlaintext_DeliversNothing drives a plaintext inbound (port 25)
+// transaction and asserts it never reaches the API at all.
+//
+// This test used to assert the opposite end of the same behaviour: that a plaintext
+// arrival was delivered with ReceivedTLS = false (non-nil), counted as an unencrypted
+// inbound-MX message. That path no longer exists — nothing is accepted before STARTTLS —
+// so what is worth asserting is that no DeliverRequest is made at all.
+//
+// The false-flag logic itself is still covered directly by
+// TestInboundTransportSecurity_Plaintext, which exercises inboundTransportSecurity
+// without needing a session that could not happen.
+func TestSMTP_InboundPlaintext_DeliversNothing(t *testing.T) {
 	back := newMockBackend()
 	back.local["bob@local.test"] = true
 	store := newMockStore()
 
-	h := newSMTPHarness(t, back, store, false) // inbound (port 25), plaintext pipe
+	h := newCleartextSMTPHarness(t, back, store, false) // inbound (port 25), not upgraded
 	h.ehlo()
-	if r := h.cmd("MAIL FROM:<sender@remote.test>"); replyCode(r) != "250" {
-		t.Fatalf("MAIL FROM = %q", r)
-	}
-	if r := h.cmd("RCPT TO:<bob@local.test>"); replyCode(r) != "250" {
-		t.Fatalf("RCPT = %q", r)
-	}
-	if final := h.dataBody(testBody); replyCode(final) != "250" {
-		t.Fatalf("DATA = %q, want 250", final)
+	if r := h.cmd("MAIL FROM:<sender@remote.test>"); replyCode(r) != "530" {
+		t.Fatalf("MAIL FROM = %q, want 530 before STARTTLS", r)
 	}
 
-	req := back.lastDeliverReq()
-	if req == nil {
-		t.Fatal("no DeliverRequest captured")
+	if req := back.lastDeliverReq(); req != nil {
+		t.Errorf("a cleartext session produced a delivery: %+v", req)
 	}
-	if req.ReceivedTLS == nil {
-		t.Fatal("ReceivedTLS = nil, want non-nil false for inbound-MX plaintext")
-	}
-	if *req.ReceivedTLS {
-		t.Error("ReceivedTLS = true, want false over a plaintext connection")
-	}
-	if req.TLSVersion != "" {
-		t.Errorf("TLSVersion = %q, want empty for plaintext", req.TLSVersion)
+	if got := back.deliveredTo(); len(got) != 0 {
+		t.Errorf("delivered = %v, want nothing", got)
 	}
 }
 

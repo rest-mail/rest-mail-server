@@ -145,8 +145,8 @@ func main() {
 	// The shared connlimiter satisfies the library's structural Limiter interface;
 	// the rest-mail Backend adapter maps API responses onto the library's types.
 	pop3Server := pop3srv.NewServer(pop3.NewBackend(api, limiter), tlsConfig, limiter)
+	// POP3 is left zero, which the library skips: there is no cleartext listener on 110.
 	if err := pop3Server.ListenAndServe(pop3srv.Ports{
-		POP3:    cfg.POP3Port,
 		POP3TLS: cfg.POP3TLSPort,
 	}); err != nil {
 		slog.Error("failed to start POP3 server", "error", err)
@@ -155,7 +155,7 @@ func main() {
 
 	slog.Info("POP3 gateway started",
 		"hostname", cfg.GatewayHostname,
-		"ports", []int{cfg.POP3Port, cfg.POP3TLSPort},
+		"ports", []int{cfg.POP3TLSPort},
 	)
 
 	quit := make(chan os.Signal, 1)

@@ -209,9 +209,10 @@ func main() {
 		smtpServer.SetProxyProtocol(cfg.ProxyProtocolTrustedCIDRs)
 		slog.Info("PROXY protocol configured", "trusted_cidrs", cfg.ProxyProtocolTrustedCIDRs)
 	}
+	// No Submission field: cleartext submission on 587 does not exist. 465 is implicit
+	// TLS, and 25 is inbound relay, which refuses a transaction until STARTTLS.
 	if err := smtpServer.ListenAndServe(smtpgw.SMTPPorts{
 		Inbound:       cfg.SMTPPortInbound,
-		Submission:    cfg.SMTPPortSubmission,
 		SubmissionTLS: cfg.SMTPPortSubmissionTLS,
 	}); err != nil {
 		slog.Error("failed to start SMTP server", "error", err)
@@ -257,7 +258,7 @@ func main() {
 
 	slog.Info("SMTP gateway started",
 		"hostname", cfg.GatewayHostname,
-		"ports", []int{cfg.SMTPPortInbound, cfg.SMTPPortSubmission, cfg.SMTPPortSubmissionTLS},
+		"ports", []int{cfg.SMTPPortInbound, cfg.SMTPPortSubmissionTLS},
 	)
 
 	quit := make(chan os.Signal, 1)

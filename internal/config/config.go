@@ -176,12 +176,17 @@ type Config struct {
 	RestmailTarpitBase    time.Duration
 	RestmailTarpitMax     time.Duration
 
+	// Listener ports. Client access is implicit TLS only — 465 for submission, 993 for
+	// IMAP, 995 for POP3 — so there is no field for 587, 143 or 110 to put a value in.
+	// Those are not disabled by default; they cannot be configured. See
+	// removedCleartextPortFindings for what happens when an old variable is still set.
+	//
+	// SMTPPortInbound (25) is the exception, and the only listener that can be reached
+	// in the clear: relay from other MTAs begins unencrypted and upgrades, so it
+	// advertises STARTTLS and refuses the transaction until it has been used.
 	SMTPPortInbound       int
-	SMTPPortSubmission    int
 	SMTPPortSubmissionTLS int
-	IMAPPort              int
 	IMAPTLSPort           int
-	POP3Port              int
 	POP3TLSPort           int
 
 	// Per-gateway Prometheus metrics endpoints. Each gateway runs as its own
@@ -460,11 +465,8 @@ func Load() (*Config, error) {
 		APIBaseURL:            getEnv("API_BASE_URL", "http://localhost:8080"),
 		APIInternalBaseURL:    getEnv("API_INTERNAL_BASE_URL", ""),
 		SMTPPortInbound:       getEnvInt("SMTP_PORT_INBOUND", 25),
-		SMTPPortSubmission:    getEnvInt("SMTP_PORT_SUBMISSION", 587),
 		SMTPPortSubmissionTLS: getEnvInt("SMTP_PORT_SUBMISSION_TLS", 465),
-		IMAPPort:              getEnvInt("IMAP_PORT", 143),
 		IMAPTLSPort:           getEnvInt("IMAP_TLS_PORT", 993),
-		POP3Port:              getEnvInt("POP3_PORT", 110),
 		POP3TLSPort:           getEnvInt("POP3_TLS_PORT", 995),
 		SMTPMetricsPort:       getEnvInt("SMTP_METRICS_PORT", DefaultGatewayMetricsPort),
 		IMAPMetricsPort:       getEnvInt("IMAP_METRICS_PORT", DefaultGatewayMetricsPort),
@@ -1622,15 +1624,44 @@ func (c *Config) ValidateListenerSecurity(role ListenerRole) error {
 	case RoleSMTPGateway:
 		findings = append(findings, c.smtpListenerFindings()...)
 		findings = append(findings, queueTLSInsecureFindings()...)
+		findings = append(findings, removedCleartextPortFindings("SMTP_PORT_SUBMISSION", 587, "SMTP_PORT_SUBMISSION_TLS", 465)...)
 	case RoleIMAPGateway:
 		findings = append(findings, c.imapListenerFindings()...)
+		findings = append(findings, removedCleartextPortFindings("IMAP_PORT", 143, "IMAP_TLS_PORT", 993)...)
 	case RolePOP3Gateway:
 		findings = append(findings, c.pop3ListenerFindings()...)
+		findings = append(findings, removedCleartextPortFindings("POP3_PORT", 110, "POP3_TLS_PORT", 995)...)
 	case RoleAPI:
 		findings = append(findings, c.apiListenerFindings()...)
 		findings = append(findings, c.internalRoutesFindings()...)
 	}
 	return c.enforceSecurityFindings(role.String(), findings)
+}
+
+// removedCleartextPortFindings reports a variable that used to open a cleartext client
+// listener and no longer does.
+//
+// Client access is implicit TLS only, so 587, 143 and 110 have no configuration field
+// left to read. Silently ignoring the old variable is the wrong failure: an operator who
+// sets SMTP_PORT_SUBMISSION=587 believes a port is listening, and nothing would say
+// otherwise until a client failed to connect. Worse, they may believe rest-mail still
+// offers a cleartext fallback when it deliberately does not.
+//
+// An empty or whitespace value is not a request for anything — that is what an unset
+// variable looks like after a template has interpolated nothing into it. An explicit 0
+// already means "no listener", which is the state this enforces, so it passes too.
+func removedCleartextPortFindings(oldVar string, oldPort int, newVar string, newPort int) []string {
+	raw, ok := os.LookupEnv(oldVar)
+	if !ok {
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "0" {
+		return nil
+	}
+	return []string{fmt.Sprintf(
+		"%s is set to %q but cleartext client listeners no longer exist: port %d has been removed in favour of implicit TLS on %d (%s). Remove %s — leaving it set means a listener you expect is not running",
+		oldVar, raw, oldPort, newPort, newVar, oldVar)}
 }
 
 // tlsKeypairConfigured reports whether a primary TLS certificate/key pair is
@@ -1645,49 +1676,49 @@ func (c *Config) tlsKeypairConfigured() bool {
 }
 
 // smtpListenerFindings flags an SMTP gateway with any listener enabled but no TLS
-// keypair: 25 could not advertise STARTTLS, 587 would run plaintext submission,
-// 465 would bind plaintext instead of implicit TLS, and all three would accept
-// AUTH before TLS.
+// keypair. Without one, 25 could not advertise STARTTLS — so it would have to refuse
+// every transaction — and 465 would bind plaintext instead of implicit TLS, accepting
+// AUTH in the clear.
 func (c *Config) smtpListenerFindings() []string {
 	if c.tlsKeypairConfigured() {
 		return nil
 	}
-	if c.SMTPPortInbound <= 0 && c.SMTPPortSubmission <= 0 && c.SMTPPortSubmissionTLS <= 0 {
+	if c.SMTPPortInbound <= 0 && c.SMTPPortSubmissionTLS <= 0 {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"SMTP gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STARTTLS cannot be advertised on port %d (inbound) or %d (submission), implicit TLS cannot run on port %d, and AUTH would be accepted before TLS — provide a certificate/key so STARTTLS is offered and pre-TLS AUTH is refused",
-		c.SMTPPortInbound, c.SMTPPortSubmission, c.SMTPPortSubmissionTLS)}
+		"SMTP gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STARTTLS cannot be advertised on port %d (inbound), which would leave it refusing every message, implicit TLS cannot run on port %d, and AUTH would be accepted before TLS — provide a certificate/key",
+		c.SMTPPortInbound, c.SMTPPortSubmissionTLS)}
 }
 
-// imapListenerFindings flags an IMAP gateway with any listener enabled but no TLS
-// keypair: 143 could not advertise STARTTLS, 993 would bind plaintext instead of
-// implicit TLS, and both would accept LOGIN/AUTHENTICATE before TLS.
+// imapListenerFindings flags an IMAP gateway with its listener enabled but no TLS
+// keypair: 993 would bind plaintext instead of implicit TLS, accepting
+// LOGIN/AUTHENTICATE in the clear.
 func (c *Config) imapListenerFindings() []string {
 	if c.tlsKeypairConfigured() {
 		return nil
 	}
-	if c.IMAPPort <= 0 && c.IMAPTLSPort <= 0 {
+	if c.IMAPTLSPort <= 0 {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"IMAP gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STARTTLS cannot be advertised on port %d, implicit TLS cannot run on port %d, and LOGIN/AUTHENTICATE would be accepted before TLS — provide a certificate/key so STARTTLS is offered and pre-TLS auth is refused",
-		c.IMAPPort, c.IMAPTLSPort)}
+		"IMAP gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): implicit TLS cannot run on port %d, so it would bind plaintext and accept LOGIN/AUTHENTICATE before TLS — provide a certificate/key",
+		c.IMAPTLSPort)}
 }
 
-// pop3ListenerFindings flags a POP3 gateway with any listener enabled but no TLS
-// keypair: 110 could not advertise STLS, 995 would bind plaintext instead of
-// implicit TLS, and both would accept USER/PASS before TLS.
+// pop3ListenerFindings flags a POP3 gateway with its listener enabled but no TLS
+// keypair: 995 would bind plaintext instead of implicit TLS, accepting USER/PASS in the
+// clear.
 func (c *Config) pop3ListenerFindings() []string {
 	if c.tlsKeypairConfigured() {
 		return nil
 	}
-	if c.POP3Port <= 0 && c.POP3TLSPort <= 0 {
+	if c.POP3TLSPort <= 0 {
 		return nil
 	}
 	return []string{fmt.Sprintf(
-		"POP3 gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): STLS cannot be advertised on port %d, implicit TLS cannot run on port %d, and USER/PASS would be accepted before TLS — provide a certificate/key so STLS is offered and pre-TLS auth is refused",
-		c.POP3Port, c.POP3TLSPort)}
+		"POP3 gateway has no TLS keypair (TLS_CERT_PATH/TLS_KEY_PATH): implicit TLS cannot run on port %d, so it would bind plaintext and accept USER/PASS before TLS — provide a certificate/key",
+		c.POP3TLSPort)}
 }
 
 // apiListenerFindings flags the API serving plaintext HTTP with no TLS. The API

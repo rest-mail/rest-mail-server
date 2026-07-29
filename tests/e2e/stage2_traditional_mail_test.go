@@ -167,7 +167,7 @@ func testStage2TraditionalMail(t *testing.T) {
 		}
 		sc := dialSMTP(t, restmailSMTPAddr)
 		defer sc.close()
-		sc.ehlo(t, "test.local")
+		sc.starttlsIfOffered(t, "test.local")
 		sc.sendExpect(t, "MAIL FROM:<charlie@mail2.test>", "250")
 		sc.sendExpect(t, "RCPT TO:<"+probeAddr+">", "250")
 		sc.sendExpect(t, "RSET", "250")
@@ -176,11 +176,11 @@ func testStage2TraditionalMail(t *testing.T) {
 	})
 
 	t.Run("ApiCreatedUser_VisibleToDovecot", func(t *testing.T) {
-		ic := dialIMAP(t, restmailIMAPAddr)
+		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		// The product's IMAP gateway (correctly) refuses plaintext LOGIN.
-		ic.starttls(t)
+		// The gateway refuses plaintext LOGIN; dialIMAPTLS already gave us an
+		// implicit-TLS session, so LOGIN goes straight out.
 		result, _ := ic.command(t, "LOGIN "+probeAddr+" "+adminPassword)
 		if !strings.Contains(result, "OK") {
 			t.Fatalf("IMAP gateway cannot auth API-created user: %s", result)
