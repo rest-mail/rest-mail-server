@@ -7,7 +7,7 @@ version: "3"
 #
 # Joins the testbed's mailnet network at a static IP. Two build targets are
 # supported via MODE: `dev` (Vite HMR on port 3000, repo bind-mounted at /app)
-# and `prod` (nginx serving the built bundle on port 80). No host port
+# and `prod` (unprivileged nginx serving the built bundle on port 8080). No host port
 # mapping in either mode — traffic is routed via docker-proxy labels.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
@@ -29,7 +29,12 @@ vars:
   WEBMAIL_API_URL: '{{.WEBMAIL_API_URL | default "http://restmail.localhost/api/v1"}}'
   WEBMAIL_PROXY_HOST: '{{.WEBMAIL_PROXY_HOST | default "restmail.localhost"}}'
   WEBMAIL_DEV_PORT: '3000'
-  WEBMAIL_PROD_PORT: '80'
+  WEBMAIL_PROD_PORT: '8080'
+  # Named (not anonymous) volume for /app/node_modules in MODE=dev, so a
+  # throwaway installer container can populate it before the app container
+  # starts. Docker seeds it from the image on first use, and it persists after
+  # that, which keeps `pnpm install` incremental.
+  WEBMAIL_MODULES_VOLUME: '{{.WEBMAIL_PROJECT}}-webmail-node-modules'
 
 tasks:
 
@@ -52,6 +57,40 @@ tasks:
   # up / down / restart
   # ════════════════════════════════════════════════════════
 
+  deps:
+    desc: 'Install webmail node_modules from the frozen lockfile, in a throwaway container (MODE=dev only)'
+    cmds:
+      - |
+        # A container runs what its image contains and installs nothing at
+        # startup — the dev image's CMD is Vite and nothing else.
+        #
+        # MODE=dev bind-mounts the host tree at /app, so the mounted
+        # pnpm-lock.yaml can move ahead of the modules volume (a merged
+        # dependency change, a branch switch). Vite then fails to resolve the new
+        # import while the container keeps serving happily — how the missing
+        # @fontsource/* deps from #262 stayed invisible.
+        #
+        # The install therefore runs in a THROWAWAY container that mounts the
+        # same volume and runs nothing else. Installing into the running app
+        # container instead does not work: pnpm purges node_modules first, which
+        # kills Vite, the restart policy restarts the container, and that
+        # SIGKILLs the install half-done.
+        #
+        # --frozen-lockfile installs exactly what is pinned and fails rather than
+        # resolving anything new. CI=true keeps the purge non-interactive.
+        if [ "{{.WEBMAIL_MODE}}" != "dev" ]; then
+          echo "  webmail is MODE={{.WEBMAIL_MODE}} — the image already contains its modules"
+          exit 0
+        fi
+        echo "  installing webmail node_modules from pnpm-lock.yaml"
+        docker run --rm \
+          -v "$(pwd)/webmail:/app" \
+          -v {{.WEBMAIL_MODULES_VOLUME}}:/app/node_modules \
+          -w /app \
+          -e CI=true \
+          --entrypoint pnpm \
+          {{.WEBMAIL_IMAGE}} install --frozen-lockfile >$OUTPUT 2>&1
+
   up:
     desc: Start the webmail container (recreates if already present)
     deps: [build]
@@ -59,12 +98,17 @@ tasks:
       - |
         echo "  starting webmail ({{.WEBMAIL_CONTAINER_NAME}} @ {{.WEBMAIL_IP}}, mode={{.WEBMAIL_MODE}})"
         docker rm -f {{.WEBMAIL_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
+      # Modules are brought in line with the lockfile while nothing is running,
+      # so the app container only ever starts against a complete tree.
+      - task: deps
+      - |
         # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
-        # capabilities then add back only NET_BIND_SERVICE (prod nginx binds
-        # :80; harmless for the dev Vite server on :3000), plus pid/mem/cpu
-        # ceilings. Serves static assets only — no secrets in env.
+        # capabilities — nothing here binds a privileged port, since prod runs
+        # the unprivileged nginx image on :8080 as uid 101 and the dev Vite
+        # server listens on :3000 — plus pid/mem/cpu ceilings. Serves static
+        # assets only, no secrets in env.
         HARDENING="--security-opt no-new-privileges:true \
-          --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          --cap-drop ALL \
           --pids-limit 512 --memory 1g --cpus 1.5"
         if [ "{{.WEBMAIL_MODE}}" = "prod" ]; then
           docker run -d --name {{.WEBMAIL_CONTAINER_NAME}} \
@@ -85,7 +129,7 @@ tasks:
             --network {{.WEBMAIL_NETWORK}} \
             --ip {{.WEBMAIL_IP}} \
             -v "$(pwd)/webmail:/app" \
-            -v /app/node_modules \
+            -v {{.WEBMAIL_MODULES_VOLUME}}:/app/node_modules \
             -e VITE_BASE_PATH={{.WEBMAIL_BASE_PATH}} \
             -e VITE_API_URL={{.WEBMAIL_API_URL}} \
             -l docker-proxy.webmail.host={{.WEBMAIL_PROXY_HOST}} \

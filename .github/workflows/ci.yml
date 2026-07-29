@@ -134,24 +134,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # corepack ships with the runner's preinstalled Node and activates the
+      # pnpm version pinned in package.json, so no extra action needs pinning.
+      # It must run BEFORE setup-node, which needs pnpm on PATH to resolve its
+      # dependency cache.
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "18"
-          cache: "npm"
-          cache-dependency-path: webmail/package-lock.json
+          # The supported range lives in the app's package.json (engines.node);
+          # setup-node reads it, so CI cannot drift from what the app declares.
+          # engine-strict in .npmrc then fails the install if it ever does.
+          #
+          # No `cache: pnpm`: its post-job save fails the job when the store path it
+          # resolved from the repository root does not exist, which took down builds
+          # that had already passed. Installing two small apps is cheap.
+          node-version-file: webmail/package.json
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: pnpm exec tsc --noEmit
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
   admin:
     name: Admin Build
@@ -163,29 +175,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # corepack ships with the runner's preinstalled Node and activates the
+      # pnpm version pinned in package.json, so no extra action needs pinning.
+      # It must run BEFORE setup-node, which needs pnpm on PATH to resolve its
+      # dependency cache.
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          # admin is on Vite 7 / React 19, which require Node ^20.19 || >=22.12
-          # (unlike webmail's Vite 5, which still runs on Node 18).
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: admin/package-lock.json
+          # The supported range lives in the app's package.json (engines.node);
+          # setup-node reads it, so CI cannot drift from what the app declares.
+          # engine-strict in .npmrc then fails the install if it ever does.
+          #
+          # No `cache: pnpm`: its post-job save fails the job when the store path it
+          # resolved from the repository root does not exist, which took down builds
+          # that had already passed. Installing two small apps is cheap.
+          node-version-file: admin/package.json
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: pnpm exec tsc --noEmit
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: Test
-        run: npm run test
+        run: pnpm run test
 
   # The gate — the one context worth requiring on main, mirroring what e2e.yml
   # already does with `E2E (full topology)`.

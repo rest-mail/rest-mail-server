@@ -1,0 +1,18 @@
+# Keep the host's build output and modules out of the image.
+#
+# node_modules matters beyond image size: the image installs its own via
+# `pnpm install --frozen-lockfile`, which builds a symlinked tree, and copying
+# the host's real directories over those symlinks fails the build outright
+# ("cannot copy to non-directory"). Host modules are also built for the host's
+# platform, so they were never safe to ship.
+node_modules
+dist
+.vite
+
+# Local noise that has no business in a build context.
+.git
+.env
+.env.*
+*.log
+coverage
+.DS_Store
