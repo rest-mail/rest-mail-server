@@ -22,6 +22,7 @@ code changes.
 
 | File | What it is |
 |------|------------|
+| [`CHEATSHEET.md`](CHEATSHEET.md) | Quick reference for the local dev environment: start / inspect / stop a server, reference servers, teardown. |
 | [`MANUAL.md`](MANUAL.md) | Operator + developer manual: dev stack, env-var contract, endpoints, credentials, day-to-day tasks. |
 | [`adapter-filters.md`](adapter-filters.md) | Pipeline filters — the built-in Go filters vs the external scanning adapters (rspamd, ClamAV), how they register, and how to write a custom adapter. |
 | [`dns-providers.md`](dns-providers.md) | Configuring the DNS provider integration. |
