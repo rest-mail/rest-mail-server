@@ -237,7 +237,9 @@ includes:
       WEBMAIL_PROJECT: '{{.RESTMAIL_PROJECT}}'
       WEBMAIL_NETWORK: '{{.RESTMAIL_NETWORK}}'
       WEBMAIL_IP: '{{.MAIL3_WEBMAIL_IP}}'
-      WEBMAIL_MODE: dev
+      # Overridable so prod can be exercised locally (WEBMAIL_MODE=prod task …);
+      # dev is what the stack runs by default.
+      WEBMAIL_MODE: '{{.WEBMAIL_MODE | default "dev"}}'
       WEBMAIL_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       WEBMAIL_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       WEBMAIL_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'
@@ -248,7 +250,9 @@ includes:
       ADMIN_PROJECT: '{{.RESTMAIL_PROJECT}}'
       ADMIN_NETWORK: '{{.RESTMAIL_NETWORK}}'
       ADMIN_IP: '{{.MAIL3_ADMIN_IP}}'
-      ADMIN_MODE: dev
+      # Overridable so prod can be exercised locally (ADMIN_MODE=prod task …);
+      # dev is what the stack runs by default.
+      ADMIN_MODE: '{{.ADMIN_MODE | default "dev"}}'
       ADMIN_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       ADMIN_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
       ADMIN_PROXY_HOST: '{{.RESTMAIL_PROXY_HOST}}'

@@ -58,6 +58,7 @@ Thumbs.db
 .task/checksum
 .history
 .claude
+.pnpm-store
 
 # Local-dev workspace (cloned peer repos: testbed, reference-mailserver)
 .workspace/

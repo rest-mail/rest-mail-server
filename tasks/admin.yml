@@ -6,7 +6,7 @@ version: "3"
 # Included by the main Taskfile under namespace `admin`.
 #
 # MODE=dev   → Vite dev server with HMR (port 3000), bind-mounts ./admin
-# MODE=prod  → nginx serving the built bundle (port 80)
+# MODE=prod  → unprivileged nginx serving the built bundle (port 8080)
 #
 # No host port mapping — exposed via docker-proxy labels on the
 # testbed_mailnet network. Re-run with VERBOSE=1 to see raw docker output.
@@ -28,7 +28,12 @@ vars:
   ADMIN_API_URL_PROD: '{{.ADMIN_API_URL_PROD | default "http://restmail.localhost/api"}}'
   ADMIN_PROXY_HOST: '{{.ADMIN_PROXY_HOST | default "restmail.localhost"}}'
   ADMIN_DEV_PORT: '3000'
-  ADMIN_PROD_PORT: '80'
+  ADMIN_PROD_PORT: '8080'
+  # Named (not anonymous) volume for /app/node_modules in MODE=dev, so a
+  # throwaway installer container can populate it before the app container
+  # starts. Docker seeds it from the image on first use, and it persists after
+  # that, which keeps `pnpm install` incremental.
+  ADMIN_MODULES_VOLUME: '{{.ADMIN_PROJECT}}-admin-node-modules'
 
 tasks:
 
@@ -63,13 +68,17 @@ tasks:
           echo "  removing existing {{.ADMIN_CONTAINER_NAME}}"
           docker rm -f {{.ADMIN_CONTAINER_NAME}} >$OUTPUT 2>&1
         fi
+      # Modules are brought in line with the lockfile while nothing is running,
+      # so the app container only ever starts against a complete tree.
+      - task: deps
       - |
         # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
-        # capabilities then add back only NET_BIND_SERVICE (prod nginx binds
-        # :80; harmless for the dev Vite server on :3000), plus pid/mem/cpu
-        # ceilings. Serves static assets only — no secrets in env.
+        # capabilities — nothing here binds a privileged port, since prod runs
+        # the unprivileged nginx image on :8080 as uid 101 and the dev Vite
+        # server listens on :3000 — plus pid/mem/cpu ceilings. Serves static
+        # assets only, no secrets in env.
         HARDENING="--security-opt no-new-privileges:true \
-          --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          --cap-drop ALL \
           --pids-limit 512 --memory 1g --cpus 1.5"
         if [ "{{.ADMIN_MODE}}" = "prod" ]; then
           echo "  starting {{.ADMIN_CONTAINER_NAME}} (prod @ {{.ADMIN_IP}}, port {{.ADMIN_PROD_PORT}})"
@@ -92,7 +101,7 @@ tasks:
             --network {{.ADMIN_NETWORK}} \
             --ip {{.ADMIN_IP}} \
             -v "$(pwd)/admin:/app" \
-            -v /app/node_modules \
+            -v {{.ADMIN_MODULES_VOLUME}}:/app/node_modules \
             -e VITE_BASE_PATH={{.ADMIN_BASE_PATH}} \
             -e VITE_API_URL={{.ADMIN_API_URL_DEV}} \
             -l docker-proxy.admin.host={{.ADMIN_PROXY_HOST}} \
@@ -101,6 +110,40 @@ tasks:
             -l docker-proxy.admin.websocket=true \
             {{.ADMIN_IMAGE}} >$OUTPUT 2>&1
         fi
+
+  deps:
+    desc: 'Install admin node_modules from the frozen lockfile, in a throwaway container (MODE=dev only)'
+    cmds:
+      - |
+        # A container runs what its image contains and installs nothing at
+        # startup — the dev image's CMD is Vite and nothing else.
+        #
+        # MODE=dev bind-mounts the host tree at /app, so the mounted
+        # pnpm-lock.yaml can move ahead of the modules volume (a merged
+        # dependency change, a branch switch). Vite then fails to resolve the new
+        # import while the container keeps serving happily — how the missing
+        # @fontsource/* deps from #262 stayed invisible.
+        #
+        # The install therefore runs in a THROWAWAY container that mounts the
+        # same volume and runs nothing else. Installing into the running app
+        # container instead does not work: pnpm purges node_modules first, which
+        # kills Vite, the restart policy restarts the container, and that
+        # SIGKILLs the install half-done.
+        #
+        # --frozen-lockfile installs exactly what is pinned and fails rather than
+        # resolving anything new. CI=true keeps the purge non-interactive.
+        if [ "{{.ADMIN_MODE}}" != "dev" ]; then
+          echo "  admin is MODE={{.ADMIN_MODE}} — the image already contains its modules"
+          exit 0
+        fi
+        echo "  installing admin node_modules from pnpm-lock.yaml"
+        docker run --rm \
+          -v "$(pwd)/admin:/app" \
+          -v {{.ADMIN_MODULES_VOLUME}}:/app/node_modules \
+          -w /app \
+          -e CI=true \
+          --entrypoint pnpm \
+          {{.ADMIN_IMAGE}} install --frozen-lockfile >$OUTPUT 2>&1
 
   down:
     desc: Stop and remove the admin container

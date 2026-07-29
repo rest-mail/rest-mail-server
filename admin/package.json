@@ -2,12 +2,16 @@
   "name": "admin",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": "^20.19 || >=22.12"
+  },
   "imports": {
     "#/*": "./src/*"
   },
   "scripts": {
-    "dev": "vite dev --port 3000",
-    "build": "vite build",
+    "dev": "vite dev",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run"
