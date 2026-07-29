@@ -9,7 +9,7 @@ version: "3"
 # from the project root (`dir: ../`) `BUILD_CONTEXT` resolves correctly.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
-# docker / shell output (e.g. VERBOSE=1 task js-filter:up).
+# docker / shell output (e.g. VERBOSE=1 chore js-filter:up).
 
 silent: true
 

@@ -53,7 +53,7 @@ func main() {
 	}
 
 	// Additional served domains (manifest `domains:` list, rendered to
-	// MAIL3_SEED_SERVED_DOMAINS and passed here as SEED_SERVED_DOMAINS). Each
+	// RESTMAIL_SEED_SERVED_DOMAINS and passed here as SEED_SERVED_DOMAINS). Each
 	// gets a DB domain row with its declared server_type; mailboxes/aliases for
 	// these stay DB-driven (admin API). Empty/unset → nothing extra is seeded,
 	// so single-domain instances are unchanged.

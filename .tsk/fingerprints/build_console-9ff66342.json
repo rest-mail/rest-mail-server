@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "task": "build:console",
+  "hash": "dd2d166c5609060d732859f3963bf4686f5ba1e49ee60f4c3250ae73c6701a6e",
+  "sources": {
+    "cmd/console/main.go": "974701a74800988ffccbe6df353d2697d32207048ede4a84e4cd31ee8c59c2cf",
+    "go.mod": "eedf56bbb158c9aafbdfdd335f38c58c3f24aa357aaa4cc21b603dc6be883ec3",
+    "go.sum": "04a863a9daaabb59bf02b356524689fd0296da3f3665d72f4fd912cd4a25d1d6",
+    "internal/console/compose.go": "ae5e4c851f8fe070d9bddcfb52f50d06edf8c88f8f28055e150d5e94bebf7f2c",
+    "internal/console/domains.go": "fb49d63b5d6778bd78500e4e706bd59e873e34b6e336b72f12e80521f2a16b60",
+    "internal/console/inbox.go": "19137c48695bd80acc3b14b0017f9efe96afe9e823e819df9cc791c7ddafed01",
+    "internal/console/model.go": "cdba5c266b6c8e613f45b21b6141e929de37c7a437fa82d5067999cc85ef5e02",
+    "internal/console/pipelines.go": "d613e30c03d3028e268dde15bd2deb9414422b8defe1471a42fa0528c818e9b8",
+    "internal/console/status.go": "66f4157de0c8251e776f8cd78fc3eb857892fd66f1e4d4cf5f5ae85db47b0bf9",
+    "internal/console/styles.go": "9e7c25ab74159aa1a32a68907639c504aed2e05736c793408b8d8e481af88ad5",
+    "internal/console/users.go": "2847856a7139f685c0934df6db726d5e765b29ca70c60da29e055f6fb9fb0b5f"
+  },
+  "updated_at": "2026-07-26T23:00:31.884385Z"
+}

@@ -1,6 +1,6 @@
 // Package instance loads and renders rest-mail instance manifests.
 //
-// A manifest (instances/<domain>/manifest.yml) is the human-authored source of
+// A manifest (config/<domain>/manifest.yml) is the human-authored source of
 // truth for one logical mail instance. Render flattens it into a config.env
 // that the Taskfile loads via dotenv, so per-instance values live in the
 // manifest rather than hardcoded in the Taskfile. The logic lives here (not in
@@ -18,7 +18,23 @@ import (
 
 // Manifest is the subset of the instance manifest that Render consumes. It
 // mirrors the envelope/binding split of the YAML file.
+// DefaultVarsPrefix is the namespace a manifest gets when it names none. One
+// constant, in one place: the prefix used to be forty string literals, and a typo
+// in any of them emitted a variable nothing read, which renders as empty rather
+// than failing. It was MAIL3_ — a mail server that no longer exists, whose name
+// had reached ~250 places including the volume rest-mail-mail4-mail3-attachments.
+const DefaultVarsPrefix = "RESTMAIL"
+
 type Manifest struct {
+	// VarsPrefix namespaces every variable this manifest renders — RESTMAIL_HOSTNAME,
+	// RESTMAIL_POSTGRES_IP. Set it here and nothing in the binary decides the name;
+	// DefaultVarsPrefix applies when it is absent.
+	//
+	// The prefix is a NAMESPACE and yours to choose. The part after it is a SCHEMA:
+	// `chores.yml` reads {{.RESTMAIL_POSTGRES_IP}} by name, so those suffixes are
+	// the field names of a contract and are deliberately not configurable — nothing
+	// could consume the output reliably if they were.
+	VarsPrefix string `yaml:"vars_prefix"`
 	// envelope
 	Domain    string `yaml:"domain"`
 	Hostname  string `yaml:"hostname"`
@@ -55,7 +71,7 @@ type Manifest struct {
 		User string `yaml:"user"`
 	} `yaml:"db"`
 	// SMTP holds optional SMTP/queue policy knobs. Every field is optional:
-	// a nil/empty field emits no MAIL3_* line, so the Taskfile catalog
+	// a nil/empty field emits no RESTMAIL_* line, so the Taskfile catalog
 	// `| default` and the config.go fallback apply and existing manifests (no
 	// `smtp:` block) render byte-for-byte as before. Pointers (not zero values)
 	// distinguish "unset" from a meaningful zero — e.g. MinTransferRate 0
@@ -77,8 +93,8 @@ type Manifest struct {
 	// fields emit no line, so `task instance:dkim` keeps its defaults
 	// (selector "default", 2048 bits) and existing manifests are unchanged.
 	DKIM struct {
-		Selector string `yaml:"selector"` // MAIL3_DKIM_SELECTOR (dkim-provision --selector)
-		Bits     *int   `yaml:"bits"`     // MAIL3_DKIM_BITS (dkim-provision -bits)
+		Selector string `yaml:"selector"` // RESTMAIL_DKIM_SELECTOR (dkim-provision --selector)
+		Bits     *int   `yaml:"bits"`     // RESTMAIL_DKIM_BITS (dkim-provision -bits)
 	} `yaml:"dkim"`
 	// Domains declares ADDITIONAL served domains beyond the primary `domain`.
 	// Optional and additive: omitted → the instance serves only the primary
@@ -92,7 +108,7 @@ type Manifest struct {
 	Domains []DomainEntry `yaml:"domains"`
 	// TLS holds optional TLS declarations for the instance. Every field is
 	// optional and strict-parse-safe: an omitted `tls:` block emits no
-	// MAIL3_TLS_* / RESTMAIL_CERT_PROVIDER / RESTMAIL_INTERNAL_CA_SOURCE line, so
+	// RESTMAIL_TLS_* / RESTMAIL_CERT_PROVIDER / RESTMAIL_INTERNAL_CA_SOURCE line, so
 	// existing manifests render byte-for-byte as before. It carries two
 	// independent concerns: the PUBLIC serving cert (`extra_hostnames`, `acme`)
 	// and the gateway→API INTERNAL mutual-TLS channel (`internal:`). The internal
@@ -148,7 +164,7 @@ type TLS struct {
 //     client material out of band into the certs volume and the task only
 //     validates its presence (no issuance).
 //
-// Rendered env: mode → MAIL3_INTERNAL_MTLS (only when ON, matching the bool);
+// Rendered env: mode → RESTMAIL_INTERNAL_MTLS (only when ON, matching the bool);
 // a non-default ca_source → RESTMAIL_INTERNAL_CA_SOURCE. Both lines are emitted
 // only when they carry information, so an omitted block renders nothing new.
 type InternalTLS struct {
@@ -185,10 +201,10 @@ func (m *Manifest) internalMTLSEnabled() bool {
 // ACME is the optional `tls.acme:` sub-block. Bools are pointers so an unset
 // field emits no line (and is distinguishable from an explicit false).
 type ACME struct {
-	Enabled   *bool  `yaml:"enabled"`   // MAIL3_TLS_ACME_ENABLED
-	Email     string `yaml:"email"`     // MAIL3_TLS_ACME_EMAIL (ACME account contact)
-	Staging   *bool  `yaml:"staging"`   // MAIL3_TLS_ACME_STAGING (use the CA's staging endpoint)
-	Directory string `yaml:"directory"` // MAIL3_TLS_ACME_DIRECTORY (ACME directory URL override)
+	Enabled   *bool  `yaml:"enabled"`   // RESTMAIL_TLS_ACME_ENABLED
+	Email     string `yaml:"email"`     // RESTMAIL_TLS_ACME_EMAIL (ACME account contact)
+	Staging   *bool  `yaml:"staging"`   // RESTMAIL_TLS_ACME_STAGING (use the CA's staging endpoint)
+	Directory string `yaml:"directory"` // RESTMAIL_TLS_ACME_DIRECTORY (ACME directory URL override)
 }
 
 // DomainEntry is one ADDITIONAL served domain declared in the manifest
@@ -355,13 +371,13 @@ func (m *Manifest) CertSANHostnames() []string {
 }
 
 // SeedServedDomain is one additional served domain to seed a DB row for,
-// decoded from the MAIL3_SEED_SERVED_DOMAINS env line.
+// decoded from the RESTMAIL_SEED_SERVED_DOMAINS env line.
 type SeedServedDomain struct {
 	Name       string
 	ServerType string
 }
 
-// ParseSeedServedDomains decodes the MAIL3_SEED_SERVED_DOMAINS value
+// ParseSeedServedDomains decodes the RESTMAIL_SEED_SERVED_DOMAINS value
 // ("name:server_type,name:server_type,...") that Render emits, into structured
 // entries. It is the decode side of that encoding — `cmd/seed` consumes it to
 // create a DB domain row per additional domain. Empty input yields no entries
@@ -417,7 +433,7 @@ func Parse(data []byte) (*Manifest, error) {
 }
 
 // Render flattens a manifest into a deterministic config.env byte stream. The
-// variable names match the Taskfile convention (RESTMAIL_*/MAIL3_*) so that
+// variable names match the Taskfile convention (RESTMAIL_*/RESTMAIL_*) so that
 // switching the Taskfile to load this file is behavior-preserving.
 func Render(m *Manifest) ([]byte, error) {
 	var b bytes.Buffer
@@ -425,22 +441,28 @@ func Render(m *Manifest) ([]byte, error) {
 	b.WriteString("# Edit manifest.yml, then re-render. Secrets live in secrets.env.\n\n")
 
 	kv := func(k, v string) { fmt.Fprintf(&b, "%s=%s\n", k, v) }
+	// Every rendered name is namespaced here, once.
+	prefix := m.VarsPrefix
+	if prefix == "" {
+		prefix = DefaultVarsPrefix
+	}
+	iv := func(k, v string) { kv(prefix+"_"+k, v) }
 
 	// Substrate + image + runtime (envelope-derived).
-	kv("RESTMAIL_PROJECT", m.Project)
-	kv("RESTMAIL_NETWORK", m.Network)
-	kv("RESTMAIL_CERTS_VOLUME", m.CertsVolume)
-	kv("RESTMAIL_TESTBED_DNS_IP", m.TestbedDNSIP)
-	kv("RESTMAIL_REGISTRY", m.Registry)
-	kv("RESTMAIL_IMAGE_TAG", m.ImageTag)
-	kv("RESTMAIL_PROXY_HOST", m.ProxyHost)
+	iv("PROJECT", m.Project)
+	iv("NETWORK", m.Network)
+	iv("CERTS_VOLUME", m.CertsVolume)
+	iv("TESTBED_DNS_IP", m.TestbedDNSIP)
+	iv("REGISTRY", m.Registry)
+	iv("IMAGE_TAG", m.ImageTag)
+	iv("PROXY_HOST", m.ProxyHost)
 	// Cert provider selects which branch `task instance:certs:issue` takes.
 	// "testbed-certgen" is THE default, so it renders no line (and the Taskfile
 	// `| default "testbed-certgen"` supplies it) — keeping existing manifests
 	// byte-for-byte identical. Only a non-default provider (manual, acme/
 	// letsencrypt) emits the switch line.
 	if m.CertProvider != "" && m.CertProvider != "testbed-certgen" {
-		kv("RESTMAIL_CERT_PROVIDER", m.CertProvider)
+		iv("CERT_PROVIDER", m.CertProvider)
 	}
 	// Internal-mTLS CA provisioning source (manifest `tls.internal.ca_source`).
 	// Like cert_provider, "testbed-certgen" is THE default and renders no line
@@ -448,22 +470,22 @@ func Render(m *Manifest) ([]byte, error) {
 	// manifests are byte-for-byte identical; only a non-default source (manual)
 	// emits the switch that steers `task instance:mtls:issue`.
 	if ti := m.TLS.Internal; ti != nil && ti.CASource != "" && ti.CASource != internalCASourceDefault {
-		kv("RESTMAIL_INTERNAL_CA_SOURCE", ti.CASource)
+		iv("INTERNAL_CA_SOURCE", ti.CASource)
 	}
 	b.WriteString("\n")
-	kv("MAIL3_HOSTNAME", m.Hostname)
-	kv("MAIL3_DB_NAME", m.DB.Name)
-	kv("MAIL3_DB_USER", m.DB.User)
-	kv("MAIL3_LOG_LEVEL", m.LogLevel)
-	kv("MAIL3_ENVIRONMENT", m.Environment)
-	kv("MAIL3_MAILNET_ONLY", strconv.FormatBool(m.MailnetOnly))
+	iv("HOSTNAME", m.Hostname)
+	iv("DB_NAME", m.DB.Name)
+	iv("DB_USER", m.DB.User)
+	iv("LOG_LEVEL", m.LogLevel)
+	iv("ENVIRONMENT", m.Environment)
+	iv("MAILNET_ONLY", strconv.FormatBool(m.MailnetOnly))
 	// Emit the internal-mTLS switch only when enabled, so instances that don't
 	// opt in render byte-for-byte as before (no drift against committed config).
 	// Enablement is resolved from the optional `tls.internal:` block (mode
 	// require/verify, or an empty mode → default require) when present, else the
 	// legacy top-level `internal_mtls` bool — see internalMTLSEnabled.
 	if m.internalMTLSEnabled() {
-		kv("MAIL3_INTERNAL_MTLS", "true")
+		iv("INTERNAL_MTLS", "true")
 	}
 
 	// SMTP/queue policy knobs (manifest `smtp:` block). Each is emitted only
@@ -471,25 +493,25 @@ func Render(m *Manifest) ([]byte, error) {
 	// `| default` and the config.go fallback apply — a manifest with no `smtp:`
 	// block renders byte-for-byte as before.
 	if v := m.SMTP.MaxMessageSize; v != nil {
-		kv("MAIL3_SMTP_MAX_MESSAGE_SIZE", strconv.FormatInt(*v, 10))
+		iv("SMTP_MAX_MESSAGE_SIZE", strconv.FormatInt(*v, 10))
 	}
 	if v := m.SMTP.MinTransferRate; v != nil {
-		kv("MAIL3_SMTP_MIN_TRANSFER_RATE", strconv.FormatInt(*v, 10))
+		iv("SMTP_MIN_TRANSFER_RATE", strconv.FormatInt(*v, 10))
 	}
 	if v := m.SMTP.TransferGracePeriod; v != nil {
-		kv("MAIL3_SMTP_TRANSFER_GRACE_PERIOD", strconv.Itoa(*v))
+		iv("SMTP_TRANSFER_GRACE_PERIOD", strconv.Itoa(*v))
 	}
 	if v := m.SMTP.TransferStallTimeout; v != nil {
-		kv("MAIL3_SMTP_TRANSFER_STALL_TIMEOUT", strconv.Itoa(*v))
+		iv("SMTP_TRANSFER_STALL_TIMEOUT", strconv.Itoa(*v))
 	}
 	if v := m.SMTP.QueueWorkers; v != nil {
-		kv("MAIL3_SMTP_QUEUE_WORKERS", strconv.Itoa(*v))
+		iv("SMTP_QUEUE_WORKERS", strconv.Itoa(*v))
 	}
 	if m.SMTP.QueuePollInterval != "" {
-		kv("MAIL3_SMTP_QUEUE_POLL_INTERVAL", m.SMTP.QueuePollInterval)
+		iv("SMTP_QUEUE_POLL_INTERVAL", m.SMTP.QueuePollInterval)
 	}
 	if v := m.SMTP.MTASTSEnforce; v != nil {
-		kv("MAIL3_SMTP_MTASTS_ENFORCE", strconv.FormatBool(*v))
+		iv("SMTP_MTASTS_ENFORCE", strconv.FormatBool(*v))
 	}
 
 	// DKIM signing parameters (manifest `dkim:` block). Only the public
@@ -497,10 +519,10 @@ func Render(m *Manifest) ([]byte, error) {
 	// manifest — it stays a runtime secret provisioned via `task instance:dkim`.
 	// Omitted fields emit no line, so dkim-provision's defaults apply.
 	if m.DKIM.Selector != "" {
-		kv("MAIL3_DKIM_SELECTOR", m.DKIM.Selector)
+		iv("DKIM_SELECTOR", m.DKIM.Selector)
 	}
 	if v := m.DKIM.Bits; v != nil {
-		kv("MAIL3_DKIM_BITS", strconv.Itoa(*v))
+		iv("DKIM_BITS", strconv.Itoa(*v))
 	}
 
 	// Multi-domain (manifest `domains:` list). Emitted ONLY when the instance
@@ -508,10 +530,10 @@ func Render(m *Manifest) ([]byte, error) {
 	// byte-for-byte as before. Two flat lines carry what the provisioning tasks
 	// need; the structured per-domain data (selector/bits) is read from the
 	// manifest by `instance domains` at provision time.
-	//   - MAIL3_SERVED_HOSTNAMES  every served mail hostname (primary first) —
+	//   - RESTMAIL_SERVED_HOSTNAMES  every served mail hostname (primary first) —
 	//     the cert SAN set + the guard that turns on the per-domain DKIM/DNS
 	//     provisioning loops.
-	//   - MAIL3_SEED_SERVED_DOMAINS  the ADDITIONAL domains as name:server_type,
+	//   - RESTMAIL_SEED_SERVED_DOMAINS  the ADDITIONAL domains as name:server_type,
 	//     so `cmd/seed` creates a DB domain row (with server_type) for each.
 	if len(m.Domains) > 0 {
 		served := m.ServedDomains()
@@ -519,77 +541,77 @@ func Render(m *Manifest) ([]byte, error) {
 		for _, d := range served {
 			hostnames = append(hostnames, d.Hostname)
 		}
-		kv("MAIL3_SERVED_HOSTNAMES", strings.Join(hostnames, ","))
+		iv("SERVED_HOSTNAMES", strings.Join(hostnames, ","))
 
 		extra := make([]string, 0, len(m.Domains))
 		for _, d := range m.AdditionalServedDomains() {
 			extra = append(extra, d.Name+":"+d.ServerType)
 		}
-		kv("MAIL3_SEED_SERVED_DOMAINS", strings.Join(extra, ","))
+		iv("SEED_SERVED_DOMAINS", strings.Join(extra, ","))
 	}
 
 	// Public-TLS seam (manifest `tls:` block + the derived cert SAN set). Every
 	// line is emitted only when it carries information, so a manifest without a
 	// `tls:` block and without additional `domains:` renders byte-for-byte as
 	// before.
-	//   - MAIL3_TLS_EXTRA_HOSTNAMES  the raw tls.extra_hostnames, for visibility.
-	//   - MAIL3_TLS_CERT_SANS        the COMPLETE SAN list the instance cert must
+	//   - RESTMAIL_TLS_EXTRA_HOSTNAMES  the raw tls.extra_hostnames, for visibility.
+	//   - RESTMAIL_TLS_CERT_SANS        the COMPLETE SAN list the instance cert must
 	//     cover: served hostnames ∪ extra_hostnames (see CertSANHostnames()).
 	//     Emitted whenever it holds more than the single primary hostname
 	//     (additional domains and/or extra hostnames); `task instance:certs:issue`
-	//     consumes it, falling back to MAIL3_HOSTNAME for the single-domain
+	//     consumes it, falling back to RESTMAIL_HOSTNAME for the single-domain
 	//     default — byte-identical to before.
-	//   - MAIL3_TLS_ACME_*           the declarative ACME inputs, wired through so
+	//   - RESTMAIL_TLS_ACME_*           the declarative ACME inputs, wired through so
 	//     the cert_provider seam is complete; the ACME client is not implemented
 	//     in PR5.
 	if len(m.TLS.ExtraHostnames) > 0 {
-		kv("MAIL3_TLS_EXTRA_HOSTNAMES", strings.Join(m.TLS.ExtraHostnames, ","))
+		iv("TLS_EXTRA_HOSTNAMES", strings.Join(m.TLS.ExtraHostnames, ","))
 	}
 	if len(m.Domains) > 0 || len(m.TLS.ExtraHostnames) > 0 {
-		kv("MAIL3_TLS_CERT_SANS", strings.Join(m.CertSANHostnames(), ","))
+		iv("TLS_CERT_SANS", strings.Join(m.CertSANHostnames(), ","))
 	}
 	if v := m.TLS.ACME.Enabled; v != nil {
-		kv("MAIL3_TLS_ACME_ENABLED", strconv.FormatBool(*v))
+		iv("TLS_ACME_ENABLED", strconv.FormatBool(*v))
 	}
 	if m.TLS.ACME.Email != "" {
-		kv("MAIL3_TLS_ACME_EMAIL", m.TLS.ACME.Email)
+		iv("TLS_ACME_EMAIL", m.TLS.ACME.Email)
 	}
 	if v := m.TLS.ACME.Staging; v != nil {
-		kv("MAIL3_TLS_ACME_STAGING", strconv.FormatBool(*v))
+		iv("TLS_ACME_STAGING", strconv.FormatBool(*v))
 	}
 	if m.TLS.ACME.Directory != "" {
-		kv("MAIL3_TLS_ACME_DIRECTORY", m.TLS.ACME.Directory)
+		iv("TLS_ACME_DIRECTORY", m.TLS.ACME.Directory)
 	}
 	b.WriteString("\n")
 
 	// Component IPs and ports (binding-derived). Each component maps to the
-	// MAIL3_* vars the Taskfile currently uses.
+	// RESTMAIL_* vars the Taskfile currently uses.
 	for _, c := range m.Components {
 		switch c.Name {
 		case "postgres":
-			kv("MAIL3_POSTGRES_IP", c.IP)
+			iv("POSTGRES_IP", c.IP)
 		case "api":
-			kv("MAIL3_API_IP", c.IP)
-			kv("MAIL3_API_PORT", strconv.Itoa(c.Port))
+			iv("API_IP", c.IP)
+			iv("API_PORT", strconv.Itoa(c.Port))
 		case "smtp-gateway":
-			kv("MAIL3_SMTP_IP", c.IP)
-			kv("MAIL3_SMTP_PORT_INBOUND", port(c, "inbound"))
-			kv("MAIL3_SMTP_PORT_SUBMISSION", port(c, "submission"))
-			kv("MAIL3_SMTP_PORT_SUBMISSION_TLS", port(c, "submission_tls"))
+			iv("SMTP_IP", c.IP)
+			iv("SMTP_PORT_INBOUND", port(c, "inbound"))
+			iv("SMTP_PORT_SUBMISSION", port(c, "submission"))
+			iv("SMTP_PORT_SUBMISSION_TLS", port(c, "submission_tls"))
 		case "imap-gateway":
-			kv("MAIL3_IMAP_IP", c.IP)
-			kv("MAIL3_IMAP_PORT", port(c, "plain"))
-			kv("MAIL3_IMAP_TLS_PORT", port(c, "tls"))
+			iv("IMAP_IP", c.IP)
+			iv("IMAP_PORT", port(c, "plain"))
+			iv("IMAP_TLS_PORT", port(c, "tls"))
 		case "pop3-gateway":
-			kv("MAIL3_POP3_IP", c.IP)
-			kv("MAIL3_POP3_PORT", port(c, "plain"))
-			kv("MAIL3_POP3_TLS_PORT", port(c, "tls"))
+			iv("POP3_IP", c.IP)
+			iv("POP3_PORT", port(c, "plain"))
+			iv("POP3_TLS_PORT", port(c, "tls"))
 		case "js-filter":
-			kv("MAIL3_JS_FILTER_IP", c.IP)
+			iv("JS_FILTER_IP", c.IP)
 		case "webmail":
-			kv("MAIL3_WEBMAIL_IP", c.IP)
+			iv("WEBMAIL_IP", c.IP)
 		case "admin":
-			kv("MAIL3_ADMIN_IP", c.IP)
+			iv("ADMIN_IP", c.IP)
 		default:
 			return nil, fmt.Errorf("unknown component %q (no catalog mapping)", c.Name)
 		}

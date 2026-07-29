@@ -121,26 +121,35 @@ jobs:
           go-version: "1.25.10"
           cache: true
 
-      - name: Install go-task (pinned + checksum-verified)
-        # Do NOT pipe-execute the unpinned install.sh from the network — that is
-        # an arbitrary-code-execution supply-chain surface. Download a specific
+      - name: Install chore (pinned + checksum-verified)
+        # The repo is driven by chores.yml, whose tasks declare `args:`. go-task
+        # parses the file but ignores those declarations, so a task that takes a
+        # parameter silently runs with its default — CI has to use the same runner
+        # as a developer's machine or it is testing something else.
+        #
+        # Do NOT pipe-execute an install script from the network — that is an
+        # arbitrary-code-execution supply-chain surface. Download a specific
         # release tarball and verify its sha256 before installing.
         env:
-          TASK_VERSION: v3.52.0
-          # sha256 of task_linux_amd64.tar.gz for TASK_VERSION, taken from that
-          # release's task_checksums.txt. Bump both together when upgrading.
-          TASK_SHA256: 02c679ffae53dca791804847d78b31731615894e292948397c971c87ac9e95bd
+          CHORE_VERSION: 0.1.3
+          # sha256 of chore-${CHORE_VERSION}-linux-x86_64.tar.gz, taken from that
+          # release's checksums.txt. Bump both together when upgrading. The
+          # release is built reproducibly (-trimpath, -buildvcs=false, pinned
+          # toolchain) and its pipeline rebuilds every artifact to prove the
+          # published hash, so this value is verifiable rather than merely trusted.
+          CHORE_SHA256: ff2eb922f9726c7d71591ad4efa5054ca70d80fe692bbb3363de1befbd973e13
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
+          asset="chore-${CHORE_VERSION}-linux-x86_64.tar.gz"
           curl --location --silent --show-error --fail \
-            "https://github.com/go-task/task/releases/download/${TASK_VERSION}/task_linux_amd64.tar.gz" \
-            -o "$tmp/task.tar.gz"
-          echo "${TASK_SHA256}  $tmp/task.tar.gz" | sha256sum -c -
-          tar -xzf "$tmp/task.tar.gz" -C "$tmp" task
-          sudo install -m 0755 "$tmp/task" /usr/local/bin/task
+            "https://github.com/antimatter-studios/chore/releases/download/v${CHORE_VERSION}/${asset}" \
+            -o "$tmp/chore.tar.gz"
+          echo "${CHORE_SHA256}  $tmp/chore.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/chore.tar.gz" -C "$tmp" chore
+          sudo install -m 0755 "$tmp/chore" /usr/local/bin/chore
           rm -rf "$tmp"
-          task --version
+          chore --version
 
       - name: Populate Go module cache
         # `test:e2e` and `instance:mtls:issue` mount the host GOMODCACHE
@@ -155,7 +164,7 @@ jobs:
         run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Clone testbed + reference-mailserver substrate (pinned)
-        # The `testbed` include must resolve before `task e2e:up` is parsed;
+        # The `testbed` include must resolve before `chore e2e:up` is parsed;
         # reference-mailserver is also cloned by e2e:up, pre-cloning is harmless.
         #
         # The init tasks clone each repo's DEFAULT BRANCH (no ref). Pin the
@@ -169,8 +178,8 @@ jobs:
           REFERENCE_MAILSERVER_REF: 07c68b71c0cd38333d18e6c5b130de6daa47c0a7  # rest-mail/reference-mailserver @ master
         run: |
           set -euo pipefail
-          task testbed:init
-          task mailserver:init
+          chore testbed:init
+          chore mailserver:init
           git -C .workspace/testbed fetch --quiet origin "$TESTBED_REF" || true
           git -C .workspace/testbed checkout --quiet "$TESTBED_REF"
           git -C .workspace/reference-mailserver fetch --quiet origin "$REFERENCE_MAILSERVER_REF" || true
@@ -188,10 +197,19 @@ jobs:
         # below for the fragment copy. (Follow-up: fix this upstream in
         # rest-mail/reference-mailserver so it's portable off Docker Desktop.)
         run: |
-          f=.workspace/reference-mailserver/Taskfile.yml
+          # Whichever name that project ships: it is migrating from Taskfile.yml to
+          # chores.yml, and this must not break on either side of that.
+          f=""
+          for c in chores.yml Taskfile.yml; do
+            [ -f ".workspace/reference-mailserver/$c" ] && f=".workspace/reference-mailserver/$c" && break
+          done
+          if [ -z "$f" ]; then
+            echo "::error::no chores.yml or Taskfile.yml in reference-mailserver" >&2
+            exit 1
+          fi
           perl -pi -e 's{chmod 644 "\$KEYDIR/\$DOMAIN\.\$SEL\.key"}{docker run --rm -v "\$(pwd)/\$KEYDIR:/keys" alpine:3.20 chmod 644 "/keys/\$DOMAIN.\$SEL.key"}g' "$f"
           if grep -qF 'chmod 644 "$KEYDIR/$DOMAIN.$SEL.key"' "$f"; then
-            echo "::error::dkim:provision chmod patch did not apply — upstream task changed"
+            echo "::error::dkim:provision chmod patch did not apply — upstream reference-mailserver task file changed"
             exit 1
           fi
           echo "patched host chmod -> containerized chmod:"
@@ -210,12 +228,12 @@ jobs:
           docker tag ghcr.io/rest-mail/reference-dnsmasq:2026.04.28.2 ghcr.io/rest-mail/reference-dnsmasq:2026.04.28
 
       - name: Bring up e2e topology
-        run: task e2e:up
+        run: chore e2e:up
 
       - name: Run e2e stages
         run: |
           set -o pipefail
-          task test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+          chore test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
 
       - name: Assert stages executed (guard against silent skips)
         # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
@@ -261,7 +279,7 @@ jobs:
 
       - name: Tear down e2e topology
         if: always()
-        run: task e2e:down
+        run: chore e2e:down
 
   e2e:
     # Required-check anchor. Branch protection requires the context

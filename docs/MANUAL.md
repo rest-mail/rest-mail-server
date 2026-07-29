@@ -31,8 +31,8 @@ admin/                React admin UI (TanStack Router + Zustand + Tailwind v4)
 website/              Static project landing page
 projects/             Dockerfiles and config templates (dnsmasq, smtp/imap/pop3
                       gateways, js-filter-sidecar, api-entrypoint)
-Taskfile.yml          Task runner for dev/build/test workflows (per-service
-tasks/                image + container tasks; run `task --list`)
+chores.yml           Task runner for dev/build/test workflows (per-service
+tasks/                image + container tasks; run `chore --list`)
 tests/e2e/            End-to-end integration test suite
 docs/                 This manual + reference docs (adapter-filters,
                       dns-providers, fail2ban-setup, proxy-protocol)
@@ -40,9 +40,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 ### Development environment notes
 
-- The shared docker network `mailnet` uses subnet **`10.99.0.0/16`** (moved from `172.20.0.0/16` on 2026-04-22 to avoid host-level collisions with docker's default auto-allocation pool). It is created by `task testbed:init` (first-run clone/link) / `task testbed:up`.
+- The shared docker network `mailnet` uses subnet **`10.99.0.0/16`** (moved from `172.20.0.0/16` on 2026-04-22 to avoid host-level collisions with docker's default auto-allocation pool). It is created by `chore testbed:init` (first-run clone + config seed) / `chore testbed:up`.
 - Static IPs are load-bearing, not defensive: `dnsmasq` publishes A records at specific IPs, SPF records embed literal IPs (`v=spf1 ip4:10.99.0.13 -all`), and the reference Postfix `mynetworks` uses the CIDR. Do not switch to docker service-name DNS without reworking the mail-internet simulation.
-- The stack is no longer a single `docker-compose.yml`: each service is its own container image managed by discrete Taskfile tasks (`task <service>:up` / `:down`), started against the shared testbed. Run `task --list` for the full catalog and `task status` for current state.
+- The stack is no longer a single `docker-compose.yml`: each service is its own container image managed by discrete tasks in `chores.yml` (`chore <service>:up` / `:down`), started against the shared testbed. Run `chore --list` for the full catalog and `chore status` for current state.
 
 ---
 
@@ -51,8 +51,8 @@ docs/                 This manual + reference docs (adapter-filters,
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
 ### 2026-04-22 — Dev-env hardening
-- Moved docker network `mailnet` subnet from `172.20.0.0/16` to `10.99.0.0/16` across `docker-compose.yml`, `Taskfile.yml`, `docker/postfix/conf/main.cf.tmpl`, `docker/dnsmasq/dnsmasq.conf`, all `website/`/`admin/`/`webmail/`/`monitoring/` compose files, e2e test suite, and `docs/proxy-protocol.md` / `docs/dns-providers.md`.
-- Added `run: once` to all 20 `start:*` tasks in `Taskfile.yml` to dedupe parallel docker compose invocations (fixes race on `start:postgres-mail3`, `start:api`, etc.).
+- Moved docker network `mailnet` subnet from `172.20.0.0/16` to `10.99.0.0/16` across `docker-compose.yml`, `tskfile.yml`, `docker/postfix/conf/main.cf.tmpl`, `docker/dnsmasq/dnsmasq.conf`, all `website/`/`admin/`/`webmail/`/`monitoring/` compose files, e2e test suite, and `docs/proxy-protocol.md` / `docs/dns-providers.md`.
+- Added `run: once` to all 20 `start:*` tasks in `tskfile.yml` to dedupe parallel docker compose invocations (fixes race on `start:postgres-mail3`, `start:api`, etc.).
 - Fixed webmail links on project landing page ([website/index.html:66](../website/index.html#L66), [:514](../website/index.html#L514)) — now use `/webmail` through the reverse proxy instead of raw `localhost:8080`.
 
 ### 2026-02-23 — Stage 4: Queue Management UI complete
@@ -119,12 +119,12 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 - DB pooling: `database/sql` with `DB_MAX_OPEN_CONNS` (default 25), `DB_MAX_IDLE_CONNS` (10), `DB_CONN_MAX_LIFETIME` (5 m). PgBouncer recommended for production HA.
 
 ### 3.5 Container stack
-The stack no longer uses a single `docker-compose.yml`. Each service is its own container image, started and managed through the Taskfile — `task <service>:up` / `:down` / `:logs` / `:restart` (run `task --list` for the full set). Core services: API, webmail, website, admin, SMTP/IMAP/POP3 gateways, the JavaScript-filter sidecar, PostgreSQL, and dnsmasq.
+The stack no longer uses a single `docker-compose.yml`. Each service is its own container image, started and managed through `chores.yml` — `chore <service>:up` / `:down` / `:logs` / `:restart` (run `chore --list` for the full set). Core services: API, webmail, website, admin, SMTP/IMAP/POP3 gateways, the JavaScript-filter sidecar, PostgreSQL, and dnsmasq.
 
-A shared **testbed** (the `mailnet` network, the certs volume, and the dnsmasq fragments volume) underpins everything and is brought up with `task testbed:up`. Traditional reference Postfix/Dovecot servers (`mail1.test`, `mail2.test`) are not part of this repo — they come from the separate `rest-mail/reference-mailserver` project and are wired in for the e2e topology (`task e2e:up`).
+A shared **testbed** (the `mailnet` network, the certs volume, and the dnsmasq fragments volume) underpins everything and is brought up with `chore testbed:up`. Traditional reference Postfix/Dovecot servers (`mail1.test`, `mail2.test`) are not part of this repo — they come from the separate `rest-mail/reference-mailserver` project and are wired in for the e2e topology (`chore e2e:up`).
 
 Optional add-on:
-- `task monitoring:up` — Prometheus + Grafana + postgres-exporter.
+- `chore monitoring:up` — Prometheus + Grafana + postgres-exporter.
 
 Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence uses named volumes (per-service data/logs volumes plus the shared `testbed_certs`).
 
@@ -370,15 +370,15 @@ admin/src/
 
 ### 4.8 Console admin tool
 
-Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `task build:console` (auto-detects platform) or `task build:console:all`. Run: `task run:console` (runs inside the api container).
+Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `chore build:console` (auto-detects platform) or `chore build:console:all`. Run: `chore run:console` (runs inside the api container).
 
 ### 4.9 Metrics & monitoring
 
-Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `task monitoring:up` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter included).
+Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `chore monitoring:up` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter included).
 
 ### 4.10 E2E test suite
 
-13-stage test suite under [tests/e2e/](../tests/e2e/) covering infrastructure through cross-domain round-trip delivery. Run with `task test:e2e` (requires stack up). `task test:all` combines unit + integration + e2e.
+13-stage test suite under [tests/e2e/](../tests/e2e/) covering infrastructure through cross-domain round-trip delivery. Run with `chore test:e2e` (requires stack up). `chore test:all` combines unit + integration + e2e.
 
 ---
 
@@ -523,7 +523,7 @@ Design complete, nothing implemented. Targets:
 - Attachments: tar snapshot daily or S3 versioning.
 - MASTER_KEY backup procedure — **critical; losing the key means losing access to every encrypted TLS/DKIM private key**. Not yet documented.
 - Weekly restore verification to a temp env with schema validation + attachment reference sampling + Prometheus alert.
-- Tasks to add: `task backup:db`, `task backup:attachments`, `task restore:db`, `task restore:attachments`.
+- Tasks to add: `chore backup:db`, `chore backup:attachments`, `chore restore:db`, `chore restore:attachments`.
 - Monitoring: backup-missed critical (> 25 h gap), WAL lag warning (> 5 min), verification-failed critical, storage-full warning (< 20 % free), MASTER_KEY-not-set critical at API start.
 - Open questions: storage target? Acceptable RPO? Backup encryption? Cross-region replication?
 
@@ -620,39 +620,39 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 ## 7. Operational playbooks
 
 ### 7.1 Bringing up the stack
-The stack is driven by per-service Taskfile tasks, not a single compose file. Run `task --list` for the full catalog; `task status` shows what is running and where.
+The stack is driven by per-service tasks in `chores.yml`, not a single compose file. Run `chore --list` for the full catalog; `chore status` shows what is running and where.
 ```bash
-task testbed:up          # shared testbed: mailnet network + certs volume + dnsmasq
-task dev                 # bring up the full restmail stack (alias for restmail:up)
-task restmail:down       # stop the restmail stack (preserves data volumes)
-task restmail:restart    # stop + recreate the full stack (rebuilds images)
-task purge               # remove all rest-mail-* containers (keeps volumes)
-task db:reset            # drop postgres data volume, recreate, then seed (destructive)
-task db:seed             # seed the instance DB (admin/admin123!@ + restmail.test accounts)
-task postgres:reset      # drop the postgres data volume (destructive, clean slate)
-task <service>:logs      # tail a service's logs (e.g. task smtp-gateway:logs)
+chore testbed:up          # shared testbed: mailnet network + certs volume + dnsmasq
+chore dev                 # bring up the full restmail stack (alias for restmail:up)
+chore restmail:down       # stop the restmail stack (preserves data volumes)
+chore restmail:restart    # stop + recreate the full stack (rebuilds images)
+chore purge               # remove all rest-mail-* containers (keeps volumes)
+chore db:reset            # drop postgres data volume, recreate, then seed (destructive)
+chore db:seed             # seed the instance DB (admin/admin123!@ + restmail.test accounts)
+chore postgres:reset      # drop the postgres data volume (destructive, clean slate)
+chore <service>:logs      # tail a service's logs (e.g. chore smtp-gateway:logs)
 ```
 
-Access depends on the local reverse-proxy / DNS setup (see `task project:proxy:help`): website `/`, webmail `/webmail`, API `/api`, API docs `/api/docs`. Direct: API `http://localhost:8080`.
+Access depends on the local reverse-proxy / DNS setup (see `chore project:proxy:help`): website `/`, webmail `/webmail`, API `/api`, API docs `/api/docs`. Direct: API `http://localhost:8080`.
 
 ### 7.2 Building
 ```bash
-task build                          # all Go binaries
-task build:api
-task build:gateways                 # smtp / imap / pop3
-task build:console                  # auto-detects OS/arch
-task build:console:all              # cross-compile all platforms
-task build:tools                    # certgen, migrate, seed, website
+chore build                          # all Go binaries
+chore build:api
+chore build:gateways                 # smtp / imap / pop3
+chore build:console                  # auto-detects OS/arch
+chore build:console:all              # cross-compile all platforms
+chore build:tools                    # certgen, migrate, seed, website
 ```
 (Instant Mail Check is no longer built here — it moved to the `rest-mail/instantmailcheck` repo; see §4.5.)
 
 ### 7.3 Testing
 ```bash
-task test                # unit
-task test:coverage
-task test:e2e            # requires stack up
-task test:all
-task fmt / vet / lint / tidy
+chore test                # unit
+chore test:coverage
+chore test:e2e            # requires stack up
+chore test:all
+chore fmt / vet / lint / tidy
 ```
 
 ### 7.4 PROXY protocol load-balancer examples
@@ -707,7 +707,7 @@ When outbound worker probes recipient MX and sees `RESTMAIL https://restmail.exa
 
 Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upsert via `Clauses(clause.OnConflict{...})`. Probes expire after TTL to re-check for disabled endpoints.
 
-### 7.8 Test accounts (seeded by `task db:seed`)
+### 7.8 Test accounts (seeded by `chore db:seed`)
 **Admin:** `admin` / `admin123!@` — role `superadmin`, wildcard `*` capability.
 
 **restmail.test mailboxes** (all password `password123`):
@@ -723,7 +723,7 @@ Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upser
 
 ## 8. Test stack IPs (dev testbed on `10.99.0.0/16`)
 
-These are the default static IPs for the `restmail.test` instance (overridable per-service via the corresponding `*_IP` task var). The traditional reference servers get their IPs from the separate `rest-mail/reference-mailserver` project.
+These are the default static IPs for the `restmail.test` instance (overridable per-service via the corresponding `*_IP` chore var). The traditional reference servers get their IPs from the separate `rest-mail/reference-mailserver` project.
 
 **restmail.test instance:**
 
@@ -739,7 +739,7 @@ These are the default static IPs for the `restmail.test` instance (overridable p
 | admin | `10.99.0.27` |
 | postgres | `10.99.0.43` |
 
-**Monitoring add-on (`task monitoring:up`):** prometheus `10.99.0.30`, grafana `10.99.0.31`, postgres-exporter `10.99.0.32`.
+**Monitoring add-on (`chore monitoring:up`):** prometheus `10.99.0.30`, grafana `10.99.0.31`, postgres-exporter `10.99.0.32`.
 
 **Reference servers (e2e, from `rest-mail/reference-mailserver`):** e.g. `mail2.test` Postfix `10.99.0.12`, Dovecot `10.99.0.112`, Postgres `10.99.0.42`; rspamd `10.99.0.23`, fail2ban `10.99.0.24`.
 

@@ -41,7 +41,7 @@ func TestRenderMatchesCommittedConfig(t *testing.T) {
 // TestRenderPolicyBlocksMatchesGolden is the with-blocks counterpart to the
 // drift guard above: a manifest that sets the optional `smtp:` and `dkim:`
 // blocks must render byte-for-byte to the committed config_policy.env, so the
-// MAIL3_* policy lines are pinned. Together with TestRenderMatchesCommittedConfig
+// RESTMAIL_* policy lines are pinned. Together with TestRenderMatchesCommittedConfig
 // (no blocks → committed config.env, unchanged) this proves the blocks are
 // purely additive: present → new lines, absent → identical output.
 func TestRenderPolicyBlocksMatchesGolden(t *testing.T) {
@@ -68,19 +68,19 @@ func TestRenderPolicyBlocksMatchesGolden(t *testing.T) {
 		t.Errorf("rendered config_policy.env is stale — re-run render.\n--- got ---\n%s\n--- committed ---\n%s", got, want)
 	}
 
-	// Belt-and-braces: assert every policy knob emits its MAIL3_* line. The
+	// Belt-and-braces: assert every policy knob emits its RESTMAIL_* line. The
 	// meaningful-zero cases (MIN_TRANSFER_RATE=0, MTASTS_ENFORCE=false) prove the
 	// pointer fields distinguish "unset" from a zero value.
 	for _, want := range []string{
-		"MAIL3_SMTP_MAX_MESSAGE_SIZE=52428800\n",
-		"MAIL3_SMTP_MIN_TRANSFER_RATE=0\n",
-		"MAIL3_SMTP_TRANSFER_GRACE_PERIOD=90\n",
-		"MAIL3_SMTP_TRANSFER_STALL_TIMEOUT=600\n",
-		"MAIL3_SMTP_QUEUE_WORKERS=8\n",
-		"MAIL3_SMTP_QUEUE_POLL_INTERVAL=10s\n",
-		"MAIL3_SMTP_MTASTS_ENFORCE=false\n",
-		"MAIL3_DKIM_SELECTOR=s2026\n",
-		"MAIL3_DKIM_BITS=4096\n",
+		"RESTMAIL_SMTP_MAX_MESSAGE_SIZE=52428800\n",
+		"RESTMAIL_SMTP_MIN_TRANSFER_RATE=0\n",
+		"RESTMAIL_SMTP_TRANSFER_GRACE_PERIOD=90\n",
+		"RESTMAIL_SMTP_TRANSFER_STALL_TIMEOUT=600\n",
+		"RESTMAIL_SMTP_QUEUE_WORKERS=8\n",
+		"RESTMAIL_SMTP_QUEUE_POLL_INTERVAL=10s\n",
+		"RESTMAIL_SMTP_MTASTS_ENFORCE=false\n",
+		"RESTMAIL_DKIM_SELECTOR=s2026\n",
+		"RESTMAIL_DKIM_BITS=4096\n",
 	} {
 		if !bytes.Contains(got, []byte(want)) {
 			t.Errorf("rendered output missing policy line %q", want)
@@ -89,7 +89,7 @@ func TestRenderPolicyBlocksMatchesGolden(t *testing.T) {
 }
 
 // TestRenderOmittedPolicyBlocksEmitNoLines proves omission is additive-safe: a
-// manifest with neither block must not emit any MAIL3_SMTP_*/MAIL3_DKIM_* line.
+// manifest with neither block must not emit any RESTMAIL_SMTP_*/RESTMAIL_DKIM_* line.
 func TestRenderOmittedPolicyBlocksEmitNoLines(t *testing.T) {
 	m := &Manifest{Project: "p"}
 	out, err := Render(m)
@@ -97,13 +97,13 @@ func TestRenderOmittedPolicyBlocksEmitNoLines(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	for _, absent := range []string{
-		"MAIL3_SMTP_MAX_MESSAGE_SIZE",
-		"MAIL3_SMTP_MIN_TRANSFER_RATE",
-		"MAIL3_SMTP_QUEUE_WORKERS",
-		"MAIL3_SMTP_QUEUE_POLL_INTERVAL",
-		"MAIL3_SMTP_MTASTS_ENFORCE",
-		"MAIL3_DKIM_SELECTOR",
-		"MAIL3_DKIM_BITS",
+		"RESTMAIL_SMTP_MAX_MESSAGE_SIZE",
+		"RESTMAIL_SMTP_MIN_TRANSFER_RATE",
+		"RESTMAIL_SMTP_QUEUE_WORKERS",
+		"RESTMAIL_SMTP_QUEUE_POLL_INTERVAL",
+		"RESTMAIL_SMTP_MTASTS_ENFORCE",
+		"RESTMAIL_DKIM_SELECTOR",
+		"RESTMAIL_DKIM_BITS",
 	} {
 		if bytes.Contains(out, []byte(absent)) {
 			t.Errorf("omitted block still emitted %q\ngot:\n%s", absent, out)
@@ -114,7 +114,7 @@ func TestRenderOmittedPolicyBlocksEmitNoLines(t *testing.T) {
 // TestRenderInternalMTLSMatchesGolden is the internal-mTLS counterpart to the
 // drift guard: a manifest setting the optional `tls.internal:` block (mode
 // require + a non-default ca_source: manual) must render byte-for-byte to the
-// committed config_internal_mtls.env — pinning the MAIL3_INTERNAL_MTLS=true and
+// committed config_internal_mtls.env — pinning the RESTMAIL_INTERNAL_MTLS=true and
 // RESTMAIL_INTERNAL_CA_SOURCE=manual lines. Together with
 // TestRenderMatchesCommittedConfig (no block → byte-identical config.env) this
 // proves the block is purely additive: present → new lines, absent → unchanged.
@@ -141,7 +141,7 @@ func TestRenderInternalMTLSMatchesGolden(t *testing.T) {
 		t.Errorf("rendered config_internal_mtls.env is stale — re-run render.\n--- got ---\n%s\n--- committed ---\n%s", got, want)
 	}
 	for _, want := range []string{
-		"MAIL3_INTERNAL_MTLS=true\n",
+		"RESTMAIL_INTERNAL_MTLS=true\n",
 		"RESTMAIL_INTERNAL_CA_SOURCE=manual\n",
 	} {
 		if !bytes.Contains(got, []byte(want)) {
@@ -159,8 +159,8 @@ func TestParseRejectsUnknownField(t *testing.T) {
 
 // TestRenderMultiDomainMatchesGolden is the multi-domain counterpart to the
 // drift guard: a manifest declaring additional served domains must render
-// byte-for-byte to config_multidomain.env — pinning the MAIL3_SERVED_HOSTNAMES
-// and MAIL3_SEED_SERVED_DOMAINS lines and their per-domain server_type mapping.
+// byte-for-byte to config_multidomain.env — pinning the RESTMAIL_SERVED_HOSTNAMES
+// and RESTMAIL_SEED_SERVED_DOMAINS lines and their per-domain server_type mapping.
 func TestRenderMultiDomainMatchesGolden(t *testing.T) {
 	dir := "testdata"
 
@@ -184,8 +184,8 @@ func TestRenderMultiDomainMatchesGolden(t *testing.T) {
 		t.Errorf("rendered config_multidomain.env is stale — re-run render.\n--- got ---\n%s\n--- committed ---\n%s", got, want)
 	}
 	for _, want := range []string{
-		"MAIL3_SERVED_HOSTNAMES=mail3.test,shop.test,legacy.test\n",
-		"MAIL3_SEED_SERVED_DOMAINS=shop.test:restmail,legacy.test:traditional\n",
+		"RESTMAIL_SERVED_HOSTNAMES=mail3.test,shop.test,legacy.test\n",
+		"RESTMAIL_SEED_SERVED_DOMAINS=shop.test:restmail,legacy.test:traditional\n",
 	} {
 		if !bytes.Contains(got, []byte(want)) {
 			t.Errorf("multi-domain output missing %q", want)
@@ -195,14 +195,14 @@ func TestRenderMultiDomainMatchesGolden(t *testing.T) {
 
 // TestRenderOmittedDomainsEmitNoServedLines proves the multi-domain block is
 // purely additive: a manifest with no `domains:` list must not emit any
-// MAIL3_SERVED_* line, so single-domain manifests render exactly as before.
+// RESTMAIL_SERVED_* line, so single-domain manifests render exactly as before.
 func TestRenderOmittedDomainsEmitNoServedLines(t *testing.T) {
 	m := &Manifest{Domain: "x.test", Project: "p"}
 	out, err := Render(m)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	for _, absent := range []string{"MAIL3_SERVED_HOSTNAMES", "MAIL3_SEED_SERVED_DOMAINS"} {
+	for _, absent := range []string{"RESTMAIL_SERVED_HOSTNAMES", "RESTMAIL_SEED_SERVED_DOMAINS"} {
 		if bytes.Contains(out, []byte(absent)) {
 			t.Errorf("no-domains manifest still emitted %q\ngot:\n%s", absent, out)
 		}
@@ -312,10 +312,10 @@ func TestRenderMapsPortsAndIPs(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	for _, want := range []string{
-		"MAIL3_SMTP_IP=10.0.0.9\n",
-		"MAIL3_SMTP_PORT_INBOUND=25\n",
-		"MAIL3_SMTP_PORT_SUBMISSION=587\n",
-		"MAIL3_SMTP_PORT_SUBMISSION_TLS=465\n",
+		"RESTMAIL_SMTP_IP=10.0.0.9\n",
+		"RESTMAIL_SMTP_PORT_INBOUND=25\n",
+		"RESTMAIL_SMTP_PORT_SUBMISSION=587\n",
+		"RESTMAIL_SMTP_PORT_SUBMISSION_TLS=465\n",
 	} {
 		if !bytes.Contains(out, []byte(want)) {
 			t.Errorf("rendered output missing %q\ngot:\n%s", want, out)

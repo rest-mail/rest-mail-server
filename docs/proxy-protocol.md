@@ -332,7 +332,7 @@ When a gateway starts with `PROXY_PROTOCOL_TRUSTED_CIDRS` set, it logs:
 {"level":"INFO","msg":"smtp: PROXY protocol enabled","trusted_cidrs":["10.99.0.30/32"]}
 ```
 
-Look for these lines in the SMTP gateway logs (`task smtp-gateway:logs`). The
+Look for these lines in the SMTP gateway logs (`chore smtp-gateway:logs`). The
 first line comes from the gateway's startup wiring, the second from the listener
 wrapper as each SMTP listener is wrapped.
 

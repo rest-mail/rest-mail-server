@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "task": "build:pop3-gateway",
+  "hash": "04f5b51a9bd52daacc4e18b4336e86394f9e6b42ddac70109a895aef63f23a0e",
+  "sources": {
+    "cmd/pop3-gateway/main.go": "675e8629085e1ae2005e7cb705f990274aa4f519e87d030bcacb84e355d0d332",
+    "go.mod": "eedf56bbb158c9aafbdfdd335f38c58c3f24aa357aaa4cc21b603dc6be883ec3",
+    "go.sum": "04a863a9daaabb59bf02b356524689fd0296da3f3665d72f4fd912cd4a25d1d6",
+    "internal/gateway/apiclient/client.go": "54f8d40d432161559593ea585994feaf262231b2462d43443a8288c130724974",
+    "internal/gateway/apiclient/client_test.go": "c56749070d3966c998bf19090ea305fc1a3e0c541475b9f4b08204355bca775f",
+    "internal/gateway/apiclient/client_transportsec_test.go": "b2d3bd10ded9d2f53c40ab29051ddb7ec3c567d222334c3c77acbb32775645e1",
+    "internal/gateway/apiclient/client_truncation_test.go": "49dea5f80e6ddd029a2e20186b81079a1c1e8edf691a7542541ac2a4ea4c8276",
+    "internal/gateway/apiclient/mtls_test.go": "2ad596a225b4eab5259899d83a6a9a2f59b41e886a780c02c6de8437e555bbb3",
+    "internal/gateway/apiclient/osi7_test.go": "022bb16b3a2a26aa55edb7da7272072db58e279cca8e2fcbce8d321915f3691b",
+    "internal/gateway/apiclient/raw_message_fidelity_test.go": "6a1183055fb736a30d5e0883a8f6d31ff4fcbf5627058dd154f207c34534ee75",
+    "internal/gateway/pop3/backend.go": "37136e96ad2a479f0664e5fb232d34ce8e63b53f3602de41448fcc84d7e34d8f",
+    "internal/gateway/pop3/backend_authlog_test.go": "18b2c3046d273f9b0f5fb540994bc2d18906a9b78a2c290d30df797b9d1a8952",
+    "internal/gateway/pop3/backend_bruteforce_test.go": "c82e185714f9a9f1e4c710629b423db69d338922c112caf68a14dd8766003239",
+    "internal/gateway/pop3/backend_test.go": "a399116e2a27ca4edb8e236994d44b3d73c94b5d9019bbe163ea6c0f5eec6719",
+    "internal/gateway/pop3/mask.go": "4e5dd503205368e00b6d1602fcb0f3320c268b61e4855e27a906587ee25473cc",
+    "internal/gateway/pop3/util.go": "f5dabea9a6f2bae6147d4f9f391ff5654b7470a186227d0840269703a09fd658",
+    "internal/gateway/pop3/util_test.go": "aef6aaef1805f252f7f049e2a4d4391b9e2f2d4d1fc6d01a84f75df9fdb6c12c"
+  },
+  "generates": [
+    "build/gateways/pop3-gateway"
+  ],
+  "updated_at": "2026-07-26T23:00:33.135162Z"
+}

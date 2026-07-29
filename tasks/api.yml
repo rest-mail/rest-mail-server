@@ -11,7 +11,7 @@ version: "3"
 # at /app) and `prod` (statically built binary).
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
-# docker / shell output (e.g. VERBOSE=1 task api:up).
+# docker / shell output (e.g. VERBOSE=1 chore api:up).
 
 silent: true
 
@@ -27,7 +27,7 @@ vars:
   API_REGISTRY: '{{.API_REGISTRY | default "ghcr.io/rest-mail"}}'
   API_IMAGE: '{{.API_REGISTRY}}/api:{{.API_IMAGE_TAG}}'
   API_CONTAINER_NAME: '{{.API_PROJECT}}-api'
-  API_ATTACHMENTS_VOLUME: '{{.API_PROJECT}}-mail3-attachments'
+  API_ATTACHMENTS_VOLUME: '{{.API_PROJECT}}-attachments'
   API_DB_HOST: '{{.API_DB_HOST | default "10.99.0.43"}}'
   API_DB_PORT: '{{.API_DB_PORT | default "5432"}}'
   API_DB_NAME: '{{.API_DB_NAME | default "restmail"}}'
@@ -42,7 +42,7 @@ vars:
   # Internal mTLS (gateway → API). Off by default; when "true" the API serves
   # the gateway-facing routes on API_INTERNAL_MTLS_PORT requiring a client cert
   # from the internal CA. Certs are provisioned into the certs volume by
-  # `task instance:mtls:issue` at the fixed /certs/internal-* paths.
+  # `chore instance:mtls:issue` at the fixed /certs/internal-* paths.
   API_INTERNAL_MTLS: '{{.API_INTERNAL_MTLS | default "false"}}'
   API_INTERNAL_MTLS_PORT: '{{.API_INTERNAL_MTLS_PORT | default "8443"}}'
 
@@ -89,9 +89,17 @@ tasks:
         # Peer services (DB, api) are therefore addressed by static mailnet IPs.
         mkdir -p {{.ROOT_DIR}}/.cache
         printf 'nameserver %s\n' "{{.API_DNS_IP}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
-        # mailnet_only secondary instances skip host-port publishing.
-        PUBLISH="-p {{.API_PORT}}:{{.API_PORT}}"
-        [ "{{.API_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
+        # The API is NOT published on a host port. It is an HTTP service with a
+        # reverse-proxy route (docker-proxy.api.* below), so it is reached at
+        # restmail.localhost/api — publishing it as well put it on 0.0.0.0:8080,
+        # which is the whole LAN, not just this machine. The mail protocols still
+        # publish, because SMTP/IMAP/POP3 are not HTTP and the proxy cannot carry
+        # them; a mail client has no other way in.
+        #
+        # From the host: use the proxy route. From inside a container: the mailnet
+        # IP, which is what the gateways already use. To poke it without either,
+        # `docker exec rest-mail-api wget -qO- localhost:8080/api/health`.
+        PUBLISH=""
         # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
         # capabilities (the API binds the unprivileged :8080/:8443, so needs
         # none), plus pid/mem/cpu ceilings. Rootfs is left writable: dev mode

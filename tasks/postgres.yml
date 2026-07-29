@@ -10,7 +10,7 @@ version: "3"
 # without losing state. `reset` is the only destructive task.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
-# docker / shell output (e.g. VERBOSE=1 task postgres:up).
+# docker / shell output (e.g. VERBOSE=1 chore postgres:up).
 
 silent: true
 

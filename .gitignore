@@ -32,14 +32,24 @@ coverage.html
 
 # Instance domain dirs end in ".test", which the "*.test" rule above would
 # otherwise ignore whole — re-include instance dirs so manifests/config commit...
-!instances/*.test/
-# ...except restmail.test, which is a generated symlink into the testbed-owned
-# config (created by `task testbed:init`) and must never be committed.
-instances/restmail.test
+!config/*.test/
+# ...except restmail.test, which `chore testbed:init` seeds by copying the
+# testbed's fixture config. The testbed repo owns that fixture; the copy here is
+# local runtime state, so it must never be committed. Re-run testbed:init to
+# restore it.
+config/restmail.test
 # ...and never commit per-instance secrets or generated dns.env.
-instances/*/secrets.env
-instances/*/dns.env
-instances/*/dkim.conf
+config/*/secrets.env
+config/*/dns.env
+config/*/dkim.conf
+
+# chore's fingerprint cache, how it decides whether a task's sources changed.
+.chore/
+
+# `go build ./cmd/instance` with no -o leaves an 11MB binary here, named after the
+# package. Anchored to the repository root so it cannot match the config/<domain>/
+# instance directories re-included above.
+/instance
 
 # Docker volumes (local dev)
 postgres-data/

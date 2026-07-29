@@ -2,7 +2,7 @@ version: "3"
 
 # rest-mail/tasks/smtp-gateway — Taskfile
 #
-# Drives the SMTP gateway container (mail3.test) via plain `docker run`
+# Drives the SMTP gateway container (the instance's own hostname) via plain `docker run`
 # (no compose). Included by the main Taskfile under namespace `smtp-gateway`.
 #
 # Joins the testbed's mailnet network at a static IP so peers can reach it
@@ -15,17 +15,18 @@ version: "3"
 # target with no bind mounts.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
-# docker / shell output (e.g. VERBOSE=1 task smtp-gateway:up).
+# docker / shell output (e.g. VERBOSE=1 chore smtp-gateway:up).
 
 silent: true
 
 vars:
+  SMTP_GATEWAY_PROXY_HOST: '{{.SMTP_GATEWAY_PROXY_HOST | default "restmail.localhost"}}'
   SMTP_GATEWAY_PROJECT: '{{.SMTP_GATEWAY_PROJECT | default "rest-mail"}}'
   SMTP_GATEWAY_NETWORK: '{{.SMTP_GATEWAY_NETWORK | default "testbed_mailnet"}}'
   SMTP_GATEWAY_CERTS_VOLUME: '{{.SMTP_GATEWAY_CERTS_VOLUME | default "testbed_certs"}}'
   SMTP_GATEWAY_DNS_IP: '{{.SMTP_GATEWAY_DNS_IP | default "10.99.0.10"}}'
   SMTP_GATEWAY_IP: '{{.SMTP_GATEWAY_IP | default "10.99.0.13"}}'
-  SMTP_GATEWAY_MAIL3_HOSTNAME: '{{.SMTP_GATEWAY_MAIL3_HOSTNAME | default "mail3.test"}}'
+  SMTP_GATEWAY_RESTMAIL_HOSTNAME: '{{.SMTP_GATEWAY_RESTMAIL_HOSTNAME | default "restmail.test"}}'
   SMTP_GATEWAY_MODE: '{{.SMTP_GATEWAY_MODE | default "dev"}}'
   SMTP_GATEWAY_IMAGE_TAG: '{{.SMTP_GATEWAY_IMAGE_TAG | default "dev"}}'
   SMTP_GATEWAY_REGISTRY: '{{.SMTP_GATEWAY_REGISTRY | default "ghcr.io/rest-mail"}}'
@@ -40,10 +41,10 @@ vars:
   SMTP_GATEWAY_DB_PASS: '{{.SMTP_GATEWAY_DB_PASS | default "restmail"}}'
   # Decrypts at-rest DKIM private keys so the queue worker can DKIM-sign
   # SMTP-submitted outbound mail (#171). Default matches the API's default so a
-  # standalone `task smtp-gateway:up` shares the same key the API used to encrypt.
+  # standalone `chore smtp-gateway:up` shares the same key the API used to encrypt.
   SMTP_GATEWAY_MASTER_KEY: '{{.SMTP_GATEWAY_MASTER_KEY | default "dev-master-key-change-in-production"}}'
-  SMTP_GATEWAY_TLS_CERT_PATH: '{{.SMTP_GATEWAY_TLS_CERT_PATH | default "/certs/mail3.test.crt"}}'
-  SMTP_GATEWAY_TLS_KEY_PATH: '{{.SMTP_GATEWAY_TLS_KEY_PATH | default "/certs/mail3.test.key"}}'
+  SMTP_GATEWAY_TLS_CERT_PATH: '{{.SMTP_GATEWAY_TLS_CERT_PATH | default "/certs/restmail.test.crt"}}'
+  SMTP_GATEWAY_TLS_KEY_PATH: '{{.SMTP_GATEWAY_TLS_KEY_PATH | default "/certs/restmail.test.key"}}'
   # Max accepted SMTP message size in bytes. Empty = server default (10 MiB).
   SMTP_GATEWAY_MAX_MESSAGE_SIZE: '{{.SMTP_GATEWAY_MAX_MESSAGE_SIZE | default ""}}'
   # Anti-slowloris message-transfer policy. Empty = server defaults
@@ -53,7 +54,6 @@ vars:
   SMTP_GATEWAY_TRANSFER_GRACE_PERIOD: '{{.SMTP_GATEWAY_TRANSFER_GRACE_PERIOD | default ""}}'
   SMTP_GATEWAY_TRANSFER_STALL_TIMEOUT: '{{.SMTP_GATEWAY_TRANSFER_STALL_TIMEOUT | default ""}}'
   SMTP_GATEWAY_PORT_INBOUND: '{{.SMTP_GATEWAY_PORT_INBOUND | default "25"}}'
-  SMTP_GATEWAY_PORT_SUBMISSION: '{{.SMTP_GATEWAY_PORT_SUBMISSION | default "587"}}'
   SMTP_GATEWAY_PORT_SUBMISSION_TLS: '{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS | default "465"}}'
   SMTP_GATEWAY_QUEUE_WORKERS: '{{.SMTP_GATEWAY_QUEUE_WORKERS | default "4"}}'
   # Outbound delivery-queue poll cadence + MTA-STS enforcement. Empty = server
@@ -115,8 +115,17 @@ tasks:
         docker rm -f {{.SMTP_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # mailnet_only secondary instances skip host-port publishing so they
         # can run beside the primary (reachable on the mailnet like the refs).
-        PUBLISH="-p {{.SMTP_GATEWAY_PORT_INBOUND}}:{{.SMTP_GATEWAY_PORT_INBOUND}} -p {{.SMTP_GATEWAY_PORT_SUBMISSION}}:{{.SMTP_GATEWAY_PORT_SUBMISSION}} -p {{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}:{{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}}"
-        [ "{{.SMTP_GATEWAY_MAILNET_ONLY}}" = "true" ] && PUBLISH=""
+        # 465 goes through the reverse proxy with ssl=true, which turns on nginx's
+        # ssl_preread so the port is routed by TLS SNI — that is what lets several
+        # instances share it. 25 is published straight to the host instead: relay begins
+        # in cleartext, so there is no SNI to route on, and without a hostname a stream
+        # port serves exactly one upstream anyway.
+        #
+        # There are no cleartext client ports left to place. 587, 143 and 110 do not
+        # exist: submission is 465, IMAP 993, POP3 995, all implicit TLS.
+        PUBLISH="-p {{.SMTP_GATEWAY_PORT_INBOUND}}:{{.SMTP_GATEWAY_PORT_INBOUND}}"
+        PROXY="-l docker-proxy.submissions.proto=tcp -l docker-proxy.submissions.port={{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}} -l docker-proxy.submissions.host={{.SMTP_GATEWAY_PROXY_HOST}} -l docker-proxy.submissions.ssl=true"
+        if [ "{{.SMTP_GATEWAY_MAILNET_ONLY}}" = "true" ]; then PUBLISH=""; PROXY=""; fi
         # Testbed dnsmasq as the ONLY resolver (see tasks/api.yml for rationale):
         # outbound MX lookups must see the simulated internet, not Docker's
         # embedded DNS. Peer services are addressed by static mailnet IPs.
@@ -124,7 +133,7 @@ tasks:
         printf 'nameserver %s\n' "{{.SMTP_GATEWAY_DNS_IP}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
         # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
         # capabilities then add back only NET_BIND_SERVICE (binds the privileged
-        # SMTP ports 25/465/587), plus pid/mem/cpu ceilings. Rootfs stays
+        # SMTP ports 25 and 465), plus pid/mem/cpu ceilings. Rootfs stays
         # writable: dev mode compiles via `air` into the bind-mounted /app and
         # the entrypoint runs update-ca-certificates (read-only is a prod-image
         # follow-up); log volume is separate.
@@ -147,12 +156,12 @@ tasks:
         printf 'MASTER_KEY=%s\n' "{{.SMTP_GATEWAY_MASTER_KEY}}" >> "$SECRETS_ENV"
         docker run -d --name {{.SMTP_GATEWAY_CONTAINER_NAME}} \
           $HARDENING \
-          --hostname {{.SMTP_GATEWAY_MAIL3_HOSTNAME}} \
+          --hostname {{.SMTP_GATEWAY_RESTMAIL_HOSTNAME}} \
           --restart unless-stopped \
           --network {{.SMTP_GATEWAY_NETWORK}} \
           --ip {{.SMTP_GATEWAY_IP}} \
           -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
-          $PUBLISH \
+          $PUBLISH $PROXY \
           -v {{.SMTP_GATEWAY_CERTS_VOLUME}}:/certs:ro \
           -v {{.SMTP_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
           $DEV_MOUNTS \
@@ -160,7 +169,7 @@ tasks:
           --health-interval 10s \
           --health-timeout 5s \
           --health-retries 3 \
-          -e GATEWAY_HOSTNAME={{.SMTP_GATEWAY_MAIL3_HOSTNAME}} \
+          -e GATEWAY_HOSTNAME={{.SMTP_GATEWAY_RESTMAIL_HOSTNAME}} \
           -e API_BASE_URL={{.SMTP_GATEWAY_API_BASE_URL}} \
           -e DB_HOST={{.SMTP_GATEWAY_DB_HOST}} \
           -e DB_PORT={{.SMTP_GATEWAY_DB_PORT}} \
@@ -174,7 +183,6 @@ tasks:
           -e SMTP_TRANSFER_GRACE_PERIOD={{.SMTP_GATEWAY_TRANSFER_GRACE_PERIOD}} \
           -e SMTP_TRANSFER_STALL_TIMEOUT={{.SMTP_GATEWAY_TRANSFER_STALL_TIMEOUT}} \
           -e SMTP_PORT_INBOUND={{.SMTP_GATEWAY_PORT_INBOUND}} \
-          -e SMTP_PORT_SUBMISSION={{.SMTP_GATEWAY_PORT_SUBMISSION}} \
           -e SMTP_PORT_SUBMISSION_TLS={{.SMTP_GATEWAY_PORT_SUBMISSION_TLS}} \
           -e QUEUE_WORKERS={{.SMTP_GATEWAY_QUEUE_WORKERS}} \
           -e QUEUE_POLL_INTERVAL={{.SMTP_GATEWAY_QUEUE_POLL_INTERVAL}} \

@@ -115,7 +115,7 @@ func TestGenerateInternalMTLS_RegeneratesServerOnSANDrift(t *testing.T) {
 	serverBefore, _ := os.ReadFile(filepath.Join(dir, internalServerCertFile))
 	clientBefore, _ := os.ReadFile(filepath.Join(dir, internalClientCertFile))
 
-	// Re-run with an added IP SAN (simulating MAIL3_API_IP appearing/changing).
+	// Re-run with an added IP SAN (simulating RESTMAIL_API_IP appearing/changing).
 	if err := generateInternalMTLS(dir, "api", "127.0.0.1,10.99.0.99", "gw"); err != nil {
 		t.Fatalf("drift generate: %v", err)
 	}

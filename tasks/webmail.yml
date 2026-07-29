@@ -11,7 +11,7 @@ version: "3"
 # mapping in either mode — traffic is routed via docker-proxy labels.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
-# docker / shell output (e.g. VERBOSE=1 task webmail:up).
+# docker / shell output (e.g. VERBOSE=1 chore webmail:up).
 
 silent: true
 
