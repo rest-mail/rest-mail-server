@@ -1,5 +1,5 @@
 # Fixture: a manifest that DOES set the optional `smtp:` and `dkim:` blocks.
-# Paired with config_policy.env — proves the policy knobs render to MAIL3_* lines.
+# Paired with config_policy.env — proves the policy knobs render to RESTMAIL_* lines.
 # The no-blocks fixture (manifest.yml → config.env) proves omitting the blocks
 # renders byte-for-byte as before.
 

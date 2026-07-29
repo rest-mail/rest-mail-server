@@ -10,10 +10,10 @@ import (
 
 func TestSlugFor(t *testing.T) {
 	cases := map[string]string{
-		"mail4.test":  "mail4",
+		"mail4.test":   "mail4",
 		"acme.example": "acme",
-		"MAIL5.Test":  "mail5",
-		"a-b.co":      "ab",
+		"MAIL5.Test":   "mail5",
+		"a-b.co":       "ab",
 	}
 	for in, want := range cases {
 		if got := slugFor(in); got != want {
@@ -86,8 +86,8 @@ func TestScaffoldEndToEnd(t *testing.T) {
 		t.Error("manifest missing per-instance project rest-mail-mail4")
 	}
 	// Secondary instances are mailnet-only so they can run beside the primary.
-	if !bytes.Contains(res.Config, []byte("MAIL3_MAILNET_ONLY=true\n")) {
-		t.Error("scaffolded config.env should set MAIL3_MAILNET_ONLY=true")
+	if !bytes.Contains(res.Config, []byte("RESTMAIL_MAILNET_ONLY=true\n")) {
+		t.Error("scaffolded config.env should set RESTMAIL_MAILNET_ONLY=true")
 	}
 	// Internal mTLS is secure-by-default for NEW instances: the scaffolded
 	// manifest sets internal_mtls: true and its rendered config.env carries the
@@ -98,11 +98,11 @@ func TestScaffoldEndToEnd(t *testing.T) {
 	if !bytes.Contains(res.Manifest, []byte("internal_mtls: true")) {
 		t.Error("scaffolded manifest should set internal_mtls: true (secure-by-default for new instances)")
 	}
-	if !bytes.Contains(res.Config, []byte("MAIL3_INTERNAL_MTLS=true\n")) {
-		t.Error("scaffolded config.env should set MAIL3_INTERNAL_MTLS=true")
+	if !bytes.Contains(res.Config, []byte("RESTMAIL_INTERNAL_MTLS=true\n")) {
+		t.Error("scaffolded config.env should set RESTMAIL_INTERNAL_MTLS=true")
 	}
 	// Three distinct 64-hex-char secrets.
-	if n := bytes.Count(res.Secrets, []byte("MAIL3_")); n != 3 {
+	if n := bytes.Count(res.Secrets, []byte("RESTMAIL_")); n != 3 {
 		t.Errorf("expected 3 secret lines, got %d", n)
 	}
 }
@@ -185,9 +185,9 @@ func TestScaffoldHostGolden(t *testing.T) {
 
 	// Real-host posture: mailnet_only off, cert_provider manual, production.
 	for _, want := range []string{
-		"MAIL3_MAILNET_ONLY=false\n",
+		"RESTMAIL_MAILNET_ONLY=false\n",
 		"RESTMAIL_CERT_PROVIDER=manual\n",
-		"MAIL3_ENVIRONMENT=production\n",
+		"RESTMAIL_ENVIRONMENT=production\n",
 	} {
 		if !bytes.Contains(res.Config, []byte(want)) {
 			t.Errorf("host config.env missing %q", want)
@@ -199,8 +199,8 @@ func TestScaffoldHostGolden(t *testing.T) {
 			t.Errorf("host IPs[%s] = %q, want unset", name, res.IPs[name])
 		}
 	}
-	if !bytes.Contains(res.Config, []byte("MAIL3_POSTGRES_IP=\n")) {
-		t.Error("host config.env should leave MAIL3_POSTGRES_IP unset")
+	if !bytes.Contains(res.Config, []byte("RESTMAIL_POSTGRES_IP=\n")) {
+		t.Error("host config.env should leave RESTMAIL_POSTGRES_IP unset")
 	}
 	// No testbed substrate leakage in the rendered config.env (values only; the
 	// manifest keeps one 'NOT the testbed' clarifying comment by design).

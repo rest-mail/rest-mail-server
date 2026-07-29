@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "task": "build:imap-gateway",
+  "hash": "358a8d7a6de81864c28d72c81f0edf81b3a7e8aad07b524a397ada215fddcdf3",
+  "sources": {
+    "cmd/imap-gateway/main.go": "5275500a1ffa08e43469811b9a5445c6f83fc1774f96e35cde517eb970551a97",
+    "go.mod": "eedf56bbb158c9aafbdfdd335f38c58c3f24aa357aaa4cc21b603dc6be883ec3",
+    "go.sum": "04a863a9daaabb59bf02b356524689fd0296da3f3665d72f4fd912cd4a25d1d6",
+    "internal/gateway/apiclient/client.go": "54f8d40d432161559593ea585994feaf262231b2462d43443a8288c130724974",
+    "internal/gateway/apiclient/client_test.go": "c56749070d3966c998bf19090ea305fc1a3e0c541475b9f4b08204355bca775f",
+    "internal/gateway/apiclient/client_transportsec_test.go": "b2d3bd10ded9d2f53c40ab29051ddb7ec3c567d222334c3c77acbb32775645e1",
+    "internal/gateway/apiclient/client_truncation_test.go": "49dea5f80e6ddd029a2e20186b81079a1c1e8edf691a7542541ac2a4ea4c8276",
+    "internal/gateway/apiclient/mtls_test.go": "2ad596a225b4eab5259899d83a6a9a2f59b41e886a780c02c6de8437e555bbb3",
+    "internal/gateway/apiclient/osi7_test.go": "022bb16b3a2a26aa55edb7da7272072db58e279cca8e2fcbce8d321915f3691b",
+    "internal/gateway/apiclient/raw_message_fidelity_test.go": "6a1183055fb736a30d5e0883a8f6d31ff4fcbf5627058dd154f207c34534ee75",
+    "internal/gateway/imap/backend.go": "dd6f978ccb3f49eaac15accb45a5af38742205663ab0c3cdbb5b0761c6e8699d",
+    "internal/gateway/imap/backend_authlog_test.go": "dd0aa22368a820f57229ae2729d5d90eae66ffb60bd7192fcde6b9d3639dbb39",
+    "internal/gateway/imap/backend_bruteforce_test.go": "1266e725069009035b266aad3aad2a50f1f89f6179e651a27b4b0b3e6cd0348d",
+    "internal/gateway/imap/backend_copyfidelity_test.go": "7d9da18d0918688405ef90772a399c2ba97cc577f495b2add8ba41d5c488ab55",
+    "internal/gateway/imap/backend_envelope_test.go": "53429bda52307dc5dcbd716884bdeb418eee684b58ff01c02e8d92e23ce4bb8e",
+    "internal/gateway/imap/backend_flags_test.go": "ce600bcdbd731bc53a936ce4af1c5ecefcb6672f1b65c033d6d98d55ec26b71e",
+    "internal/gateway/imap/backend_test.go": "2dbc0fea40b9a9865151784f8ecdff2f1ca6772362b05e250a5125cf73a7f9b4",
+    "internal/gateway/imap/backend_uidplus_test.go": "c45ec357db152d3b9cfa127ae6d022e9a38c2cb1950be83acb4acd2c81465311",
+    "internal/gateway/imap/conformance_test.go": "23f8870b172fb0f498fddcf0fc7a391f28d71fdcb29adeb86f0d13021d5e73e9",
+    "internal/gateway/imap/folder_authz_test.go": "ee7c4d05e507dadec85e10e33b0977fb57c3985e62ef670217d9e94e09335da6",
+    "internal/gateway/imap/mask.go": "2fb7bc8d348bb1812c8830e62a17eb04b13745a70ea32cf423de666c492eae03",
+    "internal/gateway/imap/util.go": "94dd3cddb3c79b40e6d93edbf0062877057e9f2dd514b47c23c01043a8c10a4c",
+    "internal/gateway/imap/util_test.go": "b98a7d4fcb89645321e41e7ac22f0a5ba9d5f6900f4db2a0f64b1e470cdfdacd"
+  },
+  "generates": [
+    "build/gateways/imap-gateway"
+  ],
+  "updated_at": "2026-07-26T23:00:36.836409Z"
+}

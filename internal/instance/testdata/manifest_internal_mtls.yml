@@ -2,7 +2,7 @@
 # the optional `tls.internal:` block — mode require (the enforced gateway→API
 # handshake, on) plus a NON-default ca_source (manual, deployer-provisioned
 # internal CA). Paired with config_internal_mtls.env; proves the block renders
-# MAIL3_INTERNAL_MTLS=true (same line the legacy `internal_mtls: true` bool emits)
+# RESTMAIL_INTERNAL_MTLS=true (same line the legacy `internal_mtls: true` bool emits)
 # and RESTMAIL_INTERNAL_CA_SOURCE=manual. The no-block fixture (manifest.yml →
 # config.env) proves omitting `tls.internal` renders byte-for-byte as before.
 

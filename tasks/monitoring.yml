@@ -15,7 +15,7 @@ version: "3"
 # the include `dir:` configured in the main Taskfile.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
-# docker / shell output (e.g. VERBOSE=1 task monitoring:up).
+# docker / shell output (e.g. VERBOSE=1 chore monitoring:up).
 
 silent: true
 
@@ -78,10 +78,10 @@ tasks:
         echo "                      user: {{.GRAFANA_ADMIN_USER}}  pass: (as set via GRAFANA_ADMIN_PASSWORD)"
         echo "  postgres-exporter→  {{.POSTGRES_EXPORTER_IP}}  (scraped by prometheus)"
         echo ""
-        echo "  task monitoring:logs        list per-service log commands"
-        echo "  task monitoring:down        stop all three containers"
-        echo "  task monitoring:restart     down + up"
-        echo "  VERBOSE=1 task …            raw docker output"
+        echo "  chore monitoring:logs        list per-service log commands"
+        echo "  chore monitoring:down        stop all three containers"
+        echo "  chore monitoring:restart     down + up"
+        echo "  VERBOSE=1 chore …            raw docker output"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
   down:
@@ -103,9 +103,9 @@ tasks:
       - |
         echo "  docker can't tail multiple containers natively. Pick one:"
         echo ""
-        echo "    task monitoring:prometheus:logs"
-        echo "    task monitoring:grafana:logs"
-        echo "    task monitoring:postgres-exporter:logs"
+        echo "    chore monitoring:prometheus:logs"
+        echo "    chore monitoring:grafana:logs"
+        echo "    chore monitoring:postgres-exporter:logs"
         echo ""
         echo "  or run them in parallel in separate shells."
 
@@ -198,7 +198,7 @@ tasks:
         if [ -z "{{.GRAFANA_ADMIN_PASSWORD}}" ]; then
           echo "  ERROR: GRAFANA_ADMIN_PASSWORD is required (no default)." >&2
           echo "         Grafana will not start on well-known credentials." >&2
-          echo "         Set it, e.g.  GRAFANA_ADMIN_PASSWORD=... task monitoring:up" >&2
+          echo "         Set it, e.g.  GRAFANA_ADMIN_PASSWORD=... chore monitoring:up" >&2
           exit 1
         fi
         echo "  starting grafana ({{.GRAFANA_NAME}} @ {{.GRAFANA_IP}})"

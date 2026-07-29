@@ -1,6 +1,6 @@
 // Command instance renders (and later scaffolds) rest-mail instance manifests.
 //
-// `instance render` flattens instances/<domain>/manifest.yml into a config.env
+// `instance render` flattens config/<domain>/manifest.yml into a config.env
 // that the Taskfile loads via dotenv. The rendering logic lives in
 // internal/instance so it is covered by the standard test lane; this file is a
 // thin CLI around it.
@@ -12,6 +12,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-dkim"
+	"github.com/restmail/restmail/internal/fleet"
 	"github.com/restmail/restmail/internal/instance"
 )
 
@@ -46,10 +48,73 @@ func main() {
 		dkimProvisionCmd(os.Args[2:])
 	case "dkim-check":
 		dkimCheckCmd(os.Args[2:])
+	case "status":
+		statusCmd(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "instance: unknown subcommand %q\n\n", os.Args[1])
 		usage()
 		os.Exit(2)
+	}
+}
+
+// statusCmd shows the fleet: every config and the state of its instance, plus the
+// reference servers, the testbed and any orphaned containers. --name narrows to
+// one instance.
+//
+// The discovery lives in internal/fleet (Configs, Resolve, BuildStatus) and is
+// what batch verbs want too — "every running instance" and "which containers
+// belong to no config" are the same questions. It used to be reimplemented as a
+// 193-line shell block in chores.yml, which padded columns by BYTE width and so
+// misaligned on any name outside ASCII.
+func statusCmd(args []string) {
+	fs := flag.NewFlagSet("status", flag.ExitOnError)
+	name := fs.String("name", "", "one instance, e.g. mail1.test (default: the whole fleet)")
+	_ = fs.Parse(args)
+	// A bare positional works too: `instance status mail1.test`.
+	if *name == "" && fs.NArg() > 0 {
+		*name = fs.Arg(0)
+	}
+
+	root, err := repoRoot()
+	if err != nil {
+		fatal("%v", err)
+	}
+	var sels []fleet.Selection
+	if *name == "" {
+		if sels, err = fleet.Configs(root); err != nil {
+			fatal("%v", err)
+		}
+	} else {
+		sel, err := fleet.Resolve(*name, root)
+		if err != nil {
+			fatal("%v", err)
+		}
+		sels = []fleet.Selection{sel}
+	}
+	st, err := fleet.BuildStatus(context.Background(), fleet.CLI{}, sels)
+	if err != nil {
+		fatal("%v", err)
+	}
+	fleet.RenderStatus(os.Stdout, st)
+}
+
+// repoRoot locates the checkout by walking up for go.mod, so status works from
+// any subdirectory. Falls back to the working directory when there is no go.mod,
+// so an installed binary still reads the ./config beside it.
+func repoRoot() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return os.Getwd()
+		}
+		dir = parent
 	}
 }
 
@@ -62,8 +127,8 @@ usage:
       -o     output path (default: <manifest-dir>/config.env)
       -check don't write; exit non-zero if the target is missing or stale
 
-  instance scaffold [-dir instances] [-profile testbed|host] <domain>
-      Create instances/<domain>/{manifest.yml,config.env,secrets.env} with
+  instance scaffold [-dir config] [-profile testbed|host] <domain>
+      Create config/<domain>/{manifest.yml,config.env,secrets.env} with
       random secrets. Brings up nothing.
       -profile  substrate flavor of the generated manifest (default testbed):
                 testbed  the testbed mailnet (allocates a 10.99.0.x block,
@@ -174,7 +239,7 @@ func domainsCmd(args []string) {
 
 func scaffoldCmd(args []string) {
 	fs := flag.NewFlagSet("scaffold", flag.ExitOnError)
-	dir := fs.String("dir", "instances", "instances directory")
+	dir := fs.String("dir", "config", "config directory")
 	profile := fs.String("profile", "testbed", "substrate profile: testbed | host")
 	_ = fs.Parse(args)
 

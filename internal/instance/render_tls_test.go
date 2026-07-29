@@ -10,7 +10,7 @@ import (
 // TestRenderTLSBlockMatchesGolden is the with-block counterpart to the drift
 // guard: a manifest that sets a non-default cert_provider plus the optional
 // `tls:` block (extra_hostnames + acme) must render byte-for-byte to the
-// committed config_tls.env, pinning the RESTMAIL_CERT_PROVIDER + MAIL3_TLS_*
+// committed config_tls.env, pinning the RESTMAIL_CERT_PROVIDER + RESTMAIL_TLS_*
 // lines. Together with TestRenderMatchesCommittedConfig (no block → committed
 // config.env, unchanged) this proves the seam is purely additive.
 func TestRenderTLSBlockMatchesGolden(t *testing.T) {
@@ -37,12 +37,12 @@ func TestRenderTLSBlockMatchesGolden(t *testing.T) {
 	}
 	for _, want := range []string{
 		"RESTMAIL_CERT_PROVIDER=manual\n",
-		"MAIL3_TLS_EXTRA_HOSTNAMES=autoconfig.mail3.test,mta-sts.mail3.test\n",
-		"MAIL3_TLS_CERT_SANS=mail3.test,autoconfig.mail3.test,mta-sts.mail3.test\n",
-		"MAIL3_TLS_ACME_ENABLED=false\n",
-		"MAIL3_TLS_ACME_EMAIL=hostmaster@mail3.test\n",
-		"MAIL3_TLS_ACME_STAGING=true\n",
-		"MAIL3_TLS_ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory\n",
+		"RESTMAIL_TLS_EXTRA_HOSTNAMES=autoconfig.mail3.test,mta-sts.mail3.test\n",
+		"RESTMAIL_TLS_CERT_SANS=mail3.test,autoconfig.mail3.test,mta-sts.mail3.test\n",
+		"RESTMAIL_TLS_ACME_ENABLED=false\n",
+		"RESTMAIL_TLS_ACME_EMAIL=hostmaster@mail3.test\n",
+		"RESTMAIL_TLS_ACME_STAGING=true\n",
+		"RESTMAIL_TLS_ACME_DIRECTORY=https://acme-staging-v02.api.letsencrypt.org/directory\n",
 	} {
 		if !bytes.Contains(got, []byte(want)) {
 			t.Errorf("tls output missing line %q", want)
@@ -52,7 +52,7 @@ func TestRenderTLSBlockMatchesGolden(t *testing.T) {
 
 // TestRenderOmittedTLSBlockEmitsNoLines proves omission is additive-safe: a
 // manifest with neither a `tls:` block nor a non-default cert_provider must not
-// emit any RESTMAIL_CERT_PROVIDER / MAIL3_TLS_* line, so existing manifests
+// emit any RESTMAIL_CERT_PROVIDER / RESTMAIL_TLS_* line, so existing manifests
 // render exactly as before. testbed-certgen (the default) must render no
 // provider line.
 func TestRenderOmittedTLSBlockEmitsNoLines(t *testing.T) {
@@ -63,12 +63,12 @@ func TestRenderOmittedTLSBlockEmitsNoLines(t *testing.T) {
 	}
 	for _, absent := range []string{
 		"RESTMAIL_CERT_PROVIDER",
-		"MAIL3_TLS_EXTRA_HOSTNAMES",
-		"MAIL3_TLS_CERT_SANS",
-		"MAIL3_TLS_ACME_ENABLED",
-		"MAIL3_TLS_ACME_EMAIL",
-		"MAIL3_TLS_ACME_STAGING",
-		"MAIL3_TLS_ACME_DIRECTORY",
+		"RESTMAIL_TLS_EXTRA_HOSTNAMES",
+		"RESTMAIL_TLS_CERT_SANS",
+		"RESTMAIL_TLS_ACME_ENABLED",
+		"RESTMAIL_TLS_ACME_EMAIL",
+		"RESTMAIL_TLS_ACME_STAGING",
+		"RESTMAIL_TLS_ACME_DIRECTORY",
 	} {
 		if bytes.Contains(out, []byte(absent)) {
 			t.Errorf("no-tls manifest still emitted %q\ngot:\n%s", absent, out)

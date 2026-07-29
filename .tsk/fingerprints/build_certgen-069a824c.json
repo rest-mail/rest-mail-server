@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "task": "build:certgen",
+  "hash": "222c8af07f4a79086cb0c40d3dccad668515b44b3b1a99e562fc10537be423d6",
+  "sources": {
+    "cmd/certgen/certgen_test.go": "e0114f2603b9891319af716cd0f776715b6464288d560492ba333cd700995e71",
+    "cmd/certgen/internal_mtls_test.go": "6858d9c5b14687f1dae17580340205b3c03c84510139b3a55c49aa9b29dcdaab",
+    "cmd/certgen/main.go": "423f330a756409bf32e58b161bf29d3926ceeaddee24840f58b8a698cb610fd6",
+    "go.mod": "eedf56bbb158c9aafbdfdd335f38c58c3f24aa357aaa4cc21b603dc6be883ec3",
+    "go.sum": "04a863a9daaabb59bf02b356524689fd0296da3f3665d72f4fd912cd4a25d1d6"
+  },
+  "generates": [
+    "build/tools/certgen"
+  ],
+  "updated_at": "2026-07-26T23:00:30.30078Z"
+}

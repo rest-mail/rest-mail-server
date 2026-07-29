@@ -1,7 +1,7 @@
 # Fixture: a manifest that exercises the public-TLS / cert-provider seam (PR5).
 # It sets a non-default `cert_provider` plus the optional `tls:` block
 # (extra_hostnames + acme). Paired with config_tls.env; proves the
-# RESTMAIL_CERT_PROVIDER + MAIL3_TLS_* lines render, that the cert SAN set folds
+# RESTMAIL_CERT_PROVIDER + RESTMAIL_TLS_* lines render, that the cert SAN set folds
 # extra_hostnames onto the served hostname, and that the ACME inputs are
 # declarable. The no-tls fixture (manifest.yml → config.env) proves omitting the
 # block renders byte-for-byte as before.

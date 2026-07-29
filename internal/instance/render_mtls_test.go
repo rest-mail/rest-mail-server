@@ -11,8 +11,8 @@ func TestRenderEmitsInternalMTLSWhenEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if !strings.Contains(string(out), "MAIL3_INTERNAL_MTLS=true") {
-		t.Errorf("expected MAIL3_INTERNAL_MTLS=true in output, got:\n%s", out)
+	if !strings.Contains(string(out), "RESTMAIL_INTERNAL_MTLS=true") {
+		t.Errorf("expected RESTMAIL_INTERNAL_MTLS=true in output, got:\n%s", out)
 	}
 }
 
@@ -22,8 +22,8 @@ func TestRenderOmitsInternalMTLSWhenDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if strings.Contains(string(out), "MAIL3_INTERNAL_MTLS") {
-		t.Errorf("did not expect MAIL3_INTERNAL_MTLS in output (avoids config.env drift), got:\n%s", out)
+	if strings.Contains(string(out), "RESTMAIL_INTERNAL_MTLS") {
+		t.Errorf("did not expect RESTMAIL_INTERNAL_MTLS in output (avoids config.env drift), got:\n%s", out)
 	}
 }
 
@@ -41,7 +41,7 @@ func TestParseAcceptsInternalMTLS(t *testing.T) {
 
 // TestRenderTLSInternalModeEnablesMTLS proves the declarative block turns the
 // switch on: mode require/verify — and an empty mode (default require) — all emit
-// MAIL3_INTERNAL_MTLS=true, the same line the legacy `internal_mtls` bool emits.
+// RESTMAIL_INTERNAL_MTLS=true, the same line the legacy `internal_mtls` bool emits.
 func TestRenderTLSInternalModeEnablesMTLS(t *testing.T) {
 	for _, mode := range []string{"require", "verify", ""} {
 		m := &Manifest{Project: "p", TLS: TLS{Internal: &InternalTLS{Mode: mode}}}
@@ -49,8 +49,8 @@ func TestRenderTLSInternalModeEnablesMTLS(t *testing.T) {
 		if err != nil {
 			t.Fatalf("render mode=%q: %v", mode, err)
 		}
-		if !strings.Contains(string(out), "MAIL3_INTERNAL_MTLS=true") {
-			t.Errorf("mode=%q: expected MAIL3_INTERNAL_MTLS=true, got:\n%s", mode, out)
+		if !strings.Contains(string(out), "RESTMAIL_INTERNAL_MTLS=true") {
+			t.Errorf("mode=%q: expected RESTMAIL_INTERNAL_MTLS=true, got:\n%s", mode, out)
 		}
 	}
 }
@@ -63,8 +63,8 @@ func TestRenderTLSInternalModeOffDisablesMTLS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if strings.Contains(string(out), "MAIL3_INTERNAL_MTLS") {
-		t.Errorf("mode: off should emit no MAIL3_INTERNAL_MTLS line, got:\n%s", out)
+	if strings.Contains(string(out), "RESTMAIL_INTERNAL_MTLS") {
+		t.Errorf("mode: off should emit no RESTMAIL_INTERNAL_MTLS line, got:\n%s", out)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestRenderTLSInternalBlockBeatsLegacyBool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if !strings.Contains(string(out), "MAIL3_INTERNAL_MTLS=true") {
+	if !strings.Contains(string(out), "RESTMAIL_INTERNAL_MTLS=true") {
 		t.Errorf("block mode require should win over internal_mtls:false, got:\n%s", out)
 	}
 }

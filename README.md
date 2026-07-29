@@ -67,7 +67,17 @@ This repo's gateways are thin adapters: `internal/gateway/pop3` and `internal/ga
 ### Prerequisites
 
 - Docker
-- [Task](https://taskfile.dev/) — required (the repo is driven entirely by Taskfiles, no docker-compose)
+- [`chore`](https://github.com/antimatter-studios/chore) — required (the repo is driven entirely by
+  `chores.yml`, no docker-compose):
+
+  ```bash
+  brew install antimatter-studios/tap/chore
+  ```
+
+  It reads go-task's format but gives a task real arguments, which is why this repo needs it:
+  `chore instance:up mail4.test`, or `chore instance:up --config mail4.test`. go-task can still
+  parse the file, but it ignores `args:` — so a task that takes a parameter silently falls back to
+  its default there.
 
 ### Start the Stack
 
@@ -75,29 +85,29 @@ The stack joins the `rest-mail/testbed` substrate (mailnet network + dnsmasq + c
 
 ```bash
 # 1. First run only — clone the testbed into .workspace/
-task testbed:init
+chore testbed:init
 
 # 2. Bring up the testbed substrate (network, certs volume, dnsmasq)
-task testbed:up
+chore testbed:up
 
 # 3. Start the restmail.test product stack
-task dev   # alias for restmail:up (= instance:up)
+chore dev   # alias for restmail:up (= instance:up)
 ```
 
-`task dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `task status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`Taskfile.yml`](Taskfile.yml).
+`chore dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `chore status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`chores.yml`](chores.yml).
 
 ### Seed Test Data
 
 Seeding happens automatically during `instance:up`. To re-run or reset:
 
 ```bash
-task db:seed    # idempotent — seed sample mailboxes and RBAC (inside the api container)
-task db:reset   # destructive — drop the postgres volume, recreate, re-seed
+chore db:seed    # idempotent — seed sample mailboxes and RBAC (inside the api container)
+chore db:reset   # destructive — drop the postgres volume, recreate, re-seed
 ```
 
 ### Access Services
 
-HTTP services are routed by a reverse proxy on `:80` reading `docker-proxy.*` container labels — [`ddt`](https://github.com/antimatter-studios/docker-dev-tools) provides that proxy plus `*.localhost` DNS (`task project:proxy:help` covers the setup, `task project:check` verifies it). Mail protocol ports are published directly on the host.
+HTTP services are routed by a reverse proxy on `:80` reading `docker-proxy.*` container labels — [`ddt`](https://github.com/antimatter-studios/docker-dev-tools) provides that proxy plus `*.localhost` DNS (`chore project:proxy:help` covers the setup, `chore project:check` verifies it). Mail protocol ports are published directly on the host.
 
 | Service        | URL / Port                                |
 |----------------|-------------------------------------------|
@@ -111,14 +121,14 @@ HTTP services are routed by a reverse proxy on `:80` reading `docker-proxy.*` co
 | Health check   | http://localhost:8080/api/health          |
 | Metrics        | http://localhost:8080/metrics             |
 
-`task status` prints the authoritative table for your machine.
+`chore status` prints the authoritative table for your machine.
 
 ### Test Domains
 
-This repo ships no committed instance — the primary test instance (**restmail.test**) is owned by the testbed (`configs/restmail`, linked in under `instances/restmail.test` by `task testbed:init`), and further instances are scaffolded on demand under the same `instances/<domain>/` layout (see [Instances](#instances)). For traditional reference instances (mail1.test, mail2.test, ...) running Postfix + Dovecot, see [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver). Reference instances are launched one at a time, directly against that repo's Taskfile — you decide how many to run:
+This repo ships no committed instance — the primary test instance (**restmail.test**) is owned by the testbed (`configs/restmail`, which `chore testbed:init` copies into `config/restmail.test`), and further instances are scaffolded on demand under the same `config/<domain>/` layout (see [Instances](#instances)). For traditional reference instances (mail1.test, mail2.test, ...) running Postfix + Dovecot, see [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver). Reference instances are launched one at a time, directly against that repo's Taskfile — you decide how many to run:
 
 ```bash
-task mailserver:init                                    # first run only — clone it
+chore mailserver:init                                    # first run only — clone it
 task -d .workspace/reference-mailserver up CONFIG=mail1
 ```
 
@@ -160,10 +170,10 @@ Interactive terminal admin tool (built with bubbletea) for managing the mail ser
 
 ```bash
 # Build the console (auto-detects your OS/architecture)
-task build:console
+chore build:console
 
 # Run the console (executes inside the api container)
-task run:console
+chore run:console
 ```
 
 **Features:**
@@ -172,7 +182,7 @@ task run:console
 - Queue operations
 - Live status monitoring
 
-**Authentication:** Uses the admin credentials (username/password) seeded by `task db:seed`.
+**Authentication:** Uses the admin credentials (username/password) seeded by `chore db:seed`.
 
 ### Instant Mail Check
 
@@ -268,7 +278,7 @@ cmd/
   imap-gateway/     IMAP protocol gateway
   pop3-gateway/     POP3 protocol gateway
   console/          Terminal admin UI (bubbletea) with RBAC
-  instance/         Instance manifest renderer/scaffolder (see Instances)
+  instance/         Config manifest renderer/scaffolder (see Instances)
   migrate/          Database migration runner
   certgen/          TLS/DKIM certificate generator
   rotate-key/       MASTER_KEY rotation tool
@@ -285,7 +295,7 @@ internal/
   dmarcreport/      Periodic DMARC rua aggregate report worker
   dns/              Pluggable DNS providers (dnsmasq, externaldns, manual)
   gateway/          Backend adapters for the protocol libraries + queue worker
-  instance/         Instance manifest loading and rendering
+  instance/         Config manifest loading and rendering
   mail/             Message-ID generation
   metrics/          Prometheus instrumentation
   mime/             MIME handling over go-message, iCalendar support
@@ -297,34 +307,38 @@ admin/              Admin UI (React)
 projects/           Dockerfiles for the gateways, js-filter sidecar, dnsmasq fragments
 helm/               Helm chart for restmail
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
-tasks/              Per-service Taskfiles (one per container) included from root Taskfile.yml
+tasks/              Per-service task files (one per container) included from root chores.yml
 tests/e2e/          End-to-end test suite (13 stages)
 .workspace/         Sibling repos cloned on demand (testbed, reference-mailserver, website) — gitignored
 ```
 
 ## Instances
 
-Everything about a running RESTMAIL deployment — hostname, IPs, ports, credentials — comes from an instance manifest, not from hardcoded config. Every instance — scaffolded or testbed-owned — resolves under one authoritative layout, `instances/<domain>/`. `INSTANCE` selects which one to drive (default `restmail.test`, whose config is owned by the testbed and linked in under `instances/restmail.test` by `task testbed:init`); `INSTANCE_DIR` can point anywhere.
+Everything about a running RESTMAIL deployment — hostname, IPs, ports, credentials — comes from a manifest, not from hardcoded config.
 
-New instances are **secure-by-default**: the scaffolded manifest sets
+Two words, kept distinct: a **config** is a runnable definition, and an **instance** is what exists once you run one. Definitions live under one authoritative layout, `config/<domain>/` (`manifest.yml` + the rendered `config.env`), and are authored with the `config:` verbs — `config:scaffold`, `config:render`, `config:check`. Running stacks are driven with the `instance:` verbs — `instance:up`, `instance:down`, `instance:restart`. `CONFIG` selects which definition to drive (default `restmail.test`, whose fixture is owned by the testbed and copied into `config/restmail.test` by `chore testbed:init`); `CONFIG_DIR` can point anywhere. `INSTANCE=`/`INSTANCE_DIR=` remain accepted as aliases.
+
+Config is always local, never read out of `.workspace/`. Those clones exist so you can modify, push and build the sibling repos — they are build-time inputs, so nothing the running stack reads may live inside one; otherwise a branch switch changes how the stack boots and a `git clean` deletes your config. `chore project:check:runtime` enforces this: it fails if a config dir is a symlink, if the loaded `config.env` resolves under `.workspace/`, or if a running rest-mail container bind-mounts a clone.
+
+New configs are **secure-by-default**: the scaffolded manifest sets
 `internal_mtls: true` and `instance:new` provisions the gateway→API mTLS certs
 automatically (see [Internal mTLS](#internal-mtls-gateway--api)).
 
 ```bash
 # Spin up a second RESTMAIL instance end-to-end
 # (scaffold → cert → mTLS → DNS → up → DKIM):
-task instance:new DOMAIN=mail4.test
+chore instance:new DOMAIN=mail4.test
 
-# Drive an existing instance
-INSTANCE=mail4.test task instance:up
-INSTANCE=mail4.test task instance:down
+# Drive an existing config's instance
+CONFIG=mail4.test chore instance:up
+CONFIG=mail4.test chore instance:down
 
 # Manifest workflow
-task instance:render     # manifest.yml → config.env (after editing a manifest)
-task instance:check      # fail if config.env drifted from its manifest
+chore config:render     # manifest.yml → config.env (after editing a manifest)
+chore config:check      # fail if config.env drifted from its manifest
 ```
 
-`restmail:up` / `restmail:down` / `task dev` are aliases for `instance:up` / `instance:down` with the default instance.
+`restmail:up` / `restmail:down` / `chore dev` are aliases for `instance:up` / `instance:down` with the default config.
 
 ## Development
 
@@ -339,26 +353,26 @@ task instance:check      # fail if config.env drifted from its manifest
 
 ```bash
 # Install Go and Node dependencies, verify build
-task setup
+chore setup
 ```
 
-TLS certificates are provisioned per instance into the shared `testbed_certs` volume (`task instance:certs:issue`, run automatically by `instance:new`). To pull the dev CA out of the testbed for browser/IMAP-client trust:
+TLS certificates are provisioned per config into the shared `testbed_certs` volume (`chore instance:certs:issue`, run automatically by `instance:new`). To pull the dev CA out of the testbed for browser/IMAP-client trust:
 
 ```bash
-cd .workspace/testbed && task ca:fetch    # writes ./ca.crt
+cd .workspace/testbed && chore ca:fetch    # writes ./ca.crt
 ```
 
 ### Building
 
 ```bash
 # Build all Go binaries (output to build/)
-task build
+chore build
 
 # Build individual components
-task build:api
-task build:gateways
-task build:console
-task build:tools
+chore build:api
+chore build:gateways
+chore build:console
+chore build:tools
 ```
 
 Build artifacts are written to `build/{api,gateways,console,tools}/`.
@@ -367,20 +381,20 @@ Build artifacts are written to `build/{api,gateways,console,tools}/`.
 
 ```bash
 # Unit tests
-task test
+chore test
 
 # Unit tests with coverage report
-task test:coverage
+chore test:coverage
 
 # Full e2e run: bring up the topology (testbed + reference mail1/mail2 +
 # restmail.test), run the 13-stage suite, tear it down
-task e2e
+chore e2e
 
 # e2e against an already-running topology
-task test:e2e
+chore test:e2e
 
 # All tests
-task test:all
+chore test:all
 ```
 
 The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 13 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, and IMAP IDLE.
@@ -389,21 +403,21 @@ The e2e suite runs inside a container attached to the testbed mailnet with the t
 
 ```bash
 # Start the full restmail.test product stack
-task dev                       # alias for restmail:up
+chore dev                       # alias for restmail:up
 
 # Drive a single container
-task api:up                    # build + run the API
-task smtp-gateway:up           # build + run the SMTP gateway
-task webmail:up
-task admin:up
+chore api:up                    # build + run the API
+chore smtp-gateway:up           # build + run the SMTP gateway
+chore webmail:up
+chore admin:up
 # ... same up/down/restart/logs pattern for every service
 
 # Tail logs for any container
-task api:logs
-task smtp-gateway:logs
+chore api:logs
+chore smtp-gateway:logs
 
 # Tear it all down
-task restmail:down
+chore restmail:down
 ```
 
 Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
@@ -411,15 +425,15 @@ Every container has its own `tasks/<service>.yml`, so you can iterate on one ser
 ### Code Quality
 
 ```bash
-task fmt       # Format Go code
-task vet       # Run go vet
-task lint      # Run golangci-lint
-task tidy      # Tidy and verify Go modules
+chore fmt       # Format Go code
+chore vet       # Run go vet
+chore lint      # Run golangci-lint
+chore tidy      # Tidy and verify Go modules
 ```
 
 ## Configuration
 
-All configuration is done via environment variables. The API, gateways, and tools all share the same config loader. In the containerized stack these are populated from the instance manifest (see [Instances](#instances)).
+All configuration is done via environment variables. The API, gateways, and tools all share the same config loader. In the containerized stack these are populated from the config's manifest (see [Instances](#instances)).
 
 ### Core Variables
 
@@ -485,7 +499,7 @@ identity), separate from user JWTs and admin RBAC.
 non-provisioned deployment — keeps the routes on the public listener, tokenless,
 so an upgrade never hard-breaks. "On by default" is delivered one layer up, at
 the **instance** layer: a freshly scaffolded manifest sets `internal_mtls: true`
-and `task instance:new` auto-provisions the certs, so every NEW instance comes up
+and `chore instance:new` auto-provisions the certs, so every instance of a new config comes up
 with the gateway→API handshake enforced. Existing manifests that don't set the
 flag are unaffected. This is the secure-by-default-for-new-deployments posture
 without breaking the bare binary.
@@ -545,13 +559,13 @@ the API has it on but a gateway does not, the gateway's tokenless calls to the
 now-absent public route return 404 and delivery fails visibly rather than
 silently bypassing the check.
 
-**New instances** get this for free: `task instance:scaffold` writes
-`internal_mtls: true` into the manifest and `task instance:new` runs
-`task instance:mtls:issue` automatically before bring-up, so a fresh instance is
+**New instances** get this for free: `chore config:scaffold` writes
+`internal_mtls: true` into the manifest and `chore instance:new` runs
+`chore instance:mtls:issue` automatically before bring-up, so a fresh instance is
 mTLS-on with its certs already provisioned. An older manifest opts in by adding
 `internal_mtls: true` and re-rendering.
 
-**Testbed**: `task e2e:up` provisions the certs (`task instance:mtls:issue`) and
+**Testbed**: `chore e2e:up` provisions the certs (`chore instance:mtls:issue`) and
 brings `restmail.test` up with internal mTLS forced on, so the e2e gate exercises
 the real handshake. The `restmail.test` manifest is testbed-owned (external to
 this repo); its `configs/restmail/manifest.yml` should also carry
@@ -643,13 +657,13 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 Spam/virus scanning (rspamd) and fail2ban come from the reference mail server stack ([`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver)) — bring up a reference instance to get them (`task -d .workspace/reference-mailserver up CONFIG=mail1`). Monitoring lives in this repo:
 
 ```bash
-task monitoring:up      # Prometheus + Grafana + postgres-exporter
-task monitoring:down
+chore monitoring:up      # Prometheus + Grafana + postgres-exporter
+chore monitoring:down
 ```
 
 | Stack         | Comes From                  | Tasks                            |
 |---------------|-----------------------------|----------------------------------|
-| Monitoring    | this repo                   | `task monitoring:up\|down\|logs` |
+| Monitoring    | this repo                   | `chore monitoring:up\|down\|logs` |
 | rspamd, fail2ban | `rest-mail/reference-mailserver` | `task -d .workspace/reference-mailserver up CONFIG=mail1` |
 
 ## RESTMAIL Protocol
