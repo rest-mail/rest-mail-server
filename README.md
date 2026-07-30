@@ -189,10 +189,10 @@ chore run:console
 Standalone CLI tool for comprehensive mail server diagnostics, security auditing, and deliverability testing. Lives in its own repo: [`rest-mail/instantmailcheck`](https://github.com/rest-mail/instantmailcheck).
 
 ```bash
-# Homebrew (macOS / Linux)
-brew install antimatter-studios/tap/instantmailcheck
+# Homebrew (macOS — Homebrew installs casks only on macOS)
+brew install --cask antimatter-studios/tap/instantmailcheck
 
-# Or via Go
+# Or via Go (any platform)
 go install github.com/rest-mail/instantmailcheck@latest
 
 # Or download a pre-built binary

@@ -476,8 +476,8 @@ tasks:
 
   # instantmailcheck moved to its own repo:
   #   https://github.com/rest-mail/instantmailcheck
-  # Install via Homebrew:
-  #   brew install antimatter-studios/tap/instantmailcheck
+  # Install via Homebrew (macOS only — Homebrew installs casks only there):
+  #   brew install --cask antimatter-studios/tap/instantmailcheck
   # Or via Go:
   #   go install github.com/rest-mail/instantmailcheck@latest
 

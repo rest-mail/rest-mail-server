@@ -65,7 +65,7 @@ Dates below reflect when the corresponding feature/plan was merged, implemented,
 
 ### 2026-02-22 — Instant Mail Check CLI shipped (now upstream)
 - Originally a standalone diagnostic binary at `cmd/instantmailcheck/main.go` + `internal/mailcheck/` here.
-- 2026-04-28: extracted to its own repo at https://github.com/rest-mail/instantmailcheck — no longer ships from this codebase. Install via `brew install antimatter-studios/tap/instantmailcheck` or `go install github.com/rest-mail/instantmailcheck@latest`.
+- 2026-04-28: extracted to its own repo at https://github.com/rest-mail/instantmailcheck — no longer ships from this codebase. Install via `brew install --cask antimatter-studios/tap/instantmailcheck` or `go install github.com/rest-mail/instantmailcheck@latest`.
 - Four tiers: public probe (no credentials) → send test → authenticated round-trip → exploit simulation.
 - 40+ individual checks across DNS, SMTP, IMAP, POP3, TLS, security, reputation, headers, round-trip.
 
@@ -287,7 +287,7 @@ Pluggable `Provider` interface at [internal/dns/](../internal/dns/) with methods
 
 ### 4.5 Diagnostic tool: Instant Mail Check
 
-Now lives at [`rest-mail/instantmailcheck`](https://github.com/rest-mail/instantmailcheck) — extracted 2026-04-28 because the tool is publicly useful beyond this project. Install via `brew install antimatter-studios/tap/instantmailcheck` or `go install github.com/rest-mail/instantmailcheck@latest`. Zero dependency on RESTMAIL API/DB — can audit any mail server. Raw TCP implementations of SMTP/IMAP/POP3 (not library-based) to control exact response codes and support intentional protocol misuse (e.g. SMTP smuggling tests). Uses `miekg/dns` for advanced DNS queries (TLSA, CAA, DNSSEC AD flag) that stdlib `net.Resolver` can't handle.
+Now lives at [`rest-mail/instantmailcheck`](https://github.com/rest-mail/instantmailcheck) — extracted 2026-04-28 because the tool is publicly useful beyond this project. Install via `brew install --cask antimatter-studios/tap/instantmailcheck` or `go install github.com/rest-mail/instantmailcheck@latest`. Zero dependency on RESTMAIL API/DB — can audit any mail server. Raw TCP implementations of SMTP/IMAP/POP3 (not library-based) to control exact response codes and support intentional protocol misuse (e.g. SMTP smuggling tests). Uses `miekg/dns` for advanced DNS queries (TLSA, CAA, DNSSEC AD flag) that stdlib `net.Resolver` can't handle.
 
 #### Tiers
 - **Tier 1 (public probe)** — no credentials. 19 DNS checks (MX, SPF, DKIM with common selectors or `--dkim-selector`, DMARC, MTA-STS, TLS-RPT, PTR, DANE/TLSA, DNSSEC, CAA, BIMI, Forward-Confirmed rDNS, IPv6 readiness, client autoconfig), SMTP banner/STARTTLS/cert/submission/SMTPS/extensions, IMAPS/POP3S cert, open relay test, banner info leak, VRFY/EXPN, plaintext ports (110/143), TLS minimum version, self-signed cert, plaintext AUTH, auth mechanisms, DNSBL (12 major lists), domain blacklist (Spamhaus DBL, SURBL, URIBL).
