@@ -34,6 +34,43 @@ jobs:
           version: v2.11.4
           args: --timeout=5m
 
+      # The documented install command for instantmailcheck was wrong in four
+      # places at once, and stayed wrong because nothing reads the docs. Homebrew
+      # distributes pre-compiled binaries as casks, and `brew install` without
+      # `--cask` does not resolve one — so the published instruction simply fails.
+      #
+      # Deliberately a step in this job rather than a job of its own, so it is
+      # covered by the required status check already configured.
+      - name: Documented Homebrew commands name the right kind of package
+        run: |
+          set -euo pipefail
+
+          # antimatter-studios/tap ships BOTH kinds, so this cannot be a blanket
+          # rule about `--cask`. These are its casks; a cask needs the flag or the
+          # command resolves nothing:
+          casks="ddt diskcutter dotman tacli instantmailcheck"
+          #
+          # chore, qemu, trove-cli and virtiofsd are formulae there, and are
+          # correctly installed WITHOUT the flag. Do not "fix" those. If one of
+          # them is ever converted to a cask, add it to the list above — the
+          # direction of travel is formula to cask for anything shipping a
+          # pre-compiled binary.
+
+          fail=0
+          for c in $casks; do
+            # Matches only the form missing the flag: with `--cask` present, the
+            # tap path no longer follows `install` directly. Anchoring on the tap
+            # path also keeps this from matching the pattern written here.
+            hits=$(grep -rnE "brew install +antimatter-studios/tap/${c}\b" \
+                     --include='*.md' --include='*.yml' --include='*.yaml' . || true)
+            if [ -n "$hits" ]; then
+              echo "$hits" >&2
+              echo "::error::$c is a cask in antimatter-studios/tap; the lines above omit --cask, so the command resolves nothing" >&2
+              fail=1
+            fi
+          done
+          [ "$fail" = 0 ] && echo "documented Homebrew commands name the right kind of package"
+
   test:
     name: Test
     runs-on: ubuntu-latest
