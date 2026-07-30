@@ -1044,7 +1044,7 @@ tasks:
             \`ddt\` provides the IP alias, DNS, and reverse proxy as a
             single integrated stack. Install once, then it's stateless.
 
-              brew install antimatter-studios/tap/ddt
+              brew install --cask antimatter-studios/tap/ddt
               ddt install     # interactive: IP alias + DNS + services
               ddt start       # bring up dns + proxy
 
