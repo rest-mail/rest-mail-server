@@ -19,6 +19,7 @@ import (
 	"github.com/restmail/restmail/internal/digest"
 	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/domainstate"
 	"github.com/restmail/restmail/internal/greylist"
 	"github.com/restmail/restmail/internal/rollup"
 	"github.com/restmail/restmail/internal/trace"
@@ -203,6 +204,14 @@ func main() {
 		acmeManager.Start()
 	}
 
+	// Keep the domains' live state honest about what the gateways can serve: a
+	// domain whose certificate has stopped being valid has its handshakes refused,
+	// so it is taken out of service and alerted on rather than left looking live
+	// (issue #289). This runs whether or not ACME is enabled, since a certificate
+	// can also be uploaded, deleted or simply left to expire.
+	domainWatcher := domainstate.NewWatcher(database, domainstate.DefaultInterval)
+	domainWatcher.Start()
+
 	// Start quarantine digest worker
 	digestInterval := 24 * time.Hour
 	if cfg.Environment == "development" {
@@ -304,6 +313,7 @@ func main() {
 	if acmeManager != nil {
 		acmeManager.Shutdown()
 	}
+	domainWatcher.Shutdown()
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()
 	// Stop the rollup worker (takes a final snapshot to capture the partial

@@ -31,12 +31,17 @@ type mailboxInfo struct {
 
 // lookupMailbox finds a mailbox by local part and domain name. A zero ID means
 // no such mailbox exists; a non-nil error is a real database failure.
+//
+// A domain that is not live is not served at all: it has no usable certificate,
+// so mail for it cannot be carried over TLS (issues #289, #290). Its mailboxes
+// are therefore invisible here, and mail addressed to them is refused like any
+// other unknown recipient.
 func (f *recipientCheckFilter) lookupMailbox(localPart, domain string) (mailboxInfo, error) {
 	var mb mailboxInfo
 	err := f.db.Table("mailboxes").
 		Select("mailboxes.id, mailboxes.quota_bytes, mailboxes.quota_used_bytes").
 		Joins("JOIN domains ON domains.id = mailboxes.domain_id").
-		Where("mailboxes.local_part = ? AND domains.name = ?", localPart, domain).
+		Where("mailboxes.local_part = ? AND domains.name = ? AND domains.active", localPart, domain).
 		Scan(&mb).Error
 	return mb, err
 }
@@ -71,7 +76,7 @@ func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJ
 			var aliasCount int64
 			f.db.Table("aliases").
 				Joins("JOIN domains ON domains.id = aliases.domain_id").
-				Where("aliases.source_address = ?", rcpt).
+				Where("aliases.source_address = ? AND domains.active", rcpt).
 				Count(&aliasCount)
 
 			if aliasCount == 0 {

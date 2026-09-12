@@ -10,18 +10,29 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/restmail/restmail/internal/metrics"
 )
 
 // SNICertLoader provides SNI-based certificate selection by loading
 // per-domain certificate/key pairs from a directory. Files are expected
 // as {domain}.crt and {domain}.key (e.g. example.test.crt, example.test.key).
 type SNICertLoader struct {
-	certDir     string
-	fallback    *tls.Certificate
-	mu          sync.RWMutex
-	cache       map[string]*tls.Certificate
-	watcher     *fsnotify.Watcher
-	stopCh      chan struct{}
+	certDir  string
+	fallback *tls.Certificate
+	hosts    func(name string) (bool, error)
+	mu       sync.RWMutex
+	cache    map[string]*tls.Certificate
+	watcher  *fsnotify.Watcher
+	stopCh   chan struct{}
+}
+
+// SetHostedNames tells the loader which names this server is responsible for, so
+// that a name it should be able to serve but cannot is reported as the fault it
+// is, rather than as an ordinary request for a name that is not ours.
+func (l *SNICertLoader) SetHostedNames(hosts func(name string) (bool, error)) {
+	l.mu.Lock()
+	l.hosts = hosts
+	l.mu.Unlock()
 }
 
 // NewSNICertLoader creates a loader that serves certificates from certDir.
@@ -35,9 +46,15 @@ func NewSNICertLoader(certDir string, fallback *tls.Certificate) *SNICertLoader 
 }
 
 // GetCertificate implements the tls.Config.GetCertificate callback.
+//
+// A client that asks for a name is answered with that name's certificate or not
+// at all: the fallback is never offered under another name, because it fails
+// verification anyway and teaches people to click through the warning (#290).
 func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	name := strings.ToLower(hello.ServerName)
 	if name == "" {
+		// Other mail servers commonly reach port 25 without SNI. They get this
+		// server's own certificate, the one for its MX host name.
 		if l.fallback != nil {
 			return l.fallback, nil
 		}
@@ -46,40 +63,61 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 
 	// Check cache
 	l.mu.RLock()
-	if cert, ok := l.cache[name]; ok {
-		l.mu.RUnlock()
+	cert, cached := l.cache[name]
+	hosts := l.hosts
+	l.mu.RUnlock()
+	if cached {
 		return cert, nil
 	}
-	l.mu.RUnlock()
 
 	// Try to load from disk
 	certPath := filepath.Join(l.certDir, name+".crt")
 	keyPath := filepath.Join(l.certDir, name+".key")
 
 	if _, err := os.Stat(certPath); err != nil {
-		slog.Debug("sni: no cert for domain, using fallback", "domain", name)
-		if l.fallback != nil {
-			return l.fallback, nil
-		}
-		return nil, fmt.Errorf("no certificate for %s", name)
+		return nil, l.refuse(name, hosts, fmt.Errorf("no certificate file: %w", err))
 	}
 
-	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	loaded, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
-		slog.Error("sni: failed to load cert", "domain", name, "error", err)
-		if l.fallback != nil {
-			return l.fallback, nil
-		}
-		return nil, fmt.Errorf("failed to load cert for %s: %w", name, err)
+		return nil, l.refuse(name, hosts, fmt.Errorf("loading the certificate and key: %w", err))
 	}
 
 	// Cache it
 	l.mu.Lock()
-	l.cache[name] = &cert
+	l.cache[name] = &loaded
 	l.mu.Unlock()
 
 	slog.Info("sni: loaded certificate", "domain", name)
-	return &cert, nil
+	return &loaded, nil
+}
+
+// refuse says why name cannot be served and returns the error that ends the
+// handshake. A name this server is responsible for but cannot serve is a fault on
+// this side, so it is logged at error level to be alerted on; any other name is
+// simply not ours, and refusing it is routine.
+func (l *SNICertLoader) refuse(name string, hosts func(string) (bool, error), cause error) error {
+	if hosts != nil {
+		hosted, err := hosts(name)
+		if err != nil {
+			slog.Error("sni: cannot tell whether this domain is served here", "domain", name, "error", err)
+			return fmt.Errorf("no usable certificate for %s: %w", name, cause)
+		}
+		if hosted {
+			metrics.TLSCertMissing.Inc()
+			slog.Error("sni: a domain served here has no usable certificate, refusing the handshake",
+				"domain", name, "error", cause)
+			return fmt.Errorf("no usable certificate for %s, which is served here: %w", name, cause)
+		}
+		slog.Debug("sni: not a domain served here, refusing the handshake", "domain", name)
+		return fmt.Errorf("%w: %s", ErrNotServedHere, name)
+	}
+	// Without a hosted-names check the two cases cannot be told apart, so this is
+	// reported as the fault it may well be, and counted: a gateway that serves any
+	// domain from this directory would otherwise refuse handshakes silently.
+	metrics.TLSCertMissing.Inc()
+	slog.Error("sni: no usable certificate, refusing the handshake", "domain", name, "error", cause)
+	return fmt.Errorf("no usable certificate for %s: %w", name, cause)
 }
 
 // Invalidate removes a domain's cached certificate so it reloads from disk

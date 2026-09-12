@@ -59,7 +59,9 @@ func TestRecipientCheck_Subaddressing(t *testing.T) {
 	db := openRecipientCheckTestDB(t)
 
 	domainName := fmt.Sprintf("subaddr-rcpt-%d.test", time.Now().UnixNano())
-	dom := models.Domain{Name: domainName}
+	// Live: a domain that is not live has no usable certificate, so recipient_check
+	// refuses mail for it (issues #289, #290). This test is about subaddressing.
+	dom := models.Domain{Name: domainName, Active: true}
 	if err := db.Create(&dom).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
