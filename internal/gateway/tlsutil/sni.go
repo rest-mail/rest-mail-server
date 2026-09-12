@@ -75,11 +75,20 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 	keyPath := filepath.Join(l.certDir, name+".key")
 
 	if _, err := os.Stat(certPath); err != nil {
+		// A single keypair whose SANs list this installation's host names is the
+		// usual arrangement, and for those names it is the right answer, not a
+		// substitute for one.
+		if certCovers(l.fallback, name) {
+			return l.fallback, nil
+		}
 		return nil, l.refuse(name, hosts, fmt.Errorf("no certificate file: %w", err))
 	}
 
 	loaded, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
+		if certCovers(l.fallback, name) {
+			return l.fallback, nil
+		}
 		return nil, l.refuse(name, hosts, fmt.Errorf("loading the certificate and key: %w", err))
 	}
 

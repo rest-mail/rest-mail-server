@@ -88,7 +88,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 		Order("certificates.not_after DESC").
 		First(&cert).Error
 	if err != nil {
-		return nil, l.refuse(name, fmt.Errorf("no current certificate: %w", err))
+		return l.answerOrRefuse(name, fmt.Errorf("no current certificate: %w", err))
 	}
 
 	// Decrypt private key if master key is set
@@ -96,7 +96,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	if l.masterKey != "" {
 		decrypted, err := crypto.DecryptString(cert.KeyPEM, l.masterKey)
 		if err != nil {
-			return nil, l.refuse(name, fmt.Errorf("decrypting the private key: %w", err))
+			return l.answerOrRefuse(name, fmt.Errorf("decrypting the private key: %w", err))
 		}
 		keyPEM = decrypted
 	}
@@ -104,7 +104,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	// Parse the certificate
 	tlsCert, err := tls.X509KeyPair([]byte(cert.CertPEM), []byte(keyPEM))
 	if err != nil {
-		return nil, l.refuse(name, fmt.Errorf("parsing the stored certificate: %w", err))
+		return l.answerOrRefuse(name, fmt.Errorf("parsing the stored certificate: %w", err))
 	}
 
 	// Cache it
@@ -117,6 +117,17 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 
 	slog.Info("loaded certificate from DB", "domain", name, "issuer", cert.Issuer, "expires", cert.NotAfter)
 	return &tlsCert, nil
+}
+
+// answerOrRefuse serves this server's own certificate when it carries the name the
+// client asked for, and otherwise refuses. An installation with a single keypair
+// whose SANs list its host names is the usual arrangement, and for those names that
+// certificate is the right answer rather than a substitute for one (issue #290).
+func (l *DBCertLoader) answerOrRefuse(name string, cause error) (*tls.Certificate, error) {
+	if certCovers(l.fallback, name) {
+		return l.fallback, nil
+	}
+	return nil, l.refuse(name, cause)
 }
 
 // refuse says why name cannot be served and returns the error that ends the

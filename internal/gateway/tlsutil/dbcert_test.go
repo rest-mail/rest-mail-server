@@ -138,6 +138,21 @@ func TestDBCertLoader_NeverAnswersWithAnotherNamesCertificate(t *testing.T) {
 		}
 	})
 
+	t.Run("a name the server's own certificate covers is served", func(t *testing.T) {
+		// One keypair whose SANs list the host names an installation serves is the
+		// usual arrangement, and for those names the server's own certificate is the
+		// right answer — refusing would take the installation off the air (#290).
+		covering := selfSignedFor(t, "mx.example.test", "imap.example.test")
+		l := NewDBCertLoader(tx, "", &covering)
+		cert, err := l.GetCertificate(&tls.ClientHelloInfo{ServerName: "imap.example.test"})
+		if err != nil {
+			t.Fatalf("refused a name the server's own certificate covers: %v", err)
+		}
+		if cert != &covering {
+			t.Error("answered with something other than the server's own certificate")
+		}
+	})
+
 	t.Run("a domain with a valid certificate is still served", func(t *testing.T) {
 		cert, err := loader.GetCertificate(&tls.ClientHelloInfo{ServerName: "served-db.test"})
 		if err != nil {

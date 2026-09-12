@@ -132,6 +132,74 @@ func TestSNICertLoader_NeverAnswersWithAnotherNamesCertificate(t *testing.T) {
 	})
 }
 
+// selfSignedFor returns a certificate covering every name given, the way a single
+// keypair for a whole installation lists its host names in its SANs.
+func selfSignedFor(t *testing.T, names ...string) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: names[0]},
+		DNSNames:     names,
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := tls.X509KeyPair(
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert
+}
+
+// Refusing is about never answering under a name the certificate does not carry —
+// not about refusing whenever there is no per-domain file. Most installations have
+// one keypair whose SANs list every host name they serve (the testbed issues exactly
+// that), and for those names the server's own certificate is the right answer. A name
+// it does not cover is still refused (issue #290).
+func TestSNICertLoader_ServesTheServersOwnCertificateWhenItCoversTheName(t *testing.T) {
+	dir := t.TempDir()
+	fallback := selfSignedFor(t, "mx.example.test", "imap.example.test")
+
+	loader := NewSNICertLoader(dir, &fallback)
+	loader.SetHostedNames(func(string) (bool, error) { return true, nil })
+
+	t.Run("a name the server's own certificate covers is served", func(t *testing.T) {
+		cert, err := loader.GetCertificate(&tls.ClientHelloInfo{ServerName: "imap.example.test"})
+		if err != nil {
+			t.Fatalf("refused a name the server's own certificate covers: %v", err)
+		}
+		if cert != &fallback {
+			t.Error("answered with something other than the server's own certificate")
+		}
+	})
+
+	t.Run("a name it does not cover is refused", func(t *testing.T) {
+		cert, err := loader.GetCertificate(&tls.ClientHelloInfo{ServerName: "other.example.test"})
+		if err == nil {
+			t.Fatal("answered a name the server's own certificate does not cover")
+		}
+		if cert != nil {
+			t.Errorf("cert = %v, want nil", cert)
+		}
+	})
+}
+
 // Without a hosted-names check the loader cannot tell "hosted but broken" from
 // "not ours", but it still must not answer with another name's certificate.
 func TestSNICertLoader_RefusesUnknownNameWithoutHostedNamesCheck(t *testing.T) {
