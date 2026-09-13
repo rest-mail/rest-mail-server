@@ -1,47 +1,15 @@
 package pop3
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/restmail/restmail/internal/gateway/apiclient"
+	"github.com/restmail/restmail/internal/gateway/rawmsg"
 )
 
-// buildRawMessage constructs a simplified RFC 2822 message from API data.
+// buildRawMessage renders a stored message as RFC 5322 bytes for RETR and TOP.
+//
+// The IMAP gateway hands a client the same stored message on FETCH, so the two
+// must agree byte for byte: both delegate to rawmsg.Build rather than keeping
+// their own copy of the construction rules.
 func buildRawMessage(msg apiclient.MessageDetail) string {
-	var b strings.Builder
-
-	b.WriteString(fmt.Sprintf("From: %s <%s>\r\n", msg.SenderName, msg.Sender))
-	b.WriteString(fmt.Sprintf("Subject: %s\r\n", msg.Subject))
-	b.WriteString(fmt.Sprintf("Date: %s\r\n", msg.ReceivedAt.Format("Mon, 02 Jan 2006 15:04:05 -0700")))
-	if msg.MessageID != "" {
-		b.WriteString(fmt.Sprintf("Message-ID: <%s>\r\n", msg.MessageID))
-	}
-	if msg.InReplyTo != "" {
-		b.WriteString(fmt.Sprintf("In-Reply-To: <%s>\r\n", msg.InReplyTo))
-	}
-	b.WriteString("MIME-Version: 1.0\r\n")
-
-	if msg.BodyText != "" && msg.BodyHTML != "" {
-		boundary := fmt.Sprintf("=_restmail_%d", msg.ReceivedAt.UnixNano())
-		b.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"\r\n", boundary))
-		b.WriteString("\r\n")
-		b.WriteString("--" + boundary + "\r\n")
-		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-		b.WriteString(msg.BodyText + "\r\n")
-		b.WriteString("--" + boundary + "\r\n")
-		b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
-		b.WriteString(msg.BodyHTML + "\r\n")
-		b.WriteString("--" + boundary + "--\r\n")
-	} else if msg.BodyHTML != "" {
-		b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
-		b.WriteString("\r\n")
-		b.WriteString(msg.BodyHTML)
-	} else {
-		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-		b.WriteString("\r\n")
-		b.WriteString(msg.BodyText)
-	}
-
-	return b.String()
+	return rawmsg.Build(msg)
 }
