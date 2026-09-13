@@ -728,104 +728,24 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build raw RFC 2822 message for outbound queue entries.
-	var rawMessage string
-	{
-		var b strings.Builder
-		fromAddr := &mail.Address{Name: senderMailbox.DisplayName, Address: req.From}
-		b.WriteString("From: " + fromAddr.String() + "\r\n")
-		b.WriteString("To: " + strings.Join(req.To, ", ") + "\r\n")
-		if len(req.Cc) > 0 {
-			b.WriteString("Cc: " + strings.Join(req.Cc, ", ") + "\r\n")
-		}
-		b.WriteString("Subject: " + req.Subject + "\r\n")
-		b.WriteString("Date: " + now.Format(time.RFC1123Z) + "\r\n")
-		b.WriteString("Message-ID: " + messageID + "\r\n")
-		if req.InReplyTo != "" {
-			b.WriteString("In-Reply-To: <" + req.InReplyTo + ">\r\n")
-		}
-		b.WriteString("MIME-Version: 1.0\r\n")
-
-		// Write extra headers added by pipeline transforms (e.g. header_cleanup).
-		// DKIM-Signature/ARC-* are deliberately skipped here: the pipeline signs a
-		// reconstructed EmailJSON, whose header bytes don't match this serialized
-		// form, so its signature never verifies. DKIM is signed authoritatively
-		// over the finalized raw below (signOutboundDKIM).
-		for name, value := range extraHeaders {
-			switch {
-			case strings.EqualFold(name, "DKIM-Signature"),
-				strings.HasPrefix(strings.ToLower(name), "arc-"):
-				continue
-			}
-			b.WriteString(name + ": " + value + "\r\n")
-		}
-
-		if icsData != nil {
-			// Calendar invite: multipart/mixed with text body + text/calendar attachment
-			mixedBoundary := fmt.Sprintf("=_restmail_mixed_%d", now.UnixNano())
-			b.WriteString("Content-Type: multipart/mixed; boundary=\"" + mixedBoundary + "\"\r\n")
-			b.WriteString("\r\n")
-
-			// Text body part
-			b.WriteString("--" + mixedBoundary + "\r\n")
-			if req.BodyText != "" && req.BodyHTML != "" {
-				altBoundary := fmt.Sprintf("=_restmail_alt_%d", now.UnixNano())
-				b.WriteString("Content-Type: multipart/alternative; boundary=\"" + altBoundary + "\"\r\n")
-				b.WriteString("\r\n")
-				b.WriteString("--" + altBoundary + "\r\n")
-				b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-				b.WriteString(req.BodyText + "\r\n")
-				b.WriteString("--" + altBoundary + "\r\n")
-				b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
-				b.WriteString(req.BodyHTML + "\r\n")
-				b.WriteString("--" + altBoundary + "--\r\n")
-			} else if req.BodyHTML != "" {
-				b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
-				b.WriteString(req.BodyHTML + "\r\n")
-			} else {
-				b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-				b.WriteString(req.BodyText + "\r\n")
-			}
-
-			// Calendar part
-			method := strings.ToUpper(req.CalendarEvent.Method)
-			if method == "" {
-				method = "REQUEST"
-			}
-			b.WriteString("--" + mixedBoundary + "\r\n")
-			b.WriteString("Content-Type: text/calendar; charset=utf-8; method=" + method + "\r\n")
-			b.WriteString("Content-Disposition: attachment; filename=\"invite.ics\"\r\n")
-			b.WriteString("Content-Transfer-Encoding: base64\r\n")
-			b.WriteString("\r\n")
-			encoded := base64.StdEncoding.EncodeToString(icsData)
-			for i := 0; i < len(encoded); i += 76 {
-				end := i + 76
-				if end > len(encoded) {
-					end = len(encoded)
-				}
-				b.WriteString(encoded[i:end] + "\r\n")
-			}
-			b.WriteString("--" + mixedBoundary + "--\r\n")
-		} else if req.BodyText != "" && req.BodyHTML != "" {
-			boundary := fmt.Sprintf("=_restmail_%d", now.UnixNano())
-			b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
-			b.WriteString("\r\n")
-			b.WriteString("--" + boundary + "\r\n")
-			b.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
-			b.WriteString(req.BodyText + "\r\n")
-			b.WriteString("--" + boundary + "\r\n")
-			b.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
-			b.WriteString(req.BodyHTML + "\r\n")
-			b.WriteString("--" + boundary + "--\r\n")
-		} else if req.BodyHTML != "" {
-			b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
-			b.WriteString("\r\n")
-			b.WriteString(req.BodyHTML + "\r\n")
-		} else {
-			b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-			b.WriteString("\r\n")
-			b.WriteString(req.BodyText + "\r\n")
-		}
-		rawMessage = b.String()
+	rawMessage, rawErr := buildOutboundRaw(outboundMessage{
+		FromName:  senderMailbox.DisplayName,
+		From:      req.From,
+		To:        req.To,
+		Cc:        req.Cc,
+		Subject:   req.Subject,
+		BodyText:  req.BodyText,
+		BodyHTML:  req.BodyHTML,
+		MessageID: messageID,
+		InReplyTo: req.InReplyTo,
+		Date:      now,
+		Extra:     extraHeaders,
+		ICS:       icsData,
+		ICSMethod: calendarMethod(req.CalendarEvent),
+	})
+	if rawErr != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to build the outbound message")
+		return
 	}
 
 	// Sign the finalized outbound message over its actual transmitted bytes.
