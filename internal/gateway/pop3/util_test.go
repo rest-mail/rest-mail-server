@@ -1,7 +1,8 @@
 package pop3
 
 import (
-	"fmt"
+	"mime"
+	"mime/multipart"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +29,10 @@ func TestBuildRawMessage_TextOnly(t *testing.T) {
 
 	raw := buildRawMessage(msg)
 
-	assertContains(t, raw, "From: Alice <alice@example.com>\r\n")
+	// The display name is rendered by net/mail, which quotes it rather than
+	// pasting it in raw — the same rendering that encodes a non-ASCII name and
+	// drops the empty gap when there is no name at all.
+	assertContains(t, raw, "From: \"Alice\" <alice@example.com>\r\n")
 	assertContains(t, raw, "Subject: Hello\r\n")
 	assertContains(t, raw, "MIME-Version: 1.0\r\n")
 	assertContains(t, raw, "Content-Type: text/plain; charset=utf-8\r\n")
@@ -53,7 +57,7 @@ func TestBuildRawMessage_HTMLOnly(t *testing.T) {
 
 	raw := buildRawMessage(msg)
 
-	assertContains(t, raw, "From: Bob <bob@example.com>\r\n")
+	assertContains(t, raw, "From: \"Bob\" <bob@example.com>\r\n")
 	assertContains(t, raw, "Content-Type: text/html; charset=utf-8\r\n")
 	assertContains(t, raw, "<p>Hello</p>")
 
@@ -77,14 +81,51 @@ func TestBuildRawMessage_MultipartTextAndHTML(t *testing.T) {
 
 	raw := buildRawMessage(msg)
 
-	boundary := fmt.Sprintf("=_restmail_%d", ts.UnixNano())
-	assertContains(t, raw, fmt.Sprintf("Content-Type: multipart/alternative; boundary=\"%s\"", boundary))
+	// The boundary is generated per rendering rather than derived from the
+	// receipt timestamp, so it is read back out of the Content-Type instead of
+	// being recomputed here: a boundary a body could predict is one a body could
+	// forge (issue #299).
+	header, body, ok := strings.Cut(raw, "\r\n\r\n")
+	if !ok {
+		t.Fatalf("no header/body separator in:\n%s", raw)
+	}
+	var ctype string
+	for _, line := range strings.Split(header, "\r\n") {
+		if strings.HasPrefix(strings.ToLower(line), "content-type:") {
+			ctype = strings.TrimSpace(line[len("content-type:"):])
+		}
+	}
+	mediaType, params, err := mime.ParseMediaType(ctype)
+	if err != nil {
+		t.Fatalf("Content-Type %q: %v", ctype, err)
+	}
+	if mediaType != "multipart/alternative" {
+		t.Errorf("media type = %q, want multipart/alternative", mediaType)
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		t.Fatal("no boundary parameter in the Content-Type")
+	}
+
 	assertContains(t, raw, "--"+boundary+"\r\n")
 	assertContains(t, raw, "Content-Type: text/plain; charset=utf-8\r\n")
 	assertContains(t, raw, "Plain text")
 	assertContains(t, raw, "Content-Type: text/html; charset=utf-8\r\n")
 	assertContains(t, raw, "<p>Rich text</p>")
 	assertContains(t, raw, "--"+boundary+"--\r\n")
+
+	// Both parts survive a round trip through a parser.
+	r := multipart.NewReader(strings.NewReader(body), boundary)
+	var parts int
+	for {
+		if _, err := r.NextPart(); err != nil {
+			break
+		}
+		parts++
+	}
+	if parts != 2 {
+		t.Errorf("read %d parts, want 2 (text and HTML)", parts)
+	}
 }
 
 func TestBuildRawMessage_WithMessageID(t *testing.T) {
