@@ -97,6 +97,9 @@ func main() {
 	metricsServer.Start()
 
 	var tlsConfig *tls.Config
+	// Kept so the database, once open, can tell the file loader which names this
+	// server is responsible for.
+	var sniLoader *tlsutil.SNICertLoader
 	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
 		if err != nil {
@@ -110,6 +113,7 @@ func main() {
 		// Enable SNI-based cert selection if a cert directory is configured
 		if cfg.TLSCertDir != "" {
 			loader := tlsutil.NewSNICertLoader(cfg.TLSCertDir, &cert)
+			sniLoader = loader
 			tlsConfig.GetCertificate = loader.GetCertificate
 			slog.Info("TLS configured with SNI", "cert", cfg.TLSCertPath, "cert_dir", cfg.TLSCertDir)
 			if err := loader.StartWatching(); err != nil {
@@ -163,16 +167,14 @@ func main() {
 	if tlsConfig != nil && database != nil {
 		fallbackCert := &tlsConfig.Certificates[0]
 		dbCertLoader := tlsutil.NewDBCertLoader(database, cfg.MasterKey, fallbackCert)
-		prevGetCert := tlsConfig.GetCertificate
-		tlsConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if c, err := dbCertLoader.GetCertificate(hello); c != nil && err == nil {
-				return c, nil
-			}
-			if prevGetCert != nil {
-				return prevGetCert(hello)
-			}
-			return nil, nil
+		if sniLoader != nil {
+			sniLoader.SetHostedNames(tlsutil.HostedInDatabase(database))
 		}
+		// The database is asked first, then the certificate directory. A name
+		// neither of them serves is refused; a domain served here whose certificate
+		// is missing or unusable ends the handshake rather than falling through to
+		// a certificate issued for a different name (issue #290).
+		tlsConfig.GetCertificate = tlsutil.Chain(dbCertLoader.GetCertificate, tlsConfig.GetCertificate)
 		slog.Info("DB-backed SNI certificate loading enabled")
 	}
 

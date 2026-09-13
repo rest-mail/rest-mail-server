@@ -2,12 +2,16 @@ package tlsutil
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/metrics"
 	"gorm.io/gorm"
 )
 
@@ -27,6 +31,20 @@ type dbCertEntry struct {
 	expiresAt time.Time
 }
 
+// HostedInDatabase answers whether a name is a domain this server is responsible
+// for, according to the domains table. It is what a file-backed loader needs to
+// tell "a domain of ours whose certificate is broken", which is a fault worth
+// alerting on, from "a name that is not ours", which is routine.
+func HostedInDatabase(db *gorm.DB) func(name string) (bool, error) {
+	return func(name string) (bool, error) {
+		var hosted int64
+		if err := db.Model(&models.Domain{}).Where("name = ?", strings.ToLower(name)).Count(&hosted).Error; err != nil {
+			return false, err
+		}
+		return hosted > 0, nil
+	}
+}
+
 // NewDBCertLoader creates a certificate loader that reads from the database.
 func NewDBCertLoader(db *gorm.DB, masterKey string, fallback *tls.Certificate) *DBCertLoader {
 	return &DBCertLoader{
@@ -40,13 +58,19 @@ func NewDBCertLoader(db *gorm.DB, masterKey string, fallback *tls.Certificate) *
 
 // GetCertificate implements the tls.Config.GetCertificate callback.
 // It looks up the certificate by SNI server name from the database.
+//
+// A client that asks for a name is answered with that name's certificate or not
+// at all: the fallback is never offered under another name, because it fails
+// verification anyway and teaches people to click through the warning (#290).
 func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	name := hello.ServerName
+	name := strings.ToLower(hello.ServerName)
 	if name == "" {
+		// Other mail servers commonly reach port 25 without SNI. They get this
+		// server's own certificate, the one for its MX host name.
 		if l.fallback != nil {
 			return l.fallback, nil
 		}
-		return nil, nil
+		return nil, errors.New("no SNI and no fallback certificate")
 	}
 
 	// Check cache
@@ -64,11 +88,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 		Order("certificates.not_after DESC").
 		First(&cert).Error
 	if err != nil {
-		slog.Debug("no DB certificate for domain, using fallback", "domain", name)
-		if l.fallback != nil {
-			return l.fallback, nil
-		}
-		return nil, nil
+		return l.answerOrRefuse(name, fmt.Errorf("no current certificate: %w", err))
 	}
 
 	// Decrypt private key if master key is set
@@ -76,11 +96,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	if l.masterKey != "" {
 		decrypted, err := crypto.DecryptString(cert.KeyPEM, l.masterKey)
 		if err != nil {
-			slog.Error("failed to decrypt certificate key", "domain", name, "error", err)
-			if l.fallback != nil {
-				return l.fallback, nil
-			}
-			return nil, nil
+			return l.answerOrRefuse(name, fmt.Errorf("decrypting the private key: %w", err))
 		}
 		keyPEM = decrypted
 	}
@@ -88,11 +104,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	// Parse the certificate
 	tlsCert, err := tls.X509KeyPair([]byte(cert.CertPEM), []byte(keyPEM))
 	if err != nil {
-		slog.Error("failed to parse certificate from DB", "domain", name, "error", err)
-		if l.fallback != nil {
-			return l.fallback, nil
-		}
-		return nil, nil
+		return l.answerOrRefuse(name, fmt.Errorf("parsing the stored certificate: %w", err))
 	}
 
 	// Cache it
@@ -105,6 +117,38 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 
 	slog.Info("loaded certificate from DB", "domain", name, "issuer", cert.Issuer, "expires", cert.NotAfter)
 	return &tlsCert, nil
+}
+
+// answerOrRefuse serves this server's own certificate when it carries the name the
+// client asked for, and otherwise refuses. An installation with a single keypair
+// whose SANs list its host names is the usual arrangement, and for those names that
+// certificate is the right answer rather than a substitute for one (issue #290).
+func (l *DBCertLoader) answerOrRefuse(name string, cause error) (*tls.Certificate, error) {
+	if certCovers(l.fallback, name) {
+		return l.fallback, nil
+	}
+	return nil, l.refuse(name, cause)
+}
+
+// refuse says why name cannot be served and returns the error that ends the
+// handshake. A domain this server hosts but cannot serve is a fault on this side:
+// it is counted and logged at error level so it is alerted on. Any other name is
+// simply not ours, and refusing it is routine. Neither is ever answered with
+// another name's certificate (issue #290).
+func (l *DBCertLoader) refuse(name string, cause error) error {
+	var hosted int64
+	if err := l.db.Model(&models.Domain{}).Where("name = ?", name).Count(&hosted).Error; err != nil {
+		slog.Error("cannot tell whether this domain is served here", "domain", name, "error", err)
+		return fmt.Errorf("no usable certificate for %s: %w", name, cause)
+	}
+	if hosted > 0 {
+		metrics.TLSCertMissing.Inc()
+		slog.Error("a domain served here has no usable certificate, refusing the handshake",
+			"domain", name, "error", cause)
+		return fmt.Errorf("no usable certificate for %s, which is served here: %w", name, cause)
+	}
+	slog.Debug("not a domain served here, refusing the handshake", "domain", name)
+	return fmt.Errorf("%w: %s", ErrNotServedHere, name)
 }
 
 // Invalidate removes a domain's certificate from the cache, forcing a reload on the next request.

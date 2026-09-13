@@ -119,10 +119,14 @@ func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A domain is set up in stages and is not live until it has a certificate of
+	// its own: mail is only ever carried over TLS, and a live domain with no
+	// certificate cannot be served (issue #289). Making it live is a separate
+	// request, refused while there is no certificate to serve it with.
 	domain := models.Domain{
 		Name:       req.Name,
 		ServerType: req.ServerType,
-		Active:     true,
+		Active:     false,
 	}
 	if req.DefaultQuotaBytes != nil {
 		domain.DefaultQuotaBytes = *req.DefaultQuotaBytes
@@ -200,6 +204,25 @@ func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	updates := map[string]interface{}{}
 	if req.Active != nil {
+		// A domain goes live only once it has a certificate of its own to be served
+		// with: mail for it is only ever carried over TLS, and the gateways refuse
+		// handshakes for a domain they cannot serve rather than answering under
+		// another name (issues #289, #290). Taking one out of service is always
+		// allowed.
+		if *req.Active {
+			var current int64
+			if err := h.db.Model(&models.Certificate{}).
+				Where("domain_id = ? AND not_before <= NOW() AND not_after > NOW()", domain.ID).
+				Count(&current).Error; err != nil {
+				respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the domain's certificate")
+				return
+			}
+			if current == 0 {
+				respond.Error(w, http.StatusConflict, "certificate_required",
+					"This domain has no currently valid certificate, so it cannot go live. Add one first.")
+				return
+			}
+		}
 		updates["active"] = *req.Active
 	}
 	if req.DefaultQuotaBytes != nil {
