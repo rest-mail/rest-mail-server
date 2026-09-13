@@ -215,7 +215,7 @@ See the [upstream README](https://github.com/rest-mail/instantmailcheck#readme) 
 
 This repo ships the RESTMAIL product only. Postfix/Dovecot reference instances live in [`rest-mail/reference-mailserver`](https://github.com/rest-mail/reference-mailserver) and dnsmasq lives in [`rest-mail/testbed`](https://github.com/rest-mail/testbed). All three projects share the `mailnet` Docker network and the `certs` volume that the testbed provides.
 
-The gateways contain no protocol code of their own — each is a `Backend` implementation handed to an external server library, which speaks the wire protocol:
+The gateways implement no wire protocol of their own — each is a `Backend` implementation handed to an external server library, which speaks the protocol — and message parsing is delegated to `internal/mime` (go-message) rather than hand-rolled per gateway:
 
 ```
                           Clients
