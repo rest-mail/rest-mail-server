@@ -110,7 +110,7 @@ func TestRawMessage_FallsBackWhenNoStoredRaw(t *testing.T) {
 	if strings.Contains(got, "report.pdf") {
 		t.Errorf("fallback unexpectedly contains an attachment: %s", got)
 	}
-	if !strings.Contains(got, "From: Alice <alice@example.com>\r\n") {
+	if !strings.Contains(got, "From: \"Alice\" <alice@example.com>\r\n") {
 		t.Errorf("fallback missing reconstructed From header: %s", got)
 	}
 }
