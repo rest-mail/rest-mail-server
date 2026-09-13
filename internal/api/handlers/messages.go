@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -1601,23 +1602,18 @@ func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Build forwarded body
-	fwdBody := req.BodyText
-	if fwdBody != "" {
-		fwdBody += "\n\n"
-	}
-	fwdBody += "---------- Forwarded message ----------\n"
-	fwdBody += fmt.Sprintf("From: %s\n", original.Sender)
-	fwdBody += fmt.Sprintf("Subject: %s\n\n", original.Subject)
-	fwdBody += original.BodyText
+	// Build the forwarded bodies. Both parts carry the note and the header, so a
+	// client showing the HTML part sees what a client showing the text part sees
+	// (issue #286).
+	fwdText, fwdHTML := forwardBodies(req.BodyText, &original)
 
 	// Build the send request body and delegate to SendMessage
 	sendBody := map[string]interface{}{
 		"from":      req.From,
 		"to":        req.To,
 		"subject":   "Fwd: " + original.Subject,
-		"body_text": fwdBody,
-		"body_html": original.BodyHTML,
+		"body_text": fwdText,
+		"body_html": fwdHTML,
 	}
 	bodyBytes, _ := json.Marshal(sendBody)
 
@@ -1626,6 +1622,53 @@ func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) 
 	newReq.Header.Set("Authorization", r.Header.Get("Authorization"))
 
 	h.SendMessage(w, newReq)
+}
+
+// forwardBodies builds the text and HTML bodies of a forwarded message: the
+// sender's note, then a header naming who the original was from and what it was
+// about, then the original body.
+//
+// Both parts have to carry the note and the header. Building them into the text
+// part alone left every client that shows the HTML part — which is most of them —
+// displaying the forwarded content with no note and no sign that it had been
+// forwarded (issue #286).
+//
+// A text-only original stays text-only: inventing an HTML part for it would
+// change what the recipient's client chooses to render.
+func forwardBodies(note string, original *models.Message) (text, htmlBody string) {
+	text = note
+	if text != "" {
+		text += "\n\n"
+	}
+	text += "---------- Forwarded message ----------\n"
+	text += fmt.Sprintf("From: %s\n", original.Sender)
+	text += fmt.Sprintf("Subject: %s\n\n", original.Subject)
+	text += original.BodyText
+
+	if original.BodyHTML == "" {
+		return text, ""
+	}
+
+	// The note, the sender and the subject are all somebody's typing, so they are
+	// escaped: a subject of `5 < 6` must read as text, and a sender carrying a tag
+	// must not become one. The original body is markup already and goes in as it
+	// is — it is the message being forwarded, and it was sanitized on the way in.
+	var b strings.Builder
+	if note != "" {
+		b.WriteString("<p>")
+		b.WriteString(strings.ReplaceAll(html.EscapeString(note), "\n", "<br>"))
+		b.WriteString("</p>\n")
+	}
+	b.WriteString("<p>---------- Forwarded message ----------<br>\n")
+	b.WriteString("From: ")
+	b.WriteString(html.EscapeString(original.Sender))
+	b.WriteString("<br>\n")
+	b.WriteString("Subject: ")
+	b.WriteString(html.EscapeString(original.Subject))
+	b.WriteString("</p>\n")
+	b.WriteString(original.BodyHTML)
+
+	return text, b.String()
 }
 
 // RespondToCalendar handles Accept/Decline/Tentative responses to calendar invites.

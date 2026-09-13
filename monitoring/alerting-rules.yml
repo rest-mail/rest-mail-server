@@ -21,6 +21,17 @@ groups:
           summary: "Certificate for {{ $labels.domain }} expires in {{ $value }} days"
           description: "The TLS certificate for domain {{ $labels.domain }} will expire in less than 7 days. Renew immediately."
 
+      # A domain served here has no usable certificate, so its handshakes are
+      # refused. Mail for that domain is not being accepted.
+      - alert: DomainCertificateMissing
+        expr: increase(restmail_tls_cert_missing_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Handshakes refused: a domain served here has no usable certificate"
+          description: "{{ $value }} handshakes in the last 10 minutes were refused because the domain asked for is served here but has no usable certificate (none stored, expired, or the stored pair will not load). Mail for it is being turned away. The gateway logs name the domain."
+
       # High authentication failure rate
       - alert: AuthFailureRateHigh
         expr: rate(restmail_auth_failures_total[5m]) * 300 > 100

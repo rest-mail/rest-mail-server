@@ -328,16 +328,19 @@ func (s *session) rateLimitKey() string {
 // and verifies the sender is either the authenticated user or one of its
 // linked accounts.
 func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
-	// No mail is accepted in the clear, on any listener.
+	// Port 25 takes mail in the clear. RFC 3207 §4: "A publicly-referenced SMTP server
+	// MUST NOT require use of the STARTTLS extension in order to deliver mail locally."
+	// Refusing until STARTTLS had been used made rest-mail unreachable for any sender
+	// that will not upgrade, which is a delivery failure rather than a security win
+	// (issue #292). STARTTLS is still advertised on every cleartext session, the arrival
+	// is recorded as plaintext (see inboundTransportSecurity), and penalising plaintext
+	// is the inbound pipeline's job.
 	//
-	// Port 25 is the one that cannot be implicit TLS and still receive from other MTAs,
-	// since relay begins in cleartext and upgrades — so STARTTLS is advertised there and
-	// the transaction is refused until it has been used. Everywhere else the connection
-	// is already TLS before the first command, and this costs nothing.
-	//
-	// The gate is on the transaction rather than the connection deliberately: EHLO,
-	// NOOP, RSET and STARTTLS itself must work, or a peer has no way to upgrade.
-	if _, isTLS := s.conn.TLSConnectionState(); !isTLS {
+	// Submission is different: the client is ours and authenticates, so it can be
+	// required to use TLS, and is. The gate is on the transaction rather than the
+	// connection deliberately: EHLO, NOOP, RSET and STARTTLS itself must work, or a
+	// client has no way to upgrade.
+	if _, isTLS := s.conn.TLSConnectionState(); !isTLS && s.isSubmission {
 		return &gosmtp.SMTPError{
 			Code:         530,
 			EnhancedCode: gosmtp.EnhancedCode{5, 7, 0},

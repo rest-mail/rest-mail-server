@@ -1455,6 +1455,10 @@ paths:
       tags: ["Admin: Domains"]
       x-required-capability: domains:write
       summary: Create a new domain
+      description: >-
+        The domain is created but not live: `active` is false. Mail for a domain
+        is only ever carried over TLS, so it goes live only once it has a
+        certificate of its own, by a separate PATCH setting `active` to true.
       requestBody:
         required: true
         content:
@@ -1463,7 +1467,7 @@ paths:
               $ref: "#/components/schemas/CreateDomainRequest"
       responses:
         "201":
-          description: Domain created
+          description: Domain created, not yet live
           content:
             application/json:
               schema:
@@ -1503,6 +1507,11 @@ paths:
       tags: ["Admin: Domains"]
       x-required-capability: domains:write
       summary: Update a domain
+      description: >-
+        Setting `active` to true makes the domain live, and is refused with 409
+        `certificate_required` unless the domain has a currently valid
+        certificate: mail for it is only ever carried over TLS. Setting `active`
+        to false takes it out of service and is always allowed.
       requestBody:
         required: true
         content:
@@ -1522,6 +1531,12 @@ paths:
                     $ref: "#/components/schemas/Domain"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: The domain has no currently valid certificate, so it cannot go live
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]

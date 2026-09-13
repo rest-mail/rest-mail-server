@@ -152,6 +152,27 @@ var (
 		Name: "restmail_trace_dropped_total",
 		Help: "Per-message traces dropped by async recorder backpressure",
 	})
+
+	// TLSCertMissing counts handshakes refused because a domain this server is
+	// responsible for has no usable certificate: none stored, expired, or the
+	// stored pair will not load. Serving another name's certificate instead is
+	// not an option, so every one of these is a domain that cannot receive mail
+	// until someone fixes it. No labels: one degradation condition, and a
+	// per-domain label would be unbounded (see CertExpiryDays above).
+	TLSCertMissing = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_tls_cert_missing_total",
+		Help: "Handshakes refused because a domain served here has no usable certificate",
+	})
+
+	// DomainsOutOfService counts domains taken out of service because their
+	// certificate stopped being valid — expired without renewal, deleted, or no
+	// longer loadable. Each one is a domain that was accepting mail and now is
+	// not, so it needs a person. No labels: the domain names are in the log line
+	// that accompanies each increment, and a label here would be unbounded.
+	DomainsOutOfService = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "restmail_domains_out_of_service_total",
+		Help: "Domains taken out of service because their certificate stopped being valid",
+	})
 )
 
 func init() {
@@ -172,5 +193,7 @@ func init() {
 		AuthFailures,
 		CertExpiryDays,
 		TraceDropped,
+		TLSCertMissing,
+		DomainsOutOfService,
 	)
 }

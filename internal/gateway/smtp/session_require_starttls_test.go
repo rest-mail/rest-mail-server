@@ -5,25 +5,42 @@ import (
 	"testing"
 )
 
-// Port 25 is the one listener that cannot be implicit TLS and still receive mail from
-// other MTAs: relay begins in cleartext and upgrades. So it is the one place a cleartext
-// session can get as far as a command, and the line is drawn at the message itself —
-// STARTTLS is advertised, and nothing is accepted until it has been used.
+// Port 25 takes mail in the clear, because a publicly-referenced SMTP server has to.
 //
-// RED before this change: a peer could skip STARTTLS entirely and hand over a whole
-// message in the clear, which is exactly the legacy behaviour rest-mail should not have.
-func TestSMTP_InboundRequiresSTARTTLSBeforeMailFrom(t *testing.T) {
+// RFC 3207 §4: "A publicly-referenced SMTP server MUST NOT require use of the STARTTLS
+// extension in order to deliver mail locally." Refusing the transaction until STARTTLS
+// had been used made rest-mail unreachable for any sender that does not upgrade, which
+// is a delivery failure, not a security win (issue #292). STARTTLS is still advertised
+// on every cleartext session, the arrival is recorded as plaintext, and penalising
+// plaintext is the inbound pipeline's job.
+//
+// This test asserted the opposite until #292; submission stays TLS-only, below.
+func TestSMTP_InboundAcceptsPlaintextMailFrom(t *testing.T) {
 	back := newMockBackend()
 	store := newMockStore()
 
 	h := newCleartextSMTPHarness(t, back, store, false) // inbound relay, as port 25
 	h.ehlo()
 
+	if r := h.cmd("MAIL FROM:<sender@peer.test>"); replyCode(r) != "250" {
+		t.Fatalf("MAIL FROM on a cleartext port 25 session = %q, want 250", r)
+	}
+}
+
+// Submission is not the public MX: it is authenticated client traffic, where the client
+// is ours and can be required to use TLS. It stays TLS-only, and says how to upgrade.
+func TestSMTP_SubmissionStillRefusesPlaintext(t *testing.T) {
+	back := newMockBackend()
+	store := newMockStore()
+
+	h := newCleartextSMTPHarness(t, back, store, true) // submission, not upgraded
+	h.ehlo()
+
 	r := h.cmd("MAIL FROM:<sender@peer.test>")
 	if replyCode(r) != "530" {
-		t.Fatalf("MAIL FROM on a cleartext session = %q, want 530", r)
+		t.Fatalf("MAIL FROM on a cleartext submission session = %q, want 530", r)
 	}
-	// The reply has to name the remedy: a peer reading this must know to issue
+	// The reply has to name the remedy: a client reading this must know to issue
 	// STARTTLS rather than that it has been blocked for some unstated reason.
 	if !strings.Contains(strings.ToUpper(r), "STARTTLS") {
 		t.Errorf("the refusal does not mention STARTTLS: %q", r)
