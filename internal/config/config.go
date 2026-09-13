@@ -183,7 +183,8 @@ type Config struct {
 	//
 	// SMTPPortInbound (25) is the exception, and the only listener that can be reached
 	// in the clear: relay from other MTAs begins unencrypted and upgrades, so it
-	// advertises STARTTLS and refuses the transaction until it has been used.
+	// advertises STARTTLS and takes mail whether or not the peer upgrades, as
+	// RFC 3207 §4 requires of a publicly-referenced server (#292).
 	SMTPPortInbound       int
 	SMTPPortSubmissionTLS int
 	IMAPTLSPort           int

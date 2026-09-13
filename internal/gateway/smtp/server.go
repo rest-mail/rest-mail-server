@@ -129,8 +129,9 @@ func (s *Server) SetSubmissionRateLimit(perMinute, perHour int) {
 }
 
 // ListenAndServe starts SMTP listeners on the specified ports. A zero port is skipped.
-//   - port 25: inbound MTA. Advertises STARTTLS and refuses the transaction until it has
-//     been used, since relay from other MTAs begins in cleartext and upgrades.
+//   - port 25: inbound MTA. Advertises STARTTLS, and takes mail whether or not the peer
+//     upgrades: RFC 3207 §4 forbids a publicly-referenced server from requiring STARTTLS
+//     to deliver mail locally. A plaintext arrival is recorded as such (#292).
 //   - port 465: submission, implicit TLS, AUTH required.
 //
 // There is no cleartext submission listener. RFC 8314 prefers implicit TLS over
