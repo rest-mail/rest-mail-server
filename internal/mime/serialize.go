@@ -1,164 +1,283 @@
 package mime
 
 import (
+	"bytes"
 	"encoding/base64"
-	"fmt"
+	"io"
+	stdmime "mime"
+	"mime/multipart"
+	"net/mail"
+	"net/textproto"
 	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
-// Serialize converts an EmailJSON back to a raw RFC 2822 message.
+const (
+	// foldWidth is where a long header is folded. RFC 5322 §2.1.1 allows up to
+	// 998 octets on a line, but 78 is the recommended display width and what
+	// mainstream MTAs emit.
+	foldWidth = 78
+	// base64Width is the line length used for base64 part content.
+	base64Width = 76
+)
+
+// headerEncoder encodes header values containing non-ASCII text as RFC 2047
+// encoded-words. Pure-ASCII values pass through unchanged.
+var headerEncoder = stdmime.QEncoding
+
+// Serialize converts an EmailJSON back to a raw RFC 5322 message.
+//
+// Header values are RFC 2047-encoded where they need to be, folded, and
+// stripped of CR/LF so a value can never start a header line of its own.
+// Multipart bodies are assembled with mime/multipart, whose boundary is random
+// rather than derived from the clock.
 func Serialize(email *pipeline.EmailJSON) ([]byte, error) {
 	var b strings.Builder
 
-	// Headers
 	if len(email.Headers.From) > 0 {
-		b.WriteString("From: " + formatAddresses(email.Headers.From) + "\r\n")
+		writeHeader(&b, "From", formatAddresses(email.Headers.From))
 	}
 	if len(email.Headers.To) > 0 {
-		b.WriteString("To: " + formatAddresses(email.Headers.To) + "\r\n")
+		writeHeader(&b, "To", formatAddresses(email.Headers.To))
 	}
 	if len(email.Headers.Cc) > 0 {
-		b.WriteString("Cc: " + formatAddresses(email.Headers.Cc) + "\r\n")
+		writeHeader(&b, "Cc", formatAddresses(email.Headers.Cc))
 	}
 	if email.Headers.Subject != "" {
-		b.WriteString("Subject: " + email.Headers.Subject + "\r\n")
+		writeHeader(&b, "Subject", headerEncoder.Encode("utf-8", email.Headers.Subject))
 	}
 	if email.Headers.Date != "" {
-		b.WriteString("Date: " + email.Headers.Date + "\r\n")
+		writeHeader(&b, "Date", email.Headers.Date)
 	} else {
-		b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
+		writeHeader(&b, "Date", time.Now().Format(time.RFC1123Z))
 	}
 	if email.Headers.MessageID != "" {
-		b.WriteString("Message-ID: " + email.Headers.MessageID + "\r\n")
+		writeHeader(&b, "Message-ID", email.Headers.MessageID)
 	}
 	if email.Headers.InReplyTo != "" {
-		b.WriteString("In-Reply-To: " + email.Headers.InReplyTo + "\r\n")
+		writeHeader(&b, "In-Reply-To", email.Headers.InReplyTo)
 	}
 	if len(email.Headers.References) > 0 {
-		b.WriteString("References: " + strings.Join(email.Headers.References, " ") + "\r\n")
+		writeHeader(&b, "References", strings.Join(email.Headers.References, " "))
 	}
 
-	// Extra headers
-	for k, v := range email.Headers.Extra {
-		b.WriteString(k + ": " + v + "\r\n")
+	// Extra headers are set by pipeline transforms rather than read back from a
+	// parsed message, so they have not been through the parser's sanitising.
+	for name, value := range email.Headers.Extra {
+		writeHeader(&b, name, value)
 	}
 
-	// MIME version
 	b.WriteString("MIME-Version: 1.0\r\n")
 
-	// Body
-	hasAttachments := len(email.Attachments) > 0 || len(email.Inline) > 0
-	hasMultipleBodyParts := len(email.Body.Parts) > 0
-
-	if hasAttachments {
-		boundary := generateBoundary()
-		b.WriteString("Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\r\n")
+	switch {
+	case len(email.Attachments) > 0 || len(email.Inline) > 0:
+		if err := writeMixed(&b, email); err != nil {
+			return nil, err
+		}
+	case len(email.Body.Parts) > 0:
+		body, boundary, err := renderAlternative(email.Body.Parts)
+		if err != nil {
+			return nil, err
+		}
+		writeHeader(&b, "Content-Type", `multipart/alternative; boundary="`+boundary+`"`)
 		b.WriteString("\r\n")
-
-		// Body part
-		b.WriteString("--" + boundary + "\r\n")
-		if hasMultipleBodyParts {
-			altBoundary := generateBoundary()
-			b.WriteString("Content-Type: multipart/alternative; boundary=\"" + altBoundary + "\"\r\n\r\n")
-			for _, part := range email.Body.Parts {
-				b.WriteString("--" + altBoundary + "\r\n")
-				b.WriteString("Content-Type: " + part.ContentType + "\r\n\r\n")
-				b.WriteString(part.Content + "\r\n")
-			}
-			b.WriteString("--" + altBoundary + "--\r\n")
-		} else {
-			ct := email.Body.ContentType
-			if ct == "" {
-				ct = "text/plain; charset=utf-8"
-			}
-			b.WriteString("Content-Type: " + ct + "\r\n\r\n")
-			b.WriteString(email.Body.Content + "\r\n")
-		}
-
-		// Inline images
-		for _, att := range email.Inline {
-			b.WriteString("--" + boundary + "\r\n")
-			writeAttachmentPart(&b, att)
-		}
-
-		// Attachments
-		for _, att := range email.Attachments {
-			b.WriteString("--" + boundary + "\r\n")
-			writeAttachmentPart(&b, att)
-		}
-
-		b.WriteString("--" + boundary + "--\r\n")
-	} else if hasMultipleBodyParts {
-		boundary := generateBoundary()
-		b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
+		b.Write(body)
+	default:
+		writeHeader(&b, "Content-Type", contentTypeOr(email.Body.ContentType))
 		b.WriteString("\r\n")
-		for _, part := range email.Body.Parts {
-			b.WriteString("--" + boundary + "\r\n")
-			b.WriteString("Content-Type: " + part.ContentType + "\r\n\r\n")
-			b.WriteString(part.Content + "\r\n")
+		b.WriteString(email.Body.Content)
+		if !strings.HasSuffix(email.Body.Content, "\r\n") {
+			b.WriteString("\r\n")
 		}
-		b.WriteString("--" + boundary + "--\r\n")
-	} else {
-		ct := email.Body.ContentType
-		if ct == "" {
-			ct = "text/plain; charset=utf-8"
-		}
-		b.WriteString("Content-Type: " + ct + "\r\n")
-		b.WriteString("\r\n")
-		b.WriteString(email.Body.Content + "\r\n")
 	}
 
 	return []byte(b.String()), nil
 }
 
-func formatAddresses(addrs []pipeline.Address) string {
-	parts := make([]string, len(addrs))
-	for i, a := range addrs {
-		if a.Name != "" {
-			parts[i] = fmt.Sprintf("%q <%s>", a.Name, a.Address)
-		} else {
-			parts[i] = a.Address
+// writeMixed renders a multipart/mixed body: the message body as the first
+// part, then inline parts, then attachments.
+func writeMixed(b *strings.Builder, email *pipeline.EmailJSON) error {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	if len(email.Body.Parts) > 0 {
+		alt, boundary, err := renderAlternative(email.Body.Parts)
+		if err != nil {
+			return err
 		}
+		part, err := w.CreatePart(textproto.MIMEHeader{
+			"Content-Type": {`multipart/alternative; boundary="` + boundary + `"`},
+		})
+		if err != nil {
+			return err
+		}
+		if _, err := part.Write(alt); err != nil {
+			return err
+		}
+	} else {
+		part, err := w.CreatePart(textproto.MIMEHeader{
+			"Content-Type": {contentTypeOr(email.Body.ContentType)},
+		})
+		if err != nil {
+			return err
+		}
+		if _, err := io.WriteString(part, email.Body.Content); err != nil {
+			return err
+		}
+	}
+
+	for _, att := range email.Inline {
+		if err := writeAttachmentPart(w, att); err != nil {
+			return err
+		}
+	}
+	for _, att := range email.Attachments {
+		if err := writeAttachmentPart(w, att); err != nil {
+			return err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+
+	writeHeader(b, "Content-Type", `multipart/mixed; boundary="`+w.Boundary()+`"`)
+	b.WriteString("\r\n")
+	b.Write(buf.Bytes())
+	return nil
+}
+
+// renderAlternative renders the body parts as multipart/alternative, returning
+// the rendered parts and the boundary that delimits them.
+func renderAlternative(parts []pipeline.Body) (body []byte, boundary string, err error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	for _, part := range parts {
+		pw, err := w.CreatePart(textproto.MIMEHeader{
+			"Content-Type": {contentTypeOr(part.ContentType)},
+		})
+		if err != nil {
+			return nil, "", err
+		}
+		if _, err := io.WriteString(pw, part.Content); err != nil {
+			return nil, "", err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+	return buf.Bytes(), w.Boundary(), nil
+}
+
+// writeAttachmentPart appends one attachment or inline part. Content is assumed
+// to be base64 already, as it is carried through the pipeline in that form.
+func writeAttachmentPart(w *multipart.Writer, att pipeline.Attachment) error {
+	disposition := att.Disposition
+	if disposition == "" {
+		disposition = "attachment"
+	}
+
+	header := textproto.MIMEHeader{
+		"Content-Type":              {contentTypeOr(att.ContentType)},
+		"Content-Transfer-Encoding": {"base64"},
+	}
+	if att.Filename != "" {
+		// FormatMediaType quotes what needs quoting and falls back to RFC 2231
+		// for a non-ASCII filename, which a hand-built header does not.
+		header.Set("Content-Disposition", stdmime.FormatMediaType(disposition,
+			map[string]string{"filename": sanitizeHeaderValue(att.Filename)}))
+	} else {
+		header.Set("Content-Disposition", disposition)
+	}
+	if att.ContentID != "" {
+		header.Set("Content-ID", sanitizeHeaderValue(att.ContentID))
+	}
+
+	part, err := w.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(part, wrapBase64(att.Content))
+	return err
+}
+
+// contentTypeOr returns ct, or a sensible default when it is empty.
+func contentTypeOr(ct string) string {
+	if ct == "" {
+		return "text/plain; charset=utf-8"
+	}
+	return ct
+}
+
+// writeHeader appends one header, sanitized, encoded and folded. A header whose
+// name is unusable is dropped rather than written as a broken line.
+func writeHeader(b *strings.Builder, name, value string) {
+	name = strings.TrimSpace(sanitizeHeaderValue(name))
+	if name == "" || strings.ContainsAny(name, ": \t") {
+		return
+	}
+	b.WriteString(foldHeader(name, sanitizeHeaderValue(value)))
+}
+
+// foldHeader renders "Name: value" folded at whitespace so no line runs past
+// foldWidth. A single token longer than the limit is left intact: there is
+// nowhere legal to break it.
+func foldHeader(name, value string) string {
+	line := name + ": " + value
+	if len(line) <= foldWidth {
+		return line + "\r\n"
+	}
+
+	words := strings.Fields(value)
+	if len(words) == 0 {
+		return line + "\r\n"
+	}
+
+	var out strings.Builder
+	current := name + ":"
+	for _, word := range words {
+		// +1 for the space that precedes the word.
+		if current != name+":" && len(current)+1+len(word) > foldWidth {
+			out.WriteString(current)
+			out.WriteString("\r\n")
+			current = ""
+		}
+		current += " " + word
+	}
+	out.WriteString(current)
+	out.WriteString("\r\n")
+	return out.String()
+}
+
+// formatAddresses renders an address list. net/mail quotes a display name that
+// needs it and encodes a non-ASCII one as an RFC 2047 encoded-word.
+func formatAddresses(addrs []pipeline.Address) string {
+	parts := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		addr := mail.Address{
+			Name:    sanitizeHeaderValue(a.Name),
+			Address: sanitizeHeaderValue(a.Address),
+		}
+		parts = append(parts, addr.String())
 	}
 	return strings.Join(parts, ", ")
 }
 
-func writeAttachmentPart(b *strings.Builder, att pipeline.Attachment) {
-	disp := att.Disposition
-	if disp == "" {
-		disp = "attachment"
+// wrapBase64 breaks base64 content into lines of at most base64Width octets.
+func wrapBase64(content string) string {
+	if len(content) <= base64Width {
+		return content
 	}
-	b.WriteString("Content-Type: " + att.ContentType + "\r\n")
-	b.WriteString("Content-Transfer-Encoding: base64\r\n")
-	if att.Filename != "" {
-		b.WriteString(fmt.Sprintf("Content-Disposition: %s; filename=%q\r\n", disp, att.Filename))
-	} else {
-		b.WriteString("Content-Disposition: " + disp + "\r\n")
+	var out strings.Builder
+	for len(content) > base64Width {
+		out.WriteString(content[:base64Width])
+		out.WriteString("\r\n")
+		content = content[base64Width:]
 	}
-	if att.ContentID != "" {
-		b.WriteString("Content-ID: " + att.ContentID + "\r\n")
-	}
-	b.WriteString("\r\n")
-
-	// Write base64 content with line wrapping
-	content := att.Content
-	for len(content) > 76 {
-		b.WriteString(content[:76] + "\r\n")
-		content = content[76:]
-	}
-	if len(content) > 0 {
-		b.WriteString(content + "\r\n")
-	}
-}
-
-var boundaryCounter int
-
-func generateBoundary() string {
-	boundaryCounter++
-	return fmt.Sprintf("=_restmail_%d_%d", time.Now().UnixNano(), boundaryCounter)
+	out.WriteString(content)
+	return out.String()
 }
 
 // EnvelopeFromEmail extracts envelope information from the email headers.
