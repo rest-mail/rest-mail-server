@@ -256,3 +256,66 @@ func TestBuildRawMessage_EmptySenderName(t *testing.T) {
 		t.Errorf("missing bare-address From header in: %s", result)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// parseBasicHeaders
+// ---------------------------------------------------------------------------
+
+// APPEND stores structured fields alongside the raw message, and the client
+// sends whatever its own composer produced — for a non-ASCII subject or display
+// name, an RFC 2047 encoded-word. Matching headers by prefix and slicing the
+// value stored the encoding itself, so the mailbox listing showed
+// "=?UTF-8?Q?...?=" rather than the words (#298).
+func TestParseBasicHeaders_DecodesEncodedWords(t *testing.T) {
+	raw := []byte("From: =?UTF-8?Q?Ren=C3=A9e_M=C3=BCller?= <renee@example.org>\r\n" +
+		"Subject: =?UTF-8?Q?=C3=9Cberweisung?=\r\n\r\nBody.")
+
+	subject, _, _, _, senderName := parseBasicHeaders(raw)
+
+	if want := "Überweisung"; subject != want {
+		t.Errorf("subject = %q, want %q", subject, want)
+	}
+	if want := "Renée Müller"; senderName != want {
+		t.Errorf("senderName = %q, want %q", senderName, want)
+	}
+}
+
+// A quoted-printable body in a non-UTF-8 charset has to be decoded and
+// converted, not stored as the bytes the client happened to send.
+func TestParseBasicHeaders_DecodesBody(t *testing.T) {
+	raw := []byte("Subject: Charset\r\n" +
+		"Content-Type: text/plain; charset=ISO-8859-1\r\n" +
+		"Content-Transfer-Encoding: quoted-printable\r\n\r\n" +
+		"Caf=E9\r\n")
+
+	_, bodyText, _, _, _ := parseBasicHeaders(raw)
+
+	if !strings.Contains(bodyText, "Café") {
+		t.Errorf("bodyText = %q, want it to contain %q", bodyText, "Café")
+	}
+}
+
+// An HTML alternative belongs in bodyHTML. The whole MIME body was returned as
+// text, boundaries and part headers included, and bodyHTML was never set — so a
+// message APPENDed with both bodies came back to every client as text.
+func TestParseBasicHeaders_SplitsAlternativeParts(t *testing.T) {
+	boundary := "b1"
+	raw := []byte("Subject: Both\r\n" +
+		"Content-Type: multipart/alternative; boundary=" + boundary + "\r\n\r\n" +
+		"--" + boundary + "\r\n" +
+		"Content-Type: text/plain\r\n\r\n" +
+		"Plain body\r\n" +
+		"--" + boundary + "\r\n" +
+		"Content-Type: text/html\r\n\r\n" +
+		"<p>HTML body</p>\r\n" +
+		"--" + boundary + "--\r\n")
+
+	_, bodyText, bodyHTML, _, _ := parseBasicHeaders(raw)
+
+	if want := "Plain body"; bodyText != want {
+		t.Errorf("bodyText = %q, want %q", bodyText, want)
+	}
+	if want := "<p>HTML body</p>"; bodyHTML != want {
+		t.Errorf("bodyHTML = %q, want %q", bodyHTML, want)
+	}
+}
