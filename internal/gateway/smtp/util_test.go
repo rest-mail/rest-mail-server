@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -62,154 +63,11 @@ func TestSplitHostPort(t *testing.T) {
 	}
 }
 
-// ---------- unhex ----------
-
-func TestUnhex(t *testing.T) {
-	tests := []struct {
-		name string
-		c    byte
-		want int
-	}{
-		{"digit 0", '0', 0},
-		{"digit 5", '5', 5},
-		{"digit 9", '9', 9},
-		{"upper A", 'A', 10},
-		{"upper F", 'F', 15},
-		{"upper C", 'C', 12},
-		{"lower a", 'a', 10},
-		{"lower f", 'f', 15},
-		{"lower c", 'c', 12},
-		{"invalid G", 'G', -1},
-		{"invalid space", ' ', -1},
-		{"invalid at", '@', -1},
-		{"invalid slash", '/', -1},
-		{"invalid colon", ':', -1},
-		{"invalid g", 'g', -1},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := unhex(tt.c)
-			if got != tt.want {
-				t.Errorf("unhex(%q) = %d, want %d", tt.c, got, tt.want)
-			}
-		})
-	}
-}
-
-// ---------- decodeQPLine ----------
-
-func TestDecodeQPLine(t *testing.T) {
-	tests := []struct {
-		name string
-		line string
-		want string
-	}{
-		{"plain text", "Hello World", "Hello World"},
-		{"encoded equals", "price =3D 100", "price = 100"},
-		{"encoded space", "foo=20bar", "foo bar"},
-		{"multiple encoded", "=48=65=6C=6C=6F", "Hello"},
-		{"lowercase hex", "=48=65=6c=6c=6f", "Hello"},
-		{"empty", "", ""},
-		{"trailing equals no hex", "abc=", "abc="},
-		{"incomplete hex at end", "abc=4", "abc=4"},
-		{"encoded non-ascii", "=C3=A9", "\xc3\xa9"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := decodeQPLine(tt.line)
-			if got != tt.want {
-				t.Errorf("decodeQPLine(%q) = %q, want %q", tt.line, got, tt.want)
-			}
-		})
-	}
-}
-
-// ---------- decodeQuotedPrintable ----------
-
-func TestDecodeQuotedPrintable(t *testing.T) {
-	tests := []struct {
-		name string
-		s    string
-		want string
-	}{
-		{
-			"simple text",
-			"Hello World",
-			"Hello World",
-		},
-		{
-			"soft line break",
-			"Hello =\nWorld",
-			"Hello World",
-		},
-		{
-			"hard line break",
-			"Hello\nWorld",
-			"Hello\nWorld",
-		},
-		{
-			"encoded chars",
-			"price =3D 100",
-			"price = 100",
-		},
-		{
-			"soft break with encoded",
-			"Hello =3D=\n World",
-			"Hello = World",
-		},
-		{
-			"multiple lines",
-			"Line1\nLine2\nLine3",
-			"Line1\nLine2\nLine3",
-		},
-		{
-			"CRLF handling",
-			"Hello\r\nWorld",
-			"Hello\nWorld",
-		},
-		{
-			"empty string",
-			"",
-			"",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := decodeQuotedPrintable(tt.s)
-			if got != tt.want {
-				t.Errorf("decodeQuotedPrintable(%q) = %q, want %q", tt.s, got, tt.want)
-			}
-		})
-	}
-}
-
-// ---------- extractEmailFromHeader ----------
-
-func TestExtractEmailFromHeader(t *testing.T) {
-	tests := []struct {
-		name string
-		s    string
-		want string
-	}{
-		{"name and angle brackets", "Alice Smith <alice@example.com>", "alice@example.com"},
-		{"angle brackets only", "<bob@example.com>", "bob@example.com"},
-		{"bare email", "user@example.com", "user@example.com"},
-		{"no email at all", "just a name", ""},
-		{"empty string", "", ""},
-		{"quoted name with brackets", "\"Smith, Alice\" <alice@example.com>", "alice@example.com"},
-		{"missing closing bracket", "Alice <alice@example.com", "Alice <alice@example.com"},
-		{"no at sign no brackets", "localhost", ""},
-		{"spaces around bare email", "  user@example.com  ", "user@example.com"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractEmailFromHeader(tt.s)
-			if got != tt.want {
-				t.Errorf("extractEmailFromHeader(%q) = %q, want %q", tt.s, got, tt.want)
-			}
-		})
-	}
-}
+// The quoted-printable, hex and address-scanning helpers these tests covered no
+// longer exist: parsing is delegated to internal/mime (go-message), which does
+// all of it and handles the cases the hand-rolled versions did not. The
+// behaviours are still asserted, now through parseRawMessage itself — see the
+// encoded-word, charset and display-name tests at the end of this file (#298).
 
 // ---------- parseRawMessage ----------
 
@@ -345,91 +203,11 @@ func TestParseRawMessage_TabFolding(t *testing.T) {
 	}
 }
 
-// ---------- parseMultipartBody ----------
-
-func TestParseMultipartBody_AlternativeParts(t *testing.T) {
-	boundary := "boundary123"
-	contentType := "multipart/alternative; boundary=" + boundary
-	body := "--" + boundary + "\r\n" +
-		"Content-Type: text/plain\r\n\r\n" +
-		"Plain text here\r\n" +
-		"--" + boundary + "\r\n" +
-		"Content-Type: text/html\r\n\r\n" +
-		"<p>HTML here</p>\r\n" +
-		"--" + boundary + "--\r\n"
-
-	text, html := parseMultipartBody(contentType, body)
-	if text != "Plain text here" {
-		t.Errorf("text = %q, want %q", text, "Plain text here")
-	}
-	if html != "<p>HTML here</p>" {
-		t.Errorf("html = %q, want %q", html, "<p>HTML here</p>")
-	}
-}
-
-func TestParseMultipartBody_NestedMultipart(t *testing.T) {
-	innerBoundary := "inner_boundary"
-	outerBoundary := "outer_boundary"
-
-	innerBody := "--" + innerBoundary + "\r\n" +
-		"Content-Type: text/plain\r\n\r\n" +
-		"Nested plain\r\n" +
-		"--" + innerBoundary + "\r\n" +
-		"Content-Type: text/html\r\n\r\n" +
-		"<b>Nested HTML</b>\r\n" +
-		"--" + innerBoundary + "--\r\n"
-
-	outerContentType := "multipart/mixed; boundary=" + outerBoundary
-	body := "--" + outerBoundary + "\r\n" +
-		"Content-Type: multipart/alternative; boundary=" + innerBoundary + "\r\n\r\n" +
-		innerBody +
-		"--" + outerBoundary + "--\r\n"
-
-	text, html := parseMultipartBody(outerContentType, body)
-	if text != "Nested plain" {
-		t.Errorf("text = %q, want %q", text, "Nested plain")
-	}
-	if html != "<b>Nested HTML</b>" {
-		t.Errorf("html = %q, want %q", html, "<b>Nested HTML</b>")
-	}
-}
-
-func TestParseMultipartBody_NoBoundary(t *testing.T) {
-	text, html := parseMultipartBody("multipart/mixed", "some body")
-	if text != "some body" {
-		t.Errorf("text = %q, want %q", text, "some body")
-	}
-	if html != "" {
-		t.Errorf("html = %q, want empty", html)
-	}
-}
-
-func TestParseMultipartBody_InvalidContentType(t *testing.T) {
-	text, html := parseMultipartBody(";;;invalid", "some body")
-	if text != "some body" {
-		t.Errorf("text = %q, want %q", text, "some body")
-	}
-	if html != "" {
-		t.Errorf("html = %q, want empty", html)
-	}
-}
-
-func TestParseMultipartBody_TextOnly(t *testing.T) {
-	boundary := "textonly"
-	contentType := "multipart/mixed; boundary=" + boundary
-	body := "--" + boundary + "\r\n" +
-		"Content-Type: text/plain\r\n\r\n" +
-		"Only text\r\n" +
-		"--" + boundary + "--\r\n"
-
-	text, html := parseMultipartBody(contentType, body)
-	if text != "Only text" {
-		t.Errorf("text = %q, want %q", text, "Only text")
-	}
-	if html != "" {
-		t.Errorf("html = %q, want empty", html)
-	}
-}
+// The parseMultipartBody tests that stood here drove a helper that no longer
+// exists; multipart walking now happens inside internal/mime. The two cases that
+// were about behaviour rather than that helper — alternative parts, and a
+// text/plain nested inside a multipart/alternative inside a multipart/mixed —
+// are asserted through parseRawMessage below and in TestParseRawMessage_NestedMultipart.
 
 func TestParseRawMessage_MultipartMessage(t *testing.T) {
 	boundary := "msgboundary"
@@ -453,5 +231,104 @@ func TestParseRawMessage_MultipartMessage(t *testing.T) {
 	}
 	if bodyHTML != "<p>HTML body</p>" {
 		t.Errorf("bodyHTML = %q, want %q", bodyHTML, "<p>HTML body</p>")
+	}
+}
+
+// ---------- real-world messages the hand-rolled parser mishandles (#298) ----------
+
+// A non-ASCII Subject arrives as an RFC 2047 encoded-word. Matching headers by
+// prefix and slicing the value stored the encoding itself, so the subject shown
+// in a mailbox was "=?UTF-8?Q?...?=" rather than the words the sender typed.
+// The same mail arriving over the REST path is decoded, because that path parses
+// with internal/mime.
+func TestParseRawMessage_DecodesEncodedWordSubject(t *testing.T) {
+	raw := "Subject: =?UTF-8?Q?=C3=9Cberweisung_f=C3=BCr_Kaffee?=\r\n" +
+		"From: alice@example.com\r\n\r\nBody."
+
+	subject, _, _, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+
+	if want := "Überweisung für Kaffee"; subject != want {
+		t.Errorf("subject = %q, want %q", subject, want)
+	}
+}
+
+// A display name may contain a comma. Splitting To: on every comma survives
+// this shape only by luck: the `"Doe` fragment carries no address, so it is
+// skipped rather than turned into a bogus recipient. It passes today and must
+// keep passing once the splitting is gone.
+func TestParseRawMessage_CommaInsideQuotedDisplayName(t *testing.T) {
+	raw := "To: \"Doe, John\" <john@example.org>, jane@example.org\r\n\r\nBody."
+
+	_, _, _, _, _, _, _, toList, _, _ := parseRawMessage([]byte(raw))
+
+	want := []string{"john@example.org", "jane@example.org"}
+	if len(toList) != len(want) {
+		t.Fatalf("toList = %v, want %v", toList, want)
+	}
+	for i := range want {
+		if toList[i] != want[i] {
+			t.Errorf("toList[%d] = %q, want %q", i, toList[i], want[i])
+		}
+	}
+}
+
+// A text part in a non-UTF-8 charset has to be converted, not stored as the raw
+// bytes of the original encoding.
+func TestParseRawMessage_ConvertsNonUTF8Charset(t *testing.T) {
+	raw := "Subject: Charset\r\n" +
+		"Content-Type: text/plain; charset=ISO-8859-1\r\n" +
+		"Content-Transfer-Encoding: quoted-printable\r\n\r\n" +
+		"Caf=E9\r\n"
+
+	_, bodyText, _, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+
+	if !strings.Contains(bodyText, "Café") {
+		t.Errorf("bodyText = %q, want it to contain %q", bodyText, "Café")
+	}
+}
+
+// The From display name is an encoded-word as often as the Subject is, and it
+// is stored as the sender's name, so the raw =?UTF-8?...?= text reaches the
+// mailbox listing where a person reads it.
+func TestParseRawMessage_DecodesEncodedWordSenderName(t *testing.T) {
+	raw := "From: =?UTF-8?Q?Ren=C3=A9e_M=C3=BCller?= <renee@example.org>\r\n" +
+		"Subject: Hallo\r\n\r\nBody."
+
+	_, _, _, _, senderName, _, _, _, _, fromAddr := parseRawMessage([]byte(raw))
+
+	if want := "Renée Müller"; senderName != want {
+		t.Errorf("senderName = %q, want %q", senderName, want)
+	}
+	if want := "renee@example.org"; fromAddr != want {
+		t.Errorf("fromAddr = %q, want %q", fromAddr, want)
+	}
+}
+
+// A text part nested inside a multipart/alternative inside a multipart/mixed is
+// still found — the shape a message carrying an attachment alongside both body
+// types takes. This is the nesting case the removed parseMultipartBody tests
+// asserted, re-stated against the message rather than the helper.
+func TestParseRawMessage_NestedMultipart(t *testing.T) {
+	inner, outer := "inner_boundary", "outer_boundary"
+	raw := "Subject: Nested\r\n" +
+		"Content-Type: multipart/mixed; boundary=" + outer + "\r\n\r\n" +
+		"--" + outer + "\r\n" +
+		"Content-Type: multipart/alternative; boundary=" + inner + "\r\n\r\n" +
+		"--" + inner + "\r\n" +
+		"Content-Type: text/plain\r\n\r\n" +
+		"Nested plain\r\n" +
+		"--" + inner + "\r\n" +
+		"Content-Type: text/html\r\n\r\n" +
+		"<b>Nested HTML</b>\r\n" +
+		"--" + inner + "--\r\n" +
+		"--" + outer + "--\r\n"
+
+	_, bodyText, bodyHTML, _, _, _, _, _, _, _ := parseRawMessage([]byte(raw))
+
+	if want := "Nested plain"; bodyText != want {
+		t.Errorf("bodyText = %q, want %q", bodyText, want)
+	}
+	if want := "<b>Nested HTML</b>"; bodyHTML != want {
+		t.Errorf("bodyHTML = %q, want %q", bodyHTML, want)
 	}
 }

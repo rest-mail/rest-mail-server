@@ -1,10 +1,11 @@
 package smtp
 
 import (
-	"encoding/base64"
-	"mime"
-	"mime/multipart"
+	"bytes"
 	"strings"
+
+	rmime "github.com/restmail/restmail/internal/mime"
+	"github.com/restmail/restmail/internal/pipeline"
 )
 
 // maskEmail redacts the local-part of an email address for logging (OSI-5):
@@ -67,226 +68,86 @@ func splitHostPort(addr string) (string, string, error) {
 	return addr[:last], addr[last+1:], nil
 }
 
-// parseRawMessage parses an RFC 2822 message to extract key headers and body
-// parts. fromAddr is the bare address of the From header (see
-// extractEmailFromHeader), used on the authenticated submission path to bind the
-// header From to an identity the account is authorized to send as.
+// parseRawMessage extracts the fields a DeliverRequest needs from a raw RFC 5322
+// message. fromAddr is the bare address of the From header, used on the
+// authenticated submission path to bind the header From to an identity the
+// account is authorized to send as.
+//
+// The parsing itself is delegated to internal/mime, which wraps go-message:
+// RFC 2047 encoded-words, charset conversion, transfer-encoding decoding and
+// nested multipart structures all come from there. The REST ingest path already
+// parses with that package, so the same message now yields the same fields
+// whether it arrives over SMTP or over REST (issue #298).
 func parseRawMessage(data []byte) (subject, bodyText, bodyHTML, messageID, senderName, inReplyTo, references string, toList, ccList []string, fromAddr string) {
-	msg := string(data)
-
-	// Split headers and body at the first blank line
-	headerEnd := strings.Index(msg, "\r\n\r\n")
-	if headerEnd == -1 {
-		headerEnd = strings.Index(msg, "\n\n")
+	// An empty or whitespace-only message has nothing to parse. Handing it over
+	// would come back as a default text/plain body holding that whitespace.
+	if len(bytes.TrimSpace(data)) == 0 {
+		return "", "", "", "", "", "", "", nil, nil, ""
 	}
 
-	var headers, body string
-	var contentType string
-	if headerEnd >= 0 {
-		headers = msg[:headerEnd]
-		body = msg[headerEnd:]
-		body = strings.TrimLeft(body, "\r\n")
-	} else {
-		headers = msg
+	email, err := rmime.Parse(terminateHeaders(data))
+	if err != nil || email == nil {
+		// Nothing parseable: keep whatever body text can be recovered rather
+		// than delivering an empty message. Headers stay empty, which is what
+		// an unparseable message can honestly report.
+		return "", recoverBody(data), "", "", "", "", "", nil, nil, ""
 	}
 
-	// Parse headers (handle continuation lines)
-	var unfoldedHeaders []string
-	for _, line := range strings.Split(headers, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
-			// Continuation line
-			if len(unfoldedHeaders) > 0 {
-				unfoldedHeaders[len(unfoldedHeaders)-1] += " " + strings.TrimSpace(line)
-			}
-		} else {
-			unfoldedHeaders = append(unfoldedHeaders, line)
-		}
-	}
+	h := email.Headers
+	subject = h.Subject
+	// The stored form is the bare id; the angle brackets are re-added wherever
+	// the message is rendered back into a header.
+	messageID = strings.Trim(h.MessageID, "<>")
+	inReplyTo = strings.Trim(h.InReplyTo, "<>")
+	// References stays the whitespace-separated list with brackets intact,
+	// matching the historical output contract.
+	references = strings.Join(h.References, " ")
 
-	for _, line := range unfoldedHeaders {
-		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "subject:") {
-			subject = strings.TrimSpace(line[8:])
-		} else if strings.HasPrefix(lower, "message-id:") {
-			messageID = strings.TrimSpace(line[11:])
-			messageID = strings.Trim(messageID, "<>")
-		} else if strings.HasPrefix(lower, "from:") {
-			from := strings.TrimSpace(line[5:])
-			if idx := strings.Index(from, "<"); idx > 0 {
-				senderName = strings.TrimSpace(from[:idx])
-				senderName = strings.Trim(senderName, "\"")
-			}
-			fromAddr = extractEmailFromHeader(from)
-		} else if strings.HasPrefix(lower, "in-reply-to:") {
-			inReplyTo = strings.TrimSpace(line[12:])
-			inReplyTo = strings.Trim(inReplyTo, "<>")
-		} else if strings.HasPrefix(lower, "references:") {
-			references = strings.TrimSpace(line[11:])
-		} else if strings.HasPrefix(lower, "to:") {
-			toRaw := strings.TrimSpace(line[3:])
-			for _, addr := range strings.Split(toRaw, ",") {
-				addr = strings.TrimSpace(addr)
-				if a := extractEmailFromHeader(addr); a != "" {
-					toList = append(toList, a)
-				}
-			}
-		} else if strings.HasPrefix(lower, "cc:") {
-			ccRaw := strings.TrimSpace(line[3:])
-			for _, addr := range strings.Split(ccRaw, ",") {
-				addr = strings.TrimSpace(addr)
-				if a := extractEmailFromHeader(addr); a != "" {
-					ccList = append(ccList, a)
-				}
-			}
-		} else if strings.HasPrefix(lower, "content-type:") {
-			contentType = strings.TrimSpace(line[13:])
-		}
+	if len(h.From) > 0 {
+		senderName = h.From[0].Name
+		fromAddr = h.From[0].Address
 	}
+	toList = bareAddresses(h.To)
+	ccList = bareAddresses(h.Cc)
 
-	// Parse body based on content type
-	if contentType != "" && strings.Contains(strings.ToLower(contentType), "multipart/") {
-		bodyText, bodyHTML = parseMultipartBody(contentType, body)
-	} else if strings.Contains(strings.ToLower(contentType), "text/html") {
-		bodyHTML = body
-	} else {
-		bodyText = body
-	}
-
+	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
 	return
 }
 
-// parseMultipartBody extracts text/plain and text/html parts from a multipart body.
-func parseMultipartBody(contentType, body string) (text, html string) {
-	// ParseMediaType also validates the header; we only need the boundary param.
-	_, params, err := mime.ParseMediaType(contentType)
-	if err != nil {
-		return body, ""
+// terminateHeaders ensures the header block ends with a blank line. A message
+// that is nothing but headers has no terminator, and the parser needs one to
+// treat the whole input as a header block rather than a truncated message.
+func terminateHeaders(data []byte) []byte {
+	if bytes.Contains(data, []byte("\r\n\r\n")) || bytes.Contains(data, []byte("\n\n")) {
+		return data
 	}
-
-	boundary := params["boundary"]
-	if boundary == "" {
-		return body, ""
-	}
-
-	reader := multipart.NewReader(strings.NewReader(body), boundary)
-	for {
-		part, err := reader.NextPart()
-		if err != nil {
-			break
-		}
-		partType := part.Header.Get("Content-Type")
-		partData := readPart(part)
-
-		lowerType := strings.ToLower(partType)
-		if strings.HasPrefix(lowerType, "text/plain") && text == "" {
-			text = partData
-		} else if strings.HasPrefix(lowerType, "text/html") && html == "" {
-			html = partData
-		} else if strings.HasPrefix(lowerType, "multipart/") {
-			// Nested multipart (e.g., multipart/alternative inside multipart/mixed)
-			nestedText, nestedHTML := parseMultipartBody(partType, partData)
-			if text == "" {
-				text = nestedText
-			}
-			if html == "" {
-				html = nestedHTML
-			}
-		}
-	}
-
-	return
+	out := make([]byte, 0, len(data)+4)
+	out = append(out, data...)
+	return append(out, "\r\n\r\n"...)
 }
 
-// readPart reads all data from a multipart part, handling Content-Transfer-Encoding.
-func readPart(part *multipart.Part) string {
-	var buf strings.Builder
-	data := make([]byte, 4096)
-	for {
-		n, err := part.Read(data)
-		if n > 0 {
-			buf.Write(data[:n])
+// recoverBody returns the body of a message the parser could not read: whatever
+// follows the first blank line, or nothing when there is no body at all.
+func recoverBody(data []byte) string {
+	for _, sep := range []string{"\r\n\r\n", "\n\n"} {
+		if _, body, found := strings.Cut(string(data), sep); found {
+			return body
 		}
-		if err != nil {
-			break
-		}
-	}
-
-	raw := buf.String()
-	encoding := strings.ToLower(part.Header.Get("Content-Transfer-Encoding"))
-	switch encoding {
-	case "base64":
-		decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(raw, "\n", ""))
-		if err == nil {
-			return string(decoded)
-		}
-	case "quoted-printable":
-		return decodeQuotedPrintable(raw)
-	}
-	return raw
-}
-
-// decodeQuotedPrintable decodes quoted-printable encoded text.
-func decodeQuotedPrintable(s string) string {
-	var result strings.Builder
-	lines := strings.Split(s, "\n")
-	for _, line := range lines {
-		line = strings.TrimRight(line, "\r")
-		// Soft line break
-		if strings.HasSuffix(line, "=") {
-			line = line[:len(line)-1]
-			result.WriteString(decodeQPLine(line))
-		} else {
-			result.WriteString(decodeQPLine(line))
-			result.WriteString("\n")
-		}
-	}
-	return strings.TrimRight(result.String(), "\n")
-}
-
-func decodeQPLine(line string) string {
-	var result strings.Builder
-	i := 0
-	for i < len(line) {
-		if line[i] == '=' && i+2 < len(line) {
-			hi := unhex(line[i+1])
-			lo := unhex(line[i+2])
-			if hi >= 0 && lo >= 0 {
-				result.WriteByte(byte(hi<<4 | lo))
-				i += 3
-				continue
-			}
-		}
-		result.WriteByte(line[i])
-		i++
-	}
-	return result.String()
-}
-
-func unhex(c byte) int {
-	switch {
-	case '0' <= c && c <= '9':
-		return int(c - '0')
-	case 'A' <= c && c <= 'F':
-		return int(c - 'A' + 10)
-	case 'a' <= c && c <= 'f':
-		return int(c - 'a' + 10)
-	}
-	return -1
-}
-
-// extractEmailFromHeader extracts the email address from a header value like
-// "Name <addr>" or bare "addr".
-func extractEmailFromHeader(s string) string {
-	if idx := strings.Index(s, "<"); idx >= 0 {
-		end := strings.Index(s, ">")
-		if end > idx {
-			return s[idx+1 : end]
-		}
-	}
-	s = strings.TrimSpace(s)
-	if strings.Contains(s, "@") {
-		return s
 	}
 	return ""
 }
+
+// bareAddresses reduces parsed addresses to their address strings, dropping any
+// entry that carries no address.
+func bareAddresses(addrs []pipeline.Address) []string {
+	var out []string
+	for _, a := range addrs {
+		if a.Address != "" {
+			out = append(out, a.Address)
+		}
+	}
+	return out
+}
+
+// The body-tree walk lives in internal/mime (TextAndHTML): the IMAP gateway
+// needs the same two fields on APPEND, and one copy is enough.

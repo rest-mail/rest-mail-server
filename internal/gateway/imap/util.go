@@ -9,6 +9,7 @@ import (
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/rawmsg"
+	rmime "github.com/restmail/restmail/internal/mime"
 )
 
 // maxFolderNameLen bounds an IMAP folder (mailbox) name. The messages.folder
@@ -97,38 +98,30 @@ func buildRawMessage(msg apiclient.MessageDetail) string {
 	return rawmsg.Build(msg)
 }
 
-// parseBasicHeaders extracts basic message fields from raw RFC 2822 data, for
-// building the structured part of a DeliverRequest on APPEND.
+// parseBasicHeaders extracts the structured delivery fields from a raw RFC 5322
+// message on APPEND ingest.
+//
+// Parsing is delegated to internal/mime (go-message) — the same package the SMTP
+// gateway and the REST ingest path use — so a message stored via APPEND yields
+// the same fields as the same message arriving any other way: RFC 2047
+// encoded-words decoded, transfer encodings decoded, charsets converted, and the
+// text and HTML alternatives separated instead of handed back as one blob of raw
+// MIME with the boundaries still in it (issue #298).
+//
+// The Message-ID is stored bare, without its angle brackets, matching the SMTP
+// path. Keeping them here produced "<<id>>" when the message was rendered back
+// into a header by rawmsg.Build.
 func parseBasicHeaders(data []byte) (subject, bodyText, bodyHTML, messageID, senderName string) {
-	raw := string(data)
-	headerEnd := strings.Index(raw, "\r\n\r\n")
-	if headerEnd < 0 {
-		headerEnd = strings.Index(raw, "\n\n")
-	}
-	if headerEnd < 0 {
-		return "", raw, "", "", ""
+	email, err := rmime.Parse(data)
+	if err != nil || email == nil {
+		return "", "", "", "", ""
 	}
 
-	headers := raw[:headerEnd]
-	body := raw[headerEnd:]
-	body = strings.TrimLeft(body, "\r\n")
-
-	for _, line := range strings.Split(headers, "\n") {
-		line = strings.TrimRight(line, "\r")
-		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "subject: ") {
-			subject = strings.TrimSpace(line[9:])
-		} else if strings.HasPrefix(lower, "message-id: ") {
-			messageID = strings.TrimSpace(line[12:])
-		} else if strings.HasPrefix(lower, "from: ") {
-			fromVal := strings.TrimSpace(line[6:])
-			if idx := strings.Index(fromVal, "<"); idx > 0 {
-				senderName = strings.TrimSpace(fromVal[:idx])
-				senderName = strings.Trim(senderName, "\"")
-			}
-		}
+	subject = email.Headers.Subject
+	messageID = strings.Trim(email.Headers.MessageID, "<>")
+	if from := email.Headers.From; len(from) > 0 {
+		senderName = from[0].Name
 	}
-
-	bodyText = body
+	bodyText, bodyHTML = rmime.TextAndHTML(email.Body)
 	return
 }
