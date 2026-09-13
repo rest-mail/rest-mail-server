@@ -301,6 +301,11 @@ func requireNoError(t *testing.T, err error) {
 // ── Polling / Wait helpers ───────────────────────────────────────────
 
 // waitForAPI polls the health endpoint until the API is reachable.
+//
+// An API that never answers means the stack is not up, which is a precondition
+// and not a failed assertion, so the timeout is reported through skipOrFail like
+// every other stack precondition: hard failure under E2E_REQUIRE_STACK (CI), a
+// skip on a machine that is not running the testbed.
 func waitForAPI(t *testing.T, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -315,7 +320,7 @@ func waitForAPI(t *testing.T, timeout time.Duration) {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	t.Fatalf("API not reachable at %s after %s", apiBaseURL, timeout)
+	skipOrFail(t, "API not reachable at %s after %s", apiBaseURL, timeout)
 }
 
 // waitForMessage polls for a message matching the subject in a mailbox.
