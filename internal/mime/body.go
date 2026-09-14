@@ -16,7 +16,7 @@ import (
 func TextAndHTML(body pipeline.Body) (text, html string) {
 	var walk func(pipeline.Body)
 	walk = func(node pipeline.Body) {
-		switch normalizeMediaType(node.ContentType) {
+		switch MediaType(node.ContentType) {
 		case "text/plain":
 			if text == "" {
 				text = node.Content
@@ -34,9 +34,9 @@ func TextAndHTML(body pipeline.Body) (text, html string) {
 	return text, html
 }
 
-// normalizeMediaType strips any parameters from a content type and lower-cases
-// what remains, so "TEXT/HTML; charset=utf-8" matches "text/html".
-func normalizeMediaType(contentType string) string {
+// MediaType strips any parameters from a content type and lower-cases what
+// remains, so "TEXT/HTML; charset=utf-8" matches "text/html".
+func MediaType(contentType string) string {
 	if i := strings.IndexByte(contentType, ';'); i >= 0 {
 		contentType = contentType[:i]
 	}

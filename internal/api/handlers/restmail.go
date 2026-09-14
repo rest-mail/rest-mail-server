@@ -600,10 +600,7 @@ func (h *RestmailHandler) resolveRecipientMailbox(rcpt string) (mailbox models.M
 // parameters (charset, boundary, ...) stripped: "text/plain; charset=utf-8" ->
 // "text/plain".
 func mediaType(contentType string) string {
-	if i := strings.IndexByte(contentType, ';'); i >= 0 {
-		contentType = contentType[:i]
-	}
-	return strings.ToLower(strings.TrimSpace(contentType))
+	return rmime.MediaType(contentType)
 }
 
 // extractBodyParts walks a potentially nested Body structure and returns the
@@ -614,24 +611,5 @@ func mediaType(contentType string) string {
 // pipeline emits), and an exact-string match against "text/plain" would miss
 // those and silently drop the body a transform produced.
 func extractBodyParts(body pipeline.Body) (text, html string) {
-	switch mediaType(body.ContentType) {
-	case "text/plain":
-		if body.Content != "" {
-			text = body.Content
-		}
-	case "text/html":
-		if body.Content != "" {
-			html = body.Content
-		}
-	}
-	for _, part := range body.Parts {
-		t, h := extractBodyParts(part)
-		if text == "" {
-			text = t
-		}
-		if html == "" {
-			html = h
-		}
-	}
-	return
+	return rmime.TextAndHTML(body)
 }
