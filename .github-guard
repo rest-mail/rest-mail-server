@@ -1,3 +1,8 @@
+# .github-guard — declarations github-guard reads (see the github-guard skill:
+# https://github.com/antimatter-studios/agent-skills/blob/main/.claude/skills/github-guard/README.md).
+# git-config format: check with `git config -f .github-guard --list`, and
+# double-quote any value containing # or ;.
+
 # What must pass before main takes a merge — read by github-guard, which applies
 # it to branch protection.
 #
@@ -11,5 +16,6 @@
 # split into a matrix or made conditional without leaving a required check that
 # never reports — which blocks every pull request, admins included, with no
 # failure to point at.
-CI
-E2E (full topology)
+[checks]
+	required = CI
+	required = E2E (full topology)
