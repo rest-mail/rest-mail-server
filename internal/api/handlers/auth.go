@@ -157,18 +157,80 @@ type loginRequest struct {
 	// omits them for a 2FA account is answered with a totp_required challenge.
 	TOTPCode     string `json:"totp_code,omitempty"`
 	RecoveryCode string `json:"recovery_code,omitempty"`
+	// Client is "native" for an app that is not a browser (the mobile client):
+	// it gets the tokens in the response body instead of as cookies, and keeps
+	// them in its own secure storage. Empty means a browser. Anything else is
+	// refused, so a typo cannot quietly fall back to cookies.
+	Client string `json:"client,omitempty"`
 }
 
-// loginResponse is the login/refresh success body. It deliberately carries NO
-// access token: the token is delivered ONLY as the httpOnly restmail_access
-// cookie (see setSessionCookies), so page JavaScript — and therefore any XSS —
-// can neither read it at rest nor scrape it from this response. ExpiresIn lets
-// the SPA schedule a pre-emptive refresh without ever seeing the token; User and
-// Capabilities let it restore session UI state on boot from /auth/refresh.
+// clientNative is the loginRequest.Client value that asks for body tokens.
+const clientNative = "native"
+
+// refreshRequest is the body a native client sends to /auth/refresh and
+// /auth/logout. Browsers send no body; their refresh token is the cookie.
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// loginResponse is the login/refresh success body. For a browser it carries NO
+// tokens: they are delivered ONLY as httpOnly cookies (see deliverSession), so
+// page JavaScript — and therefore any XSS — can neither read them at rest nor
+// scrape them from this response. ExpiresIn lets the SPA schedule a pre-emptive
+// refresh without ever seeing the token; User and Capabilities let it restore
+// session UI state on boot from /auth/refresh.
+//
+// The token fields are filled only for a native client: one that logged in with
+// "client": "native", or refreshed by sending its refresh token in the body. A
+// request that arrives with the refresh cookie is a browser's and never gets
+// them, whatever its body says.
 type loginResponse struct {
 	ExpiresIn    int      `json:"expires_in"`
 	User         userInfo `json:"user"`
 	Capabilities []string `json:"capabilities,omitempty"` // For admin users
+
+	AccessToken      string `json:"access_token,omitempty"`
+	RefreshToken     string `json:"refresh_token,omitempty"`
+	RefreshExpiresIn int    `json:"refresh_expires_in,omitempty"`
+}
+
+// deliverSession hands a freshly minted token pair to the client. A browser gets
+// the httpOnly refresh cookie plus the access and CSRF cookies, and resp is left
+// token-free. A native client gets the tokens in resp and no cookies at all, so
+// it never depends on cookie names or paths.
+func deliverSession(w http.ResponseWriter, tokens *auth.TokenPair, native bool, resp *loginResponse) error {
+	if native {
+		resp.AccessToken = tokens.AccessToken
+		resp.RefreshToken = tokens.RefreshToken
+		resp.RefreshExpiresIn = int(time.Until(tokens.RefreshExpiresAt).Seconds())
+		return nil
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     auth.RefreshCookieName,
+		Value:    tokens.RefreshToken,
+		Path:     "/api/v1/auth",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   7 * 24 * 60 * 60,
+	})
+	return setSessionCookies(w, tokens.AccessToken, tokens.ExpiresIn)
+}
+
+// presentedRefreshToken returns the refresh token a request carries, and
+// whether it came in the body (a native client). The cookie wins: a request
+// that carries restmail_refresh is a browser's, and is answered with cookies
+// only, so script running in a page can never trade the httpOnly cookie for a
+// readable token by adding a body.
+func presentedRefreshToken(r *http.Request) (token string, native bool) {
+	if c, err := r.Cookie(auth.RefreshCookieName); err == nil && c.Value != "" {
+		return c.Value, false
+	}
+	var body refreshRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.RefreshToken != "" {
+		return body.RefreshToken, true
+	}
+	return "", false
 }
 
 // setSessionCookies issues the browser session cookies for a freshly minted
@@ -252,6 +314,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{
 			"email/username": "either email or username is required",
 			"password":       "required",
+		})
+		return
+	}
+
+	if req.Client != "" && req.Client != clientNative {
+		respond.ValidationError(w, map[string]string{
+			"client": `must be "native" or omitted`,
 		})
 		return
 	}
@@ -357,28 +426,7 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 		return
 	}
 
-	// Set refresh token as HTTP-only cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.RefreshCookieName,
-		Value:    tokens.RefreshToken,
-		Path:     "/api/v1/auth",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   7 * 24 * 60 * 60,
-	})
-
-	// Deliver the access token ONLY as the httpOnly session cookie (never the
-	// body), together with the readable CSRF companion.
-	if err := setSessionCookies(w, tokens.AccessToken, tokens.ExpiresIn); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
-		return
-	}
-
-	// Update last login
-	h.db.Model(adminUser).Update("updated_at", time.Now())
-
-	respond.Data(w, http.StatusOK, loginResponse{
+	resp := loginResponse{
 		ExpiresIn:    tokens.ExpiresIn,
 		Capabilities: capNames,
 		User: userInfo{
@@ -386,7 +434,16 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 			Email:       adminUser.Username, // Use username in email field for compatibility
 			DisplayName: adminUser.Username,
 		},
-	})
+	}
+	if err := deliverSession(w, tokens, req.Client == clientNative, &resp); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
+		return
+	}
+
+	// Update last login
+	h.db.Model(adminUser).Update("updated_at", time.Now())
+
+	respond.Data(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
@@ -439,20 +496,15 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 		return
 	}
 
-	// Set refresh token as HTTP-only cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.RefreshCookieName,
-		Value:    tokens.RefreshToken,
-		Path:     "/api/v1/auth",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   7 * 24 * 60 * 60,
-	})
-
-	// Deliver the access token ONLY as the httpOnly session cookie (never the
-	// body), together with the readable CSRF companion.
-	if err := setSessionCookies(w, tokens.AccessToken, tokens.ExpiresIn); err != nil {
+	resp := loginResponse{
+		ExpiresIn: tokens.ExpiresIn,
+		User: userInfo{
+			ID:          account.ID,
+			Email:       mailbox.Address,
+			DisplayName: mailbox.DisplayName,
+		},
+	}
+	if err := deliverSession(w, tokens, req.Client == clientNative, &resp); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
 		return
 	}
@@ -460,23 +512,17 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 	// Update last login
 	h.db.Model(&mailbox).Update("last_login_at", time.Now())
 
-	respond.Data(w, http.StatusOK, loginResponse{
-		ExpiresIn: tokens.ExpiresIn,
-		User: userInfo{
-			ID:          account.ID,
-			Email:       mailbox.Address,
-			DisplayName: mailbox.DisplayName,
-		},
-	})
+	respond.Data(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	// Revoke the presented refresh token server-side so it can no longer be
-	// exchanged (OSI-10: logout was previously client-side only). Best-effort:
-	// a missing/invalid cookie still clears client state below. Idempotent, so a
-	// double logout is harmless.
-	if cookie, err := r.Cookie(auth.RefreshCookieName); err == nil && h.refreshStore != nil {
-		if claims, err := h.jwtService.ValidateRefreshToken(cookie.Value); err == nil && claims.ID != "" {
+	// exchanged (OSI-10: logout was previously client-side only). The token is
+	// the cookie, or for a native client the body. Best-effort: a missing or
+	// invalid token still clears client state below. Idempotent, so a double
+	// logout is harmless.
+	if token, _ := presentedRefreshToken(r); token != "" && h.refreshStore != nil {
+		if claims, err := h.jwtService.ValidateRefreshToken(token); err == nil && claims.ID != "" {
 			_ = h.refreshStore.Revoke(claims.ID)
 		}
 	}
@@ -497,13 +543,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(auth.RefreshCookieName)
-	if err != nil {
+	token, native := presentedRefreshToken(r)
+	if token == "" {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "No refresh token")
 		return
 	}
 
-	claims, err := h.jwtService.ValidateRefreshToken(cookie.Value)
+	claims, err := h.jwtService.ValidateRefreshToken(token)
 	if err != nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 		return
@@ -587,33 +633,21 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.RefreshCookieName,
-		Value:    tokens.RefreshToken,
-		Path:     "/api/v1/auth",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   7 * 24 * 60 * 60,
-	})
-
-	// Reissue the access token as the httpOnly cookie (+ rotated CSRF companion);
-	// like login, it is never returned in the body.
-	if err := setSessionCookies(w, tokens.AccessToken, tokens.ExpiresIn); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
-		return
-	}
-
-	// The body carries only what the SPA needs to restore session UI on boot
-	// (identity + capabilities + expiry) — never the token itself. User identity
-	// is taken from the validated refresh-token claims, so this stays a single
-	// DB-touch-free response.
+	// For a browser the body carries only what the SPA needs to restore session
+	// UI on boot (identity + capabilities + expiry) and the tokens go out as
+	// cookies; a native client gets them in the body, on the same channel its
+	// refresh token came in on. User identity is taken from the validated
+	// refresh-token claims, so this stays a single DB-touch-free response.
 	resp := loginResponse{ExpiresIn: tokens.ExpiresIn}
 	if claims.UserType == "admin" {
 		resp.Capabilities = capabilities
 		resp.User = userInfo{ID: claims.AdminUserID, Email: claims.Username, DisplayName: claims.Username}
 	} else {
 		resp.User = userInfo{ID: claims.WebmailAccountID, Email: claims.Email, DisplayName: claims.Email}
+	}
+	if err := deliverSession(w, tokens, native, &resp); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
+		return
 	}
 	respond.Data(w, http.StatusOK, resp)
 }
