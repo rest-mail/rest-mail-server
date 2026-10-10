@@ -123,6 +123,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// A key list that does not parse would lock the owner out without a word;
+	// refuse to start instead.
+	if _, err := bootstrap.ParseOwnerKeys(cfg.OwnerKeys); err != nil {
+		slog.Error("invalid owner keys", "error", err)
+		os.Exit(1)
+	}
+
 	// A fresh install has no admin and no roles, and the production image carries
 	// no seed tool, so nobody could ever sign in. Both steps are no-ops once done.
 	if err := bootstrap.EnsureRBAC(database); err != nil {

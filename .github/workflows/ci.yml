@@ -225,10 +225,11 @@ jobs:
   first-start:
     name: First start
     # Proves, against the real image, the path a fresh install takes: the
-    # restmail CLI claims it through the container (no password, no race), the
-    # first admin is forced through 2FA, a domain and a mailbox get built, and
-    # reset-admin hands it over -- after which nothing the first holder had
-    # works, an unexpired access token included. tests/first-start/agent-e2e.sh.
+    # restmail CLI claims it over the public API with an owner key (no
+    # password, no platform assumed), the first admin is forced through 2FA, a
+    # domain and a mailbox get built, and reset-admin hands it over -- after
+    # which nothing the first holder had works, an unexpired access token
+    # included. tests/first-start/agent-e2e.sh.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

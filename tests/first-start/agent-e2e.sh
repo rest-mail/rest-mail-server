@@ -3,7 +3,11 @@
 # restmail CLI and nobody else involved, builds it, and hands it over -- and the
 # owner's redemption must lock the agent out, unexpired access token included.
 #
-# Run locally (Docker, curl, jq, oathtool, python3):
+# The CLI reaches the server only through its public API, proving ownership with
+# a key the deployment lists in RESTMAIL_OWNER_KEYS: Docker here is just how this
+# test runs a server, not something the CLI knows about.
+#
+# Run locally (Docker, curl, jq, oathtool, python3, ssh-keygen):
 #   docker build --target prod -t restmail-api:first-start .
 #   go build -o /tmp/restmail ./cmd/console
 #   RESTMAIL=/tmp/restmail IMAGE=restmail-api:first-start tests/first-start/agent-e2e.sh
@@ -14,15 +18,21 @@ set -euo pipefail
 RESTMAIL=${RESTMAIL:-/tmp/restmail}
 IMAGE=${IMAGE:-restmail-api:first-start}
 API=http://127.0.0.1:58080/api/v1
-SERVER=https://mail.e2e.test
+SERVER=http://127.0.0.1:58080
 NET=restmail-e2e
 step() { printf '\n== %s\n' "$*"; }
 ok() { printf '   ok: %s\n' "$*"; }
 die() { printf '   FAIL: %s\n' "$*" >&2; exit 1; }
 
-cleanup() { docker rm -f e2e-api e2e-pg >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; }
+cleanup() { docker rm -f e2e-api e2e-pg >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "${KEYS:-}"; }
 trap cleanup EXIT
 cleanup
+KEYS=$(mktemp -d)
+
+step "the agent's key, and someone else's"
+ssh-keygen -q -t ed25519 -N '' -C agent@e2e -f "$KEYS/agent"
+ssh-keygen -q -t ed25519 -N '' -C stranger@e2e -f "$KEYS/stranger"
+ok "the deployment will list only the agent's public key"
 
 step "a fresh install: Postgres and the API, nothing else"
 docker network create "$NET" >/dev/null
@@ -32,13 +42,20 @@ until docker exec e2e-pg pg_isready -U restmail >/dev/null 2>&1; do sleep 1; don
 docker run -d --name e2e-api --network "$NET" -p 127.0.0.1:58080:8080 \
   -e DB_HOST=e2e-pg -e DB_NAME=restmail -e DB_USER=restmail -e DB_PASS=restmail -e DB_SSLMODE=disable \
   -e JWT_SECRET="$(openssl rand -hex 32)" -e MASTER_KEY="$(openssl rand -hex 32)" \
+  -e RESTMAIL_OWNER_KEYS="$(cat "$KEYS/agent.pub")" \
   -e ENVIRONMENT=development "$IMAGE" >/dev/null
 for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/health >/dev/null 2>&1 && break; sleep 1; done
 curl -fsS http://127.0.0.1:58080/api/health | jq -c .data
 ok "server up, no admin, no bootstrap password anywhere"
 
-step "restmail setup: a claim link, minted inside the container"
-setup=$("$RESTMAIL" setup --docker e2e-api --server "$SERVER" --json --show-secret)
+step "restmail setup with a key the server does not list"
+set +e; "$RESTMAIL" setup --server "$SERVER" --key "$KEYS/stranger" --json 2>/tmp/e2e-stranger.err; status=$?; set -e
+cat /tmp/e2e-stranger.err
+[[ $status == 6 ]] || die "exit $status, want 6"
+ok "refused with exit 6 (not an owner)"
+
+step "restmail setup: a claim link, for proving ownership over the API"
+setup=$("$RESTMAIL" setup --server "$SERVER" --key "$KEYS/agent" --json --show-secret)
 jq -c 'del(.link)' <<<"$setup"
 link=$(jq -r .link <<<"$setup")
 token=$(python3 -c 'import sys,urllib.parse as u; print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$link")
@@ -87,13 +104,13 @@ curl -fsS "$API/auth/login" -H 'Content-Type: application/json' \
 ok "mailbox owner@e2e.test signs in, as the phone app would"
 
 step "restmail setup on a claimed server"
-set +e; "$RESTMAIL" setup --docker e2e-api --server "$SERVER" --json 2>/tmp/e2e-setup-again.err; status=$?; set -e
+set +e; "$RESTMAIL" setup --server "$SERVER" --key "$KEYS/agent" --json 2>/tmp/e2e-setup-again.err; status=$?; set -e
 cat /tmp/e2e-setup-again.err
 [[ $status == 3 ]] || die "exit $status, want 3"
 ok "refused with exit 3 and a pointer to reset-admin"
 
 step "hand-over: restmail reset-admin, the link the owner redeems"
-reset=$("$RESTMAIL" reset-admin --docker e2e-api --server "$SERVER" --username agent --json --show-secret)
+reset=$("$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/agent" --username agent --json --show-secret)
 reset_token=$(python3 -c 'import sys,urllib.parse as u; print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$(jq -r .link <<<"$reset")")
 OWNER_PW=$(openssl rand -base64 24)
 owner=$(curl -fsS "$API/auth/reset" -H 'Content-Type: application/json' \

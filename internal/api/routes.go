@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/metrics"
@@ -329,6 +330,22 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// every way in. Throttled like login: each guesses at a secret.
 	r.With(authThrottle).Post("/api/v1/auth/claim", authH.Claim)
 	r.With(authThrottle).Post("/api/v1/auth/reset", authH.Reset)
+	// Owners prove themselves with a key listed in RESTMAIL_OWNER_KEYS: sign a
+	// challenge, get a setup or reset-admin token to redeem above. Throttled at
+	// login's rate, but in a bucket of its own: the CLI's requests must not use
+	// up the budget the owner then needs to sign in. main has already refused
+	// to start on keys that do not parse.
+	ownerThrottle := func(next http.Handler) http.Handler { return next }
+	if cfg.AuthRateLimitEnabled {
+		ownerThrottle = middleware.RateLimit(middleware.RateLimitConfig{
+			RPS:   cfg.AuthRateLimitRPS,
+			Burst: cfg.AuthRateLimitBurst,
+		})
+	}
+	ownerKeys, _ := bootstrap.ParseOwnerKeys(cfg.OwnerKeys)
+	ownerH := handlers.NewOwnerHandler(db, ownerKeys, cfg.JWTSecret)
+	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
+	r.With(ownerThrottle).Post("/api/v1/auth/owner/token", ownerH.Token)
 
 	// M-14 (CWE-770): the admin pipeline/filter test endpoints each run a message
 	// through the pipeline engine. They are capability-gated but were otherwise

@@ -51,7 +51,7 @@ docs/                 This manual + reference docs (adapter-filters,
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
 ### 2026-10-10 — Claiming a server with the CLI, and handing it over
-`restmail setup` claims a fresh server through the installer's own access (kubectl or docker exec) and a single-use link the app redeems; `restmail reset-admin` lets an admin back in and hands a server over, ending every session the account had, unexpired access tokens included. Agent-friendly throughout: `--json`, stable exit statuses, nothing prompts. [§7.9](#79-first-start-of-a-production-install).
+`restmail setup` claims a fresh server over its public API, proving ownership with a key the deployment lists, and shows a single-use link the app redeems; `restmail reset-admin` lets an admin back in and hands a server over, ending every session the account had, unexpired access tokens included. Agent-friendly throughout: `--json`, stable exit statuses, nothing prompts. [§7.9](#79-first-start-of-a-production-install).
 
 ### 2026-10-10 — First start of a production install
 A fresh install creates its roles and, from `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD`, a first superadmin, which must set a new password and enroll a TOTP authenticator before it can use the admin API. `password_change_required` is now enforced rather than advisory. Playbook: [§7.9](#79-first-start-of-a-production-install).
@@ -744,15 +744,19 @@ The production image ships only `restmail-api` — no seed tool, so no known pas
 
 #### Claim it with the restmail CLI (recommended)
 
-Whoever installed the server proves it by the access they installed with — nothing else, so there is no password to generate or race to lose:
+Ownership is proved with an SSH key, the way a server's first login usually is. The deployment lists the owner's **public** keys in `RESTMAIL_OWNER_KEYS` (authorized_keys format, one per line; Helm value `api.ownerKeys`). Nothing secret is configured, the private key never leaves your machine, and there is no password to generate or race to lose. However the server runs — Kubernetes, Docker, a VM, anything — the CLI only talks to its public API:
 
 ```sh
-brew install rest-mail/tap/restmail
-restmail setup                 # Kubernetes: namespace rest-mail, current kubectl context
-restmail setup --docker restmail-api --server https://mail.example.com
+brew install rest-mail/tap/restmail     # or the .deb / .rpm from the release
+restmail setup --server https://mail.example.com --key ~/.ssh/id_ed25519
+restmail setup --server https://mail.example.com   # tries the keys in ssh-agent
 ```
 
-It runs `restmail-api mint-token --purpose setup` **inside the API's container** (`kubectl exec`, or `docker exec`) — a command reachable from no network — and shows the single-use link it gets back as a QR code: `restmail://setup?server=…&token=…`, valid 15 minutes (`--lifetime`). Scanning it in the app redeems it at `POST /api/v1/auth/claim`: you choose the admin's name and password, then enroll an authenticator (below). The token is spent on success; a refused attempt (short password, say) leaves it usable. Only a SHA-256 of it is stored. On a server that already has an admin, `restmail setup` exits 3 and points at `reset-admin`.
+The CLI asks the server for a challenge (`POST /api/v1/auth/owner/challenge`), signs it — bound to what it asks for, so a signature for `setup` cannot be used for a reset — and sends it back (`POST /api/v1/auth/owner/token`). The server checks the key is listed and the signature verifies, spends the challenge so the answer cannot be replayed, and mints a single-use token. Ed25519, ECDSA and RSA keys work; RSA signatures over SHA-1 are refused. A passphrase-protected key goes through ssh-agent: the CLI never prompts. `--server` must be `https://`, or `http://` to localhost.
+
+The CLI shows the link as a QR code: `restmail://setup?server=…&token=…`, valid 15 minutes (`--lifetime`). Scanning it in the app redeems it at `POST /api/v1/auth/claim`: you choose the admin's name and password, then enroll an authenticator (below). The token is spent on success; a refused attempt (short password, say) leaves it usable. Only a SHA-256 of it is stored. On a server that already has an admin, `restmail setup` exits 3 and points at `reset-admin`.
+
+With no owner keys listed, neither command works over the API (exit 6, `no_owner_keys`). The same tokens can then be minted on the server itself, however you reach a shell there: `restmail-api mint-token --purpose setup` (or `--purpose reset-admin --username NAME`) prints `{"purpose","token","expires_at"}`; the app link is `restmail://setup?server=<url>&token=<token>`.
 
 #### Or a bootstrap password
 
@@ -766,16 +770,16 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 #### Getting back in, and handing a server over: `restmail reset-admin`
 
 ```sh
-restmail reset-admin --username admin
+restmail reset-admin --server https://mail.example.com --username admin
 ```
 
 A link like `restmail setup`'s, for an admin who has lost every way in. Whoever redeems it (`POST /api/v1/auth/reset`) chooses a new password, loses the old authenticator and must enroll a new one, and **every token the account held is dead at once**: refresh tokens are revoked, and access tokens carry the account's credential epoch, which the reset bumps (`RejectStaleAdminSessions`), so even one minted seconds earlier is refused. A password change does the same.
 
-That makes it the hand-over too. Someone — or an agent — who set the server up and holds its admin's credentials runs `reset-admin` and gives the link to the owner; once the owner redeems it, nothing the first holder knew works. The first holder could still mint another link while they keep access to the deployment, which is what owning it means: remove that access to finish the hand-over.
+That makes it the hand-over too. Someone — or an agent — who set the server up and holds its admin's credentials runs `reset-admin` and gives the link to the owner; once the owner redeems it, nothing the first holder knew works. The first holder could still mint another link while their key is listed in `RESTMAIL_OWNER_KEYS`, which is what owning it means: take their key off the list (and replace it with yours) to finish the hand-over.
 
 #### For agents and scripts
 
-Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 3 already claimed, 4 no such admin, 5 the server not reachable, 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract inside the container; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.
+Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 3 already claimed, 4 no such admin, 5 the server not reachable (or not rest-mail), 6 no key offered is an owner key (or none is listed), 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract on the server; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.
 
 #### What the first admin must do
 

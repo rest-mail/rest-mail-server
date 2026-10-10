@@ -4,7 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/restmail/restmail/internal/console"
@@ -31,7 +33,7 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "setup", "reset-admin":
-			os.Exit(runSetupCommand(context.Background(), os.Args[1], os.Args[2:], execRunner, os.Stdout, os.Stderr))
+			os.Exit(runSetupCommand(context.Background(), os.Args[1], os.Args[2:], &http.Client{Timeout: 30 * time.Second}, localKeys, os.Stdout, os.Stderr))
 		case "version":
 			fmt.Println("restmail", version)
 			return

@@ -3,119 +3,98 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
-	"os/exec"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/mdp/qrterminal/v4"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 )
 
-// `restmail setup` and `restmail reset-admin` reach into the server's own
-// container (kubectl exec, or docker exec) and run its operator command there,
-// so they work only for someone who controls the deployment: that is the proof
-// of ownership. What comes back is a single-use link for the app, shown as a QR
-// code to scan.
+// `restmail setup` and `restmail reset-admin` prove ownership of a server over
+// its public API, whatever runs it. The deployment lists the owner's public
+// keys (RESTMAIL_OWNER_KEYS); the CLI signs a challenge the server issues with
+// the matching private key, and gets back a single-use link for the app, shown
+// as a QR code.
+//
+// Nothing about how the server is deployed is assumed: no kubectl, no docker,
+// only HTTPS — the same requests the app makes.
 //
 // Written for agents as much as people. Every input is a flag, nothing prompts,
-// --json gives one object on stdout and errors as one object on stderr, and the
-// exit status says what kind of failure it was.
+// --json gives one object on stdout and errors as one on stderr, and the exit
+// status says what kind of failure it was.
 
-// Exit statuses of the setup commands, shared with the operator command they run.
+// Exit statuses of the setup commands.
 const (
 	exitOK             = 0
 	exitFailed         = 1 // anything unexpected
 	exitUsage          = 2 // a flag that does not exist, or is missing
 	exitAlreadyClaimed = 3 // setup asked for, but the server has an admin
 	exitNoSuchAdmin    = 4 // reset-admin named an account that does not exist
-	exitUnreachable    = 5 // kubectl or docker missing, or the server not found
+	exitUnreachable    = 5 // the server did not answer, or not as rest-mail
+	exitNotOwner       = 6 // no key offered is one of the server's owner keys
 )
-
-// runner runs a program and returns what it printed and its exit status; err
-// is set only when it could not be run at all. Replaced in tests.
-type runner func(ctx context.Context, name string, args ...string) (stdout, stderr []byte, status int, err error)
-
-func execRunner(ctx context.Context, name string, args ...string) ([]byte, []byte, int, error) {
-	var out, errOut bytes.Buffer
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdout, cmd.Stderr = &out, &errOut
-	err := cmd.Run()
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return out.Bytes(), errOut.Bytes(), exitErr.ExitCode(), nil
-	}
-	if err != nil {
-		return nil, nil, -1, err
-	}
-	return out.Bytes(), errOut.Bytes(), 0, nil
-}
-
-// target says how to reach the server's container.
-type target struct {
-	docker     string // container name; empty means Kubernetes
-	namespace  string
-	context    string
-	kubeconfig string
-}
-
-func (t target) kubectl(args ...string) []string {
-	var base []string
-	if t.kubeconfig != "" {
-		base = append(base, "--kubeconfig", t.kubeconfig)
-	}
-	if t.context != "" {
-		base = append(base, "--context", t.context)
-	}
-	return append(append(base, "-n", t.namespace), args...)
-}
 
 const setupUsage = `restmail setup — claim a freshly installed rest-mail server
 
-  restmail setup [--namespace rest-mail] [--context NAME] [--kubeconfig PATH]
-  restmail setup --docker CONTAINER --server https://mail.example.com
+  restmail setup --server https://mail.example.com [--key ~/.ssh/id_ed25519]
 
-Mints a single-use link (valid 15 minutes) and shows it as a QR code: scan it
-with the rest-mail app to become the server's first admin. Needs the access
-you installed with: kubectl exec on the API's pod, or docker exec on its
-container.
+Proves you own the server with a private key whose public half the deployment
+lists in RESTMAIL_OWNER_KEYS (authorized_keys format), then shows a single-use
+link as a QR code: scan it with the rest-mail app to become the first admin.
+Without --key, the keys in ssh-agent are tried. Works the same however the
+server is deployed: it only talks to the server's public API.
 
+  --server URL   the server's address (https; http only for localhost)
+  --key PATH     a private key file (unencrypted; put a passphrase-protected
+                 key in ssh-agent instead)
   --json         one JSON object on stdout; errors as one on stderr
   --show-secret  include the link itself in --json output (it grants admin)
-  --server URL   the server's public address (default: from the ingress)
-  --lifetime D   how long the link works, e.g. 30m (default 15m, at most 24h)
+  --lifetime D   how long the link works, e.g. 1h (default 15m, at most 24h)
 
-Exit status: 0 ok, 2 usage, 3 already claimed (use reset-admin), 5 server
-not reachable, 1 anything else.
+Exit status: 0 ok, 2 usage, 3 already claimed (use reset-admin), 5 server not
+reachable, 6 no key offered is an owner key, 1 anything else.
 `
 
 const resetUsage = `restmail reset-admin — let an admin back in when every other way is lost
 
-  restmail reset-admin --username NAME [--namespace rest-mail] [--context NAME]
-  restmail reset-admin --username NAME --docker CONTAINER --server URL
+  restmail reset-admin --server https://mail.example.com --username NAME [--key PATH]
 
-Mints a single-use link for that admin. Whoever redeems it chooses a new
-password and enrolls a new authenticator, and every session the account had
-ends: anyone who held the old credentials is locked out. This is also how a
-server set up by someone else, or by an agent, is handed over.
+Proves ownership the same way as restmail setup, then shows a single-use link
+for that admin. Whoever redeems it chooses a new password and enrolls a new
+authenticator, and every session the account had ends: anyone who held the old
+credentials is locked out. This is also how a server set up by someone else, or
+by an agent, is handed over.
 
 Flags and exit statuses as for restmail setup; 4 means no such admin.
 `
 
+// signer is one key the CLI can prove ownership with.
+type signer struct {
+	pub  ssh.PublicKey
+	sign func(data []byte) (*ssh.Signature, error)
+}
+
+// keySource finds the keys to try. Replaced in tests.
+type keySource func(path string) ([]signer, error)
+
 // runSetupCommand runs `restmail setup` or `restmail reset-admin`.
-func runSetupCommand(ctx context.Context, command string, args []string, run runner, stdout, stderr io.Writer) int {
+func runSetupCommand(ctx context.Context, command string, args []string, client *http.Client, keys keySource, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	var t target
-	fs.StringVar(&t.namespace, "namespace", "rest-mail", "Kubernetes namespace")
-	fs.StringVar(&t.context, "context", "", "kubectl context")
-	fs.StringVar(&t.kubeconfig, "kubeconfig", "", "kubeconfig file")
-	fs.StringVar(&t.docker, "docker", "", "reach the server with docker exec on this container instead")
-	server := fs.String("server", "", "the server's public address")
+	server := fs.String("server", "", "the server's address")
+	keyPath := fs.String("key", "", "a private key file")
 	username := fs.String("username", "", "the admin to reset (reset-admin)")
 	lifetime := fs.Duration("lifetime", 15*time.Minute, "how long the link works")
 	asJSON := fs.Bool("json", false, "JSON output")
@@ -123,12 +102,12 @@ func runSetupCommand(ctx context.Context, command string, args []string, run run
 	help := fs.Bool("help", false, "show help")
 
 	usage := setupUsage
+	purpose := "setup"
 	if command == "reset-admin" {
-		usage = resetUsage
+		usage, purpose = resetUsage, "reset-admin"
 	}
-	o := output{json: *asJSON, stdout: stdout, stderr: stderr}
+	o := output{json: containsFlag(args, "json"), stdout: stdout, stderr: stderr}
 	if err := fs.Parse(args); err != nil {
-		o.json = containsFlag(args, "json")
 		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
 	o.json = *asJSON
@@ -136,67 +115,77 @@ func runSetupCommand(ctx context.Context, command string, args []string, run run
 		_, _ = io.WriteString(stdout, usage)
 		return exitOK
 	}
-	if command == "reset-admin" && *username == "" {
+	if purpose == "reset-admin" && *username == "" {
 		return o.fail(exitUsage, "bad_flag", "--username is required")
 	}
-	if t.docker != "" && *server == "" {
-		return o.fail(exitUsage, "bad_flag", "--server is required with --docker: there is no ingress to read it from")
+	if *lifetime <= 0 || *lifetime > 24*time.Hour {
+		return o.fail(exitUsage, "bad_flag", "--lifetime must be between 1s and 24h")
 	}
-
-	// Where the server is, for the link. From its ingress unless told.
-	serverURL := *server
-	if serverURL == "" {
-		host, code, err := ingressHost(ctx, run, t)
-		if err != nil {
-			return o.fail(code, "unreachable", err.Error())
-		}
-		serverURL = "https://" + host
-	}
-	parsed, err := url.Parse(serverURL)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return o.fail(exitUsage, "bad_flag", fmt.Sprintf("--server must be an https:// address, got %q", serverURL))
-	}
-
-	// Mint inside the container.
-	purpose := "setup"
-	mintArgs := []string{"restmail-api", "mint-token", "--purpose", purpose, "--lifetime", lifetime.String()}
-	if command == "reset-admin" {
-		purpose = "reset-admin"
-		mintArgs = []string{"restmail-api", "mint-token", "--purpose", purpose, "--username", *username, "--lifetime", lifetime.String()}
-	}
-	out, errOut, status, err := execInServer(ctx, run, t, mintArgs)
+	base, err := serverURL(*server)
 	if err != nil {
-		return o.fail(exitUnreachable, "unreachable", err.Error())
-	}
-	if status != 0 {
-		// The operator command's own error, passed through with its status.
-		var e struct {
-			Error struct{ Code, Message string } `json:"error"`
-		}
-		if json.Unmarshal(lastLine(errOut), &e) == nil && e.Error.Code != "" {
-			if e.Error.Code == "already_claimed" && command == "setup" {
-				e.Error.Message += " (restmail reset-admin --username NAME)"
-			}
-			return o.fail(status, e.Error.Code, e.Error.Message)
-		}
-		return o.fail(exitUnreachable, "unreachable", fmt.Sprintf("running the operator command failed (status %d): %s",
-			status, strings.TrimSpace(string(errOut))))
-	}
-	var minted struct {
-		Token     string `json:"token"`
-		ExpiresAt string `json:"expires_at"`
-	}
-	if err := json.Unmarshal(bytes.TrimSpace(out), &minted); err != nil || minted.Token == "" {
-		return o.fail(exitFailed, "bad_response", fmt.Sprintf("the server's operator command answered %q", strings.TrimSpace(string(out))))
+		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
 
-	link := appLink(purpose, serverURL, minted.Token)
-	if o.json {
-		result := map[string]any{
-			"purpose":    purpose,
-			"server":     serverURL,
-			"expires_at": minted.ExpiresAt,
+	signers, err := keys(*keyPath)
+	if err != nil {
+		return o.fail(exitNotOwner, "no_key", err.Error())
+	}
+	if len(signers) == 0 {
+		return o.fail(exitNotOwner, "no_key", "no key to prove ownership with: pass --key, or load one into ssh-agent")
+	}
+
+	api := apiClient{base: base, http: client}
+	var token, expires string
+	var lastNotOwner string
+	for _, s := range signers {
+		// A fresh challenge per key: each is spent once it is answered.
+		var ch struct {
+			Challenge string `json:"challenge"`
 		}
+		if code, msg, err := api.post(ctx, "/api/v1/auth/owner/challenge", nil, &ch); err != nil {
+			return o.fail(exitUnreachable, "unreachable", err.Error())
+		} else if code != "" {
+			return o.fail(statusFor(code), code, msg)
+		}
+		sig, err := s.sign(ownerMessage(ch.Challenge, purpose, *username))
+		if err != nil {
+			return o.fail(exitFailed, "sign_failed", err.Error())
+		}
+		var minted struct {
+			Token     string `json:"token"`
+			ExpiresAt string `json:"expires_at"`
+		}
+		code, msg, err := api.post(ctx, "/api/v1/auth/owner/token", map[string]any{
+			"challenge":        ch.Challenge,
+			"public_key":       strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.pub))),
+			"signature":        base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
+			"purpose":          purpose,
+			"username":         *username,
+			"lifetime_seconds": int(lifetime.Seconds()),
+		}, &minted)
+		if err != nil {
+			return o.fail(exitUnreachable, "unreachable", err.Error())
+		}
+		if code == "not_owner" {
+			lastNotOwner = msg
+			continue // the next key in the agent may be the one
+		}
+		if code != "" {
+			if code == "already_claimed" {
+				msg += " (restmail reset-admin --username NAME)"
+			}
+			return o.fail(statusFor(code), code, msg)
+		}
+		token, expires = minted.Token, minted.ExpiresAt
+		break
+	}
+	if token == "" {
+		return o.fail(exitNotOwner, "not_owner", fmt.Sprintf("none of the %d key(s) offered is an owner key of this server: %s", len(signers), lastNotOwner))
+	}
+
+	link := appLink(purpose, base.String(), token)
+	if o.json {
+		result := map[string]any{"purpose": purpose, "server": base.String(), "expires_at": expires}
 		if *showSecret {
 			result["link"] = link
 		} else {
@@ -205,18 +194,55 @@ func runSetupCommand(ctx context.Context, command string, args []string, run run
 		_ = json.NewEncoder(stdout).Encode(result)
 		return exitOK
 	}
-
-	what := "become " + parsed.Host + "'s first admin"
+	what := "become " + base.Host + "'s first admin"
 	if purpose == "reset-admin" {
 		what = "choose a new password and authenticator for " + *username
 	}
 	fmt.Fprintf(stdout, "Scan with the rest-mail app to %s.\n\n", what)
-	qrterminal.GenerateWithConfig(link, qrterminal.Config{
-		Level: qrterminal.M, Writer: stdout, HalfBlocks: true, QuietZone: 2,
-	})
+	qrterminal.GenerateWithConfig(link, qrterminal.Config{Level: qrterminal.M, Writer: stdout, HalfBlocks: true, QuietZone: 2})
 	fmt.Fprintf(stdout, "\nOr open: %s\n", link)
-	fmt.Fprintf(stdout, "Works once, until %s. Anyone holding it can %s.\n", minted.ExpiresAt, what)
+	fmt.Fprintf(stdout, "Works once, until %s. Anyone holding it can %s.\n", expires, what)
 	return exitOK
+}
+
+// ownerMessage must match bootstrap.OwnerMessage on the server.
+func ownerMessage(challenge, purpose, username string) []byte {
+	return []byte("restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge)
+}
+
+// statusFor maps the server's error codes to exit statuses.
+func statusFor(code string) int {
+	switch code {
+	case "already_claimed":
+		return exitAlreadyClaimed
+	case "no_such_admin":
+		return exitNoSuchAdmin
+	case "not_owner", "no_owner_keys":
+		return exitNotOwner
+	}
+	return exitFailed
+}
+
+// serverURL accepts an https address, or http for this machine only: a link
+// that grants admin does not cross a network in the clear.
+func serverURL(raw string) (*url.URL, error) {
+	if raw == "" {
+		return nil, errors.New("--server is required")
+	}
+	u, err := url.Parse(strings.TrimRight(raw, "/"))
+	if err != nil || u.Host == "" {
+		return nil, fmt.Errorf("--server %q is not an address", raw)
+	}
+	switch u.Scheme {
+	case "https":
+		return u, nil
+	case "http":
+		host := u.Hostname()
+		if ip := net.ParseIP(host); host == "localhost" || (ip != nil && ip.IsLoopback()) {
+			return u, nil
+		}
+	}
+	return nil, fmt.Errorf("--server must be https:// (http only for localhost), got %q", raw)
 }
 
 // appLink is what the app opens: the server, and the token to redeem there.
@@ -229,54 +255,98 @@ func appLink(purpose, server, token string) string {
 	return "restmail://" + path + "?" + q.Encode()
 }
 
-// execInServer runs args inside the server's API container.
-func execInServer(ctx context.Context, run runner, t target, args []string) ([]byte, []byte, int, error) {
-	if t.docker != "" {
-		return run(ctx, "docker", append([]string{"exec", t.docker}, args...)...)
-	}
-	name, err := apiDeployment(ctx, run, t)
-	if err != nil {
-		return nil, nil, 0, err
-	}
-	return run(ctx, "kubectl", t.kubectl(append([]string{"exec", name, "-c", "api", "--"}, args...)...)...)
+// apiClient speaks rest-mail's JSON envelope.
+type apiClient struct {
+	base *url.URL
+	http *http.Client
 }
 
-// apiDeployment finds the API's deployment by the chart's component label, so
-// it works whatever the release was called.
-func apiDeployment(ctx context.Context, run runner, t target) (string, error) {
-	out, errOut, status, err := run(ctx, "kubectl", t.kubectl("get", "deployment",
-		"-l", "app.kubernetes.io/component=api", "-o", "name")...)
+// post returns the server's error code and message when it refused, or err
+// when it could not be reached or did not answer like rest-mail.
+func (c apiClient) post(ctx context.Context, path string, body any, into any) (code, message string, err error) {
+	var reader io.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		reader = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base.String()+path, reader)
 	if err != nil {
-		return "", fmt.Errorf("kubectl is not available: %w", err)
+		return "", "", err
 	}
-	if status != 0 {
-		return "", fmt.Errorf("kubectl could not list deployments in %q: %s", t.namespace, strings.TrimSpace(string(errOut)))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("%s did not answer: %w", c.base.Host, err)
 	}
-	names := strings.Fields(string(out))
-	if len(names) == 0 {
-		return "", fmt.Errorf("no rest-mail API deployment in namespace %q", t.namespace)
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var env struct {
+		Data  json.RawMessage `json:"data"`
+		Error *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	return names[0], nil
+	if json.Unmarshal(raw, &env) == nil && env.Error != nil {
+		return env.Error.Code, env.Error.Message, nil
+	}
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		return "", "", fmt.Errorf("%s does not offer owner keys: not a rest-mail server, or one older than this CLI", c.base.Host)
+	}
+	if resp.StatusCode != http.StatusOK || env.Data == nil {
+		return "", "", fmt.Errorf("%s did not answer like a rest-mail server (HTTP %d)", c.base.Host, resp.StatusCode)
+	}
+	if into != nil && json.Unmarshal(env.Data, into) != nil {
+		return "", "", fmt.Errorf("%s answered something unexpected", c.base.Host)
+	}
+	return "", "", nil
 }
 
-// ingressHost reads the server's public host from its ingress.
-func ingressHost(ctx context.Context, run runner, t target) (string, int, error) {
-	out, errOut, status, err := run(ctx, "kubectl", t.kubectl("get", "ingress",
-		"-o", "jsonpath={.items[0].spec.rules[0].host}")...)
+// localKeys loads the key at path, or else every key in ssh-agent. It never
+// prompts: an encrypted key file is refused with a pointer to ssh-agent.
+func localKeys(path string) ([]signer, error) {
+	if path != "" {
+		pem, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		s, err := ssh.ParsePrivateKey(pem)
+		var missing *ssh.PassphraseMissingError
+		if errors.As(err, &missing) {
+			return nil, fmt.Errorf("%s is passphrase-protected: add it to ssh-agent (ssh-add %s) and leave out --key", path, path)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		return []signer{fromSSHSigner(s)}, nil
+	}
+	sock := os.Getenv("SSH_AUTH_SOCK")
+	if sock == "" {
+		return nil, errors.New("no --key given and no ssh-agent (SSH_AUTH_SOCK is unset)")
+	}
+	conn, err := net.Dial("unix", sock)
 	if err != nil {
-		return "", exitUnreachable, fmt.Errorf("kubectl is not available: %w", err)
+		return nil, fmt.Errorf("ssh-agent: %w", err)
 	}
-	host := strings.TrimSpace(string(out))
-	if status != 0 || host == "" {
-		return "", exitUnreachable, fmt.Errorf("could not read the server's address from an ingress in %q (pass --server): %s",
-			t.namespace, strings.TrimSpace(string(errOut)))
+	signers, err := agent.NewClient(conn).Signers()
+	if err != nil {
+		return nil, fmt.Errorf("ssh-agent: %w", err)
 	}
-	return host, exitOK, nil
+	out := make([]signer, 0, len(signers))
+	for _, s := range signers {
+		out = append(out, fromSSHSigner(s))
+	}
+	return out, nil
 }
 
-func lastLine(b []byte) []byte {
-	lines := bytes.Split(bytes.TrimSpace(b), []byte("\n"))
-	return lines[len(lines)-1]
+// fromSSHSigner signs with SHA-2 for RSA keys: the server refuses SHA-1.
+func fromSSHSigner(s ssh.Signer) signer {
+	return signer{pub: s.PublicKey(), sign: func(data []byte) (*ssh.Signature, error) {
+		if as, ok := s.(ssh.AlgorithmSigner); ok && s.PublicKey().Type() == ssh.KeyAlgoRSA {
+			return as.SignWithAlgorithm(rand.Reader, data, ssh.KeyAlgoRSASHA256)
+		}
+		return s.Sign(rand.Reader, data)
+	}}
 }
 
 func containsFlag(args []string, name string) bool {

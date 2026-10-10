@@ -153,6 +153,13 @@ api:
   # so the API may serve them unauthenticated on the public listener. Without
   # either mTLS or this acknowledgement, the API refuses to boot in production.
   internalRoutesAllowPublic: false
+  # Public keys of the server's owners, one per line in authorized_keys format
+  # (e.g. the contents of ~/.ssh/id_ed25519.pub). Whoever holds a matching
+  # private key can claim a fresh install (`restmail setup --server URL`) and
+  # let an admin back in (`restmail reset-admin`), from anywhere the API is
+  # reachable. Public keys, so not secret. Empty: neither is possible over the
+  # API, only with `restmail-api mint-token` on the server itself.
+  ownerKeys: ""
   service:
     type: ClusterIP
     port: 8080

@@ -3,192 +3,276 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
-	"errors"
+	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/ssh"
 )
 
-// fakeCluster answers the kubectl and docker calls the setup commands make, and
-// records them.
-type fakeCluster struct {
-	host     string // the ingress's host; empty for none
-	mintOut  string // what restmail-api mint-token prints on stdout
-	mintErr  string // ... on stderr
-	mintCode int
-	missing  bool // kubectl/docker not installed
-	calls    [][]string
+// fakeServer speaks the owner-key half of rest-mail's API: it issues
+// challenges and checks signatures against its owner keys the way the real
+// server does (internal/bootstrap/ownerkeys.go, which has its own tests).
+type fakeServer struct {
+	owners   []ssh.PublicKey
+	claimed  bool     // an admin exists already
+	admins   []string // for reset-admin
+	answered []map[string]any
 }
 
-func (f *fakeCluster) run(_ context.Context, name string, args ...string) ([]byte, []byte, int, error) {
-	f.calls = append(f.calls, append([]string{name}, args...))
-	if f.missing {
-		return nil, nil, -1, errors.New("executable file not found in $PATH")
+func (f *fakeServer) handler() http.Handler {
+	mux := http.NewServeMux()
+	fail := func(w http.ResponseWriter, status int, code string) {
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": code}})
 	}
-	joined := strings.Join(args, " ")
-	switch {
-	case strings.Contains(joined, "get ingress"):
-		if f.host == "" {
-			return nil, []byte("error: no ingress"), 1, nil
+	data := func(w http.ResponseWriter, v any) { _ = json.NewEncoder(w).Encode(map[string]any{"data": v}) }
+	mux.HandleFunc("POST /api/v1/auth/owner/challenge", func(w http.ResponseWriter, r *http.Request) {
+		if len(f.owners) == 0 {
+			fail(w, 409, "no_owner_keys")
+			return
 		}
-		return []byte(f.host), nil, 0, nil
-	case strings.Contains(joined, "get deployment"):
-		return []byte("deployment.apps/rest-mail-server-api\n"), nil, 0, nil
-	case strings.Contains(joined, "mint-token"):
-		return []byte(f.mintOut), []byte(f.mintErr), f.mintCode, nil
-	}
-	return nil, []byte("unexpected call: " + joined), 1, nil
+		data(w, map[string]string{"challenge": "ch-" + rand.Text()})
+	})
+	mux.HandleFunc("POST /api/v1/auth/owner/token", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		f.answered = append(f.answered, req)
+		pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(req["public_key"].(string)))
+		listed := false
+		for _, o := range f.owners {
+			listed = listed || (err == nil && bytes.Equal(o.Marshal(), pub.Marshal()))
+		}
+		raw, _ := base64.StdEncoding.DecodeString(req["signature"].(string))
+		var sig ssh.Signature
+		if !listed || ssh.Unmarshal(raw, &sig) != nil || sig.Format == ssh.KeyAlgoRSA ||
+			pub.Verify(ownerMessage(req["challenge"].(string), req["purpose"].(string), req["username"].(string)), &sig) != nil {
+			fail(w, 403, "not_owner")
+			return
+		}
+		switch {
+		case req["purpose"] == "setup" && f.claimed:
+			fail(w, 409, "already_claimed")
+		case req["purpose"] == "reset-admin" && !contains(f.admins, req["username"].(string)):
+			fail(w, 404, "no_such_admin")
+		default:
+			data(w, map[string]string{"purpose": req["purpose"].(string), "token": "TOKEN-123", "expires_at": "2026-10-10T21:15:00Z"})
+		}
+	})
+	return mux
 }
 
-const mintedSetup = `{"purpose":"setup","token":"tok-123","expires_at":"2026-10-10T18:30:00Z"}` + "\n"
+func contains(xs []string, x string) bool {
+	for _, y := range xs {
+		if y == x {
+			return true
+		}
+	}
+	return false
+}
 
-func runCmd(f *fakeCluster, command string, args ...string) (int, string, string) {
+func edSigner(t *testing.T) ssh.Signer {
+	t.Helper()
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	s, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// keysOf stands in for a key file or ssh-agent holding signers.
+func keysOf(signers ...ssh.Signer) keySource {
+	return func(string) ([]signer, error) {
+		out := []signer{}
+		for _, s := range signers {
+			out = append(out, fromSSHSigner(s))
+		}
+		return out, nil
+	}
+}
+
+func run(t *testing.T, f *fakeServer, keys keySource, command string, args ...string) (int, string, string) {
+	t.Helper()
+	srv := httptest.NewServer(f.handler())
+	t.Cleanup(srv.Close)
 	var out, errOut bytes.Buffer
-	status := runSetupCommand(context.Background(), command, args, f.run, &out, &errOut)
+	args = append([]string{"--server", srv.URL}, args...)
+	status := runSetupCommand(context.Background(), command, args, srv.Client(), keys, &out, &errOut)
 	return status, out.String(), errOut.String()
 }
 
-func TestSetup_KubernetesMintsInTheAPIContainerAndPrintsALink(t *testing.T) {
-	f := &fakeCluster{host: "mail.rest-mail.com", mintOut: mintedSetup}
-	status, out, errOut := runCmd(f, "setup", "--namespace", "rest-mail", "--context", "prod")
+func TestSetup_OwnerKeyGetsALink(t *testing.T) {
+	owner := edSigner(t)
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
+
+	status, out, errOut := run(t, f, keysOf(owner), "setup", "--json", "--show-secret")
 	if status != exitOK {
 		t.Fatalf("status %d, stderr %s", status, errOut)
 	}
-
-	// The token was minted inside the API's own container, found by its label.
-	exec := f.calls[len(f.calls)-1]
-	got := strings.Join(exec, " ")
-	for _, want := range []string{"kubectl", "--context prod", "-n rest-mail",
-		"exec deployment.apps/rest-mail-server-api -c api --", "restmail-api mint-token --purpose setup"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("exec %q lacks %q", got, want)
-		}
-	}
-
-	// A person gets the link to open and a QR code of it.
-	link := "restmail://setup?server=https%3A%2F%2Fmail.rest-mail.com&token=tok-123"
-	if !strings.Contains(out, link) {
-		t.Errorf("output lacks the link %s:\n%s", link, out)
-	}
-	if !strings.ContainsAny(out, "█▀▄") {
-		t.Error("output has no QR code")
-	}
-}
-
-func TestSetup_JSONRedactsTheLinkUnlessAsked(t *testing.T) {
-	f := &fakeCluster{host: "mail.rest-mail.com", mintOut: mintedSetup}
-
-	status, out, _ := runCmd(f, "setup", "--json")
-	if status != exitOK {
-		t.Fatalf("status %d", status)
-	}
-	var redacted map[string]any
-	if err := json.Unmarshal([]byte(out), &redacted); err != nil {
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("stdout is not one JSON object: %q", out)
 	}
-	if _, ok := redacted["link"]; ok || redacted["link_redacted"] != true {
-		t.Errorf("--json without --show-secret = %v; the link grants admin and must not reach logs by default", redacted)
+	link, _ := url.Parse(got["link"].(string))
+	if link.Scheme != "restmail" || link.Host != "setup" || link.Query().Get("token") != "TOKEN-123" ||
+		!strings.HasPrefix(link.Query().Get("server"), "http://127.0.0.1:") {
+		t.Errorf("link = %v", got["link"])
 	}
-	if redacted["server"] != "https://mail.rest-mail.com" || redacted["expires_at"] != "2026-10-10T18:30:00Z" {
-		t.Errorf("--json = %v", redacted)
-	}
-
-	status, out, _ = runCmd(f, "setup", "--json", "--show-secret")
-	var shown map[string]string
-	if status != exitOK || json.Unmarshal([]byte(out), &shown) != nil {
-		t.Fatalf("status %d, out %q", status, out)
-	}
-	u, err := url.Parse(shown["link"])
-	if err != nil || u.Scheme != "restmail" || u.Host != "setup" {
-		t.Fatalf("link %q", shown["link"])
-	}
-	if u.Query().Get("server") != "https://mail.rest-mail.com" || u.Query().Get("token") != "tok-123" {
-		t.Errorf("link carries %v", u.Query())
+	if got["expires_at"] != "2026-10-10T21:15:00Z" {
+		t.Errorf("expires_at = %v", got["expires_at"])
 	}
 }
 
-func TestResetAdmin_LinksToResetForTheNamedAdmin(t *testing.T) {
-	f := &fakeCluster{host: "mail.rest-mail.com",
-		mintOut: `{"purpose":"reset-admin","token":"tok-9","expires_at":"2026-10-10T18:30:00Z"}`}
-	status, out, _ := runCmd(f, "reset-admin", "--username", "agent", "--json", "--show-secret")
-	if status != exitOK {
-		t.Fatalf("status %d", status)
+func TestSetup_LinkIsRedactedUnlessAsked(t *testing.T) {
+	owner := edSigner(t)
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
+	_, out, _ := run(t, f, keysOf(owner), "setup", "--json")
+	if strings.Contains(out, "TOKEN-123") || !strings.Contains(out, `"link_redacted":true`) {
+		t.Errorf("--json without --show-secret printed %s", out)
 	}
-	if !strings.Contains(strings.Join(f.calls[len(f.calls)-1], " "), "--purpose reset-admin --username agent") {
-		t.Errorf("minted with %v", f.calls[len(f.calls)-1])
-	}
-	var res map[string]string
-	_ = json.Unmarshal([]byte(out), &res)
-	if !strings.HasPrefix(res["link"], "restmail://reset?") {
-		t.Errorf("link %q, want a reset link", res["link"])
+	// People get the QR code and the link.
+	_, out, _ = run(t, f, keysOf(owner), "setup")
+	if !strings.Contains(out, "TOKEN-123") || !strings.Contains(out, "Scan with the rest-mail app") {
+		t.Errorf("text output: %s", out)
 	}
 }
 
-// The operator command's own failures come through with its exit status and
-// code, so an agent can tell "already set up" from "could not reach it".
-func TestSetup_PassesThroughTheServersRefusal(t *testing.T) {
-	f := &fakeCluster{host: "mail.rest-mail.com", mintCode: exitAlreadyClaimed,
-		mintErr: `{"error":{"code":"already_claimed","message":"the server already has an admin"}}`}
-	status, _, errOut := runCmd(f, "setup", "--json")
-	if status != exitAlreadyClaimed {
-		t.Errorf("status %d, want %d", status, exitAlreadyClaimed)
+// ssh-agent may hold several keys; any one of them may be the owner's.
+func TestSetup_TriesEachKey(t *testing.T) {
+	other, owner := edSigner(t), edSigner(t)
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
+	if status, _, errOut := run(t, f, keysOf(other, owner), "setup", "--json"); status != exitOK {
+		t.Fatalf("status %d: %s", status, errOut)
 	}
-	var e struct {
-		Error struct{ Code, Message string } `json:"error"`
-	}
-	if err := json.Unmarshal([]byte(errOut), &e); err != nil || e.Error.Code != "already_claimed" {
-		t.Fatalf("stderr %q", errOut)
-	}
-	if !strings.Contains(e.Error.Message, "reset-admin") {
-		t.Errorf("message %q does not say what to do instead", e.Error.Message)
-	}
-
-	f = &fakeCluster{host: "mail.rest-mail.com", mintCode: exitNoSuchAdmin,
-		mintErr: `{"error":{"code":"no_such_admin","message":"no admin named \"x\""}}`}
-	if status, _, _ := runCmd(f, "reset-admin", "--username", "x", "--json"); status != exitNoSuchAdmin {
-		t.Errorf("no such admin: status %d, want %d", status, exitNoSuchAdmin)
+	if len(f.answered) != 2 {
+		t.Errorf("answered %d challenges, want 2", len(f.answered))
 	}
 }
 
-func TestSetup_UnreachableAndUsageErrors(t *testing.T) {
+// RSA keys sign with SHA-2: the server refuses ssh-rsa (SHA-1) signatures.
+func TestSetup_RSAKeySignsWithSHA2(t *testing.T) {
+	k, _ := rsa.GenerateKey(rand.Reader, 2048)
+	owner, _ := ssh.NewSignerFromKey(k)
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
+	if status, _, errOut := run(t, f, keysOf(owner), "setup", "--json"); status != exitOK {
+		t.Fatalf("status %d: %s", status, errOut)
+	}
+}
+
+func TestResetAdmin(t *testing.T) {
+	owner := edSigner(t)
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, claimed: true, admins: []string{"agent"}}
+	status, out, errOut := run(t, f, keysOf(owner), "reset-admin", "--username", "agent", "--json", "--show-secret")
+	if status != exitOK || !strings.Contains(out, "restmail://reset?") {
+		t.Fatalf("status %d, out %s, err %s", status, out, errOut)
+	}
+	if f.answered[0]["username"] != "agent" || f.answered[0]["purpose"] != "reset-admin" {
+		t.Errorf("asked for %v", f.answered[0])
+	}
+}
+
+func TestSetup_ExitStatuses(t *testing.T) {
+	owner, stranger := edSigner(t), edSigner(t)
+	listed := []ssh.PublicKey{owner.PublicKey()}
 	cases := []struct {
-		name   string
-		f      *fakeCluster
-		args   []string
-		status int
+		name    string
+		f       *fakeServer
+		keys    keySource
+		command string
+		args    []string
+		want    int
+		code    string
 	}{
-		{"kubectl missing", &fakeCluster{missing: true}, []string{"--json"}, exitUnreachable},
-		{"no ingress and no --server", &fakeCluster{}, []string{"--json"}, exitUnreachable},
-		{"docker without --server", &fakeCluster{}, []string{"--docker", "api", "--json"}, exitUsage},
-		{"plain-http server", &fakeCluster{}, []string{"--server", "http://mail.example.com", "--json"}, exitUsage},
-		{"unknown flag", &fakeCluster{}, []string{"--nope", "--json"}, exitUsage},
+		{"not an owner key", &fakeServer{owners: listed}, keysOf(stranger), "setup", nil, exitNotOwner, "not_owner"},
+		{"no keys at all", &fakeServer{owners: listed}, keysOf(), "setup", nil, exitNotOwner, "no_key"},
+		{"server lists no owners", &fakeServer{}, keysOf(owner), "setup", nil, exitNotOwner, "no_owner_keys"},
+		{"already claimed", &fakeServer{owners: listed, claimed: true}, keysOf(owner), "setup", nil, exitAlreadyClaimed, "already_claimed"},
+		{"no such admin", &fakeServer{owners: listed, claimed: true}, keysOf(owner), "reset-admin", []string{"--username", "nobody"}, exitNoSuchAdmin, "no_such_admin"},
+		{"reset without a username", &fakeServer{owners: listed}, keysOf(owner), "reset-admin", nil, exitUsage, "bad_flag"},
+		{"unknown flag", &fakeServer{owners: listed}, keysOf(owner), "setup", []string{"--kube-context", "prod"}, exitUsage, "bad_flag"},
+		{"lifetime too long", &fakeServer{owners: listed}, keysOf(owner), "setup", []string{"--lifetime", "48h"}, exitUsage, "bad_flag"},
 	}
 	for _, c := range cases {
-		status, out, errOut := runCmd(c.f, "setup", c.args...)
-		if status != c.status {
-			t.Errorf("%s: status %d, want %d (stderr %s)", c.name, status, c.status, errOut)
-		}
-		if out != "" {
-			t.Errorf("%s: printed a result: %q", c.name, out)
-		}
-		var e map[string]any
-		if err := json.Unmarshal([]byte(errOut), &e); err != nil {
-			t.Errorf("%s: stderr is not one JSON object: %q", c.name, errOut)
-		}
-	}
-	if status, _, _ := runCmd(&fakeCluster{}, "reset-admin", "--json"); status != exitUsage {
-		t.Errorf("reset-admin without --username: status %d", status)
+		t.Run(c.name, func(t *testing.T) {
+			status, out, errOut := run(t, c.f, c.keys, c.command, append(c.args, "--json")...)
+			if status != c.want {
+				t.Errorf("status %d, want %d (stderr %s)", status, c.want, errOut)
+			}
+			if out != "" {
+				t.Errorf("stdout on failure: %q", out)
+			}
+			var e struct{ Error struct{ Code string } }
+			if json.Unmarshal([]byte(errOut), &e) != nil || e.Error.Code != c.code {
+				t.Errorf("stderr = %q, want one JSON error with code %s", errOut, c.code)
+			}
+		})
 	}
 }
 
-func TestSetup_DockerExecsIntoTheNamedContainer(t *testing.T) {
-	f := &fakeCluster{mintOut: mintedSetup}
-	status, _, errOut := runCmd(f, "setup", "--docker", "restmail-api", "--server", "https://mail.example.com", "--json")
-	if status != exitOK {
-		t.Fatalf("status %d, %s", status, errOut)
+func TestSetup_NotARestMailServer(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	var out, errOut bytes.Buffer
+	status := runSetupCommand(context.Background(), "setup", []string{"--server", srv.URL, "--json"}, srv.Client(), keysOf(edSigner(t)), &out, &errOut)
+	if status != exitUnreachable {
+		t.Errorf("status %d, want %d: %s", status, exitUnreachable, errOut.String())
 	}
-	if got := strings.Join(f.calls[0], " "); !strings.HasPrefix(got, "docker exec restmail-api restmail-api mint-token") {
-		t.Errorf("ran %q", got)
+}
+
+// A link that grants admin never crosses a network in the clear.
+func TestServerURL(t *testing.T) {
+	for raw, ok := range map[string]bool{
+		"https://mail.example.com":  true,
+		"https://mail.example.com/": true,
+		"http://localhost:8080":     true,
+		"http://127.0.0.1:8080":     true,
+		"http://[::1]:8080":         true,
+		"http://mail.example.com":   false,
+		"http://10.0.0.5":           false,
+		"mail.example.com":          false,
+		"":                          false,
+	} {
+		if _, err := serverURL(raw); (err == nil) != ok {
+			t.Errorf("serverURL(%q) err = %v, want ok=%v", raw, err, ok)
+		}
 	}
+}
+
+func TestLocalKeys(t *testing.T) {
+	dir := t.TempDir()
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	block, _ := ssh.MarshalPrivateKey(priv, "")
+	plain := filepath.Join(dir, "id_ed25519")
+	_ = os.WriteFile(plain, pemEncode(block.Type, block.Bytes), 0o600)
+	got, err := localKeys(plain)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("plain key: %d keys, err %v", len(got), err)
+	}
+
+	block, _ = ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte("secret"))
+	locked := filepath.Join(dir, "id_locked")
+	_ = os.WriteFile(locked, pemEncode(block.Type, block.Bytes), 0o600)
+	if _, err := localKeys(locked); err == nil || !strings.Contains(err.Error(), "ssh-agent") {
+		t.Errorf("passphrase-protected key: err = %v, want a pointer to ssh-agent", err)
+	}
+
+	t.Setenv("SSH_AUTH_SOCK", "")
+	if _, err := localKeys(""); err == nil {
+		t.Error("no key and no agent: want an error")
+	}
+}
+
+func pemEncode(typ string, b []byte) []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: b})
 }
