@@ -167,15 +167,22 @@ func seedRBAC(database *gorm.DB) error {
 	var adminUser models.AdminUser
 	result := database.Where("username = ?", "admin").
 		Attrs(models.AdminUser{
-			Username:               "admin",
-			Email:                  "admin@localhost",
-			PasswordHash:           adminPassword,
-			PasswordChangeRequired: true,
-			Active:                 true,
+			Username:     "admin",
+			Email:        "admin@localhost",
+			PasswordHash: adminPassword,
+			Active:       true,
 		}).
 		FirstOrCreate(&adminUser)
 	if result.Error != nil {
 		return result.Error
+	}
+	// A test fixture, like the password123 mailboxes: dev instances and the e2e
+	// suite sign in as admin/admin123!@ directly, and this tool never ships in an
+	// image. The API now enforces password_change_required (a session can do
+	// nothing else until it is cleared), so the flag must be off here — including
+	// on databases seeded before it was enforced, which have it set.
+	if err := database.Model(&adminUser).Update("password_change_required", false).Error; err != nil {
+		return err
 	}
 	slog.Info("admin user", "username", "admin", "created", result.RowsAffected > 0)
 

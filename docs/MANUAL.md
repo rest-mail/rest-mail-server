@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-10 — First start of a production install
+A fresh install creates its roles and, from `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD`, a first superadmin, which must set a new password and enroll a TOTP authenticator before it can use the admin API. `password_change_required` is now enforced rather than advisory. Playbook: [§7.9](#79-first-start-of-a-production-install).
+
 ### 2026-04-22 — Dev-env hardening
 - Moved docker network `mailnet` subnet from `172.20.0.0/16` to `10.99.0.0/16` across `docker-compose.yml`, `tskfile.yml`, `docker/postfix/conf/main.cf.tmpl`, `docker/dnsmasq/dnsmasq.conf`, all `website/`/`admin/`/`webmail/`/`monitoring/` compose files, e2e test suite, and `docs/proxy-protocol.md` / `docs/dns-providers.md`.
 - Added `run: once` to all 20 `start:*` tasks in `tskfile.yml` to dedupe parallel docker compose invocations (fixes race on `start:postgres-mail3`, `start:api`, etc.).
@@ -112,6 +115,7 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 - JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. Claims: `sub`, `email`, `webmail_account_id`, `iss=restmail`, `iat`, `exp`, `capabilities[]`.
 - Refresh flow: axios response interceptor in admin / webmail detects 401 → `POST /api/v1/auth/refresh` → retry request → logout on refresh failure.
 - RBAC: JWT carries `capabilities[]`. Wildcard `*` = superadmin. Capabilities use `resource:action` format (e.g. `domains:write`, `users:delete`). Server enforces; client-side checks are UX only.
+- Account setup: an admin flagged `password_change_required`, or `two_factor_required` without a confirmed authenticator, is *in setup*. Its sessions carry the `setup` claim and no capabilities; `AdminOnly` answers `403 setup_required` on every admin route, and refresh re-derives the state from the database so it is no way out. Login reports what is owed in `setup_required`. The roles and the first admin of a fresh install come from [internal/bootstrap](../internal/bootstrap/bootstrap.go) at every API start — see [§7.9](#79-first-start-of-a-production-install).
 
 ### 3.4 Web framework & runtime
 - Go: chi router, zero external deps beyond stdlib for middleware (`func(http.Handler) http.Handler`).
@@ -563,6 +567,9 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 | `API_HOST` | `0.0.0.0` | |
 | `JWT_SECRET` | `dev-secret-change-in-production` | **Required in prod** |
 | `MASTER_KEY` | *(empty)* | AES-256-GCM key for encrypting private keys at rest. **Required in prod; losing it means losing all DKIM/TLS private keys.** |
+| `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` | *(empty)* | First superadmin of a fresh install, created only while **no** admin exists; 16+ bytes. Empty = no bootstrap admin. See [§7.9](#79-first-start-of-a-production-install). |
+| `RESTMAIL_BOOTSTRAP_ADMIN_USERNAME` | `admin` | Username for that admin. |
+| `TOTP_2FA_ENABLED` | `true` | Lets accounts enroll in TOTP 2FA. The bootstrap admin must enroll, so the API refuses to create one while this is off. |
 | `ENVIRONMENT` | `development` | `development`, `production`, `test` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
@@ -708,7 +715,7 @@ When outbound worker probes recipient MX and sees `RESTMAIL https://restmail.exa
 Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upsert via `Clauses(clause.OnConflict{...})`. Probes expire after TTL to re-check for disabled endpoints.
 
 ### 7.8 Test accounts (seeded by `chore db:seed`)
-**Admin:** `admin` / `admin123!@` — role `superadmin`, wildcard `*` capability.
+**Admin:** `admin` / `admin123!@` — role `superadmin`, wildcard `*` capability. A test fixture, never shipped: it is *not* put through first-start setup, so dev instances and the e2e suite sign in with it directly. Production installs use [§7.9](#79-first-start-of-a-production-install) instead.
 
 **restmail.test mailboxes** (all password `password123`):
 - `eve@restmail.test` (Eve Wilson)
@@ -718,6 +725,62 @@ Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upser
 **Aliases on restmail.test:**
 - `info@restmail.test → eve@restmail.test`
 - `admin@restmail.test → eve@restmail.test`
+
+### 7.9 First start of a production install
+
+The production image ships only `restmail-api` — no seed tool, so no known passwords. A fresh database therefore has no admin, and without one nobody can create a domain or a mailbox. The API closes that gap itself, at every start:
+
+1. **Roles.** It creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles. Idempotent; existing rows are left alone.
+2. **First admin.** If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
+
+The API **refuses to start** if a bootstrap admin would be created with a password under 16 bytes (a placeholder left in), or while `TOTP_2FA_ENABLED` is off (the admin could never finish setup and would be locked out for good).
+
+**Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart it is the optional `BOOTSTRAP_ADMIN_PASSWORD` key of the API Secret (`api.existingSecret`); read it back with
+`kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
+
+#### What the first admin must do
+
+That password was chosen by a deploy tool and sits in its state, so the account is not yours alone until you replace it. The bootstrap admin starts **in setup** and owes two steps, in either order:
+
+| Step | Owed until | Call |
+|------|------------|------|
+| `password` | a new password is set | `POST /api/v1/auth/password` |
+| `two_factor` | a TOTP authenticator is confirmed | `POST /api/v1/auth/2fa/enroll`, then `POST /api/v1/auth/2fa/confirm` |
+
+Until both are done, every session of the account — including any refreshed from it — can make only these calls and `GET /api/v1/auth/2fa`. Everything under the admin API answers `403` with code `setup_required`.
+
+The admin web UI does not walk this setup yet: it shows the `403`s. Until it does, use the API directly. With `"client": "native"` the tokens come back in the body; send them as `Authorization: Bearer`.
+
+```sh
+API=https://mail.example.com/api/v1
+
+# 1. Sign in with the bootstrap password.
+curl -s $API/auth/login -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<bootstrap password>","client":"native"}'
+#   → data.setup_required: ["password","two_factor"]; keep data.access_token as $TOKEN
+
+# 2. Enroll an authenticator. Scan data.otpauth_url as a QR code (or type
+#    data.secret into the app), and store data.recovery_codes somewhere safe:
+#    they are shown once, and are the only way in if the device is lost.
+curl -s -X POST $API/auth/2fa/enroll -H "Authorization: Bearer $TOKEN"
+
+# 3. Confirm it with a code from the app.       → 204
+curl -s -X POST $API/auth/2fa/confirm -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"code":"123456"}'
+
+# 4. Replace the password: 12+ characters, different from the old one.
+#    Every session of the account is revoked, this one included.
+curl -s -X POST $API/auth/password -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"current_password":"<bootstrap password>","new_password":"<yours>"}'
+
+# 5. Sign in for real: new password and a current code.
+curl -s $API/auth/login -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<yours>","totp_code":"123456","client":"native"}'
+#   → no setup_required, capabilities ["*", …]
+```
+
+After that the account is an ordinary superadmin, except that **2FA cannot be disabled on it** (`403 two_factor_required`): the requirement is a rule, not a one-time gate. The bootstrap password no longer signs in, and can be removed from the Secret — though leaving it does nothing, since an admin now exists.
 
 ---
 

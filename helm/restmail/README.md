@@ -41,6 +41,16 @@ That leaves the API, the JS filter and Postgres, and drops each disabled
 gateway's Deployment, Service and NetworkPolicy. All three default to `true`,
 so an existing install renders exactly as it did before.
 
+## The first admin
+
+A fresh install has no admin, and the image carries no seed tool. Add a
+`BOOTSTRAP_ADMIN_PASSWORD` key (16+ bytes, generated at deploy time) to the
+Secret named by `api.existingSecret`, and the API creates a superadmin from it
+while no admin exists. That admin must set a new password and enroll a TOTP
+authenticator before it can do anything else. The key is optional: without it,
+nothing is created. The whole procedure is in
+[docs/MANUAL.md §7.9](../../docs/MANUAL.md#79-first-start-of-a-production-install).
+
 ## Infrastructure assumptions
 
 The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
