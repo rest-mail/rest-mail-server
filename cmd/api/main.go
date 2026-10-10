@@ -140,6 +140,14 @@ func main() {
 		slog.Error("failed to create the bootstrap admin", "error", err)
 		os.Exit(1)
 	}
+	// Still no admin: print the setup code the owner claims the server with.
+	if code, expires, err := bootstrap.EnsureSetupCode(database, time.Now()); err != nil {
+		slog.Error("failed to mint the setup code", "error", err)
+		os.Exit(1)
+	} else if code != "" {
+		printSetupBanner(os.Stdout, code, expires)
+		slog.Info("server not claimed yet: the setup code is printed above (restart for a new one)")
+	}
 
 	// Create JWT service
 	jwtService := auth.NewJWTService(cfg.JWTSecret, cfg.JWTAccessExpiry, cfg.JWTRefreshExpiry)

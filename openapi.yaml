@@ -268,8 +268,10 @@ paths:
       summary: Claim an unclaimed server with a setup token
       description: >
         Redeems a single-use setup token and makes the redeemer the server's
-        first admin, with the username and password they choose. Tokens are
-        minted only for an owner — a holder of a key listed in
+        first admin, with the username and password they choose. The token is
+        the setup code the server printed to its own output at startup (case,
+        dashes and spaces ignored), or one minted for an owner — a holder of a
+        key listed in
         RESTMAIL_OWNER_KEYS (`/api/v1/auth/owner/token`, usually through
         `restmail setup`) — or on the server itself (`restmail-api mint-token
         --purpose setup`), so holding one proves it was handed over by the

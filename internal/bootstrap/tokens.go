@@ -15,11 +15,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// Single-use tokens are minted only by someone with access to the server itself
-// (`restmail-api mint-token`, run through kubectl or docker exec — reachable
-// from no network) and redeemed once over the public API. Possession of one
-// therefore proves the redeemer was handed it by whoever controls the
-// deployment, which is what "owning this server" means.
+// Single-use tokens reach only the server's owner — the setup code a fresh
+// install prints to its own output, `restmail-api mint-token` run on the
+// server, or a request signed with an owner key — and are redeemed once over
+// the public API. Possession of one therefore proves the redeemer was handed it
+// by whoever controls the deployment, which is what "owning this server" means.
 
 // DefaultTokenLifetime is how long a minted token can be redeemed. Long enough
 // to scan a QR code or for an agent to finish a plan; short enough that a token
@@ -140,7 +140,12 @@ func ClaimServer(database *gorm.DB, token, username, password string, twoFactorA
 	}
 	var admin models.AdminUser
 	err = database.Transaction(func(tx *gorm.DB) error {
-		if _, err := redeem(tx, token, models.OneTimeTokenSetup); err != nil {
+		// A minted token, or else the code the install printed, as typed.
+		_, err := redeem(tx, token, models.OneTimeTokenSetup)
+		if errors.Is(err, ErrTokenInvalid) {
+			_, err = redeem(tx, NormalizeSetupCode(token), models.OneTimeTokenSetupCode)
+		}
+		if err != nil {
 			return err
 		}
 		// Minted while there was no admin; one may have appeared since (a
@@ -165,6 +170,12 @@ func ClaimServer(database *gorm.DB, token, username, password string, twoFactorA
 			LastPasswordChange: &now,
 		}
 		if err := tx.Create(&admin).Error; err != nil {
+			return err
+		}
+		// Claimed: every other way to claim it is dead, the printed code included.
+		if err := tx.Where("purpose IN ? AND used_at IS NULL",
+			[]string{models.OneTimeTokenSetup, models.OneTimeTokenSetupCode}).
+			Delete(&models.OneTimeToken{}).Error; err != nil {
 			return err
 		}
 		return tx.Create(&models.UserRole{UserID: admin.ID, RoleID: superadmin.ID}).Error

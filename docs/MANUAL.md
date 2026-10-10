@@ -51,7 +51,7 @@ docs/                 This manual + reference docs (adapter-filters,
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
 ### 2026-10-10 — Claiming a server with the CLI, and handing it over
-`restmail setup` claims a fresh server over its public API, proving ownership with a key the deployment lists, and shows a single-use link the app redeems; `restmail reset-admin` lets an admin back in and hands a server over, ending every session the account had, unexpired access tokens included. Agent-friendly throughout: `--json`, stable exit statuses, nothing prompts. [§7.9](#79-first-start-of-a-production-install).
+A fresh server prints a setup code (and its QR code) to its own output until it is claimed; `restmail setup` also claims one over its public API, proving ownership with a key the deployment lists, and shows a single-use link the app redeems; `restmail reset-admin` lets an admin back in and hands a server over, ending every session the account had, unexpired access tokens included. Agent-friendly throughout: `--json`, stable exit statuses, nothing prompts. [§7.9](#79-first-start-of-a-production-install).
 
 ### 2026-10-10 — First start of a production install
 A fresh install creates its roles and, from `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD`, a first superadmin, which must set a new password and enroll a TOTP authenticator before it can use the admin API. `password_change_required` is now enforced rather than advisory. Playbook: [§7.9](#79-first-start-of-a-production-install).
@@ -740,9 +740,19 @@ Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upser
 
 ### 7.9 First start of a production install
 
-The production image ships only `restmail-api` — no seed tool, so no known passwords. A fresh database therefore has no admin, and without one nobody can create a domain or a mailbox. At every start the API creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles (idempotent). Then there are two ways to get a first admin:
+The production image ships only `restmail-api` — no seed tool, so no known passwords. A fresh database therefore has no admin, and without one nobody can create a domain or a mailbox. At every start the API creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles (idempotent). Then there are three ways to get a first admin:
 
-#### Claim it with the restmail CLI (recommended)
+#### Claim it with the setup code it prints (simplest)
+
+While the server has no admin, every start mints a random setup code (120 bits, as `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`) and prints it to the server's own output: a QR code of the app's link, the link itself, and the code to type in. Read it however your platform shows a process's output: `docker logs restmail-api`, `kubectl logs deploy/restmail-api`, `journalctl -u restmail-api`, or the terminal you started it in. Scan the QR code with the rest-mail app, or enter the server and code by hand. Case, dashes and spaces do not matter, and O, I and L read as 0, 1 and 1. You then choose the admin's name and password, and enroll an authenticator, as below.
+
+- Only a SHA-256 of the code is stored.
+- **A restart replaces it.** A code that leaked, or that scrolled out of the logs, is fixed by restarting the server; the old one stops working. It also stops working after 7 days without a restart.
+- Claiming the server, by any route, spends it, and once there is an admin no code is printed again.
+- The server does not know the address it is reached at — that is the deployment's to say (the Helm chart's notes print it) — so the QR code holds only the code, and the app asks which server it is for. `restmail setup --server URL --code CODE` draws one QR code with both.
+- Anyone who can read the server's output can claim it until you do, the same as anyone with access to the deployment. Claim it soon after the first start. If logs are shipped somewhere, the code goes there too; it is dead once the server is claimed.
+
+#### Or with an owner key and the restmail CLI
 
 Ownership is proved with an SSH key, the way a server's first login usually is. The deployment lists the owner's **public** keys in `RESTMAIL_OWNER_KEYS` (authorized_keys format, one per line; Helm value `api.ownerKeys`). Nothing secret is configured, the private key never leaves your machine, and there is no password to generate or race to lose. However the server runs — Kubernetes, Docker, a VM, anything — the CLI only talks to its public API:
 

@@ -9,11 +9,14 @@ const (
 	// OneTimeTokenResetAdmin lets an admin who has lost every way in choose a
 	// new password and enroll a new authenticator.
 	OneTimeTokenResetAdmin = "reset_admin"
+	// OneTimeTokenSetupCode claims a server too: the code a fresh install
+	// prints at startup, replaced at every start until the server is claimed.
+	OneTimeTokenSetupCode = "setup_code"
 )
 
-// OneTimeToken is a single-use, short-lived token, minted only by someone with
-// access to the server itself (`restmail-api mint-token`, run through kubectl or
-// docker exec) and redeemed once over the public API. Only a SHA-256 of the
+// OneTimeToken is a single-use token, handed only to the server's owner — the
+// setup code a fresh install prints, `restmail-api mint-token` on the server,
+// or an owner key's signed request — and redeemed once over the public API. Only a SHA-256 of the
 // token is stored, so the table is no use to someone who can read it.
 type OneTimeToken struct {
 	ID      uint   `gorm:"primaryKey" json:"id"`

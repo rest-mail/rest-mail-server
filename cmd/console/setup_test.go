@@ -276,3 +276,25 @@ func TestLocalKeys(t *testing.T) {
 func pemEncode(typ string, b []byte) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: b})
 }
+
+// The code a server printed becomes the app's link, without asking the server
+// anything (and so without a key).
+func TestSetup_CodeFromTheServersOutput(t *testing.T) {
+	f := &fakeServer{}
+	status, out, errOut := run(t, f, keysOf(), "setup", "--code", "ABCD-EFGH", "--json", "--show-secret")
+	if status != exitOK {
+		t.Fatalf("status %d: %s", status, errOut)
+	}
+	var got map[string]any
+	_ = json.Unmarshal([]byte(out), &got)
+	link, _ := url.Parse(got["link"].(string))
+	if link.Host != "setup" || link.Query().Get("token") != "ABCD-EFGH" {
+		t.Errorf("link = %v", got["link"])
+	}
+	if len(f.answered) != 0 {
+		t.Errorf("asked the server %d times, want none", len(f.answered))
+	}
+	if status, _, _ := run(t, f, keysOf(), "reset-admin", "--username", "a", "--code", "X", "--json"); status != exitUsage {
+		t.Errorf("reset-admin --code: status %d, want %d", status, exitUsage)
+	}
+}

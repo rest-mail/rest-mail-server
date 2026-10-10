@@ -3,9 +3,11 @@
 # restmail CLI and nobody else involved, builds it, and hands it over -- and the
 # owner's redemption must lock the agent out, unexpired access token included.
 #
-# The CLI reaches the server only through its public API, proving ownership with
-# a key the deployment lists in RESTMAIL_OWNER_KEYS: Docker here is just how this
-# test runs a server, not something the CLI knows about.
+# The server is claimed with the setup code it prints to its own output, read
+# the way any platform shows it (here `docker logs`). The CLI reaches the server
+# only through its public API, and proves ownership for reset-admin with a key
+# the deployment lists in RESTMAIL_OWNER_KEYS: Docker is just how this test runs
+# a server, not something the CLI knows about.
 #
 # Run locally (Docker, curl, jq, oathtool, python3, ssh-keygen):
 #   docker build --target prod -t restmail-api:first-start .
@@ -44,9 +46,25 @@ docker run -d --name e2e-api --network "$NET" -p 127.0.0.1:58080:8080 \
   -e JWT_SECRET="$(openssl rand -hex 32)" -e MASTER_KEY="$(openssl rand -hex 32)" \
   -e RESTMAIL_OWNER_KEYS="$(cat "$KEYS/agent.pub")" \
   -e ENVIRONMENT=development "$IMAGE" >/dev/null
-for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/health >/dev/null 2>&1 && break; sleep 1; done
+wait_healthy() { for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/health >/dev/null 2>&1 && return; sleep 1; done; die "API not healthy"; }
+setup_code() { docker logs e2e-api 2>/dev/null | sed -n 's/^Or enter the setup code in the app: *//p' | tail -1; }
+wait_healthy
 curl -fsS http://127.0.0.1:58080/api/health | jq -c .data
 ok "server up, no admin, no bootstrap password anywhere"
+
+step "the setup code, read from the server's own output"
+first_code=$(setup_code)
+[[ $first_code =~ ^([0-9A-HJKMNP-TV-Z]{4}-){5}[0-9A-HJKMNP-TV-Z]{4}$ ]] || die "no setup code in the output"
+docker logs e2e-api 2>/dev/null | grep -q '▀' || die "no QR code in the output"
+ok "printed: a QR code and the code (not shown here)"
+docker restart e2e-api >/dev/null
+wait_healthy
+code=$(setup_code)
+[[ -n $code && $code != "$first_code" ]] || die "a restart did not replace the code"
+c=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/claim" -H 'Content-Type: application/json' \
+  -d "$(jq -nc --arg t "$first_code" '{token:$t, username:"thief", password:"a long enough password"}')")
+[[ $c == 401 ]] || die "the replaced code answered $c"
+ok "a restart prints a new code; the old one is dead (401)"
 
 step "restmail setup with a key the server does not list"
 set +e; "$RESTMAIL" setup --server "$SERVER" --key "$KEYS/stranger" --json 2>/tmp/e2e-stranger.err; status=$?; set -e
@@ -54,8 +72,8 @@ cat /tmp/e2e-stranger.err
 [[ $status == 6 ]] || die "exit $status, want 6"
 ok "refused with exit 6 (not an owner)"
 
-step "restmail setup: a claim link, for proving ownership over the API"
-setup=$("$RESTMAIL" setup --server "$SERVER" --key "$KEYS/agent" --json --show-secret)
+step "restmail setup --code: the app's link, for the code the server printed"
+setup=$("$RESTMAIL" setup --server "$SERVER" --code "$code" --json --show-secret)
 jq -c 'del(.link)' <<<"$setup"
 link=$(jq -r .link <<<"$setup")
 token=$(python3 -c 'import sys,urllib.parse as u; print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$link")

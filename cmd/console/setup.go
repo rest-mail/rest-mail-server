@@ -50,13 +50,23 @@ const setupUsage = `restmail setup — claim a freshly installed rest-mail serve
 
   restmail setup --server https://mail.example.com [--key ~/.ssh/id_ed25519]
 
-Proves you own the server with a private key whose public half the deployment
-lists in RESTMAIL_OWNER_KEYS (authorized_keys format), then shows a single-use
-link as a QR code: scan it with the rest-mail app to become the first admin.
-Without --key, the keys in ssh-agent are tried. Works the same however the
-server is deployed: it only talks to the server's public API.
+  restmail setup --server https://mail.example.com --code XXXX-XXXX-...
+
+Shows a single-use link as a QR code: scan it with the rest-mail app to become
+the first admin. Either of two secrets gets it:
+
+  - the setup code a fresh server prints to its own output at every start
+    until it is claimed (docker logs, kubectl logs, journalctl, ...): --code
+    only draws it as a QR code, without contacting the server;
+  - or a private key whose public half the deployment lists in
+    RESTMAIL_OWNER_KEYS (authorized_keys format). Without --key, the keys in
+    ssh-agent are tried.
+
+Works the same however the server is deployed: it only talks to the server's
+public API.
 
   --server URL   the server's address (https; http only for localhost)
+  --code CODE    the setup code the server printed
   --key PATH     a private key file (unencrypted; put a passphrase-protected
                  key in ssh-agent instead)
   --json         one JSON object on stdout; errors as one on stderr
@@ -95,6 +105,7 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 	fs.SetOutput(io.Discard)
 	server := fs.String("server", "", "the server's address")
 	keyPath := fs.String("key", "", "a private key file")
+	code := fs.String("code", "", "the setup code the server printed (setup)")
 	username := fs.String("username", "", "the admin to reset (reset-admin)")
 	lifetime := fs.Duration("lifetime", 15*time.Minute, "how long the link works")
 	asJSON := fs.Bool("json", false, "JSON output")
@@ -124,6 +135,14 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 	base, err := serverURL(*server)
 	if err != nil {
 		return o.fail(exitUsage, "bad_flag", err.Error())
+	}
+	if *code != "" {
+		if purpose != "setup" {
+			return o.fail(exitUsage, "bad_flag", "--code is for restmail setup; reset-admin proves ownership with a key")
+		}
+		// The server printed it; nothing to ask the server. Just show it as the
+		// app's link, for a phone to scan.
+		return o.link(purpose, base, *code, "", "", *showSecret)
 	}
 
 	signers, err := keys(*keyPath)
@@ -183,25 +202,38 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 		return o.fail(exitNotOwner, "not_owner", fmt.Sprintf("none of the %d key(s) offered is an owner key of this server: %s", len(signers), lastNotOwner))
 	}
 
+	return o.link(purpose, base, token, expires, *username, *showSecret)
+}
+
+// link shows the app's link for token: as a QR code and text for people, or as
+// JSON — without the link unless showSecret — for programs.
+func (o output) link(purpose string, base *url.URL, token, expires, username string, showSecret bool) int {
 	link := appLink(purpose, base.String(), token)
 	if o.json {
-		result := map[string]any{"purpose": purpose, "server": base.String(), "expires_at": expires}
-		if *showSecret {
+		result := map[string]any{"purpose": purpose, "server": base.String()}
+		if expires != "" {
+			result["expires_at"] = expires
+		}
+		if showSecret {
 			result["link"] = link
 		} else {
 			result["link_redacted"] = true
 		}
-		_ = json.NewEncoder(stdout).Encode(result)
+		_ = json.NewEncoder(o.stdout).Encode(result)
 		return exitOK
 	}
 	what := "become " + base.Host + "'s first admin"
 	if purpose == "reset-admin" {
-		what = "choose a new password and authenticator for " + *username
+		what = "choose a new password and authenticator for " + username
 	}
-	fmt.Fprintf(stdout, "Scan with the rest-mail app to %s.\n\n", what)
-	qrterminal.GenerateWithConfig(link, qrterminal.Config{Level: qrterminal.M, Writer: stdout, HalfBlocks: true, QuietZone: 2})
-	fmt.Fprintf(stdout, "\nOr open: %s\n", link)
-	fmt.Fprintf(stdout, "Works once, until %s. Anyone holding it can %s.\n", expires, what)
+	fmt.Fprintf(o.stdout, "Scan with the rest-mail app to %s.\n\n", what)
+	qrterminal.GenerateWithConfig(link, qrterminal.Config{Level: qrterminal.M, Writer: o.stdout, HalfBlocks: true, QuietZone: 2})
+	fmt.Fprintf(o.stdout, "\nOr open: %s\n", link)
+	if expires != "" {
+		fmt.Fprintf(o.stdout, "Works once, until %s. Anyone holding it can %s.\n", expires, what)
+	} else {
+		fmt.Fprintf(o.stdout, "Works once. Anyone holding it can %s.\n", what)
+	}
 	return exitOK
 }
 

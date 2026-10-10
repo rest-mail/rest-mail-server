@@ -30,3 +30,10 @@ API service is ClusterIP only. Either enable api.ingress.enabled or
 port-forward locally:
   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "restmail.componentName" (list . "api") }} 8080:{{ .Values.api.service.port }}
 {{- end }}
+
+
+Claim the server: until it has an admin, the API prints a setup code (and a
+QR code for the rest-mail app) at every start. Read it with
+  kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "restmail.componentName" (list . "api") }}
+and scan it, or enter the code in the app with the address you reach the
+server at. Restarting the API prints a new code.
