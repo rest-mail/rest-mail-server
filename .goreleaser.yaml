@@ -1,0 +1,68 @@
+# Releases `restmail`, the command-line tool for running a rest-mail server,
+# on every SemVer tag (v1.2.3): binaries for macOS and Linux on Intel and ARM,
+# a GitHub Release with checksums, and the Homebrew tap, so that installing it
+# is one line:
+#
+#   brew install rest-mail/tap/restmail
+#
+# Product images are CalVer and released by docker.yml; this tag space is the
+# CLI's alone. Pull requests touching it run a snapshot build
+# (.github/workflows/release-cli.yml), so a broken config fails there, not at
+# tag time.
+version: 2
+project_name: restmail
+
+builds:
+  - id: restmail
+    main: ./cmd/console
+    binary: restmail
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  filters:
+    include:
+      - "(?i)(cli|console|restmail setup|reset-admin)"
+
+release:
+  github:
+    owner: rest-mail
+    name: rest-mail-server
+  name_template: "restmail {{ .Version }}"
+
+homebrew_casks:
+  - name: restmail
+    repository:
+      owner: rest-mail
+      name: homebrew-tap
+      # A token that may push to rest-mail/homebrew-tap. GITHUB_TOKEN cannot
+      # write to another repository.
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/rest-mail/rest-mail-server
+    description: Command-line tool for running a rest-mail server
+    commit_author:
+      name: rest-mail release
+      email: noreply@rest-mail.com
+    commit_msg_template: "restmail {{ .Tag }}"
+    hooks:
+      post:
+        # The binary is not notarized, so macOS would refuse to run it. A tap
+        # the user chose to install from is the trust decision; lift the
+        # quarantine Gatekeeper puts on downloads.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/restmail"]
+          end

@@ -376,6 +376,15 @@ admin/src/
 
 Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `chore build:console` (auto-detects platform) or `chore build:console:all`. Run: `chore run:console` (runs inside the api container).
 
+Released as **`restmail`** on every SemVer tag (`v1.2.3`) by [release-cli.yml](../.github/workflows/release-cli.yml) and [.goreleaser.yaml](../.goreleaser.yaml): macOS and Linux binaries on the GitHub Release, and the Homebrew tap.
+
+```sh
+brew install rest-mail/tap/restmail
+restmail -version
+```
+
+Releasing it is pushing the tag: `git tag v0.1.0 && git push origin v0.1.0`. The release needs the `HOMEBREW_TAP_TOKEN` repository secret, a token that may push to `rest-mail/homebrew-tap`. CalVer tags release the server images instead (docker.yml); the two never trigger each other.
+
 ### 4.9 Metrics & monitoring
 
 Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../monitoring/). Enable with `chore monitoring:up` (Prometheus at `:9090`, Grafana at `:3001`, postgres-exporter included).

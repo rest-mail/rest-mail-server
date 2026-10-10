@@ -3,10 +3,10 @@ name: Docker Build & Push
 on:
   push:
     branches: [main]
-    # SemVer tags (console binaries) and CalVer product-image releases
-    # (YYYY.MM.DD[.N]) both trigger a publish. The CalVer tag is what the Helm
-    # chart's appVersion pins, so a release = pushing that git tag.
-    tags: ["v*", "[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*"]
+    # CalVer product-image releases (YYYY.MM.DD[.N]). The CalVer tag is what the
+    # Helm chart's appVersion pins, so a release = pushing that git tag. SemVer
+    # v* tags release the restmail CLI instead (release-cli.yml).
+    tags: ["[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*"]
 
 permissions:
   contents: read
@@ -23,10 +23,9 @@ jobs:
   build-and-push:
     name: Build & Push
     runs-on: ubuntu-latest
-    # Product images are CalVer, the console binaries below are SemVer, and the
-    # two release-artifact classes are mutually exclusive by tag type. Build the
-    # images on main (continuous dev images) and on a CalVer release tag, but NOT
-    # on a SemVer v* tag — that tag releases only the console binaries.
+    # Build the images on main (continuous dev images) and on a CalVer release
+    # tag. A SemVer v* tag releases only the CLI (release-cli.yml) and does not
+    # reach this workflow; the guard stays so it never builds images if it did.
     if: >-
       github.ref == 'refs/heads/main' ||
       (startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v'))
@@ -91,42 +90,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
-
-  console-binaries:
-    name: Build Console Binaries
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Set up Go
-        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version: "1.25.10"
-          cache: true
-
-      - name: Build console binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          CGO_ENABLED=0 go build -o restmail-console-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/console
-
-      - name: Upload binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: console-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: restmail-console-${{ matrix.goos }}-${{ matrix.goarch }}
-          retention-days: 30
