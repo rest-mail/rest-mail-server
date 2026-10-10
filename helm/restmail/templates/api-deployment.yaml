@@ -7,6 +7,17 @@ metadata:
     {{- include "restmail.componentLabels" (list . "api") | nindent 4 }}
 spec:
   replicas: {{ .Values.api.replicaCount }}
+  {{- with .Values.api.attachments.persistence }}
+  {{- if and .enabled (eq .accessMode "ReadWriteOnce") }}
+  # The attachments volume can be mounted by one node at a time. A rolling
+  # update starts the new pod before stopping the old one, and a new pod on
+  # another node then waits forever to attach a volume the old one still holds,
+  # until the deploy times out. Recreate stops the old pod first: a brief gap
+  # in service instead of an upgrade that can never finish.
+  strategy:
+    type: Recreate
+  {{- end }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "restmail.componentSelectorLabels" (list . "api") | nindent 6 }}
