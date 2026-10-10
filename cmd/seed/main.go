@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
@@ -143,122 +144,14 @@ func seedServedDomains(database *gorm.DB, spec string) error {
 }
 
 func seedRBAC(database *gorm.DB) error {
-	slog.Info("seeding RBAC system")
-
-	// Create capabilities
-	capabilities := []models.Capability{
-		{Name: "*", Description: "All permissions (superadmin wildcard)", Resource: "*", Action: "*"},
-		{Name: "domains:read", Description: "View domains", Resource: "domains", Action: "read"},
-		{Name: "domains:write", Description: "Create/update domains", Resource: "domains", Action: "write"},
-		{Name: "domains:delete", Description: "Delete domains", Resource: "domains", Action: "delete"},
-		{Name: "mailboxes:read", Description: "View mailboxes", Resource: "mailboxes", Action: "read"},
-		{Name: "mailboxes:write", Description: "Create/update mailboxes", Resource: "mailboxes", Action: "write"},
-		{Name: "mailboxes:delete", Description: "Delete mailboxes", Resource: "mailboxes", Action: "delete"},
-		{Name: "users:read", Description: "View admin users", Resource: "users", Action: "read"},
-		{Name: "users:write", Description: "Create/update admin users", Resource: "users", Action: "write"},
-		{Name: "users:delete", Description: "Delete admin users", Resource: "users", Action: "delete"},
-		{Name: "pipelines:read", Description: "View pipelines", Resource: "pipelines", Action: "read"},
-		{Name: "pipelines:write", Description: "Create/update pipelines", Resource: "pipelines", Action: "write"},
-		{Name: "pipelines:delete", Description: "Delete pipelines", Resource: "pipelines", Action: "delete"},
-		{Name: "messages:send_bulk", Description: "Send bulk messages", Resource: "messages", Action: "send_bulk"},
-		{Name: "messages:read", Description: "Read messages", Resource: "messages", Action: "read"},
-		{Name: "queue:read", Description: "View outbound queue", Resource: "queue", Action: "read"},
-		{Name: "queue:manage", Description: "Manage outbound queue", Resource: "queue", Action: "manage"},
-		{Name: "bans:read", Description: "View IP bans", Resource: "bans", Action: "read"},
-		{Name: "bans:write", Description: "Create/update IP bans", Resource: "bans", Action: "write"},
-		{Name: "bans:delete", Description: "Delete IP bans", Resource: "bans", Action: "delete"},
-		{Name: "observability:read", Description: "View pipeline analytics funnel and per-message traces", Resource: "observability", Action: "read"},
+	if err := bootstrap.EnsureRBAC(database); err != nil {
+		return err
 	}
 
-	for i := range capabilities {
-		result := database.Where("name = ?", capabilities[i].Name).FirstOrCreate(&capabilities[i])
-		if result.Error != nil {
-			return result.Error
-		}
-		slog.Info("capability", "name", capabilities[i].Name, "created", result.RowsAffected > 0)
-	}
-
-	// Create roles
-	roles := []models.Role{
-		{Name: "superadmin", Description: "Full system access", SystemRole: true},
-		{Name: "admin", Description: "Standard administrator", SystemRole: true},
-		{Name: "readonly", Description: "Read-only access", SystemRole: true},
-	}
-
-	for i := range roles {
-		result := database.Where("name = ?", roles[i].Name).FirstOrCreate(&roles[i])
-		if result.Error != nil {
-			return result.Error
-		}
-		slog.Info("role", "name", roles[i].Name, "created", result.RowsAffected > 0)
-	}
-
-	// Assign capabilities to superadmin role (wildcard permission)
 	var superadminRole models.Role
-	database.Where("name = ?", "superadmin").First(&superadminRole)
-	var wildcardCap models.Capability
-	database.Where("name = ?", "*").First(&wildcardCap)
-
-	var existingRC models.RoleCapability
-	result := database.Where("role_id = ? AND capability_id = ?", superadminRole.ID, wildcardCap.ID).
-		FirstOrCreate(&existingRC, models.RoleCapability{
-			RoleID:       superadminRole.ID,
-			CapabilityID: wildcardCap.ID,
-		})
-	if result.Error != nil {
-		return result.Error
+	if err := database.Where("name = ?", "superadmin").First(&superadminRole).Error; err != nil {
+		return err
 	}
-	slog.Info("role capability", "role", "superadmin", "cap", "*", "created", result.RowsAffected > 0)
-
-	// Assign capabilities to admin role
-	var adminRole models.Role
-	database.Where("name = ?", "admin").First(&adminRole)
-	adminCaps := []string{
-		"domains:read", "domains:write", "domains:delete",
-		"mailboxes:read", "mailboxes:write", "mailboxes:delete",
-		"pipelines:read", "pipelines:write", "pipelines:delete",
-		"users:read", "messages:read",
-		"queue:read", "queue:manage",
-		"bans:read", "bans:write", "bans:delete",
-		"observability:read",
-	}
-	for _, capName := range adminCaps {
-		var cap models.Capability
-		database.Where("name = ?", capName).First(&cap)
-		var rc models.RoleCapability
-		result := database.Where("role_id = ? AND capability_id = ?", adminRole.ID, cap.ID).
-			FirstOrCreate(&rc, models.RoleCapability{
-				RoleID:       adminRole.ID,
-				CapabilityID: cap.ID,
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-	}
-	slog.Info("role capabilities assigned", "role", "admin", "count", len(adminCaps))
-
-	// Assign capabilities to readonly role
-	var readonlyRole models.Role
-	database.Where("name = ?", "readonly").First(&readonlyRole)
-	readonlyCaps := []string{
-		"domains:read", "mailboxes:read", "pipelines:read",
-		"users:read", "messages:read", "queue:read", "bans:read",
-		"observability:read",
-	}
-	for _, capName := range readonlyCaps {
-		var cap models.Capability
-		database.Where("name = ?", capName).First(&cap)
-		var rc models.RoleCapability
-		result := database.Where("role_id = ? AND capability_id = ?", readonlyRole.ID, cap.ID).
-			FirstOrCreate(&rc, models.RoleCapability{
-				RoleID:       readonlyRole.ID,
-				CapabilityID: cap.ID,
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-	}
-	slog.Info("role capabilities assigned", "role", "readonly", "count", len(readonlyCaps))
 
 	// Create initial admin user (username: admin, password: admin123!@)
 	adminPassword, err := auth.HashPassword("admin123!@")
@@ -272,17 +165,24 @@ func seedRBAC(database *gorm.DB) error {
 	// stored row, so re-seeding an existing database tried to INSERT a second
 	// "admin" and aborted the whole up chain on the unique username index.
 	var adminUser models.AdminUser
-	result = database.Where("username = ?", "admin").
+	result := database.Where("username = ?", "admin").
 		Attrs(models.AdminUser{
-			Username:               "admin",
-			Email:                  "admin@localhost",
-			PasswordHash:           adminPassword,
-			PasswordChangeRequired: true,
-			Active:                 true,
+			Username:     "admin",
+			Email:        "admin@localhost",
+			PasswordHash: adminPassword,
+			Active:       true,
 		}).
 		FirstOrCreate(&adminUser)
 	if result.Error != nil {
 		return result.Error
+	}
+	// A test fixture, like the password123 mailboxes: dev instances and the e2e
+	// suite sign in as admin/admin123!@ directly, and this tool never ships in an
+	// image. The API now enforces password_change_required (a session can do
+	// nothing else until it is cleared), so the flag must be off here — including
+	// on databases seeded before it was enforced, which have it set.
+	if err := database.Model(&adminUser).Update("password_change_required", false).Error; err != nil {
+		return err
 	}
 	slog.Info("admin user", "username", "admin", "created", result.RowsAffected > 0)
 

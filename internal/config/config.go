@@ -123,6 +123,11 @@ type Config struct {
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
+	// First superadmin for a fresh install, created at startup only while no admin
+	// exists (internal/bootstrap). Empty password: no bootstrap admin.
+	BootstrapAdminUsername string
+	BootstrapAdminPassword string
+
 	// DNS Provider
 	DNSProvider string
 
@@ -459,6 +464,9 @@ func Load() (*Config, error) {
 		PipelineTestRateLimitBurst:   getEnvInt("PIPELINE_TEST_RATE_LIMIT_BURST", DefaultPipelineTestRateLimitBurst),
 
 		MasterKey: getEnv("MASTER_KEY", ""),
+
+		BootstrapAdminUsername: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_USERNAME", "admin"),
+		BootstrapAdminPassword: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", ""),
 
 		DNSProvider: getEnv("DNS_PROVIDER", "dnsmasq"),
 

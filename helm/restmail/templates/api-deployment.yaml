@@ -60,6 +60,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "restmail.api.secretName" . }}
                   key: MASTER_KEY
+            # First superadmin of a fresh install, created only while no admin
+            # exists, and made to set a new password and enroll 2FA at first
+            # sign-in. Optional: a Secret without the key means no bootstrap admin.
+            - name: RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.api.secretName" . }}
+                  key: BOOTSTRAP_ADMIN_PASSWORD
+                  optional: true
             {{- if .Values.internalMtls.enabled }}
             {{- include "restmail.internalMtls.serverEnv" . | nindent 12 }}
             {{- end }}

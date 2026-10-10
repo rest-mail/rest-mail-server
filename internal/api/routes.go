@@ -398,6 +398,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// status read carries no secret to guess and is left unthrottled so the SPA
 		// can poll it freely.
 		r.Get("/api/v1/auth/2fa", twofaH.Status)
+		// An admin replaces their own password; the only call a session flagged
+		// password_change_required can make. Throttled like login: it checks a
+		// password.
+		r.With(authThrottle).Post("/api/v1/auth/password", authH.ChangePassword)
 		r.With(authThrottle).Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
 		r.With(authThrottle).Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
 		r.With(authThrottle).Post("/api/v1/auth/2fa/disable", twofaH.Disable)

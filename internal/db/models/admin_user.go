@@ -5,15 +5,18 @@ import "time"
 // AdminUser represents an administrative user with role-based permissions.
 // Separate from mailbox users - these are for system/service administration.
 type AdminUser struct {
-	ID                     uint      `gorm:"primaryKey" json:"id"`
-	Username               string    `gorm:"size:255;uniqueIndex;not null" json:"username"`
-	Email                  string    `gorm:"size:255" json:"email"` // optional, not unique
-	PasswordHash           string    `gorm:"size:255;not null" json:"-"`
-	PasswordChangeRequired bool      `gorm:"default:false" json:"password_change_required"`
-	LastPasswordChange     *time.Time `json:"last_password_change,omitempty"`
-	Active                 bool      `gorm:"default:true" json:"active"`
-	CreatedAt              time.Time `json:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	ID                     uint   `gorm:"primaryKey" json:"id"`
+	Username               string `gorm:"size:255;uniqueIndex;not null" json:"username"`
+	Email                  string `gorm:"size:255" json:"email"` // optional, not unique
+	PasswordHash           string `gorm:"size:255;not null" json:"-"`
+	PasswordChangeRequired bool   `gorm:"default:false" json:"password_change_required"`
+	// TwoFactorRequired keeps the account in setup until it has a confirmed TOTP
+	// enrollment, and forbids disabling 2FA afterwards. Set on the bootstrap admin.
+	TwoFactorRequired  bool       `gorm:"not null;default:false" json:"two_factor_required"`
+	LastPasswordChange *time.Time `json:"last_password_change,omitempty"`
+	Active             bool       `gorm:"default:true" json:"active"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 
 	// Relationships
 	Roles []Role `gorm:"many2many:admin_users_roles;joinForeignKey:UserID;joinReferences:RoleID" json:"roles,omitempty"`
@@ -50,25 +53,25 @@ func (Capability) TableName() string { return "admin_capabilities" }
 
 // UserRole is the junction table tracking user-role assignments with audit info.
 type UserRole struct {
-	UserID    uint       `gorm:"primaryKey" json:"user_id"`
-	RoleID    uint       `gorm:"primaryKey" json:"role_id"`
-	GrantedAt time.Time  `gorm:"not null;default:CURRENT_TIMESTAMP" json:"granted_at"`
-	GrantedBy *uint      `json:"granted_by,omitempty"` // admin user who granted this role
+	UserID    uint      `gorm:"primaryKey" json:"user_id"`
+	RoleID    uint      `gorm:"primaryKey" json:"role_id"`
+	GrantedAt time.Time `gorm:"not null;default:CURRENT_TIMESTAMP" json:"granted_at"`
+	GrantedBy *uint     `json:"granted_by,omitempty"` // admin user who granted this role
 
-	User      AdminUser  `gorm:"foreignKey:UserID" json:"-"`
-	Role      Role       `gorm:"foreignKey:RoleID" json:"-"`
+	User AdminUser `gorm:"foreignKey:UserID" json:"-"`
+	Role Role      `gorm:"foreignKey:RoleID" json:"-"`
 }
 
 func (UserRole) TableName() string { return "admin_users_roles" }
 
 // RoleCapability is the junction table mapping roles to capabilities.
 type RoleCapability struct {
-	RoleID       uint       `gorm:"primaryKey" json:"role_id"`
-	CapabilityID uint       `gorm:"primaryKey" json:"capability_id"`
-	GrantedAt    time.Time  `gorm:"not null;default:CURRENT_TIMESTAMP" json:"granted_at"`
+	RoleID       uint      `gorm:"primaryKey" json:"role_id"`
+	CapabilityID uint      `gorm:"primaryKey" json:"capability_id"`
+	GrantedAt    time.Time `gorm:"not null;default:CURRENT_TIMESTAMP" json:"granted_at"`
 
-	Role         Role       `gorm:"foreignKey:RoleID" json:"-"`
-	Capability   Capability `gorm:"foreignKey:CapabilityID" json:"-"`
+	Role       Role       `gorm:"foreignKey:RoleID" json:"-"`
+	Capability Capability `gorm:"foreignKey:CapabilityID" json:"-"`
 }
 
 func (RoleCapability) TableName() string { return "admin_roles_capabilities" }

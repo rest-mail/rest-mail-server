@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -40,9 +41,10 @@ type refreshTokenStore interface {
 type accountStateStore interface {
 	// MailboxActive reports whether the mailbox exists and is active.
 	MailboxActive(id uint) (bool, error)
-	// AdminState reports whether the admin exists and is active, together with
-	// the capabilities currently granted by its roles.
-	AdminState(id uint) (active bool, capabilities []string, err error)
+	// AdminState reports whether the admin exists and is active, the
+	// capabilities currently granted by its roles, and whether its account is
+	// still in setup (see adminSetupSteps) and so may not use them yet.
+	AdminState(id uint) (active bool, capabilities []string, setupPending bool, err error)
 }
 
 // dbAccountState is the gorm-backed accountStateStore used in production.
@@ -62,27 +64,60 @@ func (s dbAccountState) MailboxActive(id uint) (bool, error) {
 	return mb.Active, nil
 }
 
-func (s dbAccountState) AdminState(id uint) (bool, []string, error) {
+func (s dbAccountState) AdminState(id uint) (bool, []string, bool, error) {
 	repo := repositories.NewAdminUserRepository(s.db)
 	user, err := repo.GetByID(id)
 	if errors.Is(err, repositories.ErrUserNotFound) {
-		return false, nil, nil
+		return false, nil, false, nil
 	}
 	if err != nil {
-		return false, nil, err
+		return false, nil, false, err
 	}
 	if !user.Active {
-		return false, nil, nil
+		return false, nil, false, nil
 	}
 	caps, err := repo.GetCapabilities(id)
 	if err != nil {
-		return false, nil, err
+		return false, nil, false, err
 	}
 	names := make([]string, len(caps))
 	for i, c := range caps {
 		names[i] = c.Name
 	}
-	return true, names, nil
+	steps, err := adminSetupSteps(repositories.NewTwoFactorRepository(s.db), user)
+	if err != nil {
+		return false, nil, false, err
+	}
+	return true, names, len(steps) > 0, nil
+}
+
+// Setup steps an admin account may still owe before it can use its roles.
+const (
+	setupStepPassword  = "password"
+	setupStepTwoFactor = "two_factor"
+)
+
+// adminSetupSteps lists what the account must still do before its sessions
+// carry its capabilities: replace a password someone else chose, and enroll a
+// TOTP authenticator where 2FA is required. Empty means the account is set up.
+func adminSetupSteps(store twoFactorStore, user *models.AdminUser) ([]string, error) {
+	var steps []string
+	if user.PasswordChangeRequired {
+		steps = append(steps, setupStepPassword)
+	}
+	if user.TwoFactorRequired {
+		if store == nil {
+			// No way to check an enrollment: fail closed, the account stays in setup.
+			return append(steps, setupStepTwoFactor), nil
+		}
+		_, err := store.GetActive(models.TwoFactorUserTypeAdmin, user.ID)
+		if errors.Is(err, repositories.ErrTwoFactorNotFound) {
+			steps = append(steps, setupStepTwoFactor)
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	return steps, nil
 }
 
 type AuthHandler struct {
@@ -188,6 +223,11 @@ type loginResponse struct {
 	ExpiresIn    int      `json:"expires_in"`
 	User         userInfo `json:"user"`
 	Capabilities []string `json:"capabilities,omitempty"` // For admin users
+	// SetupRequired lists what the account must still do — "password" (POST
+	// /api/v1/auth/password), "two_factor" (POST /api/v1/auth/2fa/enroll, then
+	// /confirm) — before the session can use the admin API, which answers 403
+	// setup_required until then. Absent when the account is set up.
+	SetupRequired []string `json:"setup_required,omitempty"`
 
 	AccessToken      string `json:"access_token,omitempty"`
 	RefreshToken     string `json:"refresh_token,omitempty"`
@@ -412,8 +452,20 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 		capNames[i] = cap.Name
 	}
 
-	// Generate admin tokens
-	tokens, err := h.jwtService.GenerateAdminTokenPair(adminUser.ID, adminUser.Username, capNames)
+	// Generate admin tokens. An account still in setup gets a session that can
+	// only finish the setup (see GenerateSetupTokenPair).
+	setupSteps, err := adminSetupSteps(h.twoFactorStore, adminUser)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account state")
+		return
+	}
+	var tokens *auth.TokenPair
+	if len(setupSteps) > 0 {
+		capNames = nil
+		tokens, err = h.jwtService.GenerateSetupTokenPair(adminUser.ID, adminUser.Username)
+	} else {
+		tokens, err = h.jwtService.GenerateAdminTokenPair(adminUser.ID, adminUser.Username, capNames)
+	}
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
@@ -427,8 +479,9 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 	}
 
 	resp := loginResponse{
-		ExpiresIn:    tokens.ExpiresIn,
-		Capabilities: capNames,
+		ExpiresIn:     tokens.ExpiresIn,
+		Capabilities:  capNames,
+		SetupRequired: setupSteps,
 		User: userInfo{
 			ID:          adminUser.ID,
 			Email:       adminUser.Username, // Use username in email field for compatibility
@@ -568,9 +621,12 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// capabilities carries the set the new admin access token will be minted with:
 	// the freshly re-derived DB set when reloaded, otherwise the token claim.
 	capabilities := claims.Capabilities
+	// A session whose account is in setup stays that way until the setup is
+	// done: the refresh must not be a way out of the restriction.
+	setupPending := claims.SetupPending
 	if h.accountState != nil {
 		if claims.UserType == "admin" {
-			active, dbCaps, stateErr := h.accountState.AdminState(claims.AdminUserID)
+			active, dbCaps, inSetup, stateErr := h.accountState.AdminState(claims.AdminUserID)
 			if stateErr != nil {
 				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 				return
@@ -581,6 +637,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			capabilities = dbCaps
+			setupPending = inSetup
 		} else {
 			active, stateErr := h.accountState.MailboxActive(claims.MailboxID)
 			if stateErr != nil {
@@ -615,7 +672,11 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var tokens *auth.TokenPair
 	var userType string
 	var subjectID uint
-	if claims.UserType == "admin" {
+	if claims.UserType == "admin" && setupPending {
+		capabilities = nil
+		tokens, err = h.jwtService.GenerateSetupTokenPair(claims.AdminUserID, claims.Username)
+		userType, subjectID = "admin", claims.AdminUserID
+	} else if claims.UserType == "admin" {
 		tokens, err = h.jwtService.GenerateAdminTokenPair(claims.AdminUserID, claims.Username, capabilities)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else {
@@ -650,4 +711,84 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.Data(w, http.StatusOK, resp)
+}
+
+// minChosenPasswordLength is the shortest password an admin may choose for
+// themselves. Long enough that a passphrase clears it and a short dictionary
+// word does not.
+const minChosenPasswordLength = 12
+
+// changePasswordRequest is the body of POST /api/v1/auth/password.
+type changePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
+// ChangePassword lets a signed-in admin replace their own password, and is the
+// one thing a session flagged password_change_required may do. It needs the
+// current password even then, so a stolen access token alone cannot take the
+// account. Success clears the flag and revokes every session of the account,
+// including this one: the next sign-in gets the account's real capabilities.
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+		return
+	}
+	if claims.UserType != "admin" {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Only admin accounts change their password here")
+		return
+	}
+
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		respond.ValidationError(w, map[string]string{
+			"current_password": "required",
+			"new_password":     "required",
+		})
+		return
+	}
+
+	repo := repositories.NewAdminUserRepository(h.db)
+	user, err := repo.GetByID(claims.AdminUserID)
+	if err != nil || !user.Active {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired session")
+		return
+	}
+	if auth.CheckPassword(req.CurrentPassword, user.PasswordHash) != nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Current password is incorrect")
+		return
+	}
+	if len(req.NewPassword) < minChosenPasswordLength {
+		respond.ValidationError(w, map[string]string{
+			"new_password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength),
+		})
+		return
+	}
+	// The point of a forced change is a credential nobody else has seen.
+	if req.NewPassword == req.CurrentPassword {
+		respond.ValidationError(w, map[string]string{"new_password": "must differ from the current password"})
+		return
+	}
+
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
+		return
+	}
+	if err := h.db.Model(&models.AdminUser{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
+		"password_hash":            hash,
+		"last_password_change":     time.Now(),
+		"password_change_required": false,
+	}).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
+		return
+	}
+
+	h.revokeAllForSubject("admin", user.ID)
+	respond.Data(w, http.StatusOK, map[string]string{"message": "Password changed. Sign in again with the new password."})
 }

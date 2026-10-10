@@ -31,6 +31,7 @@ type twoFactorStore interface {
 // enroll → confirm → disable, plus a status read. Every endpoint keys on the
 // caller's own JWT claims, so an account can only ever manage its own 2FA.
 type TwoFactorHandler struct {
+	db        *gorm.DB
 	store     twoFactorStore
 	masterKey string
 	// enabled mirrors cfg.TOTP2FAEnabled. When false, new enrollment/confirm is
@@ -44,7 +45,7 @@ func NewTwoFactorHandler(db *gorm.DB, masterKey string, enabled bool) *TwoFactor
 	if db != nil {
 		store = repositories.NewTwoFactorRepository(db)
 	}
-	return &TwoFactorHandler{store: store, masterKey: masterKey, enabled: enabled}
+	return &TwoFactorHandler{db: db, store: store, masterKey: masterKey, enabled: enabled}
 }
 
 // twoFactorOwner resolves the authenticated caller to a (userType, subjectID,
@@ -263,6 +264,19 @@ func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	if !h.verifySecondFactor(tf, req.Code, req.RecoveryCode) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid 2FA code")
 		return
+	}
+	// Where 2FA is required (the bootstrap admin), turning it off would make the
+	// requirement a one-time gate rather than a rule.
+	if userType == models.TwoFactorUserTypeAdmin && h.db != nil {
+		var admin models.AdminUser
+		if err := h.db.Select("two_factor_required").First(&admin, subjectID).Error; err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account")
+			return
+		}
+		if admin.TwoFactorRequired {
+			respond.Error(w, http.StatusForbidden, "two_factor_required", "Two-factor authentication is required for this account and cannot be disabled")
+			return
+		}
 	}
 	if err := h.store.Delete(userType, subjectID); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to disable 2FA")

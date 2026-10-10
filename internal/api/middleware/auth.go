@@ -89,6 +89,14 @@ func AdminOnly(next http.Handler) http.Handler {
 			writeError(w, http.StatusForbidden, "forbidden", "Admin access required")
 			return
 		}
+		// An account still in setup reaches nothing here, including routes that
+		// check no capability (dashboard stats). The endpoints that finish the
+		// setup — /api/v1/auth/password and /api/v1/auth/2fa/* — live outside
+		// this group.
+		if claims.SetupPending {
+			writeError(w, http.StatusForbidden, "setup_required", "Finish setting up this account first: a new password and two-factor authentication")
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
