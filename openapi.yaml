@@ -269,9 +269,11 @@ paths:
       description: >
         Redeems a single-use setup token and makes the redeemer the server's
         first admin, with the username and password they choose. Tokens are
-        minted only inside the server's container (`restmail-api mint-token
-        --purpose setup`, usually through `restmail setup`), so holding one
-        proves it was handed over by whoever controls the deployment. The
+        minted only for an owner — a holder of a key listed in
+        RESTMAIL_OWNER_KEYS (`/api/v1/auth/owner/token`, usually through
+        `restmail setup`) — or on the server itself (`restmail-api mint-token
+        --purpose setup`), so holding one proves it was handed over by the
+        server's owner. The
         session returned is still in setup: `setup_required` is
         `["two_factor"]` until an authenticator is enrolled. An unknown, used,
         or expired token is one answer, 401 `invalid_token`, saying nothing
@@ -346,6 +348,92 @@ paths:
           description: invalid_token
         "422":
           description: Password under 12 characters (the token is not spent)
+
+  /api/v1/auth/owner/challenge:
+    post:
+      operationId: ownerChallenge
+      tags: [Auth]
+      summary: A challenge for an owner key to sign
+      description: >
+        The first half of proving ownership of the server with a key listed in
+        RESTMAIL_OWNER_KEYS (what `restmail setup` and `restmail reset-admin`
+        do). The challenge is stateless, valid two minutes, and answered once.
+        Throttled like login.
+      security: []
+      responses:
+        "200":
+          description: A challenge
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [challenge, expires_at]
+                    properties:
+                      challenge: {type: string}
+                      expires_at: {type: string, format: date-time}
+        "409":
+          description: no_owner_keys — the server lists none
+
+  /api/v1/auth/owner/token:
+    post:
+      operationId: ownerToken
+      tags: [Auth]
+      summary: Trade a signed challenge for a setup or reset-admin token
+      description: >
+        `signature` is the SSH wire-format signature (base64) by the private
+        half of `public_key` over the bytes
+        `"restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge`
+        (username empty for setup), so a signature for one request cannot be
+        presented for another. `public_key` must be listed in
+        RESTMAIL_OWNER_KEYS. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
+        accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at
+        `/api/v1/auth/claim` or `/api/v1/auth/reset`; the app's link is
+        `restmail://setup?server=…&token=…` (or `restmail://reset?…`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge, public_key, signature, purpose]
+              properties:
+                challenge: {type: string}
+                public_key: {type: string, description: authorized_keys format}
+                signature: {type: string, format: byte}
+                purpose: {type: string, enum: [setup, reset-admin]}
+                username: {type: string, description: the admin to reset (reset-admin)}
+                lifetime_seconds: {type: integer, minimum: 0, maximum: 86400, description: "0: 15 minutes"}
+      responses:
+        "200":
+          description: A single-use token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [purpose, token, expires_at]
+                    properties:
+                      purpose: {type: string}
+                      token: {type: string}
+                      expires_at: {type: string, format: date-time}
+        "401":
+          description: invalid_challenge — forged, expired, or already answered
+        "403":
+          description: not_owner — the key is not listed, or the signature does not verify
+        "404":
+          description: no_such_admin
+        "409":
+          description: already_claimed (setup on a server with an admin), or no_owner_keys
+        "422":
+          description: Purpose, username, lifetime or signature malformed
 
   /api/v1/auth/password:
     post:

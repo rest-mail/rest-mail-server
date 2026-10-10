@@ -97,6 +97,12 @@ assert_contains "Postgres survives"       "$tmp/api-only.yaml" 'restmail-postgre
 assert_contains "JS filter survives"      "$tmp/api-only.yaml" 'restmail-js-filter'
 assert_contains "default-deny survives"   "$tmp/api-only.yaml" 'restmail-default-deny'
 
+echo "== owner keys reach the API =="
+KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOwnerKeyForTheRenderTestOnlyxxxxxxxxxxxxxx owner@laptop'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.ownerKeys="$KEY" > "$tmp/owner.yaml"
+assert_contains "RESTMAIL_OWNER_KEYS set"   "$tmp/owner.yaml" "RESTMAIL_OWNER_KEYS: \"$KEY\""
+assert_absent   "no owner keys by default"  "$tmp/prod.yaml"  'RESTMAIL_OWNER_KEYS'
+
 echo "== coherence guard: secure sslMode requires server TLS =="
 if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
      --set db.sslMode=require --set postgres.tls.enabled=false > /dev/null 2>&1; then

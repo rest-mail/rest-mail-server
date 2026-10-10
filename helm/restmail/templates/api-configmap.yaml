@@ -17,3 +17,9 @@ data:
   # trust boundary protects the gateway-facing routes on the public listener.
   INTERNAL_ROUTES_ALLOW_PUBLIC: "true"
   {{- end }}
+  {{- with .Values.api.ownerKeys }}
+  # Public keys of whoever owns this server, in authorized_keys format. Holding
+  # a matching private key is what lets `restmail setup` claim a fresh install
+  # and `restmail reset-admin` let an admin back in, over the public API.
+  RESTMAIL_OWNER_KEYS: {{ . | quote }}
+  {{- end }}

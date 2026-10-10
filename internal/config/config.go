@@ -128,6 +128,11 @@ type Config struct {
 	BootstrapAdminUsername string
 	BootstrapAdminPassword string
 
+	// OwnerKeys lists, in authorized_keys format, the public keys whose holders
+	// can claim this server or reset its admins over the public API
+	// (internal/bootstrap/ownerkeys.go). Not a secret.
+	OwnerKeys string
+
 	// DNS Provider
 	DNSProvider string
 
@@ -467,6 +472,7 @@ func Load() (*Config, error) {
 
 		BootstrapAdminUsername: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_USERNAME", "admin"),
 		BootstrapAdminPassword: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", ""),
+		OwnerKeys:              getEnv("RESTMAIL_OWNER_KEYS", ""),
 
 		DNSProvider: getEnv("DNS_PROVIDER", "dnsmasq"),
 
