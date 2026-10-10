@@ -65,6 +65,18 @@ assert_contains "dev uses cleartext DB link"             "$tmp/dev.yaml" 'DB_SSL
 assert_absent   "dev has no NetworkPolicy"               "$tmp/dev.yaml" 'kind: NetworkPolicy'
 assert_absent   "dev Postgres has no TLS"                "$tmp/dev.yaml" 'ssl=on'
 
+echo "== the API's rollout can finish with a single-node volume =="
+# A rolling update cannot hand a ReadWriteOnce volume from the old pod to a new
+# one on another node; Recreate can. With shared (ReadWriteMany) storage, or
+# none, the rolling update stays.
+assert_contains "Recreate with a ReadWriteOnce attachments volume" "$tmp/prod.yaml" 'type: Recreate'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.attachments.persistence.accessMode=ReadWriteMany > "$tmp/rwx.yaml"
+assert_absent "rolling update with ReadWriteMany" "$tmp/rwx.yaml" 'type: Recreate'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.attachments.persistence.enabled=false > "$tmp/nopvc.yaml"
+assert_absent "rolling update with no volume" "$tmp/nopvc.yaml" 'type: Recreate'
+
 echo "== API only: the gateways can be turned off =="
 # Without this the chart could only be installed somewhere able to give three
 # LoadBalancers an address. The REST API is a whole product on its own; the
