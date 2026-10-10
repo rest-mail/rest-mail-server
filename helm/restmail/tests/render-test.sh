@@ -62,6 +62,26 @@ assert_contains "dev uses cleartext DB link"             "$tmp/dev.yaml" 'DB_SSL
 assert_absent   "dev has no NetworkPolicy"               "$tmp/dev.yaml" 'kind: NetworkPolicy'
 assert_absent   "dev Postgres has no TLS"                "$tmp/dev.yaml" 'ssl=on'
 
+echo "== API only: the gateways can be turned off =="
+# Without this the chart could only be installed somewhere able to give three
+# LoadBalancers an address. The REST API is a whole product on its own; the
+# gateways are how traditional clients reach it.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set smtpGateway.enabled=false \
+  --set imapGateway.enabled=false \
+  --set pop3Gateway.enabled=false > "$tmp/api-only.yaml"
+
+for gw in smtp imap pop3; do
+  assert_absent "$gw gateway gone"        "$tmp/api-only.yaml" "restmail-$gw-gateway"
+done
+# A Service left behind would sit pending for an address nobody will give it.
+assert_absent   "no LoadBalancer remains" "$tmp/api-only.yaml" 'type: LoadBalancer'
+# What the API needs must survive: turning the gateways off is not a teardown.
+assert_contains "API survives"            "$tmp/api-only.yaml" 'restmail-api'
+assert_contains "Postgres survives"       "$tmp/api-only.yaml" 'restmail-postgres'
+assert_contains "JS filter survives"      "$tmp/api-only.yaml" 'restmail-js-filter'
+assert_contains "default-deny survives"   "$tmp/api-only.yaml" 'restmail-default-deny'
+
 echo "== coherence guard: secure sslMode requires server TLS =="
 if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
      --set db.sslMode=require --set postgres.tls.enabled=false > /dev/null 2>&1; then
