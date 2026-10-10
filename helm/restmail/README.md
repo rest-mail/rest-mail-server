@@ -43,7 +43,18 @@ so an existing install renders exactly as it did before.
 
 ## The first admin
 
-A fresh install has no admin, and the image carries no seed tool. Add a
+A fresh install has no admin, and the image carries no seed tool. Claim it with
+the CLI, which proves you own it by the access you installed with:
+
+```sh
+brew install rest-mail/tap/restmail
+restmail setup --namespace <your namespace>
+```
+
+It mints a single-use link inside the API's container and shows it as a QR code
+for the app. `restmail reset-admin` is the way back in, and hands a server over.
+
+Or, without the CLI: add a
 `BOOTSTRAP_ADMIN_PASSWORD` key (16+ bytes, generated at deploy time) to the
 Secret named by `api.existingSecret`, and the API creates a superadmin from it
 while no admin exists. That admin must set a new password and enroll a TOTP

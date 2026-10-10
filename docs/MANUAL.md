@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-10 — Claiming a server with the CLI, and handing it over
+`restmail setup` claims a fresh server through the installer's own access (kubectl or docker exec) and a single-use link the app redeems; `restmail reset-admin` lets an admin back in and hands a server over, ending every session the account had, unexpired access tokens included. Agent-friendly throughout: `--json`, stable exit statuses, nothing prompts. [§7.9](#79-first-start-of-a-production-install).
+
 ### 2026-10-10 — First start of a production install
 A fresh install creates its roles and, from `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD`, a first superadmin, which must set a new password and enroll a TOTP authenticator before it can use the admin API. `password_change_required` is now enforced rather than advisory. Playbook: [§7.9](#79-first-start-of-a-production-install).
 
@@ -375,6 +378,15 @@ admin/src/
 ### 4.8 Console admin tool
 
 Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `chore build:console` (auto-detects platform) or `chore build:console:all`. Run: `chore run:console` (runs inside the api container).
+
+Released as **`restmail`** on every SemVer tag (`v1.2.3`) by [release-cli.yml](../.github/workflows/release-cli.yml) and [.goreleaser.yaml](../.goreleaser.yaml): macOS and Linux binaries on the GitHub Release, and the Homebrew tap.
+
+```sh
+brew install rest-mail/tap/restmail
+restmail -version
+```
+
+**One tag releases the product.** `v1.2.3` publishes every server image as `ghcr.io/rest-mail/<component>:1.2.3` (docker.yml) and the CLI (release-cli.yml), so they always match. Set the chart's `appVersion` to `1.2.3` in a pull request first, then tag its merge commit: `git tag v1.2.3 <commit> && git push origin v1.2.3`. The CLI's Homebrew step needs the `HOMEBREW_TAP_TOKEN` repository secret, a token that may push to `rest-mail/homebrew-tap`. Releases up to `2026.10.10.1` used CalVer and stay as they are.
 
 ### 4.9 Metrics & monitoring
 
@@ -728,15 +740,42 @@ Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upser
 
 ### 7.9 First start of a production install
 
-The production image ships only `restmail-api` — no seed tool, so no known passwords. A fresh database therefore has no admin, and without one nobody can create a domain or a mailbox. The API closes that gap itself, at every start:
+The production image ships only `restmail-api` — no seed tool, so no known passwords. A fresh database therefore has no admin, and without one nobody can create a domain or a mailbox. At every start the API creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles (idempotent). Then there are two ways to get a first admin:
 
-1. **Roles.** It creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles. Idempotent; existing rows are left alone.
-2. **First admin.** If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
+#### Claim it with the restmail CLI (recommended)
+
+Whoever installed the server proves it by the access they installed with — nothing else, so there is no password to generate or race to lose:
+
+```sh
+brew install rest-mail/tap/restmail
+restmail setup                 # Kubernetes: namespace rest-mail, current kubectl context
+restmail setup --docker restmail-api --server https://mail.example.com
+```
+
+It runs `restmail-api mint-token --purpose setup` **inside the API's container** (`kubectl exec`, or `docker exec`) — a command reachable from no network — and shows the single-use link it gets back as a QR code: `restmail://setup?server=…&token=…`, valid 15 minutes (`--lifetime`). Scanning it in the app redeems it at `POST /api/v1/auth/claim`: you choose the admin's name and password, then enroll an authenticator (below). The token is spent on success; a refused attempt (short password, say) leaves it usable. Only a SHA-256 of it is stored. On a server that already has an admin, `restmail setup` exits 3 and points at `reset-admin`.
+
+#### Or a bootstrap password
+
+1. If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
 
 The API **refuses to start** if a bootstrap admin would be created with a password under 16 bytes (a placeholder left in), or while `TOTP_2FA_ENABLED` is off (the admin could never finish setup and would be locked out for good).
 
 **Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart it is the optional `BOOTSTRAP_ADMIN_PASSWORD` key of the API Secret (`api.existingSecret`); read it back with
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
+
+#### Getting back in, and handing a server over: `restmail reset-admin`
+
+```sh
+restmail reset-admin --username admin
+```
+
+A link like `restmail setup`'s, for an admin who has lost every way in. Whoever redeems it (`POST /api/v1/auth/reset`) chooses a new password, loses the old authenticator and must enroll a new one, and **every token the account held is dead at once**: refresh tokens are revoked, and access tokens carry the account's credential epoch, which the reset bumps (`RejectStaleAdminSessions`), so even one minted seconds earlier is refused. A password change does the same.
+
+That makes it the hand-over too. Someone — or an agent — who set the server up and holds its admin's credentials runs `reset-admin` and gives the link to the owner; once the owner redeems it, nothing the first holder knew works. The first holder could still mint another link while they keep access to the deployment, which is what owning it means: remove that access to finish the hand-over.
+
+#### For agents and scripts
+
+Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 3 already claimed, 4 no such admin, 5 the server not reachable, 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract inside the container; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.
 
 #### What the first admin must do
 

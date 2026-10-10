@@ -52,8 +52,11 @@ type Claims struct {
 	// SetupPending marks an admin session whose account is not finished setting
 	// up (a new password, a 2FA enrollment). It reaches only the self-service
 	// endpoints that finish the setup; AdminOnly refuses it everywhere else.
-	SetupPending bool   `json:"setup,omitempty"`
-	TokenType    string `json:"token_type"`
+	SetupPending bool `json:"setup,omitempty"`
+	// CredentialEpoch is the account's credential version when the token was
+	// minted (admin tokens); RejectStaleAdminSessions refuses an outdated one.
+	CredentialEpoch int    `json:"cep,omitempty"`
+	TokenType       string `json:"token_type"`
 }
 
 // TokenPair contains both access and refresh tokens.
@@ -156,17 +159,24 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 
 // GenerateAdminTokenPair creates both access and refresh tokens for an admin user.
 func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, capabilities []string) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, capabilities, false)
+	return s.generateAdminTokenPair(adminUserID, username, capabilities, false, 0)
+}
+
+// GenerateAdminSession creates the tokens for an admin's session at the
+// account's current credential epoch, so that a later reset or password change
+// ends it at once.
+func (s *JWTService) GenerateAdminSession(adminUserID uint, username string, capabilities []string, epoch int) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, capabilities, false, epoch)
 }
 
 // GenerateSetupTokenPair creates tokens for an admin whose account is still in
 // setup: no capabilities, and the setup claim on both tokens, so neither the
 // access token nor anything refreshed from it reaches the admin API.
-func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, nil, true)
+func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string, epoch int) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, nil, true, epoch)
 }
 
-func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, capabilities []string, setupPending bool) (*TokenPair, error) {
+func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, capabilities []string, setupPending bool, epoch int) (*TokenPair, error) {
 	now := time.Now()
 
 	// Access token
@@ -177,12 +187,13 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, c
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessExpiry)),
 		},
-		UserType:     "admin",
-		AdminUserID:  adminUserID,
-		Username:     username,
-		Capabilities: capabilities,
-		SetupPending: setupPending,
-		TokenType:    "access",
+		UserType:        "admin",
+		AdminUserID:     adminUserID,
+		Username:        username,
+		Capabilities:    capabilities,
+		SetupPending:    setupPending,
+		CredentialEpoch: epoch,
+		TokenType:       "access",
 	}
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -205,12 +216,13 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, c
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(refreshExpiry),
 		},
-		UserType:     "admin",
-		AdminUserID:  adminUserID,
-		Username:     username,
-		Capabilities: capabilities,
-		SetupPending: setupPending,
-		TokenType:    "refresh",
+		UserType:        "admin",
+		AdminUserID:     adminUserID,
+		Username:        username,
+		Capabilities:    capabilities,
+		SetupPending:    setupPending,
+		CredentialEpoch: epoch,
+		TokenType:       "refresh",
 	}
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)

@@ -81,22 +81,30 @@ If a daemon uses something genuinely outside this list, prefix it the same way (
 
 ## 9. Image tags and architectures
 
-**Two version schemes, split by artifact type — not a free choice per repo.**
-The consumable Go libraries (the `go-*` modules) use **SemVer**: Go modules
-require it, and their consumers depend on the breaking/feature/fix signal.
-Everything that ships as a deployable container image — the rest-mail product
-(`api`, the protocol gateways, `js-filter`) and the `reference-*`/testbed images
-— uses the **CalVer** scheme below; these are point-in-time snapshots of an
-orchestrated system, where "how current is this" matters more than a semantic
-diff. The Helm chart legitimately carries *both*: `version` (the chart package,
-SemVer, as Helm mandates) and `appVersion` (the product it deploys, CalVer) —
-that is Helm's two-version model, not a mismatch. CI reflects the split: product
-images build on a CalVer release tag (and on `main` as continuous dev images),
-while the SemVer `v*` tags release only the console binaries. The two
-release-artifact classes are mutually exclusive by tag type.
+**Two version schemes, split by what depends on the artifact — not a free choice per repo.**
+**SemVer** where something depends on a contract and needs the
+breaking/feature/fix signal:
+- the consumable Go libraries (the `go-*` modules), which Go modules require;
+- **the rest-mail product** (since 2026-10): `api`, the protocol gateways,
+  `js-filter`, `webmail`, and the `restmail` CLI. Clients depend on its REST
+  API — the mobile app above all — and a major version is how the server says
+  it broke something they rely on. A date cannot say that.
+
+**CalVer** for the `reference-*`/testbed images: point-in-time snapshots of a
+wrapped daemon, where "how current is this" matters more than a semantic diff.
+
+The product monorepo releases **one version for everything built from a
+commit**: a single `v1.2.3` tag publishes every image, the CLI, and is the
+chart's `appVersion`. The CLI and the server therefore cannot drift apart, and
+there is one tag space, not two competing for the same names. Images drop the
+`v` (`ghcr.io/rest-mail/api:1.2.3`); `main` still publishes continuous dev
+images. The product's CalVer releases up to `2026.10.10.1` predate the switch
+and stay as they are. The Helm chart carries two versions by design: `version`
+(the chart package) and `appVersion` (the product it deploys), both SemVer and
+moving independently.
 
 - **Multi-arch.** Every image is published as a manifest list covering at least `linux/amd64` and `linux/arm64`. Apple Silicon, ARM cloud hosts, and most CI runners are arm64; missing arm64 silently breaks pulls on those platforms. Build via `docker/setup-qemu-action` + `docker/build-push-action` with `platforms: linux/amd64,linux/arm64`.
-- **Calver:** `YYYY.MM.DD`, with `.N` suffix for multiple releases on the same day (`2026.04.28.2`). A CalVer git tag preserves its leading zeros verbatim (`type=ref,event=tag`); do not run it through semver metadata, which strips `2026.04.28` to `2026.4.28` and breaks the chart's `appVersion` match.
+- **Calver** (reference images): `YYYY.MM.DD`, with `.N` suffix for multiple releases on the same day (`2026.04.28.2`). A CalVer git tag preserves its leading zeros verbatim (`type=ref,event=tag`); do not run it through semver metadata, which strips `2026.04.28` to `2026.4.28` and breaks the chart's `appVersion` match.
 - **Daemon wrappers** also publish a mutable upstream-version tag (e.g. `reference-postfix:3.8.4`) pointing at the latest wrapper for that upstream version. Composers pin calver; humans use upstream-version for "latest patch."
 - **`:latest`** points at the newest calver tag.
 - A breaking change to the overlay/env contract bumps the **month** segment to act as a visual cue (e.g. last release `2026.04.28`, breaking change ships as `2026.05.01` even if 28 days haven't passed).
