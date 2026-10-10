@@ -49,7 +49,11 @@ type Claims struct {
 	AdminUserID      uint     `json:"admin_user_id,omitempty"`      // For admin users
 	Username         string   `json:"username,omitempty"`           // For admin users
 	Capabilities     []string `json:"capabilities,omitempty"`       // For admin users
-	TokenType        string   `json:"token_type"`
+	// SetupPending marks an admin session whose account is not finished setting
+	// up (a new password, a 2FA enrollment). It reaches only the self-service
+	// endpoints that finish the setup; AdminOnly refuses it everywhere else.
+	SetupPending bool   `json:"setup,omitempty"`
+	TokenType    string `json:"token_type"`
 }
 
 // TokenPair contains both access and refresh tokens.
@@ -152,6 +156,17 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 
 // GenerateAdminTokenPair creates both access and refresh tokens for an admin user.
 func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, capabilities []string) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, capabilities, false)
+}
+
+// GenerateSetupTokenPair creates tokens for an admin whose account is still in
+// setup: no capabilities, and the setup claim on both tokens, so neither the
+// access token nor anything refreshed from it reaches the admin API.
+func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, nil, true)
+}
+
+func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, capabilities []string, setupPending bool) (*TokenPair, error) {
 	now := time.Now()
 
 	// Access token
@@ -166,6 +181,7 @@ func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, c
 		AdminUserID:  adminUserID,
 		Username:     username,
 		Capabilities: capabilities,
+		SetupPending: setupPending,
 		TokenType:    "access",
 	}
 
@@ -193,6 +209,7 @@ func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, c
 		AdminUserID:  adminUserID,
 		Username:     username,
 		Capabilities: capabilities,
+		SetupPending: setupPending,
 		TokenType:    "refresh",
 	}
 

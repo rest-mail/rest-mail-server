@@ -14,6 +14,7 @@ import (
 	acmeclient "github.com/restmail/restmail/internal/acme"
 	"github.com/restmail/restmail/internal/api"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/digest"
@@ -113,6 +114,17 @@ func main() {
 	// upgrades are the migrate tool's job (issue #196).
 	if err := db.AutoMigrate(database, false); err != nil {
 		slog.Error("failed to run database migration", "error", err)
+		os.Exit(1)
+	}
+
+	// A fresh install has no admin and no roles, and the production image carries
+	// no seed tool, so nobody could ever sign in. Both steps are no-ops once done.
+	if err := bootstrap.EnsureRBAC(database); err != nil {
+		slog.Error("failed to create the built-in roles", "error", err)
+		os.Exit(1)
+	}
+	if _, err := bootstrap.EnsureFirstAdmin(database, cfg.BootstrapAdminUsername, cfg.BootstrapAdminPassword, cfg.TOTP2FAEnabled); err != nil {
+		slog.Error("failed to create the bootstrap admin", "error", err)
 		os.Exit(1)
 	}
 

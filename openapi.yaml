@@ -261,6 +261,42 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/auth/password:
+    post:
+      operationId: changeOwnPassword
+      tags: [Auth]
+      summary: Replace your own password (admin accounts)
+      description: >
+        The signed-in admin sets a new password, proving the current one even
+        from a fresh session so a stolen access token alone cannot take the
+        account. Clears the "password" setup step, and revokes every session of
+        the account, this one included: sign in again with the new password.
+        One of the only calls a session in setup (setup_required non-empty)
+        may make. Throttled like login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 12
+                  description: Must differ from the current password.
+      responses:
+        "200":
+          description: Password changed; every session of the account is revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not an admin session
+        "422":
+          description: New password missing, shorter than 12 characters, or unchanged
+
   # ═══════════════════════════════════════════════════════════════
   # Accounts
   # ═══════════════════════════════════════════════════════════════
@@ -4116,9 +4152,22 @@ components:
               type: string
         capabilities:
           type: array
-          description: Granted capabilities (admin users only)
+          description: Granted capabilities (admin users only). Empty while setup_required is not.
           items:
             type: string
+        setup_required:
+          type: array
+          description: >
+            Admin accounts only, and absent once the account is set up. What the
+            account must still do before its sessions may use the admin API,
+            which until then answers 403 with code setup_required — and so does
+            every session refreshed from this one. "password": POST
+            /api/v1/auth/password. "two_factor": POST /api/v1/auth/2fa/enroll,
+            then /api/v1/auth/2fa/confirm. A fresh install's bootstrap admin
+            starts with both.
+          items:
+            type: string
+            enum: [password, two_factor]
         access_token:
           type: string
           description: Native clients only. Send as Authorization Bearer.

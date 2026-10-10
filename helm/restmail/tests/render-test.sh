@@ -56,6 +56,9 @@ assert_contains "readOnlyRootFilesystem present"         "$tmp/prod.yaml" 'readO
 assert_contains "token automount disabled"              "$tmp/prod.yaml" 'automountServiceAccountToken: false'
 assert_contains "default-deny NetworkPolicy"             "$tmp/prod.yaml" 'kind: NetworkPolicy'
 assert_contains "NetworkPolicy default-deny name"        "$tmp/prod.yaml" 'restmail-default-deny'
+# A fresh install can create its first admin, from an optional Secret key.
+assert_contains "bootstrap admin env"                    "$tmp/prod.yaml" 'RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD'
+assert_contains "bootstrap key is optional"              "$tmp/prod.yaml" 'optional: true'
 
 echo "== development assertions =="
 assert_contains "dev uses cleartext DB link"             "$tmp/dev.yaml" 'DB_SSLMODE'
