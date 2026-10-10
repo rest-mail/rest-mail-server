@@ -52,7 +52,9 @@ RUN apk add --no-cache ca-certificates curl \
 COPY --from=builder /bin/restmail-api /usr/local/bin/restmail-api
 # cmd/seed is intentionally excluded from the prod image (see builder stage).
 COPY projects/api-entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# 0755, not +x: the mode must not depend on how the builder's checkout set the
+# read bits, or the unprivileged user below cannot read its own entrypoint.
+RUN chmod 0755 /entrypoint.sh
 USER restmail
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \

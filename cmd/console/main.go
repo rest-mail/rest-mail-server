@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -14,7 +15,32 @@ import (
 // says "dev".
 var version = "dev"
 
+const topUsage = `restmail — run a rest-mail server
+
+  restmail setup         claim a freshly installed server (QR code for the app)
+  restmail reset-admin   let an admin back in; also hands a server over
+  restmail version       print the version
+  restmail [flags]       the interactive admin console (-api, -user, -pass)
+
+restmail <command> --help for each command's flags. Every command except the
+console takes --json for one JSON object on stdout.
+`
+
 func main() {
+	// Subcommands first; anything else is the console's own flags.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "setup", "reset-admin":
+			os.Exit(runSetupCommand(context.Background(), os.Args[1], os.Args[2:], execRunner, os.Stdout, os.Stderr))
+		case "version":
+			fmt.Println("restmail", version)
+			return
+		case "help", "--help", "-h":
+			fmt.Print(topUsage)
+			return
+		}
+	}
+
 	showVersion := flag.Bool("version", false, "Print the version and exit")
 	apiURL := flag.String("api", "http://localhost:8080", "REST API base URL")
 	adminUser := flag.String("user", "", "Admin username for login (or set RESTMAIL_ADMIN_USERNAME)")

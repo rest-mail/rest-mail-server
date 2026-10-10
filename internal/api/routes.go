@@ -56,6 +56,13 @@ func (rt *Routers) Close() {
 // returns the public handler. It is the backward-compatible entry point for
 // callers that do not run a separate internal mTLS listener (tests, tooling).
 // The acmeClient parameter is optional; pass nil when ACME is disabled.
+// adminSessionCheck builds the check that refuses admin tokens from before the
+// account's last credential change. A variable so this package's route tests,
+// which run on a database that fails every query in order to test the
+// capability gates alone, can stand it aside; the check itself is tested
+// against a real database in the handlers package.
+var adminSessionCheck = handlers.AdminSessionCurrent
+
 func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) http.Handler {
 	return NewRouters(db, jwtService, cfg, dnsProvider, acmeClient...).Public
 }
@@ -115,6 +122,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Initialize handlers
 	healthH := handlers.NewHealthHandler(db, jwtService)
 	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey)
+	authH.SetTwoFactorAvailable(cfg.TOTP2FAEnabled)
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled)
 	domainH := handlers.NewDomainHandler(db, dnsProvider)
 	mailboxH := handlers.NewMailboxHandler(db)
@@ -316,6 +324,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.With(authThrottle).Post("/api/v1/auth/login", authH.Login)
 	r.Post("/api/v1/auth/logout", authH.Logout)
 	r.With(authThrottle).Post("/api/v1/auth/refresh", authH.Refresh)
+	// Redeem a single-use token minted by the operator command (restmail-api
+	// mint-token): claim an unclaimed server, or reset an admin who has lost
+	// every way in. Throttled like login: each guesses at a secret.
+	r.With(authThrottle).Post("/api/v1/auth/claim", authH.Claim)
+	r.With(authThrottle).Post("/api/v1/auth/reset", authH.Reset)
 
 	// M-14 (CWE-770): the admin pipeline/filter test endpoints each run a message
 	// through the pipeline engine. They are capability-gated but were otherwise
@@ -377,6 +390,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
+		// An admin token minted before the account's last credential change is dead.
+		r.Use(middleware.RejectStaleAdminSessions(adminSessionCheck(db)))
 		// Double-submit CSRF guard for cookie-authenticated browser sessions on
 		// state-changing methods; Bearer-token (gateway) callers send no cookie
 		// and are transparently exempt (see middleware.CSRF).
@@ -496,6 +511,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
+		// An admin token minted before the account's last credential change is dead.
+		r.Use(middleware.RejectStaleAdminSessions(adminSessionCheck(db)))
 		r.Use(middleware.AdminOnly)
 		// Same double-submit CSRF guard as the mailbox surface (cookie sessions
 		// only; Bearer callers exempt).
