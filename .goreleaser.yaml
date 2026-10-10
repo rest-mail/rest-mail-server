@@ -39,6 +39,7 @@ nfpms:
     homepage: https://github.com/rest-mail/rest-mail-server
     maintainer: rest-mail <noreply@rest-mail.com>
     description: Command-line tool for running a rest-mail server (restmail setup, restmail reset-admin).
+    license: MIT
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     bindir: /usr/bin
 
