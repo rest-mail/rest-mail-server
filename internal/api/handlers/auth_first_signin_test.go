@@ -120,7 +120,10 @@ func (f *firstSignIn) call(token string, handler http.Handler, body any) *httpte
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
-	middleware.JWTMiddleware(f.jwt)(handler).ServeHTTP(rr, req)
+	// The chain the routes put every authenticated call through.
+	middleware.JWTMiddleware(f.jwt)(
+		middleware.RejectStaleAdminSessions(AdminSessionCurrent(f.db))(handler),
+	).ServeHTTP(rr, req)
 	return rr
 }
 

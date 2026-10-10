@@ -140,3 +140,36 @@ func RequireCapability(capability string) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// AdminSessionCurrent reports whether an admin access token minted at
+// credential epoch epoch is still good for adminID: the account exists, is
+// active, and has not changed its credentials since.
+type AdminSessionCurrent func(adminID uint, epoch int) (bool, error)
+
+// RejectStaleAdminSessions refuses admin access tokens minted before the
+// account last changed its credentials (they carry an older credential epoch).
+// Access tokens are stateless and live for minutes; without this, one taken
+// before a password change or a reset keeps working until it expires — long
+// enough, after a reset has wiped the authenticator, for its holder to enroll
+// their own and take the account back. Mailbox tokens pass through untouched.
+func RejectStaleAdminSessions(current AdminSessionCurrent) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims := GetClaims(r)
+			if claims == nil || claims.UserType != "admin" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ok, err := current(claims.AdminUserID, claims.CredentialEpoch)
+			if err != nil {
+				writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify the session")
+				return
+			}
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "unauthorized", "This session ended when the account's credentials changed; sign in again")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

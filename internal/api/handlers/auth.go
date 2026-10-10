@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
@@ -41,10 +43,8 @@ type refreshTokenStore interface {
 type accountStateStore interface {
 	// MailboxActive reports whether the mailbox exists and is active.
 	MailboxActive(id uint) (bool, error)
-	// AdminState reports whether the admin exists and is active, the
-	// capabilities currently granted by its roles, and whether its account is
-	// still in setup (see adminSetupSteps) and so may not use them yet.
-	AdminState(id uint) (active bool, capabilities []string, setupPending bool, err error)
+	// AdminState reports what a refresh needs to know about an admin now.
+	AdminState(id uint) (adminState, error)
 }
 
 // dbAccountState is the gorm-backed accountStateStore used in production.
@@ -64,21 +64,31 @@ func (s dbAccountState) MailboxActive(id uint) (bool, error) {
 	return mb.Active, nil
 }
 
-func (s dbAccountState) AdminState(id uint) (bool, []string, bool, error) {
+// adminState is an admin account as a refresh must see it: whether it exists
+// and is active, the capabilities its roles grant, whether it is still in setup
+// (see adminSetupSteps), and its current credential epoch.
+type adminState struct {
+	Active          bool
+	Capabilities    []string
+	SetupPending    bool
+	CredentialEpoch int
+}
+
+func (s dbAccountState) AdminState(id uint) (adminState, error) {
 	repo := repositories.NewAdminUserRepository(s.db)
 	user, err := repo.GetByID(id)
 	if errors.Is(err, repositories.ErrUserNotFound) {
-		return false, nil, false, nil
+		return adminState{}, nil
 	}
 	if err != nil {
-		return false, nil, false, err
+		return adminState{}, err
 	}
 	if !user.Active {
-		return false, nil, false, nil
+		return adminState{}, nil
 	}
 	caps, err := repo.GetCapabilities(id)
 	if err != nil {
-		return false, nil, false, err
+		return adminState{}, err
 	}
 	names := make([]string, len(caps))
 	for i, c := range caps {
@@ -86,9 +96,9 @@ func (s dbAccountState) AdminState(id uint) (bool, []string, bool, error) {
 	}
 	steps, err := adminSetupSteps(repositories.NewTwoFactorRepository(s.db), user)
 	if err != nil {
-		return false, nil, false, err
+		return adminState{}, err
 	}
-	return true, names, len(steps) > 0, nil
+	return adminState{Active: true, Capabilities: names, SetupPending: len(steps) > 0, CredentialEpoch: user.CredentialEpoch}, nil
 }
 
 // Setup steps an admin account may still owe before it can use its roles.
@@ -135,6 +145,9 @@ type AuthHandler struct {
 	// per-account secret. A nil store (no DB, some unit tests) disables the check.
 	twoFactorStore twoFactorStore
 	masterKey      string
+	// twoFactorUnavailable is set when accounts cannot enroll in 2FA here
+	// (SetTwoFactorAvailable); the zero value is the usual case.
+	twoFactorUnavailable bool
 }
 
 // NewAuthHandler wires the auth handler. masterKey is the MASTER_KEY used to
@@ -439,64 +452,7 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 		return
 	}
 
-	// Get capabilities
-	capabilities, err := adminUserRepo.GetCapabilities(adminUser.ID)
-	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load user capabilities")
-		return
-	}
-
-	// Convert capabilities to string slice
-	capNames := make([]string, len(capabilities))
-	for i, cap := range capabilities {
-		capNames[i] = cap.Name
-	}
-
-	// Generate admin tokens. An account still in setup gets a session that can
-	// only finish the setup (see GenerateSetupTokenPair).
-	setupSteps, err := adminSetupSteps(h.twoFactorStore, adminUser)
-	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account state")
-		return
-	}
-	var tokens *auth.TokenPair
-	if len(setupSteps) > 0 {
-		capNames = nil
-		tokens, err = h.jwtService.GenerateSetupTokenPair(adminUser.ID, adminUser.Username)
-	} else {
-		tokens, err = h.jwtService.GenerateAdminTokenPair(adminUser.ID, adminUser.Username, capNames)
-	}
-	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
-		return
-	}
-
-	// Record the refresh token in the rotation ledger before handing it out, so
-	// it can later be rotated on use and revoked on logout (OSI-10).
-	if err := h.persistRefreshToken(tokens, "admin", adminUser.ID); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
-		return
-	}
-
-	resp := loginResponse{
-		ExpiresIn:     tokens.ExpiresIn,
-		Capabilities:  capNames,
-		SetupRequired: setupSteps,
-		User: userInfo{
-			ID:          adminUser.ID,
-			Email:       adminUser.Username, // Use username in email field for compatibility
-			DisplayName: adminUser.Username,
-		},
-	}
-	if err := deliverSession(w, tokens, req.Client == clientNative, &resp); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
-		return
-	}
-
-	// Update last login
-	h.db.Model(adminUser).Update("updated_at", time.Now())
-
-	respond.Data(w, http.StatusOK, resp)
+	h.startAdminSession(w, adminUser, req.Client == clientNative)
 }
 
 func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
@@ -624,9 +580,12 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// A session whose account is in setup stays that way until the setup is
 	// done: the refresh must not be a way out of the restriction.
 	setupPending := claims.SetupPending
+	epoch := claims.CredentialEpoch
 	if h.accountState != nil {
 		if claims.UserType == "admin" {
-			active, dbCaps, inSetup, stateErr := h.accountState.AdminState(claims.AdminUserID)
+			state, stateErr := h.accountState.AdminState(claims.AdminUserID)
+			active, dbCaps, inSetup := state.Active, state.Capabilities, state.SetupPending
+			epoch = state.CredentialEpoch
 			if stateErr != nil {
 				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
 				return
@@ -674,10 +633,10 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var subjectID uint
 	if claims.UserType == "admin" && setupPending {
 		capabilities = nil
-		tokens, err = h.jwtService.GenerateSetupTokenPair(claims.AdminUserID, claims.Username)
+		tokens, err = h.jwtService.GenerateSetupTokenPair(claims.AdminUserID, claims.Username, epoch)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else if claims.UserType == "admin" {
-		tokens, err = h.jwtService.GenerateAdminTokenPair(claims.AdminUserID, claims.Username, capabilities)
+		tokens, err = h.jwtService.GenerateAdminSession(claims.AdminUserID, claims.Username, capabilities, epoch)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else {
 		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID)
@@ -713,10 +672,9 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	respond.Data(w, http.StatusOK, resp)
 }
 
-// minChosenPasswordLength is the shortest password an admin may choose for
-// themselves. Long enough that a passphrase clears it and a short dictionary
-// word does not.
-const minChosenPasswordLength = 12
+// minChosenPasswordLength is bootstrap's, so every way of choosing an admin
+// password asks the same of it.
+const minChosenPasswordLength = bootstrap.MinChosenPasswordLength
 
 // changePasswordRequest is the body of POST /api/v1/auth/password.
 type changePasswordRequest struct {
@@ -784,6 +742,8 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		"password_hash":            hash,
 		"last_password_change":     time.Now(),
 		"password_change_required": false,
+		// Every token of the account is dead from now, this one included.
+		"credential_epoch": gorm.Expr("credential_epoch + 1"),
 	}).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
 		return
@@ -791,4 +751,176 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	h.revokeAllForSubject("admin", user.ID)
 	respond.Data(w, http.StatusOK, map[string]string{"message": "Password changed. Sign in again with the new password."})
+}
+
+// startAdminSession answers with a fresh session for an admin whose identity is
+// already proven — by password and second factor at login, or by a single-use
+// token at claim and reset. An account still in setup gets a session that can
+// only finish the setup (see GenerateSetupTokenPair).
+func (h *AuthHandler) startAdminSession(w http.ResponseWriter, adminUser *models.AdminUser, native bool) {
+	adminUserRepo := repositories.NewAdminUserRepository(h.db)
+	// Get capabilities
+	capabilities, err := adminUserRepo.GetCapabilities(adminUser.ID)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load user capabilities")
+		return
+	}
+
+	// Convert capabilities to string slice
+	capNames := make([]string, len(capabilities))
+	for i, cap := range capabilities {
+		capNames[i] = cap.Name
+	}
+
+	setupSteps, err := adminSetupSteps(h.twoFactorStore, adminUser)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account state")
+		return
+	}
+	var tokens *auth.TokenPair
+	if len(setupSteps) > 0 {
+		capNames = nil
+		tokens, err = h.jwtService.GenerateSetupTokenPair(adminUser.ID, adminUser.Username, adminUser.CredentialEpoch)
+	} else {
+		tokens, err = h.jwtService.GenerateAdminSession(adminUser.ID, adminUser.Username, capNames, adminUser.CredentialEpoch)
+	}
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
+		return
+	}
+
+	// Record the refresh token in the rotation ledger before handing it out, so
+	// it can later be rotated on use and revoked on logout (OSI-10).
+	if err := h.persistRefreshToken(tokens, "admin", adminUser.ID); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
+		return
+	}
+
+	resp := loginResponse{
+		ExpiresIn:     tokens.ExpiresIn,
+		Capabilities:  capNames,
+		SetupRequired: setupSteps,
+		User: userInfo{
+			ID:          adminUser.ID,
+			Email:       adminUser.Username, // Use username in email field for compatibility
+			DisplayName: adminUser.Username,
+		},
+	}
+	if err := deliverSession(w, tokens, native, &resp); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
+		return
+	}
+
+	// Update last login
+	h.db.Model(adminUser).Update("updated_at", time.Now())
+
+	respond.Data(w, http.StatusOK, resp)
+}
+
+// claimRequest is the body of POST /api/v1/auth/claim.
+type claimRequest struct {
+	Token    string `json:"token"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Client   string `json:"client,omitempty"`
+}
+
+// resetRequest is the body of POST /api/v1/auth/reset.
+type resetRequest struct {
+	Token    string `json:"token"`
+	Password string `json:"password"`
+	Client   string `json:"client,omitempty"`
+}
+
+// SetTwoFactorAvailable says whether accounts can enroll in TOTP 2FA here
+// (TOTP_2FA_ENABLED). A server where they cannot refuses to be claimed: its
+// first admin could never finish setting up.
+func (h *AuthHandler) SetTwoFactorAvailable(available bool) {
+	h.twoFactorUnavailable = !available
+}
+
+// Claim redeems a setup token — minted by `restmail-api mint-token --purpose
+// setup`, so only by someone who controls the deployment — and makes the
+// redeemer the first admin, with the name and password they chose. The session
+// it answers with is still in setup: the account must enroll an authenticator
+// before it reaches the admin API.
+func (h *AuthHandler) Claim(w http.ResponseWriter, r *http.Request) {
+	var req claimRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if req.Client != "" && req.Client != clientNative {
+		respond.ValidationError(w, map[string]string{"client": `must be "native" or omitted`})
+		return
+	}
+	admin, err := bootstrap.ClaimServer(h.db, req.Token, strings.TrimSpace(req.Username), req.Password, !h.twoFactorUnavailable)
+	if h.redeemFailed(w, err) {
+		return
+	}
+	h.startAdminSession(w, admin, req.Client == clientNative)
+}
+
+// Reset redeems a reset_admin token — minted by `restmail-api mint-token
+// --purpose reset-admin`. The admin it names gets the password the redeemer
+// chose, loses its authenticator and must enroll a new one, and every session it
+// had ends: whoever held the old credentials, a person or an agent that set the
+// server up, is locked out.
+func (h *AuthHandler) Reset(w http.ResponseWriter, r *http.Request) {
+	var req resetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if req.Client != "" && req.Client != clientNative {
+		respond.ValidationError(w, map[string]string{"client": `must be "native" or omitted`})
+		return
+	}
+	admin, err := bootstrap.ResetAdmin(h.db, req.Token, req.Password)
+	if h.redeemFailed(w, err) {
+		return
+	}
+	h.startAdminSession(w, admin, req.Client == clientNative)
+}
+
+// redeemFailed answers for a token that could not be redeemed, and says
+// whether it did.
+func (h *AuthHandler) redeemFailed(w http.ResponseWriter, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, bootstrap.ErrTokenInvalid):
+		respond.Error(w, http.StatusUnauthorized, "invalid_token", err.Error())
+	case errors.Is(err, bootstrap.ErrAlreadyClaimed):
+		respond.Error(w, http.StatusConflict, "already_claimed", err.Error())
+	case errors.Is(err, bootstrap.ErrPasswordTooShort):
+		respond.ValidationError(w, map[string]string{"password": err.Error()})
+	case errors.Is(err, bootstrap.ErrUsernameRequired):
+		respond.ValidationError(w, map[string]string{"username": "required"})
+	default:
+		slog.Error("redeeming a one-time token failed", "error", err)
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to redeem the token")
+	}
+	return true
+}
+
+// AdminSessionCurrent is the database's answer to whether an admin access token
+// is still current (middleware.RejectStaleAdminSessions): the account must exist
+// and be active, and the token must carry its current credential epoch — a
+// reset or a password change bumps it.
+func AdminSessionCurrent(db *gorm.DB) middleware.AdminSessionCurrent {
+	return func(adminID uint, epoch int) (bool, error) {
+		var admin models.AdminUser
+		err := db.Select("active", "credential_epoch").First(&admin, adminID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if !admin.Active {
+			return false, nil
+		}
+		return admin.CredentialEpoch == epoch, nil
+	}
 }

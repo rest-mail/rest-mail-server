@@ -57,6 +57,12 @@ func loadCACert(path string) {
 }
 
 func main() {
+	// `restmail-api <command>`: an operator command, run through kubectl or
+	// docker exec. Before anything logs, so stdout carries only its result.
+	if len(os.Args) > 1 {
+		os.Exit(runOperator(os.Args[1:], os.Stdout, os.Stderr))
+	}
+
 	// Configure structured JSON logging
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,

@@ -222,9 +222,42 @@ jobs:
   # This job always runs and fails only if a job that actually ran did not
   # succeed, so a skipped job is not a block. Requiring it — and nothing else
   # from this workflow — makes the 13 job names above free to change.
+  first-start:
+    name: First start
+    # Proves, against the real image, the path a fresh install takes: the
+    # restmail CLI claims it through the container (no password, no race), the
+    # first admin is forced through 2FA, a domain and a mailbox get built, and
+    # reset-admin hands it over -- after which nothing the first holder had
+    # works, an unexpired access token included. tests/first-start/agent-e2e.sh.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: Tools
+        run: sudo apt-get install -y --no-install-recommends oathtool
+
+      - name: Build the CLI and the API image
+        run: |
+          set -euo pipefail
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/restmail" ./cmd/console
+          docker build --target prod -t restmail-api:first-start .
+
+      - name: Claim, build, hand over
+        env:
+          RESTMAIL: ${{ runner.temp }}/restmail
+          IMAGE: restmail-api:first-start
+        run: tests/first-start/agent-e2e.sh
+
   ci:
     name: CI
-    needs: [lint, test, build, helm, webmail, admin]
+    needs: [lint, test, build, helm, webmail, admin, first-start]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -237,6 +270,7 @@ jobs:
             helm=${{ needs.helm.result }}
             webmail=${{ needs.webmail.result }}
             admin=${{ needs.admin.result }}
+            first-start=${{ needs.first-start.result }}
         run: |
           set -euo pipefail
           # `needs.build.result` covers the whole matrix: it is `success` only
@@ -244,7 +278,7 @@ jobs:
           fail=0
           while IFS='=' read -r job result; do
             [ -n "$job" ] || continue
-            printf '  %-8s %s\n' "$job" "$result"
+            printf '  %-12s %s\n' "$job" "$result"
             case "$result" in
               success | skipped) ;;
               *) fail=1 ;;

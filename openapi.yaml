@@ -261,6 +261,92 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/auth/claim:
+    post:
+      operationId: claimServer
+      tags: [Auth]
+      summary: Claim an unclaimed server with a setup token
+      description: >
+        Redeems a single-use setup token and makes the redeemer the server's
+        first admin, with the username and password they choose. Tokens are
+        minted only inside the server's container (`restmail-api mint-token
+        --purpose setup`, usually through `restmail setup`), so holding one
+        proves it was handed over by whoever controls the deployment. The
+        session returned is still in setup: `setup_required` is
+        `["two_factor"]` until an authenticator is enrolled. An unknown, used,
+        or expired token is one answer, 401 `invalid_token`, saying nothing
+        about which. Throttled like login.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, username, password]
+              properties:
+                token: {type: string}
+                username: {type: string}
+                password: {type: string, minLength: 12}
+                client: {type: string, enum: [native]}
+      responses:
+        "200":
+          description: Claimed; the session owes an authenticator
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: invalid_token
+        "409":
+          description: already_claimed — the server has an admin; use reset-admin
+        "422":
+          description: Username missing, or password under 12 characters (the token is not spent)
+
+  /api/v1/auth/reset:
+    post:
+      operationId: resetAdmin
+      tags: [Auth]
+      summary: Let an admin back in with a reset token; also hands a server over
+      description: >
+        Redeems a single-use reset_admin token (`restmail reset-admin`). The
+        admin it names gets the password the redeemer chose, loses its
+        authenticator and must enroll a new one, and every token it was issued
+        is dead at once — refresh tokens are revoked, and access tokens carry a
+        credential epoch the reset bumps. Whoever held the old credentials, a
+        person or an agent that set the server up, is locked out.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: {type: string}
+                password: {type: string, minLength: 12}
+                client: {type: string, enum: [native]}
+      responses:
+        "200":
+          description: Reset; the session owes an authenticator
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: invalid_token
+        "422":
+          description: Password under 12 characters (the token is not spent)
+
   /api/v1/auth/password:
     post:
       operationId: changeOwnPassword

@@ -113,6 +113,8 @@ func (r *AdminUserRepository) UpdatePassword(id uint, passwordHash string) error
 	return r.db.Model(&models.AdminUser{}).Where("id = ?", id).Updates(map[string]interface{}{
 		"password_hash":        passwordHash,
 		"last_password_change": now,
+		// A new password ends every session the account had.
+		"credential_epoch": gorm.Expr("credential_epoch + 1"),
 	}).Error
 }
 

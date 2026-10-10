@@ -12,7 +12,12 @@ type AdminUser struct {
 	PasswordChangeRequired bool   `gorm:"default:false" json:"password_change_required"`
 	// TwoFactorRequired keeps the account in setup until it has a confirmed TOTP
 	// enrollment, and forbids disabling 2FA afterwards. Set on the bootstrap admin.
-	TwoFactorRequired  bool       `gorm:"not null;default:false" json:"two_factor_required"`
+	TwoFactorRequired bool `gorm:"not null;default:false" json:"two_factor_required"`
+	// CredentialEpoch is stamped into every token the account is issued and
+	// bumped whenever its credentials change (a reset, a new password). A token
+	// carrying an older one is dead at once, whatever its expiry says: no clock
+	// is involved, so not even a token minted the same second survives.
+	CredentialEpoch    int        `gorm:"not null;default:0" json:"-"`
 	LastPasswordChange *time.Time `json:"last_password_change,omitempty"`
 	Active             bool       `gorm:"default:true" json:"active"`
 	CreatedAt          time.Time  `json:"created_at"`

@@ -28,6 +28,20 @@ archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
+# Linux packages, so a server's own host installs the CLI the way it installs
+# anything else: `sudo dpkg -i restmail_<version>_linux_arm64.deb`, or rpm.
+nfpms:
+  - id: restmail
+    package_name: restmail
+    ids: [restmail]
+    formats: [deb, rpm]
+    vendor: rest-mail
+    homepage: https://github.com/rest-mail/rest-mail-server
+    maintainer: rest-mail <noreply@rest-mail.com>
+    description: Command-line tool for running a rest-mail server (restmail setup, restmail reset-admin).
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    bindir: /usr/bin
+
 checksum:
   name_template: checksums.txt
 
@@ -51,6 +65,9 @@ homebrew_casks:
       # A token that may push to rest-mail/homebrew-tap. GITHUB_TOKEN cannot
       # write to another repository.
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    # Without the token the release still publishes its binaries and packages
+    # and only the tap goes unupdated, rather than the whole run failing.
+    skip_upload: '{{ if eq .Env.HOMEBREW_TAP_TOKEN "" }}true{{ end }}'
     directory: Casks
     homepage: https://github.com/rest-mail/rest-mail-server
     description: Command-line tool for running a rest-mail server
