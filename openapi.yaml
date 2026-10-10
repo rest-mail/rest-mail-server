@@ -180,10 +180,12 @@ paths:
       tags: [Auth]
       summary: Authenticate with email and password
       description: >
-        On success the API sets three cookies: restmail_access (httpOnly, the
+        On success a browser gets three cookies: restmail_access (httpOnly, the
         session token), restmail_refresh (httpOnly, scoped to /api/v1/auth), and
-        restmail_csrf (readable, for the double-submit CSRF header). The access
-        token is NOT returned in the response body.
+        restmail_csrf (readable, for the double-submit CSRF header), and no
+        tokens in the body. A native client sends "client": "native" and gets
+        access_token, refresh_token and refresh_expires_in in the body instead,
+        with no cookies; it sends the access token as Authorization: Bearer.
       security: []
       requestBody:
         required: true
@@ -214,8 +216,15 @@ paths:
       summary: Log out — revoke the session and clear the auth cookies
       description: >
         Revokes the refresh token server-side and expires the restmail_access,
-        restmail_refresh and restmail_csrf cookies.
+        restmail_refresh and restmail_csrf cookies. The refresh token is the
+        restmail_refresh cookie, or for a native client the request body.
       security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
       responses:
         "204":
           description: Logged out
@@ -224,8 +233,20 @@ paths:
     post:
       operationId: refreshToken
       tags: [Auth]
-      summary: Refresh access token using HTTP-only cookie
+      summary: Refresh the session (cookie, or body token for native clients)
+      description: >
+        Takes the refresh token from the restmail_refresh cookie, or when there
+        is no cookie from the request body. The replacement pair goes back on
+        the same channel: cookies for a cookie request, body fields for a body
+        request. A request carrying the cookie is always answered with cookies,
+        whatever its body says.
       security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
       responses:
         "200":
           description: Token refreshed
@@ -4055,15 +4076,29 @@ components:
         password:
           type: string
           format: password
+        client:
+          type: string
+          enum: [native]
+          description: >
+            "native" for a client that is not a browser: the tokens come back
+            in the body rather than as cookies. Omit for a browser.
+
+    RefreshRequest:
+      type: object
+      description: Sent by native clients only; browsers send no body.
+      properties:
+        refresh_token:
+          type: string
 
     LoginResponse:
       type: object
       required: [expires_in, user]
       description: >
-        Login/refresh success body. It carries NO access token: the token is
-        delivered only as the httpOnly restmail_access cookie (Set-Cookie), so
-        JavaScript cannot read it. A readable restmail_csrf cookie is set
-        alongside for the double-submit CSRF defence.
+        Login/refresh success body. For a browser it carries NO tokens: the
+        access token is delivered only as the httpOnly restmail_access cookie
+        (Set-Cookie), so JavaScript cannot read it, and a readable restmail_csrf
+        cookie is set alongside for the double-submit CSRF defence. The token
+        fields are present only for a native client.
       properties:
         expires_in:
           type: integer
@@ -4084,13 +4119,22 @@ components:
           description: Granted capabilities (admin users only)
           items:
             type: string
+        access_token:
+          type: string
+          description: Native clients only. Send as Authorization Bearer.
+        refresh_token:
+          type: string
+          description: Native clients only. Single use; each refresh returns a new one.
+        refresh_expires_in:
+          type: integer
+          description: Native clients only. Refresh-token lifetime in seconds.
 
     RefreshResponse:
       type: object
       required: [expires_in, user]
       description: >
-        Same shape and cookie behaviour as LoginResponse; the refreshed access
-        token is set as the restmail_access cookie, never returned in the body.
+        Same shape and delivery as LoginResponse: cookies for a cookie
+        refresh, body tokens for a native (body-token) refresh.
       properties:
         expires_in:
           type: integer
@@ -4109,6 +4153,15 @@ components:
           type: array
           items:
             type: string
+        access_token:
+          type: string
+          description: Native clients only. Send as Authorization Bearer.
+        refresh_token:
+          type: string
+          description: Native clients only. Single use; each refresh returns a new one.
+        refresh_expires_in:
+          type: integer
+          description: Native clients only. Refresh-token lifetime in seconds.
 
     # ─────────────────────────────────────────────────────────────
     # Account
