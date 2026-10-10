@@ -1,0 +1,77 @@
+name: Release CLI
+
+# Releases `restmail`, the command-line tool, on a SemVer tag (v1.2.3): a
+# GitHub Release with binaries for macOS and Linux, and the Homebrew tap, so
+#
+#   brew install rest-mail/tap/restmail
+#
+# installs it. The build itself is .goreleaser.yaml. A pull request that
+# touches the CLI or its release runs a snapshot build instead, which builds
+# everything and publishes nothing, so a broken release config fails there
+# rather than on the day of a release.
+#
+# The same v* tag releases the server images (docker.yml). The release still
+# names its tags explicitly: the history also holds the product's CalVer tags
+# from before the switch to SemVer (up to 2026.10.10.1), and left to itself
+# GoReleaser takes the newest tag of any kind.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - cmd/console/**
+      - internal/console/**
+      - .goreleaser.yaml
+      - .github/workflows/release-cli.yml
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release the restmail CLI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # creates the GitHub Release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # GoReleaser reads tags and history for the version and changelog.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: Name the tags this release spans
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          current="${GITHUB_REF_NAME}"
+          previous=$(git tag --list 'v*' --sort=-v:refname | grep -vxF "$current" | head -1 || true)
+          echo "GORELEASER_CURRENT_TAG=$current" >> "$GITHUB_ENV"
+          [ -n "$previous" ] && echo "GORELEASER_PREVIOUS_TAG=$previous" >> "$GITHUB_ENV"
+          echo "releasing $current (changelog since ${previous:-the beginning})"
+
+      - name: Release
+        if: github.event_name == 'push'
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # May push to rest-mail/homebrew-tap; GITHUB_TOKEN cannot.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Snapshot build (nothing published)
+        if: github.event_name == 'pull_request'
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+        env:
+          GORELEASER_CURRENT_TAG: v0.0.0
+          HOMEBREW_TAP_TOKEN: unused-in-a-snapshot
