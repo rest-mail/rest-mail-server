@@ -23,6 +23,24 @@ This chart deploys **only** the rest-mail product surface. It does **not** inclu
   simulation (`rest-mail/testbed`).
 - The webmail front-end or the marketing website.
 
+## Deploying the API without the gateways
+
+The REST API is a complete product on its own. The SMTP, IMAP and POP3 gateways
+are how traditional clients reach it, and each wants a `LoadBalancer` Service on
+a privileged port — which a bare-metal cluster has nothing to hand out for, so
+the Services sit pending and nothing explains why.
+
+```sh
+helm install restmail helm/restmail \
+  --set smtpGateway.enabled=false \
+  --set imapGateway.enabled=false \
+  --set pop3Gateway.enabled=false
+```
+
+That leaves the API, the JS filter and Postgres, and drops each disabled
+gateway's Deployment, Service and NetworkPolicy. All three default to `true`,
+so an existing install renders exactly as it did before.
+
 ## Infrastructure assumptions
 
 The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
@@ -204,10 +222,10 @@ helm/restmail/tests/render-test.sh
 
 ## What is intentionally not in this chart
 
-- **Webmail front-end.** No `ghcr.io/rest-mail/webmail` upstream image
-  exists yet (lives in this repo's `webmail/` directory and ships its own
-  `docker-compose.yml`). Once it's published, add a `webmail-deployment.yaml`
-  template and a `webmail.*` block in values.
+- **Webmail front-end.** `ghcr.io/rest-mail/webmail` is published now, multi-arch,
+  from this repo's `webmail/` directory, so the reason this chart skipped it has
+  gone. Adding it means a `webmail-deployment.yaml` template and a `webmail.*`
+  block in values. Nothing blocks it; nobody has needed it yet.
 - **Project website.** Tracked separately (Phase 6 of the decomposition).
 - **Reference mail daemons.** Postfix/Dovecot/rspamd live in
   `rest-mail/reference-mailserver`. They are not part of the rest-mail

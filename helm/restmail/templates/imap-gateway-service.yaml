@@ -1,3 +1,4 @@
+{{- if .Values.imapGateway.enabled -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -27,3 +28,4 @@ spec:
       port: {{ .Values.imapGateway.ports.tls }}
       targetPort: imaps
       protocol: TCP
+{{- end }}

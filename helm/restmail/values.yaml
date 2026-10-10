@@ -200,6 +200,13 @@ jsFilter:
 
 # ── SMTP gateway ──────────────────────────────────────────────────────────
 smtpGateway:
+  # The gateway serves mail to the outside world on privileged ports, which a
+  # cluster can only give it through a LoadBalancer that actually has an address
+  # to hand out. Turn it off to run the REST API alone — on bare metal without a
+  # load balancer the Service would sit pending forever, and nothing would say
+  # why. The API is a complete product without the protocol gateways; they are
+  # how traditional clients reach it, not how it works.
+  enabled: true
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/smtp-gateway
@@ -241,6 +248,8 @@ smtpGateway:
 
 # ── IMAP gateway ──────────────────────────────────────────────────────────
 imapGateway:
+  # See smtpGateway.enabled. Off means no IMAP clients, not a degraded API.
+  enabled: true
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/imap-gateway
@@ -266,6 +275,8 @@ imapGateway:
 
 # ── POP3 gateway ──────────────────────────────────────────────────────────
 pop3Gateway:
+  # See smtpGateway.enabled. Off means no POP3 clients, not a degraded API.
+  enabled: true
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/pop3-gateway
