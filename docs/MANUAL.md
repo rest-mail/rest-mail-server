@@ -383,7 +383,7 @@ brew install rest-mail/tap/restmail
 restmail -version
 ```
 
-Releasing it is pushing the tag: `git tag v0.1.0 && git push origin v0.1.0`. The release needs the `HOMEBREW_TAP_TOKEN` repository secret, a token that may push to `rest-mail/homebrew-tap`. CalVer tags release the server images instead (docker.yml); the two never trigger each other.
+**One tag releases the product.** `v1.2.3` publishes every server image as `ghcr.io/rest-mail/<component>:1.2.3` (docker.yml) and the CLI (release-cli.yml), so they always match. Set the chart's `appVersion` to `1.2.3` in a pull request first, then tag its merge commit: `git tag v1.2.3 <commit> && git push origin v1.2.3`. The CLI's Homebrew step needs the `HOMEBREW_TAP_TOKEN` repository secret, a token that may push to `rest-mail/homebrew-tap`. Releases up to `2026.10.10.1` used CalVer and stay as they are.
 
 ### 4.9 Metrics & monitoring
 

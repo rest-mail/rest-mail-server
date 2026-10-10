@@ -5,8 +5,9 @@
 #
 #   brew install rest-mail/tap/restmail
 #
-# Product images are CalVer and released by docker.yml; this tag space is the
-# CLI's alone. Pull requests touching it run a snapshot build
+# The same tag releases the server images (docker.yml): one version for
+# everything built from a commit, so the CLI and the server it talks to cannot
+# drift. Pull requests touching it run a snapshot build
 # (.github/workflows/release-cli.yml), so a broken config fails there, not at
 # tag time.
 version: 2

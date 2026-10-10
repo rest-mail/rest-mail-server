@@ -3,10 +3,10 @@ name: Docker Build & Push
 on:
   push:
     branches: [main]
-    # CalVer product-image releases (YYYY.MM.DD[.N]). The CalVer tag is what the
-    # Helm chart's appVersion pins, so a release = pushing that git tag. SemVer
-    # v* tags release the restmail CLI instead (release-cli.yml).
-    tags: ["[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*"]
+    # A release is one SemVer tag (v1.2.3) for everything built from that
+    # commit: these images here, the restmail CLI in release-cli.yml, and the
+    # chart's appVersion. See docs/ecosystem/CONVENTIONS.md.
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -23,12 +23,9 @@ jobs:
   build-and-push:
     name: Build & Push
     runs-on: ubuntu-latest
-    # Build the images on main (continuous dev images) and on a CalVer release
-    # tag. A SemVer v* tag releases only the CLI (release-cli.yml) and does not
-    # reach this workflow; the guard stays so it never builds images if it did.
+    # On main (continuous dev images) and on a release tag.
     if: >-
-      github.ref == 'refs/heads/main' ||
-      (startsWith(github.ref, 'refs/tags/') && !startsWith(github.ref, 'refs/tags/v'))
+      github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
         include:
@@ -69,13 +66,12 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
-          # event=tag emits the git tag verbatim, preserving a CalVer tag's leading
-          # zeros (2026.04.28) that type=semver would strip to 2026.4.28 and so no
-          # longer match the chart's appVersion. Branch pushes tag the dev image
-          # (main); every push also carries the commit sha; :latest tracks main.
+          # A release tag v1.2.3 becomes image tag 1.2.3, which is what the
+          # chart's appVersion names. Branch pushes tag the dev image (main);
+          # every push also carries the commit sha; :latest tracks main.
           tags: |
             type=ref,event=branch
-            type=ref,event=tag
+            type=semver,pattern={{version}}
             type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
 
