@@ -93,6 +93,23 @@ The chart is hardened by default and is deployable in its declared
   then re-opened least-privilege: DNS, API↔DB, gateway↔API/DB, public
   mail/API ingress, and SMTP outbound delivery (25/465/587) + MTA-STS (443).
 
+## Where the chart is published
+
+Every change under `helm/` on `main` publishes the chart to ghcr, so something
+deploying rest-mail names a version rather than keeping a copy that drifts:
+
+```sh
+helm install restmail oci://ghcr.io/rest-mail/charts/restmail --version 0.4.0
+```
+
+A published version is final — the workflow refuses to overwrite one, because
+moving an OCI tag would change what a version means for anyone who already
+installed it. Publishing again means bumping `version` in `Chart.yaml`.
+
+`version` and `appVersion` move independently: the first describes these
+templates, the second names the images they pull. A chart-only fix bumps the
+first alone.
+
 ## Install (production)
 
 1. Create the required Secrets out-of-band:

@@ -1,0 +1,85 @@
+name: Publish Helm chart
+
+# The chart is how this product gets deployed, so it is published the same way
+# the images are: to ghcr, by version, from main. Something installing rest-mail
+# then names a version instead of vendoring a copy of the chart that drifts.
+#
+#   helm install restmail oci://ghcr.io/rest-mail/charts/restmail --version 0.4.0
+#
+# The chart version and the app version are different things and move
+# independently: version in Chart.yaml describes the templates, appVersion names
+# the images they pull. A chart-only fix bumps the first and not the second.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "helm/**"
+      - ".github/workflows/helm.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CHART_DIR: helm/restmail
+  # helm push appends the chart name, giving ghcr.io/rest-mail/charts/restmail.
+  REGISTRY: oci://ghcr.io/${{ github.repository_owner }}/charts
+
+jobs:
+  publish:
+    name: Package and push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          # Pinned for the same reason the Flutter version is pinned in the
+          # mobile repository: a chart that packages differently next week is
+          # a change nobody made.
+          version: v3.16.4
+
+      - name: Lint, and check the chart still renders
+        # The chart's own tests render it with the production defaults and the
+        # development overlay and assert the hardening is intact. Publishing a
+        # chart that does not render would hand the failure to whoever installs it.
+        run: ${{ env.CHART_DIR }}/tests/render-test.sh
+
+      - name: Read the version the chart declares
+        id: chart
+        run: |
+          set -euo pipefail
+          version=$(helm show chart "$CHART_DIR" | awk '$1 == "version:" { print $2 }')
+          test -n "$version" || { echo "::error::no version in $CHART_DIR/Chart.yaml" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "chart version $version"
+
+      - name: Log in to ghcr
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Refuse to overwrite a published version
+        # OCI will happily move a tag, which would change what a version means
+        # for anyone who already installed it. A published version is final:
+        # to publish again, say so by bumping the version.
+        env:
+          VERSION: ${{ steps.chart.outputs.version }}
+        run: |
+          set -euo pipefail
+          if helm show chart "$REGISTRY/restmail" --version "$VERSION" > /dev/null 2>&1; then
+            echo "::error::chart $VERSION is already published — bump version in $CHART_DIR/Chart.yaml" >&2
+            exit 1
+          fi
+          echo "$VERSION is unpublished"
+
+      - name: Package and push
+        env:
+          VERSION: ${{ steps.chart.outputs.version }}
+        run: |
+          set -euo pipefail
+          helm package "$CHART_DIR" --destination "$RUNNER_TEMP"
+          helm push "$RUNNER_TEMP/restmail-$VERSION.tgz" "$REGISTRY"
+          echo "::notice::published $REGISTRY/restmail version $VERSION"
