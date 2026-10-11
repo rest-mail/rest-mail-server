@@ -68,9 +68,15 @@ postgres:
     mountPath: /certs
     certFilename: tls.crt
     keyFilename: tls.key
-  # Reference an existing secret with keys: POSTGRES_PASSWORD, POSTGRES_USER,
-  # POSTGRES_DB. Setting this disables embedded credentials below.
-  existingSecret: restmail-postgres
+  # Empty: the chart makes the credentials itself, keeps them across upgrades,
+  # and keeps them when uninstalled (templates/postgres-secret.yaml) — nothing to
+  # prepare. Or name a Secret you manage, with keys POSTGRES_USER,
+  # POSTGRES_PASSWORD and POSTGRES_DB. Tools that render without a cluster
+  # (Argo CD, `helm template`) cannot keep generated values, so need this.
+  existingSecret: ""
+  # Only when the chart makes the Secret. Empty: user and database "restmail",
+  # and a generated password. An external database (enabled: false) needs its
+  # password here or in existingSecret.
   auth:
     username: ""
     password: ""
@@ -134,11 +140,23 @@ api:
     repository: ghcr.io/rest-mail/api
     tag: ""        # falls back to .Chart.AppVersion when empty
     pullPolicy: ""
-  # Reference an existing secret with keys: JWT_SECRET, MASTER_KEY, DB_PASS.
-  existingSecret: restmail-api
-  # Used only when existingSecret is unset (development / values-dev.yaml).
+  # Empty: the chart makes JWT_SECRET and MASTER_KEY itself, keeps them across
+  # upgrades, and keeps them when uninstalled (templates/api-secret.yaml) —
+  # nothing to prepare. MASTER_KEY encrypts private keys at rest, so it must
+  # never change. Or name a Secret you manage, with keys JWT_SECRET and
+  # MASTER_KEY, and optionally BOOTSTRAP_ADMIN_PASSWORD. Tools that render
+  # without a cluster (Argo CD, `helm template`) cannot keep generated values,
+  # so need this.
+  existingSecret: ""
+  # Only when the chart makes the Secret. Empty: generated once, then kept.
   jwtSecret: ""
   masterKey: ""
+  # Only when the chart makes the Secret. Set it to have the server create its
+  # first admin, named "admin", at startup: that admin must choose a new
+  # password and enroll an authenticator at first sign-in. Supplying one turns
+  # the printed setup code off, so use it where the installer can hand the
+  # password back to you, such as a Pulumi output. 16 characters or more.
+  bootstrapAdminPassword: ""
   port: 8080
   environment: production
   logLevel: info

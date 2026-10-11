@@ -112,6 +112,53 @@ assert_contains "another page"       "$tmp/link.yaml" 'RESTMAIL_SETUP_LINK_BASE:
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.setupLinkBase="" > "$tmp/nolink.yaml"
 assert_contains "no site at all"     "$tmp/nolink.yaml" 'RESTMAIL_SETUP_LINK_BASE: ""'
 
+echo "== a bare install needs no secrets prepared =="
+# Only a hostname and a domain: the chart must make both Secrets itself, so
+# nothing has to exist before `helm install`.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/bare.yaml"
+secret() { # secret <file> <name> -> that Secret's document
+  awk -v n="  name: $2" 'BEGIN{RS="\n---\n"} /\nkind: Secret\n/ && index($0, n"\n") {print}' "$1"
+}
+secret "$tmp/bare.yaml" restmail-api      > "$tmp/api-secret.yaml"
+secret "$tmp/bare.yaml" restmail-postgres > "$tmp/pg-secret.yaml"
+assert_contains "the API's Secret is made"       "$tmp/api-secret.yaml" 'JWT_SECRET:'
+assert_contains "with a MASTER_KEY"              "$tmp/api-secret.yaml" 'MASTER_KEY:'
+assert_contains "Postgres's Secret is made"      "$tmp/pg-secret.yaml"  'POSTGRES_PASSWORD:'
+assert_contains "for user restmail"              "$tmp/pg-secret.yaml"  'POSTGRES_USER: "restmail"'
+# MASTER_KEY must survive an uninstall: a new one makes stored keys unreadable.
+assert_contains "the API's Secret survives uninstall"  "$tmp/api-secret.yaml" 'helm.sh/resource-policy: keep'
+assert_contains "so does Postgres's"                   "$tmp/pg-secret.yaml"  'helm.sh/resource-policy: keep'
+# Generated, not a placeholder: 64 characters of a random alphabet.
+key=$(sed -n 's/^  MASTER_KEY: "\(.*\)"$/\1/p' "$tmp/api-secret.yaml")
+[ "${#key}" = 64 ] || fail "MASTER_KEY is ${#key} characters, want 64"
+pass "a generated MASTER_KEY is 64 characters"
+# No bootstrap admin unless asked for: one would turn the setup code off.
+assert_absent "no bootstrap password by default" "$tmp/api-secret.yaml" 'BOOTSTRAP_ADMIN_PASSWORD'
+
+echo "== what is given wins =="
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.jwtSecret=given-jwt --set api.masterKey=given-master \
+  --set api.bootstrapAdminPassword=a-bootstrap-password-of-length \
+  --set postgres.auth.password=given-pg > "$tmp/given.yaml"
+assert_contains "a given JWT_SECRET"          "$tmp/given.yaml" 'JWT_SECRET: "given-jwt"'
+assert_contains "a given MASTER_KEY"          "$tmp/given.yaml" 'MASTER_KEY: "given-master"'
+assert_contains "a given bootstrap password"  "$tmp/given.yaml" 'BOOTSTRAP_ADMIN_PASSWORD: "a-bootstrap-password-of-length"'
+assert_contains "a given Postgres password"   "$tmp/given.yaml" 'POSTGRES_PASSWORD: "given-pg"'
+
+echo "== a Secret you manage is used, and none is made =="
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set api.existingSecret=mine-api --set postgres.existingSecret=mine-pg > "$tmp/existing.yaml"
+assert_absent   "no API Secret made"      "$tmp/existing.yaml" 'MASTER_KEY:'
+assert_absent   "no Postgres Secret made" "$tmp/existing.yaml" 'POSTGRES_PASSWORD:'
+assert_contains "the API reads yours"     "$tmp/existing.yaml" 'name: mine-api'
+assert_contains "and the database yours"  "$tmp/existing.yaml" 'name: mine-pg'
+
+echo "== an external database's password cannot be made up =="
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set postgres.enabled=false > /dev/null 2>&1; then
+  fail "expected an external database with no password to be refused"
+fi
+pass "an external database with no password is refused"
+
 echo "== coherence guard: secure sslMode requires server TLS =="
 if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
      --set db.sslMode=require --set postgres.tls.enabled=false > /dev/null 2>&1; then
