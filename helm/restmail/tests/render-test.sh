@@ -103,6 +103,15 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.ownerKeys
 assert_contains "RESTMAIL_OWNER_KEYS set"   "$tmp/owner.yaml" "RESTMAIL_OWNER_KEYS: \"$KEY\""
 assert_absent   "no owner keys by default"  "$tmp/prod.yaml"  'RESTMAIL_OWNER_KEYS'
 
+echo "== where setup links point =="
+assert_absent   "unset by default"   "$tmp/prod.yaml" 'RESTMAIL_SETUP_LINK_BASE'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.setupLinkBase=https://mail.example.com/claim > "$tmp/link.yaml"
+assert_contains "another page"       "$tmp/link.yaml" 'RESTMAIL_SETUP_LINK_BASE: "https://mail.example.com/claim"'
+# Empty is a choice, not an absence: it asks for restmail://, so it must reach
+# the container rather than falling back to the default.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.setupLinkBase="" > "$tmp/nolink.yaml"
+assert_contains "no site at all"     "$tmp/nolink.yaml" 'RESTMAIL_SETUP_LINK_BASE: ""'
+
 echo "== coherence guard: secure sslMode requires server TLS =="
 if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
      --set db.sslMode=require --set postgres.tls.enabled=false > /dev/null 2>&1; then

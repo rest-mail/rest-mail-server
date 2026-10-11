@@ -48,6 +48,11 @@ docker run -d --name e2e-api --network "$NET" -p 127.0.0.1:58080:8080 \
   -e ENVIRONMENT=development "$IMAGE" >/dev/null
 wait_healthy() { for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/health >/dev/null 2>&1 && return; sleep 1; done; die "API not healthy"; }
 setup_code() { docker logs e2e-api 2>/dev/null | sed -n 's/^Or enter the setup code in the app: *//p' | tail -1; }
+# A link keeps its parameters after the `#` when it is a web link, and in the
+# query when it is restmail://; read whichever this one is.
+token_of() { python3 -c 'import sys,urllib.parse as u
+l = u.urlparse(sys.argv[1])
+print(u.parse_qs(l.fragment or l.query)["token"][0])' "$1"; }
 wait_healthy
 curl -fsS http://127.0.0.1:58080/api/health | jq -c .data
 ok "server up, no admin, no bootstrap password anywhere"
@@ -56,7 +61,8 @@ step "the setup code, read from the server's own output"
 first_code=$(setup_code)
 [[ $first_code =~ ^([0-9A-HJKMNP-TV-Z]{4}-){5}[0-9A-HJKMNP-TV-Z]{4}$ ]] || die "no setup code in the output"
 docker logs e2e-api 2>/dev/null | grep -q '▀' || die "no QR code in the output"
-ok "printed: a QR code and the code (not shown here)"
+docker logs e2e-api 2>/dev/null | grep -q 'https://rest-mail.com/setup#' || die "no web link in the output"
+ok "printed: a QR code of a web link, and the code (not shown here)"
 docker restart e2e-api >/dev/null
 wait_healthy
 code=$(setup_code)
@@ -76,9 +82,9 @@ step "restmail setup --code: the app's link, for the code the server printed"
 setup=$("$RESTMAIL" setup --server "$SERVER" --code "$code" --json --show-secret)
 jq -c 'del(.link)' <<<"$setup"
 link=$(jq -r .link <<<"$setup")
-token=$(python3 -c 'import sys,urllib.parse as u; print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$link")
-[[ $link == restmail://setup\?* ]] || die "link $link"
-ok "link is restmail://setup?server=…&token=… (token not shown)"
+token=$(token_of "$link")
+[[ $link == https://rest-mail.com/setup\#* ]] || die "link $link"
+ok "link is a web link, tappable anywhere (token not shown)"
 
 step "redeem it as the agent: claim with a password the agent chose"
 AGENT_PW=$(openssl rand -base64 24)
@@ -129,7 +135,7 @@ ok "refused with exit 3 and a pointer to reset-admin"
 
 step "hand-over: restmail reset-admin, the link the owner redeems"
 reset=$("$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/agent" --username agent --json --show-secret)
-reset_token=$(python3 -c 'import sys,urllib.parse as u; print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$(jq -r .link <<<"$reset")")
+reset_token=$(token_of "$(jq -r .link <<<"$reset")")
 OWNER_PW=$(openssl rand -base64 24)
 owner=$(curl -fsS "$API/auth/reset" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg t "$reset_token" --arg p "$OWNER_PW" '{token:$t, password:$p, client:"native"}')")

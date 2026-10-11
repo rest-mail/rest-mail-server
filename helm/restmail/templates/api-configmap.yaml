@@ -17,6 +17,11 @@ data:
   # trust boundary protects the gateway-facing routes on the public listener.
   INTERNAL_ROUTES_ALLOW_PUBLIC: "true"
   {{- end }}
+  {{- if not (kindIs "invalid" .Values.api.setupLinkBase) }}
+  # Where the link a fresh install prints points. Empty involves no site at
+  # all: the link is then restmail://setup, which only the app can open.
+  RESTMAIL_SETUP_LINK_BASE: {{ .Values.api.setupLinkBase | quote }}
+  {{- end }}
   {{- with .Values.api.ownerKeys }}
   # Public keys of whoever owns this server, in authorized_keys format. Holding
   # a matching private key is what lets `restmail setup` claim a fresh install

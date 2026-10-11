@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/mdp/qrterminal/v4"
+	"github.com/restmail/restmail/internal/setuplink"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -72,6 +73,8 @@ public API.
   --json         one JSON object on stdout; errors as one on stderr
   --show-secret  include the link itself in --json output (it grants admin)
   --lifetime D   how long the link works, e.g. 1h (default 15m, at most 24h)
+  --link-base U  where setup links point (default https://rest-mail.com/setup;
+                 empty gives restmail://setup, involving no site at all)
 
 Exit status: 0 ok, 2 usage, 3 already claimed (use reset-admin), 5 server not
 reachable, 6 no key offered is an owner key, 1 anything else.
@@ -106,6 +109,7 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 	server := fs.String("server", "", "the server's address")
 	keyPath := fs.String("key", "", "a private key file")
 	code := fs.String("code", "", "the setup code the server printed (setup)")
+	linkBase := fs.String("link-base", setuplink.DefaultBase, "where setup links point; empty for restmail://")
 	username := fs.String("username", "", "the admin to reset (reset-admin)")
 	lifetime := fs.Duration("lifetime", 15*time.Minute, "how long the link works")
 	asJSON := fs.Bool("json", false, "JSON output")
@@ -136,13 +140,17 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 	if err != nil {
 		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
+	linkFor, err := setuplink.ParseBase(*linkBase)
+	if err != nil {
+		return o.fail(exitUsage, "bad_flag", strings.Replace(err.Error(), "RESTMAIL_SETUP_LINK_BASE", "--link-base", 1))
+	}
 	if *code != "" {
 		if purpose != "setup" {
 			return o.fail(exitUsage, "bad_flag", "--code is for restmail setup; reset-admin proves ownership with a key")
 		}
 		// The server printed it; nothing to ask the server. Just show it as the
 		// app's link, for a phone to scan.
-		return o.link(purpose, base, *code, "", "", *showSecret)
+		return o.link(purpose, linkFor, base, *code, "", "", *showSecret)
 	}
 
 	signers, err := keys(*keyPath)
@@ -202,13 +210,13 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 		return o.fail(exitNotOwner, "not_owner", fmt.Sprintf("none of the %d key(s) offered is an owner key of this server: %s", len(signers), lastNotOwner))
 	}
 
-	return o.link(purpose, base, token, expires, *username, *showSecret)
+	return o.link(purpose, linkFor, base, token, expires, *username, *showSecret)
 }
 
 // link shows the app's link for token: as a QR code and text for people, or as
 // JSON — without the link unless showSecret — for programs.
-func (o output) link(purpose string, base *url.URL, token, expires, username string, showSecret bool) int {
-	link := appLink(purpose, base.String(), token)
+func (o output) link(purpose, linkBase string, base *url.URL, token, expires, username string, showSecret bool) int {
+	link := appLink(purpose, linkBase, base.String(), token)
 	if o.json {
 		result := map[string]any{"purpose": purpose, "server": base.String()}
 		if expires != "" {
@@ -277,14 +285,14 @@ func serverURL(raw string) (*url.URL, error) {
 	return nil, fmt.Errorf("--server must be https:// (http only for localhost), got %q", raw)
 }
 
-// appLink is what the app opens: the server, and the token to redeem there.
-func appLink(purpose, server, token string) string {
-	path := "setup"
+// appLink is what the app opens: the server, and the token to redeem there. A
+// setup link is a web link by default, which is tappable where a custom scheme
+// is not (see internal/setuplink); --link-base chooses, or turns that off.
+func appLink(purpose, base, server, token string) string {
 	if purpose == "reset-admin" {
-		path = "reset"
+		return setuplink.Reset(server, token)
 	}
-	q := url.Values{"server": {server}, "token": {token}}
-	return "restmail://" + path + "?" + q.Encode()
+	return setuplink.Setup(base, server, token)
 }
 
 // apiClient speaks rest-mail's JSON envelope.
