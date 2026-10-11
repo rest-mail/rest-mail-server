@@ -301,15 +301,25 @@ type apiClient struct {
 	http *http.Client
 }
 
-// post returns the server's error code and message when it refused, or err
-// when it could not be reached or did not answer like rest-mail.
+// post sends body to path; see do.
 func (c apiClient) post(ctx context.Context, path string, body any, into any) (code, message string, err error) {
+	return c.do(ctx, http.MethodPost, path, body, into)
+}
+
+// get reads path; see do.
+func (c apiClient) get(ctx context.Context, path string, into any) (code, message string, err error) {
+	return c.do(ctx, http.MethodGet, path, nil, into)
+}
+
+// do returns the server's error code and message when it refused, or err when
+// it could not be reached or did not answer like rest-mail.
+func (c apiClient) do(ctx context.Context, method, path string, body any, into any) (code, message string, err error) {
 	var reader io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
 		reader = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base.String()+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, c.base.String()+path, reader)
 	if err != nil {
 		return "", "", err
 	}
@@ -331,7 +341,7 @@ func (c apiClient) post(ctx context.Context, path string, body any, into any) (c
 		return env.Error.Code, env.Error.Message, nil
 	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
-		return "", "", fmt.Errorf("%s does not offer owner keys: not a rest-mail server, or one older than this CLI", c.base.Host)
+		return "", "", fmt.Errorf("%s does not offer %s: not a rest-mail server, or one older than this CLI", c.base.Host, path)
 	}
 	if resp.StatusCode != http.StatusOK || env.Data == nil {
 		return "", "", fmt.Errorf("%s did not answer like a rest-mail server (HTTP %d)", c.base.Host, resp.StatusCode)

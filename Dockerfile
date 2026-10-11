@@ -15,8 +15,11 @@ RUN go mod download
 # ── Stage 2: builder ─────────────────────────────────────────────────
 FROM deps AS builder
 COPY . .
+# Passed by .github/workflows/docker.yml. A local build has neither, so it says
+# "dev", and tries git for the commit.
 ARG VERSION=dev
-RUN COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown") \
+ARG COMMIT=
+RUN COMMIT=${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")} \
  && BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
  && LDFLAGS="-X github.com/restmail/restmail/internal/version.Version=${VERSION} \
              -X github.com/restmail/restmail/internal/version.Commit=${COMMIT} \

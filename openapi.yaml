@@ -351,6 +351,47 @@ paths:
         "422":
           description: Password under 12 characters (the token is not spent)
 
+  /api/v1/server:
+    get:
+      operationId: describeServer
+      tags: [Auth]
+      summary: What this server is, and whether it has been claimed
+      description: >
+        For anyone who can reach the server, so a client can choose between
+        claiming it and signing in without finding out by failing. A client
+        knows a server only by its address, so the server describes itself.
+        Whether it is claimed and how it can be claimed were already
+        discoverable from /auth/claim and /auth/owner/challenge; the version
+        is the one deliberate disclosure, so what runs can be confirmed from
+        outside. `restmail status` prints this. Throttled with the owner
+        endpoints, not with sign-in.
+      security: []
+      responses:
+        "200":
+          description: The description
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [product, version, claimed, claim_methods]
+                    properties:
+                      product: {type: string, enum: [rest-mail]}
+                      version: {type: string, description: "e.g. 0.4.0; dev for a build with none stamped in"}
+                      claimed: {type: boolean, description: whether the server has an admin}
+                      claim_methods:
+                        type: array
+                        description: >
+                          How an unclaimed server can be claimed: setup_code (the
+                          code it prints at every start) and owner_key (when it
+                          lists owner keys). Empty once claimed; never null.
+                        items: {type: string, enum: [setup_code, owner_key]}
+        "503":
+          description: The server cannot read its own state
+
   /api/v1/auth/owner/challenge:
     post:
       operationId: ownerChallenge

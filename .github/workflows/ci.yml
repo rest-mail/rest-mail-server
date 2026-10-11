@@ -248,12 +248,14 @@ jobs:
         run: |
           set -euo pipefail
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/restmail" ./cmd/console
-          docker build --target prod -t restmail-api:first-start .
+          # A version stamped in, so the run can check it reaches the binary.
+          docker build --target prod --build-arg VERSION=0.0.0-first-start -t restmail-api:first-start .
 
       - name: Claim, build, hand over
         env:
           RESTMAIL: ${{ runner.temp }}/restmail
           IMAGE: restmail-api:first-start
+          EXPECT_VERSION: 0.0.0-first-start
         run: tests/first-start/agent-e2e.sh
 
   ci:
