@@ -61,27 +61,38 @@ Nothing requires chore. Type that instead if you prefer.
 
 ## Pulumi
 
-**There is no `chore install:pulumi`, and there cannot be one.** Two reasons,
-and the second is the interesting one:
-
-- A chore task runs in *its own* taskfile's directory — this repository. Your
-  Pulumi project is somewhere else, so the task would look for your
-  `Pulumi.yaml` here and never find it.
-- A Pulumi project is a **program**, in one of six languages, in files this
-  repository has never seen. Adding a resource to it means editing your source,
-  which is not something a task runner can do to a program it has never read.
-
-What *is* portable is the **config key**. Every language reads it the same way,
-so this is the contract:
-
 ```bash
-pulumi config set --secret restmail:bootstrapAdminPassword "$PASSWORD"
+chore install:password                    # keep what it prints
+
+chore install:pulumi ~/infra mail.example.com "$PASSWORD"
+# paste what it prints into your program, then:
+pulumi up
+
+chore install:check restmail --project ~/infra
 ```
 
-Then declare the release yourself. In Pulumi YAML:
+`install:pulumi` takes your project's directory, the hostname and the
+password; optionally `--name` (default `restmail`), `--domain` (worked out from
+the hostname: `mail.example.com` serves `example.com`) and `--stack`. It shows
+you the project, the stack and the domain it worked out, and asks before
+touching anything.
+
+Then it does the one thing it can safely do to your project: it puts the
+password into the stack's config as an encrypted secret,
+`restmail:bootstrapAdminPassword`. Everything else it **prints** — the
+resource, in your project's language (read from `runtime:` in `Pulumi.yaml`),
+ready to paste. YAML, TypeScript, Python and Go are printed in full; other
+runtimes get the properties to set.
+
+It prints rather than edits because a Pulumi project is a program, in a
+language and layout this repository has never seen, and editing someone's
+source is not something an installer can do safely. The printed resource
+**reads** the password from config rather than containing it, because what you
+paste gets committed.
+
+What it prints for a YAML project:
 
 ```yaml
-resources:
   restmail:
     type: kubernetes:helm.sh/v3:Release
     properties:
@@ -89,47 +100,55 @@ resources:
       chart: oci://ghcr.io/rest-mail/charts/restmail
       namespace: rest-mail
       createNamespace: true
+      skipAwait: true
       values:
         mailserver:
-          hostname: ${hostname}
-          domain: ${domain}
+          hostname: mail.example.com
+          domain: example.com
         api:
           bootstrapAdminPassword: ${restmail:bootstrapAdminPassword}
 ```
 
-In TypeScript, the same config key through `new pulumi.Config("restmail")`:
+Every line of that was learnt by installing it:
 
-```ts
-const cfg = new pulumi.Config("restmail");
-new k8s.helm.v3.Release("restmail", {
-  name: "restmail",
-  chart: "oci://ghcr.io/rest-mail/charts/restmail",
-  namespace: "rest-mail",
-  createNamespace: true,
-  values: {
-    mailserver: { hostname: cfg.require("hostname"), domain: cfg.require("domain") },
-    api: { bootstrapAdminPassword: cfg.requireSecret("bootstrapAdminPassword") },
-  },
-});
+- **`name` is set**, or Pulumi suffixes the release (`restmail-df5d9627`) and
+  every object in it.
+- **The whole `oci://` reference goes in `chart`.** Splitting it into
+  `chart: restmail` plus `repositoryOpts.repo` fails with *"is not a valid
+  chart repository or cannot be reached"*, which reads like a network problem
+  and is not one.
+- **`skipAwait: true`.** Every pod waits for the TLS Secret, so without it a
+  `pulumi up` into a cluster where cert-manager has not issued one yet fails
+  after five minutes with `context deadline exceeded`, on an install that is
+  fine. With it, `pulumi up` takes seconds — and says nothing about whether
+  the server is running, which is what `install:check` is for.
+
+## Checking an install
+
+```bash
+chore install:check restmail --project ~/infra     # installed with Pulumi
+chore install:check restmail                       # installed with Helm
 ```
 
-Three things that bite, all found by actually doing it:
+Four checks, stopping at the first that fails, each saying what to do next:
 
-- **An OCI chart goes whole into `chart:`.** Splitting it the way you would an
-  HTTP repository — `chart: restmail` with `repositoryOpts.repo:
-  oci://ghcr.io/rest-mail/charts` — fails with `is not a valid chart repository
-  or cannot be reached`, which reads like a network problem and is not one.
+```
+Checking "restmail" in Pulumi project /home/you/infra, stack prod
+  in the stack                ok
+  admin password set          ok  (encrypted in the stack)
+  helm finished               ok  (deployed)
+  server answers              ok  (rest-mail 0.4.0, waiting for its admin)
+```
 
-- **Set `name:` explicitly.** Without it Pulumi auto-names the release
-  `restmail-df5d9627`, and every resource in it inherits that prefix — so the
-  Secret you go looking for is not called what the documentation says.
-- **`Release` waits for readiness; `helm install` does not.** Every pod in this
-  chart mounts the TLS Secret and will not start until it exists, so a
-  `pulumi up` into a cluster where cert-manager has not yet issued one fails
-  after five minutes with `context deadline exceeded` — with the release
-  created and perfectly correct. Either create the TLS Secret first, or set
-  `skipAwait: true` and watch the pods yourself — with it, the install above
-  takes five seconds.
+The last is the one that matters. A resource in the stack, or a release Helm
+calls `deployed`, proves only that the objects exist; asking the server over
+HTTPS by its own name, as every client will, proves someone could sign in.
+When it fails it says whether that is DNS, nothing listening, a certificate
+still being issued, or something that is not rest-mail answering at that
+address. `--url` asks somewhere other than `https://<hostname>`.
+
+It never reads the password: it checks the key is in the stack's config,
+which lists secrets without decrypting them, or in the release's values.
 
 ## Which cluster, and from where
 
