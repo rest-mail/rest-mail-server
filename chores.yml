@@ -1,5 +1,10 @@
 version: "3"
 
+# `confirm:` (tasks/install.yml) landed in chore 0.17.0. Without this, an older
+# chore refuses the file with "unknown field confirm" — true, but not the useful
+# half of the truth.
+chore_min_version: 0.17.0
+
 # silent: true hides the `task: [name] cmd` prelude. Use `chore -v` on the
 # CLI to bring the prelude back when debugging. Each tasks/*.yml include
 # also sets silent: true on its own scope.
@@ -288,6 +293,13 @@ includes:
       PROMETHEUS_IP: '{{.MONITORING_PROMETHEUS_IP}}'
       GRAFANA_IP: '{{.MONITORING_GRAFANA_IP}}'
       POSTGRES_EXPORTER_IP: '{{.MONITORING_POSTGRES_EXPORTER_IP}}'
+
+  # Installing the product somewhere real — the Helm/Pulumi path an operator
+  # takes, as opposed to the docker-compose testbed everything above drives.
+  # No vars mapped in: these tasks are about SOMEBODY ELSE'S cluster and must
+  # not inherit this repo's development defaults.
+  install:
+    taskfile: ./tasks/install.yml
 
   # ── Subprojects (must come last) ────────────────────────
   # Each of these sets PROJECT/IMAGE_TAG to its own value and Task bleeds

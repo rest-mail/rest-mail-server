@@ -1,0 +1,137 @@
+version: "3"
+
+# Installing rest-mail somewhere real.
+#
+# Four steps, and the second is the one that needs explaining:
+#
+#   1. pick a method        helm, or pulumi
+#   2. make a password      chore install:password
+#   3. install              chore install:helm, or your own `pulumi up`
+#   4. sign in              the rest-mail app, with that password
+#
+# Step 2 exists because step 3 cannot do it for you. The chart refuses to
+# install without an admin password, and deliberately will not invent one:
+# whoever installs has somewhere to keep a secret and a chart does not, so a
+# generated password would be one nobody could get at afterwards — buried in a
+# Kubernetes Secret, a pipeline log, or a terminal nobody was watching. Making
+# it yourself, in front of you, is the only version that works for every way of
+# installing.
+#
+# What that password is: the only way into a server nobody has signed in to
+# yet. Using it forces a new password and an authenticator, after which it is
+# worthless, and it expires 72 hours after the server first starts so an
+# abandoned install does not sit on the internet waiting to be claimed.
+#
+# WHY THERE IS NO `install:pulumi`. There was, and it could not work. A chore
+# task runs in ITS taskfile's directory — this repository — and your Pulumi
+# project is somewhere else, so the task would look for your Pulumi.yaml here
+# and never find it. The deeper reason is the same one that rules out
+# generating the resource: a Pulumi project is a PROGRAM, in one of six
+# languages, in files this repository has never seen. What is portable is the
+# config key, `restmail:bootstrapAdminPassword`, which every language reads the
+# same way — so `install:password` prints the one `pulumi config set` line you
+# need, and the README has the resource declaration to paste. See
+# docs/installing.md.
+#
+# These tasks are thin wrappers. Every one of them prints, or is, a command you
+# could have typed. Nothing here is required to install rest-mail; it is here so
+# the pleasant path and the documented path are the same path.
+
+silent: true
+
+
+vars:
+  CHART: '{{.CHART | default "oci://ghcr.io/rest-mail/charts/restmail"}}'
+  NAMESPACE: '{{.NAMESPACE | default "rest-mail"}}'
+  RELEASE: '{{.RELEASE | default "restmail"}}'
+  # Tolerant on purpose. A task's variables are resolved BEFORE its
+  # preconditions run, so a bare `kubectl config current-context` here would
+  # fail with kubectl's own error on a machine that has no kubectl — preempting
+  # the precondition below whose whole job is to say so in words.
+  CONTEXT:
+    sh: kubectl config current-context 2>/dev/null || echo '(no current context)'
+
+tasks:
+  password:
+    # Declines the root file's dotenv. It requires config/<CONFIG>/config.env — a
+    # development testbed's environment — and without it the root refuses to run
+    # anything at all. These tasks act on SOMEBODY ELSE'S cluster from a plain
+    # checkout where no such config exists.
+    dotenv: []
+    desc: "Make an admin password for a new install, and show it once"
+    cmds:
+      - |
+        pw=$(openssl rand -base64 24 | tr -d '\n')
+        cat <<EOF
+
+        Your rest-mail admin password:
+
+            $pw
+
+        Keep it somewhere now — nothing else will show it to you. Give it to
+        whichever way you are installing:
+
+          chore install:helm mail.example.com example.com "$pw"
+
+          helm install {{.RELEASE}} {{.CHART}} \\
+            --namespace {{.NAMESPACE}} --create-namespace \\
+            --set mailserver.hostname=mail.example.com \\
+            --set mailserver.domain=example.com \\
+            --set api.bootstrapAdminPassword="$pw"
+
+          pulumi config set --secret restmail:bootstrapAdminPassword "$pw"
+
+          gh secret set RESTMAIL_ADMIN_PASSWORD --body "$pw"
+
+        Then sign in to the rest-mail app as "admin" with it. You will have to
+        choose your own password and enroll an authenticator before anything
+        else works. It expires 72 hours after the server first starts.
+
+        EOF
+
+  helm:
+    # Declines the root file's dotenv. It requires config/<CONFIG>/config.env — a
+    # development testbed's environment — and without it the root refuses to run
+    # anything at all. These tasks act on SOMEBODY ELSE'S cluster from a plain
+    # checkout where no such config exists.
+    dotenv: []
+    desc: "Install into the cluster your kubeconfig points at: chore install:helm HOST DOMAIN PASSWORD"
+    args:
+      - name: host
+        desc: the address the server answers on, e.g. mail.example.com
+      - name: domain
+        desc: the mail domain it serves, e.g. example.com
+      - name: password
+        desc: the admin password from `chore install:password`
+    preconditions:
+      # Said plainly, before anything is installed. Order matters: the tools
+      # first, then the cluster they talk to, then what we were told.
+      - sh: command -v helm >/dev/null
+        msg: "helm is not installed — see https://helm.sh/docs/intro/install/"
+      - sh: command -v kubectl >/dev/null
+        msg: "kubectl is not installed — see https://kubernetes.io/docs/tasks/tools/"
+      - sh: kubectl cluster-info >/dev/null 2>&1
+        msg: "no cluster reachable: check your kubeconfig, or set KUBECONFIG"
+      - sh: test -n "{{.HOST}}"
+        msg: "HOST is required: the address the server answers on, e.g. mail.example.com"
+      - sh: test -n "{{.DOMAIN}}"
+        msg: "DOMAIN is required: the mail domain it serves, e.g. example.com"
+      - sh: test -n "{{.PASSWORD}}"
+        msg: "PASSWORD is required: run `chore install:password` first, and keep what it prints"
+      - sh: test "$(printf %s '{{.PASSWORD}}' | wc -c)" -ge 16
+        msg: "PASSWORD must be at least 16 characters — `chore install:password` makes one"
+    # The foot-gun this guards is not a typo in the hostname. It is installing a
+    # mail server into whatever cluster the kubeconfig happened to be pointing
+    # at, which nobody checks and everybody assumes. So the context is on the
+    # screen when the question is asked.
+    confirm:
+      text: 'Install rest-mail as {{.HOST}} into "{{.CONTEXT}}"?'
+      show: kubectl config get-contexts '{{.CONTEXT}}'
+    cmds:
+      - |
+        helm install {{.RELEASE}} {{.CHART}} \
+          --namespace {{.NAMESPACE}} --create-namespace \
+          --set mailserver.hostname={{.HOST}} \
+          --set mailserver.domain={{.DOMAIN}} \
+          --set api.bootstrapAdminPassword='{{.PASSWORD}}'
+      - echo 'Installed. Sign in to the rest-mail app at https://{{.HOST}} as "admin".'
