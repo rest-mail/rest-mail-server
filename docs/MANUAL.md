@@ -379,14 +379,16 @@ admin/src/
 
 Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `chore build:console` (auto-detects platform) or `chore build:console:all`. Run: `chore run:console` (runs inside the api container).
 
-Released as **`restmail`** on every SemVer tag (`v1.2.3`) by [release-cli.yml](../.github/workflows/release-cli.yml) and [.goreleaser.yaml](../.goreleaser.yaml): macOS and Linux binaries on the GitHub Release, and the Homebrew tap.
+Released as **`restmail`** on every SemVer tag (`v1.2.3`) by [release-cli.yml](../.github/workflows/release-cli.yml) and [.goreleaser.yaml](../.goreleaser.yaml): macOS and Linux binaries on the GitHub Release, each with a build-provenance attestation.
 
 ```sh
-brew install rest-mail/tap/restmail
-restmail -version
+brew install antimatter-studios/tap/restmail
+restmail version
 ```
 
-**One tag releases the product.** `v1.2.3` publishes every server image as `ghcr.io/rest-mail/<component>:1.2.3` (docker.yml) and the CLI (release-cli.yml), so they always match. Set the chart's `appVersion` to `1.2.3` in a pull request first, then tag its merge commit: `git tag v1.2.3 <commit> && git push origin v1.2.3`. The CLI's Homebrew step needs the `HOMEBREW_TAP_TOKEN` repository secret, a token that may push to `rest-mail/homebrew-tap`. Releases up to `2026.10.10.1` used CalVer and stay as they are.
+That tap **pulls**: a person runs its sync, which reads this project's public releases, computes each archive's own sha256 and checks its attestation, then writes a branch for a person to open and merge. Nothing in this repository can push a formula, so no token here can change what `brew install` gives anybody. Check an archive yourself with `gh attestation verify restmail_1.2.3_darwin_arm64.tar.gz --repo rest-mail/rest-mail-server`.
+
+**One tag releases the product.** `v1.2.3` publishes every server image as `ghcr.io/rest-mail/<component>:1.2.3` (docker.yml) and the CLI (release-cli.yml), so they always match. Set the chart's `appVersion` to `1.2.3` in a pull request first, then tag its merge commit: `git tag v1.2.3 <commit> && git push origin v1.2.3`. Releases up to `2026.10.10.1` used CalVer and stay as they are.
 
 ### 4.9 Metrics & monitoring
 
@@ -781,7 +783,7 @@ While the server has no admin, every start mints a random setup code (120 bits, 
 Ownership is proved with an SSH key, the way a server's first login usually is. The deployment lists the owner's **public** keys in `RESTMAIL_OWNER_KEYS` (authorized_keys format, one per line; Helm value `api.ownerKeys`). Nothing secret is configured, the private key never leaves your machine, and there is no password to generate or race to lose. However the server runs — Kubernetes, Docker, a VM, anything — the CLI only talks to its public API:
 
 ```sh
-brew install rest-mail/tap/restmail     # or the .deb / .rpm from the release
+brew install antimatter-studios/tap/restmail   # or the .deb / .rpm from the release
 restmail setup --server https://mail.example.com --key ~/.ssh/id_ed25519
 restmail setup --server https://mail.example.com   # tries the keys in ssh-agent
 ```

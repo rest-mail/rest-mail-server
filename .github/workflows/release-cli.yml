@@ -1,11 +1,14 @@
 name: Release CLI
 
 # Releases `restmail`, the command-line tool, on a SemVer tag (v1.2.3): a
-# GitHub Release with binaries for macOS and Linux, and the Homebrew tap, so
+# GitHub Release with binaries for macOS and Linux, and a build-provenance
+# attestation for each archive. The build itself is .goreleaser.yaml.
 #
-#   brew install rest-mail/tap/restmail
-#
-# installs it. The build itself is .goreleaser.yaml. A pull request that
+# It pushes to no Homebrew tap. antimatter-studios/homebrew-tap pulls instead:
+# a person runs its sync, which reads these public releases, checks each
+# archive's own sha256 and its attestation, and writes a branch for a person
+# to open and merge. Nothing here can change what `brew install` gives
+# anybody, which is the point. A pull request that
 # touches the CLI or its release runs a snapshot build instead, which builds
 # everything and publishes nothing, so a broken release config fails there
 # rather than on the day of a release.
@@ -34,6 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # creates the GitHub Release
+      id-token: write # signs the build-provenance attestation
+      attestations: write # records it against this repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -63,8 +68,19 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # May push to rest-mail/homebrew-tap; GITHUB_TOKEN cannot.
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Attest what was built
+        # Signs a provenance statement naming this workflow, this commit and
+        # the digest of every artifact, so whoever installs one can check it
+        # was built here and not substituted since:
+        #   gh attestation verify <file> --repo rest-mail/rest-mail-server
+        # antimatter-studios/homebrew-tap refuses to take a release without
+        # one, which is how it knows a tarball it is about to put behind
+        # `brew install` came from this repository.
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
 
       - name: Snapshot build (nothing published)
         if: github.event_name == 'pull_request'
@@ -74,4 +90,3 @@ jobs:
           args: release --snapshot --clean
         env:
           GORELEASER_CURRENT_TAG: v0.0.0
-          HOMEBREW_TAP_TOKEN: unused-in-a-snapshot
