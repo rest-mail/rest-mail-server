@@ -83,6 +83,13 @@ jobs:
           push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # What the binary reports about itself (internal/version). Without
+          # these every image said "dev": the Dockerfile's ARG defaults to it,
+          # and the build has no .git to read a commit from. A v* tag gives
+          # its version (0.3.0), a branch its name (main).
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
