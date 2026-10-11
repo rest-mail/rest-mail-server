@@ -23,6 +23,7 @@ import (
 	"github.com/restmail/restmail/internal/domainstate"
 	"github.com/restmail/restmail/internal/greylist"
 	"github.com/restmail/restmail/internal/rollup"
+	"github.com/restmail/restmail/internal/setuplink"
 	"github.com/restmail/restmail/internal/trace"
 	"github.com/restmail/restmail/internal/vacation"
 )
@@ -130,6 +131,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Likewise a setup link nobody could open: the code it carries would be the
+	// only way in to a server that has just been installed.
+	setupLinkBase, err := setuplink.ParseBase(cfg.SetupLinkBase)
+	if err != nil {
+		slog.Error("invalid setup link base", "error", err)
+		os.Exit(1)
+	}
+
 	// A fresh install has no admin and no roles, and the production image carries
 	// no seed tool, so nobody could ever sign in. Both steps are no-ops once done.
 	if err := bootstrap.EnsureRBAC(database); err != nil {
@@ -145,7 +154,7 @@ func main() {
 		slog.Error("failed to mint the setup code", "error", err)
 		os.Exit(1)
 	} else if code != "" {
-		printSetupBanner(os.Stdout, code, expires)
+		printSetupBanner(os.Stdout, setupLinkBase, code, expires)
 		slog.Info("server not claimed yet: the setup code is printed above (restart for a new one)")
 	}
 

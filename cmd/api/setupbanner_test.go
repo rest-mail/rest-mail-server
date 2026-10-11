@@ -2,26 +2,33 @@ package main
 
 import (
 	"bytes"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/restmail/restmail/internal/setuplink"
 )
+
+const printedCode = "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01"
 
 func TestSetupBanner(t *testing.T) {
 	var out bytes.Buffer
-	printSetupBanner(&out, "ABCD-EFGH-JKMN-PQRS-TVWX-YZ01", time.Now())
+	printSetupBanner(&out, setuplink.DefaultBase, printedCode, time.Now())
 	s := out.String()
-	for _, want := range []string{"ABCD-EFGH-JKMN-PQRS-TVWX-YZ01", "▀"} {
+	// The code to type, the link to open, and a QR code of it to scan.
+	for _, want := range []string{printedCode, setuplink.Setup(setuplink.DefaultBase, "", printedCode), "▀"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("banner lacks %q:\n%s", want, s)
 		}
 	}
 }
 
-func TestSetupLink(t *testing.T) {
-	u, _ := url.Parse(setupLink("ABCD-EFGH"))
-	if u.Scheme != "restmail" || u.Host != "setup" || u.Query().Get("token") != "ABCD-EFGH" || u.Query().Has("server") {
-		t.Errorf("link %v", u)
+// A server told to involve no site says so throughout.
+func TestSetupBanner_WithoutALinkBase(t *testing.T) {
+	var out bytes.Buffer
+	printSetupBanner(&out, "", printedCode, time.Now())
+	s := out.String()
+	if !strings.Contains(s, "restmail://setup?") || strings.Contains(s, "rest-mail.com") {
+		t.Errorf("banner:\n%s", s)
 	}
 }

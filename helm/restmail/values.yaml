@@ -160,6 +160,14 @@ api:
   # reachable. Public keys, so not secret. Empty: neither is possible over the
   # API, only with `restmail-api mint-token` on the server itself.
   ownerKeys: ""
+  # Where the setup link a fresh install prints points. A web link is tappable
+  # anywhere a link is, and a phone's own camera offers to open one it sees in
+  # the printed QR code; the code rides after the `#`, which browsers never send
+  # to a web server, and the app takes the link before a browser sees it.
+  # Unset: https://rest-mail.com/setup. Set it to your own page to involve this
+  # project's site in nothing, or to "" for restmail://setup, which involves no
+  # site at all but which only the app can open.
+  # setupLinkBase: ""
   service:
     type: ClusterIP
     port: 8080

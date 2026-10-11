@@ -124,10 +124,15 @@ func TestSetup_OwnerKeyGetsALink(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("stdout is not one JSON object: %q", out)
 	}
+	// A web link by default: tappable where a custom scheme is not, and the
+	// code rides after the `#`, which no web server is sent.
 	link, _ := url.Parse(got["link"].(string))
-	if link.Scheme != "restmail" || link.Host != "setup" || link.Query().Get("token") != "TOKEN-123" ||
-		!strings.HasPrefix(link.Query().Get("server"), "http://127.0.0.1:") {
+	carried := carriedBy(t, got["link"].(string))
+	if link.Scheme != "https" || link.Host != "rest-mail.com" || link.Path != "/setup" || link.RawQuery != "" {
 		t.Errorf("link = %v", got["link"])
+	}
+	if carried.Get("token") != "TOKEN-123" || !strings.HasPrefix(carried.Get("server"), "http://127.0.0.1:") {
+		t.Errorf("link carries %v", carried)
 	}
 	if got["expires_at"] != "2026-10-10T21:15:00Z" {
 		t.Errorf("expires_at = %v", got["expires_at"])
@@ -287,9 +292,8 @@ func TestSetup_CodeFromTheServersOutput(t *testing.T) {
 	}
 	var got map[string]any
 	_ = json.Unmarshal([]byte(out), &got)
-	link, _ := url.Parse(got["link"].(string))
-	if link.Host != "setup" || link.Query().Get("token") != "ABCD-EFGH" {
-		t.Errorf("link = %v", got["link"])
+	if got := carriedBy(t, got["link"].(string)).Get("token"); got != "ABCD-EFGH" {
+		t.Errorf("link carries token %q", got)
 	}
 	if len(f.answered) != 0 {
 		t.Errorf("asked the server %d times, want none", len(f.answered))
@@ -297,4 +301,44 @@ func TestSetup_CodeFromTheServersOutput(t *testing.T) {
 	if status, _, _ := run(t, f, keysOf(), "reset-admin", "--username", "a", "--code", "X", "--json"); status != exitUsage {
 		t.Errorf("reset-admin --code: status %d, want %d", status, exitUsage)
 	}
+}
+
+// A server that should involve no site at all, and one pointed at another.
+func TestSetup_LinkBaseChoosesWhereLinksPoint(t *testing.T) {
+	f := &fakeServer{}
+	_, out, _ := run(t, f, keysOf(), "setup", "--code", "ABCD-EFGH", "--link-base", "", "--json", "--show-secret")
+	var got map[string]any
+	_ = json.Unmarshal([]byte(out), &got)
+	if link := got["link"].(string); !strings.HasPrefix(link, "restmail://setup?") {
+		t.Errorf("--link-base='': link = %q", link)
+	}
+
+	_, out, _ = run(t, f, keysOf(), "setup", "--code", "ABCD-EFGH", "--link-base", "https://mail.example.com/claim", "--json", "--show-secret")
+	_ = json.Unmarshal([]byte(out), &got)
+	if link := got["link"].(string); !strings.HasPrefix(link, "https://mail.example.com/claim#") {
+		t.Errorf("another site: link = %q", link)
+	}
+
+	// A base that is not an address would print a link nobody can open.
+	if status, _, _ := run(t, f, keysOf(), "setup", "--code", "X", "--link-base", "mail.example.com", "--json"); status != exitUsage {
+		t.Errorf("a base that is not an address: status %d, want %d", status, exitUsage)
+	}
+}
+
+// carriedBy reads a link's parameters, wherever that form of link keeps them.
+func carriedBy(t *testing.T, link string) url.Values {
+	t.Helper()
+	u, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("parse %q: %v", link, err)
+	}
+	raw := u.RawQuery
+	if u.Fragment != "" {
+		raw = u.Fragment
+	}
+	parameters, err := url.ParseQuery(raw)
+	if err != nil {
+		t.Fatalf("parse %q of %q: %v", raw, link, err)
+	}
+	return parameters
 }

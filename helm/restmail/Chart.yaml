@@ -9,7 +9,7 @@ description: |
   by an external operator (e.g. cert-manager). For local kind/k3s development
   against the rest-mail/testbed substrate, see values-dev.yaml.
 type: application
-version: 0.8.0
+version: 0.9.0
 # The product release this deploys: the v-less SemVer of the v* tag that built
 # the images (docker.yml). Releases up to 2026.10.10.1 were CalVer.
 appVersion: "0.2.0"
