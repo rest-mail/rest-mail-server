@@ -23,13 +23,18 @@ func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
 	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
 		t.Skipf("mass-assignment test skipped: migrate QuotaUsage failed (%v)", err)
 	}
+	// Inside a transaction that is rolled back, like the other tests here: the
+	// domains below are unique by name, so leaving them behind would fail the
+	// next run against the same database.
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
 
 	owner := models.Domain{Name: "massassign.test"}
-	if err := db.Create(&owner).Error; err != nil {
+	if err := tx.Create(&owner).Error; err != nil {
 		t.Fatalf("create owner domain: %v", err)
 	}
 	other := models.Domain{Name: "other-massassign.test"}
-	if err := db.Create(&other).Error; err != nil {
+	if err := tx.Create(&other).Error; err != nil {
 		t.Fatalf("create other domain: %v", err)
 	}
 	mb := models.Mailbox{
@@ -41,11 +46,11 @@ func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
 		QuotaBytes:  1000,
 		Active:      true,
 	}
-	if err := db.Create(&mb).Error; err != nil {
+	if err := tx.Create(&mb).Error; err != nil {
 		t.Fatalf("create mailbox: %v", err)
 	}
 
-	h := NewMailboxHandler(db)
+	h := NewMailboxHandler(tx)
 
 	// One allowlisted field (display_name) mixed with columns the caller must
 	// never control. domain_id/address/local_part/quota_used_bytes are not part
@@ -70,7 +75,7 @@ func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
 	}
 
 	var got models.Mailbox
-	if err := db.First(&got, mb.ID).Error; err != nil {
+	if err := tx.First(&got, mb.ID).Error; err != nil {
 		t.Fatalf("reload mailbox: %v", err)
 	}
 	if got.DisplayName != "Updated" {
