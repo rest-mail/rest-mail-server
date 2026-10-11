@@ -742,6 +742,20 @@ Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upser
 
 The production image ships only `restmail-api` — no seed tool, so no known passwords. A fresh database therefore has no admin, and without one nobody can create a domain or a mailbox. At every start the API creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles (idempotent). Then there are three ways to get a first admin:
 
+#### What a Helm install needs
+
+A hostname and a domain. The chart makes the API's `JWT_SECRET` and `MASTER_KEY`, and the embedded Postgres's credentials, on the first install. It keeps them across every upgrade, and keeps them when the release is uninstalled, so reinstalling under the same name finds them again. `MASTER_KEY` encrypts private keys at rest, and a new one would leave every stored key unreadable, which is why it is never regenerated.
+
+```sh
+helm install restmail oci://ghcr.io/rest-mail/charts/restmail \
+  --namespace rest-mail --create-namespace \
+  --set mailserver.hostname=mail.example.com --set mailserver.domain=example.com
+```
+
+The one thing the chart cannot make is a trusted TLS certificate: a `kubernetes.io/tls` Secret named `tls.secretName` (default `restmail-tls`), from cert-manager or your own. The API, the gateways and Postgres all mount it and wait until it exists, and the install notes say so when it is missing.
+
+To manage the secrets yourself instead, name them with `api.existingSecret` and `postgres.existingSecret`. Do this for anything that renders the chart without a cluster to look in, such as Argo CD or `helm template`: those cannot keep a generated value, so they would make a new one every time.
+
 #### Claim it with the setup code it prints (simplest)
 
 While the server has no admin, every start mints a random setup code (120 bits, as `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`) and prints it to the server's own output: a QR code of the link that claims it, the link itself, and the code to type in. Read it however your platform shows a process's output: `docker logs restmail-api`, `kubectl logs deploy/restmail-api`, `journalctl -u restmail-api`, or the terminal you started it in. Scan the QR code with the rest-mail app, or enter the server and code by hand. Case, dashes and spaces do not matter, and O, I and L read as 0, 1 and 1. You then choose the admin's name and password, and enroll an authenticator, as below.
@@ -776,7 +790,7 @@ With no owner keys listed, neither command works over the API (exit 6, `no_owner
 
 The API **refuses to start** if a bootstrap admin would be created with a password under 16 bytes (a placeholder left in), or while `TOTP_2FA_ENABLED` is off (the admin could never finish setup and would be locked out for good).
 
-**Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart it is the optional `BOOTSTRAP_ADMIN_PASSWORD` key of the API Secret (`api.existingSecret`); read it back with
+**Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart, set `api.bootstrapAdminPassword` (the chart puts it in the API Secret it makes), or put a `BOOTSTRAP_ADMIN_PASSWORD` key in your own Secret (`api.existingSecret`). Read it back with
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
 
 #### Getting back in, and handing a server over: `restmail reset-admin`
