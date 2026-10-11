@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,20 +32,8 @@ console takes --json for one JSON object on stdout.
 `
 
 func main() {
-	// Subcommands first; anything else is the console's own flags.
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "setup", "reset-admin":
-			os.Exit(runSetupCommand(context.Background(), os.Args[1], os.Args[2:], &http.Client{Timeout: 30 * time.Second}, localKeys, os.Stdout, os.Stderr))
-		case "status":
-			os.Exit(runStatus(context.Background(), os.Args[2:], &http.Client{Timeout: 30 * time.Second}, os.Stdout, os.Stderr))
-		case "version":
-			fmt.Println("restmail", version)
-			return
-		case "help", "--help", "-h":
-			fmt.Print(topUsage)
-			return
-		}
+	if code, handled := runSubcommand(os.Args, os.Stdout, os.Stderr); handled {
+		os.Exit(code)
 	}
 
 	showVersion := flag.Bool("version", false, "Print the version and exit")
@@ -88,4 +78,35 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runSubcommand runs the command named by args[1], if there is one. handled is
+// false only when the arguments are the console's own, which main then parses.
+func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled bool) {
+	if len(args) < 2 {
+		return 0, false
+	}
+	client := &http.Client{Timeout: 30 * time.Second}
+	switch args[1] {
+	case "setup", "reset-admin":
+		return runSetupCommand(context.Background(), args[1], args[2:], client, localKeys, stdout, stderr), true
+	case "status":
+		return runStatus(context.Background(), args[2:], client, stdout, stderr), true
+	case "version":
+		fmt.Fprintln(stdout, "restmail", version)
+		return 0, true
+	case "help", "--help", "-h":
+		fmt.Fprint(stdout, topUsage)
+		return 0, true
+	}
+	// A word, so it was meant as a command; anything starting with "-" is the
+	// console's own flags. Without this, a word this version does not know — a
+	// typo, or a command from a newer release — silently opened the console
+	// instead of saying so: `restmail status` on a build from before that
+	// command existed showed the admin console.
+	if !strings.HasPrefix(args[1], "-") {
+		fmt.Fprintf(stderr, "restmail: there is no %q command in restmail %s\n\n%s", args[1], version, topUsage)
+		return 2, true
+	}
+	return 0, false
 }

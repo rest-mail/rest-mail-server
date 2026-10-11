@@ -102,3 +102,51 @@ func TestStatus_Usage(t *testing.T) {
 		t.Errorf("plain http to another host: exit %d, want %d", code, exitUsage)
 	}
 }
+
+// An argument meant as a command must be answered as one. Before this, a word
+// the binary did not know fell through to the admin console: `restmail status`
+// on a build from before that command existed opened a TUI.
+func TestSubcommand_AnUnknownCommandIsNotTheConsole(t *testing.T) {
+	for _, args := range [][]string{
+		{"restmail", "stauts"},           // a typo
+		{"restmail", "status-of-things"}, // a command from some other version
+		{"restmail", "claim"},            // a plausible command that does not exist
+	} {
+		var out, errOut bytes.Buffer
+		code, handled := runSubcommand(args, &out, &errOut)
+		if !handled || code != exitUsage {
+			t.Errorf("%q: code %d handled %v, want %d and true", args[1], code, handled, exitUsage)
+		}
+		if !strings.Contains(errOut.String(), args[1]) || !strings.Contains(errOut.String(), "restmail setup") {
+			t.Errorf("%q: stderr should name it and show the commands:\n%s", args[1], errOut.String())
+		}
+	}
+}
+
+// The console's own flags, and bare `restmail`, still reach the console.
+func TestSubcommand_TheConsoleIsStillReachable(t *testing.T) {
+	for _, args := range [][]string{
+		{"restmail"},
+		{"restmail", "-api", "http://localhost:8080"},
+		{"restmail", "--version"},
+	} {
+		var out, errOut bytes.Buffer
+		if _, handled := runSubcommand(args, &out, &errOut); handled {
+			t.Errorf("%v was handled as a command, so the console is unreachable", args[1:])
+		}
+	}
+}
+
+// The commands it does know still work.
+func TestSubcommand_KnownCommands(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code, handled := runSubcommand([]string{"restmail", "version"}, &out, &errOut); !handled || code != exitOK {
+		t.Errorf("version: code %d handled %v", code, handled)
+	} else if !strings.HasPrefix(out.String(), "restmail ") {
+		t.Errorf("version printed %q", out.String())
+	}
+	out.Reset()
+	if code, handled := runSubcommand([]string{"restmail", "help"}, &out, &errOut); !handled || code != exitOK || !strings.Contains(out.String(), "restmail status") {
+		t.Errorf("help: code %d handled %v, out %q", code, handled, out.String())
+	}
+}
