@@ -347,6 +347,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/token", ownerH.Token)
 
+	// What this server is and whether it has been claimed, for anyone who can
+	// reach it: how `restmail status` and the app choose between claiming and
+	// signing in. Shares the owner endpoints' bucket, so a script polling it
+	// cannot use up the budget anyone needs to sign in.
+	r.With(ownerThrottle).Get("/api/v1/server", handlers.NewServerHandler(db, ownerKeys).Describe)
+
 	// M-14 (CWE-770): the admin pipeline/filter test endpoints each run a message
 	// through the pipeline engine. They are capability-gated but were otherwise
 	// unthrottled, so an authenticated admin could hammer them. Apply the same

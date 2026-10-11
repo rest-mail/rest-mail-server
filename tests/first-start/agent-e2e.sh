@@ -63,6 +63,19 @@ wait_healthy
 curl -fsS http://127.0.0.1:58080/api/health | jq -c .data
 ok "server up, no admin, no bootstrap password anywhere"
 
+step "restmail status: what the server says about itself"
+status=$("$RESTMAIL" status --server "$SERVER" --json)
+jq -c 'del(.server)' <<<"$status"
+[[ $(jq -r .product <<<"$status") == rest-mail ]] || die "product"
+[[ $(jq -r .claimed <<<"$status") == false ]] || die "a fresh server says it is claimed"
+[[ $(jq -c .claim_methods <<<"$status") == '["setup_code","owner_key"]' ]] || die "claim methods"
+# The image was built with a version stamped in (ci.yml); one that reports
+# "dev" means the stamp is lost on the way into the binary.
+if [ -n "${EXPECT_VERSION:-}" ]; then
+  [[ $(jq -r .version <<<"$status") == "$EXPECT_VERSION" ]] || die "version $(jq -r .version <<<"$status"), want $EXPECT_VERSION"
+fi
+ok "rest-mail ${EXPECT_VERSION:-(version not checked)}, not claimed, by setup code or owner key"
+
 step "the setup code, read from the server's own output"
 first_code=$(setup_code)
 [[ $first_code =~ ^([0-9A-HJKMNP-TV-Z]{4}-){5}[0-9A-HJKMNP-TV-Z]{4}$ ]] || die "no setup code in the output"
@@ -102,6 +115,9 @@ access=$(jq -r .data.access_token <<<"$claim")
 code=$(curl -s -o /dev/null -w '%{http_code}' "$API/admin/stats" -H "Authorization: Bearer $access")
 [[ $code == 403 ]] || die "admin API in setup answered $code"
 ok "claimed; the admin API refuses the session (403) until 2FA"
+[[ $("$RESTMAIL" status --server "$SERVER" --json | jq -r '.claimed, (.claim_methods|length)' | tr '\n' ' ') == "true 0 " ]] ||
+  die "after the claim, status does not say claimed"
+ok "restmail status now says claimed, with nothing left to claim"
 
 step "the same link again"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/claim" -H 'Content-Type: application/json' \

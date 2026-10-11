@@ -19,6 +19,7 @@ var version = "dev"
 
 const topUsage = `restmail — run a rest-mail server
 
+  restmail status        what a server is, and whether it has been claimed
   restmail setup         claim a freshly installed server (QR code for the app)
   restmail reset-admin   let an admin back in; also hands a server over
   restmail version       print the version
@@ -34,6 +35,8 @@ func main() {
 		switch os.Args[1] {
 		case "setup", "reset-admin":
 			os.Exit(runSetupCommand(context.Background(), os.Args[1], os.Args[2:], &http.Client{Timeout: 30 * time.Second}, localKeys, os.Stdout, os.Stderr))
+		case "status":
+			os.Exit(runStatus(context.Background(), os.Args[2:], &http.Client{Timeout: 30 * time.Second}, os.Stdout, os.Stderr))
 		case "version":
 			fmt.Println("restmail", version)
 			return

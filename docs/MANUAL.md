@@ -756,6 +756,14 @@ The one thing the chart cannot make is a trusted TLS certificate: a `kubernetes.
 
 To manage the secrets yourself instead, name them with `api.existingSecret` and `postgres.existingSecret`. Do this for anything that renders the chart without a cluster to look in, such as Argo CD or `helm template`: those cannot keep a generated value, so they would make a new one every time.
 
+#### Ask the server what state it is in
+
+```sh
+restmail status --server https://mail.example.com
+```
+
+The CLI knows a server only by its address, whatever installed it, so it asks the server (`GET /api/v1/server`): whether it answers, which version it runs, and whether it has been claimed — and if not, which of the ways below it offers. `--json` gives one object, with `claimed` and `claim_methods`, for scripts. It exits 0 when the server answered, claimed or not; 5 when it did not, or not as rest-mail.
+
 #### Claim it with the setup code it prints (simplest)
 
 While the server has no admin, every start mints a random setup code (120 bits, as `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`) and prints it to the server's own output: a QR code of the link that claims it, the link itself, and the code to type in. Read it however your platform shows a process's output: `docker logs restmail-api`, `kubectl logs deploy/restmail-api`, `journalctl -u restmail-api`, or the terminal you started it in. Scan the QR code with the rest-mail app, or enter the server and code by hand. Case, dashes and spaces do not matter, and O, I and L read as 0, 1 and 1. You then choose the admin's name and password, and enroll an authenticator, as below.
