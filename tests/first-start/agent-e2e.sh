@@ -26,10 +26,11 @@ step() { printf '\n== %s\n' "$*"; }
 ok() { printf '   ok: %s\n' "$*"; }
 die() { printf '   FAIL: %s\n' "$*" >&2; exit 1; }
 
-cleanup() { docker rm -f e2e-api e2e-pg >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "${KEYS:-}"; }
+cleanup() { docker rm -f e2e-api e2e-pg >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; rm -rf "${KEYS:-}" "${LOG:-}"; }
 trap cleanup EXIT
 cleanup
 KEYS=$(mktemp -d)
+LOG=$(mktemp)
 
 step "the agent's key, and someone else's"
 ssh-keygen -q -t ed25519 -N '' -C agent@e2e -f "$KEYS/agent"
@@ -47,7 +48,12 @@ docker run -d --name e2e-api --network "$NET" -p 127.0.0.1:58080:8080 \
   -e RESTMAIL_OWNER_KEYS="$(cat "$KEYS/agent.pub")" \
   -e ENVIRONMENT=development "$IMAGE" >/dev/null
 wait_healthy() { for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/health >/dev/null 2>&1 && return; sleep 1; done; die "API not healthy"; }
-setup_code() { docker logs e2e-api 2>/dev/null | sed -n 's/^Or enter the setup code in the app: *//p' | tail -1; }
+# The server's own output, in a file. Not a pipe: `grep -q` stops reading at
+# the first match, `docker logs` is then killed by SIGPIPE, and `pipefail`
+# reports that as a failed check — a flake that depends on how much the server
+# had left to write.
+server_output() { docker logs e2e-api >"$LOG" 2>/dev/null; }
+setup_code() { server_output; sed -n 's/^Or enter the setup code in the app: *//p' "$LOG" | tail -1; }
 # A link keeps its parameters after the `#` when it is a web link, and in the
 # query when it is restmail://; read whichever this one is.
 token_of() { python3 -c 'import sys,urllib.parse as u
@@ -60,8 +66,8 @@ ok "server up, no admin, no bootstrap password anywhere"
 step "the setup code, read from the server's own output"
 first_code=$(setup_code)
 [[ $first_code =~ ^([0-9A-HJKMNP-TV-Z]{4}-){5}[0-9A-HJKMNP-TV-Z]{4}$ ]] || die "no setup code in the output"
-docker logs e2e-api 2>/dev/null | grep -q '▀' || die "no QR code in the output"
-docker logs e2e-api 2>/dev/null | grep -q 'https://rest-mail.com/setup#' || die "no web link in the output"
+grep -q '▀' "$LOG" || die "no QR code in the output"
+grep -q 'https://rest-mail.com/setup#' "$LOG" || die "no web link in the output"
 ok "printed: a QR code of a web link, and the code (not shown here)"
 docker restart e2e-api >/dev/null
 wait_healthy
