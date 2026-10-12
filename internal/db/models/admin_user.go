@@ -17,7 +17,13 @@ type AdminUser struct {
 	// bumped whenever its credentials change (a reset, a new password). A token
 	// carrying an older one is dead at once, whatever its expiry says: no clock
 	// is involved, so not even a token minted the same second survives.
-	CredentialEpoch    int        `gorm:"not null;default:0" json:"-"`
+	CredentialEpoch int `gorm:"not null;default:0" json:"-"`
+	// BootstrapExpiresAt is when the deploy-time password stops working, set
+	// only on the bootstrap admin and cleared when it chooses its own. Until then
+	// the account is reachable by anyone who can read the deployment's Secret,
+	// so an install nobody finishes must not stay that way forever. See
+	// BootstrapExpired.
+	BootstrapExpiresAt *time.Time `json:"-"`
 	LastPasswordChange *time.Time `json:"last_password_change,omitempty"`
 	Active             bool       `gorm:"default:true" json:"active"`
 	CreatedAt          time.Time  `json:"created_at"`
@@ -28,6 +34,14 @@ type AdminUser struct {
 }
 
 func (AdminUser) TableName() string { return "admin_users" }
+
+// BootstrapExpired reports whether this is a bootstrap admin still on its
+// deploy-time password after that password's time ran out. Such an account
+// cannot sign in, refresh, or use a session it already has: the only way back
+// is to deploy again with a new bootstrap password, which re-arms it.
+func (u *AdminUser) BootstrapExpired(now time.Time) bool {
+	return u.PasswordChangeRequired && u.BootstrapExpiresAt != nil && !now.Before(*u.BootstrapExpiresAt)
+}
 
 // Role represents a group of capabilities that can be assigned to users.
 type Role struct {

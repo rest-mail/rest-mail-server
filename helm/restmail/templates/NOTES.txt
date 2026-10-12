@@ -52,5 +52,6 @@ Sign in:
   and enroll an authenticator before anything else works, after which that
   password is of no further use.
 
-  It only works until someone uses it, and expires 72 hours after the server
-  first starts. If it lapses, install again with a new one.
+  It works until you choose your own password, and for 72 hours at most. If
+  it lapses or leaks first, upgrade with a new one: that replaces it, signs
+  out anyone who used the old one, and starts the 72 hours again.

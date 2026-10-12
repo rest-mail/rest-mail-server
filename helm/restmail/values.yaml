@@ -154,13 +154,15 @@ api:
   # REQUIRED. The first admin's password, and the only way into a server nobody
   # has signed in to yet. The chart will not invent one: whoever installs has
   # somewhere to keep a secret and a chart does not, so a generated password
-  # would be one nobody could retrieve. Make one with `chore admin:password`, or
-  # `openssl rand -base64 24`. 16 characters or more.
+  # would be one nobody could retrieve. Make one with `chore install:password`,
+  # or `openssl rand -base64 24`. 16 characters or more.
   #
   # Whoever signs in with it must immediately choose their own password and
   # enroll an authenticator, after which it stops working. It also expires 72
-  # hours after the server first starts, so an install nobody claims does not
-  # sit on the internet with a live admin credential.
+  # hours after it is first applied, so an install nobody finishes does not sit
+  # on the internet with a live admin credential. Changing it before the admin
+  # has chosen a password replaces it and starts the 72 hours again; after,
+  # changing it does nothing.
   bootstrapAdminPassword: ""
   # The first admin's name.
   bootstrapAdminUsername: admin

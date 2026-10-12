@@ -135,19 +135,34 @@ host, stack and namespace. Run on its own, later, from any machine, it reads
 them back from the stack or the release. Resource names come from the
 release's own outputs rather than being assumed.
 
-## What this needs from the server
+## What the server provides
 
-The `admin password works` layer cannot pass until the server handles
-`BOOTSTRAP_ADMIN_PASSWORD`. That work must include:
+`RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` (the chart's `api.bootstrapAdminPassword`)
+creates the first admin at startup, as a superadmin in setup: it must choose
+its own password and enroll an authenticator before its session reaches
+anything (`internal/bootstrap`, `setup_required` on login).
 
-- **A way to prove the bootstrap password is correct without spending it.**
-  Verify signs in with it, and may run any number of times; if that started
-  onboarding, forced the password change, or counted as first use, verifying
-  an install would break it. The answer wanted is *"that is the bootstrap
-  credential, and onboarding is still pending"*, with nothing consumed.
-- the forced password change and authenticator enrollment on real first use
-- expiry 72 hours after first start
-- refusing to start with no admin and no bootstrap password
+- **Signing in spends nothing.** Login with the bootstrap password answers 200
+  with `setup_required: ["password", "two_factor"]`; only `POST
+  /auth/password` retires it. So `install:verify` proves the password works by
+  signing in, checking that list, and logging out — any number of times.
+- **It expires** 72 hours after it is first applied. After that the right
+  password answers 401 `bootstrap_expired` (a wrong one, the ordinary 401),
+  and any session it opened ends — access tokens and refresh alike. Restarts
+  do not extend it.
+- **Deploying a new one re-arms it** while the admin has not chosen its own:
+  the new password replaces the old, every session from the old one ends, and
+  the 72 hours start again. That is the recovery for a password that leaked or
+  ran out. Once the admin has chosen a password, the deployment's is ignored
+  forever, so whoever can edit the Secret cannot reset the account.
+
+Not done, and belonging to the removal of setup codes rather than to this: a
+server with no admin and no bootstrap password still falls back to printing a
+setup code, where it should refuse to start.
+
+`install:verify` must read the server's state from sign-in, not from `claimed`
+in `GET /api/v1/server`: the bootstrap admin exists from the first start, so
+an install nobody has touched already reports `claimed: true`.
 
 ## Open
 

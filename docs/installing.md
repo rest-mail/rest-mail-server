@@ -29,9 +29,9 @@ admin and nobody can sign in. ...
 
 That password is the only way into a server nobody has signed in to yet. Using
 it forces you to choose your own password and enroll an authenticator, after
-which it is of no further use — and it **expires 72 hours after the server
-first starts**, so an abandoned install does not sit on the internet waiting to
-be claimed by whoever finds the password later.
+which it is of no further use — and it **expires 72 hours after it is first
+applied**, so an abandoned install does not sit on the internet waiting to be
+claimed by whoever finds the password later. Restarting does not extend it.
 
 ## Helm
 
@@ -161,6 +161,8 @@ not the chart's:
 | a Pulumi stack | `pulumi config set --secret`, encrypted in the stack |
 | a GitHub pipeline | `gh secret set RESTMAIL_ADMIN_PASSWORD` |
 
-Never a public repository, and never a log. If it leaks before you have signed
-in once, install again with a new one — before the 72 hours are up, that is the
-whole of the exposure.
+Never a public repository, and never a log. If it leaks or expires before you
+have chosen your own password, deploy again with a new one: the server replaces
+the old one, signs out anyone who used it, and gives the new one its own 72
+hours. Once you have chosen your own password, the deployment's is ignored for
+good — changing it cannot reset your account.

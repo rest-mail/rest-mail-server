@@ -19,7 +19,7 @@ version: "3"
 #
 # What that password is: the only way into a server nobody has signed in to
 # yet. Using it forces a new password and an authenticator, after which it is
-# worthless, and it expires 72 hours after the server first starts so an
+# worthless, and it expires 72 hours after it is first applied so an
 # abandoned install does not sit on the internet waiting to be claimed.
 #
 # install:pulumi, AND WHY IT IS TOLD WHERE YOUR PROJECT IS. Your Pulumi project
@@ -88,7 +88,7 @@ tasks:
 
         Then sign in to the rest-mail app as "admin" with it. You will have to
         choose your own password and enroll an authenticator before anything
-        else works. It expires 72 hours after the server first starts.
+        else works. It expires 72 hours after the server first takes it.
 
         EOF
 

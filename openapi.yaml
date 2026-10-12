@@ -186,6 +186,14 @@ paths:
         tokens in the body. A native client sends "client": "native" and gets
         access_token, refresh_token and refresh_expires_in in the body instead,
         with no cookies; it sends the access token as Authorization: Bearer.
+
+        The bootstrap admin's deploy-time password works for 72 hours, until
+        the account chooses its own. After that, the right password answers
+        401 bootstrap_expired — only the right one, so a guesser learns
+        nothing — and the cure is to deploy again with a new password. Signing
+        in with it spends nothing: the session is in setup (setup_required)
+        and the password keeps working, so an install can be verified by
+        signing in.
       security: []
       requestBody:
         required: true
