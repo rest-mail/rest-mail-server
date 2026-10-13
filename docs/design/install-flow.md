@@ -52,17 +52,28 @@ upgrade demanding a password that, after setup, no longer does anything.
 ## The whole lifecycle, not just the install
 
 Installing is one act among several, and the rest are the ones people get
-wrong at 3am. The tasks split on a single rule: **anything that depends on
-how you deployed is named for the tool; anything that talks to a running
-server is not, because it does not care.**
+wrong at 3am.
 
-| Deployed with Helm | Deployed with Pulumi | Either |
-| --- | --- | --- |
-| `install:helm` | `install:pulumi` | `server:verify` |
-| `upgrade:helm` | `upgrade:pulumi` | `server:backup` / `server:restore` |
-| `uninstall:helm` | `uninstall:pulumi` | `server:dns` |
-| | | `server:offline` |
-| | | `server:password:reset` |
+Names are **subject first, variant second**: `install:helm` is the install,
+of the Helm kind; `password:reset` is the password, the resetting of it. The
+first segment says what the task is about, so the families group themselves
+in a task list and you look for a forgotten password under `password:`.
+
+The distinction that matters is not in the name but in whether a task has a
+`:helm` / `:pulumi` variant at all. Tasks that depend on how you deployed do.
+Tasks that talk to a running server do not, because it does not care.
+
+| Depends on how you deployed | Does not |
+| --- | --- |
+| `install:helm` · `install:pulumi` | `server:verify` |
+| `upgrade:helm` · `upgrade:pulumi` | `backup:create` · `backup:restore` |
+| `uninstall:helm` · `uninstall:pulumi` | `dns:show` · `dns:check` |
+| | `server:offline` · `server:online` |
+| | `password:new` · `password:reset` |
+
+Today's `install:password` is misnamed under that rule — it is not a kind of
+install — and becomes `password:new`, which also puts it where someone who
+has lost one would look.
 
 ### upgrade is narrower than install, and that is the point
 
@@ -101,23 +112,26 @@ nothing to diff against.
 
 ### The ones that are not about deployment
 
-- **`server:backup` / `server:restore`.** A database dump on its own is not a
+- **`backup:create` / `backup:restore`.** A database dump on its own is not a
   backup: the master key encrypts DKIM private keys, ACME certificate keys
   and every admin's authenticator secret, so a dump restored without it gives
   a server that cannot sign outbound mail, renew its certificate, or let an
   admin past 2FA. A backup is the dump *and* the key, which makes the backup
   file itself a secret. It is also what makes `uninstall` and `upgrade` safe,
   so it comes before both.
-- **`server:dns`.** MX, SPF, DKIM, DMARC and a reverse record. The DKIM
+- **`dns:show` / `dns:check`.** MX, SPF, DKIM, DMARC and a reverse record. The DKIM
   record can only come from the server, which generated the key. A perfectly
   healthy install delivers nothing to Gmail without these, so this is the
   most likely reason an install that passes `server:verify` still "does not
   work". Two halves: print what to publish, check what is published.
-- **`server:offline`.** Replicas to zero. Deliberately dumb: it stops
-  traffic, and does **not** undo a compromise — every stolen token still
-  works when it comes back. Rotating the signing secret to end every session
-  everywhere is a separate, scarier task that should be named as such.
-- **`server:password:reset`.** The only way back for an admin who has
+- **`server:offline` / `server:online`.** Replicas to zero, and the first
+  thing to reach for when something is wrong: every stolen token stops
+  working *now*, and you get to work out what happened knowing nobody can act
+  while you do. It contains rather than cures — coming back up without having
+  rotated anything hands the access straight back — so what belongs between
+  the two is a credential rotation, which should be named for what it is
+  rather than hidden inside `offline`.
+- **`password:reset`.** The only way back for an admin who has
   finished setup and forgotten their password, since the deployment's
   password is ignored from then on. It cannot be a redeploy: that property is
   what stops whoever can read the Secret in a GitOps repo from taking the
