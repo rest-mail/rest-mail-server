@@ -194,8 +194,17 @@ someone eventually deletes them with `kubectl`, having read none of this.
   | the attachments volume | attachments live on their own PVC mounted at `/attachments`, not in the database, so a dump alone restores mail with the attachments missing |
   | the install's own facts | hostname, domain, namespace, chart version — what you need to deploy it again before you can restore into it |
 
-  Carrying the key makes the backup file a secret in its own right, which is
-  why "write it to ./restmail.dump" is not good enough. The JWT secret is
+  Carrying the key makes the backup file a secret in its own right, so there
+  is **no default destination**. `--to` says where; otherwise the install's
+  own config does, through a `backupTarget` the stack or the release can
+  declare once — a stack that already has somewhere to put things says so
+  there, and nobody types it again. With neither, it refuses and names the
+  flag, the way the install refuses to generate a password into a pipeline.
+
+  A default of "the current directory" would put a master key in a git repo
+  eventually, so it also refuses a destination inside a git working tree
+  unless git is already ignoring it. That stops the accident without
+  stopping anyone who means it. The JWT secret is
   deliberately *not* in the set: losing it only signs everyone out, and
   keeping it would mean a restored server honouring sessions minted before
   whatever went wrong.
@@ -444,8 +453,5 @@ else is built from what chore has today.
 
 ## Open
 
-1. Where does a backup go? It carries the master key, so it is a secret, and
-   a default of "the current directory" puts one in a git repo sooner or
-   later.
-2. `backup:create` is cheap for the database and the keys and potentially
+1. `backup:create` is cheap for the database and the keys and potentially
    enormous for the attachments volume. Does the default include it?
