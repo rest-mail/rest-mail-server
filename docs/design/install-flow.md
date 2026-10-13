@@ -30,13 +30,22 @@ history. `install:password` stays only for flows with no install to hang it
 off — `gh secret set`, or handing a password to whoever installs later. It is
 no longer a step.
 
-The password is always retrievable from where the install put it, so nothing
-writes it to a file:
+Nothing writes it to a file, because losing it is not a lockout. While the
+admin has not chosen its own password, installing again with a new one
+replaces it, ends every session the old one opened, and restarts the 72
+hours. That is one command and needs nothing kept. It can also be read back —
+`pulumi config get <name>:adminPassword`, or `helm get values <name> -n
+<namespace> -o json` — but that is a convenience, not what the design rests
+on.
 
-| Installed with | Kept in | Read back with |
-| --- | --- | --- |
-| Pulumi | the stack config, encrypted | `pulumi config get <name>:adminPassword` |
-| Helm | the release's values | `helm get values <name> -n <namespace> -o json` |
+What re-running an install must *not* do is change the password by accident.
+Someone moving to a new chart version while the admin is still halfway
+through setup would otherwise find the password in their hand had stopped
+working. So a generated password is generated once: given none, the task
+leaves whatever the install already has, and generates only when there is
+nothing there. The chart does the same — `api.bootstrapAdminPassword` falls
+back to the Secret an earlier install left — which is also what stops an
+upgrade demanding a password that, after setup, no longer does anything.
 
 ## install:helm does the install; install:pulumi prepares a project
 
