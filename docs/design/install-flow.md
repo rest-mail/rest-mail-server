@@ -59,6 +59,15 @@ of the Helm kind; `password:reset` is the password, the resetting of it. The
 first segment says what the task is about, so the families group themselves
 in a task list and you look for a forgotten password under `password:`.
 
+A namespace earns its keep two ways, and only one of them is size. It groups
+a family big enough to need grouping — or its first segment is the subject
+that makes the verb mean anything at all. `sessions:revoke` is a namespace of
+one and still right, because `revoke` alone says nothing; the same goes for
+`show`, `create`, `reset`. What does *not* earn it is a category label: the
+earlier `server:backup` and `server:dns` used `server:` to mean "things to do
+with the server", a bucket rather than a subject, and buckets grow until the
+prefix is on everything and distinguishes nothing.
+
 `server:` is a subject like any other, not a catch-all. The repo already
 names tasks `api:logs`, `postgres:logs`, `webmail:restart` — one segment per
 component — and the deployed server is simply the component that is not on
