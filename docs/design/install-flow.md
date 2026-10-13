@@ -74,7 +74,7 @@ Tasks that talk to a running server do not, because it does not care.
 | Depends on how you deployed | Does not |
 | --- | --- |
 | `install:helm` · `install:pulumi` | `server:verify` |
-| `upgrade:helm` · `upgrade:pulumi` | `backup:create` · `backup:restore` |
+| `upgrade:helm` · `upgrade:pulumi` | `backup:create` · `backup:database` · `backup:keys` · `backup:restore` |
 | `uninstall:helm` · `uninstall:pulumi` | `dns:show` · `dns:check` |
 | | `server:offline` · `server:online` |
 | | `password:new` · `password:reset` |
@@ -119,15 +119,60 @@ restmail:chartVersion`, preview, up — and the installer never edits the
 user's source. `install:*` must record the version it used, or an upgrade has
 nothing to diff against.
 
+### uninstall is the one that has to be awkward
+
+Both Secrets carry `helm.sh/resource-policy: keep` and neither volume does,
+so `helm uninstall` today deletes every mailbox and carefully preserves the
+master key that would have decrypted them. Backwards. **The volumes get the
+same annotation**, which makes an uninstall survivable: the deployment goes,
+the data stays, and a reinstall under the same name finds it again.
+
+That leaves deleting the data as a separate, genuinely irreversible act, and
+**that** is where the awkwardness belongs — not on the uninstall itself. A
+gate on the reversible step is one people learn to grind through, which
+trains them to grind through the one that matters.
+
+So removing the data asks you to type a code it has just generated, and:
+
+- **`--yes` does not answer it.** Whatever answers an ordinary confirm must
+  not answer this one, or a blanket `-y` added for some other task walks
+  straight through.
+- **The answer is read from the terminal**, not from stdin, so `yes |` and
+  `echo CODE |` both fail. Printing the code to stderr alone would not be
+  enough — `2>&1` captures it in a moment.
+- **Automating it stays possible, by name.** Anyone who genuinely needs it
+  passes an explicit flag that says so. The point is not that it cannot be
+  done, but that it cannot be done *by accident*.
+
+Whatever survives is said plainly at the end, with the command to remove it
+later — otherwise the volumes become orphans nobody can account for, and
+someone eventually deletes them with `kubectl`, having read none of this.
+
 ### The ones that are not about deployment
 
-- **`backup:create` / `backup:restore`.** A database dump on its own is not a
-  backup: the master key encrypts DKIM private keys, ACME certificate keys
-  and every admin's authenticator secret, so a dump restored without it gives
-  a server that cannot sign outbound mail, renew its certificate, or let an
-  admin past 2FA. A backup is the dump *and* the key, which makes the backup
-  file itself a secret. It is also what makes `uninstall` and `upgrade` safe,
-  so it comes before both.
+- **`backup:create` and its subsets.** `backup:create` takes everything
+  needed to stand the server up again somewhere else; `backup:database` and
+  `backup:keys` take one part each, for when you know what you want. Subsets
+  are separate tasks rather than flags on one, because a task list is
+  something you can read in an emergency and a `--only` flag is not.
+
+  Four things, and a dump is only the first:
+
+  | | Why losing it hurts |
+  | --- | --- |
+  | the database | mail, accounts, filters |
+  | the master key | it encrypts the DKIM private keys, the ACME certificate keys and every admin's authenticator secret — restore a dump without it and the server cannot sign outbound mail, cannot renew its certificate, and no admin gets past 2FA |
+  | the attachments volume | attachments live on their own PVC mounted at `/attachments`, not in the database, so a dump alone restores mail with the attachments missing |
+  | the install's own facts | hostname, domain, namespace, chart version — what you need to deploy it again before you can restore into it |
+
+  Carrying the key makes the backup file a secret in its own right, which is
+  why "write it to ./restmail.dump" is not good enough. The JWT secret is
+  deliberately *not* in the set: losing it only signs everyone out, and
+  keeping it would mean a restored server honouring sessions minted before
+  whatever went wrong.
+
+  Backup is also what makes `uninstall` and `upgrade` safe, so it comes
+  before both.
 - **`dns:show` / `dns:check`.** MX, SPF, DKIM, DMARC and a reverse record. The DKIM
   record can only come from the server, which generated the key. A perfectly
   healthy install delivers nothing to Gmail without these, so this is the
@@ -300,17 +345,13 @@ an install nobody has touched already reports `claimed: true`.
    exists), or somewhere neutral for the user to move? Writing a new file is
    not editing their code, but it is the first time an installer touches a
    Pulumi project's source.
-2. Neither volume carries `helm.sh/resource-policy: keep`, while both Secrets
-   do — so `helm uninstall` today deletes every mailbox and carefully
-   preserves the master key that would have decrypted them. Backwards, and a
-   live data-loss bug. Keeping the volumes fixes it but leaves an uninstall
-   that does not clean up, so the choice is probably: keep them, and have
-   `uninstall:*` say what survives and offer to remove it.
+2. Where does a backup go? It carries the master key, so it is a secret, and
+   a default of "the current directory" puts one in a git repo sooner or
+   later.
 3. When `server:verify` fails at the end of an `upgrade:*`, does the upgrade
    offer to put it back? `helm rollback` makes that one command; Pulumi has
    no equivalent, so it would mean setting `chartVersion` back and running
    up again. Tempting, but an automatic rollback after a failed migration
    can be worse than the failure.
-4. Where does a backup go, and in what format? It has to carry the master key
-   alongside the dump, so it is a secret, and "write it to ./restmail.dump"
-   is not good enough.
+4. `backup:create` is cheap for the database and the keys and potentially
+   enormous for the attachments volume. Does the default include it?
