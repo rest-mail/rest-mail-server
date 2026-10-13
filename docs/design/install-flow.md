@@ -342,17 +342,11 @@ The flow:
 1. preconditions; a confirm showing project, stack, host and the domain it
    worked out
 2. set the config, generating the password if none was given
-3. ask whether to print the code or write it: *"Write it to a file, or print
-   it for you to paste? [write/print]"*. Printing touches nothing. Writing
-   asks for the filename, offering the default for the project's runtime
-   (`restmail.ts`, `restmail.py`, `restmail.go`), and refuses to overwrite
-   something already there
-4. either way, print the one line that wires it in — `import "./restmail";`,
-   `import restmail`, or a call in Go; YAML pastes into `Pulumi.yaml` — and
-   block on *"Added it to your program? [y/N]"*. Writing the file does not
-   skip this: adding that line is editing their program, which an installer
-   does not do, so the step remains theirs whichever path they took. The
-   answer is never trusted, only waited on
+3. print the code for the project's language, and where it goes — a new
+   file plus the one line that wires it in (`import "./restmail";`, `import
+   restmail`, a call in Go), or straight into `Pulumi.yaml` for YAML
+4. block on *"Added it to your program? [y/N]"*. The answer is never
+   trusted, only waited on
 5. `pulumi preview`, and match what it will create against what we set: a
    `kubernetes:helm.sh/v3:Release` named `<name>`, reading our hostname. This
    is the only thing that proves the config and the code found each other —
@@ -362,9 +356,16 @@ The flow:
    release only, never the whole stack, then verify. No leaves them to deploy
    however they like and run `server:verify` themselves.
 
-Both paths end at the same preview, which is the point: the file being
-written proves nothing about whether it was wired in, and the preview proves
-it either way.
+**Nothing of theirs is written to.** An earlier version of this offered to
+write the file and have them add only the wiring line. It was dropped: the
+wiring line is editing their program either way, which is the step an
+installer has no business taking, so writing the file removed no manual work
+— it only bought a little typing in exchange for a filename prompt, an
+overwrite rule, and a second path to get wrong. If you are editing your
+program anyway, you may as well paste the whole thing.
+
+Which leaves the preview as the only thing that proves anything, and it
+proves it regardless of how the code got there.
 
 Preview needs the program to build and the provider to reach a cluster. If it
 cannot, say which, and what to do, rather than failing a task that did its job.
@@ -435,12 +436,11 @@ an install nobody has touched already reports `claimed: true`.
 
 ## What chore needs first
 
-Two tasks here want input that is not yes-or-no, which `confirm:` cannot
-give: a filename for `install:pulumi`, and the typed code that guards
-deleting a server's data. So chore needs an `ask:` that captures an arbitrary
-string from the terminal, with a default, and — for the deletion gate — one
-that `--yes` does not answer and a pipe cannot feed. Neither task can be
-built as designed until it exists.
+One task here wants input that is not yes-or-no, which `confirm:` cannot
+give: the typed code that guards deleting a server's data. chore needs an
+`ask:` that captures a string from the terminal, which `--yes` does not
+answer and a pipe cannot feed. Only `uninstall:*` waits on it — everything
+else is built from what chore has today.
 
 ## Open
 
