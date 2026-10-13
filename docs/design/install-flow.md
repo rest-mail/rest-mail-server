@@ -59,6 +59,14 @@ of the Helm kind; `password:reset` is the password, the resetting of it. The
 first segment says what the task is about, so the families group themselves
 in a task list and you look for a forgotten password under `password:`.
 
+The subject is what a task **acts on**, never what it touches to get there.
+`password:reset` runs as a Job in the server's namespace, but it is still the
+password that is being reset, so it does not become `server:password:reset`
+— by that argument everything here would take a `server:` prefix, since
+verify talks to the server, `dns:check` reads the DKIM key out of it, and
+`backup:create` dumps its database. Read the name as "the X, Y-ed" and it
+usually settles itself.
+
 The distinction that matters is not in the name but in whether a task has a
 `:helm` / `:pulumi` variant at all. Tasks that depend on how you deployed do.
 Tasks that talk to a running server do not, because it does not care.
