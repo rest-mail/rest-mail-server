@@ -244,23 +244,46 @@ someone eventually deletes them with `kubectl`, having read none of this.
   name them (`api`, `smtp`, `imap`, `pop3`, `postgres`). Status is also what
   tells you which revision an upgrade moved you off.
 - **`sessions:revoke`.** Sign everybody out, which is what makes
-  `server:online` safe to run after an incident. It needs **both halves**,
-  and the server has neither today:
+  `server:online` safe to run after an incident. Two token types have to end,
+  and they end differently:
 
-  - *Access tokens.* An admin's is checked against `credential_epoch` on
-    every request, so bumping every admin's epoch ends them at once. A
-    mailbox user's is not checked against anything — there is no epoch on
-    that side — so it stays good until it expires. The only lever that
-    reaches every token immediately is rotating `JWT_SECRET`, which breaks
-    every signature at once. That needs a deploy, since it is read at
-    startup, and the chart carries the old value forward unless a new one is
-    set explicitly.
-  - *Refresh tokens.* They are rows in the database, so a new `JWT_SECRET`
-    does not touch them. Rotate the secret and nothing else, and every
-    client quietly refreshes into a valid new access token under the new
-    secret — nobody is signed out at all. This is the same shape as the bug
-    found in the bootstrap re-arm: ending access without revoking refresh
-    ends nothing. `RevokeAllForSubject` exists; the global revoke does not.
+  - *Access tokens.* Fifteen minutes by default (`JWT_ACCESS_EXPIRY`), and
+    stateless. An admin's is additionally checked against `credential_epoch`
+    on every request, so bumping every admin's epoch ends those at once. A
+    mailbox user's is checked against nothing but its signature and expiry,
+    so it stays good for the rest of its fifteen minutes. That is the floor
+    on how fast any revocation can bite, and it is a floor rather than a
+    problem.
+  - *Refresh tokens.* Seven days by default (`JWT_REFRESH_EXPIRY`), and
+    doubly held: each one is a JWT signed with the same secret **and** a row
+    in `refresh_tokens`. Both halves have to pass, so either half can end a
+    session. Revoking the row ends it at the next refresh; rotating
+    `JWT_SECRET` ends it immediately, because the refresh token's own
+    signature stops verifying — the secret rotation is a complete sign-out,
+    not a partial one. It needs a deploy, though, since the secret is read
+    at startup and the chart carries the old value forward unless a new one
+    is set explicitly, so the task's normal path is the database:
+    `RevokeAllForSubject` exists, a global revoke across all subjects does
+    not, and that plus an epoch bump signs out every admin at once and every
+    mailbox within the access window.
+
+  Shortening the refresh window does not substitute for any of this. Refresh
+  is already **single-use**: every refresh rotates the row `active→rotated`
+  and issues a replacement, so a token is spent in minutes of use, not days.
+  The seven days is the *idle* bound — how long you may be away and still
+  come back — and shortening it only signs out people who were not doing
+  anything. What it would not fix is that the window **slides**: each
+  rotation mints a fresh seven days, so an active session never ends on its
+  own. Bounding that takes an absolute cap carried forward through rotation,
+  which is a different field and a separate decision from the idle window.
+
+  There is a cheaper win in the same place. Single-use rotation means a
+  stolen refresh token is *detected*: whoever presents it second loses, and
+  the loser may well be the real owner. Today that is a 401 and nothing
+  else — the loser signs in again and the thief keeps the session. Standard
+  practice is to treat a spent token presented again as proof of theft and
+  revoke the whole subject, which turns an existing signal into a response
+  and is a handful of lines in the path that already distinguishes the case.
 
   Everything else an incident wants is beyond sessions and not yet designed:
   mailbox app passwords for IMAP and SMTP are separate credentials that a
