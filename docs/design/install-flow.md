@@ -177,6 +177,27 @@ Whatever survives is said plainly at the end, with the command to remove it
 later — otherwise the volumes become orphans nobody can account for, and
 someone eventually deletes them with `kubectl`, having read none of this.
 
+**`uninstall:pulumi` is not simply `pulumi destroy`.** It inherits
+`install:pulumi`'s problem — the program is the source of truth, and chore
+does not edit the user's program — but it inherits it unevenly, so there are
+two cases and the task has to tell them apart.
+
+If rest-mail is the whole stack, `pulumi destroy` is exactly right and chore
+can run it. If rest-mail is one component among others, destroy takes
+everything else with it, and the obvious workaround is worse than useless:
+`pulumi destroy --target <urn>` removes the resources while the program
+still declares them, so the next `pulumi up` anyone runs — for an unrelated
+change — puts the mail server back. A removal that a later deploy silently
+undoes is not a removal. So in that case the only correct path is the
+print-and-wait one: delete the component from the program, run `pulumi up`,
+and the stack converges on its absence.
+
+Chore can tell which case it is rather than asking, by reading
+`pulumi stack --show-urns` and checking whether anything in the stack sits
+outside the rest-mail component. That is also the honest reason the two
+Pulumi tasks look different from their Helm counterparts: Helm's release is
+the unit of installation, and Pulumi's is the program.
+
 ### The ones that are not about deployment
 
 - **`backup:create` and its subsets.** `backup:create` takes everything
@@ -211,6 +232,24 @@ someone eventually deletes them with `kubectl`, having read none of this.
 
   Backup is also what makes `uninstall` and `upgrade` safe, so it comes
   before both.
+
+  **The default leaves the attachments out**, and says so every time. Not
+  because of the size alone but because the mechanism differs: the database
+  is a `pg_dump`, the key is a secret read, the install's facts are a few
+  strings — all of them seconds, all of them a file you can hold. The
+  attachments are a PVC that the chart sizes at 20Gi and the cluster's
+  default storage class backs, which on k3s is `local-path`, so there is no
+  volume snapshot to take; copying them means streaming the lot through the
+  cluster. A backup whose contents change with how full the disk is would be
+  a trap, so the default is fixed and the cost is paid by naming it: the
+  task measures the volume, prints what it is declining to take and how
+  large it is, and prints the command that would take it.
+
+  That makes `backup:restore`'s job the matching one — it reads a manifest
+  saying what the file actually contains and refuses to restore quietly over
+  a gap. Restoring a database-only backup gives a working server with mail
+  whose attachments are gone, which is recoverable if you knew and a very
+  bad surprise if you did not.
 - **`dns:show` / `dns:check`.** MX, SPF, DKIM, DMARC and a reverse record. The DKIM
   record can only come from the server, which generated the key. A perfectly
   healthy install delivers nothing to Gmail without these, so this is the
@@ -486,5 +525,4 @@ else is built from what chore has today.
 
 ## Open
 
-1. `backup:create` is cheap for the database and the keys and potentially
-   enormous for the attachments volume. Does the default include it?
+Nothing outstanding.
