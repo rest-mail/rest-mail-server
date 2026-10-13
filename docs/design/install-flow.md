@@ -214,7 +214,21 @@ someone eventually deletes them with `kubectl`, having read none of this.
   rotated anything hands the access straight back — so what belongs between
   the two is a credential rotation, which should be named for what it is
   rather than hidden inside `offline`.
-- **`server:status` / `server:logs`.** What `server:verify` does not cover:
+- **`server:status` / `server:logs`.** Status and verify look like the same
+  task and are not, for one reason: **status has to work when the server is
+  broken.** Verify signs in, port-forwards and fetches the public URL, so a
+  server that is down makes it go red without saying anything you did not
+  already know. Status is a passive read, so it still prints "2 replicas, 0
+  ready, revision 4, upgraded eleven minutes ago" — which is what you need at
+  exactly that moment. One says *that* it is broken; the other says *what you
+  have*. Verify also fails on purpose, being the gate at the end of every
+  install and upgrade, and a gate that always passes is not one.
+
+  So that nobody has to run both, **`server:verify` prints the status block
+  first**, then runs its layers. Verify is everything; status is the cheap
+  part you can still get when things are on fire.
+
+  What status covers that verify does not:
   not "does it work" but "what have I got" — chart and product version,
   release revision, replicas, how long it has been up — and then the logs of
   whichever component you are suspicious of, named as the local tasks already
