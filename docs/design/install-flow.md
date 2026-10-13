@@ -517,11 +517,23 @@ an install nobody has touched already reports `claimed: true`.
 
 ## What chore needs first
 
-One task here wants input that is not yes-or-no, which `confirm:` cannot
-give: the typed code that guards deleting a server's data. chore needs an
-`ask:` that captures a string from the terminal, which `--yes` does not
-answer and a pipe cannot feed. Only `uninstall:*` waits on it — everything
-else is built from what chore has today.
+Nothing. The typed code that guards deleting a server's data is not a file
+write — it is reading back a string — and chore can already do that. A task
+marked `interactive: true` gets the terminal and shares chore's process
+group, so its script can `read -r code < /dev/tty`, and that read has every
+property the gate needs without chore knowing it exists:
+
+- `--yes` answers chore's own `confirm:` prompts and knows nothing about a
+  `read` inside a script, so it cannot answer this one.
+- `/dev/tty` is the terminal, not stdin, so `yes |` and `echo CODE |` feed
+  nothing to it.
+- With no terminal at all — a pipeline — opening `/dev/tty` fails, so the
+  gate fails closed rather than open.
+- The deliberate-automation flag is an ordinary task argument that skips the
+  read.
+
+A built-in `ask:` would still be nicer — one prompt style, `--dry` aware —
+but it is polish, and nothing here waits on it.
 
 ## Open
 
