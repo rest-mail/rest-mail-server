@@ -59,6 +59,12 @@ of the Helm kind; `password:reset` is the password, the resetting of it. The
 first segment says what the task is about, so the families group themselves
 in a task list and you look for a forgotten password under `password:`.
 
+`server:` is a subject like any other, not a catch-all. The repo already
+names tasks `api:logs`, `postgres:logs`, `webmail:restart` — one segment per
+component — and the deployed server is simply the component that is not on
+this machine. Which is also why `password:reset` does not take the prefix: a
+password is not a component of the deployment the way its logs are.
+
 The subject is what a task **acts on**, never what it touches to get there.
 `password:reset` runs as a Job in the server's namespace, but it is still the
 password that is being reset, so it does not become `server:password:reset`
@@ -79,6 +85,7 @@ Tasks that talk to a running server do not, because it does not care.
 | | `server:offline` · `server:online` |
 | | `password:new` · `password:reset` |
 | | `server:status` · `server:logs` |
+| | `sessions:revoke` |
 
 Today's `install:password` is misnamed under that rule — it is not a kind of
 install — and becomes `password:new`, which also puts it where someone who
@@ -191,6 +198,30 @@ someone eventually deletes them with `kubectl`, having read none of this.
   whichever component you are suspicious of, named as the local tasks already
   name them (`api`, `smtp`, `imap`, `pop3`, `postgres`). Status is also what
   tells you which revision an upgrade moved you off.
+- **`sessions:revoke`.** Sign everybody out, which is what makes
+  `server:online` safe to run after an incident. It needs **both halves**,
+  and the server has neither today:
+
+  - *Access tokens.* An admin's is checked against `credential_epoch` on
+    every request, so bumping every admin's epoch ends them at once. A
+    mailbox user's is not checked against anything — there is no epoch on
+    that side — so it stays good until it expires. The only lever that
+    reaches every token immediately is rotating `JWT_SECRET`, which breaks
+    every signature at once. That needs a deploy, since it is read at
+    startup, and the chart carries the old value forward unless a new one is
+    set explicitly.
+  - *Refresh tokens.* They are rows in the database, so a new `JWT_SECRET`
+    does not touch them. Rotate the secret and nothing else, and every
+    client quietly refreshes into a valid new access token under the new
+    secret — nobody is signed out at all. This is the same shape as the bug
+    found in the bootstrap re-arm: ending access without revoking refresh
+    ends nothing. `RevokeAllForSubject` exists; the global revoke does not.
+
+  Everything else an incident wants is beyond sessions and not yet designed:
+  mailbox app passwords for IMAP and SMTP are separate credentials that a
+  session revoke does not touch, a leaked DKIM key needs rotating and
+  republishing, and rotating the master key means re-encrypting everything
+  it protects.
 - **`password:reset`.** The only way back for an admin who has
   finished setup and forgotten their password, since the deployment's
   password is ignored from then on. It cannot be a redeploy: that property is
