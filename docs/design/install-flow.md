@@ -267,6 +267,16 @@ someone eventually deletes them with `kubectl`, having read none of this.
     not, and that plus an epoch bump signs out every admin at once and every
     mailbox within the access window.
 
+  The two steps are ordered, and the order is not a style choice. Revoke the
+  refresh rows **first**, then bump the epochs. Dead rows cannot mint
+  anything, so nothing can be issued behind the sweep. The other way round
+  leaves a gap: bumping the epoch kills an admin's access token, their
+  client sees the 401 and refreshes, and the refresh re-mints at the
+  *current* epoch rather than checking the one it was presented with — so
+  they land back inside with a fresh pair before the sweep reaches them.
+  That is the same failure as ending access without ending refresh, only
+  with a smaller window.
+
   Shortening the refresh window does not substitute for any of this. Refresh
   is already **single-use**: every refresh rotates the row `active→rotated`
   and issues a replacement, so a token is spent in minutes of use, not days.
