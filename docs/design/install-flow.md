@@ -70,6 +70,7 @@ Tasks that talk to a running server do not, because it does not care.
 | `uninstall:helm` · `uninstall:pulumi` | `dns:show` · `dns:check` |
 | | `server:offline` · `server:online` |
 | | `password:new` · `password:reset` |
+| | `server:status` · `server:logs` |
 
 Today's `install:password` is misnamed under that rule — it is not a kind of
 install — and becomes `password:new`, which also puts it where someone who
@@ -131,6 +132,12 @@ nothing to diff against.
   rotated anything hands the access straight back — so what belongs between
   the two is a credential rotation, which should be named for what it is
   rather than hidden inside `offline`.
+- **`server:status` / `server:logs`.** What `server:verify` does not cover:
+  not "does it work" but "what have I got" — chart and product version,
+  release revision, replicas, how long it has been up — and then the logs of
+  whichever component you are suspicious of, named as the local tasks already
+  name them (`api`, `smtp`, `imap`, `pop3`, `postgres`). Status is also what
+  tells you which revision an upgrade moved you off.
 - **`password:reset`.** The only way back for an admin who has
   finished setup and forgotten their password, since the deployment's
   password is ignored from then on. It cannot be a redeploy: that property is
@@ -218,9 +225,11 @@ Re-running skips what is already done and goes to the preview.
 
 ## server:verify
 
-Renamed from `install:check`, and not `install:verify`: the checks wanted
-after installing are the ones wanted at 3am two months later, and an
-install-time name means nobody runs it then.
+Renamed from `install:check`, and not `install:verify`. Not only because an
+install-time name means nobody thinks to run it two months later, but because
+after `upgrade:pulumi` the name would be **false**: it would claim an install
+happened when one did not. A task name that lies about what just happened is
+worse than one that is merely under-used.
 
 **Every `install:*` and `upgrade:*` ends in it**, whichever tool they used,
 and it is equally the thing you run on a Tuesday to see that everything is
