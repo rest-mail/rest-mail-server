@@ -128,6 +128,20 @@ chore upgrade:helm                   # to the newest chart
 chore upgrade:helm --version 0.13.0  # to a named one
 ```
 
+It does **not** roll back on its own when `server:verify` fails afterwards.
+A schema migration may already have run, and putting the old code back under
+a migrated database can be worse than the failure it is reacting to. The
+task cannot know whether that migration was reversible; the person can. So
+it says what failed, prints the exact command to go back — `helm rollback`,
+or `chartVersion` set back and up again — and says whether a backup exists
+and how old it is. Deciding is theirs, and by then they are in territory
+that needs them to be.
+
+Which is why the useful automation sits *before* the upgrade, not after it:
+the moment "you should have backups" is actionable is while nothing has
+happened yet. `upgrade:*` looks for a recent backup first and offers
+`backup:create` if there is none. Afterwards, that advice is only a reproach.
+
 Which is why the chart version lives in stack config rather than in the
 pasted code: `upgrade:pulumi` is then `pulumi config set
 restmail:chartVersion`, preview, up — and the installer never edits the
@@ -419,10 +433,5 @@ built as designed until it exists.
 1. Where does a backup go? It carries the master key, so it is a secret, and
    a default of "the current directory" puts one in a git repo sooner or
    later.
-2. When `server:verify` fails at the end of an `upgrade:*`, does the upgrade
-   offer to put it back? `helm rollback` makes that one command; Pulumi has
-   no equivalent, so it would mean setting `chartVersion` back and running
-   up again. Tempting, but an automatic rollback after a failed migration
-   can be worse than the failure.
-3. `backup:create` is cheap for the database and the keys and potentially
+2. `backup:create` is cheap for the database and the keys and potentially
    enormous for the attachments volume. Does the default include it?
