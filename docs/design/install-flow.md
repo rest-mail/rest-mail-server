@@ -90,7 +90,8 @@ Tasks that talk to a running server do not, because it does not care.
 | --- | --- |
 | `install:helm` · `install:pulumi` | `server:verify` |
 | `upgrade:helm` · `upgrade:pulumi` | `backup:create` · `backup:database` · `backup:keys` · `backup:restore` |
-| `uninstall:helm` · `uninstall:pulumi` | `dns:show` · `dns:check` |
+| `uninstall:helm` · `uninstall:pulumi` | `data:destroy` |
+| | `dns:show` · `dns:check` |
 | | `server:offline` · `server:online` |
 | | `password:new` · `password:reset` |
 | | `server:status` · `server:logs` |
@@ -161,7 +162,14 @@ That leaves deleting the data as a separate, genuinely irreversible act, and
 gate on the reversible step is one people learn to grind through, which
 trains them to grind through the one that matters.
 
-So removing the data asks you to type a code it has just generated, and:
+It is also a separate **task**, `data:destroy`, rather than a stage of
+either uninstall. What survives an uninstall is the same however it was
+uninstalled — volumes and Secrets carrying `keep`, in a namespace — and
+removing them is the same `kubectl` work either way, so it does not depend
+on how you deployed and belongs in the right-hand column. The gate then
+lives in exactly one place, and neither `uninstall:*` has one.
+
+`data:destroy` asks you to type a code it has just generated, and:
 
 - **`--yes` does not answer it.** Whatever answers an ordinary confirm must
   not answer this one, or a blanket `-y` added for some other task walks
@@ -177,26 +185,36 @@ Whatever survives is said plainly at the end, with the command to remove it
 later — otherwise the volumes become orphans nobody can account for, and
 someone eventually deletes them with `kubectl`, having read none of this.
 
-**`uninstall:pulumi` is not simply `pulumi destroy`.** It inherits
-`install:pulumi`'s problem — the program is the source of truth, and chore
-does not edit the user's program — but it inherits it unevenly, so there are
-two cases and the task has to tell them apart.
+**`uninstall:pulumi` cannot uninstall anything; it can only confirm that
+you did.** The program is the source of truth, and any removal that is not
+reflected in the program is undone by the next `pulumi up` — for an
+unrelated change, by someone who has forgotten. That rules out
+`pulumi destroy --target <urn>`, and it rules out plain `pulumi destroy`
+too, even when rest-mail is the whole stack: the program still declares it,
+so it comes back. Throwing away the whole project is `pulumi destroy` and
+`pulumi stack rm`, which are Pulumi's commands and need nothing from
+rest-mail to run.
 
-If rest-mail is the whole stack, `pulumi destroy` is exactly right and chore
-can run it. If rest-mail is one component among others, destroy takes
-everything else with it, and the obvious workaround is worse than useless:
-`pulumi destroy --target <urn>` removes the resources while the program
-still declares them, so the next `pulumi up` anyone runs — for an unrelated
-change — puts the mail server back. A removal that a later deploy silently
-undoes is not a removal. So in that case the only correct path is the
-print-and-wait one: delete the component from the program, run `pulumi up`,
-and the stack converges on its absence.
+So it is `install:pulumi` in reverse:
 
-Chore can tell which case it is rather than asking, by reading
-`pulumi stack --show-urns` and checking whether anything in the stack sits
-outside the rest-mail component. That is also the honest reason the two
-Pulumi tasks look different from their Helm counterparts: Helm's release is
-the unit of installation, and Pulumi's is the program.
+1. print what to remove — the `Release`, and **not** the namespace if the
+   program declares one as a resource, because deleting a namespace deletes
+   everything in it, `keep` or no `keep`
+2. wait for the person to say they have removed it and run `pulumi up`
+3. check: the release is gone from the stack and the cluster, and say
+   plainly what survived — the volumes and Secrets that `keep` held back —
+   with `data:destroy` as the command for them
+
+Step 3 is also the task's one real safeguard. The `keep` annotation is
+honoured because `kubernetes:helm.sh/v3:Release` uninstalls through Helm;
+a program that used `helm.v3.Chart` instead renders the chart into plain
+Pulumi resources and deletes every one, annotation or not. Checking what
+survived is how that shows up as a loud warning rather than as an empty
+volume list nobody looks at.
+
+Which leaves the two Pulumi tasks honestly different from their Helm
+counterparts: Helm's release is the unit of installation, so chore can act
+on it; Pulumi's is the program, so chore can only describe and check.
 
 ### The ones that are not about deployment
 
@@ -230,7 +248,7 @@ the unit of installation, and Pulumi's is the program.
   keeping it would mean a restored server honouring sessions minted before
   whatever went wrong.
 
-  Backup is also what makes `uninstall` and `upgrade` safe, so it comes
+  Backup is also what makes `data:destroy` and `upgrade` safe, so it comes
   before both.
 
   **The default leaves the attachments out**, and says so every time. Not
