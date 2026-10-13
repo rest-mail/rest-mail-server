@@ -1,7 +1,9 @@
-# Install flow: design
+# Install and lifecycle: design
 
 Status: agreed in discussion, not yet built. `docs/installing.md` describes what
-exists today; this describes what it is changing into, and why.
+exists today; this describes what it is changing into, and why. It covers the
+install, and the tasks that come after it — upgrade, uninstall, backup, and the
+ones for when something has gone wrong.
 
 The install is four steps, whichever way you install:
 
@@ -47,6 +49,84 @@ nothing there. The chart does the same — `api.bootstrapAdminPassword` falls
 back to the Secret an earlier install left — which is also what stops an
 upgrade demanding a password that, after setup, no longer does anything.
 
+## The whole lifecycle, not just the install
+
+Installing is one act among several, and the rest are the ones people get
+wrong at 3am. The tasks split on a single rule: **anything that depends on
+how you deployed is named for the tool; anything that talks to a running
+server is not, because it does not care.**
+
+| Deployed with Helm | Deployed with Pulumi | Either |
+| --- | --- | --- |
+| `install:helm` | `install:pulumi` | `server:verify` |
+| `upgrade:helm` | `upgrade:pulumi` | `server:backup` / `server:restore` |
+| `uninstall:helm` | `uninstall:pulumi` | `server:dns` |
+| | | `server:offline` |
+| | | `server:password:reset` |
+
+### upgrade is narrower than install, and that is the point
+
+Not because the mechanism differs — `helm upgrade --install` and `pulumi up`
+both converge — but because the *scope* does. A real Helm upgrade is:
+
+```bash
+helm upgrade restmail oci://ghcr.io/rest-mail/charts/restmail \
+  --version 0.13.0 --namespace rest-mail \
+  --set mailserver.hostname=mail.rest-mail.com \
+  --set mailserver.domain=rest-mail.com
+```
+
+Forget the release name or the namespace and Helm says "release: not found",
+loudly, having changed nothing. Forget `mailserver.hostname` and it silently
+reverts to the chart's placeholder `mail.example.com`: the gateways announce
+that in HELO, the ingress host moves, and the certificate stops matching —
+from an upgrade that meant to change only the version. The arguments you
+would notice losing are the safe ones.
+
+So `upgrade:*` takes no arguments but the version. It reads back what the
+release or stack was installed with, shows the diff, changes the version, and
+**refuses** anything that would alter the server's identity. The refusal is
+the feature.
+
+```bash
+chore upgrade:helm                   # to the newest chart
+chore upgrade:helm --version 0.13.0  # to a named one
+```
+
+Which is why the chart version lives in stack config rather than in the
+pasted code: `upgrade:pulumi` is then `pulumi config set
+restmail:chartVersion`, preview, up — and the installer never edits the
+user's source. `install:*` must record the version it used, or an upgrade has
+nothing to diff against.
+
+### The ones that are not about deployment
+
+- **`server:backup` / `server:restore`.** A database dump on its own is not a
+  backup: the master key encrypts DKIM private keys, ACME certificate keys
+  and every admin's authenticator secret, so a dump restored without it gives
+  a server that cannot sign outbound mail, renew its certificate, or let an
+  admin past 2FA. A backup is the dump *and* the key, which makes the backup
+  file itself a secret. It is also what makes `uninstall` and `upgrade` safe,
+  so it comes before both.
+- **`server:dns`.** MX, SPF, DKIM, DMARC and a reverse record. The DKIM
+  record can only come from the server, which generated the key. A perfectly
+  healthy install delivers nothing to Gmail without these, so this is the
+  most likely reason an install that passes `server:verify` still "does not
+  work". Two halves: print what to publish, check what is published.
+- **`server:offline`.** Replicas to zero. Deliberately dumb: it stops
+  traffic, and does **not** undo a compromise — every stolen token still
+  works when it comes back. Rotating the signing secret to end every session
+  everywhere is a separate, scarier task that should be named as such.
+- **`server:password:reset`.** The only way back for an admin who has
+  finished setup and forgotten their password, since the deployment's
+  password is ignored from then on. It cannot be a redeploy: that property is
+  what stops whoever can read the Secret in a GitOps repo from taking the
+  account. It re-arms the bootstrap admin from inside the namespace — a Job,
+  not a Secret edit — so cluster rights are required, and the new password
+  then behaves like any other: forced change, forced authenticator, 72 hours.
+  `restmail reset-admin` does this today with owner keys; removing those
+  without this leaves no way back.
+
 ## install:helm does the install; install:pulumi prepares a project
 
 They share the mail server's facts and nothing about where it goes.
@@ -72,6 +152,7 @@ mail server's name as the config namespace:
 restmail:hostname      mail.example.com
 restmail:domain        example.com
 restmail:namespace     rest-mail
+restmail:chartVersion  0.4.0
 restmail:adminPassword [secret]
 ```
 
@@ -87,7 +168,7 @@ const mail = new pulumi.Config("restmail");
 new k8s.helm.v3.Release("restmail", {
     name: "restmail",
     chart: "oci://ghcr.io/rest-mail/charts/restmail",
-    version: "0.4.0",
+    version: mail.require("chartVersion"),
     namespace: mail.require("namespace"),
     createNamespace: true,
     skipAwait: true,
@@ -115,15 +196,17 @@ The flow:
    of as a server nobody can sign in to
 6. *"Run pulumi up to install? [y/N]"* — yes runs `pulumi up --target` on our
    release only, never the whole stack, then verify. No leaves them to deploy
-   however they like and run `install:verify` themselves.
+   however they like and run `server:verify` themselves.
 
 Preview needs the program to build and the provider to reach a cluster. If it
 cannot, say which, and what to do, rather than failing a task that did its job.
 Re-running skips what is already done and goes to the preview.
 
-## install:verify
+## server:verify
 
-Renamed from `install:check`. Proves a running install works, layer by layer,
+Renamed from `install:check`, and not `server:verify`: the checks wanted
+after installing are the ones wanted at 3am two months later, and an
+install-time name means nobody runs it then. Proves a running install works, layer by layer,
 stopping at the first failure, and saying **whose** failure it is:
 
 ```
@@ -153,7 +236,7 @@ anything (`internal/bootstrap`, `setup_required` on login).
 
 - **Signing in spends nothing.** Login with the bootstrap password answers 200
   with `setup_required: ["password", "two_factor"]`; only `POST
-  /auth/password` retires it. So `install:verify` proves the password works by
+  /auth/password` retires it. So `server:verify` proves the password works by
   signing in, checking that list, and logging out — any number of times.
 - **It expires** 72 hours after it is first applied. After that the right
   password answers 401 `bootstrap_expired` (a wrong one, the ordinary 401),
@@ -169,7 +252,7 @@ Not done, and belonging to the removal of setup codes rather than to this: a
 server with no admin and no bootstrap password still falls back to printing a
 setup code, where it should refuse to start.
 
-`install:verify` must read the server's state from sign-in, not from `claimed`
+`server:verify` must read the server's state from sign-in, not from `claimed`
 in `GET /api/v1/server`: the bootstrap admin exists from the first start, so
 an install nobody has touched already reports `claimed: true`.
 
@@ -179,6 +262,14 @@ an install nobody has touched already reports `claimed: true`.
    exists), or somewhere neutral for the user to move? Writing a new file is
    not editing their code, but it is the first time an installer touches a
    Pulumi project's source.
-2. Chart version in the code (a reviewed diff) or in config (a `pulumi config
-   set`)? Leaning code: a mail server's version is not an environment setting.
-3. Does `install:helm` verify at the end like `install:pulumi`, or stay thin?
+2. Neither volume carries `helm.sh/resource-policy: keep`, while both Secrets
+   do — so `helm uninstall` today deletes every mailbox and carefully
+   preserves the master key that would have decrypted them. Backwards, and a
+   live data-loss bug. Keeping the volumes fixes it but leaves an uninstall
+   that does not clean up, so the choice is probably: keep them, and have
+   `uninstall:*` say what survives and offer to remove it.
+3. Does `install:helm` end in `server:verify` like `install:pulumi`, or stay
+   thin?
+4. Where does a backup go, and in what format? It has to carry the master key
+   alongside the dump, so it is a secret, and "write it to ./restmail.dump"
+   is not good enough.
