@@ -258,11 +258,17 @@ The flow:
 1. preconditions; a confirm showing project, stack, host and the domain it
    worked out
 2. set the config, generating the password if none was given
-3. write the code as a new file, and print the one line that wires it in
-   (`import "./restmail";`, `import restmail`, or a call in Go; YAML pastes
-   into `Pulumi.yaml`)
-4. block: *"Added it to your program? [y/N]"* — the answer is never trusted,
-   only waited on
+3. ask whether to print the code or write it: *"Write it to a file, or print
+   it for you to paste? [write/print]"*. Printing touches nothing. Writing
+   asks for the filename, offering the default for the project's runtime
+   (`restmail.ts`, `restmail.py`, `restmail.go`), and refuses to overwrite
+   something already there
+4. either way, print the one line that wires it in — `import "./restmail";`,
+   `import restmail`, or a call in Go; YAML pastes into `Pulumi.yaml` — and
+   block on *"Added it to your program? [y/N]"*. Writing the file does not
+   skip this: adding that line is editing their program, which an installer
+   does not do, so the step remains theirs whichever path they took. The
+   answer is never trusted, only waited on
 5. `pulumi preview`, and match what it will create against what we set: a
    `kubernetes:helm.sh/v3:Release` named `<name>`, reading our hostname. This
    is the only thing that proves the config and the code found each other —
@@ -271,6 +277,10 @@ The flow:
 6. *"Run pulumi up to install? [y/N]"* — yes runs `pulumi up --target` on our
    release only, never the whole stack, then verify. No leaves them to deploy
    however they like and run `server:verify` themselves.
+
+Both paths end at the same preview, which is the point: the file being
+written proves nothing about whether it was wired in, and the preview proves
+it either way.
 
 Preview needs the program to build and the provider to reach a cluster. If it
 cannot, say which, and what to do, rather than failing a task that did its job.
@@ -339,19 +349,24 @@ setup code, where it should refuse to start.
 in `GET /api/v1/server`: the bootstrap admin exists from the first start, so
 an install nobody has touched already reports `claimed: true`.
 
+## What chore needs first
+
+Two tasks here want input that is not yes-or-no, which `confirm:` cannot
+give: a filename for `install:pulumi`, and the typed code that guards
+deleting a server's data. So chore needs an `ask:` that captures an arbitrary
+string from the terminal, with a default, and — for the deletion gate — one
+that `--yes` does not answer and a pipe cannot feed. Neither task can be
+built as designed until it exists.
+
 ## Open
 
-1. Does `install:pulumi` write its file **into the project** (refusing if it
-   exists), or somewhere neutral for the user to move? Writing a new file is
-   not editing their code, but it is the first time an installer touches a
-   Pulumi project's source.
-2. Where does a backup go? It carries the master key, so it is a secret, and
+1. Where does a backup go? It carries the master key, so it is a secret, and
    a default of "the current directory" puts one in a git repo sooner or
    later.
-3. When `server:verify` fails at the end of an `upgrade:*`, does the upgrade
+2. When `server:verify` fails at the end of an `upgrade:*`, does the upgrade
    offer to put it back? `helm rollback` makes that one command; Pulumi has
    no equivalent, so it would mean setting `chartVersion` back and running
    up again. Tempting, but an automatic rollback after a failed migration
    can be worse than the failure.
-4. `backup:create` is cheap for the database and the keys and potentially
+3. `backup:create` is cheap for the database and the keys and potentially
    enormous for the attachments volume. Does the default include it?
