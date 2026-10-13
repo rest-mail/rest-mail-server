@@ -218,10 +218,17 @@ Re-running skips what is already done and goes to the preview.
 
 ## server:verify
 
-Renamed from `install:check`, and not `server:verify`: the checks wanted
+Renamed from `install:check`, and not `install:verify`: the checks wanted
 after installing are the ones wanted at 3am two months later, and an
-install-time name means nobody runs it then. Proves a running install works, layer by layer,
-stopping at the first failure, and saying **whose** failure it is:
+install-time name means nobody runs it then.
+
+**Every `install:*` and `upgrade:*` ends in it**, whichever tool they used,
+and it is equally the thing you run on a Tuesday to see that everything is
+still green. That makes it the most-seen output in the whole surface, so it
+is worth more care than anything else here.
+
+It works layer by layer, stopping at the first failure, and says **whose**
+failure it is:
 
 ```
   resources created     ok   Deployment, Service, Secret, Ingress
@@ -235,10 +242,10 @@ In-cluster comes before public on purpose: passing in-cluster and failing in
 public means "the server is fine; DNS, ingress or the certificate is not", and
 must read that way — a check that goes red for someone else's DNS gets ignored.
 
-Its facts come from whichever is to hand. Run by an install task at the end,
-it is **handed** them — the installer just set the password and knows the
-host, stack and namespace. Run on its own, later, from any machine, it reads
-them back from the stack or the release. Resource names come from the
+Its facts come from whichever is to hand. Run at the end of an install or an
+upgrade, it is **handed** them — the task that called it just set the
+password and knows the host, stack and namespace. Run on its own, later, from
+any machine, it reads them back from the stack or the release. Resource names come from the
 release's own outputs rather than being assumed.
 
 ## What the server provides
@@ -282,8 +289,11 @@ an install nobody has touched already reports `claimed: true`.
    live data-loss bug. Keeping the volumes fixes it but leaves an uninstall
    that does not clean up, so the choice is probably: keep them, and have
    `uninstall:*` say what survives and offer to remove it.
-3. Does `install:helm` end in `server:verify` like `install:pulumi`, or stay
-   thin?
+3. When `server:verify` fails at the end of an `upgrade:*`, does the upgrade
+   offer to put it back? `helm rollback` makes that one command; Pulumi has
+   no equivalent, so it would mean setting `chartVersion` back and running
+   up again. Tempting, but an automatic rollback after a failed migration
+   can be worse than the failure.
 4. Where does a backup go, and in what format? It has to carry the master key
    alongside the dump, so it is a secret, and "write it to ./restmail.dump"
    is not good enough.
