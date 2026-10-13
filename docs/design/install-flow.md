@@ -88,8 +88,7 @@ Tasks that talk to a running server do not, because it does not care.
 | | `sessions:revoke` |
 
 Today's `install:password` is misnamed under that rule — it is not a kind of
-install — and becomes `password:new`, which also puts it where someone who
-has lost one would look.
+install — and becomes `password:new`.
 
 ### upgrade is narrower than install, and that is the point
 
@@ -222,8 +221,25 @@ someone eventually deletes them with `kubectl`, having read none of this.
   session revoke does not touch, a leaked DKIM key needs rotating and
   republishing, and rotating the master key means re-encrypting everything
   it protects.
-- **`password:reset`.** The only way back for an admin who has
-  finished setup and forgotten their password, since the deployment's
+- **`password:new` is not a small `password:reset`.** It acts on nothing:
+  there is no server yet, so it is not resetting anything, it is making a
+  random string that the server will later accept. `password:reset` acts on
+  a running system and installs the result. They share a namespace because
+  they answer the same need at different times — a password for a server
+  that does not exist yet, and one for a server that does — but they are not
+  the same act and neither should be built out of the other.
+
+  It is thin enough to question, since `openssl rand -base64 24` is one
+  line. It earns its place by being the one generator guaranteed to satisfy
+  the server's own rules: long enough for the chart's check, and made of
+  characters that survive being carried through a shell.
+- **`password:reset` cannot be an emailed link.** On a mail server that is
+  circular: the usual recovery path runs through the thing that is broken.
+  It is also the reason the reset is a Job in the namespace — the recovery
+  for a mail server must not need mail, or DNS, or a certificate.
+
+  It is the only way back for an admin who has finished setup and forgotten
+  their password, since the deployment's
   password is ignored from then on. It cannot be a redeploy: that property is
   what stops whoever can read the Secret in a GitOps repo from taking the
   account. It re-arms the bootstrap admin from inside the namespace — a Job,
