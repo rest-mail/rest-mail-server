@@ -149,21 +149,25 @@ restmail:chartVersion`, preview, up — and the installer never edits the
 user's source. `install:*` must record the version it used, or an upgrade has
 nothing to diff against.
 
-### uninstall is the one that has to be awkward
+### uninstall never deletes data
 
-Both Secrets carry `helm.sh/resource-policy: keep` and neither volume does,
-so `helm uninstall` today deletes every mailbox and carefully preserves the
-master key that would have decrypted them. Backwards. **The volumes get the
-same annotation**, which makes an uninstall survivable: the deployment goes,
-the data stays, and a reinstall under the same name finds it again.
+Uninstalling a program does not delete what you made with it — removing
+Office leaves your documents where they were. Uninstalling rest-mail is the
+same: it removes the software, and the mail stays.
 
-That leaves deleting the data as a separate, genuinely irreversible act, and
-**that** is where the awkwardness belongs — not on the uninstall itself. A
-gate on the reversible step is one people learn to grind through, which
-trains them to grind through the one that matters.
+Today it does not. Both Secrets carry `helm.sh/resource-policy: keep` and
+neither volume does, so `helm uninstall` deletes every mailbox and carefully
+preserves the master key that would have decrypted them. Backwards. **The
+volumes get the same annotation**: the deployment goes, the data stays, and
+a reinstall under the same name finds it again.
 
-It is also a separate **task**, `data:destroy`, rather than a stage of
-either uninstall. What survives an uninstall is the same however it was
+Deleting the data is then a separate, genuinely irreversible act, and
+**that** is where the awkwardness belongs — never on the uninstall. A gate
+on the reversible step is one people learn to grind through, which trains
+them to grind through the one that matters.
+
+It is a separate **task**, `data:destroy`, and never a stage or an option
+of either uninstall. What survives an uninstall is the same however it was
 uninstalled — volumes and Secrets carrying `keep`, in a namespace — and
 removing them is the same `kubectl` work either way, so it does not depend
 on how you deployed and belongs in the right-hand column. The gate then
