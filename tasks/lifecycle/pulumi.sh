@@ -107,26 +107,7 @@ install() {
   fi
   say "Stack $stack config is set: $NAME:hostname=$HOST, domain=$DOMAIN, namespace=$NAMESPACE, chartVersion=$version" \
     "and $NAME:adminPassword, encrypted." ""
-
-  say "Checking whether your program already declares it..."
-  found=$(preview_release) || preview_failed
-  if [ -z "$found" ]; then
-    say "" "It does not yet. Add this to the program in $PROJECT:" ""
-    RUNTIME=$(runtime) NAME=$NAME CHART=$CHART "$here/pulumi-code.sh"
-    say ""
-    yes_no "Added it to your program?" || {
-      say "" "When you have, run this again: the config is set, so it goes straight to the preview."
-      exit 0
-    }
-    found=$(preview_release) || preview_failed
-    [ -n "$found" ] || refuse "pulumi preview still shows no Helm Release named \"$NAME\" in stack $stack." \
-      "Is the new file wired in (the import, or the call in main), and is it this project and stack?"
-  fi
-  [ "$(jq -r .hostname <<<"$found")" = "$HOST" ] || refuse \
-    "The program declares \"$NAME\", but its hostname comes out as \"$(jq -r .hostname <<<"$found")\", not $HOST." \
-    "It should read $NAME:hostname from config, as the printed code does."
-  say "pulumi preview: would $(jq -r .op <<<"$found") Helm release \"$NAME\" as $HOST, chart $(jq -r .version <<<"$found")."
-
+  # Shown the moment it exists, whatever happens next.
   if [ -n "$generated" ]; then
     cat <<EOF
 
@@ -141,6 +122,25 @@ install() {
 
 EOF
   fi
+
+  say "Checking whether your program already declares it..."
+  found=$(preview_release) || preview_failed
+  if [ -z "$found" ]; then
+    say "" "It does not yet." ""
+    RUNTIME=$(runtime) NAME=$NAME CHART=$CHART "$here/pulumi-code.sh"
+    say ""
+    yes_no "Added it to your program?" || {
+      say "" "When you have, run this again: the config is set, so it goes straight to the preview."
+      exit 0
+    }
+    found=$(preview_release) || preview_failed
+    [ -n "$found" ] || refuse "pulumi preview still shows no Helm Release named \"$NAME\" in stack $stack." \
+      "Is the new file wired in (the import, or the call in main), and is it this project and stack?"
+  fi
+  [ "$(jq -r .hostname <<<"$found")" = "$HOST" ] || refuse \
+    "The program declares \"$NAME\", but its hostname comes out as \"$(jq -r .hostname <<<"$found")\", not $HOST." \
+    "It should read $NAME:hostname from config, as the printed code does."
+  say "pulumi preview: would $(jq -r .op <<<"$found") Helm release \"$NAME\" as $HOST, chart $(jq -r .version <<<"$found")."
 
   if ! yes_no "Run pulumi up to install it now (the release only, nothing else in the stack)?"; then
     say "" "Deploy it however you deploy — pulumi up, or your pipeline — then check it:" \

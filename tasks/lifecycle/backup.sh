@@ -134,8 +134,8 @@ create() { # create PART... -> writes the backup
   chmod 600 "$out"
   k annotate "$(api_deployment)" --overwrite "$LAST_BACKUP_ANNOTATION=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1
 
-  say "" "Written: $out ($(du -h "$out" | awk '{ print $1 }'))" \
-    "It holds the master key: keep it as you would a password."
+  say "" "Written: $out ($(du -h "$out" | awk '{ print $1 }'))"
+  jq -e 'index("keys")' <<<"$contains" >/dev/null && say "It holds the master key: keep it as you would a password."
   jq -r '.missing[] | "Not in it: \(.part) — \(.why)"' "$stage/manifest.json"
 }
 
