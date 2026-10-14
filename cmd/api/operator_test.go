@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -204,4 +205,34 @@ func TestMintToken_NothingElseOnTheRealStdout(t *testing.T) {
 		t.Errorf("stdout is not just the result (%d bytes), starting %q",
 			out.Len(), out.String()[:min(out.Len(), 160)])
 	}
+}
+
+// A database that is not answering yet must not put the driver's connection
+// errors on stdout ahead of — or instead of — the result: a script reading
+// stdout would take them for it. Here it never answers, so stdout stays empty
+// and the error is the one JSON object on stderr.
+func TestOperator_NothingOnStdoutWhileTheDatabaseIsUnreachable(t *testing.T) {
+	if os.Getenv("RESTMAIL_OPERATOR_SUBPROCESS") == "1" {
+		os.Exit(runOperator([]string{"revoke-sessions"}, os.Stdout, os.Stderr))
+	}
+	if testing.Short() {
+		t.Skip("waits out the 30s database timeout")
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestOperator_NothingOnStdoutWhileTheDatabaseIsUnreachable$")
+	cmd.Env = append(os.Environ(), "RESTMAIL_OPERATOR_SUBPROCESS=1", "ENVIRONMENT=development",
+		"DB_HOST=127.0.0.1", "DB_PORT=1", "DB_SSLMODE=disable")
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	_ = cmd.Run()
+	if out.Len() != 0 {
+		t.Errorf("stdout carried %d bytes, starting %q", out.Len(), out.String()[:min(out.Len(), 160)])
+	}
+	if code := errorCodeIn(t, lastLine(errOut.String())); code != "database" {
+		t.Errorf("error code %q, want database", code)
+	}
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
 }

@@ -1,0 +1,76 @@
+version: "3"
+
+# A new chart, and nothing else changed. Narrower than install on purpose:
+# the only thing it takes is --version; every other fact is read back from the
+# release or the stack, because the one you forget does not fail — it
+# silently reverts the server to the chart's placeholder hostname.
+#
+# Both look for a backup from the last day before they start and offer to
+# take one. Neither rolls back on its own when server:verify fails afterwards:
+# a migration may have run, and putting the old code back under a migrated
+# database can be worse. They say what failed and how to go back.
+
+silent: true
+
+vars:
+  CONTEXT:
+    sh: kubectl config current-context 2>/dev/null || echo '(no current context)'
+
+tasks:
+  helm:
+    dotenv: []
+    interactive: true
+    desc: "Move a Helm install to a newer chart, keeping everything else: chore upgrade:helm [--version V]"
+    args:
+      - name: version
+        desc: the chart version (default the newest)
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      VERSION: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
+    preconditions:
+      - sh: command -v helm >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs helm, kubectl and jq"
+      - sh: kubectl cluster-info >/dev/null 2>&1
+        msg: "No cluster reachable: check your kubeconfig, or set KUBECONFIG"
+    confirm:
+      text: 'Upgrade rest-mail "{{.NAME}}" in {{.NAMESPACE}} on "{{.CONTEXT}}"?'
+      show: helm -n '{{.NAMESPACE}}' list --filter '^{{.NAME}}$'
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/upgrade-helm.sh"'
+        silent: true
+
+  pulumi:
+    dotenv: []
+    interactive: true
+    desc: "Move a Pulumi install to a newer chart, by config alone: chore upgrade:pulumi ~/infra [--version V]"
+    args:
+      - name: project
+        desc: your Pulumi project's directory
+      - name: version
+        desc: the chart version (default the newest)
+      - name: name
+        desc: the config namespace and Helm release name (default restmail)
+      - name: stack
+        desc: which stack, if not the one selected in the project
+    vars:
+      VERSION: ''
+      NAME: restmail
+      STACK: ''
+      PROJECT_DIR:
+        sh: cd "$USER_WORKING_DIR" 2>/dev/null; cd -- "$PROJECT" 2>/dev/null && pwd || printf %s "$PROJECT"
+    preconditions:
+      - sh: command -v pulumi >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs pulumi, kubectl and jq"
+      - sh: test -f '{{.PROJECT_DIR}}/Pulumi.yaml' || test -f '{{.PROJECT_DIR}}/Pulumi.yml'
+        msg: "{{.PROJECT}} is not a Pulumi project: there is no Pulumi.yaml in {{.PROJECT_DIR}}"
+    cmds:
+      # The namespace is the stack's, so the day-2 checks look in the right place.
+      - cmd: |
+          NAMESPACE=$(pulumi -C "$PROJECT_DIR" config get "$NAME:namespace" ${STACK:+--stack "$STACK"} 2>/dev/null || echo rest-mail)
+          PROJECT="$PROJECT_DIR" NAMESPACE="$NAMESPACE" '{{.TASKFILE_DIR}}/lifecycle/pulumi.sh' upgrade
+        silent: true

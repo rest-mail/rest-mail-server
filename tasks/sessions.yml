@@ -1,0 +1,33 @@
+version: "3"
+
+# Sign everybody out — what makes server:online safe after an incident.
+# Refresh tokens first, then every admin's epoch: the other order lets an
+# admin's client refresh straight back in. A mail user's access token runs out
+# on its own within minutes and cannot be renewed.
+
+silent: true
+
+vars:
+  CONTEXT:
+    sh: kubectl config current-context 2>/dev/null || echo '(no current context)'
+
+tasks:
+  revoke:
+    dotenv: []
+    desc: "Sign everybody out: every session, every device"
+    args:
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      NAME: restmail
+      NAMESPACE: rest-mail
+    preconditions:
+      - sh: command -v helm >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs helm, kubectl and jq"
+    confirm:
+      text: 'Sign everybody out of rest-mail "{{.NAME}}" in {{.NAMESPACE}}, on "{{.CONTEXT}}"?'
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/recover.sh" sessions'
+        silent: true

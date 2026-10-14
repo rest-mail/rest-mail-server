@@ -1,0 +1,83 @@
+version: "3"
+
+# A backup is one tar file: a manifest, and the parts asked for. It holds the
+# master key, so it is a secret in its own right, and it has no default place
+# to go: --to, or a `backupTarget` value recorded on the release once.
+#
+#   backup:create        database, master key, and the install's facts —
+#                        everything but the attachments, which it measures and
+#                        names every time, with the command for them
+#   backup:database      the database alone
+#   backup:keys          the master key alone
+#   backup:attachments   the attachments volume, streamed through the cluster
+#   backup:restore       put a backup into an install, behind a typed code
+
+silent: true
+
+tasks:
+  create:
+    dotenv: []
+    desc: "Back up the database, the master key and the install's facts: chore backup:create --to DIR"
+    args: &backup_args
+      - name: to
+        desc: a directory, or a .tar file; default the release's backupTarget
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars: &backup_vars
+      TO: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/backup.sh" create'
+        silent: true
+
+  database:
+    dotenv: []
+    desc: "Back up the database alone"
+    args: *backup_args
+    vars: *backup_vars
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/backup.sh" database'
+        silent: true
+
+  keys:
+    dotenv: []
+    desc: "Back up the master key alone"
+    args: *backup_args
+    vars: *backup_vars
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/backup.sh" keys'
+        silent: true
+
+  attachments:
+    dotenv: []
+    desc: "Back up the attachments volume — can be large; backup:create leaves it out"
+    args: *backup_args
+    vars: *backup_vars
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/backup.sh" attachments'
+        silent: true
+
+  restore:
+    dotenv: []
+    interactive: true
+    desc: "Put a backup into an install, replacing what it holds: chore backup:restore --from FILE"
+    args:
+      - name: from
+        desc: the backup file
+      - {name: i_mean_it, type: bool, desc: "skip the typed code — for a script that genuinely means to"}
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      I_MEAN_IT: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
+    cmds:
+      - cmd: |
+          cd "$USER_WORKING_DIR" && FROM=$(realpath -- "$FROM") && cd - >/dev/null
+          AUTOMATE=${I_MEAN_IT:+1} FROM="$FROM" '{{.TASKFILE_DIR}}/lifecycle/backup.sh' restore
+        silent: true

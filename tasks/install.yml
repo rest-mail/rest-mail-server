@@ -1,256 +1,136 @@
 version: "3"
 
-# Installing rest-mail somewhere real.
+# Installing rest-mail somewhere real. One of the lifecycle families — see
+# docs/design/install-flow.md for the whole map and why each task is shaped
+# the way it is:
 #
-# Four steps, and the second is the one that needs explaining:
+#   install:helm | install:pulumi       put it there, then server:verify
+#   upgrade:helm | upgrade:pulumi       a new chart, nothing else changed
+#   uninstall:helm | uninstall:pulumi   the software goes, the mail stays
+#   server:*  backup:*  dns:*  data:destroy  password:*  sessions:revoke
 #
-#   1. pick a method        helm, or pulumi
-#   2. make a password      chore install:password
-#   3. install              chore install:helm, or your own `pulumi up`
-#   4. sign in              the rest-mail app, with that password
+# The tasks are thin; the scripts in tasks/lifecycle/ do the work, and every
+# one of them does what you could have typed. Nothing here is needed to
+# install rest-mail. It is here so the pleasant path and the documented path
+# are the same path.
 #
-# Step 2 exists because step 3 cannot do it for you. The chart refuses to
-# install without an admin password, and deliberately will not invent one:
-# whoever installs has somewhere to keep a secret and a chart does not, so a
-# generated password would be one nobody could get at afterwards — buried in a
-# Kubernetes Secret, a pipeline log, or a terminal nobody was watching. Making
-# it yourself, in front of you, is the only version that works for every way of
-# installing.
+# THE ADMIN PASSWORD is made by the installer, not by you: generated and shown
+# once at a terminal, refused in a pipeline (a password printed to a log is a
+# password in a log), or yours with --password "$VAR". It never appears in a
+# command's text: chore exports every variable to the shell, and the scripts
+# read $PASSWORD from there.
 #
-# What that password is: the only way into a server nobody has signed in to
-# yet. Using it forces a new password and an authenticator, after which it is
-# worthless, and it expires 72 hours after it is first applied so an
-# abandoned install does not sit on the internet waiting to be claimed.
-#
-# install:pulumi, AND WHY IT IS TOLD WHERE YOUR PROJECT IS. Your Pulumi project
-# is a program, in a language and layout this repository has never seen, so
-# nothing here edits it. What the task can do safely, it does: it puts the admin
-# password into your stack's config as an encrypted secret, and prints the
-# resource for your project's language — which reads that secret rather than
-# containing it, because what you paste gets committed. You paste it and run
-# `pulumi up`; `install:check` then tells you whether it is really running.
-#
-# THE PASSWORD NEVER APPEARS IN A COMMAND'S TEXT. chore exports every variable to
-# the shell, so the commands below say "$PASSWORD" and the shell fills it in.
-# Written as '{{.PASSWORD}}' instead, it would be pasted into the command before
-# the shell saw it — printed by -v, visible in the process list, and broken by a
-# password containing a quote.
-#
-# These tasks are thin wrappers. Every one of them prints, or is, a command you
-# could have typed. Nothing here is required to install rest-mail; it is here so
-# the pleasant path and the documented path are the same path.
+# Every task declines the root file's dotenv. It requires
+# config/<CONFIG>/config.env — a development testbed's environment — and
+# these tasks act on SOMEBODY ELSE'S cluster from a plain checkout where no
+# such config exists.
 
 silent: true
 
-
 vars:
-  CHART: '{{.CHART | default "oci://ghcr.io/rest-mail/charts/restmail"}}'
-  NAMESPACE: '{{.NAMESPACE | default "rest-mail"}}'
-  RELEASE: '{{.RELEASE | default "restmail"}}'
-  # Tolerant on purpose. A task's variables are resolved BEFORE its
-  # preconditions run, so a bare `kubectl config current-context` here would
-  # fail with kubectl's own error on a machine that has no kubectl — preempting
-  # the precondition below whose whole job is to say so in words.
+  # Tolerant on purpose: a task's variables resolve BEFORE its preconditions,
+  # so a bare `kubectl config current-context` would fail with kubectl's own
+  # error on a machine without kubectl, preempting the precondition that says so.
   CONTEXT:
     sh: kubectl config current-context 2>/dev/null || echo '(no current context)'
 
 tasks:
-  password:
-    # Declines the root file's dotenv. It requires config/<CONFIG>/config.env — a
-    # development testbed's environment — and without it the root refuses to run
-    # anything at all. These tasks act on SOMEBODY ELSE'S cluster from a plain
-    # checkout where no such config exists.
-    dotenv: []
-    desc: "Make an admin password for a new install, and show it once"
-    cmds:
-      - |
-        pw=$(openssl rand -base64 24 | tr -d '\n')
-        cat <<EOF
-
-        Your rest-mail admin password:
-
-            $pw
-
-        Keep it somewhere now — nothing else will show it to you. Give it to
-        whichever way you are installing:
-
-          chore install:helm mail.example.com example.com "$pw"
-
-          helm install {{.RELEASE}} {{.CHART}} \\
-            --namespace {{.NAMESPACE}} --create-namespace \\
-            --set mailserver.hostname=mail.example.com \\
-            --set mailserver.domain=example.com \\
-            --set api.bootstrapAdminPassword="$pw"
-
-          chore install:pulumi ~/your-pulumi-project mail.example.com "$pw"
-
-          gh secret set RESTMAIL_ADMIN_PASSWORD --body "$pw"
-
-        Then sign in to the rest-mail app as "admin" with it. You will have to
-        choose your own password and enroll an authenticator before anything
-        else works. It expires 72 hours after the server first takes it.
-
-        EOF
-
   helm:
-    # Declines the root file's dotenv. It requires config/<CONFIG>/config.env — a
-    # development testbed's environment — and without it the root refuses to run
-    # anything at all. These tasks act on SOMEBODY ELSE'S cluster from a plain
-    # checkout where no such config exists.
     dotenv: []
-    desc: "Install into the cluster your kubeconfig points at: chore install:helm HOST DOMAIN PASSWORD"
+    interactive: true
+    desc: "Install into the cluster your kubeconfig points at: chore install:helm mail.example.com"
     args:
       - name: host
         desc: the address the server answers on, e.g. mail.example.com
       - name: domain
-        desc: the mail domain it serves, e.g. example.com
+        desc: the mail domain it serves; worked out from HOST if left out
       - name: password
-        desc: the admin password from `chore install:password`
+        desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: version
+        desc: the chart version (default the newest)
+      - name: values
+        desc: a values file for everything else — ingress, storage class, resources; upgrades keep it
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      # mail.example.com -> example.com. Read from the environment: in chore
+      # 0.17 a variable's template sees an argument's default, not its value.
+      DOMAIN:
+        sh: printf %s "${HOST#*.}"
+      PASSWORD: ''
+      VERSION: ''
+      VALUES: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
     preconditions:
-      # Said plainly, before anything is installed. Order matters: the tools
-      # first, then the cluster they talk to, then what we were told.
-      - sh: command -v helm >/dev/null
-        msg: "helm is not installed — see https://helm.sh/docs/intro/install/"
-      - sh: command -v kubectl >/dev/null
-        msg: "kubectl is not installed — see https://kubernetes.io/docs/tasks/tools/"
+      - sh: command -v helm >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs helm, kubectl and jq — see docs/installing.md"
+      - sh: '[ -z "$VALUES" ] || (cd "$USER_WORKING_DIR" && test -f "$VALUES")'
+        msg: "No values file at {{.VALUES}}"
       - sh: kubectl cluster-info >/dev/null 2>&1
-        msg: "no cluster reachable: check your kubeconfig, or set KUBECONFIG"
-      - sh: test -n "{{.HOST}}"
-        msg: "HOST is required: the address the server answers on, e.g. mail.example.com"
-      - sh: test -n "{{.DOMAIN}}"
-        msg: "DOMAIN is required: the mail domain it serves, e.g. example.com"
-      - sh: test -n "$PASSWORD"
-        msg: "PASSWORD is required: run `chore install:password` first, and keep what it prints"
-      - sh: test "${#PASSWORD}" -ge 16
-        msg: "PASSWORD must be at least 16 characters — `chore install:password` makes one"
-    # The foot-gun this guards is not a typo in the hostname. It is installing a
-    # mail server into whatever cluster the kubeconfig happened to be pointing
-    # at, which nobody checks and everybody assumes. So the context is on the
-    # screen when the question is asked.
+        msg: "No cluster reachable: check your kubeconfig, or set KUBECONFIG"
+      - sh: case "$HOST" in *.*) ;; *) false ;; esac
+        msg: "HOST must be a full name, like mail.example.com"
+      - sh: case "$DOMAIN" in *.*) ;; *) false ;; esac
+        msg: "Could not work out the mail domain from {{.HOST}} (it came out as \"{{.DOMAIN}}\"): pass --domain"
+    # The foot-gun is not a typo in the hostname. It is installing a mail
+    # server into whatever cluster the kubeconfig happened to point at.
     confirm:
-      text: 'Install rest-mail as {{.HOST}} into "{{.CONTEXT}}"?'
+      text: 'Install rest-mail as {{.HOST}} (mail for {{.DOMAIN}}) into "{{.CONTEXT}}"?'
       show: kubectl config get-contexts '{{.CONTEXT}}'
     cmds:
-      - |
-        helm install {{.RELEASE}} {{.CHART}} \
-          --namespace {{.NAMESPACE}} --create-namespace \
-          --set mailserver.hostname={{.HOST}} \
-          --set mailserver.domain={{.DOMAIN}} \
-          --set-string api.bootstrapAdminPassword="$PASSWORD"
-      - echo 'Installed. Sign in to the rest-mail app at https://{{.HOST}} as "admin".'
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/install-helm.sh"'
+        silent: true
 
   pulumi:
     dotenv: []
-    desc: "Add rest-mail to your Pulumi project: chore install:pulumi PROJECT HOST PASSWORD [--name N] [--domain D] [--stack S]"
+    interactive: true
+    desc: "Add rest-mail to your Pulumi project: chore install:pulumi ~/infra mail.example.com"
     args:
       - name: project
         desc: your Pulumi project's directory
       - name: host
         desc: the address the server answers on, e.g. mail.example.com
-      - name: password
-        desc: the admin password from `chore install:password`
-      - name: name
-        desc: what to call this mail server in the stack and in Helm (default restmail)
       - name: domain
         desc: the mail domain it serves; worked out from HOST if left out
+      - name: password
+        desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: version
+        desc: the chart version (default the newest)
+      - name: name
+        desc: the config namespace and Helm release name (default restmail)
+      - name: namespace
+        desc: the Kubernetes namespace (default rest-mail)
       - name: stack
         desc: which stack, if not the one selected in the project
     vars:
-      NAME: restmail
-      # mail.example.com -> example.com. Wrong for a host directly on the domain
-      # (example.com -> com), which a precondition refuses, and arguable for a
-      # deep one, which is why the confirm shows what it worked out.
       DOMAIN:
         sh: printf %s "${HOST#*.}"
+      PASSWORD: ''
+      VERSION: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
       STACK: ''
-      # EVERY variable below that depends on an argument reads it as "$NAME" from
-      # the environment, never as {{.NAME}}. In chore 0.17.0 a variable's template
-      # sees an argument's DEFAULT from this block rather than the value passed,
-      # so `{{if .STACK}}` here was empty even under `--stack prod` — and the
-      # secret went into whichever stack happened to be selected. The shell is
-      # given the real value.
-      #
-      # Absolute, from where you ran chore. Tolerant, like CONTEXT: a missing
-      # directory is the precondition's to report, in words.
+      # Absolute, from where you ran chore. Tolerant: a missing directory is the
+      # precondition's to report, in words.
       PROJECT_DIR:
         sh: cd "$USER_WORKING_DIR" 2>/dev/null; cd -- "$PROJECT" 2>/dev/null && pwd || printf %s "$PROJECT"
-      STACK_ARG:
-        sh: '[ -z "$STACK" ] || printf -- "--stack %s" "$STACK"'
-      # Which language to print the resource in: `runtime: nodejs`, or
-      # `runtime: {name: nodejs, options: ...}`.
-      RUNTIME:
-        sh: |
-          f='{{.PROJECT_DIR}}/Pulumi.yaml'; [ -f "$f" ] || f='{{.PROJECT_DIR}}/Pulumi.yml'
-          awk '/^runtime:/ { if ($2 != "") { print $2; exit } inrt = 1; next }
-               inrt && /^[[:space:]]+name:/ { print $2; exit }
-               inrt && /^[^[:space:]]/ { exit }' "$f" 2>/dev/null | tr -d "\"'"
-      # PROJECT_DIR as a template, STACK from the environment: an argument reaches
-      # a variable's shell only through the environment, and a variable computed
-      # earlier in this block only through the template.
-      STACK_NAME:
-        sh: '[ -n "$STACK" ] && printf %s "$STACK" || pulumi -C ''{{.PROJECT_DIR}}'' stack --show-name 2>/dev/null || printf "(none selected)"'
     preconditions:
-      - sh: command -v pulumi >/dev/null
-        msg: "pulumi is not installed — see https://www.pulumi.com/docs/install/"
+      - sh: command -v pulumi >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs pulumi, kubectl and jq — see docs/installing.md"
       - sh: test -f '{{.PROJECT_DIR}}/Pulumi.yaml' || test -f '{{.PROJECT_DIR}}/Pulumi.yml'
         msg: "{{.PROJECT}} is not a Pulumi project: there is no Pulumi.yaml in {{.PROJECT_DIR}}"
-      - sh: pulumi -C '{{.PROJECT_DIR}}' stack --show-name {{.STACK_ARG}} >/dev/null 2>&1
-        msg: "no stack to install into: pass --stack, or run `pulumi stack select` in {{.PROJECT_DIR}}"
       - sh: printf %s "$NAME" | grep -Eq '^[a-z0-9]([-a-z0-9]{0,51}[a-z0-9])?$'
         msg: "--name {{.NAME}} cannot be a Helm release name: lowercase letters, digits and dashes, 53 at most"
       - sh: case "$HOST" in *.*) ;; *) false ;; esac
         msg: "HOST must be a full name, like mail.example.com"
       - sh: case "$DOMAIN" in *.*) ;; *) false ;; esac
-        msg: "could not work out the mail domain from {{.HOST}} (it came out as \"{{.DOMAIN}}\"): pass --domain"
-      - sh: test "${#PASSWORD}" -ge 16
-        msg: "PASSWORD must be at least 16 characters — `chore install:password` makes one"
-    # Shows what it worked out — the domain especially — and which stack, because
-    # a secret set in the wrong stack is a deploy that cannot sign anyone in.
+        msg: "Could not work out the mail domain from {{.HOST}} (it came out as \"{{.DOMAIN}}\"): pass --domain"
     confirm:
-      text: 'Add mail server "{{.NAME}}" ({{.HOST}}, mail for {{.DOMAIN}}) to {{.PROJECT_DIR}}, stack {{.STACK_NAME}}?'
+      text: 'Add mail server "{{.NAME}}" ({{.HOST}}, mail for {{.DOMAIN}}) to the Pulumi project in {{.PROJECT_DIR}}?'
       show: pulumi -C '{{.PROJECT_DIR}}' stack ls
     cmds:
-      # From stdin, not as an argument: printf is a shell builtin, so the
-      # password never becomes another process's command line.
-      - printf %s "$PASSWORD" | pulumi -C "$PROJECT_DIR" config set --secret restmail:bootstrapAdminPassword {{.STACK_ARG}}
-      - echo
-      - echo 'The admin password is in stack {{.STACK_NAME}}, encrypted.'
-      - echo
-      - RUNTIME='{{.RUNTIME}}' '{{.TASKFILE_DIR}}/install/pulumi-resource.sh'
-      - |
-        cat <<'EOF'
-
-        Then deploy it — `pulumi up`, or commit and let your pipeline do it — and
-        check it is really running:
-
-        EOF
-        echo "  chore install:check $NAME --project $PROJECT_DIR${STACK:+ --stack $STACK}"
-
-  check:
-    dotenv: []
-    desc: "Check an install is in place and answering: chore install:check NAME [--project DIR] [--stack S] [--url URL]"
-    args:
-      - name: name
-        desc: the mail server's name (default restmail)
-      - name: project
-        desc: the Pulumi project it was installed from; leave out for a Helm install
-      - name: stack
-        desc: which stack, if not the one selected in the project
-      - name: url
-        desc: where the API answers, if not https://<its hostname>
-    vars:
-      NAME: restmail
-      PROJECT: ''
-      STACK: ''
-      URL: ''
-      # From the environment, not {{.PROJECT}}: see install:pulumi's vars.
-      PROJECT_DIR:
-        sh: '[ -z "$PROJECT" ] || { cd "$USER_WORKING_DIR" 2>/dev/null; cd -- "$PROJECT" 2>/dev/null && pwd || printf %s "$PROJECT"; }'
-    preconditions:
-      - sh: test -z "$PROJECT" || test -f "$PROJECT_DIR/Pulumi.yaml" || test -f "$PROJECT_DIR/Pulumi.yml"
-        msg: "{{.PROJECT_DIR}} is not a Pulumi project: there is no Pulumi.yaml there"
-    cmds:
-      # silent: the script says what failed and what to do; chore's own "failing
-      # step" report after it would only repeat the command line.
-      - cmd: PROJECT="$PROJECT_DIR" '{{.TASKFILE_DIR}}/install/check.sh'
+      - cmd: PROJECT="$PROJECT_DIR" '{{.TASKFILE_DIR}}/lifecycle/pulumi.sh' install
         silent: true

@@ -300,6 +300,24 @@ includes:
   # not inherit this repo's development defaults.
   install:
     taskfile: ./tasks/install.yml
+  # The rest of a deployed server's life — docs/design/install-flow.md has the
+  # map. Same rule as install: nothing mapped in.
+  upgrade:
+    taskfile: ./tasks/upgrade.yml
+  uninstall:
+    taskfile: ./tasks/uninstall.yml
+  server:
+    taskfile: ./tasks/server.yml
+  backup:
+    taskfile: ./tasks/backup.yml
+  dns:
+    taskfile: ./tasks/dns.yml
+  data:
+    taskfile: ./tasks/data.yml
+  password:
+    taskfile: ./tasks/password.yml
+  sessions:
+    taskfile: ./tasks/sessions.yml
 
   # ── Subprojects (must come last) ────────────────────────
   # Each of these sets PROJECT/IMAGE_TAG to its own value and Task bleeds

@@ -87,6 +87,11 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 		logTo = stderr
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logTo, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	// The database library's default logger writes to the process's stdout, and
+	// connecting uses it before any session logger of ours applies — a database
+	// still starting up then prints a connection error ahead of the result. It
+	// gets ours from the start.
+	gormlogger.Default = operatorDBLogger(stderr)
 
 	switch args[0] {
 	case "mint-token":
