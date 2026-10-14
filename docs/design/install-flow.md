@@ -1,7 +1,9 @@
 # Install and lifecycle: design
 
-Status: agreed in discussion, not yet built. `docs/installing.md` describes what
-exists today; this describes what it is changing into, and why. It covers the
+Status: built — `tasks/*.yml` and `tasks/lifecycle/`, run end to end against a
+cluster through Helm and through Pulumi. `docs/installing.md` is the user's
+guide; this is why each task is shaped the way it is. Where the build added to
+or differs from what was agreed, it says so under "Built, and where it differs". It covers the
 install, and the tasks that come after it — upgrade, uninstall, backup, and the
 ones for when something has gone wrong.
 
@@ -556,6 +558,48 @@ property the gate needs without chore knowing it exists:
 
 A built-in `ask:` would still be nicer — one prompt style, `--dry` aware —
 but it is polish, and nothing here waits on it.
+
+## Built, and where it differs
+
+Additions the building needed, each small enough to keep or drop:
+
+- **`backup:attachments`.** `backup:create` leaves the attachments out and
+  prints "the command that would take it"; there had to be one.
+- **`install:helm --values FILE`.** A real cluster needs more than a hostname —
+  an ingress, a storage class, resources — and without it the only way to give
+  them was to stop using the task. It becomes part of the release, so upgrades
+  keep it.
+- **`backup:restore` is behind the typed code too.** It replaces what the server
+  holds, which is destroying data as much as `data:destroy` is.
+- **Where "the last backup" is recorded:** an annotation on the API's
+  Deployment, `rest-mail.com/last-backup`, written by `backup:create`. The
+  cluster knows when it was, whichever machine took it; `upgrade:*` reads it.
+- **`backupTarget` is a value on the release**, for Pulumi installs too (in
+  the Release's values). The day-2 tasks read the release, not the stack.
+- **`server:verify` exits 3** when everything passes but the public layer, so an
+  upgrade can tell "the server is broken" (offer the rollback) from "DNS is
+  not there yet" (an upgrade did not cause it).
+- **`password:reset` and `sessions:revoke` run in a pod, not a Job.** A pod
+  built from the API's own pod template — same image, configuration, Secrets
+  and network policy — minus the attachments volume and the liveness probe.
+  Input reaches it through a Secret that lives as long as the pod does.
+- **A reset password does not expire.** Resetting clears the bootstrap expiry,
+  so the deployment's old password can never re-arm the account over the one
+  just handed out; the cost is that the reset one has no 72 hours. It is shown
+  once, to whoever ran the reset, and must be replaced at the next sign-in.
+- **`sessions:revoke` while online** can let a client that refreshes between the
+  two halves back in. It says so and recommends `server:offline` first, where
+  nothing can refresh at all.
+
+Found on the way, not part of this:
+
+- **The published chart crashes its own gateways.** Since #279 the gateways
+  refuse `SMTP_PORT_SUBMISSION`, `IMAP_PORT` and `POP3_PORT` in production, and
+  the chart still sets all three, so chart 0.12.0 deploys three gateways in
+  `CrashLoopBackOff`. Testing here ran with the gateways off.
+- **Operator commands printed the database driver's connection errors on
+  stdout** when the database was slow to answer, ahead of the JSON result.
+  Fixed here: they install their quiet logger before connecting.
 
 ## Open
 
