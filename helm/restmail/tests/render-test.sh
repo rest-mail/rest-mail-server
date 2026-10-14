@@ -132,6 +132,17 @@ assert_contains "for user restmail"              "$tmp/pg-secret.yaml"  'POSTGRE
 # MASTER_KEY must survive an uninstall: a new one makes stored keys unreadable.
 assert_contains "the API's Secret survives uninstall"  "$tmp/api-secret.yaml" 'helm.sh/resource-policy: keep'
 assert_contains "so does Postgres's"                   "$tmp/pg-secret.yaml"  'helm.sh/resource-policy: keep'
+# And so must the data it unlocks: uninstalling removes the software, not the
+# mail. Keeping the key while deleting the volumes would be backwards.
+pvc() { # pvc <file> <name> -> that PersistentVolumeClaim's document
+  awk -v n="  name: $2" 'BEGIN{RS="\n---\n"} /\nkind: PersistentVolumeClaim\n/ && index($0, n"\n") {print}' "$1"
+}
+pvc "$tmp/bare.yaml" restmail-postgres-data  > "$tmp/pg-pvc.yaml"
+pvc "$tmp/bare.yaml" restmail-api-attachments > "$tmp/att-pvc.yaml"
+assert_contains "the database's volume is made"      "$tmp/pg-pvc.yaml"  'kind: PersistentVolumeClaim'
+assert_contains "and survives uninstall"             "$tmp/pg-pvc.yaml"  'helm.sh/resource-policy: keep'
+assert_contains "the attachments' volume is made"    "$tmp/att-pvc.yaml" 'kind: PersistentVolumeClaim'
+assert_contains "and survives uninstall too"         "$tmp/att-pvc.yaml" 'helm.sh/resource-policy: keep'
 # Generated, not a placeholder: 64 characters of a random alphabet.
 key=$(sed -n 's/^  MASTER_KEY: "\(.*\)"$/\1/p' "$tmp/api-secret.yaml")
 [ "${#key}" = 64 ] || fail "MASTER_KEY is ${#key} characters, want 64"

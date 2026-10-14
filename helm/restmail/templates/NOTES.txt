@@ -16,6 +16,16 @@ Secrets:
   * API credentials:      {{ if .Values.api.existingSecret }}{{ .Values.api.existingSecret }} (yours){{ else }}{{ include "restmail.componentName" (list . "api") }} (made by this chart, kept across upgrades and uninstalls){{ end }}
   * Postgres credentials: {{ if .Values.postgres.existingSecret }}{{ .Values.postgres.existingSecret }} (yours){{ else }}{{ include "restmail.componentName" (list . "postgres") }} (made by this chart, kept across upgrades and uninstalls){{ end }}
   * TLS certificate:      {{ .Values.tls.secretName }} (yours, or cert-manager's: the chart cannot make a trusted one)
+{{- if or (and .Values.postgres.enabled .Values.postgres.persistence.enabled) .Values.api.attachments.persistence.enabled }}
+
+Data (kept when the release is uninstalled: uninstalling removes the software, not the mail):
+{{- if and .Values.postgres.enabled .Values.postgres.persistence.enabled }}
+  * mail and accounts:    {{ include "restmail.componentName" (list . "postgres-data") }}
+{{- end }}
+{{- if .Values.api.attachments.persistence.enabled }}
+  * attachments:          {{ include "restmail.componentName" (list . "api-attachments") }}
+{{- end }}
+{{- end }}
 {{- /* Only when talking to a cluster: `helm template` can look nothing up.
        kube-system, not this release's namespace, because a first install with
        --create-namespace renders this before that namespace exists. */}}
