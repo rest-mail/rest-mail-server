@@ -32,9 +32,6 @@ spec:
           securityContext:
             {{- include "restmail.containerSecurityContext" (list . "imap-gateway") | nindent 12 }}
           ports:
-            - name: imap
-              containerPort: {{ .Values.imapGateway.ports.plain }}
-              protocol: TCP
             - name: imaps
               containerPort: {{ .Values.imapGateway.ports.tls }}
               protocol: TCP
@@ -43,8 +40,6 @@ spec:
               value: {{ .Values.mailserver.hostname | quote }}
             - name: API_BASE_URL
               value: {{ include "restmail.api.url" . | quote }}
-            - name: IMAP_PORT
-              value: {{ .Values.imapGateway.ports.plain | quote }}
             - name: IMAP_TLS_PORT
               value: {{ .Values.imapGateway.ports.tls | quote }}
             - name: LOG_LEVEL
@@ -68,12 +63,12 @@ spec:
               mountPath: /tmp
           readinessProbe:
             tcpSocket:
-              port: imap
+              port: imaps
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             tcpSocket:
-              port: imap
+              port: imaps
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:

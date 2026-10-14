@@ -176,12 +176,10 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail listeners: inbound 25, submission 587, implicit-TLS 465.
+    # Public mail listeners: inbound 25 and implicit-TLS submission 465.
     - ports:
         - protocol: TCP
           port: {{ .Values.smtpGateway.ports.inbound }}
-        - protocol: TCP
-          port: {{ .Values.smtpGateway.ports.submission }}
         - protocol: TCP
           port: {{ .Values.smtpGateway.ports.submissionTLS }}
   egress:
@@ -236,10 +234,8 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail access: 143 (STARTTLS) and 993 (implicit TLS).
+    # Public mail access: 993, implicit TLS.
     - ports:
-        - protocol: TCP
-          port: {{ .Values.imapGateway.ports.plain }}
         - protocol: TCP
           port: {{ .Values.imapGateway.ports.tls }}
   egress:
@@ -280,10 +276,8 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail access: 110 (STLS) and 995 (implicit TLS).
+    # Public mail access: 995, implicit TLS.
     - ports:
-        - protocol: TCP
-          port: {{ .Values.pop3Gateway.ports.plain }}
         - protocol: TCP
           port: {{ .Values.pop3Gateway.ports.tls }}
   egress:

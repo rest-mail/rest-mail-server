@@ -20,10 +20,6 @@ spec:
   selector:
     {{- include "restmail.componentSelectorLabels" (list . "pop3-gateway") | nindent 4 }}
   ports:
-    - name: pop3
-      port: {{ .Values.pop3Gateway.ports.plain }}
-      targetPort: pop3
-      protocol: TCP
     - name: pop3s
       port: {{ .Values.pop3Gateway.ports.tls }}
       targetPort: pop3s

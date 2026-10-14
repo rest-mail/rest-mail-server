@@ -292,7 +292,7 @@ component, deep-merged under the operator's global .Values.securityContext
 (operator values win).
 
 Gateways: drop ALL, add back only NET_BIND_SERVICE so a root process can bind
-25/587/465/143/993/110/995 and nothing else; read-only rootfs is safe because the
+25/465/993/995 and nothing else; read-only rootfs is safe because the
 queue is DB-backed and the CA-trust entrypoint only writes when /certs/ca.crt is
 present (the chart projects tls.crt/tls.key only). API: read-only rootfs is off
 because its entrypoint may run update-ca-certificates. js-filter: read-only rootfs
