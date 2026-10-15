@@ -85,7 +85,7 @@ them is five config keys, under the mail server's name:
 restmail:hostname      mail.example.com
 restmail:domain        example.com
 restmail:namespace     rest-mail
-restmail:chartVersion  0.12.1
+restmail:chartVersion  0.13.0
 restmail:adminPassword [secret]
 ```
 
