@@ -24,10 +24,6 @@ spec:
       port: {{ .Values.smtpGateway.ports.inbound }}
       targetPort: smtp
       protocol: TCP
-    - name: submission
-      port: {{ .Values.smtpGateway.ports.submission }}
-      targetPort: submission
-      protocol: TCP
     - name: submissions
       port: {{ .Values.smtpGateway.ports.submissionTLS }}
       targetPort: submissions

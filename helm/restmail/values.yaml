@@ -245,9 +245,12 @@ smtpGateway:
     repository: ghcr.io/rest-mail/smtp-gateway
     tag: ""
     pullPolicy: ""
+  # Client access is implicit TLS only: submission is 465, and there is no 587.
+  # 25 is for other mail servers. It always offers STARTTLS and never AUTH, and
+  # takes mail from a server that will not upgrade (RFC 3207 §4), recording it
+  # as unencrypted (#292).
   ports:
     inbound: 25
-    submission: 587
     submissionTLS: 465
   queueWorkers: 4
   # Max accepted SMTP message size in bytes (drives both the EHLO SIZE
@@ -288,8 +291,8 @@ imapGateway:
     repository: ghcr.io/rest-mail/imap-gateway
     tag: ""
     pullPolicy: ""
+  # Implicit TLS only; there is no 143.
   ports:
-    plain: 143
     tls: 993
   logLevel: info
   environment: production
@@ -315,8 +318,8 @@ pop3Gateway:
     repository: ghcr.io/rest-mail/pop3-gateway
     tag: ""
     pullPolicy: ""
+  # Implicit TLS only; there is no 110.
   ports:
-    plain: 110
     tls: 995
   logLevel: info
   environment: production

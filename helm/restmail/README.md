@@ -8,10 +8,14 @@ Helm chart for the rest-mail "mail3" stack.
   REST API and protocol gateways. Persistent storage via PVC.
 - `api` — the Go REST API.
 - `js-filter` — the JavaScript filter sidecar consumed by the API.
-- `smtp-gateway` — SMTP listener on 25 (inbound), 587 (submission), 465
-  (submissions/TLS).
-- `imap-gateway` — IMAP listener on 143 (plain) and 993 (TLS).
-- `pop3-gateway` — POP3 listener on 110 (plain) and 995 (TLS).
+- `smtp-gateway` — SMTP listener on 25 (inbound, STARTTLS) and 465
+  (submission, implicit TLS).
+- `imap-gateway` — IMAP listener on 993 (implicit TLS).
+- `pop3-gateway` — POP3 listener on 995 (implicit TLS).
+
+The gateways are how any ordinary mail client reads and sends mail. There are
+no cleartext client ports: 587, 143 and 110 do not exist, and a gateway refuses
+to start in production if asked for one.
 - A ServiceAccount, a ConfigMap for non-secret API config, and an optional
   Ingress for the API.
 

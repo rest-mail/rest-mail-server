@@ -32,9 +32,6 @@ spec:
           securityContext:
             {{- include "restmail.containerSecurityContext" (list . "pop3-gateway") | nindent 12 }}
           ports:
-            - name: pop3
-              containerPort: {{ .Values.pop3Gateway.ports.plain }}
-              protocol: TCP
             - name: pop3s
               containerPort: {{ .Values.pop3Gateway.ports.tls }}
               protocol: TCP
@@ -43,8 +40,6 @@ spec:
               value: {{ .Values.mailserver.hostname | quote }}
             - name: API_BASE_URL
               value: {{ include "restmail.api.url" . | quote }}
-            - name: POP3_PORT
-              value: {{ .Values.pop3Gateway.ports.plain | quote }}
             - name: POP3_TLS_PORT
               value: {{ .Values.pop3Gateway.ports.tls | quote }}
             - name: LOG_LEVEL
@@ -68,12 +63,12 @@ spec:
               mountPath: /tmp
           readinessProbe:
             tcpSocket:
-              port: pop3
+              port: pop3s
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             tcpSocket:
-              port: pop3
+              port: pop3s
             initialDelaySeconds: 30
             periodSeconds: 30
           resources:
