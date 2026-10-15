@@ -83,7 +83,8 @@ func (s dbAccountState) AdminState(id uint) (adminState, error) {
 	if err != nil {
 		return adminState{}, err
 	}
-	if !user.Active {
+	// An expired bootstrap password ends the sessions it opened, too.
+	if !user.Active || user.BootstrapExpired(time.Now()) {
 		return adminState{}, nil
 	}
 	caps, err := repo.GetCapabilities(id)
@@ -445,6 +446,11 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
 		return
 	}
+	if adminUser.BootstrapExpired(time.Now()) {
+		respond.Error(w, http.StatusUnauthorized, "bootstrap_expired",
+			"This server's bootstrap password has expired. Deploy it again with a new one, then sign in with that.")
+		return
+	}
 
 	// Second factor (OSI-19): only reached with a correct password, so a 2FA
 	// challenge never leaks account existence. No-op for admins without 2FA.
@@ -742,6 +748,8 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		"password_hash":            hash,
 		"last_password_change":     time.Now(),
 		"password_change_required": false,
+		// Its own password now: the deploy-time one, and its deadline, are gone.
+		"bootstrap_expires_at": nil,
 		// Every token of the account is dead from now, this one included.
 		"credential_epoch": gorm.Expr("credential_epoch + 1"),
 	}).Error; err != nil {
@@ -906,19 +914,21 @@ func (h *AuthHandler) redeemFailed(w http.ResponseWriter, err error) bool {
 
 // AdminSessionCurrent is the database's answer to whether an admin access token
 // is still current (middleware.RejectStaleAdminSessions): the account must exist
-// and be active, and the token must carry its current credential epoch — a
-// reset or a password change bumps it.
+// and be active, not be a bootstrap admin whose deploy-time password has
+// expired, and the token must carry its current credential epoch — a reset or a
+// password change bumps it.
 func AdminSessionCurrent(db *gorm.DB) middleware.AdminSessionCurrent {
 	return func(adminID uint, epoch int) (bool, error) {
 		var admin models.AdminUser
-		err := db.Select("active", "credential_epoch").First(&admin, adminID).Error
+		err := db.Select("active", "credential_epoch", "password_change_required", "bootstrap_expires_at").
+			First(&admin, adminID).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
 		}
 		if err != nil {
 			return false, err
 		}
-		if !admin.Active {
+		if !admin.Active || admin.BootstrapExpired(time.Now()) {
 			return false, nil
 		}
 		return admin.CredentialEpoch == epoch, nil

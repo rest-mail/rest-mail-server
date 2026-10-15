@@ -5,6 +5,11 @@ StatefulSet's volumeClaimTemplate because the chart only supports a
 single replica and a manually-managed PVC is simpler to back up and
 migrate. If you switch to multiple replicas, swap to the StatefulSet
 template instead.
+
+Kept on uninstall, like the Secrets: uninstalling removes the software, not
+the mail. A reinstall under the same name and namespace adopts it again, and
+the kept Postgres Secret means the password still matches the database.
+Deleting the data is a separate, deliberate step.
 */ -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -12,6 +17,8 @@ metadata:
   name: {{ include "restmail.componentName" (list . "postgres-data") }}
   labels:
     {{- include "restmail.componentLabels" (list . "postgres") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   accessModes:
     - {{ .Values.postgres.persistence.accessMode }}

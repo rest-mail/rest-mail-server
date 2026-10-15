@@ -74,6 +74,8 @@ spec:
             # First superadmin of a fresh install, created only while no admin
             # exists, and made to set a new password and enroll 2FA at first
             # sign-in. Optional: a Secret without the key means no bootstrap admin.
+            - name: RESTMAIL_BOOTSTRAP_ADMIN_USERNAME
+              value: {{ .Values.api.bootstrapAdminUsername | default "admin" | quote }}
             - name: RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:

@@ -1,0 +1,122 @@
+version: "3"
+
+# The deployed server, however it was deployed. These act on a Helm release,
+# NAME in NAMESPACE, on the cluster your kubeconfig points at — which a Pulumi
+# install is too, since its Release installs through Helm.
+#
+#   server:verify   is it really working — the gate after every install and
+#                   upgrade, and the thing to run on a Tuesday
+#   server:status   what have I got — works when the server is broken, which
+#                   is when you need it; verify prints it first
+#   server:logs     one component's logs
+#   server:offline  stop everything that answers, keep the database: every
+#                   stolen token stops working now. Containment, not a cure
+#   server:online   put back exactly what offline stopped
+
+silent: true
+
+vars:
+  CONTEXT:
+    sh: kubectl config current-context 2>/dev/null || echo '(no current context)'
+
+tasks:
+  verify:
+    dotenv: []
+    desc: "Check layer by layer that the server works, and say whose problem it is when it does not"
+    args:
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      NAME: restmail
+      NAMESPACE: rest-mail
+    preconditions:
+      - sh: command -v helm >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null && command -v curl >/dev/null
+        msg: "This needs helm, kubectl, jq and curl"
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/verify.sh"'
+        silent: true
+
+  status:
+    dotenv: []
+    desc: "What is installed: versions, revision, replicas, pods"
+    args:
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      NAME: restmail
+      NAMESPACE: rest-mail
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/status.sh"'
+        silent: true
+
+  logs:
+    dotenv: []
+    desc: "Logs of one component: chore server:logs [api|smtp|imap|pop3|js-filter|postgres] [-f] [--since 1h]"
+    args:
+      - name: component
+        desc: api, smtp, imap, pop3, js-filter or postgres (default api)
+      - {name: follow, short: f, type: bool, desc: keep streaming}
+      - name: since
+        desc: only this recent, e.g. 10m or 2h
+      - {name: lines, type: int, desc: how many lines to start with (default 200)}
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      COMPONENT: api
+      FOLLOW: ''
+      SINCE: ''
+      LINES: '200'
+      NAME: restmail
+      NAMESPACE: rest-mail
+    cmds:
+      - cmd: |
+          case "$COMPONENT" in
+            smtp|imap|pop3) COMPONENT="$COMPONENT-gateway" ;;
+          esac
+          exec kubectl logs -n "$NAMESPACE" \
+            -l "app.kubernetes.io/instance=$NAME,app.kubernetes.io/component=$COMPONENT" \
+            --all-containers --prefix --max-log-requests 10 --tail "$LINES" \
+            ${SINCE:+--since "$SINCE"} ${FOLLOW:+--follow}
+        silent: true
+
+  offline:
+    dotenv: []
+    desc: "Stop everything that answers and keep the database — the first move when something is wrong"
+    args:
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      NAME: restmail
+      NAMESPACE: rest-mail
+    confirm:
+      text: 'Take rest-mail "{{.NAME}}" in {{.NAMESPACE}} on "{{.CONTEXT}}" offline? Nobody can send or receive mail until it is back.'
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/offline.sh" offline'
+        silent: true
+
+  online:
+    dotenv: []
+    desc: "Bring back what server:offline stopped"
+    args:
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      NAME: restmail
+      NAMESPACE: rest-mail
+    # Said before, not after: coming back without rotating anything hands the
+    # access straight back.
+    confirm:
+      text: 'Bring rest-mail "{{.NAME}}" back online? If it went offline because something leaked, have you ended it — sessions:revoke, password:reset?'
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/offline.sh" online'
+        silent: true

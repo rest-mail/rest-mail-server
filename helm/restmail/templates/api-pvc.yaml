@@ -1,10 +1,16 @@
 {{- if .Values.api.attachments.persistence.enabled -}}
+{{- /*
+Kept on uninstall for the same reason as the database's volume: the
+attachments are mail, and uninstalling removes the software, not the mail.
+*/ -}}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "restmail.componentName" (list . "api-attachments") }}
   labels:
     {{- include "restmail.componentLabels" (list . "api") | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   accessModes:
     - {{ .Values.api.attachments.persistence.accessMode }}

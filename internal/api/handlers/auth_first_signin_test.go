@@ -66,8 +66,8 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 		t.Fatal(err)
 	}
 	name := "boot-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	if created, err := bootstrap.EnsureFirstAdmin(gdb, name, bootstrapPassword, true); err != nil || !created {
-		t.Fatalf("bootstrap admin: created=%v err=%v", created, err)
+	if outcome, err := bootstrap.EnsureFirstAdmin(gdb, name, bootstrapPassword, true, time.Now()); err != nil || outcome != bootstrap.FirstAdminCreated {
+		t.Fatalf("bootstrap admin: outcome=%v err=%v", outcome, err)
 	}
 	jwt := auth.NewJWTService("first-sign-in-secret", 15*time.Minute, 7*24*time.Hour)
 	return &firstSignIn{
@@ -300,5 +300,95 @@ func TestChangePassword_MailboxSessionsAreRefused(t *testing.T) {
 	}
 	if got := f.changePassword(pair.AccessToken, "x", "y-long-enough-pass"); got.Code != http.StatusForbidden {
 		t.Errorf("mailbox session = %d, want 403", got.Code)
+	}
+}
+
+// expire moves the bootstrap password's deadline into the past, as 72 hours of
+// nobody finishing the install would.
+func (f *firstSignIn) expire(t *testing.T) {
+	t.Helper()
+	if err := f.db.Model(&models.AdminUser{}).Where("username = ?", f.name).
+		Update("bootstrap_expires_at", time.Now().Add(-time.Minute)).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFirstSignIn_ExpiredBootstrapPasswordIsRefused(t *testing.T) {
+	f := newFirstSignIn(t)
+	f.expire(t)
+
+	rr, _ := f.login(bootstrapPassword, "")
+	if rr.Code != http.StatusUnauthorized || !strings.Contains(rr.Body.String(), "bootstrap_expired") {
+		t.Fatalf("expired bootstrap password = %d %s, want 401 bootstrap_expired", rr.Code, rr.Body)
+	}
+	// Only someone who knows the password learns why: a wrong one gets the
+	// ordinary refusal, so the expiry says nothing to a guesser.
+	rr, _ = f.login("not-the-bootstrap-password-at-all", "")
+	if rr.Code != http.StatusUnauthorized || strings.Contains(rr.Body.String(), "bootstrap_expired") {
+		t.Fatalf("wrong password after expiry = %d %s, want a plain 401", rr.Code, rr.Body)
+	}
+}
+
+// A session opened before the deadline does not outlive it: not to finish the
+// setup, and not by refreshing.
+func TestFirstSignIn_ExpiryEndsSessionsAlreadyOpen(t *testing.T) {
+	f := newFirstSignIn(t)
+	_, s := f.login(bootstrapPassword, "")
+	f.expire(t)
+
+	if rr := f.changePassword(s.AccessToken, bootstrapPassword, chosenPassword); rr.Code != http.StatusUnauthorized {
+		t.Errorf("setup after expiry = %d %s, want 401", rr.Code, rr.Body)
+	}
+	if rr, _ := f.refresh(s.RefreshToken); rr.Code != http.StatusUnauthorized {
+		t.Errorf("refresh after expiry = %d %s, want 401", rr.Code, rr.Body)
+	}
+}
+
+// The deadline is on the deploy-time password, not the account: once the admin
+// has chosen its own, time no longer matters.
+func TestFirstSignIn_ChoosingAPasswordEndsTheDeadline(t *testing.T) {
+	f := newFirstSignIn(t)
+	_, s := f.login(bootstrapPassword, "")
+	if rr := f.changePassword(s.AccessToken, bootstrapPassword, chosenPassword); rr.Code != http.StatusOK {
+		t.Fatalf("change password = %d %s", rr.Code, rr.Body)
+	}
+
+	var user models.AdminUser
+	if err := f.db.Where("username = ?", f.name).First(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	if user.BootstrapExpiresAt != nil {
+		t.Errorf("bootstrap_expires_at = %v after choosing a password, want it cleared", user.BootstrapExpiresAt)
+	}
+	if rr, _ := f.login(chosenPassword, ""); rr.Code != http.StatusOK {
+		t.Errorf("login with the chosen password = %d %s", rr.Code, rr.Body)
+	}
+}
+
+// The recovery for a password that leaked, or ran out, before anyone finished
+// the install: deploy again with a new one.
+func TestFirstSignIn_RedeployingWithANewPasswordRearms(t *testing.T) {
+	f := newFirstSignIn(t)
+	_, old := f.login(bootstrapPassword, "") // say, whoever found the leaked one
+	f.expire(t)
+
+	const redeployed = "the-password-of-the-second-deploy-42"
+	outcome, err := bootstrap.EnsureFirstAdmin(f.db, f.name, redeployed, true, time.Now())
+	if err != nil || outcome != bootstrap.FirstAdminRearmed {
+		t.Fatalf("redeploy: outcome=%v err=%v, want rearmed", outcome, err)
+	}
+
+	if rr, _ := f.login(bootstrapPassword, ""); rr.Code != http.StatusUnauthorized || strings.Contains(rr.Body.String(), "bootstrap_expired") {
+		t.Errorf("old password after redeploy = %d %s, want a plain 401", rr.Code, rr.Body)
+	}
+	if rr, _ := f.refresh(old.RefreshToken); rr.Code != http.StatusUnauthorized {
+		t.Errorf("old session's refresh after redeploy = %d, want 401", rr.Code)
+	}
+	rr, s := f.login(redeployed, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("new password = %d %s", rr.Code, rr.Body)
+	}
+	if want := []string{"password", "two_factor"}; !reflect.DeepEqual(s.SetupRequired, want) {
+		t.Errorf("setup_required = %v, want %v", s.SetupRequired, want)
 	}
 }

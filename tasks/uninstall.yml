@@ -1,0 +1,65 @@
+version: "3"
+
+# The software goes; the mail stays. The volumes and the two Secrets carry
+# helm.sh/resource-policy: keep, so installing again under the same name and
+# namespace picks them up — which is what you want when you uninstall to
+# install again with different settings. Deleting the data is data:destroy, a
+# separate act with its own gate, and never an option of an uninstall.
+#
+# uninstall:pulumi cannot uninstall anything: a removal your program does not
+# reflect is undone by the next `pulumi up`. It says what to remove, waits,
+# and checks that it went and what was kept.
+
+silent: true
+
+vars:
+  CONTEXT:
+    sh: kubectl config current-context 2>/dev/null || echo '(no current context)'
+
+tasks:
+  helm:
+    dotenv: []
+    desc: "Uninstall a Helm install, keeping the mail: chore uninstall:helm"
+    args:
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      NAME: restmail
+      NAMESPACE: rest-mail
+    preconditions:
+      - sh: command -v helm >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs helm, kubectl and jq"
+    confirm:
+      text: 'Uninstall rest-mail "{{.NAME}}" from {{.NAMESPACE}} on "{{.CONTEXT}}"? The mail is kept.'
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/uninstall.sh" helm'
+        silent: true
+
+  pulumi:
+    dotenv: []
+    interactive: true
+    desc: "Say how to remove rest-mail from your Pulumi program, then check it went: chore uninstall:pulumi ~/infra"
+    args:
+      - name: project
+        desc: your Pulumi project's directory
+      - name: name
+        desc: the config namespace and Helm release name (default restmail)
+      - name: stack
+        desc: which stack, if not the one selected in the project
+    vars:
+      NAME: restmail
+      STACK: ''
+      PROJECT_DIR:
+        sh: cd "$USER_WORKING_DIR" 2>/dev/null; cd -- "$PROJECT" 2>/dev/null && pwd || printf %s "$PROJECT"
+    preconditions:
+      - sh: command -v pulumi >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs pulumi, kubectl and jq"
+      - sh: test -f '{{.PROJECT_DIR}}/Pulumi.yaml' || test -f '{{.PROJECT_DIR}}/Pulumi.yml'
+        msg: "{{.PROJECT}} is not a Pulumi project: there is no Pulumi.yaml in {{.PROJECT_DIR}}"
+    cmds:
+      - cmd: |
+          NAMESPACE=$(pulumi -C "$PROJECT_DIR" config get "$NAME:namespace" ${STACK:+--stack "$STACK"} 2>/dev/null || echo rest-mail)
+          PROJECT="$PROJECT_DIR" NAMESPACE="$NAMESPACE" '{{.TASKFILE_DIR}}/lifecycle/pulumi.sh' uninstall
+        silent: true

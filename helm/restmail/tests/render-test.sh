@@ -12,7 +12,11 @@ set -euo pipefail
 
 CHART_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_VALUES="$CHART_DIR/values-dev.yaml"
-PROD_ARGS=(--set mailserver.hostname=mx.example.com --set mailserver.domain=example.com)
+# The chart refuses to render without an admin password, so every render here
+# supplies one. The refusal itself is a test, below.
+TEST_PASSWORD=a-test-bootstrap-password
+PROD_ARGS=(--set mailserver.hostname=mx.example.com --set mailserver.domain=example.com
+           --set "api.bootstrapAdminPassword=$TEST_PASSWORD")
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 pass() { echo "ok: $*"; }
@@ -34,13 +38,13 @@ trap 'rm -rf "$tmp"' EXIT
 
 echo "== helm lint =="
 helm lint "$CHART_DIR" "${PROD_ARGS[@]}"
-helm lint "$CHART_DIR" -f "$DEV_VALUES"
+helm lint "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_PASSWORD"
 
 echo "== render production defaults =="
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/prod.yaml"
 
 echo "== render development overlay =="
-helm template restmail "$CHART_DIR" -f "$DEV_VALUES" > "$tmp/dev.yaml"
+helm template restmail "$CHART_DIR" -f "$DEV_VALUES" --set "api.bootstrapAdminPassword=$TEST_PASSWORD" > "$tmp/dev.yaml"
 
 echo "== production assertions (deployability + hardening) =="
 # Deployability: the production boot validator's acknowledgement knobs are wired.
@@ -150,12 +154,71 @@ assert_contains "for user restmail"              "$tmp/pg-secret.yaml"  'POSTGRE
 # MASTER_KEY must survive an uninstall: a new one makes stored keys unreadable.
 assert_contains "the API's Secret survives uninstall"  "$tmp/api-secret.yaml" 'helm.sh/resource-policy: keep'
 assert_contains "so does Postgres's"                   "$tmp/pg-secret.yaml"  'helm.sh/resource-policy: keep'
+# And so must the data it unlocks: uninstalling removes the software, not the
+# mail. Keeping the key while deleting the volumes would be backwards.
+pvc() { # pvc <file> <name> -> that PersistentVolumeClaim's document
+  awk -v n="  name: $2" 'BEGIN{RS="\n---\n"} /\nkind: PersistentVolumeClaim\n/ && index($0, n"\n") {print}' "$1"
+}
+pvc "$tmp/bare.yaml" restmail-postgres-data  > "$tmp/pg-pvc.yaml"
+pvc "$tmp/bare.yaml" restmail-api-attachments > "$tmp/att-pvc.yaml"
+assert_contains "the database's volume is made"      "$tmp/pg-pvc.yaml"  'kind: PersistentVolumeClaim'
+assert_contains "and survives uninstall"             "$tmp/pg-pvc.yaml"  'helm.sh/resource-policy: keep'
+assert_contains "the attachments' volume is made"    "$tmp/att-pvc.yaml" 'kind: PersistentVolumeClaim'
+assert_contains "and survives uninstall too"         "$tmp/att-pvc.yaml" 'helm.sh/resource-policy: keep'
 # Generated, not a placeholder: 64 characters of a random alphabet.
 key=$(sed -n 's/^  MASTER_KEY: "\(.*\)"$/\1/p' "$tmp/api-secret.yaml")
 [ "${#key}" = 64 ] || fail "MASTER_KEY is ${#key} characters, want 64"
 pass "a generated MASTER_KEY is 64 characters"
 # No bootstrap admin unless asked for: one would turn the setup code off.
-assert_absent "no bootstrap password by default" "$tmp/api-secret.yaml" 'BOOTSTRAP_ADMIN_PASSWORD'
+
+echo "== an install without an admin password is refused =="
+# The chart will not invent one. Whoever installs has somewhere to keep a
+# secret; a chart does not, so a generated password would be one nobody could
+# retrieve — out of a Secret they may not yet have access to, a pipeline log,
+# or a terminal nobody was watching. Refusing is the only honest answer, and it
+# has to happen at render time, before anything is created.
+refusal=$(helm template restmail "$CHART_DIR" \
+  --set mailserver.hostname=mx.example.com --set mailserver.domain=example.com 2>&1) &&
+  fail "the chart rendered with no admin password"
+case "$refusal" in
+  *"api.bootstrapAdminPassword is required"*) pass "no password, no install" ;;
+  *) fail "refused, but not in words anybody can act on: $refusal" ;;
+esac
+# And the refusal says what to do about it, which is the whole point of failing
+# here rather than letting a server start that nobody can sign in to.
+case "$refusal" in
+  *"chore install:password"*) pass "and it says how to make one" ;;
+  *) fail "the refusal does not say how to make a password: $refusal" ;;
+esac
+
+# A password too short to be worth having is refused for its own reason, not
+# silently padded or accepted.
+short=$(helm template restmail "$CHART_DIR" \
+  --set mailserver.hostname=mx.example.com --set mailserver.domain=example.com \
+  --set api.bootstrapAdminPassword=short 2>&1) &&
+  fail "a five-character admin password was accepted"
+case "$short" in
+  *"at least 16 characters"*) pass "a too-short password is refused" ;;
+  *) fail "refused, but not for the right reason: $short" ;;
+esac
+
+echo "== the password given is the password stored =="
+# Nothing transforms it on the way through: what you typed is what you sign in
+# with. The Secret is the only place it lands.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" > "$tmp/fresh.yaml"
+secret() { awk -v n="  name: $2" 'BEGIN{RS="\n---\n"} /\nkind: Secret\n/ && index($0, n"\n") {print}' "$1"; }
+stored=$(secret "$tmp/fresh.yaml" restmail-api | sed -n 's/^  BOOTSTRAP_ADMIN_PASSWORD: "\(.*\)"$/\1/p')
+[ "$stored" = "$TEST_PASSWORD" ] ||
+  fail "stored '"'"'$stored'"'"', gave '"'"'$TEST_PASSWORD'"'"'"
+pass "what was given is what is stored"
+
+# NOTES.txt is what tells whoever installed it how to sign in. It must NOT
+# print the password: they already have it — they made it — and a chart that
+# echoes a secret puts it in every pipeline log that ever runs an install.
+assert_contains "the notes name the admin user" "$CHART_DIR/templates/NOTES.txt" 'admin'
+grep -q 'bootstrapAdminPassword' "$CHART_DIR/templates/NOTES.txt" &&
+  fail "NOTES.txt prints the admin password back"
+pass "the notes do not echo the password"
 
 echo "== what is given wins =="
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
@@ -165,6 +228,14 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
 assert_contains "a given JWT_SECRET"          "$tmp/given.yaml" 'JWT_SECRET: "given-jwt"'
 assert_contains "a given MASTER_KEY"          "$tmp/given.yaml" 'MASTER_KEY: "given-master"'
 assert_contains "a given bootstrap password"  "$tmp/given.yaml" 'BOOTSTRAP_ADMIN_PASSWORD: "a-bootstrap-password-of-length"'
+# Given, so the installer already has it; the notes must not repeat a secret
+# back at someone who supplied it.
+given_notes=$(helm install restmail "$CHART_DIR" "${PROD_ARGS[@]}" --dry-run \
+  --set api.bootstrapAdminPassword=a-bootstrap-password-of-length 2>/dev/null || true)
+case "$given_notes" in
+  *a-bootstrap-password-of-length*) fail "the notes echoed a password the installer supplied" ;;
+esac
+pass "a supplied password is not echoed back"
 assert_contains "a given Postgres password"   "$tmp/given.yaml" 'POSTGRES_PASSWORD: "given-pg"'
 
 echo "== a Secret you manage is used, and none is made =="

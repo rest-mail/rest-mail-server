@@ -1,0 +1,33 @@
+version: "3"
+
+# Deleting what an uninstall kept: the mail, the attachments, the master key.
+# Never a stage or an option of an uninstall — uninstalling removes the
+# software, not what was made with it.
+#
+# The one task behind a typed code: shown on the terminal, read from the
+# terminal. --yes does not answer it, a pipe cannot feed it, and with no
+# terminal it refuses. --i-mean-it is the way past for a script that means it.
+
+silent: true
+
+tasks:
+  destroy:
+    dotenv: []
+    interactive: true
+    desc: "Delete an uninstalled server's mail and keys for good — there is no undo"
+    args:
+      - {name: i_mean_it, type: bool, desc: "skip the typed code — for a script that genuinely means to"}
+      - name: name
+        desc: the Helm release name it had (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      I_MEAN_IT: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
+    preconditions:
+      - sh: command -v helm >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs helm, kubectl and jq"
+    cmds:
+      - cmd: AUTOMATE=${I_MEAN_IT:+1} '{{.TASKFILE_DIR}}/lifecycle/data-destroy.sh'
+        silent: true

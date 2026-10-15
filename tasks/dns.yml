@@ -1,0 +1,45 @@
+version: "3"
+
+# What the domain must publish for mail to arrive and be believed: MX, SPF,
+# DMARC, DKIM, the mail host's address and its reverse. A healthy install
+# delivers nothing to Gmail without them, so this is the likeliest reason one
+# that passes server:verify still "does not work".
+#
+#   dns:show    print them — the DKIM record comes from the server, which made the key
+#   dns:check   compare them with what a public resolver sees
+
+silent: true
+
+tasks:
+  show:
+    dotenv: []
+    desc: "Print every DNS record each domain on the server needs"
+    args: &dns_args
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars: &dns_vars
+      NAME: restmail
+      NAMESPACE: rest-mail
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/dns.sh" show'
+        silent: true
+
+  check:
+    dotenv: []
+    desc: "Check those records are published, as a public resolver sees them"
+    args:
+      - name: resolver
+        desc: which resolver to ask (default 1.1.1.1)
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      RESOLVER: 1.1.1.1
+      NAME: restmail
+      NAMESPACE: rest-mail
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/dns.sh" check'
+        silent: true

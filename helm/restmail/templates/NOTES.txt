@@ -16,6 +16,16 @@ Secrets:
   * API credentials:      {{ if .Values.api.existingSecret }}{{ .Values.api.existingSecret }} (yours){{ else }}{{ include "restmail.componentName" (list . "api") }} (made by this chart, kept across upgrades and uninstalls){{ end }}
   * Postgres credentials: {{ if .Values.postgres.existingSecret }}{{ .Values.postgres.existingSecret }} (yours){{ else }}{{ include "restmail.componentName" (list . "postgres") }} (made by this chart, kept across upgrades and uninstalls){{ end }}
   * TLS certificate:      {{ .Values.tls.secretName }} (yours, or cert-manager's: the chart cannot make a trusted one)
+{{- if or (and .Values.postgres.enabled .Values.postgres.persistence.enabled) .Values.api.attachments.persistence.enabled }}
+
+Data (kept when the release is uninstalled: uninstalling removes the software, not the mail):
+{{- if and .Values.postgres.enabled .Values.postgres.persistence.enabled }}
+  * mail and accounts:    {{ include "restmail.componentName" (list . "postgres-data") }}
+{{- end }}
+{{- if .Values.api.attachments.persistence.enabled }}
+  * attachments:          {{ include "restmail.componentName" (list . "api-attachments") }}
+{{- end }}
+{{- end }}
 {{- /* Only when talking to a cluster: `helm template` can look nothing up.
        kube-system, not this release's namespace, because a first install with
        --create-namespace renders this before that namespace exists. */}}
@@ -45,19 +55,13 @@ port-forward locally:
 {{- end }}
 
 
-Claim the server:
-{{- /* As templates/api-secret.yaml decides it: given now, or kept from before. */}}
-{{- $keptApi := (lookup "v1" "Secret" .Release.Namespace (include "restmail.componentName" (list . "api"))).data | default dict }}
-{{- if and (not .Values.api.existingSecret) (or .Values.api.bootstrapAdminPassword (index $keptApi "BOOTSTRAP_ADMIN_PASSWORD")) }}
-  This install supplied a bootstrap password, so the server made its first
-  admin, "admin", at startup. Sign in as that in the rest-mail app ("Set up a
-  new server", then "Have an admin password instead?"): you will be made to
-  choose your own password and enroll an authenticator before anything else.
-{{- else }}
-  Until it has an admin, the API prints a setup code at every start, with a
-  QR code of a link that claims it. Read it with
-    kubectl logs -n {{ .Release.Namespace }} deploy/{{ include "restmail.componentName" (list . "api") }}
-  and point your phone's camera at the QR code, or enter the code in the
-  rest-mail app with the address you reach the server at. Restarting the API
-  prints a new code and the old one stops working.
-{{- end }}
+Sign in:
+  Open the rest-mail app, add this server, and sign in as
+  "{{ .Values.api.bootstrapAdminUsername | default "admin" }}" with the admin
+  password this install was given. You will have to choose your own password
+  and enroll an authenticator before anything else works, after which that
+  password is of no further use.
+
+  It works until you choose your own password, and for 72 hours at most. If
+  it lapses or leaks first, upgrade with a new one: that replaces it, signs
+  out anyone who used the old one, and starts the 72 hours again.

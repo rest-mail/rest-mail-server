@@ -758,6 +758,19 @@ The one thing the chart cannot make is a trusted TLS certificate: a `kubernetes.
 
 To manage the secrets yourself instead, name them with `api.existingSecret` and `postgres.existingSecret`. Do this for anything that renders the chart without a cluster to look in, such as Argo CD or `helm template`: those cannot keep a generated value, so they would make a new one every time.
 
+#### Uninstalling keeps the mail
+
+`helm uninstall` removes the software, not the mail. The database's volume and the attachments' volume are kept, along with the two Secrets, so you can uninstall and install again — to change something an upgrade will not, say — and the new release under the same name, in the same namespace, picks up the same mailboxes, keys and passwords.
+
+Deleting the data is a separate step, and there is no undoing it. With the release uninstalled:
+
+```sh
+kubectl delete pvc restmail-postgres-data restmail-api-attachments -n rest-mail
+kubectl delete secret restmail-api restmail-postgres -n rest-mail
+```
+
+Delete the volumes and keep the Secrets, or the other way round, only if you mean to: the data is unreadable without `MASTER_KEY`, and the database refuses a password it was not created with.
+
 #### Ask the server what state it is in
 
 ```sh

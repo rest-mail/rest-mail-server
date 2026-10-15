@@ -1,0 +1,136 @@
+version: "3"
+
+# Installing rest-mail somewhere real. One of the lifecycle families — see
+# docs/design/install-flow.md for the whole map and why each task is shaped
+# the way it is:
+#
+#   install:helm | install:pulumi       put it there, then server:verify
+#   upgrade:helm | upgrade:pulumi       a new chart, nothing else changed
+#   uninstall:helm | uninstall:pulumi   the software goes, the mail stays
+#   server:*  backup:*  dns:*  data:destroy  password:*  sessions:revoke
+#
+# The tasks are thin; the scripts in tasks/lifecycle/ do the work, and every
+# one of them does what you could have typed. Nothing here is needed to
+# install rest-mail. It is here so the pleasant path and the documented path
+# are the same path.
+#
+# THE ADMIN PASSWORD is made by the installer, not by you: generated and shown
+# once at a terminal, refused in a pipeline (a password printed to a log is a
+# password in a log), or yours with --password "$VAR". It never appears in a
+# command's text: chore exports every variable to the shell, and the scripts
+# read $PASSWORD from there.
+#
+# Every task declines the root file's dotenv. It requires
+# config/<CONFIG>/config.env — a development testbed's environment — and
+# these tasks act on SOMEBODY ELSE'S cluster from a plain checkout where no
+# such config exists.
+
+silent: true
+
+vars:
+  # Tolerant on purpose: a task's variables resolve BEFORE its preconditions,
+  # so a bare `kubectl config current-context` would fail with kubectl's own
+  # error on a machine without kubectl, preempting the precondition that says so.
+  CONTEXT:
+    sh: kubectl config current-context 2>/dev/null || echo '(no current context)'
+
+tasks:
+  helm:
+    dotenv: []
+    interactive: true
+    desc: "Install into the cluster your kubeconfig points at: chore install:helm mail.example.com"
+    args:
+      - name: host
+        desc: the address the server answers on, e.g. mail.example.com
+      - name: domain
+        desc: the mail domain it serves; worked out from HOST if left out
+      - name: password
+        desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: version
+        desc: the chart version (default the newest)
+      - name: values
+        desc: a values file for everything else — ingress, storage class, resources; upgrades keep it
+      - name: name
+        desc: the Helm release name (default restmail)
+      - name: namespace
+        desc: the namespace (default rest-mail)
+    vars:
+      # mail.example.com -> example.com. Read from the environment: in chore
+      # 0.17 a variable's template sees an argument's default, not its value.
+      DOMAIN:
+        sh: printf %s "${HOST#*.}"
+      PASSWORD: ''
+      VERSION: ''
+      VALUES: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
+    preconditions:
+      - sh: command -v helm >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs helm, kubectl and jq — see docs/installing.md"
+      - sh: '[ -z "$VALUES" ] || (cd "$USER_WORKING_DIR" && test -f "$VALUES")'
+        msg: "No values file at {{.VALUES}}"
+      - sh: kubectl cluster-info >/dev/null 2>&1
+        msg: "No cluster reachable: check your kubeconfig, or set KUBECONFIG"
+      - sh: case "$HOST" in *.*) ;; *) false ;; esac
+        msg: "HOST must be a full name, like mail.example.com"
+      - sh: case "$DOMAIN" in *.*) ;; *) false ;; esac
+        msg: "Could not work out the mail domain from {{.HOST}} (it came out as \"{{.DOMAIN}}\"): pass --domain"
+    # The foot-gun is not a typo in the hostname. It is installing a mail
+    # server into whatever cluster the kubeconfig happened to point at.
+    confirm:
+      text: 'Install rest-mail as {{.HOST}} (mail for {{.DOMAIN}}) into "{{.CONTEXT}}"?'
+      show: kubectl config get-contexts '{{.CONTEXT}}'
+    cmds:
+      - cmd: '"{{.TASKFILE_DIR}}/lifecycle/install-helm.sh"'
+        silent: true
+
+  pulumi:
+    dotenv: []
+    interactive: true
+    desc: "Add rest-mail to your Pulumi project: chore install:pulumi ~/infra mail.example.com"
+    args:
+      - name: project
+        desc: your Pulumi project's directory
+      - name: host
+        desc: the address the server answers on, e.g. mail.example.com
+      - name: domain
+        desc: the mail domain it serves; worked out from HOST if left out
+      - name: password
+        desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: version
+        desc: the chart version (default the newest)
+      - name: name
+        desc: the config namespace and Helm release name (default restmail)
+      - name: namespace
+        desc: the Kubernetes namespace (default rest-mail)
+      - name: stack
+        desc: which stack, if not the one selected in the project
+    vars:
+      DOMAIN:
+        sh: printf %s "${HOST#*.}"
+      PASSWORD: ''
+      VERSION: ''
+      NAME: restmail
+      NAMESPACE: rest-mail
+      STACK: ''
+      # Absolute, from where you ran chore. Tolerant: a missing directory is the
+      # precondition's to report, in words.
+      PROJECT_DIR:
+        sh: cd "$USER_WORKING_DIR" 2>/dev/null; cd -- "$PROJECT" 2>/dev/null && pwd || printf %s "$PROJECT"
+    preconditions:
+      - sh: command -v pulumi >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
+        msg: "This needs pulumi, kubectl and jq — see docs/installing.md"
+      - sh: test -f '{{.PROJECT_DIR}}/Pulumi.yaml' || test -f '{{.PROJECT_DIR}}/Pulumi.yml'
+        msg: "{{.PROJECT}} is not a Pulumi project: there is no Pulumi.yaml in {{.PROJECT_DIR}}"
+      - sh: printf %s "$NAME" | grep -Eq '^[a-z0-9]([-a-z0-9]{0,51}[a-z0-9])?$'
+        msg: "--name {{.NAME}} cannot be a Helm release name: lowercase letters, digits and dashes, 53 at most"
+      - sh: case "$HOST" in *.*) ;; *) false ;; esac
+        msg: "HOST must be a full name, like mail.example.com"
+      - sh: case "$DOMAIN" in *.*) ;; *) false ;; esac
+        msg: "Could not work out the mail domain from {{.HOST}} (it came out as \"{{.DOMAIN}}\"): pass --domain"
+    confirm:
+      text: 'Add mail server "{{.NAME}}" ({{.HOST}}, mail for {{.DOMAIN}}) to the Pulumi project in {{.PROJECT_DIR}}?'
+      show: pulumi -C '{{.PROJECT_DIR}}' stack ls
+    cmds:
+      - cmd: PROJECT="$PROJECT_DIR" '{{.TASKFILE_DIR}}/lifecycle/pulumi.sh' install
+        silent: true
