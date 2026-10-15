@@ -174,8 +174,8 @@ jobs:
         # the step loudly instead. Bump these SHAs deliberately when adopting
         # upstream substrate changes.
         env:
-          TESTBED_REF: 6a766a3eb05670b9a999fe1e7210d28fb270644c              # rest-mail/testbed @ master
-          REFERENCE_MAILSERVER_REF: 07c68b71c0cd38333d18e6c5b130de6daa47c0a7  # rest-mail/reference-mailserver @ master
+          TESTBED_REF: 398d29cd40eb1a8553d710dc25491c2a4b727a37              # rest-mail/testbed @ master
+          REFERENCE_MAILSERVER_REF: 4f6f8e0fb61d6aac9a3adffa38f05c55be27e25d  # rest-mail/reference-mailserver @ master
         run: |
           set -euo pipefail
           chore testbed:init
