@@ -121,34 +121,42 @@ jobs:
           go-version: "1.25.10"
           cache: true
 
-      - name: Install chore (pinned + checksum-verified)
+      - name: Install chore (the newest release, attested)
         # The repo is driven by chores.yml, whose tasks declare `args:`. go-task
         # parses the file but ignores those declarations, so a task that takes a
         # parameter silently runs with its default — CI has to use the same runner
         # as a developer's machine or it is testing something else.
         #
+        # So it installs what a developer would: the newest release. chores.yml
+        # names the oldest chore that can read it (chore_min_version), and CI
+        # refuses to run below that floor rather than fail on an unknown field.
+        #
         # Do NOT pipe-execute an install script from the network — that is an
-        # arbitrary-code-execution supply-chain surface. Download a specific
-        # release tarball and verify its sha256 before installing.
+        # arbitrary-code-execution supply-chain surface. The tarball must match
+        # its release's checksums.txt, and its build attestation must show that
+        # chore's own release pipeline built it, before it is installed.
         env:
-          CHORE_VERSION: 0.17.0
-          # sha256 of chore-${CHORE_VERSION}-linux-x86_64.tar.gz, taken from that
-          # release's checksums.txt. Bump both together when upgrading. The
-          # release is built reproducibly (-trimpath, -buildvcs=false, pinned
-          # toolchain) and its pipeline rebuilds every artifact to prove the
-          # published hash, so this value is verifiable rather than merely trusted.
-          CHORE_SHA256: b9a565d2937c67e9b9d0e6bdb48a2553f540fe268f78d9910d1f36952ca88b43
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          tag="$(gh release view --repo antimatter-studios/chore --json tagName --jq .tagName)"
+          version="${tag#v}"
+          min="$(awk '$1 == "chore_min_version:" { print $2 }' chores.yml)"
+          test -n "$min" || { echo "::error::chores.yml has no chore_min_version" >&2; exit 1; }
+          if [ "$(printf '%s\n%s\n' "$min" "$version" | sort -V | head -n1)" != "$min" ]; then
+            echo "::error::the newest chore is $version; chores.yml needs at least $min" >&2
+            exit 1
+          fi
           tmp="$(mktemp -d)"
-          asset="chore-${CHORE_VERSION}-linux-x86_64.tar.gz"
-          curl --location --silent --show-error --fail \
-            "https://github.com/antimatter-studios/chore/releases/download/v${CHORE_VERSION}/${asset}" \
-            -o "$tmp/chore.tar.gz"
-          echo "${CHORE_SHA256}  $tmp/chore.tar.gz" | sha256sum -c -
-          tar -xzf "$tmp/chore.tar.gz" -C "$tmp" chore
+          asset="chore-${version}-linux-x86_64.tar.gz"
+          gh release download "$tag" --repo antimatter-studios/chore \
+            --pattern "$asset" --pattern checksums.txt --dir "$tmp"
+          (cd "$tmp" && awk -v a="$asset" '$2 == a' checksums.txt | sha256sum --check --strict -)
+          gh attestation verify "$tmp/$asset" --repo antimatter-studios/chore
+          tar -xzf "$tmp/$asset" -C "$tmp" chore
           sudo install -m 0755 "$tmp/chore" /usr/local/bin/chore
           rm -rf "$tmp"
+          echo "chores.yml needs chore $min or newer"
           chore --version
 
       - name: Populate Go module cache
