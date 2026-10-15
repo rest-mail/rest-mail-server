@@ -8,9 +8,9 @@ Components deployed:
   * postgres        StatefulSet ({{ if .Values.postgres.enabled }}embedded{{ else }}DISABLED — using external{{ end }})
   * api             Deployment, Service ({{ .Values.api.service.type }}:{{ .Values.api.service.port }})
   * js-filter       Deployment, Service (ClusterIP:{{ .Values.jsFilter.service.port }})
-  * smtp-gateway    Deployment, Service ({{ .Values.smtpGateway.service.type }} on {{ .Values.smtpGateway.ports.inbound }}/{{ .Values.smtpGateway.ports.submission }}/{{ .Values.smtpGateway.ports.submissionTLS }})
-  * imap-gateway    Deployment, Service ({{ .Values.imapGateway.service.type }} on {{ .Values.imapGateway.ports.plain }}/{{ .Values.imapGateway.ports.tls }})
-  * pop3-gateway    Deployment, Service ({{ .Values.pop3Gateway.service.type }} on {{ .Values.pop3Gateway.ports.plain }}/{{ .Values.pop3Gateway.ports.tls }})
+  * smtp-gateway    Deployment, Service ({{ .Values.smtpGateway.service.type }} on {{ .Values.smtpGateway.ports.inbound }}/{{ .Values.smtpGateway.ports.submissionTLS }})
+  * imap-gateway    Deployment, Service ({{ .Values.imapGateway.service.type }} on {{ .Values.imapGateway.ports.tls }})
+  * pop3-gateway    Deployment, Service ({{ .Values.pop3Gateway.service.type }} on {{ .Values.pop3Gateway.ports.tls }})
 
 Secrets:
   * API credentials:      {{ if .Values.api.existingSecret }}{{ .Values.api.existingSecret }} (yours){{ else }}{{ include "restmail.componentName" (list . "api") }} (made by this chart, kept across upgrades and uninstalls){{ end }}
