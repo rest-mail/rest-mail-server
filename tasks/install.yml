@@ -118,8 +118,10 @@ tasks:
       PROJECT_DIR:
         sh: cd "$USER_WORKING_DIR" 2>/dev/null; cd -- "$PROJECT" 2>/dev/null && pwd || printf %s "$PROJECT"
     preconditions:
-      - sh: command -v pulumi >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
-        msg: "This needs pulumi, kubectl and jq — see docs/installing.md"
+      # kubectl only where the stack is deployed from here: pulumi.sh asks for it
+      # then. A project a pipeline deploys is checked over its public API.
+      - sh: command -v pulumi >/dev/null && command -v jq >/dev/null
+        msg: "This needs pulumi and jq — see docs/installing.md"
       # It hashes the admin password: the stack keeps only that.
       - sh: restmail password-hash --help >/dev/null 2>&1
         msg: "This needs the restmail CLI 0.7.0 or newer (restmail password-hash) — see docs/installing.md"

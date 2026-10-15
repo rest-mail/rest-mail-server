@@ -29,7 +29,7 @@ here=$(dirname "$0")
 # shellcheck source=lib.sh
 . "$here/lib.sh"
 
-need pulumi jq kubectl helm
+need pulumi jq helm
 mode=${1:-}
 : "${PROJECT:?}"
 STACK=${STACK:-}
@@ -92,6 +92,10 @@ if [ -z "$stack" ]; then
   [ "$mode" = install ] || refuse "Stack ${STACK:-(the selected one)} of $PROJECT cannot be read from here:" "" \
     "$(tail -n 3 "$stack_err")" "" "Run this where its state is, or change the program and let your pipeline deploy it."
 fi
+# A stack read from here is deployed from here, and the cluster is checked from
+# here: kubectl. One a pipeline deploys is checked over its public API, and
+# needs none.
+[ -n "$stack" ] && need kubectl
 
 # The admin password as the stack keeps it: a bcrypt hash, from the restmail CLI.
 password_hash() {
