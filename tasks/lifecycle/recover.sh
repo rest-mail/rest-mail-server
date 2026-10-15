@@ -23,12 +23,14 @@ password)
   if ! out=$(INPUT=$password operator reset-password --username "$username" 2>&1); then
     die "The reset failed: $(operator_error "$out")"
   fi
+  host=$(release_values | jq -r '.mailserver.hostname // empty')
+  printf '\n  New password for "%s" — this is the only time it is shown.\n' "$username"
+  if [ -n "$host" ]; then
+    show_sign_in "https://$host" "$username" "$password"
+  else
+    printf '\n      %s\n\n' "$password"
+  fi
   cat <<EOF
-
-  New password for "$username" — this is the only time it is shown:
-
-      $password
-
   Sign in with it in the rest-mail app. You will choose your own password and
   enroll a new authenticator before anything else works; the old one is gone.
   Every session "$username" had has ended.

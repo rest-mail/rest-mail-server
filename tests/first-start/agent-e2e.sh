@@ -160,7 +160,7 @@ ok "refused with exit 6 (not an owner)"
 step "hand-over: restmail reset-admin, the link the owner redeems"
 reset=$("$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/agent" --username admin --json --show-secret)
 link=$(jq -r .link <<<"$reset")
-[[ $link == restmail://reset\?* ]] || die "link $link"
+[[ $link == rest-mail://reset\?* ]] || die "link $link"
 reset_token=$(python3 -c 'import sys,urllib.parse as u; print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$link")
 OWNER_PW=$(openssl rand -base64 24)
 owner=$(curl -fsS "$API/auth/reset" -H 'Content-Type: application/json' \

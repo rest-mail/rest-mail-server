@@ -109,13 +109,10 @@ install() {
     "and $NAME:adminPassword, encrypted." ""
   # Shown the moment it exists, whatever happens next.
   if [ -n "$generated" ]; then
+    printf '\n  Your rest-mail admin password — this is the only time it is shown.\n'
+    show_sign_in "https://$HOST" admin "$password"
     cat <<EOF
-
-  Your rest-mail admin password — this is the only time it is shown:
-
-      $password
-
-  Sign in to the rest-mail app at https://$HOST as "admin" with it; you will
+  Sign in to the rest-mail app with it, once the server is deployed; you will
   choose your own and enroll an authenticator. It stops working 72 hours after
   the server first takes it. Read it back with:
       pulumi config get $NAME:adminPassword -C $PROJECT${STACK:+ --stack $STACK}

@@ -71,15 +71,12 @@ h install "$NAME" "$CHART" --version "$VERSION" --create-namespace \
   die "helm install failed (above). Nothing to undo if the release does not exist: chore server:status"
 
 if [ -n "$generated" ]; then
+  printf '\n  Your rest-mail admin password — this is the only time it is shown.\n'
+  show_sign_in "https://$HOST" admin "$PASSWORD"
   cat <<EOF
-
-  Your rest-mail admin password — this is the only time it is shown:
-
-      $PASSWORD
-
-  Sign in to the rest-mail app at https://$HOST as "admin" with it. You will
-  choose your own password and enroll an authenticator before anything else
-  works. It stops working 72 hours after the server first takes it.
+  Sign in to the rest-mail app with it. You will choose your own password and
+  enroll an authenticator before anything else works. It stops working 72
+  hours after the server first takes it.
 
   Lost it before then? Install again with a new one, or: chore password:reset
   It can also be read back from the cluster:

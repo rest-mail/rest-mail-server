@@ -379,7 +379,7 @@ paths:
         so a signature for one request cannot be presented for another. `public_key` must be listed in
         RESTMAIL_OWNER_KEYS. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
         accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at
-        `/api/v1/auth/reset`; the app's link is `restmail://reset?server=…&token=…`.
+        `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
       security: []
       requestBody:
         required: true

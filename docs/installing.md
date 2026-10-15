@@ -45,6 +45,16 @@ The installer makes it, unless you bring one:
 The chart itself refuses to install without one, and will not invent one: a
 chart runs where there is nobody to show it to.
 
+**Shown as a QR code, and always as text.** Point your phone's camera at the
+QR code and it opens the rest-mail app with the server, username and password
+filled in (`https://rest-mail.com/setup#server=…&username=…&password=…`; the
+details ride after the `#`, which no web server is sent). The link, server,
+username and password are printed beneath it every time, so a QR code that
+will not scan — a small font, a terminal that mangles it — never leaves you
+stuck. The QR code needs the `restmail` CLI (`brew install antimatter-studios/tap/restmail`)
+and a terminal at least about 55 columns wide; without either, you get the
+text alone. `chore password:reset` shows its new password the same way.
+
 It is the only way into a server nobody has signed in to. Using it makes you
 choose your own password and enroll an authenticator, after which it is of no
 further use — and it **expires 72 hours after the server first takes it**, so

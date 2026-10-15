@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-15 — The installer shows the admin password as a QR code
+`restmail sign-in-link` draws the link that opens the rest-mail app signed in — `https://rest-mail.com/setup#server=…&username=…&password=…` — as a QR code a phone's camera opens, and always prints the link, server, username and password as text too. `chore install:helm`, `install:pulumi` and `password:reset` show the password they made that way. [§7.9](#79-first-start-of-a-production-install).
+
 ### 2026-10-15 — No setup codes: the first admin is the bootstrap one
 A server no longer prints a setup code, and nothing claims one: `POST /api/v1/auth/claim`, `restmail setup`, `mint-token --purpose setup` and `RESTMAIL_SETUP_LINK_BASE` are gone, and `GET /api/v1/server` says only what the server is. The first admin comes from the password the installer chose; a server with no admin and no bootstrap password refuses to start in production. Owner keys and `restmail reset-admin` remain the way back in. [§7.9](#79-first-start-of-a-production-install).
 
@@ -791,6 +794,8 @@ The CLI knows a server only by its address, whatever installed it, so it asks th
 
 The API **refuses to start** if a bootstrap admin would be created with a password under 16 bytes (a placeholder left in), or while `TOTP_2FA_ENABLED` is off (the admin could never finish setup and would be locked out for good).
 
+**Seeing it.** `chore install:helm`, `chore install:pulumi` and `chore password:reset` show a password they made once, as a QR code your phone's camera opens the app with, signed in, and always as text (the link, server, username and password) beneath it. They draw it with `printf '%s' "$PASSWORD" | restmail sign-in-link --server https://mail.example.com [--username NAME]`: the password comes on stdin, never on the command line. The QR code is drawn only on a terminal wide enough for it (`--no-qr` turns it off), and the link is `https://rest-mail.com/setup#server=…&username=…&password=…` — after the `#`, so no web server is ever sent the password; where the app does not take the link, that page hands it to the app or shows it to type in.
+
 **Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart, set `api.bootstrapAdminPassword` (the chart puts it in the API Secret it makes), or put a `BOOTSTRAP_ADMIN_PASSWORD` key in your own Secret (`api.existingSecret`). Read it back with
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
 
@@ -800,11 +805,11 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 restmail reset-admin --server https://mail.example.com --username admin
 ```
 
-A single-use link, shown as a QR code, for an admin who has lost every way in. It stays on `restmail://reset?…`: there is no page for a reset link, and the app cannot yet redeem one from a link. Whoever redeems it (`POST /api/v1/auth/reset`) chooses a new password, loses the old authenticator and must enroll a new one, and **every token the account held is dead at once**: refresh tokens are revoked, and access tokens carry the account's credential epoch, which the reset bumps (`RejectStaleAdminSessions`), so even one minted seconds earlier is refused. A password change does the same.
+A single-use link, shown as a QR code, for an admin who has lost every way in. It stays on `rest-mail://reset?…`: there is no page for a reset link, and the app cannot yet redeem one from a link. Whoever redeems it (`POST /api/v1/auth/reset`) chooses a new password, loses the old authenticator and must enroll a new one, and **every token the account held is dead at once**: refresh tokens are revoked, and access tokens carry the account's credential epoch, which the reset bumps (`RejectStaleAdminSessions`), so even one minted seconds earlier is refused. A password change does the same.
 
 Ownership is proved with an SSH key, the way a server's first login usually is. The deployment lists the owner's **public** keys in `RESTMAIL_OWNER_KEYS` (authorized_keys format, one per line; Helm value `api.ownerKeys`). Nothing secret is configured, and the private key never leaves your machine. However the server runs — Kubernetes, Docker, a VM, anything — the CLI only talks to its public API: it asks for a challenge (`POST /api/v1/auth/owner/challenge`), signs it — bound to the admin it names, so a signature for one cannot be used for another — and sends it back (`POST /api/v1/auth/owner/token`). The server checks the key is listed and the signature verifies, spends the challenge so the answer cannot be replayed, and mints a single-use token, valid 15 minutes (`--lifetime`). Ed25519, ECDSA and RSA keys work; RSA signatures over SHA-1 are refused. Without `--key` the keys in ssh-agent are tried, which is also how a passphrase-protected key is used: the CLI never prompts. `--server` must be `https://`, or `http://` to localhost.
 
-With no owner keys listed this does not work over the API (exit 6, `no_owner_keys`). The same token can then be minted on the server itself, however you reach a shell there: `restmail-api mint-token --purpose reset-admin --username NAME` prints `{"purpose","token","expires_at"}`, and the app's link is `restmail://reset?server=<url>&token=<token>`. `chore password:reset` does the equivalent through the cluster, with a new password shown once.
+With no owner keys listed this does not work over the API (exit 6, `no_owner_keys`). The same token can then be minted on the server itself, however you reach a shell there: `restmail-api mint-token --purpose reset-admin --username NAME` prints `{"purpose","token","expires_at"}`, and the app's link is `rest-mail://reset?server=<url>&token=<token>`. `chore password:reset` does the equivalent through the cluster, with a new password shown once.
 
 That makes it the hand-over too. Someone — or an agent — who set the server up and holds its admin's credentials runs `reset-admin` and gives the link to the owner; once the owner redeems it, nothing the first holder knew works. The first holder could still mint another link while their key is listed in `RESTMAIL_OWNER_KEYS`, which is what owning it means: take their key off the list (and replace it with yours) to finish the hand-over.
 
