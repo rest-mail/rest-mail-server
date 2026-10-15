@@ -131,13 +131,13 @@ jobs:
         # arbitrary-code-execution supply-chain surface. Download a specific
         # release tarball and verify its sha256 before installing.
         env:
-          CHORE_VERSION: 0.1.3
+          CHORE_VERSION: 0.17.0
           # sha256 of chore-${CHORE_VERSION}-linux-x86_64.tar.gz, taken from that
           # release's checksums.txt. Bump both together when upgrading. The
           # release is built reproducibly (-trimpath, -buildvcs=false, pinned
           # toolchain) and its pipeline rebuilds every artifact to prove the
           # published hash, so this value is verifiable rather than merely trusted.
-          CHORE_SHA256: ff2eb922f9726c7d71591ad4efa5054ca70d80fe692bbb3363de1befbd973e13
+          CHORE_SHA256: b9a565d2937c67e9b9d0e6bdb48a2553f540fe268f78d9910d1f36952ca88b43
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
