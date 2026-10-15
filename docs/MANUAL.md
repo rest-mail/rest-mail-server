@@ -388,7 +388,7 @@ restmail version
 
 That tap **pulls**: a person runs its sync, which reads this project's public releases, computes each archive's own sha256 and checks its attestation, then writes a branch for a person to open and merge. Nothing in this repository can push a formula, so no token here can change what `brew install` gives anybody. Check an archive yourself with `gh attestation verify restmail_1.2.3_darwin_arm64.tar.gz --repo rest-mail/rest-mail-server`.
 
-**One tag releases the product.** `v1.2.3` publishes every server image as `ghcr.io/rest-mail/<component>:1.2.3` (docker.yml) and the CLI (release-cli.yml), so they always match. Set the chart's `appVersion` to `1.2.3` in a pull request first, then tag its merge commit: `git tag v1.2.3 <commit> && git push origin v1.2.3`. Releases up to `2026.10.10.1` used CalVer and stay as they are.
+**One tag releases the product.** `v1.2.3` publishes every server image as `ghcr.io/rest-mail/<component>:1.2.3` (docker.yml) and the CLI (release-cli.yml), so they always match. Set the chart's `appVersion` to `1.2.3` in a pull request first, then tag its merge commit: `git tag v1.2.3 <commit> && git push origin v1.2.3`.
 
 ### 4.9 Metrics & monitoring
 

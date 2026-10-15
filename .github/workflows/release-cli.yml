@@ -13,10 +13,9 @@ name: Release CLI
 # everything and publishes nothing, so a broken release config fails there
 # rather than on the day of a release.
 #
-# The same v* tag releases the server images (docker.yml). The release still
-# names its tags explicitly: the history also holds the product's CalVer tags
-# from before the switch to SemVer (up to 2026.10.10.1), and left to itself
-# GoReleaser takes the newest tag of any kind.
+# The same v* tag releases the server images (docker.yml). The release names
+# its tags explicitly rather than leaving GoReleaser to take the newest tag of
+# any kind, so a tag that is not a release can never be mistaken for one.
 
 on:
   push:
