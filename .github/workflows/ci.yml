@@ -225,11 +225,12 @@ jobs:
   first-start:
     name: First start
     # Proves, against the real image, the path a fresh install takes: the
-    # restmail CLI claims it over the public API with an owner key (no
-    # password, no platform assumed), the first admin is forced through 2FA, a
-    # domain and a mailbox get built, and reset-admin hands it over -- after
-    # which nothing the first holder had works, an unexpired access token
-    # included. tests/first-start/agent-e2e.sh.
+    # first admin signs in with the bootstrap password the installer chose and
+    # is forced to choose their own and enroll 2FA, a domain and a mailbox get
+    # built, and the restmail CLI hands the server over with reset-admin, over
+    # the public API with an owner key (no platform assumed) -- after which
+    # nothing the first holder had works, an unexpired access token included.
+    # tests/first-start/agent-e2e.sh.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -251,7 +252,7 @@ jobs:
           # A version stamped in, so the run can check it reaches the binary.
           docker build --target prod --build-arg VERSION=0.0.0-first-start -t restmail-api:first-start .
 
-      - name: Claim, build, hand over
+      - name: Sign in with the bootstrap password, build, hand over
         env:
           RESTMAIL: ${{ runner.temp }}/restmail
           IMAGE: restmail-api:first-start

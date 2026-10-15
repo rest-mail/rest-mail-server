@@ -47,16 +47,19 @@ so an existing install renders exactly as it did before.
 
 ## The first admin
 
-A fresh install has no admin, and the image carries no seed tool. Claim it with
-the CLI, which proves you own it by the access you installed with:
+The first admin comes from the password you install with,
+`api.bootstrapAdminPassword` (16 characters or more; the chart will not render
+without one). `chore install:helm` and `chore install:pulumi` make it and show
+it once. Sign in to the rest-mail app as `admin` with it: you choose your own
+password and enroll an authenticator straight away, after which it stops
+working. It also expires 72 hours after the server first takes it.
 
-```sh
-brew install rest-mail/tap/restmail
-restmail setup --namespace <your namespace>
-```
+A server with no admin and no bootstrap password refuses to start: nobody could
+ever sign in to it.
 
-It mints a single-use link inside the API's container and shows it as a QR code
-for the app. `restmail reset-admin` is the way back in, and hands a server over.
+`restmail reset-admin` is the way back in for an admin who has lost every other,
+and how a server is handed over. It proves you own the server with a key listed
+in `api.ownerKeys`.
 
 Or, without the CLI: add a
 `BOOTSTRAP_ADMIN_PASSWORD` key (16+ bytes, generated at deploy time) to the

@@ -29,53 +29,35 @@ func migrateTokens(t *testing.T, gdb *gorm.DB) {
 	}
 }
 
-func TestSetupToken_ClaimsAnUnclaimedServerOnce(t *testing.T) {
-	gdb := openBootstrapTestDB(t)
-	migrateTokens(t, gdb)
-	mustRBAC(t, gdb)
-
-	token, expires, err := MintSetupToken(gdb, 0)
+// newAdmin makes an admin the way a server has one: with the superadmin role,
+// and an authenticator still owed.
+func newAdmin(t *testing.T, gdb *gorm.DB, username, password string) *models.AdminUser {
+	t.Helper()
+	hash, err := auth.HashPassword(password)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if until := time.Until(expires); until <= 0 || until > DefaultTokenLifetime {
-		t.Errorf("expires in %v, want within %v", until, DefaultTokenLifetime)
+	var superadmin models.Role
+	if err := gdb.Where("name = ?", "superadmin").First(&superadmin).Error; err != nil {
+		t.Fatalf("superadmin role: %v", err)
 	}
-
-	admin, err := ClaimServer(gdb, token, "owner", chosenPassword, true)
-	if err != nil {
-		t.Fatalf("claim: %v", err)
+	admin := models.AdminUser{Username: username, PasswordHash: hash, Active: true, TwoFactorRequired: true}
+	if err := gdb.Create(&admin).Error; err != nil {
+		t.Fatal(err)
 	}
-	if auth.CheckPassword(chosenPassword, admin.PasswordHash) != nil {
-		t.Error("the first admin does not have the password its owner chose")
+	if err := gdb.Create(&models.UserRole{UserID: admin.ID, RoleID: superadmin.ID}).Error; err != nil {
+		t.Fatal(err)
 	}
-	if !admin.TwoFactorRequired || admin.PasswordChangeRequired {
-		t.Errorf("first admin: two_factor_required=%v password_change_required=%v; "+
-			"it chose its own password but must still enroll 2FA",
-			admin.TwoFactorRequired, admin.PasswordChangeRequired)
-	}
-	var withRoles models.AdminUser
-	gdb.Preload("Roles").First(&withRoles, admin.ID)
-	if len(withRoles.Roles) != 1 || withRoles.Roles[0].Name != "superadmin" {
-		t.Errorf("roles = %+v, want superadmin", withRoles.Roles)
-	}
-
-	// Spent: the same token claims nothing again.
-	if _, err := ClaimServer(gdb, token, "someone", chosenPassword, true); !errors.Is(err, ErrTokenInvalid) {
-		t.Errorf("second redemption: err = %v, want ErrTokenInvalid", err)
-	}
-	// And a claimed server mints no more setup tokens.
-	if _, _, err := MintSetupToken(gdb, 0); !errors.Is(err, ErrAlreadyClaimed) {
-		t.Errorf("mint on a claimed server: err = %v, want ErrAlreadyClaimed", err)
-	}
+	return &admin
 }
 
 // Two people (or a person and a script) racing with the same link: exactly one
-// becomes the admin.
-func TestSetupToken_RacingRedemptionsHaveOneWinner(t *testing.T) {
+// chooses the admin's password.
+func TestResetToken_RacingRedemptionsHaveOneWinner(t *testing.T) {
 	gdb := openScratchDatabase(t)
 	mustRBAC(t, gdb)
-	token, _, err := MintSetupToken(gdb, 0)
+	newAdmin(t, gdb, "admin", "the first admin's password")
+	token, _, err := MintResetToken(gdb, "admin", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,8 +70,8 @@ func TestSetupToken_RacingRedemptionsHaveOneWinner(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			// Each racer on its own connection, as separate HTTP requests are.
-			// Different names, so only the token can stop a second winner.
-			_, err := ClaimServer(gdb, token, fmt.Sprintf("racer-%d", i), chosenPassword, true)
+			// Different passwords, so only the token can stop a second winner.
+			_, err := ResetAdmin(gdb, token, fmt.Sprintf("racer %d's passphrase", i))
 			results <- err
 		}(i)
 	}
@@ -103,41 +85,54 @@ func TestSetupToken_RacingRedemptionsHaveOneWinner(t *testing.T) {
 		}
 	}
 	if wins != 1 {
-		t.Fatalf("%d racers claimed the server with one token, want exactly 1", wins)
+		t.Fatalf("%d racers reset the admin with one token, want exactly 1", wins)
 	}
 }
 
-func TestSetupToken_RefusesExpiredWrongPurposeAndBadInput(t *testing.T) {
+func TestResetToken_RefusesExpiredTokensAndBadInput(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
+	newAdmin(t, gdb, "admin", "the first admin's password")
 
-	expired, _, err := MintSetupToken(gdb, time.Nanosecond)
+	expired, _, err := MintResetToken(gdb, "admin", time.Nanosecond)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if _, err := ClaimServer(gdb, expired, "owner", chosenPassword, true); !errors.Is(err, ErrTokenInvalid) {
+	if _, err := ResetAdmin(gdb, expired, chosenPassword); !errors.Is(err, ErrTokenInvalid) {
 		t.Errorf("expired token: err = %v, want ErrTokenInvalid", err)
 	}
 
 	// Refused input leaves the token unspent: the owner fixes the password and tries again.
-	token, _, _ := MintSetupToken(gdb, 0)
-	if _, err := ClaimServer(gdb, token, "owner", "short", true); !errors.Is(err, ErrPasswordTooShort) {
+	token, expires, _ := MintResetToken(gdb, "admin", 0)
+	if until := time.Until(expires); until <= 0 || until > DefaultTokenLifetime {
+		t.Errorf("expires in %v, want within %v", until, DefaultTokenLifetime)
+	}
+	if _, err := ResetAdmin(gdb, token, "short"); !errors.Is(err, ErrPasswordTooShort) {
 		t.Errorf("short password: err = %v", err)
 	}
-	if _, err := ClaimServer(gdb, token, "", chosenPassword, true); !errors.Is(err, ErrUsernameRequired) {
-		t.Errorf("no username: err = %v", err)
+	if _, err := ResetAdmin(gdb, token, chosenPassword); err != nil {
+		t.Errorf("the token should still work after a refused attempt: %v", err)
 	}
-	if _, err := ClaimServer(gdb, token, "owner", chosenPassword, false); err == nil {
-		t.Error("claimed a server where 2FA is off; its admin could never finish setup")
-	}
-	// A setup token is no reset token.
-	if _, err := ResetAdmin(gdb, token, chosenPassword); !errors.Is(err, ErrTokenInvalid) {
-		t.Errorf("setup token used to reset: err = %v, want ErrTokenInvalid", err)
-	}
-	if _, err := ClaimServer(gdb, token, "owner", chosenPassword, true); err != nil {
-		t.Errorf("the token should still work after refused attempts: %v", err)
+}
+
+// Servers before 0.7 stored tokens that claimed a server with no admin. One
+// left behind in the table is no way in.
+func TestResetToken_AnOldSetupTokenIsNoWayIn(t *testing.T) {
+	gdb := openBootstrapTestDB(t)
+	migrateTokens(t, gdb)
+	mustRBAC(t, gdb)
+	newAdmin(t, gdb, "admin", "the first admin's password")
+	for _, purpose := range []string{"setup", "setup_code"} {
+		token := "left-behind-" + purpose
+		if err := gdb.Create(&models.OneTimeToken{Purpose: purpose, TokenHash: hashToken(token),
+			ExpiresAt: time.Now().Add(time.Hour)}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ResetAdmin(gdb, token, chosenPassword); !errors.Is(err, ErrTokenInvalid) {
+			t.Errorf("a %s token reset the admin: err = %v, want ErrTokenInvalid", purpose, err)
+		}
 	}
 }
 
@@ -149,11 +144,7 @@ func TestResetToken_LocksOutWhoeverHeldTheAccount(t *testing.T) {
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
 
-	setup, _, _ := MintSetupToken(gdb, 0)
-	admin, err := ClaimServer(gdb, setup, "admin", "the agent's password 123", true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	admin := newAdmin(t, gdb, "admin", "the agent's password 123")
 	// What the agent holds: an authenticator and a live session.
 	if err := gdb.Create(&models.TwoFactor{UserType: models.TwoFactorUserTypeAdmin, SubjectID: admin.ID,
 		EncryptedSecret: "x", Confirmed: true}).Error; err != nil {
@@ -205,7 +196,8 @@ func TestTokens_StoredOnlyAsHashes(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
-	token, _, _ := MintSetupToken(gdb, 0)
+	newAdmin(t, gdb, "admin", "the first admin's password")
+	token, _, _ := MintResetToken(gdb, "admin", 0)
 
 	var row models.OneTimeToken
 	gdb.First(&row)
@@ -251,7 +243,8 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 		}
 	})
 	if err := scratch.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.OneTimeToken{}); err != nil {
+		&models.UserRole{}, &models.RoleCapability{}, &models.OneTimeToken{}, &models.TwoFactor{},
+		&models.TwoFactorRecoveryCode{}, &models.RefreshToken{}); err != nil {
 		t.Fatalf("migrate scratch database: %v", err)
 	}
 	return scratch

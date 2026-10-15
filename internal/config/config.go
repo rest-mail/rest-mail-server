@@ -12,7 +12,6 @@ import (
 
 	"github.com/restmail/restmail/internal/mtls"
 	"github.com/restmail/restmail/internal/netallow"
-	"github.com/restmail/restmail/internal/setuplink"
 )
 
 // DefaultSMTPMaxMessageSize is the SMTP maximum message size applied when
@@ -130,13 +129,9 @@ type Config struct {
 	BootstrapAdminPassword string
 
 	// OwnerKeys lists, in authorized_keys format, the public keys whose holders
-	// can claim this server or reset its admins over the public API
-	// (internal/bootstrap/ownerkeys.go). Not a secret.
+	// can reset its admins over the public API (internal/bootstrap/ownerkeys.go).
+	// Not a secret.
 	OwnerKeys string
-	// SetupLinkBase is where the link a fresh install prints points, e.g.
-	// https://rest-mail.com/setup. Empty: the app's own scheme, with no site
-	// involved. See internal/setuplink.
-	SetupLinkBase string
 
 	// DNS Provider
 	DNSProvider string
@@ -478,7 +473,6 @@ func Load() (*Config, error) {
 		BootstrapAdminUsername: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_USERNAME", "admin"),
 		BootstrapAdminPassword: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", ""),
 		OwnerKeys:              getEnv("RESTMAIL_OWNER_KEYS", ""),
-		SetupLinkBase:          getEnv("RESTMAIL_SETUP_LINK_BASE", setuplink.DefaultBase),
 
 		DNSProvider: getEnv("DNS_PROVIDER", "dnsmasq"),
 

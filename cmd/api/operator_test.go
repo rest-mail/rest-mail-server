@@ -85,46 +85,30 @@ func errorCodeIn(t *testing.T, stderr string) string {
 	return e.Error.Code
 }
 
-func TestMintToken_ClaimsThenRecovers(t *testing.T) {
+func TestMintToken_LetsAnAdminBackIn(t *testing.T) {
 	gdb := scratchDatabase(t)
+	bootstrapAdmin(t, gdb)
 
-	// A fresh database: the command migrates it and mints a setup token.
+	// Nothing claims a server any more: its first admin is the bootstrap one.
 	status, out, errOut := run("mint-token", "--purpose", "setup")
-	if status != exitOK {
-		t.Fatalf("mint setup: status %d, stderr %s", status, errOut)
-	}
-	var raw map[string]string
-	if err := json.Unmarshal([]byte(out), &raw); err != nil {
-		t.Fatalf("stdout is not one JSON object: %q", out)
-	}
-	if raw["purpose"] != "setup" || raw["token"] == "" {
-		t.Fatalf("output = %v", raw)
-	}
-	if _, err := time.Parse(time.RFC3339, raw["expires_at"]); err != nil {
-		t.Errorf("expires_at %q is not RFC 3339", raw["expires_at"])
-	}
-
-	// The token it printed claims the server.
-	if _, err := bootstrap.ClaimServer(gdb, raw["token"], "owner", "a passphrase only I know", true); err != nil {
-		t.Fatalf("claim with the minted token: %v", err)
-	}
-
-	// Claimed: no second setup token, and a distinct status for a script to act on.
-	status, _, errOut = run("mint-token", "--purpose", "setup")
-	if status != exitAlreadyClaimed || errorCodeIn(t, errOut) != "already_claimed" {
-		t.Errorf("second setup mint: status %d, stderr %s; want %d already_claimed", status, errOut, exitAlreadyClaimed)
+	if status != exitUsage || out != "" || errorCodeIn(t, errOut) != "bad_flag" {
+		t.Errorf("setup mint: status %d, stdout %q, stderr %s; want %d bad_flag", status, out, errOut, exitUsage)
 	}
 
 	status, _, errOut = run("mint-token", "--purpose", "reset-admin", "--username", "nobody")
 	if status != exitNoSuchAdmin || errorCodeIn(t, errOut) != "no_such_admin" {
 		t.Errorf("reset for nobody: status %d, stderr %s", status, errOut)
 	}
-	status, out, errOut = run("mint-token", "--purpose", "reset-admin", "--username", "owner", "--lifetime", "5m")
+	status, out, errOut = run("mint-token", "--purpose", "reset-admin", "--username", "admin", "--lifetime", "5m")
 	if status != exitOK {
 		t.Fatalf("reset mint: status %d, stderr %s", status, errOut)
 	}
-	if err := json.Unmarshal([]byte(out), &raw); err != nil || raw["purpose"] != "reset-admin" {
+	var raw map[string]string
+	if err := json.Unmarshal([]byte(out), &raw); err != nil || raw["purpose"] != "reset-admin" || raw["token"] == "" {
 		t.Fatalf("reset output = %q", out)
+	}
+	if _, err := time.Parse(time.RFC3339, raw["expires_at"]); err != nil {
+		t.Errorf("expires_at %q is not RFC 3339", raw["expires_at"])
 	}
 	if _, err := bootstrap.ResetAdmin(gdb, raw["token"], "another passphrase entirely"); err != nil {
 		t.Errorf("reset with the minted token: %v", err)
@@ -134,8 +118,8 @@ func TestMintToken_ClaimsThenRecovers(t *testing.T) {
 // Only the result reaches stdout, so `$(restmail-api mint-token …)` is the
 // token's JSON and nothing else, whatever the server code logs.
 func TestMintToken_StdoutIsOnlyTheResult(t *testing.T) {
-	scratchDatabase(t)
-	status, out, _ := run("mint-token", "--purpose", "setup")
+	bootstrapAdmin(t, scratchDatabase(t))
+	status, out, _ := run("mint-token", "--purpose", "reset-admin", "--username", "admin")
 	if status != exitOK {
 		t.Fatalf("status %d", status)
 	}
@@ -149,8 +133,9 @@ func TestOperator_UsageErrorsAreJSONWithStatus2(t *testing.T) {
 		{"no-such-command"},
 		{"mint-token"},
 		{"mint-token", "--purpose", "everything"},
+		{"mint-token", "--purpose", "setup"},
 		{"mint-token", "--purpose", "reset-admin"},
-		{"mint-token", "--purpose", "setup", "--lifetime", "48h"},
+		{"mint-token", "--purpose", "reset-admin", "--username", "admin", "--lifetime", "48h"},
 		{"mint-token", "--unknown-flag"},
 	} {
 		status, out, errOut := run(args...)
@@ -169,9 +154,9 @@ func TestOperator_UsageErrorsAreJSONWithStatus2(t *testing.T) {
 // stderr is the error object alone, whatever the configuration warns about on
 // the way, so a program can read it whole.
 func TestOperator_StderrIsOnlyTheError(t *testing.T) {
-	scratchDatabase(t)
+	bootstrapAdmin(t, scratchDatabase(t))
 	t.Setenv("JWT_SECRET", "") // the development default: config.Load warns about it
-	if status, _, _ := run("mint-token", "--purpose", "setup"); status != exitOK {
+	if status, _, _ := run("mint-token", "--purpose", "reset-admin", "--username", "admin"); status != exitOK {
 		t.Fatal("first mint failed")
 	}
 	_, _, errOut := run("mint-token", "--purpose", "reset-admin", "--username", "nobody")
@@ -188,12 +173,12 @@ func TestOperator_StderrIsOnlyTheError(t *testing.T) {
 // actually came out.
 func TestMintToken_NothingElseOnTheRealStdout(t *testing.T) {
 	if os.Getenv("RESTMAIL_OPERATOR_SUBPROCESS") == "1" {
-		os.Exit(runOperator(os.Args[len(os.Args)-3:], os.Stdout, os.Stderr))
+		os.Exit(runOperator(os.Args[len(os.Args)-5:], os.Stdout, os.Stderr))
 	}
-	scratchDatabase(t)
+	bootstrapAdmin(t, scratchDatabase(t))
 
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMintToken_NothingElseOnTheRealStdout$",
-		"--", "mint-token", "--purpose", "setup")
+		"--", "mint-token", "--purpose", "reset-admin", "--username", "admin")
 	cmd.Env = append(os.Environ(), "RESTMAIL_OPERATOR_SUBPROCESS=1", "ENVIRONMENT=development")
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut

@@ -21,8 +21,9 @@ import (
 //
 // The deployment lists the owner's public keys (RESTMAIL_OWNER_KEYS, the
 // format of an authorized_keys file). Whoever holds a matching private key can
-// ask the server for a setup or reset-admin token: it signs a challenge the
-// server issued, and the server checks the signature against the list. No
+// ask the server for a reset-admin token, the way back in for an admin who has
+// lost every other: it signs a challenge the server issued, and the server
+// checks the signature against the list. No
 // secret is configured anywhere — the key that proves ownership never leaves
 // the machine holding it — and nothing about how the server is deployed is
 // assumed: an environment variable is something every platform can set.
@@ -123,12 +124,12 @@ func OwnerMessage(challenge, purpose, username string) []byte {
 	return []byte("restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge)
 }
 
-// OwnerRequest is a signed request for a setup or reset-admin token.
+// OwnerRequest is a signed request for a reset-admin token.
 type OwnerRequest struct {
 	Challenge string
 	PublicKey string // authorized_keys format
 	Signature []byte // ssh wire-format signature over OwnerMessage
-	Purpose   string // "setup" or "reset-admin"
+	Purpose   string // "reset-admin", the only one; it is part of what is signed
 	Username  string // the admin to reset (reset-admin)
 	Lifetime  time.Duration
 }
@@ -172,14 +173,10 @@ func MintForOwner(database *gorm.DB, keys *OwnerKeys, challengeKey []byte, req O
 		return "", time.Time{}, ErrChallengeInvalid
 	}
 
-	switch req.Purpose {
-	case "setup":
-		return MintSetupToken(database, req.Lifetime)
-	case "reset-admin":
-		return MintResetToken(database, req.Username, req.Lifetime)
-	default:
-		return "", time.Time{}, fmt.Errorf("purpose must be setup or reset-admin, got %q", req.Purpose)
+	if req.Purpose != "reset-admin" {
+		return "", time.Time{}, fmt.Errorf("purpose must be reset-admin, got %q", req.Purpose)
 	}
+	return MintResetToken(database, req.Username, req.Lifetime)
 }
 
 // ChallengeKey derives the key owner challenges are signed with from a server

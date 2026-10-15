@@ -182,19 +182,11 @@ api:
   internalRoutesAllowPublic: false
   # Public keys of the server's owners, one per line in authorized_keys format
   # (e.g. the contents of ~/.ssh/id_ed25519.pub). Whoever holds a matching
-  # private key can claim a fresh install (`restmail setup --server URL`) and
-  # let an admin back in (`restmail reset-admin`), from anywhere the API is
-  # reachable. Public keys, so not secret. Empty: neither is possible over the
-  # API, only with `restmail-api mint-token` on the server itself.
+  # private key can let an admin back in (`restmail reset-admin`) from anywhere
+  # the API is reachable, when every other way in is lost. Public keys, so not
+  # secret. Empty: that is possible only with `chore password:reset`, or
+  # `restmail-api mint-token` on the server itself.
   ownerKeys: ""
-  # Where the setup link a fresh install prints points. A web link is tappable
-  # anywhere a link is, and a phone's own camera offers to open one it sees in
-  # the printed QR code; the code rides after the `#`, which browsers never send
-  # to a web server, and the app takes the link before a browser sees it.
-  # Unset: https://rest-mail.com/setup. Set it to your own page to involve this
-  # project's site in nothing, or to "" for restmail://setup, which involves no
-  # site at all but which only the app can open.
-  # setupLinkBase: ""
   service:
     type: ClusterIP
     port: 8080

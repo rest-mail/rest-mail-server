@@ -36,17 +36,15 @@ import (
 
 // Exit statuses an operator command can return.
 const (
-	exitOK             = 0
-	exitFailed         = 1 // anything unexpected: no database, a bug
-	exitUsage          = 2 // a command or flag that does not exist, or is missing
-	exitAlreadyClaimed = 3 // setup asked for, but the server has an admin
-	exitNoSuchAdmin    = 4 // reset-admin named an account that does not exist
+	exitOK     = 0
+	exitFailed = 1 // anything unexpected: no database, a bug
+	exitUsage  = 2 // a command or flag that does not exist, or is missing
+	// 3 was already_claimed, from when a server could be claimed. Unused, so a
+	// script written against it does not read some other failure into it.
+	exitNoSuchAdmin = 4 // reset-admin named an account that does not exist
 )
 
 const operatorUsage = `restmail-api operator commands
-
-  restmail-api mint-token --purpose setup [--lifetime 15m]
-      A single-use token that claims this server while it has no admin.
 
   restmail-api mint-token --purpose reset-admin --username NAME [--lifetime 15m]
       A single-use token that lets an admin choose a new password and enroll a
@@ -70,8 +68,8 @@ const operatorUsage = `restmail-api operator commands
       Output: {"domains": [{"domain": ..., "records": [...]}]}
 
 Results are one JSON object on stdout. Errors: {"error": {"code": ...,
-"message": ...}} on stderr, with exit status 2 (usage), 3 (already_claimed),
-4 (no_such_admin) or 1 (anything else). Nothing else is written to either;
+"message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_admin) or
+1 (anything else). Nothing else is written to either;
 RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr.
 Usually run for you: chore password:reset, chore sessions:revoke,
 chore dns:show.
@@ -113,16 +111,16 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 func mintToken(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mint-token", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	purpose := fs.String("purpose", "", "setup or reset-admin")
+	purpose := fs.String("purpose", "", "reset-admin, the only one")
 	username := fs.String("username", "", "the admin to reset (reset-admin)")
 	lifetime := fs.Duration("lifetime", bootstrap.DefaultTokenLifetime, "how long the token can be redeemed")
 	if err := fs.Parse(args); err != nil {
 		return fail(stderr, exitUsage, "bad_flag", err.Error())
 	}
-	if *purpose != "setup" && *purpose != "reset-admin" {
-		return fail(stderr, exitUsage, "bad_flag", `--purpose must be "setup" or "reset-admin"`)
+	if *purpose != "reset-admin" {
+		return fail(stderr, exitUsage, "bad_flag", `--purpose must be "reset-admin"`)
 	}
-	if *purpose == "reset-admin" && *username == "" {
+	if *username == "" {
 		return fail(stderr, exitUsage, "bad_flag", "--username is required with --purpose reset-admin")
 	}
 	if *lifetime <= 0 || *lifetime > 24*time.Hour {
@@ -134,17 +132,8 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 		return status
 	}
 
-	var token string
-	var err error
-	var expires time.Time
-	if *purpose == "setup" {
-		token, expires, err = bootstrap.MintSetupToken(database, *lifetime)
-	} else {
-		token, expires, err = bootstrap.MintResetToken(database, *username, *lifetime)
-	}
+	token, expires, err := bootstrap.MintResetToken(database, *username, *lifetime)
 	switch {
-	case errors.Is(err, bootstrap.ErrAlreadyClaimed):
-		return fail(stderr, exitAlreadyClaimed, "already_claimed", err.Error())
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
 		return fail(stderr, exitNoSuchAdmin, "no_such_admin", fmt.Sprintf("no admin named %q", *username))
 	case err != nil:

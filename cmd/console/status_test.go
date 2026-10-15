@@ -30,47 +30,45 @@ func status(t *testing.T, srv *httptest.Server, args ...string) (int, string, st
 	return code, out.String(), errOut.String()
 }
 
-func TestStatus_AnUnclaimedServerSaysHowToClaimIt(t *testing.T) {
-	srv := describing(t, `{"data":{"product":"rest-mail","version":"0.4.0","claimed":false,"claim_methods":["setup_code","owner_key"]}}`)
+func TestStatus_SaysWhatTheServerRuns(t *testing.T) {
+	srv := describing(t, `{"data":{"product":"rest-mail","version":"0.7.0"}}`)
 
 	code, out, errOut := status(t, srv)
 
 	if code != exitOK {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	for _, want := range []string{"rest-mail 0.4.0", "not claimed yet", "--code CODE", "--key ~/.ssh/id_ed25519"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output lacks %q:\n%s", want, out)
-		}
+	if !strings.Contains(out, "rest-mail 0.7.0") {
+		t.Errorf("output lacks the version:\n%s", out)
+	}
+	if strings.Contains(out, "claim") || strings.Contains(out, "setup") {
+		t.Errorf("output still talks of claiming:\n%s", out)
 	}
 }
 
-func TestStatus_OnlyTheWaysTheServerOffers(t *testing.T) {
-	srv := describing(t, `{"data":{"product":"rest-mail","version":"0.4.0","claimed":false,"claim_methods":["setup_code"]}}`)
-	_, out, _ := status(t, srv)
-	if strings.Contains(out, "--key") {
-		t.Errorf("offered an owner key the server does not list:\n%s", out)
-	}
-}
-
-func TestStatus_AClaimedServerSendsYouToSignIn(t *testing.T) {
-	srv := describing(t, `{"data":{"product":"rest-mail","version":"0.4.0","claimed":true,"claim_methods":[]}}`)
+// A server from before 0.7 still says whether it is claimed. That is no longer
+// anything to act on: the CLI reads what it needs and ignores the rest.
+func TestStatus_AnOlderServersClaimStateIsIgnored(t *testing.T) {
+	srv := describing(t, `{"data":{"product":"rest-mail","version":"0.6.0","claimed":false,"claim_methods":["setup_code"]}}`)
 	code, out, _ := status(t, srv)
-	if code != exitOK || !strings.Contains(out, "claimed: it has an admin") || strings.Contains(out, "restmail setup") {
+	if code != exitOK || !strings.Contains(out, "rest-mail 0.6.0") || strings.Contains(out, "claim") {
 		t.Errorf("exit %d:\n%s", code, out)
 	}
 }
 
-// For scripts and agents: one object, and the claim state in it.
+// For scripts and agents: one object.
 func TestStatus_JSON(t *testing.T) {
-	srv := describing(t, `{"data":{"product":"rest-mail","version":"0.4.0","claimed":false,"claim_methods":["setup_code"]}}`)
+	srv := describing(t, `{"data":{"product":"rest-mail","version":"0.7.0"}}`)
 	code, out, _ := status(t, srv, "--json")
 	var got map[string]any
 	if code != exitOK || json.Unmarshal([]byte(out), &got) != nil {
 		t.Fatalf("exit %d, stdout not one JSON object: %q", code, out)
 	}
-	if got["claimed"] != false || got["version"] != "0.4.0" || got["server"] != srv.URL {
+	if got["version"] != "0.7.0" || got["product"] != "rest-mail" || got["server"] != srv.URL {
 		t.Errorf("got %v", got)
+	}
+	if _, ok := got["claimed"]; ok {
+		t.Errorf("claim state in %v", got)
 	}
 }
 
@@ -111,13 +109,14 @@ func TestSubcommand_AnUnknownCommandIsNotTheConsole(t *testing.T) {
 		{"restmail", "stauts"},           // a typo
 		{"restmail", "status-of-things"}, // a command from some other version
 		{"restmail", "claim"},            // a plausible command that does not exist
+		{"restmail", "setup"},            // a command that existed before 0.7
 	} {
 		var out, errOut bytes.Buffer
 		code, handled := runSubcommand(args, &out, &errOut)
 		if !handled || code != exitUsage {
 			t.Errorf("%q: code %d handled %v, want %d and true", args[1], code, handled, exitUsage)
 		}
-		if !strings.Contains(errOut.String(), args[1]) || !strings.Contains(errOut.String(), "restmail setup") {
+		if !strings.Contains(errOut.String(), args[1]) || !strings.Contains(errOut.String(), "restmail reset-admin") {
 			t.Errorf("%q: stderr should name it and show the commands:\n%s", args[1], errOut.String())
 		}
 	}

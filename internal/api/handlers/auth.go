@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/api/middleware"
@@ -146,9 +145,6 @@ type AuthHandler struct {
 	// per-account secret. A nil store (no DB, some unit tests) disables the check.
 	twoFactorStore twoFactorStore
 	masterKey      string
-	// twoFactorUnavailable is set when accounts cannot enroll in 2FA here
-	// (SetTwoFactorAvailable); the zero value is the usual case.
-	twoFactorUnavailable bool
 }
 
 // NewAuthHandler wires the auth handler. masterKey is the MASTER_KEY used to
@@ -825,48 +821,11 @@ func (h *AuthHandler) startAdminSession(w http.ResponseWriter, adminUser *models
 	respond.Data(w, http.StatusOK, resp)
 }
 
-// claimRequest is the body of POST /api/v1/auth/claim.
-type claimRequest struct {
-	Token    string `json:"token"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Client   string `json:"client,omitempty"`
-}
-
 // resetRequest is the body of POST /api/v1/auth/reset.
 type resetRequest struct {
 	Token    string `json:"token"`
 	Password string `json:"password"`
 	Client   string `json:"client,omitempty"`
-}
-
-// SetTwoFactorAvailable says whether accounts can enroll in TOTP 2FA here
-// (TOTP_2FA_ENABLED). A server where they cannot refuses to be claimed: its
-// first admin could never finish setting up.
-func (h *AuthHandler) SetTwoFactorAvailable(available bool) {
-	h.twoFactorUnavailable = !available
-}
-
-// Claim redeems a setup token — minted by `restmail-api mint-token --purpose
-// setup`, so only by someone who controls the deployment — and makes the
-// redeemer the first admin, with the name and password they chose. The session
-// it answers with is still in setup: the account must enroll an authenticator
-// before it reaches the admin API.
-func (h *AuthHandler) Claim(w http.ResponseWriter, r *http.Request) {
-	var req claimRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-	if req.Client != "" && req.Client != clientNative {
-		respond.ValidationError(w, map[string]string{"client": `must be "native" or omitted`})
-		return
-	}
-	admin, err := bootstrap.ClaimServer(h.db, req.Token, strings.TrimSpace(req.Username), req.Password, !h.twoFactorUnavailable)
-	if h.redeemFailed(w, err) {
-		return
-	}
-	h.startAdminSession(w, admin, req.Client == clientNative)
 }
 
 // Reset redeems a reset_admin token — minted by `restmail-api mint-token
@@ -899,12 +858,8 @@ func (h *AuthHandler) redeemFailed(w http.ResponseWriter, err error) bool {
 		return false
 	case errors.Is(err, bootstrap.ErrTokenInvalid):
 		respond.Error(w, http.StatusUnauthorized, "invalid_token", err.Error())
-	case errors.Is(err, bootstrap.ErrAlreadyClaimed):
-		respond.Error(w, http.StatusConflict, "already_claimed", err.Error())
 	case errors.Is(err, bootstrap.ErrPasswordTooShort):
 		respond.ValidationError(w, map[string]string{"password": err.Error()})
-	case errors.Is(err, bootstrap.ErrUsernameRequired):
-		respond.ValidationError(w, map[string]string{"username": "required"})
 	default:
 		slog.Error("redeeming a one-time token failed", "error", err)
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to redeem the token")

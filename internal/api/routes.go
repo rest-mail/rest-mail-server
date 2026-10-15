@@ -123,7 +123,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Initialize handlers
 	healthH := handlers.NewHealthHandler(db, jwtService)
 	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey)
-	authH.SetTwoFactorAvailable(cfg.TOTP2FAEnabled)
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled)
 	domainH := handlers.NewDomainHandler(db, dnsProvider)
 	mailboxH := handlers.NewMailboxHandler(db)
@@ -326,12 +325,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Post("/api/v1/auth/logout", authH.Logout)
 	r.With(authThrottle).Post("/api/v1/auth/refresh", authH.Refresh)
 	// Redeem a single-use token minted by the operator command (restmail-api
-	// mint-token): claim an unclaimed server, or reset an admin who has lost
-	// every way in. Throttled like login: each guesses at a secret.
-	r.With(authThrottle).Post("/api/v1/auth/claim", authH.Claim)
+	// mint-token) or for an owner key: reset an admin who has lost every way
+	// in. Throttled like login: it guesses at a secret.
 	r.With(authThrottle).Post("/api/v1/auth/reset", authH.Reset)
 	// Owners prove themselves with a key listed in RESTMAIL_OWNER_KEYS: sign a
-	// challenge, get a setup or reset-admin token to redeem above. Throttled at
+	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
 	// up the budget the owner then needs to sign in. main has already refused
 	// to start on keys that do not parse.
@@ -347,11 +345,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/token", ownerH.Token)
 
-	// What this server is and whether it has been claimed, for anyone who can
-	// reach it: how `restmail status` and the app choose between claiming and
-	// signing in. Shares the owner endpoints' bucket, so a script polling it
-	// cannot use up the budget anyone needs to sign in.
-	r.With(ownerThrottle).Get("/api/v1/server", handlers.NewServerHandler(db, ownerKeys).Describe)
+	// What this server is, for anyone who can reach it: how `restmail status`
+	// and the app confirm what is running. Shares the owner endpoints' bucket,
+	// so a script polling it cannot use up the budget anyone needs to sign in.
+	r.With(ownerThrottle).Get("/api/v1/server", handlers.DescribeServer)
 
 	// M-14 (CWE-770): the admin pipeline/filter test endpoints each run a message
 	// through the pipeline engine. They are capability-gated but were otherwise

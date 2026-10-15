@@ -129,14 +129,11 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.ownerKeys
 assert_contains "RESTMAIL_OWNER_KEYS set"   "$tmp/owner.yaml" "RESTMAIL_OWNER_KEYS: \"$KEY\""
 assert_absent   "no owner keys by default"  "$tmp/prod.yaml"  'RESTMAIL_OWNER_KEYS'
 
-echo "== where setup links point =="
-assert_absent   "unset by default"   "$tmp/prod.yaml" 'RESTMAIL_SETUP_LINK_BASE'
+echo "== no setup links =="
+# A server prints no setup code, so it has no link to point anywhere: the first
+# admin comes from the bootstrap password.
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.setupLinkBase=https://mail.example.com/claim > "$tmp/link.yaml"
-assert_contains "another page"       "$tmp/link.yaml" 'RESTMAIL_SETUP_LINK_BASE: "https://mail.example.com/claim"'
-# Empty is a choice, not an absence: it asks for restmail://, so it must reach
-# the container rather than falling back to the default.
-helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.setupLinkBase="" > "$tmp/nolink.yaml"
-assert_contains "no site at all"     "$tmp/nolink.yaml" 'RESTMAIL_SETUP_LINK_BASE: ""'
+assert_absent   "an old setting reaches nothing" "$tmp/link.yaml" 'RESTMAIL_SETUP_LINK_BASE'
 
 echo "== a bare install needs no secrets prepared =="
 # Only a hostname and a domain: the chart must make both Secrets itself, so
@@ -169,7 +166,6 @@ assert_contains "and survives uninstall too"         "$tmp/att-pvc.yaml" 'helm.s
 key=$(sed -n 's/^  MASTER_KEY: "\(.*\)"$/\1/p' "$tmp/api-secret.yaml")
 [ "${#key}" = 64 ] || fail "MASTER_KEY is ${#key} characters, want 64"
 pass "a generated MASTER_KEY is 64 characters"
-# No bootstrap admin unless asked for: one would turn the setup code off.
 
 echo "== an install without an admin password is refused =="
 # The chart will not invent one. Whoever installs has somewhere to keep a

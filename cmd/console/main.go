@@ -21,8 +21,7 @@ var version = "dev"
 
 const topUsage = `restmail — run a rest-mail server
 
-  restmail status        what a server is, and whether it has been claimed
-  restmail setup         claim a freshly installed server (QR code for the app)
+  restmail status        what a server is, and which version it runs
   restmail reset-admin   let an admin back in; also hands a server over
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
@@ -88,8 +87,8 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	switch args[1] {
-	case "setup", "reset-admin":
-		return runSetupCommand(context.Background(), args[1], args[2:], client, localKeys, stdout, stderr), true
+	case "reset-admin":
+		return runResetAdmin(context.Background(), args[2:], client, localKeys, stdout, stderr), true
 	case "status":
 		return runStatus(context.Background(), args[2:], client, stdout, stderr), true
 	case "version":

@@ -15,11 +15,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// Single-use tokens reach only the server's owner — the setup code a fresh
-// install prints to its own output, `restmail-api mint-token` run on the
-// server, or a request signed with an owner key — and are redeemed once over
-// the public API. Possession of one therefore proves the redeemer was handed it
-// by whoever controls the deployment, which is what "owning this server" means.
+// Single-use tokens reach only the server's owner — `restmail-api mint-token`
+// run on the server, or a request signed with an owner key — and are redeemed
+// once over the public API. Possession of one therefore proves the redeemer was
+// handed it by whoever controls the deployment, which is what "owning this
+// server" means. The only one there is lets an admin back in (reset_admin): the
+// first admin comes from the bootstrap password the installer chose.
 
 // DefaultTokenLifetime is how long a minted token can be redeemed. Long enough
 // to scan a QR code or for an agent to finish a plan; short enough that a token
@@ -32,9 +33,6 @@ const DefaultTokenLifetime = 15 * time.Minute
 const MinChosenPasswordLength = 12
 
 var (
-	// ErrAlreadyClaimed: a setup token was asked for, but the server has an
-	// admin. Getting back in is reset-admin's job.
-	ErrAlreadyClaimed = errors.New("the server already has an admin; use reset-admin to recover one")
 	// ErrNoSuchAdmin: reset-admin named an account that does not exist.
 	ErrNoSuchAdmin = errors.New("no such admin")
 	// ErrTokenInvalid covers unknown, used, expired and wrong-purpose tokens
@@ -42,21 +40,7 @@ var (
 	ErrTokenInvalid = errors.New("the token is not valid: unknown, already used, or expired")
 	// ErrPasswordTooShort: a chosen password under MinChosenPasswordLength.
 	ErrPasswordTooShort = fmt.Errorf("the password must be at least %d characters", MinChosenPasswordLength)
-	// ErrUsernameRequired: claiming needs a name for the first admin.
-	ErrUsernameRequired = errors.New("a username is required")
 )
-
-// MintSetupToken mints a token that claims this server, while it has no admin.
-func MintSetupToken(database *gorm.DB, lifetime time.Duration) (string, time.Time, error) {
-	var count int64
-	if err := database.Model(&models.AdminUser{}).Count(&count).Error; err != nil {
-		return "", time.Time{}, err
-	}
-	if count > 0 {
-		return "", time.Time{}, ErrAlreadyClaimed
-	}
-	return mint(database, models.OneTimeTokenSetup, nil, lifetime)
-}
 
 // MintResetToken mints a token that lets the named admin choose a new password
 // and enroll a new authenticator: the way back in when every other is lost.
@@ -118,72 +102,6 @@ func redeem(tx *gorm.DB, token, purpose string) (*models.OneTimeToken, error) {
 		return nil, err
 	}
 	return &row, nil
-}
-
-// ClaimServer spends a setup token and makes its redeemer the first admin, with
-// the username and password they chose. The account still owes an
-// authenticator before it can use the admin API: TwoFactorRequired is set, and
-// the session the caller is given next is a setup session.
-func ClaimServer(database *gorm.DB, token, username, password string, twoFactorAvailable bool) (*models.AdminUser, error) {
-	if username == "" {
-		return nil, ErrUsernameRequired
-	}
-	if len(password) < MinChosenPasswordLength {
-		return nil, ErrPasswordTooShort
-	}
-	if !twoFactorAvailable {
-		return nil, errors.New("the first admin must enroll in 2FA, but TOTP_2FA_ENABLED is off")
-	}
-	hash, err := auth.HashPassword(password)
-	if err != nil {
-		return nil, err
-	}
-	var admin models.AdminUser
-	err = database.Transaction(func(tx *gorm.DB) error {
-		// A minted token, or else the code the install printed, as typed.
-		_, err := redeem(tx, token, models.OneTimeTokenSetup)
-		if errors.Is(err, ErrTokenInvalid) {
-			_, err = redeem(tx, NormalizeSetupCode(token), models.OneTimeTokenSetupCode)
-		}
-		if err != nil {
-			return err
-		}
-		// Minted while there was no admin; one may have appeared since (a
-		// bootstrap password, a second token). The server is claimed once.
-		var count int64
-		if err := tx.Model(&models.AdminUser{}).Count(&count).Error; err != nil {
-			return err
-		}
-		if count > 0 {
-			return ErrAlreadyClaimed
-		}
-		var superadmin models.Role
-		if err := tx.Where("name = ?", "superadmin").First(&superadmin).Error; err != nil {
-			return fmt.Errorf("superadmin role missing (run EnsureRBAC first): %w", err)
-		}
-		now := time.Now()
-		admin = models.AdminUser{
-			Username:           username,
-			PasswordHash:       hash,
-			Active:             true,
-			TwoFactorRequired:  true,
-			LastPasswordChange: &now,
-		}
-		if err := tx.Create(&admin).Error; err != nil {
-			return err
-		}
-		// Claimed: every other way to claim it is dead, the printed code included.
-		if err := tx.Where("purpose IN ? AND used_at IS NULL",
-			[]string{models.OneTimeTokenSetup, models.OneTimeTokenSetupCode}).
-			Delete(&models.OneTimeToken{}).Error; err != nil {
-			return err
-		}
-		return tx.Create(&models.UserRole{UserID: admin.ID, RoleID: superadmin.ID}).Error
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &admin, nil
 }
 
 // ResetAdmin spends a reset_admin token: the admin it names gets the password
