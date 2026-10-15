@@ -125,8 +125,9 @@ type Config struct {
 
 	// First superadmin for a fresh install, created at startup only while no admin
 	// exists (internal/bootstrap). Empty password: no bootstrap admin.
-	BootstrapAdminUsername string
-	BootstrapAdminPassword string
+	BootstrapAdminUsername     string
+	BootstrapAdminPassword     string
+	BootstrapAdminPasswordHash string
 
 	// OwnerKeys lists, in authorized_keys format, the public keys whose holders
 	// can reset its admins over the public API (internal/bootstrap/ownerkeys.go).
@@ -472,7 +473,9 @@ func Load() (*Config, error) {
 
 		BootstrapAdminUsername: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_USERNAME", "admin"),
 		BootstrapAdminPassword: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", ""),
-		OwnerKeys:              getEnv("RESTMAIL_OWNER_KEYS", ""),
+		// Or a bcrypt hash of it, which a deploy tool can keep as plain config.
+		BootstrapAdminPasswordHash: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH", ""),
+		OwnerKeys:                  getEnv("RESTMAIL_OWNER_KEYS", ""),
 
 		DNSProvider: getEnv("DNS_PROVIDER", "dnsmasq"),
 

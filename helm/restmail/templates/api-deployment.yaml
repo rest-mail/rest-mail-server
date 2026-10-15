@@ -82,6 +82,13 @@ spec:
                   name: {{ include "restmail.api.secretName" . }}
                   key: BOOTSTRAP_ADMIN_PASSWORD
                   optional: true
+            # Or a bcrypt hash of it; the Secret holds one or the other.
+            - name: RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.api.secretName" . }}
+                  key: BOOTSTRAP_ADMIN_PASSWORD_HASH
+                  optional: true
             {{- if .Values.internalMtls.enabled }}
             {{- include "restmail.internalMtls.serverEnv" . | nindent 12 }}
             {{- end }}

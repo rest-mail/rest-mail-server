@@ -92,15 +92,21 @@ Chore owns your stack's config; you own the program. The only contract between
 them is five config keys, under the mail server's name:
 
 ```
-restmail:hostname      mail.example.com
-restmail:domain        example.com
-restmail:namespace     rest-mail
-restmail:chartVersion  0.13.0
-restmail:adminPassword [secret]
+restmail:hostname           mail.example.com
+restmail:domain             example.com
+restmail:namespace          rest-mail
+restmail:chartVersion       0.14.0
+restmail:adminPasswordHash  $2a$10$…
 ```
 
 So the code is the same for every install and every stack, contains no secret,
 and is never touched again: an upgrade is a config change.
+
+**The admin password is in the stack only as a bcrypt hash** (`restmail
+password-hash`), an ordinary value that nobody can sign in with. The password
+itself is made by the installer, 32 random characters, and shown once — as a
+QR code and as text. So nothing here needs the stack's passphrase, and the
+hash is fine to commit. It needs the `restmail` CLI 0.7.0 or newer.
 
 1. It sets the config — generating the password if you gave none and the stack
    has none, and showing it to you then.
@@ -117,6 +123,14 @@ and is never touched again: an upgrade is a config change.
 
 Run it again at any point and it picks up where it was. `--name mail-eu` puts
 a second mail server in the same stack under its own config namespace.
+
+**A project a pipeline deploys.** Where the stack's state cannot be read from
+the machine you run it on — its backend's credentials live in the pipeline —
+it sets nothing in the stack. It prints the config above as lines for
+`Pulumi.<stack>.yaml`, shows the password, prints the code, and waits while you
+commit both and your pipeline deploys them. Then it checks the server over its
+public API: that it answers as rest-mail at `https://<host>`, and that the
+admin password signs in.
 
 Every line of the printed code was learnt by installing it:
 
