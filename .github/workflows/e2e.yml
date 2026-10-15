@@ -174,8 +174,8 @@ jobs:
         # the step loudly instead. Bump these SHAs deliberately when adopting
         # upstream substrate changes.
         env:
-          TESTBED_REF: 6a766a3eb05670b9a999fe1e7210d28fb270644c              # rest-mail/testbed @ master
-          REFERENCE_MAILSERVER_REF: 07c68b71c0cd38333d18e6c5b130de6daa47c0a7  # rest-mail/reference-mailserver @ master
+          TESTBED_REF: 398d29cd40eb1a8553d710dc25491c2a4b727a37              # rest-mail/testbed @ master
+          REFERENCE_MAILSERVER_REF: 4f6f8e0fb61d6aac9a3adffa38f05c55be27e25d  # rest-mail/reference-mailserver @ master
         run: |
           set -euo pipefail
           chore testbed:init
@@ -214,18 +214,6 @@ jobs:
           fi
           echo "patched host chmod -> containerized chmod:"
           grep -nF 'alpine:3.20 chmod 644' "$f"
-
-      - name: Pin reference-dnsmasq to a render-fragment-capable build
-        # The testbed / reference-mailserver / rest-mail Taskfiles all pin
-        # reference-dnsmasq:2026.04.28 — the INITIAL release, which predates the
-        # `render-fragment` / `remove-fragment` subcommands that dns:register
-        # needs (added in 2026.04.28.2 / latest). On a clean pull that stale pin
-        # makes dns:register fail with "dnsmasq: bad command line options". Seed
-        # the pinned tag locally with the capable digest so `docker run` resolves
-        # it without re-pulling. (Follow-up: bump the pins in those three repos.)
-        run: |
-          docker pull ghcr.io/rest-mail/reference-dnsmasq:2026.04.28.2
-          docker tag ghcr.io/rest-mail/reference-dnsmasq:2026.04.28.2 ghcr.io/rest-mail/reference-dnsmasq:2026.04.28
 
       - name: Bring up e2e topology
         run: chore e2e:up

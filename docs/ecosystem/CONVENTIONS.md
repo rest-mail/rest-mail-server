@@ -90,24 +90,25 @@ breaking/feature/fix signal:
   API — the mobile app above all — and a major version is how the server says
   it broke something they rely on. A date cannot say that.
 
-**CalVer** for the `reference-*`/testbed images: point-in-time snapshots of a
-wrapped daemon, where "how current is this" matters more than a semantic diff.
+**And for everything else that publishes**: the `reference-*` images, the
+website. Every rest-mail version is SemVer. CalVer — the date of a build — was
+used for a while and was a mistake: a date says when something was built, not
+what changed or whether it is safe to take, and two version schemes side by
+side were a standing invitation to pin the wrong one. The CalVer tags and
+images were deleted when the switch was made; none should be made again.
 
 The product monorepo releases **one version for everything built from a
 commit**: a single `v1.2.3` tag publishes every image, the CLI, and is the
 chart's `appVersion`. The CLI and the server therefore cannot drift apart, and
 there is one tag space, not two competing for the same names. Images drop the
 `v` (`ghcr.io/rest-mail/api:1.2.3`); `main` still publishes continuous dev
-images. The product's CalVer releases up to `2026.10.10.1` predate the switch
-and stay as they are. The Helm chart carries two versions by design: `version`
+images. The Helm chart carries two versions by design: `version`
 (the chart package) and `appVersion` (the product it deploys), both SemVer and
 moving independently.
 
 - **Multi-arch.** Every image is published as a manifest list covering at least `linux/amd64` and `linux/arm64`. Apple Silicon, ARM cloud hosts, and most CI runners are arm64; missing arm64 silently breaks pulls on those platforms. Build via `docker/setup-qemu-action` + `docker/build-push-action` with `platforms: linux/amd64,linux/arm64`.
-- **Calver** (reference images): `YYYY.MM.DD`, with `.N` suffix for multiple releases on the same day (`2026.04.28.2`). A CalVer git tag preserves its leading zeros verbatim (`type=ref,event=tag`); do not run it through semver metadata, which strips `2026.04.28` to `2026.4.28` and breaks the chart's `appVersion` match.
-- **Daemon wrappers** also publish a mutable upstream-version tag (e.g. `reference-postfix:3.8.4`) pointing at the latest wrapper for that upstream version. Composers pin calver; humans use upstream-version for "latest patch."
-- **`:latest`** points at the newest calver tag.
-- A breaking change to the overlay/env contract bumps the **month** segment to act as a visual cue (e.g. last release `2026.04.28`, breaking change ships as `2026.05.01` even if 28 days haven't passed).
+- **SemVer, from git tags** (reference images and the website alike): pushing `v1.2.3` publishes `ghcr.io/rest-mail/<repo>:1.2.3`, through `docker/metadata-action` with `type=semver,pattern={{version}}`. A breaking change to the overlay/env contract is a major version.
+- **`:latest` and the commit sha** are published by every push to the default branch, for trying a change before it is released. Neither is a version: compose files, Taskfiles, charts and workflows pin a SemVer release.
 
 ## 10. Repository layout
 
@@ -120,7 +121,7 @@ reference-<name>/
 ├── defaults/                 # baked-in default config (templates if needed)
 ├── README.md                 # standalone usage + env var table + healthcheck description
 ├── LICENSE                   # MIT
-├── CHANGELOG.md              # human-readable, reverse-chronological by calver tag
+├── CHANGELOG.md              # human-readable, newest release first
 ├── .github/workflows/
 │   ├── build.yml             # builds + pushes to ghcr.io on tag push
 │   └── lint.yml              # (future) convention compliance check
@@ -142,9 +143,9 @@ MIT. Same across the org. Image attribution to upstream daemon authors goes in `
 
 A growing list of footguns surfaced while building these images. Each entry is a thing the convention-lint script (deferred per [POST-DECOMPOSE.md](POST-DECOMPOSE.md) item 3) should eventually catch.
 
-- **Don't over-specify "listen everywhere" defaults.** When a daemon already listens on all interfaces by default, *don't add a config line trying to make that explicit.* `listen-address=0.0.0.0` in dnsmasq doesn't mean "wildcard" — it tries to bind that as a literal address and silently fails to answer queries. Caught in `reference-dnsmasq` 2026.04.28; the fix was to delete the line entirely and rely on the upstream default. General rule: if the daemon's default behavior is what you want, don't write config for it.
+- **Don't over-specify "listen everywhere" defaults.** When a daemon already listens on all interfaces by default, *don't add a config line trying to make that explicit.* `listen-address=0.0.0.0` in dnsmasq doesn't mean "wildcard" — it tries to bind that as a literal address and silently fails to answer queries. Caught in `reference-dnsmasq`'s first release; the fix was to delete the line entirely and rely on the upstream default. General rule: if the daemon's default behavior is what you want, don't write config for it.
 
-- **Wrapping a non-root upstream image: fix dir ownership for runtime overlays.** When you `FROM` an upstream image that runs as a non-root user (rspamd's `_rspamd`, postgres's `postgres`, etc.) and your entrypoint writes config files at runtime, the directories need to be writable by that user. Use `USER root` + `COPY --chown=<user>:<group>` + `RUN chown -R <user>:<group> <dir>` + `USER <user>`, or your entrypoint will hit `Permission denied` the moment a user mounts an overlay. Caught in `reference-rspamd` 2026.04.28 (couldn't write `/etc/rspamd/local.d/logging.inc` at startup).
+- **Wrapping a non-root upstream image: fix dir ownership for runtime overlays.** When you `FROM` an upstream image that runs as a non-root user (rspamd's `_rspamd`, postgres's `postgres`, etc.) and your entrypoint writes config files at runtime, the directories need to be writable by that user. Use `USER root` + `COPY --chown=<user>:<group>` + `RUN chown -R <user>:<group> <dir>` + `USER <user>`, or your entrypoint will hit `Permission denied` the moment a user mounts an overlay. Caught in `reference-rspamd` (April 2026; couldn't write `/etc/rspamd/local.d/logging.inc` at startup).
 
 - **Multi-file template rendering needs explicit iteration.** A daemon's config often splits across multiple files (e.g. dovecot's `dovecot.conf` + `dovecot-sql.conf.ext`). A single `envsubst < tmpl > out` only renders one file and silently leaves siblings un-templated. Stage all templates under `/etc/<daemon>-defaults.tmpl/` and loop:
 
@@ -154,31 +155,31 @@ A growing list of footguns surfaced while building these images. Each entry is a
   done
   ```
 
-  Caught in `reference-dovecot` 2026.04.28.
+  Caught in `reference-dovecot` (April 2026).
 
 - **`exec` and PID 1 are non-negotiable for signal handling.** Dropping supervisord (per §2) is only half the work — your entrypoint must `exec <daemon>` rather than calling it as a child of the shell. Without `exec`, signals reach the shell instead of the daemon, breaking SIGTERM graceful shutdown and SIGHUP cert reload (§8). Tini as PID 1 + `exec` in the entrypoint is the right combo.
 
-- **Smoke tests must probe the protocol, not just the TCP port.** A daemon's listener can be open seconds before it's ready to greet clients (postfix under supervisord takes 5–8s after the socket binds). And on macOS, `nc` closes its connection on stdin EOF, which postfix's anti-pipelining check rejects with `improper command pipelining after CONNECT` — you'll never see the 220 banner. Always: poll for the actual protocol greeting, and where the daemon is sensitive to pipelining, insert `sleep` between client writes (`{ sleep 2; printf 'EHLO ...'; sleep 1; printf 'QUIT'; sleep 1; } | nc host port`). Caught in `reference-postfix` 2026.04.28.
+- **Smoke tests must probe the protocol, not just the TCP port.** A daemon's listener can be open seconds before it's ready to greet clients (postfix under supervisord takes 5–8s after the socket binds). And on macOS, `nc` closes its connection on stdin EOF, which postfix's anti-pipelining check rejects with `improper command pipelining after CONNECT` — you'll never see the 220 banner. Always: poll for the actual protocol greeting, and where the daemon is sensitive to pipelining, insert `sleep` between client writes (`{ sleep 2; printf 'EHLO ...'; sleep 1; printf 'QUIT'; sleep 1; } | nc host port`). Caught in `reference-postfix` (April 2026).
 
-- **Don't depend on amd64-only upstream images for multi-arch work.** Some upstream images on Docker Hub publish only `amd64` (notably `clamav/clamav` at the time of writing). Inheriting `FROM` such an image silently fails the multi-arch build — you can't reach `arm64` if the parent doesn't. Check `docker manifest inspect <upstream>` for `arm64` *before* `FROM`-ing it. If the upstream is amd64-only, build from a multi-arch base (`alpine`, `debian-slim`) and install the package via the OS package manager instead. Caught in `reference-clamav` 2026.04.28 (yanked initial release; rebuilt on alpine).
+- **Don't depend on amd64-only upstream images for multi-arch work.** Some upstream images on Docker Hub publish only `amd64` (notably `clamav/clamav` at the time of writing). Inheriting `FROM` such an image silently fails the multi-arch build — you can't reach `arm64` if the parent doesn't. Check `docker manifest inspect <upstream>` for `arm64` *before* `FROM`-ing it. If the upstream is amd64-only, build from a multi-arch base (`alpine`, `debian-slim`) and install the package via the OS package manager instead. Caught in `reference-clamav` (April 2026; yanked initial release; rebuilt on alpine).
 
 ### Composer-side lessons
 
 For composer repos (`testbed`, `reference-mailserver`, etc.) that wire reference images together — separate concerns from image-building.
 
-- **Document the network/volume names explicitly; they're the contract.** Composers create resources with names like `<COMPOSE_PROJECT_NAME>_mailnet` and `<COMPOSE_PROJECT_NAME>_certs`. Downstream consumers join via `external: true` referencing those exact names. Without explicit docs, consumers either guess wrong (`networks: { mailnet: ... }` defaults to `<their_project>_mailnet` and silently fails to find the resource) or hard-code the testbed's project name. State the canonical names + the override knob (`COMPOSE_PROJECT_NAME`) in the README's first 100 lines. Caught in `rest-mail/testbed` and `rest-mail/reference-mailserver` 2026.04.28.
+- **Document the network/volume names explicitly; they're the contract.** Composers create resources with names like `<COMPOSE_PROJECT_NAME>_mailnet` and `<COMPOSE_PROJECT_NAME>_certs`. Downstream consumers join via `external: true` referencing those exact names. Without explicit docs, consumers either guess wrong (`networks: { mailnet: ... }` defaults to `<their_project>_mailnet` and silently fails to find the resource) or hard-code the testbed's project name. State the canonical names + the override knob (`COMPOSE_PROJECT_NAME`) in the README's first 100 lines. Caught in `rest-mail/testbed` and `rest-mail/reference-mailserver` (April 2026).
 
-- **Bind-mounted overlay dirs must exist on disk before `up`.** Compose can't synthesize a missing source directory for a bind mount — it fails immediately with a cryptic error. Each per-instance config dir needs a `.gitkeep` (or actual content) so `git clone && task up` works on first run, even when the user hasn't customized any overlays yet. Caught in `rest-mail/reference-mailserver` 2026.04.28.
+- **Bind-mounted overlay dirs must exist on disk before `up`.** Compose can't synthesize a missing source directory for a bind mount — it fails immediately with a cryptic error. Each per-instance config dir needs a `.gitkeep` (or actual content) so `git clone && task up` works on first run, even when the user hasn't customized any overlays yet. Caught in `rest-mail/reference-mailserver` (April 2026).
 
 - **Parameterized composers need `COMPOSE_PROJECT_NAME` per parameter.** When the same compose stack is launched twice with different config dirs (e.g. `mail1` and `mail2`), they collide on container names unless each invocation gets its own project name. Bake this into the Taskfile (`COMPOSE_PROJECT_NAME=mailref-${CONFIG}`) — *and* warn in the README that direct `docker compose` invocations need to do the same.
 
 - **Subnet collisions are silent until `up`.** Two composers both wanting `10.99.0.0/16` fail with "Pool overlaps with other one." Only one composer at a time owns `mailnet`; downstream consumers always join `external: true`, never recreate. Worth a one-liner in every composer's README.
 
-- **Composers can't use a reference image to run client diagnostics.** Reference images run their daemon as PID 1 — running `dig`/`openssl`/`curl` against them via `docker exec` works, but spinning up a fresh container of the daemon image with a custom command (`docker run --rm reference-dnsmasq dig ...`) fails because the entrypoint expects the daemon's args, not arbitrary commands. For diagnostic shims, use a neutral tools image (`alpine:3.20 + apk add bind-tools openssl curl`). Caught in `rest-mail/testbed` 2026.04.28.
+- **Composers can't use a reference image to run client diagnostics.** Reference images run their daemon as PID 1 — running `dig`/`openssl`/`curl` against them via `docker exec` works, but spinning up a fresh container of the daemon image with a custom command (`docker run --rm reference-dnsmasq dig ...`) fails because the entrypoint expects the daemon's args, not arbitrary commands. For diagnostic shims, use a neutral tools image (`alpine:3.20 + apk add bind-tools openssl curl`). Caught in `rest-mail/testbed` (April 2026).
 
-- **Helm: keep testbed knowledge in a separate values file, not inline conditionals.** When the same chart needs to deploy against real cloud infra and against a kind+testbed dev cluster, the temptation is to add `if .Values.testbed.enabled` blocks throughout the templates. Don't. Templates stay neutral and reference values like `tls.secretName`, `networking.dnsPolicy`, and `*.service.type` directly; a `values-dev.yaml` file overlays the testbed-specific values (dnsmasq IP `10.99.0.10` in `dnsConfig.nameservers`, NodePort instead of LoadBalancer, inline cleartext creds, the `mail3.test` hostname). Forcing function: `helm template <chart> | grep -E "<testbed-IPs|test-domains|dnsmasq>"` must return nothing for the production path. Caught while building `rest-mail-server/helm/restmail` 2026.04.28.
+- **Helm: keep testbed knowledge in a separate values file, not inline conditionals.** When the same chart needs to deploy against real cloud infra and against a kind+testbed dev cluster, the temptation is to add `if .Values.testbed.enabled` blocks throughout the templates. Don't. Templates stay neutral and reference values like `tls.secretName`, `networking.dnsPolicy`, and `*.service.type` directly; a `values-dev.yaml` file overlays the testbed-specific values (dnsmasq IP `10.99.0.10` in `dnsConfig.nameservers`, NodePort instead of LoadBalancer, inline cleartext creds, the `mail3.test` hostname). Forcing function: `helm template <chart> | grep -E "<testbed-IPs|test-domains|dnsmasq>"` must return nothing for the production path. Caught while building `rest-mail-server/helm/restmail` (April 2026).
 
-- **Helm: render-time `fail` on missing required values trades trivially-passing forcing-function greps for safety.** A required-with-`{{ fail }}` check refuses to render the chart when an operator forgets to set hostname/domain — but it also makes `helm template <chart> | grep ...` return nothing because the template errored. The leak check passes vacuously. Either provide neutral example defaults (`mail.example.com`) so the forcing-function grep is meaningful AND keep documentation that the values must be overridden, or invoke the chart with `--set` in the forcing-function command. Caught while wiring Phase 5 forcing-function checks 2026.04.28.
+- **Helm: render-time `fail` on missing required values trades trivially-passing forcing-function greps for safety.** A required-with-`{{ fail }}` check refuses to render the chart when an operator forgets to set hostname/domain — but it also makes `helm template <chart> | grep ...` return nothing because the template errored. The leak check passes vacuously. Either provide neutral example defaults (`mail.example.com`) so the forcing-function grep is meaningful AND keep documentation that the values must be overridden, or invoke the chart with `--set` in the forcing-function command. Caught while wiring Phase 5 forcing-function checks (April 2026).
 
 ## Open items / future work
 
