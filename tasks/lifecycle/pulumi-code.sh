@@ -5,9 +5,11 @@
 #   RUNTIME=nodejs NAME=restmail tasks/lifecycle/pulumi-code.sh
 #
 # Every fact comes from the stack's config under NAME — hostname, domain,
-# namespace, chartVersion, adminPassword — which install:pulumi sets. So the
-# code is the same for every install and every stack, contains no secret, and
-# upgrade:pulumi never has to touch it: an upgrade is a config change.
+# namespace, chartVersion, adminPasswordHash — which install:pulumi sets. So
+# the code is the same for every install and every stack, contains no secret,
+# and upgrade:pulumi never has to touch it: an upgrade is a config change. The
+# admin password is there only as a bcrypt hash, which nobody can sign in with,
+# so it is an ordinary value and no step needs the stack's passphrase.
 #
 # It prints rather than writes. A Pulumi project is a program, in a layout this
 # repository has never seen; the wiring line is an edit to it either way, and
@@ -48,7 +50,7 @@ Add this under \`resources:\` in Pulumi.yaml:
           hostname: \${$NAME:hostname}
           domain: \${$NAME:domain}
         api:
-          bootstrapAdminPassword: \${$NAME:adminPassword}
+          bootstrapAdminPasswordHash: \${$NAME:adminPasswordHash}
 EOF
   ;;
 nodejs)
@@ -73,7 +75,7 @@ export const release = new k8s.helm.v3.Release("$NAME", {
     skipAwait: true,
     values: {
         mailserver: { hostname: mail.require("hostname"), domain: mail.require("domain") },
-        api: { bootstrapAdminPassword: mail.requireSecret("adminPassword") },
+        api: { bootstrapAdminPasswordHash: mail.require("adminPasswordHash") },
     },
 });
 
@@ -105,7 +107,7 @@ release = k8s.helm.v3.Release(
     skip_await=True,
     values={
         "mailserver": {"hostname": mail.require("hostname"), "domain": mail.require("domain")},
-        "api": {"bootstrapAdminPassword": mail.require_secret("adminPassword")},
+        "api": {"bootstrapAdminPasswordHash": mail.require("adminPasswordHash")},
     },
 )
 
@@ -142,7 +144,7 @@ func $fn(ctx *pulumi.Context) error {
 		SkipAwait:       pulumi.Bool(true),
 		Values: pulumi.Map{
 			"mailserver": pulumi.Map{"hostname": pulumi.String(mail.Require("hostname")), "domain": pulumi.String(mail.Require("domain"))},
-			"api":        pulumi.Map{"bootstrapAdminPassword": mail.RequireSecret("adminPassword")},
+			"api":        pulumi.Map{"bootstrapAdminPasswordHash": pulumi.String(mail.Require("adminPasswordHash"))},
 		},
 	})
 	return err
@@ -168,7 +170,7 @@ Declare a kubernetes:helm.sh/v3:Release (a Release, not a Chart) with:
   skipAwait:       true
   values.mailserver.hostname:        config $NAME:hostname
   values.mailserver.domain:          config $NAME:domain
-  values.api.bootstrapAdminPassword: config $NAME:adminPassword (a secret)
+  values.api.bootstrapAdminPasswordHash: config $NAME:adminPasswordHash
 EOF
   ;;
 esac

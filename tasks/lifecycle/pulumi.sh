@@ -4,11 +4,19 @@
 # Chore owns the stack's config; you own the program. The only contract
 # between them is the config keys under NAME (default restmail):
 #
-#   NAME:hostname  NAME:domain  NAME:namespace  NAME:chartVersion  NAME:adminPassword
+#   NAME:hostname  NAME:domain  NAME:namespace  NAME:chartVersion  NAME:adminPasswordHash
+#
+# The admin password is made here and shown once; the stack keeps only a bcrypt
+# hash of it, an ordinary config value, which nobody can sign in with. So no
+# step here needs the stack's passphrase.
 #
 # install   sets the config, prints the code (pulumi-code.sh), waits for you to
 #           add it, proves with `pulumi preview` that the code and the config
 #           found each other, and offers `pulumi up` on the release alone.
+#           Where the stack's state cannot be read from here — a project a
+#           pipeline deploys — it prints the config to commit with the code
+#           instead, waits for the pipeline, and checks the server over its
+#           public API.
 # upgrade   is a config change: chartVersion, preview, up — never your source.
 # uninstall cannot uninstall anything. Any removal your program does not
 #           reflect is undone by the next `pulumi up`, so it tells you what to
@@ -73,51 +81,94 @@ preview_failed() {
   exit "$EXIT_FAILED"
 }
 
-stack=$(stack_name) || refuse "No stack to work with in $PROJECT: pass --stack, or run \`pulumi stack select\` there."
+# A stack that is not selected is a mistake to say so about. One whose state
+# cannot be read from here belongs to a pipeline: install goes that way, and
+# nothing else can.
+stack_err=$(private_tmp)
+stack=$(p stack --show-name 2>"$stack_err") || stack=''
+if [ -z "$stack" ]; then
+  grep -qiE 'no stack|select a stack' "$stack_err" &&
+    refuse "No stack to work with in $PROJECT: pass --stack, or run \`pulumi stack select\` there."
+  [ "$mode" = install ] || refuse "Stack ${STACK:-(the selected one)} of $PROJECT cannot be read from here:" "" \
+    "$(tail -n 3 "$stack_err")" "" "Run this where its state is, or change the program and let your pipeline deploy it."
+fi
+
+# The admin password as the stack keeps it: a bcrypt hash, from the restmail CLI.
+password_hash() {
+  local hash
+  hash=$(printf '%s' "$1" | restmail password-hash 2>/dev/null) && [ -n "$hash" ] ||
+    die "Could not hash the admin password: this needs the restmail CLI 0.7.0 or newer (restmail password-hash)."
+  printf '%s' "$hash"
+}
 
 install() {
-  local urn version password generated='' found
-  urn=$(stack_release_urn)
-  [ -n "$urn" ] && refuse "Mail server \"$NAME\" is already deployed in stack $stack." \
-    "To move to a newer chart: chore upgrade:pulumi --project $PROJECT"
-
-  version=${VERSION:-$(config_get chartVersion)}
+  local urn version password generated='' hash='' found
+  if [ -n "$stack" ]; then
+    urn=$(stack_release_urn)
+    [ -n "$urn" ] && refuse "Mail server \"$NAME\" is already deployed in stack $stack." \
+      "To move to a newer chart: chore upgrade:pulumi --project $PROJECT"
+    version=${VERSION:-$(config_get chartVersion)}
+  else
+    version=${VERSION:-}
+  fi
   [ -n "$version" ] || version=$(latest_chart_version)
   [ -n "$version" ] || die "Could not read the newest chart from $CHART. Pass --version."
 
-  # Set what is not set; leave what is. Re-running skips straight to the preview.
-  config_set hostname "$HOST"
-  config_set domain "$DOMAIN"
-  config_set namespace "$NAMESPACE"
-  config_set chartVersion "$version"
+  # The password: given, kept from an earlier run, or made here and shown once.
   password=${PASSWORD:-}
   if [ -n "$password" ]; then
     [ "${#password}" -ge 16 ] || refuse "The password must be at least 16 characters."
-    printf '%s' "$password" | p config set --secret "$NAME:adminPassword" >/dev/null
-  elif config_has adminPassword; then
-    say "Keeping the admin password already in stack $stack."
-    password=$(config_get adminPassword)
+  elif [ -n "$stack" ] && config_has adminPasswordHash; then
+    say "Keeping the admin password already in stack $stack: it was shown when it was made."
   elif [ -t 1 ]; then
     password=$(new_password)
     generated=1
-    printf '%s' "$password" | p config set --secret "$NAME:adminPassword" >/dev/null
   else
     refuse "No --password, and no terminal to show a generated one on." \
       "In a pipeline, pass one: --password \"\$RESTMAIL_ADMIN_PASSWORD\" (chore password:new makes one)."
   fi
-  say "Stack $stack config is set: $NAME:hostname=$HOST, domain=$DOMAIN, namespace=$NAMESPACE, chartVersion=$version" \
-    "and $NAME:adminPassword, encrypted." ""
+  [ -n "$password" ] && hash=$(password_hash "$password")
+
+  if [ -n "$stack" ]; then
+    # Set what is not set; leave what is. Re-running skips straight to the preview.
+    config_set hostname "$HOST"
+    config_set domain "$DOMAIN"
+    config_set namespace "$NAMESPACE"
+    config_set chartVersion "$version"
+    [ -n "$hash" ] && config_set adminPasswordHash "$hash"
+    say "Stack $stack config is set: $NAME:hostname=$HOST, domain=$DOMAIN, namespace=$NAMESPACE, chartVersion=$version" \
+      "and $NAME:adminPasswordHash, a bcrypt hash of the admin password." ""
+  else
+    say "Stack ${STACK:-(the selected one)} of $PROJECT cannot be read from here, so a pipeline deploys it:" \
+      "nothing is set in it from here. Add this to Pulumi.${STACK:-<stack>}.yaml, under config:, and commit it" \
+      "with the code below:" ""
+    printf "  %s:hostname: %s\n  %s:domain: %s\n  %s:namespace: %s\n  %s:chartVersion: \"%s\"\n  %s:adminPasswordHash: '%s'\n" \
+      "$NAME" "$HOST" "$NAME" "$DOMAIN" "$NAME" "$NAMESPACE" "$NAME" "$version" "$NAME" "$hash"
+  fi
+
   # Shown the moment it exists, whatever happens next.
   if [ -n "$generated" ]; then
     printf '\n  Your rest-mail admin password — this is the only time it is shown.\n'
     show_sign_in "https://$HOST" admin "$password"
     cat <<EOF
-  Sign in to the rest-mail app with it, once the server is deployed; you will
+  Sign in to the rest-mail app with it, once the server is deployed: you will
   choose your own and enroll an authenticator. It stops working 72 hours after
-  the server first takes it. Read it back with:
-      pulumi config get $NAME:adminPassword -C $PROJECT${STACK:+ --stack $STACK}
+  the server first takes it. Only its hash is kept, so it cannot be read back:
+  lost before you have signed in? chore password:reset
 
 EOF
+  fi
+
+  if [ -z "$stack" ]; then
+    say "The code:" ""
+    RUNTIME=$(runtime) NAME=$NAME CHART=$CHART "$here/pulumi-code.sh"
+    say ""
+    yes_no "Committed, and has your pipeline deployed it?" || {
+      say "" "When it has, check it from anywhere: restmail status --server https://$HOST"
+      exit 0
+    }
+    verify_public "$password"
+    return
   fi
 
   say "Checking whether your program already declares it..."
@@ -146,6 +197,30 @@ EOF
   fi
   p up --yes --skip-preview --target "$(jq -r .urn <<<"$found")" || die "pulumi up failed (above)."
   wait_and_verify "$password"
+}
+
+# The server as anybody reaches it: its public API answers as rest-mail, and
+# the admin password signs in — into setup, owing a password of its own and an
+# authenticator. Needs nothing but the address.
+verify_public() {
+  local password=$1 server code resp
+  resp=$(private_tmp)
+  say "" "Checking https://$HOST ..."
+  server=$(curl -sS --max-time 15 "https://$HOST/api/v1/server" 2>&1) ||
+    refuse "https://$HOST did not answer: $server" "Has the pipeline finished, and does $HOST point at the cluster?"
+  [ "$(jq -r '.data.product // empty' <<<"$server" 2>/dev/null)" = rest-mail ] ||
+    refuse "https://$HOST answered, but not as rest-mail:" "$(head -c 200 <<<"$server")"
+  say "ok   rest-mail $(jq -r '.data.version' <<<"$server") answers at https://$HOST"
+  [ -n "$password" ] || { say "ok   skipped signing in: the password was not made here"; return; }
+  code=$(jq -nc --arg p "$password" '{username: "admin", password: $p, client: "native"}' |
+    curl -sS -o "$resp" -w '%{http_code}' --max-time 15 -H 'Content-Type: application/json' \
+      --data @- "https://$HOST/api/v1/auth/login")
+  case $code in
+  200) say "ok   the admin password signs in (still to do: $(jq -r '.data.setup_required | join(", ")' "$resp"))" ;;
+  401) refuse "The admin password does not sign in." \
+    "Is $NAME:adminPasswordHash in the stack the one printed above, and has the pipeline deployed it?" ;;
+  *) die "Signing in answered $code: $(head -c 200 "$resp")" ;;
+  esac
 }
 
 wait_and_verify() {
@@ -240,10 +315,10 @@ EOF
       "Was the change deployed, to this stack? Run this again once it has."
   fi
   "$here/uninstall.sh" report || exit $?
-  if config_has hostname || config_has adminPassword; then
+  if config_has hostname || config_has adminPasswordHash || config_has adminPassword; then
     say ""
     if yes_no "Remove the $NAME:* config from stack $stack too (the admin password included)?"; then
-      for key in hostname domain namespace chartVersion adminPassword; do
+      for key in hostname domain namespace chartVersion adminPasswordHash adminPassword; do
         p config rm "$NAME:$key" >/dev/null 2>&1
       done
       say "Removed."

@@ -14,7 +14,6 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
@@ -190,11 +189,19 @@ func EnsureRBAC(database *gorm.DB) error {
 // ask for a bootstrap admin, and nothing happens; RequireAdmin then says
 // whether the server has any way in at all.
 func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAvailable bool, now time.Time) (FirstAdminOutcome, error) {
-	if password == "" {
+	return EnsureFirstAdminWith(database, username, BootstrapPassword(password), twoFactorAvailable, now)
+}
+
+// EnsureFirstAdminWith is EnsureFirstAdmin for a credential that may be the
+// password or a bcrypt hash of it (BootstrapCredential). A different hash is a
+// different password: it re-arms the account exactly as a different password
+// does.
+func EnsureFirstAdminWith(database *gorm.DB, username string, credential BootstrapCredential, twoFactorAvailable bool, now time.Time) (FirstAdminOutcome, error) {
+	if credential.IsZero() {
 		return FirstAdminUnchanged, nil
 	}
-	if len(password) < MinAdminPasswordLength {
-		return FirstAdminUnchanged, fmt.Errorf("bootstrap admin password is %d bytes; it must be at least %d", len(password), MinAdminPasswordLength)
+	if err := credential.validate(); err != nil {
+		return FirstAdminUnchanged, err
 	}
 	if username == "" {
 		username = "admin"
@@ -205,7 +212,7 @@ func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAva
 		return FirstAdminUnchanged, err
 	}
 	if count > 0 {
-		return rearmBootstrapAdmin(database, username, password, now)
+		return rearmBootstrapAdmin(database, username, credential, now)
 	}
 	if !twoFactorAvailable {
 		return FirstAdminUnchanged, fmt.Errorf("a bootstrap admin must enroll in 2FA, but TOTP_2FA_ENABLED is off: it could never finish signing in")
@@ -216,7 +223,7 @@ func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAva
 		return FirstAdminUnchanged, fmt.Errorf("superadmin role missing (run EnsureRBAC first): %w", err)
 	}
 
-	hash, err := auth.HashPassword(password)
+	hash, err := credential.stored()
 	if err != nil {
 		return FirstAdminUnchanged, err
 	}
@@ -256,7 +263,7 @@ func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAva
 
 // ErrNoAdmin: the server has no admin, and was given no bootstrap password to
 // make one with, so nobody could ever sign in.
-var ErrNoAdmin = errors.New("there is no admin and no bootstrap admin password (RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD): nobody could sign in")
+var ErrNoAdmin = errors.New("there is no admin and no bootstrap admin password (RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD, or its hash in RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH): nobody could sign in")
 
 // RequireAdmin answers ErrNoAdmin for a server nobody can sign in to. The first
 // admin comes from the password the installer chose (EnsureFirstAdmin); there
@@ -279,7 +286,7 @@ func RequireAdmin(database *gorm.DB) error {
 // still owing its password change, with an expiry stamped. One that has chosen
 // its own password has its expiry cleared and is never touched again. The same
 // password as before changes nothing, so a restart does not extend the expiry.
-func rearmBootstrapAdmin(database *gorm.DB, username, password string, now time.Time) (FirstAdminOutcome, error) {
+func rearmBootstrapAdmin(database *gorm.DB, username string, credential BootstrapCredential, now time.Time) (FirstAdminOutcome, error) {
 	var user models.AdminUser
 	err := database.
 		Where("username = ? AND password_change_required = ? AND bootstrap_expires_at IS NOT NULL", username, true).
@@ -290,11 +297,11 @@ func rearmBootstrapAdmin(database *gorm.DB, username, password string, now time.
 	if err != nil {
 		return FirstAdminUnchanged, err
 	}
-	if auth.CheckPassword(password, user.PasswordHash) == nil {
+	if credential.matches(user.PasswordHash) {
 		return FirstAdminUnchanged, nil
 	}
 
-	hash, err := auth.HashPassword(password)
+	hash, err := credential.stored()
 	if err != nil {
 		return FirstAdminUnchanged, err
 	}

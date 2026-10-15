@@ -164,6 +164,11 @@ api:
   # has chosen a password replaces it and starts the 72 hours again; after,
   # changing it does nothing.
   bootstrapAdminPassword: ""
+  # Or, instead of the password, a bcrypt hash of it (`restmail password-hash`).
+  # A deploy tool can hold that as plain config — committed, readable by anyone
+  # who reads the repository — and nobody can sign in with it: the password is
+  # shown only to whoever installs. Everything above holds for it the same way.
+  bootstrapAdminPasswordHash: ""
   # The first admin's name.
   bootstrapAdminUsername: admin
   port: 8080

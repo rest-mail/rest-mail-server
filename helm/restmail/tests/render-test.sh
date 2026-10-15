@@ -234,6 +234,23 @@ esac
 pass "a supplied password is not echoed back"
 assert_contains "a given Postgres password"   "$tmp/given.yaml" 'POSTGRES_PASSWORD: "given-pg"'
 
+echo "== or a bcrypt hash of the password, which a deploy tool can hold as plain config =="
+# What `restmail password-hash` makes: bare bcrypt, cost 10.
+HASH='$2a$10$CwTycUXWue0Thq9StjUM0uJ8.dLw6p0Gq1sYk9YlFQd0uB2X3m7nG'
+HOST_ARGS=(--set mailserver.hostname=mx.example.com --set mailserver.domain=example.com)
+helm template restmail "$CHART_DIR" "${HOST_ARGS[@]}" \
+  --set-string "api.bootstrapAdminPasswordHash=$HASH" > "$tmp/hash.yaml"
+secret "$tmp/hash.yaml" restmail-api > "$tmp/hash-secret.yaml"
+assert_contains "the hash is kept"            "$tmp/hash-secret.yaml" "BOOTSTRAP_ADMIN_PASSWORD_HASH: \"$HASH\""
+assert_absent   "and no password beside it"   "$tmp/hash-secret.yaml" 'BOOTSTRAP_ADMIN_PASSWORD:'
+assert_contains "the API is given it"         "$tmp/hash.yaml" 'name: RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH'
+both=$(helm template restmail "$CHART_DIR" "${HOST_ARGS[@]}" --set-string "api.bootstrapAdminPasswordHash=$HASH" \
+  --set api.bootstrapAdminPassword=a-bootstrap-password-of-length 2>&1) && fail "the password and its hash were both taken"
+case "$both" in *"not both"*) pass "the password or its hash, not both" ;; *) fail "refused, but not for the right reason: $both" ;; esac
+nohash=$(helm template restmail "$CHART_DIR" "${HOST_ARGS[@]}" --set-string api.bootstrapAdminPasswordHash=a-bootstrap-password-of-length 2>&1) &&
+  fail "a password was taken for its hash"
+case "$nohash" in *"must be a bcrypt hash"*) pass "a hash that is not one is refused" ;; *) fail "refused, but not for the right reason: $nohash" ;; esac
+
 echo "== a Secret you manage is used, and none is made =="
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
   --set api.existingSecret=mine-api --set postgres.existingSecret=mine-pg > "$tmp/existing.yaml"

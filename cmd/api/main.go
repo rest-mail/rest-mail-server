@@ -136,7 +136,12 @@ func main() {
 		slog.Error("failed to create the built-in roles", "error", err)
 		os.Exit(1)
 	}
-	if _, err := bootstrap.EnsureFirstAdmin(database, cfg.BootstrapAdminUsername, cfg.BootstrapAdminPassword, cfg.TOTP2FAEnabled, time.Now()); err != nil {
+	credential, err := bootstrap.BootstrapFromConfig(cfg.BootstrapAdminPassword, cfg.BootstrapAdminPasswordHash)
+	if err != nil {
+		slog.Error("invalid bootstrap admin password", "error", err)
+		os.Exit(1)
+	}
+	if _, err := bootstrap.EnsureFirstAdminWith(database, cfg.BootstrapAdminUsername, credential, cfg.TOTP2FAEnabled, time.Now()); err != nil {
 		slog.Error("failed to create the bootstrap admin", "error", err)
 		os.Exit(1)
 	}

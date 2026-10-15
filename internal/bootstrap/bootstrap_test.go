@@ -270,6 +270,44 @@ func TestEnsureFirstAdmin_NewPasswordRearmsAnUnfinishedAdmin(t *testing.T) {
 // changing or restarting must never touch the account again, or whoever can
 // edit the Secret could reset the admin's password. Nor is a second admin
 // ever added.
+// A deployment that holds only a hash of the password makes the same admin:
+// the installer's password signs in, and the account starts in setup.
+func TestEnsureFirstAdminWith_AHash(t *testing.T) {
+	gdb := openBootstrapTestDB(t)
+	mustRBAC(t, gdb)
+	hash := hashOf(t, strongPassword, 10)
+	credential, err := BootstrapPasswordHash(hash)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outcome, err := EnsureFirstAdminWith(gdb, "admin", credential, true, t0)
+	if err != nil || outcome != FirstAdminCreated {
+		t.Fatalf("outcome=%v err=%v, want created", outcome, err)
+	}
+	admin := adminNamed(t, gdb, "admin")
+	if auth.CheckPassword(strongPassword, admin.PasswordHash) != nil {
+		t.Error("the installer's password does not sign in")
+	}
+	if !admin.PasswordChangeRequired || !admin.TwoFactorRequired || admin.BootstrapExpiresAt == nil {
+		t.Errorf("not in setup: %+v", admin)
+	}
+
+	// The same hash again, as every restart gives it: nothing changes.
+	if outcome, err := EnsureFirstAdminWith(gdb, "admin", credential, true, t0.Add(time.Hour)); err != nil || outcome != FirstAdminUnchanged {
+		t.Errorf("restart: outcome=%v err=%v, want unchanged", outcome, err)
+	}
+	// A new deployment's hash re-arms it, as a new password does.
+	next, _ := BootstrapPasswordHash(hashOf(t, "a-different-password-entirely", 10))
+	if outcome, err := EnsureFirstAdminWith(gdb, "admin", next, true, t0.Add(100*time.Hour)); err != nil || outcome != FirstAdminRearmed {
+		t.Fatalf("new hash: outcome=%v err=%v, want rearmed", outcome, err)
+	}
+	after := adminNamed(t, gdb, "admin")
+	if auth.CheckPassword("a-different-password-entirely", after.PasswordHash) != nil || auth.CheckPassword(strongPassword, after.PasswordHash) == nil {
+		t.Error("after re-arming, the new password should work and the old should not")
+	}
+}
+
 func TestEnsureFirstAdmin_NeverActsOnceTheAdminHasChosenAPassword(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
