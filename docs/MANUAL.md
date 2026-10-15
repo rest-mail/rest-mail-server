@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-15 — The installer shows the admin password as a QR code
+`restmail sign-in-link` draws the link that opens the rest-mail app signed in — `https://rest-mail.com/setup#server=…&username=…&password=…` — as a QR code a phone's camera opens, and always prints the link, server, username and password as text too. `chore install:helm`, `install:pulumi` and `password:reset` show the password they made that way. [§7.9](#79-first-start-of-a-production-install).
+
 ### 2026-10-15 — No setup codes: the first admin is the bootstrap one
 A server no longer prints a setup code, and nothing claims one: `POST /api/v1/auth/claim`, `restmail setup`, `mint-token --purpose setup` and `RESTMAIL_SETUP_LINK_BASE` are gone, and `GET /api/v1/server` says only what the server is. The first admin comes from the password the installer chose; a server with no admin and no bootstrap password refuses to start in production. Owner keys and `restmail reset-admin` remain the way back in. [§7.9](#79-first-start-of-a-production-install).
 
@@ -790,6 +793,8 @@ The CLI knows a server only by its address, whatever installed it, so it asks th
 1. If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
 
 The API **refuses to start** if a bootstrap admin would be created with a password under 16 bytes (a placeholder left in), or while `TOTP_2FA_ENABLED` is off (the admin could never finish setup and would be locked out for good).
+
+**Seeing it.** `chore install:helm`, `chore install:pulumi` and `chore password:reset` show a password they made once, as a QR code your phone's camera opens the app with, signed in, and always as text (the link, server, username and password) beneath it. They draw it with `printf '%s' "$PASSWORD" | restmail sign-in-link --server https://mail.example.com [--username NAME]`: the password comes on stdin, never on the command line. The QR code is drawn only on a terminal wide enough for it (`--no-qr` turns it off), and the link is `https://rest-mail.com/setup#server=…&username=…&password=…` — after the `#`, so no web server is ever sent the password; where the app does not take the link, that page hands it to the app or shows it to type in.
 
 **Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart, set `api.bootstrapAdminPassword` (the chart puts it in the API Secret it makes), or put a `BOOTSTRAP_ADMIN_PASSWORD` key in your own Secret (`api.existingSecret`). Read it back with
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.

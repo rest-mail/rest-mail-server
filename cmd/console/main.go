@@ -23,6 +23,7 @@ const topUsage = `restmail — run a rest-mail server
 
   restmail status        what a server is, and which version it runs
   restmail reset-admin   let an admin back in; also hands a server over
+  restmail sign-in-link  the link, and QR code, that opens the app signed in
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
 
@@ -91,6 +92,8 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 		return runResetAdmin(context.Background(), args[2:], client, localKeys, stdout, stderr), true
 	case "status":
 		return runStatus(context.Background(), args[2:], client, stdout, stderr), true
+	case "sign-in-link":
+		return runSignInLink(args[2:], os.Stdin, stdout, stderr), true
 	case "version":
 		fmt.Fprintln(stdout, "restmail", version)
 		return 0, true
