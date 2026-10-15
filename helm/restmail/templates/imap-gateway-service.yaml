@@ -20,10 +20,6 @@ spec:
   selector:
     {{- include "restmail.componentSelectorLabels" (list . "imap-gateway") | nindent 4 }}
   ports:
-    - name: imap
-      port: {{ .Values.imapGateway.ports.plain }}
-      targetPort: imap
-      protocol: TCP
     - name: imaps
       port: {{ .Values.imapGateway.ports.tls }}
       targetPort: imaps

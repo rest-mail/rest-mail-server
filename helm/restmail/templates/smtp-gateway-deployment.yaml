@@ -35,9 +35,6 @@ spec:
             - name: smtp
               containerPort: {{ .Values.smtpGateway.ports.inbound }}
               protocol: TCP
-            - name: submission
-              containerPort: {{ .Values.smtpGateway.ports.submission }}
-              protocol: TCP
             - name: submissions
               containerPort: {{ .Values.smtpGateway.ports.submissionTLS }}
               protocol: TCP
@@ -48,8 +45,6 @@ spec:
               value: {{ include "restmail.api.url" . | quote }}
             - name: SMTP_PORT_INBOUND
               value: {{ .Values.smtpGateway.ports.inbound | quote }}
-            - name: SMTP_PORT_SUBMISSION
-              value: {{ .Values.smtpGateway.ports.submission | quote }}
             - name: SMTP_PORT_SUBMISSION_TLS
               value: {{ .Values.smtpGateway.ports.submissionTLS | quote }}
             {{- with .Values.smtpGateway.maxMessageSize }}

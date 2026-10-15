@@ -81,6 +81,28 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
   --set api.attachments.persistence.enabled=false > "$tmp/nopvc.yaml"
 assert_absent "rolling update with no volume" "$tmp/nopvc.yaml" 'type: Recreate'
 
+echo "== the gateways ask for no cleartext client port =="
+# In production a gateway refuses to start if one of these is set (#279), so a
+# chart that sets them deploys gateways that crash on boot.
+for var in SMTP_PORT_SUBMISSION IMAP_PORT POP3_PORT; do
+  if grep -Eq -- "- name: $var\$" "$tmp/prod.yaml"; then fail "$var is set"; fi
+  pass "$var not set"
+done
+# Listened on or exposed. (587 stays open for egress: delivering to a remote
+# smart host is not a client port of ours.)
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --show-only templates/smtp-gateway-service.yaml \
+  --show-only templates/imap-gateway-service.yaml \
+  --show-only templates/pop3-gateway-service.yaml > "$tmp/gateway-services.yaml"
+if grep -Eq -- "containerPort: (587|143|110)\$" "$tmp/prod.yaml" ||
+   grep -Eq -- "port: (587|143|110)\$" "$tmp/gateway-services.yaml"; then
+  fail "a cleartext client port is listened on or exposed"
+fi
+pass "587, 143 and 110 neither listened on nor exposed"
+# The probes knock on a port that is listening, or the pods never go ready.
+assert_contains "IMAP probed on 993"      "$tmp/prod.yaml" 'port: imaps'
+assert_contains "POP3 probed on 995"      "$tmp/prod.yaml" 'port: pop3s'
+
 echo "== API only: the gateways can be turned off =="
 # Without this the chart could only be installed somewhere able to give three
 # LoadBalancers an address. The REST API is a whole product on its own; the

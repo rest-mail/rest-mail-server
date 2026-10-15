@@ -11,7 +11,7 @@ description: |
 type: application
 version: 0.12.1
 # The product release this deploys: the v-less SemVer of the v* tag that built
-# the images (docker.yml). Releases up to 2026.10.10.1 were CalVer.
+# the images (docker.yml).
 appVersion: "0.4.0"
 keywords:
   - mail
