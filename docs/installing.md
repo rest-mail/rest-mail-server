@@ -106,7 +106,8 @@ and is never touched again: an upgrade is a config change.
 password-hash`), an ordinary value that nobody can sign in with. The password
 itself is made by the installer, 32 random characters, and shown once — as a
 QR code and as text. So nothing here needs the stack's passphrase, and the
-hash is fine to commit. It needs the `restmail` CLI 0.7.0 or newer.
+hash is fine to commit. It needs `pulumi`, `jq` and the `restmail` CLI 0.7.0 or
+newer — and `kubectl` only where it deploys the stack itself.
 
 1. It sets the config — generating the password if you gave none and the stack
    has none, and showing it to you then.
