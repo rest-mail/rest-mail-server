@@ -187,7 +187,8 @@ func EnsureRBAC(database *gorm.DB) error {
 // Once the account has chosen its own password this is a no-op forever, so
 // changing or removing the deployment's password later cannot reset it, and
 // no second admin is ever added. An empty password means the operator did not
-// ask for a bootstrap admin, and nothing happens.
+// ask for a bootstrap admin, and nothing happens; RequireAdmin then says
+// whether the server has any way in at all.
 func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAvailable bool, now time.Time) (FirstAdminOutcome, error) {
 	if password == "" {
 		return FirstAdminUnchanged, nil
@@ -251,6 +252,24 @@ func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAva
 	}
 	slog.Info("bootstrap admin created", "username", username, "password_expires", expires.UTC().Format(time.RFC3339))
 	return FirstAdminCreated, nil
+}
+
+// ErrNoAdmin: the server has no admin, and was given no bootstrap password to
+// make one with, so nobody could ever sign in.
+var ErrNoAdmin = errors.New("there is no admin and no bootstrap admin password (RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD): nobody could sign in")
+
+// RequireAdmin answers ErrNoAdmin for a server nobody can sign in to. The first
+// admin comes from the password the installer chose (EnsureFirstAdmin); there
+// is no other way to make one over the network.
+func RequireAdmin(database *gorm.DB) error {
+	var count int64
+	if err := database.Model(&models.AdminUser{}).Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return ErrNoAdmin
+	}
+	return nil
 }
 
 // rearmBootstrapAdmin gives the bootstrap admin a new deploy-time password,

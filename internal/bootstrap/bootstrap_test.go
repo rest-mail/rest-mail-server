@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"os"
 	"strconv"
 	"strings"
@@ -134,6 +135,22 @@ func TestEnsureFirstAdmin_NoPasswordDoesNothing(t *testing.T) {
 	}
 	if n := countAdmins(t, gdb); n != 0 {
 		t.Fatalf("admins = %d, want 0", n)
+	}
+}
+
+// A server given no bootstrap password, with no admin, has no way in at all:
+// the API refuses to start in production rather than run like that.
+func TestRequireAdmin_NoAdminIsNoWayIn(t *testing.T) {
+	gdb := openBootstrapTestDB(t)
+	mustRBAC(t, gdb)
+	if err := RequireAdmin(gdb); !errors.Is(err, ErrNoAdmin) {
+		t.Fatalf("no admin: err = %v, want ErrNoAdmin", err)
+	}
+	if _, err := EnsureFirstAdmin(gdb, "admin", "a-bootstrap-password-of-length", true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := RequireAdmin(gdb); err != nil {
+		t.Errorf("with the bootstrap admin: err = %v, want nil", err)
 	}
 }
 

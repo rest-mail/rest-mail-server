@@ -25,8 +25,7 @@ import (
 // server does (internal/bootstrap/ownerkeys.go, which has its own tests).
 type fakeServer struct {
 	owners   []ssh.PublicKey
-	claimed  bool     // an admin exists already
-	admins   []string // for reset-admin
+	admins   []string
 	answered []map[string]any
 }
 
@@ -61,9 +60,9 @@ func (f *fakeServer) handler() http.Handler {
 			return
 		}
 		switch {
-		case req["purpose"] == "setup" && f.claimed:
-			fail(w, 409, "already_claimed")
-		case req["purpose"] == "reset-admin" && !contains(f.admins, req["username"].(string)):
+		case req["purpose"] != "reset-admin":
+			fail(w, 422, "validation_error")
+		case !contains(f.admins, req["username"].(string)):
 			fail(w, 404, "no_such_admin")
 		default:
 			data(w, map[string]string{"purpose": req["purpose"].(string), "token": "TOKEN-123", "expires_at": "2026-10-10T21:15:00Z"})
@@ -102,21 +101,21 @@ func keysOf(signers ...ssh.Signer) keySource {
 	}
 }
 
-func run(t *testing.T, f *fakeServer, keys keySource, command string, args ...string) (int, string, string) {
+func run(t *testing.T, f *fakeServer, keys keySource, args ...string) (int, string, string) {
 	t.Helper()
 	srv := httptest.NewServer(f.handler())
 	t.Cleanup(srv.Close)
 	var out, errOut bytes.Buffer
 	args = append([]string{"--server", srv.URL}, args...)
-	status := runSetupCommand(context.Background(), command, args, srv.Client(), keys, &out, &errOut)
+	status := runResetAdmin(context.Background(), args, srv.Client(), keys, &out, &errOut)
 	return status, out.String(), errOut.String()
 }
 
-func TestSetup_OwnerKeyGetsALink(t *testing.T) {
+func TestResetAdmin_OwnerKeyGetsALink(t *testing.T) {
 	owner := edSigner(t)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
 
-	status, out, errOut := run(t, f, keysOf(owner), "setup", "--json", "--show-secret")
+	status, out, errOut := run(t, f, keysOf(owner), "--username", "agent", "--json", "--show-secret")
 	if status != exitOK {
 		t.Fatalf("status %d, stderr %s", status, errOut)
 	}
@@ -124,40 +123,40 @@ func TestSetup_OwnerKeyGetsALink(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("stdout is not one JSON object: %q", out)
 	}
-	// A web link by default: tappable where a custom scheme is not, and the
-	// code rides after the `#`, which no web server is sent.
-	link, _ := url.Parse(got["link"].(string))
-	carried := carriedBy(t, got["link"].(string))
-	if link.Scheme != "https" || link.Host != "rest-mail.com" || link.Path != "/setup" || link.RawQuery != "" {
-		t.Errorf("link = %v", got["link"])
+	link, err := url.Parse(got["link"].(string))
+	if err != nil || link.Scheme != "restmail" || link.Host != "reset" {
+		t.Fatalf("link = %v", got["link"])
 	}
-	if carried.Get("token") != "TOKEN-123" || !strings.HasPrefix(carried.Get("server"), "http://127.0.0.1:") {
-		t.Errorf("link carries %v", carried)
+	if link.Query().Get("token") != "TOKEN-123" || !strings.HasPrefix(link.Query().Get("server"), "http://127.0.0.1:") {
+		t.Errorf("link carries %v", link.Query())
 	}
 	if got["expires_at"] != "2026-10-10T21:15:00Z" {
 		t.Errorf("expires_at = %v", got["expires_at"])
 	}
+	if f.answered[0]["username"] != "agent" || f.answered[0]["purpose"] != "reset-admin" {
+		t.Errorf("asked for %v", f.answered[0])
+	}
 }
 
-func TestSetup_LinkIsRedactedUnlessAsked(t *testing.T) {
+func TestResetAdmin_LinkIsRedactedUnlessAsked(t *testing.T) {
 	owner := edSigner(t)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
-	_, out, _ := run(t, f, keysOf(owner), "setup", "--json")
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
+	_, out, _ := run(t, f, keysOf(owner), "--username", "agent", "--json")
 	if strings.Contains(out, "TOKEN-123") || !strings.Contains(out, `"link_redacted":true`) {
 		t.Errorf("--json without --show-secret printed %s", out)
 	}
 	// People get the QR code and the link.
-	_, out, _ = run(t, f, keysOf(owner), "setup")
+	_, out, _ = run(t, f, keysOf(owner), "--username", "agent")
 	if !strings.Contains(out, "TOKEN-123") || !strings.Contains(out, "Scan with the rest-mail app") {
 		t.Errorf("text output: %s", out)
 	}
 }
 
 // ssh-agent may hold several keys; any one of them may be the owner's.
-func TestSetup_TriesEachKey(t *testing.T) {
+func TestResetAdmin_TriesEachKey(t *testing.T) {
 	other, owner := edSigner(t), edSigner(t)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
-	if status, _, errOut := run(t, f, keysOf(other, owner), "setup", "--json"); status != exitOK {
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
+	if status, _, errOut := run(t, f, keysOf(other, owner), "--username", "agent", "--json"); status != exitOK {
 		t.Fatalf("status %d: %s", status, errOut)
 	}
 	if len(f.answered) != 2 {
@@ -166,51 +165,39 @@ func TestSetup_TriesEachKey(t *testing.T) {
 }
 
 // RSA keys sign with SHA-2: the server refuses ssh-rsa (SHA-1) signatures.
-func TestSetup_RSAKeySignsWithSHA2(t *testing.T) {
+func TestResetAdmin_RSAKeySignsWithSHA2(t *testing.T) {
 	k, _ := rsa.GenerateKey(rand.Reader, 2048)
 	owner, _ := ssh.NewSignerFromKey(k)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}}
-	if status, _, errOut := run(t, f, keysOf(owner), "setup", "--json"); status != exitOK {
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
+	if status, _, errOut := run(t, f, keysOf(owner), "--username", "agent", "--json"); status != exitOK {
 		t.Fatalf("status %d: %s", status, errOut)
 	}
 }
 
-func TestResetAdmin(t *testing.T) {
-	owner := edSigner(t)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, claimed: true, admins: []string{"agent"}}
-	status, out, errOut := run(t, f, keysOf(owner), "reset-admin", "--username", "agent", "--json", "--show-secret")
-	if status != exitOK || !strings.Contains(out, "restmail://reset?") {
-		t.Fatalf("status %d, out %s, err %s", status, out, errOut)
-	}
-	if f.answered[0]["username"] != "agent" || f.answered[0]["purpose"] != "reset-admin" {
-		t.Errorf("asked for %v", f.answered[0])
-	}
-}
-
-func TestSetup_ExitStatuses(t *testing.T) {
+func TestResetAdmin_ExitStatuses(t *testing.T) {
 	owner, stranger := edSigner(t), edSigner(t)
 	listed := []ssh.PublicKey{owner.PublicKey()}
+	agent := []string{"--username", "agent"}
 	cases := []struct {
-		name    string
-		f       *fakeServer
-		keys    keySource
-		command string
-		args    []string
-		want    int
-		code    string
+		name string
+		f    *fakeServer
+		keys keySource
+		args []string
+		want int
+		code string
 	}{
-		{"not an owner key", &fakeServer{owners: listed}, keysOf(stranger), "setup", nil, exitNotOwner, "not_owner"},
-		{"no keys at all", &fakeServer{owners: listed}, keysOf(), "setup", nil, exitNotOwner, "no_key"},
-		{"server lists no owners", &fakeServer{}, keysOf(owner), "setup", nil, exitNotOwner, "no_owner_keys"},
-		{"already claimed", &fakeServer{owners: listed, claimed: true}, keysOf(owner), "setup", nil, exitAlreadyClaimed, "already_claimed"},
-		{"no such admin", &fakeServer{owners: listed, claimed: true}, keysOf(owner), "reset-admin", []string{"--username", "nobody"}, exitNoSuchAdmin, "no_such_admin"},
-		{"reset without a username", &fakeServer{owners: listed}, keysOf(owner), "reset-admin", nil, exitUsage, "bad_flag"},
-		{"unknown flag", &fakeServer{owners: listed}, keysOf(owner), "setup", []string{"--kube-context", "prod"}, exitUsage, "bad_flag"},
-		{"lifetime too long", &fakeServer{owners: listed}, keysOf(owner), "setup", []string{"--lifetime", "48h"}, exitUsage, "bad_flag"},
+		{"not an owner key", &fakeServer{owners: listed, admins: []string{"agent"}}, keysOf(stranger), agent, exitNotOwner, "not_owner"},
+		{"no keys at all", &fakeServer{owners: listed}, keysOf(), agent, exitNotOwner, "no_key"},
+		{"server lists no owners", &fakeServer{}, keysOf(owner), agent, exitNotOwner, "no_owner_keys"},
+		{"no such admin", &fakeServer{owners: listed, admins: []string{"agent"}}, keysOf(owner), []string{"--username", "nobody"}, exitNoSuchAdmin, "no_such_admin"},
+		{"no username", &fakeServer{owners: listed}, keysOf(owner), nil, exitUsage, "bad_flag"},
+		{"unknown flag", &fakeServer{owners: listed}, keysOf(owner), append([]string{"--kube-context", "prod"}, agent...), exitUsage, "bad_flag"},
+		{"the setup code is gone", &fakeServer{owners: listed}, keysOf(owner), append([]string{"--code", "ABCD-EFGH"}, agent...), exitUsage, "bad_flag"},
+		{"lifetime too long", &fakeServer{owners: listed}, keysOf(owner), append([]string{"--lifetime", "48h"}, agent...), exitUsage, "bad_flag"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			status, out, errOut := run(t, c.f, c.keys, c.command, append(c.args, "--json")...)
+			status, out, errOut := run(t, c.f, c.keys, append(c.args, "--json")...)
 			if status != c.want {
 				t.Errorf("status %d, want %d (stderr %s)", status, c.want, errOut)
 			}
@@ -225,11 +212,11 @@ func TestSetup_ExitStatuses(t *testing.T) {
 	}
 }
 
-func TestSetup_NotARestMailServer(t *testing.T) {
+func TestResetAdmin_NotARestMailServer(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	var out, errOut bytes.Buffer
-	status := runSetupCommand(context.Background(), "setup", []string{"--server", srv.URL, "--json"}, srv.Client(), keysOf(edSigner(t)), &out, &errOut)
+	status := runResetAdmin(context.Background(), []string{"--server", srv.URL, "--username", "agent", "--json"}, srv.Client(), keysOf(edSigner(t)), &out, &errOut)
 	if status != exitUnreachable {
 		t.Errorf("status %d, want %d: %s", status, exitUnreachable, errOut.String())
 	}
@@ -280,65 +267,4 @@ func TestLocalKeys(t *testing.T) {
 
 func pemEncode(typ string, b []byte) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: typ, Bytes: b})
-}
-
-// The code a server printed becomes the app's link, without asking the server
-// anything (and so without a key).
-func TestSetup_CodeFromTheServersOutput(t *testing.T) {
-	f := &fakeServer{}
-	status, out, errOut := run(t, f, keysOf(), "setup", "--code", "ABCD-EFGH", "--json", "--show-secret")
-	if status != exitOK {
-		t.Fatalf("status %d: %s", status, errOut)
-	}
-	var got map[string]any
-	_ = json.Unmarshal([]byte(out), &got)
-	if got := carriedBy(t, got["link"].(string)).Get("token"); got != "ABCD-EFGH" {
-		t.Errorf("link carries token %q", got)
-	}
-	if len(f.answered) != 0 {
-		t.Errorf("asked the server %d times, want none", len(f.answered))
-	}
-	if status, _, _ := run(t, f, keysOf(), "reset-admin", "--username", "a", "--code", "X", "--json"); status != exitUsage {
-		t.Errorf("reset-admin --code: status %d, want %d", status, exitUsage)
-	}
-}
-
-// A server that should involve no site at all, and one pointed at another.
-func TestSetup_LinkBaseChoosesWhereLinksPoint(t *testing.T) {
-	f := &fakeServer{}
-	_, out, _ := run(t, f, keysOf(), "setup", "--code", "ABCD-EFGH", "--link-base", "", "--json", "--show-secret")
-	var got map[string]any
-	_ = json.Unmarshal([]byte(out), &got)
-	if link := got["link"].(string); !strings.HasPrefix(link, "restmail://setup?") {
-		t.Errorf("--link-base='': link = %q", link)
-	}
-
-	_, out, _ = run(t, f, keysOf(), "setup", "--code", "ABCD-EFGH", "--link-base", "https://mail.example.com/claim", "--json", "--show-secret")
-	_ = json.Unmarshal([]byte(out), &got)
-	if link := got["link"].(string); !strings.HasPrefix(link, "https://mail.example.com/claim#") {
-		t.Errorf("another site: link = %q", link)
-	}
-
-	// A base that is not an address would print a link nobody can open.
-	if status, _, _ := run(t, f, keysOf(), "setup", "--code", "X", "--link-base", "mail.example.com", "--json"); status != exitUsage {
-		t.Errorf("a base that is not an address: status %d, want %d", status, exitUsage)
-	}
-}
-
-// carriedBy reads a link's parameters, wherever that form of link keeps them.
-func carriedBy(t *testing.T, link string) url.Values {
-	t.Helper()
-	u, err := url.Parse(link)
-	if err != nil {
-		t.Fatalf("parse %q: %v", link, err)
-	}
-	raw := u.RawQuery
-	if u.Fragment != "" {
-		raw = u.Fragment
-	}
-	parameters, err := url.ParseQuery(raw)
-	if err != nil {
-		t.Fatalf("parse %q of %q: %v", raw, link, err)
-	}
-	return parameters
 }

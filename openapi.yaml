@@ -269,56 +269,6 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/v1/auth/claim:
-    post:
-      operationId: claimServer
-      tags: [Auth]
-      summary: Claim an unclaimed server with a setup token
-      description: >
-        Redeems a single-use setup token and makes the redeemer the server's
-        first admin, with the username and password they choose. The token is
-        the setup code the server printed to its own output at startup (case,
-        dashes and spaces ignored), or one minted for an owner — a holder of a
-        key listed in
-        RESTMAIL_OWNER_KEYS (`/api/v1/auth/owner/token`, usually through
-        `restmail setup`) — or on the server itself (`restmail-api mint-token
-        --purpose setup`), so holding one proves it was handed over by the
-        server's owner. The
-        session returned is still in setup: `setup_required` is
-        `["two_factor"]` until an authenticator is enrolled. An unknown, used,
-        or expired token is one answer, 401 `invalid_token`, saying nothing
-        about which. Throttled like login.
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token, username, password]
-              properties:
-                token: {type: string}
-                username: {type: string}
-                password: {type: string, minLength: 12}
-                client: {type: string, enum: [native]}
-      responses:
-        "200":
-          description: Claimed; the session owes an authenticator
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    $ref: "#/components/schemas/LoginResponse"
-        "401":
-          description: invalid_token
-        "409":
-          description: already_claimed — the server has an admin; use reset-admin
-        "422":
-          description: Username missing, or password under 12 characters (the token is not spent)
-
   /api/v1/auth/reset:
     post:
       operationId: resetAdmin
@@ -363,16 +313,15 @@ paths:
     get:
       operationId: describeServer
       tags: [Auth]
-      summary: What this server is, and whether it has been claimed
+      summary: What this server is
       description: >
-        For anyone who can reach the server, so a client can choose between
-        claiming it and signing in without finding out by failing. A client
-        knows a server only by its address, so the server describes itself.
-        Whether it is claimed and how it can be claimed were already
-        discoverable from /auth/claim and /auth/owner/challenge; the version
-        is the one deliberate disclosure, so what runs can be confirmed from
-        outside. `restmail status` prints this. Throttled with the owner
-        endpoints, not with sign-in.
+        For anyone who can reach the server. A client knows a server only by
+        its address, so the server describes itself; the version is the one
+        deliberate disclosure, so what runs can be confirmed from outside.
+        `restmail status` prints this. Throttled with the owner endpoints, not
+        with sign-in. (Before 0.7 it also said whether the server was claimed,
+        and how to claim it; a server is no longer claimed — its first admin
+        is the bootstrap one.)
       security: []
       responses:
         "200":
@@ -385,20 +334,10 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [product, version, claimed, claim_methods]
+                    required: [product, version]
                     properties:
                       product: {type: string, enum: [rest-mail]}
-                      version: {type: string, description: "e.g. 0.4.0; dev for a build with none stamped in"}
-                      claimed: {type: boolean, description: whether the server has an admin}
-                      claim_methods:
-                        type: array
-                        description: >
-                          How an unclaimed server can be claimed: setup_code (the
-                          code it prints at every start) and owner_key (when it
-                          lists owner keys). Empty once claimed; never null.
-                        items: {type: string, enum: [setup_code, owner_key]}
-        "503":
-          description: The server cannot read its own state
+                      version: {type: string, description: "e.g. 0.7.0; dev for a build with none stamped in"}
 
   /api/v1/auth/owner/challenge:
     post:
@@ -407,8 +346,7 @@ paths:
       summary: A challenge for an owner key to sign
       description: >
         The first half of proving ownership of the server with a key listed in
-        RESTMAIL_OWNER_KEYS (what `restmail setup` and `restmail reset-admin`
-        do). The challenge is stateless, valid two minutes, and answered once.
+        RESTMAIL_OWNER_KEYS (what `restmail reset-admin` does). The challenge is stateless, valid two minutes, and answered once.
         Throttled like login.
       security: []
       responses:
@@ -433,17 +371,15 @@ paths:
     post:
       operationId: ownerToken
       tags: [Auth]
-      summary: Trade a signed challenge for a setup or reset-admin token
+      summary: Trade a signed challenge for a reset-admin token
       description: >
         `signature` is the SSH wire-format signature (base64) by the private
         half of `public_key` over the bytes
-        `"restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge`
-        (username empty for setup), so a signature for one request cannot be
-        presented for another. `public_key` must be listed in
+        `"restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge`,
+        so a signature for one request cannot be presented for another. `public_key` must be listed in
         RESTMAIL_OWNER_KEYS. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
         accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at
-        `/api/v1/auth/claim` or `/api/v1/auth/reset`; the app's link is
-        `restmail://setup?server=…&token=…` (or `restmail://reset?…`).
+        `/api/v1/auth/reset`; the app's link is `restmail://reset?server=…&token=…`.
       security: []
       requestBody:
         required: true
@@ -451,13 +387,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [challenge, public_key, signature, purpose]
+              required: [challenge, public_key, signature, purpose, username]
               properties:
                 challenge: {type: string}
                 public_key: {type: string, description: authorized_keys format}
                 signature: {type: string, format: byte}
-                purpose: {type: string, enum: [setup, reset-admin]}
-                username: {type: string, description: the admin to reset (reset-admin)}
+                purpose: {type: string, enum: [reset-admin], description: "the only one; part of what is signed"}
+                username: {type: string, description: the admin to let back in}
                 lifetime_seconds: {type: integer, minimum: 0, maximum: 86400, description: "0: 15 minutes"}
       responses:
         "200":
@@ -482,7 +418,7 @@ paths:
         "404":
           description: no_such_admin
         "409":
-          description: already_claimed (setup on a server with an admin), or no_owner_keys
+          description: no_owner_keys — the server lists none
         "422":
           description: Purpose, username, lifetime or signature malformed
 

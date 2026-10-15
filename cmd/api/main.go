@@ -23,7 +23,6 @@ import (
 	"github.com/restmail/restmail/internal/domainstate"
 	"github.com/restmail/restmail/internal/greylist"
 	"github.com/restmail/restmail/internal/rollup"
-	"github.com/restmail/restmail/internal/setuplink"
 	"github.com/restmail/restmail/internal/trace"
 	"github.com/restmail/restmail/internal/vacation"
 )
@@ -131,14 +130,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Likewise a setup link nobody could open: the code it carries would be the
-	// only way in to a server that has just been installed.
-	setupLinkBase, err := setuplink.ParseBase(cfg.SetupLinkBase)
-	if err != nil {
-		slog.Error("invalid setup link base", "error", err)
-		os.Exit(1)
-	}
-
 	// A fresh install has no admin and no roles, and the production image carries
 	// no seed tool, so nobody could ever sign in. Both steps are no-ops once done.
 	if err := bootstrap.EnsureRBAC(database); err != nil {
@@ -149,13 +140,16 @@ func main() {
 		slog.Error("failed to create the bootstrap admin", "error", err)
 		os.Exit(1)
 	}
-	// Still no admin: print the setup code the owner claims the server with.
-	if code, expires, err := bootstrap.EnsureSetupCode(database, time.Now()); err != nil {
-		slog.Error("failed to mint the setup code", "error", err)
-		os.Exit(1)
-	} else if code != "" {
-		printSetupBanner(os.Stdout, setupLinkBase, code, expires)
-		slog.Info("server not claimed yet: the setup code is printed above (restart for a new one)")
+	// Still no admin: nobody could ever sign in. The installer chooses the first
+	// admin's password; a server that was given none says so and stops, rather
+	// than run with no way in. A development stack seeds its admin into the
+	// running API (chore db:seed), so there it is only said.
+	if err := bootstrap.RequireAdmin(database); err != nil {
+		if cfg.IsProduction() {
+			slog.Error("refusing to start", "error", err)
+			os.Exit(1)
+		}
+		slog.Warn("no admin yet: seed one (chore db:seed) or set RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", "error", err)
 	}
 
 	// Create JWT service

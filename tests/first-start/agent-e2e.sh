@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# First start, end to end: an agent claims a fresh rest-mail server with the
-# restmail CLI and nobody else involved, builds it, and hands it over -- and the
-# owner's redemption must lock the agent out, unexpired access token included.
+# First start, end to end: an agent installs a fresh rest-mail server, signs in
+# with the admin password the installer chose, builds it, and hands it over --
+# and the owner's redemption must lock the agent out, unexpired access token
+# included.
 #
-# The server is claimed with the setup code it prints to its own output, read
-# the way any platform shows it (here `docker logs`). The CLI reaches the server
-# only through its public API, and proves ownership for reset-admin with a key
-# the deployment lists in RESTMAIL_OWNER_KEYS: Docker is just how this test runs
-# a server, not something the CLI knows about.
+# The first admin comes from the bootstrap password (RESTMAIL_BOOTSTRAP_ADMIN_
+# PASSWORD); signing in with it forces a password of the agent's own and an
+# authenticator. The CLI reaches the server only through its public API, and
+# proves ownership for reset-admin with a key the deployment lists in
+# RESTMAIL_OWNER_KEYS: Docker is just how this test runs a server, not something
+# the CLI knows about.
 #
-# Run locally (Docker, curl, jq, oathtool, python3, ssh-keygen):
+# Run locally (Docker, curl, jq, oathtool, ssh-keygen):
 #   docker build --target prod -t restmail-api:first-start .
 #   go build -o /tmp/restmail ./cmd/console
 #   RESTMAIL=/tmp/restmail IMAGE=restmail-api:first-start tests/first-start/agent-e2e.sh
@@ -37,104 +39,104 @@ ssh-keygen -q -t ed25519 -N '' -C agent@e2e -f "$KEYS/agent"
 ssh-keygen -q -t ed25519 -N '' -C stranger@e2e -f "$KEYS/stranger"
 ok "the deployment will list only the agent's public key"
 
-step "a fresh install: Postgres and the API, nothing else"
 docker network create "$NET" >/dev/null
 docker run -d --name e2e-pg --network "$NET" -e POSTGRES_USER=restmail -e POSTGRES_PASSWORD=restmail \
   -e POSTGRES_DB=restmail postgres:16-alpine >/dev/null
 until docker exec e2e-pg pg_isready -U restmail >/dev/null 2>&1; do sleep 1; done
-docker run -d --name e2e-api --network "$NET" -p 127.0.0.1:58080:8080 \
-  -e DB_HOST=e2e-pg -e DB_NAME=restmail -e DB_USER=restmail -e DB_PASS=restmail -e DB_SSLMODE=disable \
-  -e JWT_SECRET="$(openssl rand -hex 32)" -e MASTER_KEY="$(openssl rand -hex 32)" \
-  -e RESTMAIL_OWNER_KEYS="$(cat "$KEYS/agent.pub")" \
-  -e ENVIRONMENT=development "$IMAGE" >/dev/null
+
+# api [extra docker run flags...] starts the API on a fresh container.
+api() {
+  docker rm -f e2e-api >/dev/null 2>&1 || true
+  docker run -d --name e2e-api --network "$NET" -p 127.0.0.1:58080:8080 \
+    -e DB_HOST=e2e-pg -e DB_NAME=restmail -e DB_USER=restmail -e DB_PASS=restmail -e DB_SSLMODE=disable \
+    -e JWT_SECRET="$JWT_SECRET" -e MASTER_KEY="$MASTER_KEY" \
+    -e RESTMAIL_OWNER_KEYS="$(cat "$KEYS/agent.pub")" \
+    -e ENVIRONMENT=development "$@" "$IMAGE" >/dev/null
+}
+JWT_SECRET=$(openssl rand -hex 32)
+MASTER_KEY=$(openssl rand -hex 32)
 wait_healthy() { for _ in $(seq 60); do curl -fsS http://127.0.0.1:58080/api/health >/dev/null 2>&1 && return; sleep 1; done; die "API not healthy"; }
 # The server's own output, in a file. Not a pipe: `grep -q` stops reading at
 # the first match, `docker logs` is then killed by SIGPIPE, and `pipefail`
 # reports that as a failed check — a flake that depends on how much the server
 # had left to write.
-server_output() { docker logs e2e-api >"$LOG" 2>/dev/null; }
-setup_code() { server_output; sed -n 's/^Or enter the setup code in the app: *//p' "$LOG" | tail -1; }
-# A link keeps its parameters after the `#` when it is a web link, and in the
-# query when it is restmail://; read whichever this one is.
-token_of() { python3 -c 'import sys,urllib.parse as u
-l = u.urlparse(sys.argv[1])
-print(u.parse_qs(l.fragment or l.query)["token"][0])' "$1"; }
+server_output() { docker logs e2e-api >"$LOG" 2>&1; }
+# login USERNAME PASSWORD [TOTP] -> the response body; fails on anything but 200.
+login() {
+  curl -fsS "$API/auth/login" -H 'Content-Type: application/json' \
+    -d "$(jq -nc --arg u "$1" --arg p "$2" --arg c "${3:-}" \
+      '{username:$u, password:$p, client:"native"} + (if $c == "" then {} else {totp_code:$c} end)')"
+}
+login_status() {
+  curl -s -o /dev/null -w '%{http_code}' "$API/auth/login" -H 'Content-Type: application/json' \
+    -d "$(jq -nc --arg u "$1" --arg p "$2" --arg c "${3:-}" \
+      '{username:$u, password:$p, client:"native"} + (if $c == "" then {} else {totp_code:$c} end)')"
+}
+
+step "no admin and no bootstrap password: nobody could sign in, and it says so"
+api
+wait_healthy
+server_output
+grep -q 'RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD' "$LOG" || die "the server did not say it has no way in"
+if grep -q -i -E 'setup code|claim this server|▀' "$LOG"; then die "the server printed a setup code"; fi
+ok "development says so and starts (it seeds admins into the running API); production refuses to start"
+ok "no setup code, no QR code, no link in its output"
+
+step "a fresh install: the bootstrap password the installer chose"
+BOOT_PW=$(openssl rand -base64 24)
+api -e RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD="$BOOT_PW"
 wait_healthy
 curl -fsS http://127.0.0.1:58080/api/health | jq -c .data
-ok "server up, no admin, no bootstrap password anywhere"
+ok "server up, with its first admin, admin"
 
 step "restmail status: what the server says about itself"
 status=$("$RESTMAIL" status --server "$SERVER" --json)
 jq -c 'del(.server)' <<<"$status"
 [[ $(jq -r .product <<<"$status") == rest-mail ]] || die "product"
-[[ $(jq -r .claimed <<<"$status") == false ]] || die "a fresh server says it is claimed"
-[[ $(jq -c .claim_methods <<<"$status") == '["setup_code","owner_key"]' ]] || die "claim methods"
+[[ $(jq -r 'has("claimed")' <<<"$status") == false ]] || die "status still talks of claiming"
 # The image was built with a version stamped in (ci.yml); one that reports
 # "dev" means the stamp is lost on the way into the binary.
 if [ -n "${EXPECT_VERSION:-}" ]; then
   [[ $(jq -r .version <<<"$status") == "$EXPECT_VERSION" ]] || die "version $(jq -r .version <<<"$status"), want $EXPECT_VERSION"
 fi
-ok "rest-mail ${EXPECT_VERSION:-(version not checked)}, not claimed, by setup code or owner key"
+ok "rest-mail ${EXPECT_VERSION:-(version not checked)}"
 
-step "the setup code, read from the server's own output"
-first_code=$(setup_code)
-[[ $first_code =~ ^([0-9A-HJKMNP-TV-Z]{4}-){5}[0-9A-HJKMNP-TV-Z]{4}$ ]] || die "no setup code in the output"
-grep -q '▀' "$LOG" || die "no QR code in the output"
-grep -q 'https://rest-mail.com/setup#' "$LOG" || die "no web link in the output"
-ok "printed: a QR code of a web link, and the code (not shown here)"
-docker restart e2e-api >/dev/null
-wait_healthy
-code=$(setup_code)
-[[ -n $code && $code != "$first_code" ]] || die "a restart did not replace the code"
-c=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/claim" -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg t "$first_code" '{token:$t, username:"thief", password:"a long enough password"}')")
-[[ $c == 401 ]] || die "the replaced code answered $c"
-ok "a restart prints a new code; the old one is dead (401)"
+step "nothing claims a server any more"
+code=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/claim" -H 'Content-Type: application/json' \
+  -d '{"token":"anything","username":"thief","password":"a long enough password"}')
+[[ $code == 404 || $code == 405 ]] || die "/auth/claim answered $code"
+ok "/auth/claim: $code"
+set +e; "$RESTMAIL" setup --server "$SERVER" --key "$KEYS/agent" --json 2>/dev/null; status=$?; set -e
+[[ $status == 2 ]] || die "restmail setup: exit $status, want 2 (no such command)"
+ok "restmail setup: no such command"
 
-step "restmail setup with a key the server does not list"
-set +e; "$RESTMAIL" setup --server "$SERVER" --key "$KEYS/stranger" --json 2>/tmp/e2e-stranger.err; status=$?; set -e
-cat /tmp/e2e-stranger.err
-[[ $status == 6 ]] || die "exit $status, want 6"
-ok "refused with exit 6 (not an owner)"
-
-step "restmail setup --code: the app's link, for the code the server printed"
-setup=$("$RESTMAIL" setup --server "$SERVER" --code "$code" --json --show-secret)
-jq -c 'del(.link)' <<<"$setup"
-link=$(jq -r .link <<<"$setup")
-token=$(token_of "$link")
-[[ $link == https://rest-mail.com/setup\#* ]] || die "link $link"
-ok "link is a web link, tappable anywhere (token not shown)"
-
-step "redeem it as the agent: claim with a password the agent chose"
-AGENT_PW=$(openssl rand -base64 24)
-claim=$(curl -fsS "$API/auth/claim" -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg t "$token" --arg p "$AGENT_PW" '{token:$t, username:"agent", password:$p, client:"native"}')")
-jq -c '.data | {setup_required, capabilities}' <<<"$claim"
-access=$(jq -r .data.access_token <<<"$claim")
-[[ $(jq -c .data.setup_required <<<"$claim") == '["two_factor"]' ]] || die "setup_required"
+step "sign in with the bootstrap password"
+boot=$(login admin "$BOOT_PW")
+jq -c '.data | {setup_required, capabilities}' <<<"$boot"
+[[ $(jq -c .data.setup_required <<<"$boot") == '["password","two_factor"]' ]] || die "setup_required"
+access=$(jq -r .data.access_token <<<"$boot")
 code=$(curl -s -o /dev/null -w '%{http_code}' "$API/admin/stats" -H "Authorization: Bearer $access")
 [[ $code == 403 ]] || die "admin API in setup answered $code"
-ok "claimed; the admin API refuses the session (403) until 2FA"
-[[ $("$RESTMAIL" status --server "$SERVER" --json | jq -r '.claimed, (.claim_methods|length)' | tr '\n' ' ') == "true 0 " ]] ||
-  die "after the claim, status does not say claimed"
-ok "restmail status now says claimed, with nothing left to claim"
+ok "a session in setup: the admin API refuses it (403) until a password and 2FA"
 
-step "the same link again"
-code=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/claim" -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg t "$token" '{token:$t, username:"thief", password:"a long enough password"}')")
-[[ $code == 401 ]] || die "reused link answered $code"
-ok "spent: 401"
+step "choose the agent's own password"
+AGENT_PW=$(openssl rand -base64 24)
+curl -fsS "$API/auth/password" -H "Authorization: Bearer $access" -H 'Content-Type: application/json' \
+  -d "$(jq -nc --arg c "$BOOT_PW" --arg n "$AGENT_PW" '{current_password:$c, new_password:$n}')" >/dev/null
+[[ $(login_status admin "$BOOT_PW") == 401 ]] || die "the bootstrap password still works"
+ok "chosen; the bootstrap password is dead (401)"
 
 step "enroll an authenticator, as the app would"
+access=$(login admin "$AGENT_PW" | jq -r .data.access_token)
 secret=$(curl -fsS -X POST "$API/auth/2fa/enroll" -H "Authorization: Bearer $access" | jq -r .data.secret)
 curl -fsS -X POST "$API/auth/2fa/confirm" -H "Authorization: Bearer $access" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg c "$(oathtool --totp -b "$secret")" '{code:$c}')"
 ok "enrolled (the agent computes codes from the secret)"
 
 step "sign in for real"
-agent=$(curl -fsS "$API/auth/login" -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg p "$AGENT_PW" --arg c "$(oathtool --totp -b "$secret")" '{username:"agent", password:$p, totp_code:$c, client:"native"}')")
+agent=$(login admin "$AGENT_PW" "$(oathtool --totp -b "$secret")")
 jq -c '.data | {setup_required, capabilities}' <<<"$agent"
+[[ $(jq -c '.data.setup_required // []' <<<"$agent") == '[]' ]] || die "still in setup"
 agent_access=$(jq -r .data.access_token <<<"$agent")
 agent_refresh=$(jq -r .data.refresh_token <<<"$agent")
 ok "full session"
@@ -149,24 +151,26 @@ curl -fsS "$API/auth/login" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg p "$MAILBOX_PW" '{email:"owner@e2e.test", password:$p, client:"native"}')" | jq -c '.data.user'
 ok "mailbox owner@e2e.test signs in, as the phone app would"
 
-step "restmail setup on a claimed server"
-set +e; "$RESTMAIL" setup --server "$SERVER" --key "$KEYS/agent" --json 2>/tmp/e2e-setup-again.err; status=$?; set -e
-cat /tmp/e2e-setup-again.err
-[[ $status == 3 ]] || die "exit $status, want 3"
-ok "refused with exit 3 and a pointer to reset-admin"
+step "restmail reset-admin with a key the server does not list"
+set +e; "$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/stranger" --username admin --json 2>/tmp/e2e-stranger.err; status=$?; set -e
+cat /tmp/e2e-stranger.err
+[[ $status == 6 ]] || die "exit $status, want 6"
+ok "refused with exit 6 (not an owner)"
 
 step "hand-over: restmail reset-admin, the link the owner redeems"
-reset=$("$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/agent" --username agent --json --show-secret)
-reset_token=$(token_of "$(jq -r .link <<<"$reset")")
+reset=$("$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/agent" --username admin --json --show-secret)
+link=$(jq -r .link <<<"$reset")
+[[ $link == restmail://reset\?* ]] || die "link $link"
+reset_token=$(python3 -c 'import sys,urllib.parse as u; print(u.parse_qs(u.urlparse(sys.argv[1]).query)["token"][0])' "$link")
 OWNER_PW=$(openssl rand -base64 24)
 owner=$(curl -fsS "$API/auth/reset" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg t "$reset_token" --arg p "$OWNER_PW" '{token:$t, password:$p, client:"native"}')")
 jq -c '.data | {setup_required}' <<<"$owner"
+[[ $(jq -c .data.setup_required <<<"$owner") == '["two_factor"]' ]] || die "setup_required"
 ok "owner redeemed it: new password, must enroll their own authenticator"
 
 step "the agent is locked out"
-code=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/login" -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg p "$AGENT_PW" --arg c "$(oathtool --totp -b "$secret")" '{username:"agent", password:$p, totp_code:$c, client:"native"}')")
+code=$(login_status admin "$AGENT_PW" "$(oathtool --totp -b "$secret")")
 [[ $code == 401 ]] || die "agent's password answered $code"
 ok "agent's password + its authenticator code: $code"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/refresh" -H 'Content-Type: application/json' \

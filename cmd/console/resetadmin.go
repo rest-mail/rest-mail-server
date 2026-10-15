@@ -23,11 +23,11 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-// `restmail setup` and `restmail reset-admin` prove ownership of a server over
-// its public API, whatever runs it. The deployment lists the owner's public
-// keys (RESTMAIL_OWNER_KEYS); the CLI signs a challenge the server issues with
-// the matching private key, and gets back a single-use link for the app, shown
-// as a QR code.
+// `restmail reset-admin` lets an admin back in when every other way is lost,
+// proving ownership of the server over its public API, whatever runs it. The
+// deployment lists the owner's public keys (RESTMAIL_OWNER_KEYS); the CLI signs
+// a challenge the server issues with the matching private key, and gets back a
+// single-use link for the app, shown as a QR code.
 //
 // Nothing about how the server is deployed is assumed: no kubectl, no docker,
 // only HTTPS — the same requests the app makes.
@@ -36,61 +36,43 @@ import (
 // --json gives one object on stdout and errors as one on stderr, and the exit
 // status says what kind of failure it was.
 
-// Exit statuses of the setup commands.
+// Exit statuses of reset-admin.
 const (
-	exitOK             = 0
-	exitFailed         = 1 // anything unexpected
-	exitUsage          = 2 // a flag that does not exist, or is missing
-	exitAlreadyClaimed = 3 // setup asked for, but the server has an admin
-	exitNoSuchAdmin    = 4 // reset-admin named an account that does not exist
-	exitUnreachable    = 5 // the server did not answer, or not as rest-mail
-	exitNotOwner       = 6 // no key offered is one of the server's owner keys
+	exitOK     = 0
+	exitFailed = 1 // anything unexpected
+	exitUsage  = 2 // a flag that does not exist, or is missing
+	// 3 was already_claimed, from when a server could be claimed. Unused, so a
+	// script written against it does not read some other failure into it.
+	exitNoSuchAdmin = 4 // reset-admin named an account that does not exist
+	exitUnreachable = 5 // the server did not answer, or not as rest-mail
+	exitNotOwner    = 6 // no key offered is one of the server's owner keys
 )
-
-const setupUsage = `restmail setup — claim a freshly installed rest-mail server
-
-  restmail setup --server https://mail.example.com [--key ~/.ssh/id_ed25519]
-
-  restmail setup --server https://mail.example.com --code XXXX-XXXX-...
-
-Shows a single-use link as a QR code: scan it with the rest-mail app to become
-the first admin. Either of two secrets gets it:
-
-  - the setup code a fresh server prints to its own output at every start
-    until it is claimed (docker logs, kubectl logs, journalctl, ...): --code
-    only draws it as a QR code, without contacting the server;
-  - or a private key whose public half the deployment lists in
-    RESTMAIL_OWNER_KEYS (authorized_keys format). Without --key, the keys in
-    ssh-agent are tried.
-
-Works the same however the server is deployed: it only talks to the server's
-public API.
-
-  --server URL   the server's address (https; http only for localhost)
-  --code CODE    the setup code the server printed
-  --key PATH     a private key file (unencrypted; put a passphrase-protected
-                 key in ssh-agent instead)
-  --json         one JSON object on stdout; errors as one on stderr
-  --show-secret  include the link itself in --json output (it grants admin)
-  --lifetime D   how long the link works, e.g. 1h (default 15m, at most 24h)
-  --link-base U  where setup links point (default https://rest-mail.com/setup;
-                 empty gives restmail://setup, involving no site at all)
-
-Exit status: 0 ok, 2 usage, 3 already claimed (use reset-admin), 5 server not
-reachable, 6 no key offered is an owner key, 1 anything else.
-`
 
 const resetUsage = `restmail reset-admin — let an admin back in when every other way is lost
 
   restmail reset-admin --server https://mail.example.com --username NAME [--key PATH]
 
-Proves ownership the same way as restmail setup, then shows a single-use link
-for that admin. Whoever redeems it chooses a new password and enrolls a new
-authenticator, and every session the account had ends: anyone who held the old
-credentials is locked out. This is also how a server set up by someone else, or
-by an agent, is handed over.
+Proves you own the server with a private key whose public half the deployment
+lists in RESTMAIL_OWNER_KEYS (authorized_keys format), then shows a single-use
+link for that admin as a QR code. Whoever redeems it chooses a new password and
+enrolls a new authenticator, and every session the account had ends: anyone who
+held the old credentials is locked out. This is also how a server set up by
+someone else, or by an agent, is handed over.
 
-Flags and exit statuses as for restmail setup; 4 means no such admin.
+Works the same however the server is deployed: it only talks to the server's
+public API.
+
+  --server URL    the server's address (https; http only for localhost)
+  --username NAME the admin to let back in
+  --key PATH      a private key file (unencrypted; put a passphrase-protected
+                  key in ssh-agent instead). Without it, the keys in ssh-agent
+                  are tried.
+  --json          one JSON object on stdout; errors as one on stderr
+  --show-secret   include the link itself in --json output (it grants admin)
+  --lifetime D    how long the link works, e.g. 1h (default 15m, at most 24h)
+
+Exit status: 0 ok, 2 usage, 4 no such admin, 5 server not reachable, 6 no key
+offered is an owner key, 1 anything else.
 `
 
 // signer is one key the CLI can prove ownership with.
@@ -102,35 +84,29 @@ type signer struct {
 // keySource finds the keys to try. Replaced in tests.
 type keySource func(path string) ([]signer, error)
 
-// runSetupCommand runs `restmail setup` or `restmail reset-admin`.
-func runSetupCommand(ctx context.Context, command string, args []string, client *http.Client, keys keySource, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet(command, flag.ContinueOnError)
+// runResetAdmin runs `restmail reset-admin`.
+func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys keySource, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("reset-admin", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	server := fs.String("server", "", "the server's address")
 	keyPath := fs.String("key", "", "a private key file")
-	code := fs.String("code", "", "the setup code the server printed (setup)")
-	linkBase := fs.String("link-base", setuplink.DefaultBase, "where setup links point; empty for restmail://")
-	username := fs.String("username", "", "the admin to reset (reset-admin)")
+	username := fs.String("username", "", "the admin to let back in")
 	lifetime := fs.Duration("lifetime", 15*time.Minute, "how long the link works")
 	asJSON := fs.Bool("json", false, "JSON output")
 	showSecret := fs.Bool("show-secret", false, "include the link in --json output")
 	help := fs.Bool("help", false, "show help")
 
-	usage := setupUsage
-	purpose := "setup"
-	if command == "reset-admin" {
-		usage, purpose = resetUsage, "reset-admin"
-	}
+	const purpose = "reset-admin"
 	o := output{json: containsFlag(args, "json"), stdout: stdout, stderr: stderr}
 	if err := fs.Parse(args); err != nil {
 		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
 	o.json = *asJSON
 	if *help {
-		_, _ = io.WriteString(stdout, usage)
+		_, _ = io.WriteString(stdout, resetUsage)
 		return exitOK
 	}
-	if purpose == "reset-admin" && *username == "" {
+	if *username == "" {
 		return o.fail(exitUsage, "bad_flag", "--username is required")
 	}
 	if *lifetime <= 0 || *lifetime > 24*time.Hour {
@@ -139,18 +115,6 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 	base, err := serverURL(*server)
 	if err != nil {
 		return o.fail(exitUsage, "bad_flag", err.Error())
-	}
-	linkFor, err := setuplink.ParseBase(*linkBase)
-	if err != nil {
-		return o.fail(exitUsage, "bad_flag", strings.Replace(err.Error(), "RESTMAIL_SETUP_LINK_BASE", "--link-base", 1))
-	}
-	if *code != "" {
-		if purpose != "setup" {
-			return o.fail(exitUsage, "bad_flag", "--code is for restmail setup; reset-admin proves ownership with a key")
-		}
-		// The server printed it; nothing to ask the server. Just show it as the
-		// app's link, for a phone to scan.
-		return o.link(purpose, linkFor, base, *code, "", "", *showSecret)
 	}
 
 	signers, err := keys(*keyPath)
@@ -198,9 +162,6 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 			continue // the next key in the agent may be the one
 		}
 		if code != "" {
-			if code == "already_claimed" {
-				msg += " (restmail reset-admin --username NAME)"
-			}
 			return o.fail(statusFor(code), code, msg)
 		}
 		token, expires = minted.Token, minted.ExpiresAt
@@ -210,13 +171,13 @@ func runSetupCommand(ctx context.Context, command string, args []string, client 
 		return o.fail(exitNotOwner, "not_owner", fmt.Sprintf("none of the %d key(s) offered is an owner key of this server: %s", len(signers), lastNotOwner))
 	}
 
-	return o.link(purpose, linkFor, base, token, expires, *username, *showSecret)
+	return o.link(purpose, base, token, expires, *username, *showSecret)
 }
 
 // link shows the app's link for token: as a QR code and text for people, or as
 // JSON — without the link unless showSecret — for programs.
-func (o output) link(purpose, linkBase string, base *url.URL, token, expires, username string, showSecret bool) int {
-	link := appLink(purpose, linkBase, base.String(), token)
+func (o output) link(purpose string, base *url.URL, token, expires, username string, showSecret bool) int {
+	link := setuplink.Reset(base.String(), token)
 	if o.json {
 		result := map[string]any{"purpose": purpose, "server": base.String()}
 		if expires != "" {
@@ -230,10 +191,7 @@ func (o output) link(purpose, linkBase string, base *url.URL, token, expires, us
 		_ = json.NewEncoder(o.stdout).Encode(result)
 		return exitOK
 	}
-	what := "become " + base.Host + "'s first admin"
-	if purpose == "reset-admin" {
-		what = "choose a new password and authenticator for " + username
-	}
+	what := "choose a new password and authenticator for " + username
 	fmt.Fprintf(o.stdout, "Scan with the rest-mail app to %s.\n\n", what)
 	qrterminal.GenerateWithConfig(link, qrterminal.Config{Level: qrterminal.M, Writer: o.stdout, HalfBlocks: true, QuietZone: 2})
 	fmt.Fprintf(o.stdout, "\nOr open: %s\n", link)
@@ -253,8 +211,6 @@ func ownerMessage(challenge, purpose, username string) []byte {
 // statusFor maps the server's error codes to exit statuses.
 func statusFor(code string) int {
 	switch code {
-	case "already_claimed":
-		return exitAlreadyClaimed
 	case "no_such_admin":
 		return exitNoSuchAdmin
 	case "not_owner", "no_owner_keys":
@@ -283,16 +239,6 @@ func serverURL(raw string) (*url.URL, error) {
 		}
 	}
 	return nil, fmt.Errorf("--server must be https:// (http only for localhost), got %q", raw)
-}
-
-// appLink is what the app opens: the server, and the token to redeem there. A
-// setup link is a web link by default, which is tappable where a custom scheme
-// is not (see internal/setuplink); --link-base chooses, or turns that off.
-func appLink(purpose, base, server, token string) string {
-	if purpose == "reset-admin" {
-		return setuplink.Reset(server, token)
-	}
-	return setuplink.Setup(base, server, token)
 }
 
 // apiClient speaks rest-mail's JSON envelope.
