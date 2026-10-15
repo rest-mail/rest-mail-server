@@ -124,7 +124,7 @@ func TestResetAdmin_OwnerKeyGetsALink(t *testing.T) {
 		t.Fatalf("stdout is not one JSON object: %q", out)
 	}
 	link, err := url.Parse(got["link"].(string))
-	if err != nil || link.Scheme != "restmail" || link.Host != "reset" {
+	if err != nil || link.Scheme != "rest-mail" || link.Host != "reset" {
 		t.Fatalf("link = %v", got["link"])
 	}
 	if link.Query().Get("token") != "TOKEN-123" || !strings.HasPrefix(link.Query().Get("server"), "http://127.0.0.1:") {

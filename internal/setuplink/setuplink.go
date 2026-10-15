@@ -40,5 +40,5 @@ func Reset(server, code string) string {
 	if server != "" {
 		parameters.Set("server", server)
 	}
-	return "restmail://reset?" + parameters.Encode()
+	return "rest-mail://reset?" + parameters.Encode()
 }

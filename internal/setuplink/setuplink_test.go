@@ -11,7 +11,7 @@ const token = "q3B9xX7mVt0kQ2pLr8sYw1nZc4dHf6jA"
 func TestReset_StaysOnTheAppsScheme(t *testing.T) {
 	// There is no page for a reset link, so it must not be given a web form.
 	link := Reset("https://mail.example.com", token)
-	if !strings.HasPrefix(link, "restmail://reset?") {
+	if !strings.HasPrefix(link, "rest-mail://reset?") {
 		t.Fatalf("link = %q", link)
 	}
 	u, err := url.Parse(link)
