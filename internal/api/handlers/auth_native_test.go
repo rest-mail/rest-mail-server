@@ -186,7 +186,7 @@ func TestLogin_UnknownClientRefused(t *testing.T) {
 func TestLogin_NativeGetsBodyTokens(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc, "")
+	h := NewAuthHandler(gdb, jwtSvc, "", nil)
 
 	addr := seedLoginMailbox(t, gdb, "correct-horse-battery")
 	rr := doLogin(h, map[string]string{"email": addr, "password": "correct-horse-battery", "client": "native"})

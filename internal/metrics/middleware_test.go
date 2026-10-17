@@ -86,6 +86,23 @@ func TestResponseWriter_Unwrap(t *testing.T) {
 	}
 }
 
+// A handler behind HTTPMetrics can stream: its writer is an http.Flusher, and
+// a flush reaches the client.
+func TestHTTPMetrics_PassesFlushesThrough(t *testing.T) {
+	rec := httptest.NewRecorder()
+	HTTPMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("the writer behind HTTPMetrics is not an http.Flusher")
+		}
+		_, _ = w.Write([]byte("data: hello\n\n"))
+		f.Flush()
+	})).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/accounts/1/events", nil))
+	if !rec.Flushed {
+		t.Error("the flush did not reach the underlying writer")
+	}
+}
+
 func TestResponseWriter_WriteHeaderThenWriteKeepsFirstCode(t *testing.T) {
 	rec := httptest.NewRecorder()
 	rw := newResponseWriter(rec)

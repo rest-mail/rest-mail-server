@@ -3,20 +3,20 @@ package api
 import (
 	"sync"
 
+	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/grants"
-	"gorm.io/gorm"
 )
 
 // The routes here are tested on a database that fails every query, to test the
 // capability gates with nothing else in the way. The stale-session check needs
-// that database, so it stands aside: it is tested against a real one in the
-// handlers package (auth_revocation_test.go). So do the grants: each test
+// that database, so it stands aside: it is tested against a real one in
+// sessions_db_test.go and the handlers package. So do the grants: each test
 // admin holds what testAdminHolding gave it, at "*", any other account holds
 // nothing, and the grants themselves are tested against a real database
 // (grants_access_test.go).
 func init() {
-	sessionCheck = func(*gorm.DB) middleware.SessionCurrent {
+	sessionCheck = func(*handlers.SessionCache) middleware.SessionCurrent {
 		return func(uint, int) (bool, error) { return true, nil }
 	}
 	heldGrants = func(*grants.Cache) middleware.HeldGrants {
