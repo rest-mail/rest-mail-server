@@ -227,6 +227,7 @@ func main() {
 	queueWorker.SetMasterKey(cfg.MasterKey)
 	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
 	queueWorker.SetBounceRateLimit(cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
+	queueWorker.SetSuppressionTTL(cfg.SuppressionTTL)
 	// OSI-7: size-aware per-attempt send budget + matching reclaim interval. The
 	// per-send deadline scales with each message's size (a fixed 30 s could not
 	// transfer a large body); the reclaim interval is kept strictly above the
