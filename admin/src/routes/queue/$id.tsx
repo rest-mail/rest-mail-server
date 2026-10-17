@@ -19,14 +19,14 @@ function QueueDetailPage() {
 
   useEffect(() => {
     if (accessToken) {
-      fetchEntry(id, accessToken)
+      fetchEntry(id)
     }
   }, [id, accessToken])
 
   const handleRetry = async () => {
     if (!accessToken) return
     try {
-      await retryEntry(id, accessToken)
+      await retryEntry(id)
       addNotification({
         type: 'success',
         message: 'Queue entry retry initiated'
@@ -43,7 +43,7 @@ function QueueDetailPage() {
   const handleDelete = async () => {
     if (!accessToken) return
     try {
-      await deleteEntry(id, accessToken)
+      await deleteEntry(id)
       addNotification({
         type: 'success',
         message: 'Queue entry deleted successfully'

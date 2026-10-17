@@ -27,18 +27,17 @@ interface CertificateState {
   error: string | null
 
   // Actions
-  fetchCertificates: (accessToken: string) => Promise<void>
-  fetchCertificate: (id: number, accessToken: string) => Promise<void>
+  fetchCertificates: () => Promise<void>
+  fetchCertificate: (id: number) => Promise<void>
   uploadCertificate: (
     data: {
       domain_id: number
       cert_pem: string
       key_pem: string
       auto_renew?: boolean
-    },
-    accessToken: string
+    }
   ) => Promise<void>
-  deleteCertificate: (id: number, accessToken: string) => Promise<void>
+  deleteCertificate: (id: number) => Promise<void>
   getExpiringCertificates: (days?: number) => Certificate[]
   clearError: () => void
 }
@@ -49,10 +48,10 @@ export const useCertificateStore = create<CertificateState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchCertificates: async (accessToken: string) => {
+  fetchCertificates: async () => {
     set({ isLoading: true, error: null })
     try {
-      const response = await apiV1.request('/admin/certificates', { method: 'GET' }, accessToken)
+      const response = await apiV1.request('/admin/certificates', { method: 'GET' })
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to fetch certificates')
@@ -69,10 +68,10 @@ export const useCertificateStore = create<CertificateState>((set, get) => ({
     }
   },
 
-  fetchCertificate: async (id: number, accessToken: string) => {
+  fetchCertificate: async (id: number) => {
     set({ isLoading: true, error: null })
     try {
-      const response = await apiV1.request(`/admin/certificates/${id}`, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(`/admin/certificates/${id}`, { method: 'GET' })
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to fetch certificate')
@@ -89,7 +88,7 @@ export const useCertificateStore = create<CertificateState>((set, get) => ({
     }
   },
 
-  uploadCertificate: async (data, accessToken: string) => {
+  uploadCertificate: async (data) => {
     set({ isLoading: true, error: null })
     try {
       const response = await apiV1.request(
@@ -98,8 +97,7 @@ export const useCertificateStore = create<CertificateState>((set, get) => ({
           method: 'POST',
           body: JSON.stringify(data),
           headers: { 'Content-Type': 'application/json' },
-        },
-        accessToken
+        }
       )
       if (!response.ok) {
         const error = await response.json()
@@ -115,10 +113,10 @@ export const useCertificateStore = create<CertificateState>((set, get) => ({
     }
   },
 
-  deleteCertificate: async (id: number, accessToken: string) => {
+  deleteCertificate: async (id: number) => {
     set({ isLoading: true, error: null })
     try {
-      const response = await apiV1.request(`/admin/certificates/${id}`, { method: 'DELETE' }, accessToken)
+      const response = await apiV1.request(`/admin/certificates/${id}`, { method: 'DELETE' })
       if (!response.ok && response.status !== 204) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to delete certificate')

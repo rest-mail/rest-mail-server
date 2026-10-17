@@ -80,10 +80,10 @@ function CustomFilterEditorPage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch((err) => {
+      fetchDomains().catch((err) => {
         console.error('Failed to fetch domains:', err)
       })
-      fetchFilter(parseInt(id), accessToken).catch((err) => {
+      fetchFilter(parseInt(id)).catch((err) => {
         console.error('Failed to fetch custom filter:', err)
       })
     }
@@ -123,8 +123,7 @@ function CustomFilterEditorPage() {
           config: {
             script,
           },
-        },
-        accessToken
+        }
       )
       addNotification({
         type: 'success',
@@ -155,7 +154,7 @@ function CustomFilterEditorPage() {
         return
       }
 
-      const result = await validateScript(script, accessToken, emailObj)
+      const result = await validateScript(script, emailObj)
       setValidationResult(result)
 
       if (result.valid) {
@@ -193,7 +192,7 @@ function CustomFilterEditorPage() {
         return
       }
 
-      const result = await testFilter(parseInt(id), accessToken, emailObj)
+      const result = await testFilter(parseInt(id), emailObj)
       setTestResult(result)
 
       addNotification({

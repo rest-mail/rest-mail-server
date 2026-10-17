@@ -19,12 +19,12 @@ function Dashboard() {
     if (!accessToken) return
 
     // Initial fetch
-    fetchDashboardStats(accessToken)
+    fetchDashboardStats()
 
     // Set up interval for auto-refresh (30 seconds)
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        fetchDashboardStats(accessToken)
+        fetchDashboardStats()
       }
     }, 30000)
 
@@ -36,7 +36,7 @@ function Dashboard() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && accessToken) {
-        fetchDashboardStats(accessToken)
+        fetchDashboardStats()
       }
     }
 
@@ -93,7 +93,7 @@ function Dashboard() {
             </p>
           </div>
           <button
-            onClick={() => accessToken && fetchDashboardStats(accessToken)}
+            onClick={() => accessToken && fetchDashboardStats()}
             disabled={isLoading}
             className="flex items-center gap-2 px-4 py-2 rounded-lg"
             style={{

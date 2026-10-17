@@ -127,7 +127,7 @@ interface AnalyticsState {
   isLoading: boolean
   error: string | null
 
-  fetchAnalytics: (accessToken: string, window?: string) => Promise<void>
+  fetchAnalytics: (window?: string) => Promise<void>
   setWindow: (window: string) => void
   clearError: () => void
 }
@@ -138,15 +138,14 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchAnalytics: async (accessToken: string, window?: string) => {
+  fetchAnalytics: async (window?: string) => {
     const w = window ?? get().window
     set({ isLoading: true, error: null, window: w })
 
     try {
       const response = await apiV1.request(
         `/admin/pipelines/analytics?window=${encodeURIComponent(w)}`,
-        { method: 'GET' },
-        accessToken
+        { method: 'GET' }
       )
 
       if (!response.ok) {

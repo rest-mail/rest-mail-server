@@ -24,7 +24,7 @@ function BansPage() {
     }
 
     if (accessToken) {
-      fetchBans({ active: filterActive, protocol: filterProtocol || undefined }, accessToken).catch(
+      fetchBans({ active: filterActive, protocol: filterProtocol || undefined }).catch(
         console.error
       )
     }
@@ -34,9 +34,9 @@ function BansPage() {
     if (!accessToken) return
 
     try {
-      await deleteBan(id, accessToken)
+      await deleteBan(id)
       setDeleteConfirm(null)
-      await fetchBans({ active: filterActive, protocol: filterProtocol || undefined }, accessToken)
+      await fetchBans({ active: filterActive, protocol: filterProtocol || undefined })
     } catch (err) {
       console.error('Failed to delete ban:', err)
     }
@@ -264,8 +264,7 @@ function BansPage() {
             setShowCreateModal(false)
             if (accessToken) {
               await fetchBans(
-                { active: filterActive, protocol: filterProtocol || undefined },
-                accessToken
+                { active: filterActive, protocol: filterProtocol || undefined }
               )
             }
           }}
@@ -310,8 +309,7 @@ function BanCreateModal({ onClose, onSuccess, currentUser }: BanCreateModalProps
           protocol,
           duration: durationValue,
           created_by: currentUser,
-        },
-        accessToken
+        }
       )
       onSuccess()
     } catch (err) {

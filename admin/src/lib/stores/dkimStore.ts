@@ -15,13 +15,12 @@ interface DkimState {
   error: string | null
 
   // Actions
-  fetchDkimKeys: (accessToken: string) => Promise<void>
+  fetchDkimKeys: () => Promise<void>
   setDkimKey: (
     domainId: number,
-    data: { selector: string; private_key: string },
-    accessToken: string
+    data: { selector: string; private_key: string }
   ) => Promise<void>
-  deleteDkimKey: (domainId: number, accessToken: string) => Promise<void>
+  deleteDkimKey: (domainId: number) => Promise<void>
   clearError: () => void
 }
 
@@ -31,10 +30,10 @@ export const useDkimStore = create<DkimState>((set) => ({
   isLoading: false,
   error: null,
 
-  fetchDkimKeys: async (accessToken: string) => {
+  fetchDkimKeys: async () => {
     set({ isLoading: true, error: null })
     try {
-      const response = await apiV1.request('/admin/dkim', { method: 'GET' }, accessToken)
+      const response = await apiV1.request('/admin/dkim', { method: 'GET' })
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to fetch DKIM keys')
@@ -53,8 +52,7 @@ export const useDkimStore = create<DkimState>((set) => ({
 
   setDkimKey: async (
     domainId: number,
-    data: { selector: string; private_key: string },
-    accessToken: string
+    data: { selector: string; private_key: string }
   ) => {
     set({ isLoading: true, error: null })
     try {
@@ -64,8 +62,7 @@ export const useDkimStore = create<DkimState>((set) => ({
           method: 'PUT',
           body: JSON.stringify(data),
           headers: { 'Content-Type': 'application/json' },
-        },
-        accessToken
+        }
       )
       if (!response.ok) {
         const error = await response.json()
@@ -81,13 +78,12 @@ export const useDkimStore = create<DkimState>((set) => ({
     }
   },
 
-  deleteDkimKey: async (domainId: number, accessToken: string) => {
+  deleteDkimKey: async (domainId: number) => {
     set({ isLoading: true, error: null })
     try {
       const response = await apiV1.request(
         `/admin/dkim/${domainId}`,
-        { method: 'DELETE' },
-        accessToken
+        { method: 'DELETE' }
       )
       if (!response.ok && response.status !== 204) {
         const error = await response.json()

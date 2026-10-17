@@ -34,8 +34,7 @@ export function DomainDNS({ domainId, accessToken }: DomainDNSProps) {
     try {
       const response = await apiV1.request(
         `/admin/domains/${domainId}/dns`,
-        { method: 'GET' },
-        accessToken
+        { method: 'GET' }
       )
 
       if (!response.ok) {

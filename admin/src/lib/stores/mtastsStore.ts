@@ -19,7 +19,7 @@ interface MTASTSState {
   error: string | null
 
   // Actions
-  fetchPolicy: (domainId: number, accessToken: string) => Promise<void>
+  fetchPolicy: (domainId: number) => Promise<void>
   setPolicy: (
     domainId: number,
     data: {
@@ -27,10 +27,9 @@ interface MTASTSState {
       mx_hosts: string
       max_age?: number
       active?: boolean
-    },
-    accessToken: string
+    }
   ) => Promise<void>
-  deletePolicy: (domainId: number, accessToken: string) => Promise<void>
+  deletePolicy: (domainId: number) => Promise<void>
   clearCurrentPolicy: () => void
   clearError: () => void
 }
@@ -41,13 +40,12 @@ export const useMTASTSStore = create<MTASTSState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchPolicy: async (domainId: number, accessToken: string) => {
+  fetchPolicy: async (domainId: number) => {
     set({ isLoading: true, error: null })
     try {
       const response = await apiV1.request(
         `/admin/domains/${domainId}/mta-sts`,
-        { method: 'GET' },
-        accessToken
+        { method: 'GET' }
       )
       if (!response.ok) {
         if (response.status === 404) {
@@ -72,7 +70,7 @@ export const useMTASTSStore = create<MTASTSState>((set, get) => ({
     }
   },
 
-  setPolicy: async (domainId: number, data, accessToken: string) => {
+  setPolicy: async (domainId: number, data) => {
     set({ isLoading: true, error: null })
     try {
       const response = await apiV1.request(
@@ -81,8 +79,7 @@ export const useMTASTSStore = create<MTASTSState>((set, get) => ({
           method: 'PUT',
           body: JSON.stringify(data),
           headers: { 'Content-Type': 'application/json' },
-        },
-        accessToken
+        }
       )
       if (!response.ok) {
         const error = await response.json()
@@ -101,13 +98,12 @@ export const useMTASTSStore = create<MTASTSState>((set, get) => ({
     }
   },
 
-  deletePolicy: async (domainId: number, accessToken: string) => {
+  deletePolicy: async (domainId: number) => {
     set({ isLoading: true, error: null })
     try {
       const response = await apiV1.request(
         `/admin/domains/${domainId}/mta-sts`,
-        { method: 'DELETE' },
-        accessToken
+        { method: 'DELETE' }
       )
       if (!response.ok && response.status !== 204) {
         const error = await response.json()

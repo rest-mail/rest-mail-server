@@ -79,7 +79,7 @@ function NewMailboxPage() {
     setIsSubmitting(true)
 
     try {
-      await createMailbox(accessToken, {
+      await createMailbox({
         email: formData.email,
         password: formData.password,
         display_name: formData.display_name || undefined,

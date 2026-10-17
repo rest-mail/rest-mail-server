@@ -25,11 +25,11 @@ interface DomainState {
   error: string | null
 
   // Actions
-  fetchDomains: (accessToken: string) => Promise<void>
-  fetchDomain: (id: string, accessToken: string) => Promise<void>
-  createDomain: (domain: Partial<Domain>, accessToken: string) => Promise<void>
-  updateDomain: (id: string, domain: Partial<Domain>, accessToken: string) => Promise<void>
-  deleteDomain: (id: string, accessToken: string) => Promise<void>
+  fetchDomains: () => Promise<void>
+  fetchDomain: (id: string) => Promise<void>
+  createDomain: (domain: Partial<Domain>) => Promise<void>
+  updateDomain: (id: string, domain: Partial<Domain>) => Promise<void>
+  deleteDomain: (id: string) => Promise<void>
   clearError: () => void
   clearCurrentDomain: () => void
 }
@@ -40,11 +40,11 @@ export const useDomainStore = create<DomainState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchDomains: async (accessToken: string) => {
+  fetchDomains: async () => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request('/admin/domains', { method: 'GET' }, accessToken)
+      const response = await apiV1.request('/admin/domains', { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -67,11 +67,11 @@ export const useDomainStore = create<DomainState>((set, get) => ({
     }
   },
 
-  fetchDomain: async (id: string, accessToken: string) => {
+  fetchDomain: async (id: string) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/domains/${id}`, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(`/admin/domains/${id}`, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -94,7 +94,7 @@ export const useDomainStore = create<DomainState>((set, get) => ({
     }
   },
 
-  createDomain: async (domain: Partial<Domain>, accessToken: string) => {
+  createDomain: async (domain: Partial<Domain>) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -103,8 +103,7 @@ export const useDomainStore = create<DomainState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify(domain),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -127,7 +126,7 @@ export const useDomainStore = create<DomainState>((set, get) => ({
     }
   },
 
-  updateDomain: async (id: string, domain: Partial<Domain>, accessToken: string) => {
+  updateDomain: async (id: string, domain: Partial<Domain>) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -136,8 +135,7 @@ export const useDomainStore = create<DomainState>((set, get) => ({
         {
           method: 'PUT',
           body: JSON.stringify(domain),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -161,11 +159,11 @@ export const useDomainStore = create<DomainState>((set, get) => ({
     }
   },
 
-  deleteDomain: async (id: string, accessToken: string) => {
+  deleteDomain: async (id: string) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/domains/${id}`, { method: 'DELETE' }, accessToken)
+      const response = await apiV1.request(`/admin/domains/${id}`, { method: 'DELETE' })
 
       if (!response.ok) {
         const error = await response.json()

@@ -39,12 +39,12 @@ interface AdminUserState {
   error: string | null
 
   // Actions
-  fetchAdminUsers: (accessToken: string) => Promise<void>
-  fetchRoles: (accessToken: string) => Promise<void>
-  fetchCapabilities: (accessToken: string) => Promise<void>
-  createAdminUser: (accessToken: string, data: { username: string; email?: string; password: string; role_ids?: number[] }) => Promise<AdminUser>
-  updateAdminUser: (accessToken: string, id: number, data: { email?: string; password?: string; active?: boolean; password_change_required?: boolean; role_ids?: number[] }) => Promise<void>
-  deleteAdminUser: (accessToken: string, id: number) => Promise<void>
+  fetchAdminUsers: () => Promise<void>
+  fetchRoles: () => Promise<void>
+  fetchCapabilities: () => Promise<void>
+  createAdminUser: (data: { username: string; email?: string; password: string; role_ids?: number[] }) => Promise<AdminUser>
+  updateAdminUser: (id: number, data: { email?: string; password?: string; active?: boolean; password_change_required?: boolean; role_ids?: number[] }) => Promise<void>
+  deleteAdminUser: (id: number) => Promise<void>
   setError: (error: string | null) => void
   clearError: () => void
 }
@@ -56,11 +56,11 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchAdminUsers: async (accessToken: string) => {
+  fetchAdminUsers: async () => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request('/admin/admin-users', { method: 'GET' }, accessToken)
+      const response = await apiV1.request('/admin/admin-users', { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -82,9 +82,9 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
     }
   },
 
-  fetchRoles: async (accessToken: string) => {
+  fetchRoles: async () => {
     try {
-      const response = await apiV1.request('/admin/roles', { method: 'GET' }, accessToken)
+      const response = await apiV1.request('/admin/roles', { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -103,9 +103,9 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
     }
   },
 
-  fetchCapabilities: async (accessToken: string) => {
+  fetchCapabilities: async () => {
     try {
-      const response = await apiV1.request('/admin/capabilities', { method: 'GET' }, accessToken)
+      const response = await apiV1.request('/admin/capabilities', { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -124,7 +124,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
     }
   },
 
-  createAdminUser: async (accessToken: string, data) => {
+  createAdminUser: async (data) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -133,8 +133,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify(data),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -148,7 +147,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
       const newUser = await response.json()
 
       // Refresh the list
-      await get().fetchAdminUsers(accessToken)
+      await get().fetchAdminUsers()
 
       set({ isLoading: false })
       return newUser
@@ -161,7 +160,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
     }
   },
 
-  updateAdminUser: async (accessToken: string, id: number, data) => {
+  updateAdminUser: async (id: number, data) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -170,8 +169,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
         {
           method: 'PUT',
           body: JSON.stringify(data),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -183,7 +181,7 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
       }
 
       // Refresh the list
-      await get().fetchAdminUsers(accessToken)
+      await get().fetchAdminUsers()
 
       set({ isLoading: false })
     } catch (error) {
@@ -195,11 +193,11 @@ export const useAdminUserStore = create<AdminUserState>((set, get) => ({
     }
   },
 
-  deleteAdminUser: async (accessToken: string, id: number) => {
+  deleteAdminUser: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/admin-users/${id}`, { method: 'DELETE' }, accessToken)
+      const response = await apiV1.request(`/admin/admin-users/${id}`, { method: 'DELETE' })
 
       if (!response.ok) {
         const error = await response.json()

@@ -16,7 +16,7 @@ function AdminUsersPage() {
 
   useEffect(() => {
     if (accessToken) {
-      fetchAdminUsers(accessToken)
+      fetchAdminUsers()
     }
   }, [accessToken, fetchAdminUsers])
 
@@ -28,7 +28,7 @@ function AdminUsersPage() {
   const handleDelete = async (id: number) => {
     if (!accessToken) return
     try {
-      await deleteAdminUser(accessToken, id)
+      await deleteAdminUser(id)
       setDeleteConfirmId(null)
     } catch (err) {
       console.error('Failed to delete admin user:', err)

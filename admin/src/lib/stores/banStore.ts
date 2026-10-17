@@ -28,8 +28,7 @@ interface BanState {
       active?: boolean
       limit?: number
       offset?: number
-    },
-    accessToken: string
+    }
   ) => Promise<void>
   createBan: (
     data: {
@@ -38,11 +37,10 @@ interface BanState {
       protocol: string
       duration?: string
       created_by: string
-    },
-    accessToken: string
+    }
   ) => Promise<void>
-  deleteBan: (id: number, accessToken: string) => Promise<void>
-  deleteBanByIP: (ip: string, accessToken: string) => Promise<void>
+  deleteBan: (id: number) => Promise<void>
+  deleteBanByIP: (ip: string) => Promise<void>
   isExpired: (ban: Ban) => boolean
   clearError: () => void
 }
@@ -53,7 +51,7 @@ export const useBanStore = create<BanState>((set) => ({
   error: null,
   pagination: { total: 0, hasMore: false },
 
-  fetchBans: async (filters, accessToken: string) => {
+  fetchBans: async (filters) => {
     set({ isLoading: true, error: null })
     try {
       const params = new URLSearchParams()
@@ -64,8 +62,7 @@ export const useBanStore = create<BanState>((set) => ({
 
       const response = await apiV1.request(
         `/admin/bans?${params.toString()}`,
-        { method: 'GET' },
-        accessToken
+        { method: 'GET' }
       )
       if (!response.ok) {
         const error = await response.json()
@@ -90,7 +87,7 @@ export const useBanStore = create<BanState>((set) => ({
     }
   },
 
-  createBan: async (data, accessToken: string) => {
+  createBan: async (data) => {
     set({ isLoading: true, error: null })
     try {
       const response = await apiV1.request(
@@ -99,8 +96,7 @@ export const useBanStore = create<BanState>((set) => ({
           method: 'POST',
           body: JSON.stringify(data),
           headers: { 'Content-Type': 'application/json' },
-        },
-        accessToken
+        }
       )
       if (!response.ok) {
         const error = await response.json()
@@ -116,10 +112,10 @@ export const useBanStore = create<BanState>((set) => ({
     }
   },
 
-  deleteBan: async (id: number, accessToken: string) => {
+  deleteBan: async (id: number) => {
     set({ isLoading: true, error: null })
     try {
-      const response = await apiV1.request(`/admin/bans/${id}`, { method: 'DELETE' }, accessToken)
+      const response = await apiV1.request(`/admin/bans/${id}`, { method: 'DELETE' })
       if (!response.ok && response.status !== 204) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to delete ban')
@@ -134,10 +130,10 @@ export const useBanStore = create<BanState>((set) => ({
     }
   },
 
-  deleteBanByIP: async (ip: string, accessToken: string) => {
+  deleteBanByIP: async (ip: string) => {
     set({ isLoading: true, error: null })
     try {
-      const response = await apiV1.request(`/admin/bans/ip/${ip}`, { method: 'DELETE' }, accessToken)
+      const response = await apiV1.request(`/admin/bans/ip/${ip}`, { method: 'DELETE' })
       if (!response.ok && response.status !== 204) {
         const error = await response.json()
         throw new Error(error.error || 'Failed to unban IP')

@@ -30,9 +30,9 @@ function AdminUserDetailsPage() {
 
   useEffect(() => {
     if (accessToken) {
-      fetchAdminUsers(accessToken)
-      fetchRoles(accessToken)
-      fetchCapabilities(accessToken)
+      fetchAdminUsers()
+      fetchRoles()
+      fetchCapabilities()
     }
     clearError()
   }, [accessToken, fetchAdminUsers, fetchRoles, fetchCapabilities, clearError])
@@ -101,7 +101,7 @@ function AdminUserDetailsPage() {
         updateData.password = formData.password
       }
 
-      await updateAdminUser(accessToken, parseInt(id), updateData)
+      await updateAdminUser(parseInt(id), updateData)
 
       // Redirect to admin users list on success
       navigate({ to: '/admin-users' })

@@ -25,7 +25,7 @@ function NewAdminUserPage() {
 
   useEffect(() => {
     if (accessToken) {
-      fetchRoles(accessToken)
+      fetchRoles()
     }
     clearError()
   }, [accessToken, fetchRoles, clearError])
@@ -68,7 +68,7 @@ function NewAdminUserPage() {
     if (!accessToken) return
 
     try {
-      await createAdminUser(accessToken, {
+      await createAdminUser({
         username: formData.username,
         email: formData.email || undefined,
         password: formData.password,
