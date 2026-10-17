@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/grants"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -386,6 +387,10 @@ func TestEscalation_ARecoveryCodeWorksOnceAndARefusalLeavesItUnused(t *testing.T
 	}
 }
 
+// addRecoveryCodes gives adminID's authenticator a set of recovery codes,
+// hashed as auth.HashRecoveryCode hashes them but at bcrypt.MinCost, as the
+// handlers tests hash theirs: checking a code compares it with each unused one,
+// slow at the real cost and many times slower under the race detector.
 func addRecoveryCodes(t *testing.T, db *gorm.DB, adminID uint) []string {
 	t.Helper()
 	codes, err := auth.GenerateRecoveryCodes()
@@ -397,11 +402,11 @@ func addRecoveryCodes(t *testing.T, db *gorm.DB, adminID uint) []string {
 		t.Fatal(err)
 	}
 	for _, c := range codes {
-		hash, err := auth.HashRecoveryCode(c)
+		hash, err := bcrypt.GenerateFromPassword([]byte(auth.NormalizeRecoveryCode(c)), bcrypt.MinCost)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Create(&models.TwoFactorRecoveryCode{TwoFactorID: tf.ID, CodeHash: hash}).Error; err != nil {
+		if err := db.Create(&models.TwoFactorRecoveryCode{TwoFactorID: tf.ID, CodeHash: "{BLF-CRYPT}" + string(hash)}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
