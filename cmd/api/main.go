@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,9 +21,11 @@ import (
 	"github.com/restmail/restmail/internal/digest"
 	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/dnsbl"
 	"github.com/restmail/restmail/internal/domainstate"
 	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/greylist"
+	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/rollup"
 	"github.com/restmail/restmail/internal/trace"
 	"github.com/restmail/restmail/internal/vacation"
@@ -95,6 +98,18 @@ func main() {
 	case "error":
 		logHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError})
 		slog.SetDefault(slog.New(logHandler))
+	}
+
+	// The DNSBL monitor is off unless the operator's config file enables it
+	// (issue #148); off, it makes no resolver and sends no query. The whole
+	// file is validated here, before the database or any listener, so a bad
+	// one stops the API cleanly.
+	dnsblMonitor, err := newDNSBLRuntime(cfg.DNSBLConfigPath,
+		func() dnsbl.Resolver { return net.DefaultResolver },
+		dnsbl.NewMetricsObserver(slog.Default(), metrics.DNSBLChecks, metrics.DNSBLListed, metrics.DNSBLLastAnswer))
+	if err != nil {
+		slog.Error("invalid DNSBL monitor configuration", "error", err)
+		os.Exit(1)
 	}
 
 	// Secure-by-construction (production-only): the API always serves plaintext
@@ -326,6 +341,11 @@ func main() {
 	vacationPurger := vacation.NewPurger(database, time.Hour, vacation.DefaultRetention)
 	vacationPurger.Start()
 
+	// Check the operator's sending IPs against their blocklists until shutdown.
+	if dnsblMonitor != nil {
+		dnsblMonitor.start(context.Background())
+	}
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    cfg.APIAddr(),
@@ -368,6 +388,11 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down server...")
+	if dnsblMonitor != nil {
+		if err := dnsblMonitor.stop(); err != nil {
+			slog.Error("DNSBL monitor shutdown", "error", err)
+		}
+	}
 	if acmeManager != nil {
 		acmeManager.Shutdown()
 	}

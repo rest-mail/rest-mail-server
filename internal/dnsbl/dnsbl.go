@@ -4,8 +4,10 @@
 // It is read-only and opt-in: nothing here queries anything until a caller
 // supplies an IP, a Provider and a Resolver. There are no built-in providers
 // and no default resolver. A Monitor checks the IPs and providers it is given
-// on a schedule and keeps the listing state in memory only; durable listing
-// events, metrics and alerting are later slices of #148.
+// on a schedule and keeps the listing state in memory only. The API runs one
+// only when the operator's config file (LoadConfigFile) enables it, and
+// reports through a MetricsObserver: logs and Prometheus metrics, nothing
+// durable. Durable listing events are a later slice of #148.
 //
 // An A answer is not taken to mean "listed". RFC 5782 §2.3 only says list
 // values SHOULD be in 127.0.0.0/8, and providers use parts of that range for
