@@ -1,0 +1,109 @@
+# The contract tests (#376): vertrag (github.com/antimatter-studios/vertrag)
+# sends every request openapi.yaml documents to a running API and checks each
+# answer against what the spec promises: status, headers and body schema.
+#
+# CI runs it in the E2E (full topology) job, against the topology that job has
+# already brought up, signed in as the fixture admin (cmd/seed). See
+# tests/contract/README.md for how to run it, what is excluded and why, and how
+# the "operations exercised" gate is computed.
+
+# The spec as vertrag reads it: openapi.yaml with one query parameter name
+# percent-encoded (tests/contract/spec.sh), the same request on the wire.
+spec: ./.cache/contract/openapi.yaml
+endpoint: http://10.99.0.20:8080
+
+# Only what the spec cannot hold: the fixture's passwords, and the refresh token
+# a sign-in hands out. Everything else comes from the spec, its links included.
+hookfiles: ./tests/contract/hooks.py
+language: python
+
+auth:
+  login:
+    path: /api/v1/auth/login
+    # The fixture admin, a test fixture like every password in cmd/seed.
+    body: {email: admin@restmail.test, password: "admin123!@", client: native}
+  header: 'Authorization: Bearer {$response.body#/data/access_token}'
+  # Sent with no credential: each authenticated operation's documented 401, and
+  # the two operations that take a credential other than the session's (the
+  # hooks give them theirs).
+  except:
+    - 'RestMail API > /api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
+    - 'RestMail API > /api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
+    - 'RestMail API > /api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401'
+    - 'RestMail API > /api/v1/accounts > List the accounts this one reaches > 401 > application/json'
+    - 'RestMail API > /api/v1/accounts > Create an account > 401 > application/json'
+    - 'RestMail API > /api/v1/accounts/link > Link an existing account by proving its password > 401'
+    - 'RestMail API > /api/v1/accounts/{id}/credentials > List an account''s app passwords > 401 > application/json'
+    - 'RestMail API > /api/v1/accounts/{id}/credentials > Make an app password > 401 > application/json'
+    - 'RestMail API > /api/v1/accounts/{id}/credentials/{credential_id} > Revoke an app password > 401 > application/json'
+    - 'RestMail API > /api/v1/admin/audit > Read the audit log, newest first > 401 > application/json'
+    - 'RestMail API > /api/v1/admin/audit/verify > Check the audit log''s hash chain > 401 > application/json'
+    - 'RestMail API > /api/v1/admin/grants > List grants, oldest first > 401 > application/json'
+    - 'RestMail API > /api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
+
+checks:
+  # The "no credentials" principal, for every operation: each authenticated
+  # request is sent again without its credential, and one that is answered
+  # anyway is a failure.
+  ignored-auth: true
+
+# Operations left out of every phase, each with its reason. The gate in
+# tests/contract/coverage.py reads this list: every operation not on it must be
+# exercised, and each one on it is printed with its reason.
+exclude-operation-id:
+  # Push is off unless APNs is configured, and the E2E topology has no APNs
+  # credentials: every devices route answers 404.
+  - listPushDevices
+  - registerPushDevice
+  - removePushDevice
+  # Served only on the internal mTLS listener, which the E2E topology turns on;
+  # the public listener vertrag reaches does not have them.
+  - checkMailboxAddress
+  - deliverMessage
+  # Served only when ACME is on; the E2E topology has no ACME.
+  - acmeChallenge
+  # An event stream: it never ends, so there is no response to judge.
+  - accountEvents
+  # Needs a single-use token minted by the operator command (restmail-api
+  # mint-token) or for an owner key.
+  - resetAdmin
+  # Need an owner key in RESTMAIL_OWNER_KEYS, and a signature over the
+  # challenge; the E2E topology has no owner keys.
+  - ownerChallenge
+  - ownerToken
+  - ownerStatus
+  # Replacing the password makes every session from before it stale, the run's
+  # own included, so everything after it would answer 401.
+  - changeOwnPassword
+  # Need a session that signed in with a second factor, or a fresh code from an
+  # authenticator; the fixture admin has none.
+  - createGrant
+  - deleteGrant
+  - activateGrant
+  - deactivateGrant
+  - makeGrantEligible
+  # Wipe the data the rest of the run depends on.
+  - resetTestData
+  - restoreTestSnapshot
+  # Need a message carrying a calendar invitation.
+  - respondToCalendar
+  # Need a quarantined message.
+  - releaseQuarantine
+  - deleteQuarantine
+
+# Documented responses the examples phase cannot provoke yet, by pattern. A
+# transaction is named "<title> > <path> > <summary> > <status>[ > <type>]".
+exclude-matching:
+  # A refusal for a missing capability needs a principal without it: vertrag's
+  # authorization phase (antimatter-studios/vertrag#71), not the admin's run.
+  - '> 403( >|$)'
+  # Each needs a request of its own that provokes it (a named request example
+  # paired with a named response example), which the spec does not have yet.
+  - '> (400|404|409|422)( >|$)'
+  # A 401 for a wrong credential on an operation that takes none.
+  - '^RestMail API > /api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
+  # Rate limits and an unavailable sidecar: not reachable in a contract run.
+  - '> (429|503)( >|$)'
+
+reporter: [cli, junit]
+output: ["", .cache/contract/examples.xml]

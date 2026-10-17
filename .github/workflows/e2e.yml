@@ -243,12 +243,58 @@ jobs:
           fi
           echo "all 14 e2e stages executed and passed"
 
+      - name: Install vertrag (pinned + checksum-verified)
+        # The contract tester (#376), as its released binary rather than a Go
+        # dependency: vertrag needs Go 1.26 and this module is on 1.25. Verified
+        # the same way as chore above, never piped from the network.
+        env:
+          VERTRAG_VERSION: 0.27.0
+          # sha256 of vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz, from that
+          # release's checksums.txt. Bump both together when upgrading.
+          VERTRAG_SHA256: 7e9af304768f82cce9b62369d017a92f5c0bfeb9697a4e7a18386342c6876f49
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          asset="vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz"
+          curl --location --silent --show-error --fail \
+            "https://github.com/antimatter-studios/vertrag/releases/download/v${VERTRAG_VERSION}/${asset}" \
+            -o "$tmp/vertrag.tar.gz"
+          echo "${VERTRAG_SHA256}  $tmp/vertrag.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/vertrag.tar.gz" -C "$tmp" vertrag
+          sudo install -m 0755 "$tmp/vertrag" /usr/local/bin/vertrag
+          rm -rf "$tmp"
+          vertrag version
+
+      - name: Contract tests (examples and coverage)
+        # Every operation in openapi.yaml, sent as the fixture admin against the
+        # topology the stages above just exercised, ordered by the spec's links
+        # (--sequence) so each read, update and delete addresses what its create
+        # made. The examples phase checks each documented answer; the coverage
+        # phase sends every boundary each schema implies and requires a 4xx for
+        # each one outside it. Both are deterministic, so both gate. See
+        # vertrag.yml and tests/contract/.
+        id: contract
+        run: |
+          set -o pipefail
+          tests/contract/spec.sh
+          vertrag run --sequence --phases coverage 2>&1 | tee "$RUNNER_TEMP/contract.log"
+
+      - name: Every operation exercised (gate)
+        # TODO(antimatter-studios/vertrag#70): `vertrag run --require-surface`
+        # once vertrag reports surface coverage itself.
+        if: always() && steps.contract.outcome != 'skipped'
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python3 tests/contract/coverage.py openapi.yaml vertrag.yml .cache/contract/examples.xml
+
       - name: Collect container logs
         if: always()
         run: |
           out="$RUNNER_TEMP/e2e-logs"
           mkdir -p "$out"
           cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
+          cp "$RUNNER_TEMP/contract.log" "$out/contract.log" 2>/dev/null || true
+          cp .cache/contract/*.xml "$out/" 2>/dev/null || true
           docker ps -a > "$out/docker-ps.txt" 2>&1 || true
           docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
           for c in $(docker ps -aq); do

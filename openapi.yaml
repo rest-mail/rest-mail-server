@@ -809,6 +809,9 @@ paths:
     post:
       operationId: createAccount
       tags: [Accounts]
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Create an account
       description: >
         The same for everyone. Needs `mailboxes:write` held at a scope covering
@@ -820,7 +823,6 @@ paths:
         entries (`accounts.create`, `grants.create`) commit together; a refused
         attempt is recorded too. A "sub account" is only this relationship: an
         account another holds the owner grant on.
-      x-required-capability: "mailboxes:write (on the address's domain)"
       requestBody:
         required: true
         content:
@@ -909,11 +911,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getAccount
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Accounts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get an account this one may read
       responses:
         "200":
@@ -953,6 +955,9 @@ paths:
     get:
       operationId: listCredentials
       tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
       summary: List an account's app passwords
       description: >
         The app passwords of the account that are not revoked, newest first;
@@ -980,6 +985,9 @@ paths:
     post:
       operationId: createAppPassword
       tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
       summary: Make an app password
       description: >
         Makes an app password for a mail client or an automation and answers
@@ -1056,9 +1064,13 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
     delete:
       operationId: revokeCredential
       tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
       summary: Revoke an app password
       description: >
         Revokes it: the next request made with it is refused, and an SMTP
@@ -1174,6 +1186,7 @@ paths:
         description: The device's `id`
         schema:
           type: string
+        example: 1
     delete:
       operationId: removePushDevice
       tags: [Push devices]
@@ -1198,11 +1211,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listFolders
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List folders for an account
       responses:
         "200":
@@ -1219,11 +1232,11 @@ paths:
                       $ref: "#/components/schemas/Folder"
     post:
       operationId: createFolder
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Create a new folder
       requestBody:
         required: true
@@ -1251,11 +1264,11 @@ paths:
       - $ref: "#/components/parameters/FolderName"
     patch:
       operationId: renameFolder
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Rename a folder
       requestBody:
         required: true
@@ -1278,11 +1291,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteFolder
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete a folder
       responses:
         "204":
@@ -1299,11 +1312,11 @@ paths:
       - $ref: "#/components/parameters/FolderName"
     get:
       operationId: listMessages
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List messages in a folder with cursor pagination
       parameters:
         - name: limit
@@ -1336,11 +1349,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: getMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get a single message by ID
       responses:
         "200":
@@ -1357,11 +1370,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Update message flags or move to another folder
       requestBody:
         required: true
@@ -1384,11 +1397,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete a message
       responses:
         "204":
@@ -1399,11 +1412,11 @@ paths:
   /api/v1/messages/send:
     post:
       operationId: sendMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
       summary: Compose and send a new message
       requestBody:
         required: true
@@ -1430,11 +1443,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: getRawMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get the raw RFC 2822 message source
       responses:
         "200":
@@ -1451,11 +1464,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: forwardMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read, mail:send]
+        - BearerAuth: [mail:read, mail:send]
+        - BasicAuth: [mail:read, mail:send]
       summary: Forward a message
       requestBody:
         required: true
@@ -1483,11 +1496,11 @@ paths:
   /api/v1/messages/draft:
     post:
       operationId: saveDraft
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Drafts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Save a new draft
       requestBody:
         required: true
@@ -1512,11 +1525,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     put:
       operationId: updateDraft
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Drafts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Update an existing draft
       requestBody:
         required: true
@@ -1543,11 +1556,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: sendDraft
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Drafts]
+      security:
+        - CookieAuth: [mail:write, mail:send]
+        - BearerAuth: [mail:write, mail:send]
+        - BasicAuth: [mail:write, mail:send]
       summary: Send a saved draft
       responses:
         "201":
@@ -1575,13 +1588,14 @@ paths:
         schema:
           type: string
         description: Thread identifier
+        example: 1
     get:
       operationId: getThread
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Threads]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get all messages in a thread
       responses:
         "200":
@@ -1607,11 +1621,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getQuota
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quota]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get mailbox quota usage
       responses:
         "200":
@@ -1633,11 +1647,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: searchMessages
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Search]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Search messages with filters
       parameters:
         - name: q
@@ -1708,13 +1722,14 @@ paths:
         schema:
           type: integer
         description: Attachment ID
+        example: 1
     get:
       operationId: getAttachment
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Attachments]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Download an attachment
       responses:
         "200":
@@ -1732,11 +1747,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: listAttachments
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Attachments]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List attachments for a message
       responses:
         "200":
@@ -1760,11 +1775,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listContacts
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List contacts for an account
       parameters:
         - name: trust_level
@@ -1791,11 +1806,11 @@ paths:
                       $ref: "#/components/schemas/Contact"
     post:
       operationId: createContact
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Create a new contact
       requestBody:
         required: true
@@ -1826,13 +1841,14 @@ paths:
         schema:
           type: integer
         description: Contact ID
+        example: 1
     patch:
       operationId: updateContact
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Update a contact
       requestBody:
         required: true
@@ -1855,11 +1871,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteContact
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete a contact
       responses:
         "204":
@@ -1872,11 +1888,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: blockSender
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Block a sender
       requestBody:
         required: true
@@ -1906,11 +1922,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: importContacts
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Bulk import contacts
       requestBody:
         required: true
@@ -1939,11 +1955,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: suggestContacts
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Autocomplete contacts by query
       parameters:
         - name: q
@@ -1951,6 +1967,7 @@ paths:
           required: true
           schema:
             type: string
+          example: ad
       responses:
         "200":
           description: Contact suggestions
@@ -1973,11 +1990,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getVacation
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Vacation]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get vacation auto-reply settings
       responses:
         "200":
@@ -1992,11 +2009,11 @@ paths:
                     $ref: "#/components/schemas/VacationConfig"
     put:
       operationId: setVacation
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Vacation]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Set vacation auto-reply settings
       requestBody:
         required: true
@@ -2017,11 +2034,11 @@ paths:
                     $ref: "#/components/schemas/VacationConfig"
     delete:
       operationId: disableVacation
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Vacation]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Disable vacation auto-reply
       responses:
         "204":
@@ -2035,11 +2052,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get the Sieve filter script
       responses:
         "200":
@@ -2056,11 +2073,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     put:
       operationId: putSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Create or replace the Sieve filter script
       requestBody:
         required: true
@@ -2081,11 +2098,11 @@ paths:
                     $ref: "#/components/schemas/SieveScript"
     delete:
       operationId: deleteSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete the Sieve filter script
       responses:
         "200":
@@ -2109,11 +2126,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: validateSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Validate a Sieve script without saving
       requestBody:
         required: true
@@ -2151,11 +2168,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listQuarantine
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quarantine]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List quarantined messages
       responses:
         "200":
@@ -2180,13 +2197,14 @@ paths:
         schema:
           type: integer
         description: Quarantine entry ID
+        example: 1
     post:
       operationId: releaseQuarantine
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quarantine]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Release a quarantined message to inbox
       responses:
         "200":
@@ -2220,13 +2238,14 @@ paths:
         schema:
           type: integer
         description: Quarantine entry ID
+        example: 1
     delete:
       operationId: deleteQuarantine
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quarantine]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Permanently delete a quarantined message
       responses:
         "200":
@@ -2254,6 +2273,9 @@ paths:
     get:
       operationId: accountEvents
       tags: [SSE]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
       summary: Server-Sent Events stream for real-time updates
       description: >
         Authenticated by the restmail_access cookie, which a native browser
@@ -2264,9 +2286,6 @@ paths:
         keepalive: once the account's sessions end, the stream ends without
         sending anything more, and opening it again with the same token
         answers 401.
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
       responses:
         "200":
           description: SSE event stream
@@ -2300,6 +2319,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Mailbox lookup result
@@ -2378,6 +2398,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Mailbox check result
@@ -2427,7 +2448,9 @@ paths:
     get:
       operationId: listDomains
       tags: ["Admin: Domains"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List all domains
       responses:
         "200":
@@ -2445,7 +2468,9 @@ paths:
     post:
       operationId: createDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Create a new domain
       description: >-
         The domain is created but not live: `active` is false. Mail for a domain
@@ -2479,7 +2504,9 @@ paths:
     get:
       operationId: getDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Get a domain by ID
       responses:
         "200":
@@ -2497,7 +2524,9 @@ paths:
     patch:
       operationId: updateDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Update a domain
       description: >-
         Setting `active` to true makes the domain live, and is refused with 409
@@ -2532,7 +2561,9 @@ paths:
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:delete
+      security:
+        - CookieAuth: [domains:delete]
+        - BearerAuth: [domains:delete]
       summary: Delete a domain
       responses:
         "204":
@@ -2547,7 +2578,9 @@ paths:
     get:
       operationId: listMailboxes
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: List mailboxes, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -2574,7 +2607,9 @@ paths:
     get:
       operationId: getMailbox
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: Get an account by ID
       responses:
         "200":
@@ -2592,7 +2627,9 @@ paths:
     patch:
       operationId: updateMailbox
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Update an account
       description: |
         A new `password` (12 characters or more) replaces every password the
@@ -2624,7 +2661,9 @@ paths:
     delete:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:delete
+      security:
+        - CookieAuth: [mailboxes:delete]
+        - BearerAuth: [mailboxes:delete]
       summary: Delete an account
       description: >
         Its credentials are revoked (kept, for the audit trail) and its
@@ -2670,7 +2709,9 @@ paths:
     get:
       operationId: listAliases
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: List aliases, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -2693,7 +2734,9 @@ paths:
     post:
       operationId: createAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Create a new alias
       requestBody:
         required: true
@@ -2721,7 +2764,9 @@ paths:
     get:
       operationId: getAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: Get an alias by ID
       responses:
         "200":
@@ -2739,7 +2784,9 @@ paths:
     patch:
       operationId: updateAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Update an alias
       requestBody:
         required: true
@@ -2763,7 +2810,9 @@ paths:
     delete:
       operationId: deleteAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:delete
+      security:
+        - CookieAuth: [mailboxes:delete]
+        - BearerAuth: [mailboxes:delete]
       summary: Delete an alias
       responses:
         "204":
@@ -2778,7 +2827,9 @@ paths:
     get:
       operationId: listPipelines
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: List pipelines, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -2801,7 +2852,9 @@ paths:
     post:
       operationId: createPipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Create a new pipeline
       requestBody:
         required: true
@@ -2829,7 +2882,9 @@ paths:
     patch:
       operationId: updatePipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Update a pipeline
       requestBody:
         required: true
@@ -2853,7 +2908,9 @@ paths:
     delete:
       operationId: deletePipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:delete
+      security:
+        - CookieAuth: [pipelines:delete]
+        - BearerAuth: [pipelines:delete]
       summary: Delete a pipeline
       responses:
         "200":
@@ -2876,7 +2933,9 @@ paths:
     post:
       operationId: testPipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Test a pipeline against a sample email
       requestBody:
         required: true
@@ -2900,7 +2959,9 @@ paths:
     post:
       operationId: testFilter
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Test a single filter against a sample email
       requestBody:
         required: true
@@ -2924,7 +2985,9 @@ paths:
     get:
       operationId: listPipelineLogs
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: List recent per-message pipeline traces
       description: >-
         Newest-first list of per-message pipeline traces. Each row is a
@@ -2994,7 +3057,9 @@ paths:
     get:
       operationId: listCustomFilters
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: List custom filters, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -3017,7 +3082,9 @@ paths:
     post:
       operationId: createCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Create a custom filter
       requestBody:
         required: true
@@ -3043,7 +3110,9 @@ paths:
     post:
       operationId: validateCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Syntax-check a JavaScript filter script via the sidecar
       requestBody:
         required: true
@@ -3086,7 +3155,9 @@ paths:
     get:
       operationId: getCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: Get a custom filter by ID
       responses:
         "200":
@@ -3104,7 +3175,9 @@ paths:
     patch:
       operationId: updateCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Update a custom filter
       requestBody:
         required: true
@@ -3128,7 +3201,9 @@ paths:
     delete:
       operationId: deleteCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:delete
+      security:
+        - CookieAuth: [pipelines:delete]
+        - BearerAuth: [pipelines:delete]
       summary: Delete a custom filter
       responses:
         "200":
@@ -3153,7 +3228,9 @@ paths:
     post:
       operationId: testCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Run a stored custom filter's script against a sample email via the sidecar
       requestBody:
         required: false
@@ -3201,7 +3278,9 @@ paths:
     get:
       operationId: listQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:read
+      security:
+        - CookieAuth: [queue:read]
+        - BearerAuth: [queue:read]
       summary: List outbound queue entries
       parameters:
         - name: status
@@ -3255,7 +3334,9 @@ paths:
     get:
       operationId: getQueueStats
       tags: ["Admin: Queue"]
-      x-required-capability: queue:read
+      security:
+        - CookieAuth: [queue:read]
+        - BearerAuth: [queue:read]
       summary: Get queue status counts
       responses:
         "200":
@@ -3273,7 +3354,9 @@ paths:
     post:
       operationId: bulkRetryQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Retry multiple queue entries
       requestBody:
         required: true
@@ -3297,7 +3380,9 @@ paths:
     post:
       operationId: bulkBounceQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Bounce multiple queue entries
       requestBody:
         required: true
@@ -3321,7 +3406,9 @@ paths:
     delete:
       operationId: bulkDeleteQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Delete multiple queue entries
       requestBody:
         required: true
@@ -3347,7 +3434,9 @@ paths:
     get:
       operationId: getQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:read
+      security:
+        - CookieAuth: [queue:read]
+        - BearerAuth: [queue:read]
       summary: Get a single queue entry
       responses:
         "200":
@@ -3365,7 +3454,9 @@ paths:
     delete:
       operationId: deleteQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Delete a queue entry
       responses:
         "204":
@@ -3379,7 +3470,9 @@ paths:
     post:
       operationId: retryQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Retry a single queue entry
       responses:
         "200":
@@ -3406,7 +3499,9 @@ paths:
     post:
       operationId: bounceQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Bounce a single queue entry
       responses:
         "200":
@@ -3436,7 +3531,9 @@ paths:
     get:
       operationId: listAllowlist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List allowlist entries for a domain
       responses:
         "200":
@@ -3454,7 +3551,9 @@ paths:
     post:
       operationId: addToAllowlist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Add an allowlist entry
       requestBody:
         required: true
@@ -3485,10 +3584,13 @@ paths:
         schema:
           type: integer
         description: Sender rule entry ID
+        example: 1
     delete:
       operationId: removeFromAllowlist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Remove an allowlist entry
       responses:
         "204":
@@ -3502,7 +3604,9 @@ paths:
     get:
       operationId: listBlocklist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List blocklist entries for a domain
       responses:
         "200":
@@ -3520,7 +3624,9 @@ paths:
     post:
       operationId: addToBlocklist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Add a blocklist entry
       requestBody:
         required: true
@@ -3551,10 +3657,13 @@ paths:
         schema:
           type: integer
         description: Sender rule entry ID
+        example: 1
     delete:
       operationId: removeFromBlocklist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Remove a blocklist entry
       responses:
         "204":
@@ -3569,7 +3678,9 @@ paths:
     get:
       operationId: listDKIMKeys
       tags: ["Admin: DKIM"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List DKIM key entries for all domains
       responses:
         "200":
@@ -3591,7 +3702,9 @@ paths:
     put:
       operationId: setDKIMKey
       tags: ["Admin: DKIM"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Set or replace DKIM key for a domain
       description: >
         The key and selector are checked before they are stored, so a domain is
@@ -3639,7 +3752,9 @@ paths:
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Delete DKIM key for a domain
       responses:
         "204":
@@ -3654,7 +3769,9 @@ paths:
     get:
       operationId: listCertificates
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List TLS certificates
       responses:
         "200":
@@ -3672,7 +3789,9 @@ paths:
     post:
       operationId: createCertificate
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Upload a new TLS certificate
       requestBody:
         required: true
@@ -3700,7 +3819,9 @@ paths:
     get:
       operationId: getCertificate
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Get certificate details (includes cert_pem)
       responses:
         "200":
@@ -3718,7 +3839,9 @@ paths:
     delete:
       operationId: deleteCertificate
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Delete a certificate
       responses:
         "204":
@@ -3733,7 +3856,9 @@ paths:
     get:
       operationId: listBans
       tags: ["Admin: Bans"]
-      x-required-capability: bans:read
+      security:
+        - CookieAuth: [bans:read]
+        - BearerAuth: [bans:read]
       summary: List IP bans
       parameters:
         - name: protocol
@@ -3777,7 +3902,9 @@ paths:
     post:
       operationId: createBan
       tags: ["Admin: Bans"]
-      x-required-capability: bans:write
+      security:
+        - CookieAuth: [bans:write]
+        - BearerAuth: [bans:write]
       summary: Create an IP ban
       requestBody:
         required: true
@@ -3805,7 +3932,9 @@ paths:
     delete:
       operationId: deleteBan
       tags: ["Admin: Bans"]
-      x-required-capability: bans:delete
+      security:
+        - CookieAuth: [bans:delete]
+        - BearerAuth: [bans:delete]
       summary: Delete a ban by ID
       responses:
         "204":
@@ -3821,10 +3950,13 @@ paths:
         schema:
           type: string
         description: IP address to unban
+        example: 192.0.2.10
     delete:
       operationId: unbanIP
       tags: ["Admin: Bans"]
-      x-required-capability: bans:delete
+      security:
+        - CookieAuth: [bans:delete]
+        - BearerAuth: [bans:delete]
       summary: Remove all bans for a specific IP
       responses:
         "204":
@@ -3839,7 +3971,9 @@ paths:
     get:
       operationId: getDeliveryLogs
       tags: ["Admin: Logs"]
-      x-required-capability: messages:read
+      security:
+        - CookieAuth: [messages:read]
+        - BearerAuth: [messages:read]
       summary: Query delivery log (outbound queue history)
       parameters:
         - name: status
@@ -3899,7 +4033,9 @@ paths:
     get:
       operationId: listAuditEntries
       tags: ["Admin: Audit"]
-      x-required-capability: audit:read
+      security:
+        - CookieAuth: [audit:read]
+        - BearerAuth: [audit:read]
       summary: Read the audit log, newest first
       description: >-
         Entries newest first. To read the next page, pass the returned
@@ -3988,7 +4124,9 @@ paths:
     get:
       operationId: verifyAuditLog
       tags: ["Admin: Audit"]
-      x-required-capability: audit:read
+      security:
+        - CookieAuth: [audit:read]
+        - BearerAuth: [audit:read]
       summary: Check the audit log's hash chain
       description: >-
         Walks the whole log from its lowest seq and checks that every entry
@@ -4107,6 +4245,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Autoconfig XML document
@@ -4130,6 +4269,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Autoconfig XML document
@@ -4229,6 +4369,7 @@ paths:
           required: true
           schema:
             type: string
+          example: token
       responses:
         "200":
           description: Key authorization for the challenge token
@@ -4247,11 +4388,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: respondToCalendar
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Calendar]
+      security:
+        - CookieAuth: [mail:read, mail:send]
+        - BearerAuth: [mail:read, mail:send]
+        - BasicAuth: [mail:read, mail:send]
       summary: Send an iMIP reply to a calendar invitation in a message
       requestBody:
         required: true
@@ -4302,11 +4443,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listCalendarEvents
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Calendar]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List calendar events (grouped by UID, latest version) for the mailbox
       responses:
         "200":
@@ -4329,8 +4470,10 @@ paths:
     get:
       operationId: getDashboardStats
       tags: ["Admin: Stats"]
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Dashboard statistics
-      x-required-capability: domains:read
       description: Visible to every admin role, all of which hold domains:read.
       responses:
         "200":
@@ -4351,7 +4494,9 @@ paths:
     get:
       operationId: listRoles
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:read
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
       summary: List roles
       responses:
         "200":
@@ -4371,7 +4516,9 @@ paths:
     get:
       operationId: listCapabilities
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:read
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
       summary: List capabilities
       responses:
         "200":
@@ -4391,7 +4538,9 @@ paths:
     get:
       operationId: listGrants
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:read
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
       summary: List grants, oldest first
       description: >-
         Every grant, active and eligible, or only one holder's, or only those
@@ -4443,7 +4592,9 @@ paths:
     post:
       operationId: createGrant
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:write
+      security:
+        - CookieAuth: [users:write]
+        - BearerAuth: [users:write]
       summary: Grant a role at a scope
       description: >-
         Needs a session that signed in with two-factor authentication (`403
@@ -4491,7 +4642,9 @@ paths:
     delete:
       operationId: deleteGrant
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:write
+      security:
+        - CookieAuth: [users:write]
+        - BearerAuth: [users:write]
       summary: Remove a grant
       description: >-
         The same rules as granting: a 2FA session, and the caller must hold
@@ -4743,7 +4896,9 @@ paths:
     get:
       operationId: domainDNSCheck
       tags: ["Admin: Domains"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain
       responses:
         "200":
@@ -4820,7 +4975,9 @@ paths:
     get:
       operationId: getMtaStsPolicy
       tags: ["Admin: MTA-STS"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Get the MTA-STS policy for a domain
       responses:
         "200":
@@ -4838,7 +4995,9 @@ paths:
     put:
       operationId: setMtaStsPolicy
       tags: ["Admin: MTA-STS"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Create or update the MTA-STS policy for a domain
       requestBody:
         required: true
@@ -4874,7 +5033,9 @@ paths:
     delete:
       operationId: deleteMtaStsPolicy
       tags: ["Admin: MTA-STS"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Delete the MTA-STS policy for a domain
       responses:
         "204":
@@ -4889,7 +5050,9 @@ paths:
     get:
       operationId: listTlsReports
       tags: ["Admin: TLS Reports"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List received TLS-RPT reports
       parameters:
         - name: domain_id
@@ -4939,7 +5102,9 @@ paths:
     get:
       operationId: getPipelineAnalytics
       tags: ["Admin: Observability"]
-      x-required-capability: observability:read
+      security:
+        - CookieAuth: [observability:read]
+        - BearerAuth: [observability:read]
       summary: Windowed message-lifecycle funnel from pipeline_rollups
       parameters:
         - name: window
@@ -4972,7 +5137,9 @@ paths:
     get:
       operationId: getMessageTrace
       tags: ["Admin: Observability"]
-      x-required-capability: observability:read
+      security:
+        - CookieAuth: [observability:read]
+        - BearerAuth: [observability:read]
       summary: Get the pipeline trace for a delivered message
       description: >-
         Returns the trace joined on message_id, which is set only on the
@@ -4998,8 +5165,10 @@ paths:
   /api/v1/admin/test/send:
     post:
       operationId: sendTestEmail
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Inject a test email directly into a recipient mailbox
       requestBody:
         required: true
@@ -5051,8 +5220,10 @@ paths:
   /api/v1/admin/test/verify:
     get:
       operationId: verifyDelivery
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Poll for a delivered message matching the given criteria
       parameters:
         - name: to
@@ -5061,6 +5232,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
         - name: subject
           in: query
           schema:
@@ -5100,8 +5272,10 @@ paths:
   /api/v1/admin/test/probe:
     post:
       operationId: probeServices
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Probe connectivity to SMTP/IMAP/POP3/DNS/DB
       requestBody:
         required: false
@@ -5139,8 +5313,10 @@ paths:
   /api/v1/admin/test/reset:
     post:
       operationId: resetTestData
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Wipe all data and re-seed default test data
       responses:
         "200":
@@ -5155,8 +5331,10 @@ paths:
   /api/v1/admin/test/seed:
     post:
       operationId: seedTestData
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Seed default test domains, mailboxes, aliases and accounts
       responses:
         "200":
@@ -5171,8 +5349,10 @@ paths:
   /api/v1/admin/test/snapshot:
     post:
       operationId: snapshotTestData
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Capture the current database state as JSON
       responses:
         "200":
@@ -5192,8 +5372,10 @@ paths:
   /api/v1/admin/test/snapshot/restore:
     post:
       operationId: restoreTestSnapshot
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Restore database state from a previously captured snapshot
       requestBody:
         required: true
@@ -5270,6 +5452,7 @@ components:
       schema:
         type: integer
       description: Account ID
+      example: 1
     MessageId:
       name: id
       in: path
@@ -5277,6 +5460,7 @@ components:
       schema:
         type: integer
       description: Message ID
+      example: 1
     ResourceId:
       name: id
       in: path
@@ -5284,6 +5468,7 @@ components:
       schema:
         type: integer
       description: Resource ID
+      example: 1
     FolderName:
       name: folder
       in: path
@@ -5291,6 +5476,7 @@ components:
       schema:
         type: string
       description: Folder name (e.g. INBOX, Sent, Drafts, Trash)
+      example: INBOX
 
   responses:
     Unauthorized:
