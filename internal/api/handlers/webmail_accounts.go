@@ -85,7 +85,10 @@ func (h *WebmailAccountHandler) Get(w http.ResponseWriter, r *http.Request) {
 	respond.Data(w, http.StatusOK, account)
 }
 
-// Delete deletes a webmail account (admin).
+// Delete deletes a webmail account and its linked accounts (admin). The links go
+// in the same transaction: a mailbox may be linked to at most one account
+// (OSI-21), so a link left behind would keep its mailbox from ever being linked
+// again.
 func (h *WebmailAccountHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
 	if err != nil {
@@ -99,6 +102,15 @@ func (h *WebmailAccountHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.db.Delete(&account)
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("webmail_account_id = ?", account.ID).Delete(&models.LinkedAccount{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&account).Error
+	})
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete webmail account")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }

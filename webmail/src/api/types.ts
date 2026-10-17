@@ -1893,7 +1893,6 @@ export interface components {
         WebmailAccount: {
             id: number;
             primary_mailbox_id: number;
-            is_admin: boolean;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */

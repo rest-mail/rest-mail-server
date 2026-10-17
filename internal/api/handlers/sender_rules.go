@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -83,6 +84,10 @@ func (h *SenderRuleHandler) AddToAllowlist(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.db.Create(&rule).Error; err != nil {
+		if repositories.IsUniqueViolation(err) {
+			respond.Error(w, http.StatusConflict, "already_exists", "Sender is already on the allowlist")
+			return
+		}
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create allowlist rule")
 		return
 	}
@@ -177,6 +182,10 @@ func (h *SenderRuleHandler) AddToBlocklist(w http.ResponseWriter, r *http.Reques
 	}
 
 	if err := h.db.Create(&rule).Error; err != nil {
+		if repositories.IsUniqueViolation(err) {
+			respond.Error(w, http.StatusConflict, "already_exists", "Sender is already on the blocklist")
+			return
+		}
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create blocklist rule")
 		return
 	}
