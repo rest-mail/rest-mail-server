@@ -390,30 +390,30 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 // enrollment lookup happens here, so whether 2FA is enabled never leaks to a
 // caller who has not already proven the password (OSI-19 + OSI-24). Returns
 // true when login may proceed (no active 2FA, or a valid TOTP/recovery code was
-// supplied). On failure it writes the response and returns false — with a
-// distinct totp_required code when no second factor was supplied, so a client
-// knows to prompt for one.
-func (h *AuthHandler) enforce2FA(w http.ResponseWriter, userType string, subjectID uint, req loginRequest) bool {
+// supplied), and whether a second factor was verified. On failure it writes the
+// response and returns false — with a distinct totp_required code when no
+// second factor was supplied, so a client knows to prompt for one.
+func (h *AuthHandler) enforce2FA(w http.ResponseWriter, userType string, subjectID uint, req loginRequest) (proceed, verified bool) {
 	if h.twoFactorStore == nil {
-		return true
+		return true, false
 	}
 	tf, err := h.twoFactorStore.GetActive(userType, subjectID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		return true // account has no active 2FA — unchanged behaviour
+		return true, false // account has no active 2FA — unchanged behaviour
 	}
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
-		return false
+		return false, false
 	}
 	if verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, tf, req.TOTPCode, req.RecoveryCode) {
-		return true
+		return true, true
 	}
 	if req.TOTPCode == "" && req.RecoveryCode == "" {
 		respond.Error(w, http.StatusUnauthorized, "totp_required", "Two-factor authentication code required")
 	} else {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid two-factor authentication code")
 	}
-	return false
+	return false, false
 }
 
 func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
@@ -450,7 +450,7 @@ func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
 
 	// Second factor (OSI-19): only reached with a correct password, so a 2FA
 	// challenge never leaks account existence. No-op for admins without 2FA.
-	if !h.enforce2FA(w, "admin", adminUser.ID, req) {
+	if ok, _ := h.enforce2FA(w, "admin", adminUser.ID, req); !ok {
 		return
 	}
 
@@ -478,7 +478,8 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 	// Second factor (OSI-19): only reached with a correct password, so a 2FA
 	// challenge never leaks whether the address exists or has 2FA. No-op for
 	// mailboxes without 2FA, before any account side effects.
-	if !h.enforce2FA(w, "mailbox", mailbox.ID, req) {
+	ok, twoFactor := h.enforce2FA(w, "mailbox", mailbox.ID, req)
+	if !ok {
 		return
 	}
 
@@ -492,8 +493,9 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 		}
 	}
 
-	// Generate tokens
-	tokens, err := h.jwtService.GenerateTokenPair(mailbox.ID, mailbox.Address, account.ID)
+	// Generate tokens. The session remembers whether the sign-in took a second
+	// factor: creating an app password needs one, on a mailbox that has 2FA.
+	tokens, err := h.jwtService.GenerateMailboxSession(mailbox.ID, mailbox.Address, account.ID, twoFactor)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
@@ -641,7 +643,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		tokens, err = h.jwtService.GenerateAdminSession(claims.AdminUserID, claims.Username, capabilities, epoch)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else {
-		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID)
+		tokens, err = h.jwtService.GenerateMailboxSession(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.TwoFactor)
 		userType, subjectID = "mailbox", claims.MailboxID
 	}
 	if err != nil {

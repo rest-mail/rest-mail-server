@@ -40,8 +40,9 @@ func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
 
 var _ imapsrv.Backend = (*Backend)(nil)
 
-// Authenticate logs the user in via the API and returns a Mailbox scoped to the
-// resulting access token and account.
+// Authenticate signs the user in via the API, with the mailbox's password or
+// an app password, and returns a Mailbox scoped to the resulting token and
+// account.
 func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
@@ -54,7 +55,8 @@ func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
 		return nil, errAccountLocked
 	}
 
-	resp, err := b.api.Login(user, pass)
+	// An app password signs in without the API's interactive login (#344).
+	resp, err := b.api.SignIn(user, pass, "imap")
 	if err != nil {
 		// A failed IMAP login is a security-relevant event (credential stuffing /
 		// enumeration). Log it structured, with the attacker-controlled username

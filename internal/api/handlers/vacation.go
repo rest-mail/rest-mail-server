@@ -47,7 +47,7 @@ func (h *VacationHandler) resolveMailboxID(r *http.Request, accountIDStr string)
 	if err != nil {
 		return 0, err
 	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
+	return resolveAccountMailbox(h.db, uint(accountID), claims)
 }
 
 // GetVacation returns the vacation auto-reply configuration for a mailbox.

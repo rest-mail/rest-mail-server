@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -80,6 +81,12 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 		return nil, err
 	}
 	return &row.ID, nil
+}
+
+// CredentialUsable checks the credentials table directly, as SenderAuthorized
+// checks linked accounts.
+func (s *dbStore) CredentialUsable(credentialID uint) (bool, error) {
+	return repositories.NewCredentialRepository(s.db).Usable(credentialID, time.Now())
 }
 
 // EnqueueOutbound inserts the message into the outbound queue with the same

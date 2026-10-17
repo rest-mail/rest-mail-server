@@ -298,7 +298,7 @@ func TestEnrollRefusedWhenDisabledOrNoMasterKey(t *testing.T) {
 
 func enforce(h *AuthHandler, userType string, subjectID uint, req loginRequest) (bool, *httptest.ResponseRecorder) {
 	rr := httptest.NewRecorder()
-	ok := h.enforce2FA(rr, userType, subjectID, req)
+	ok, _ := h.enforce2FA(rr, userType, subjectID, req)
 	return ok, rr
 }
 

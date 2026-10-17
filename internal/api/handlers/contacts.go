@@ -40,7 +40,7 @@ func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint) (uint
 	var targetAccount models.WebmailAccount
 	if err := h.db.First(&targetAccount, accountID).Error; err == nil {
 		var linked models.LinkedAccount
-		if err := h.db.Where("webmail_account_id = ? AND mailbox_id = ?", claims.WebmailAccountID, targetAccount.PrimaryMailboxID).First(&linked).Error; err == nil {
+		if err := h.db.Where("webmail_account_id = ? AND mailbox_id = ?", claims.LinkedAccountsOwner(), targetAccount.PrimaryMailboxID).First(&linked).Error; err == nil {
 			return linked.MailboxID, nil
 		}
 	}

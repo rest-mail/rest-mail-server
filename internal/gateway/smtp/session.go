@@ -57,6 +57,10 @@ type session struct {
 	authenticated bool
 	authEmail     string
 	accountID     uint
+	// credentialID is the app password the session signed in with, or 0 for
+	// the mailbox's own password. An app password's scope is its own mailbox:
+	// it sends as that address only, never a linked one.
+	credentialID uint
 
 	// Current transaction.
 	mailFrom string
@@ -171,7 +175,7 @@ func (s *session) AuthMechanisms() []string {
 }
 
 // Auth returns a SASL server for the requested mechanism. Both mechanisms
-// authenticate against the REST API via Backend.Login.
+// authenticate against the REST API via Backend.SignIn.
 func (s *session) Auth(mech string) (sasl.Server, error) {
 	if !s.isSubmission {
 		return nil, &gosmtp.SMTPError{
@@ -261,7 +265,7 @@ func (s *session) login(username, password string) error {
 		return tooManyAuthFailures
 	}
 
-	resp, err := s.api.Login(username, password)
+	resp, err := s.api.SignIn(username, password, "smtp")
 	if err != nil {
 		// OSI-5: the attempted username is attacker-controlled and high-volume on
 		// this path (credential-stuffing / user-enumeration probes), so it is
@@ -307,6 +311,7 @@ func (s *session) login(username, password string) error {
 	s.authenticated = true
 	s.authEmail = username
 	s.accountID = resp.Data.User.ID
+	s.credentialID = resp.Data.CredentialID
 
 	slog.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
 	return nil
@@ -356,10 +361,33 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 		}
 	}
 
+	// A session signed in with an app password holds it only while it lasts:
+	// revoked, or expired, it sends nothing more.
+	if s.isSubmission && s.authenticated && s.credentialID != 0 {
+		usable, err := s.store.CredentialUsable(s.credentialID)
+		if err != nil {
+			slog.Error("smtp: could not check the app password", "user", maskEmail(s.authEmail), "error", err)
+			return &gosmtp.SMTPError{
+				Code:         451,
+				EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
+				Message:      "Temporary service failure",
+			}
+		}
+		if !usable {
+			slog.Warn("smtp: app password no longer usable", "user", maskEmail(s.authEmail), "event", "smtp_credential_unusable")
+			s.authenticated, s.authEmail, s.accountID, s.credentialID = false, "", 0, 0
+			return &gosmtp.SMTPError{
+				Code:         530,
+				EnhancedCode: gosmtp.EnhancedCode{5, 7, 0},
+				Message:      "Authentication required",
+			}
+		}
+	}
+
 	if s.isSubmission && s.authenticated && from != s.authEmail {
 		// Check linked accounts. A lookup error is treated as "not authorized",
 		// matching the prior behavior (which left the count at zero).
-		authorized, err := s.store.SenderAuthorized(s.accountID, from)
+		authorized, err := s.mayAlsoSendAs(from)
 		if err != nil || !authorized {
 			// OSI-5: mask the addresses — a mismatching MAIL FROM is a spoofing
 			// attempt and both values are logged in the clear otherwise.
@@ -403,7 +431,7 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 	if fromAddr == s.authEmail {
 		return nil
 	}
-	authorized, err := s.store.SenderAuthorized(s.accountID, fromAddr)
+	authorized, err := s.mayAlsoSendAs(fromAddr)
 	if err != nil || !authorized {
 		slog.Warn("smtp: From header not authorized",
 			"auth_user", maskEmail(s.authEmail), "header_from", maskEmail(fromAddr), "error", err)
@@ -414,6 +442,16 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 		}
 	}
 	return nil
+}
+
+// mayAlsoSendAs reports whether the account may send as addr, an address other
+// than the one it signed in as: a linked mailbox's. A session signed in with an
+// app password never may.
+func (s *session) mayAlsoSendAs(addr string) (bool, error) {
+	if s.credentialID != 0 {
+		return false, nil
+	}
+	return s.store.SenderAuthorized(s.accountID, addr)
 }
 
 // Rcpt accepts a recipient. Local recipients (per Backend.CheckMailbox) are
