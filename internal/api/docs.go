@@ -1,12 +1,14 @@
 package api
 
 import (
-	"embed"
 	"net/http"
+
+	"github.com/restmail/restmail"
 )
 
-//go:embed openapi.yaml
-var openapiSpec embed.FS
+// openapiSpec is the root openapi.yaml, embedded by the root package. There is
+// no copy of it here to keep in step.
+var openapiSpec = restmail.OpenAPI
 
 // SwaggerUIHandler serves a Swagger UI page that loads the embedded OpenAPI spec.
 func SwaggerUIHandler() http.HandlerFunc {
