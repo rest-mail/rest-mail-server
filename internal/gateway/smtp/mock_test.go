@@ -14,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/mtls/mtlstest"
+	"github.com/restmail/restmail/internal/outbound"
 )
 
 // mockBackend is an in-memory Backend: it decides recipient locality and
@@ -165,10 +166,33 @@ type mockStore struct {
 	credentialErr error
 	enqueueErr    error // forced EnqueueOutbound error
 	persistErr    error // forced PersistSubmittedMessage error
+	prepareErr    error // forced PrepareSubmitted error
 
 	enqueued  []OutboundMessage
 	persisted []SubmittedMessage
+	prepared  int  // PrepareSubmitted calls
 	nextMsgID uint // assigned to the most recent persisted submission
+}
+
+// mockSignature is the DKIM-Signature PrepareSubmitted puts on a message.
+const mockSignature = "DKIM-Signature: v=1; a=rsa-sha256; d=mock; b=mock\r\n"
+
+// PrepareSubmitted strips the Bcc header as outbound.Prepare does, and signs
+// with mockSignature.
+func (s *mockStore) PrepareSubmitted(_, raw string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.prepared++
+	if s.prepareErr != nil {
+		return "", s.prepareErr
+	}
+	return mockSignature + outbound.StripBcc(raw), nil
+}
+
+func (s *mockStore) preparedCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.prepared
 }
 
 func newMockStore() *mockStore {

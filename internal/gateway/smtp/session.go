@@ -595,6 +595,20 @@ func (s *session) Data(r io.Reader) error {
 	var submittedMsgID *uint
 	submittedOnce := false
 
+	// What a local recipient is delivered. Inbound, it is the message as
+	// received, from the server that connected. An authenticated submission
+	// comes from one of this server's own mailboxes, so a local recipient gets
+	// it as one sent from the webmail (SendMessage): prepared as its remote
+	// copies are (Bcc stripped, DKIM-signed), and with no client IP or HELO.
+	// The client that submitted it is a mail program, not a server the
+	// sender's SPF record lists: delivered unsigned from its address, the
+	// message failed SPF and the domain's DMARC p=reject refused it (550),
+	// however the session had signed in. Prepared once, at the first local
+	// recipient.
+	localRaw, localClientIP, localHelo := data, extractIP(s.remoteAddr()), s.conn.Hostname()
+	prepareLocal := s.isSubmission && s.authenticated
+	var localErr error
+
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient.
 		check, err := s.api.CheckMailbox(rcpt)
@@ -669,6 +683,26 @@ func (s *session) Data(r io.Reader) error {
 			continue
 		}
 
+		if prepareLocal {
+			prepareLocal = false
+			localClientIP, localHelo = "", ""
+			prepared, err := s.store.PrepareSubmitted(s.mailFrom, string(data))
+			if err != nil {
+				// A configured DKIM key could not be loaded: defer, as the queue
+				// worker does, rather than deliver the message unsigned.
+				slog.Error("smtp: could not prepare a submission for local delivery; deferring",
+					"from", s.mailFrom, "error", err)
+				localErr = err
+			} else {
+				localRaw = []byte(prepared)
+			}
+		}
+		if localErr != nil {
+			failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
+			failed++
+			continue
+		}
+
 		// Local delivery via API.
 		deliverReq := &apiclient.DeliverRequest{
 			Address:    rcpt,
@@ -680,9 +714,9 @@ func (s *session) Data(r io.Reader) error {
 			MessageID:  messageID,
 			InReplyTo:  inReplyTo,
 			References: references,
-			RawMessage: data,
-			ClientIP:   extractIP(s.remoteAddr()),
-			HeloName:   s.conn.Hostname(),
+			RawMessage: localRaw,
+			ClientIP:   localClientIP,
+			HeloName:   localHelo,
 			// Always-on inbound transport-security metrics (inbound-MX only).
 			ReceivedTLS: receivedTLS,
 			TLSVersion:  tlsVersion,

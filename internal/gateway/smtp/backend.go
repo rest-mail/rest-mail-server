@@ -45,6 +45,12 @@ type Store interface {
 	// with can still be used: not revoked, not expired, its mailbox active.
 	// Checked before each message, so revoking one stops it sending at once.
 	CredentialUsable(credentialID uint) (bool, error)
+	// PrepareSubmitted applies the outbound transforms (outbound.Prepare) to
+	// an authenticated submission before a local mailbox receives it: the Bcc
+	// header stripped, and the message DKIM-signed with the sender domain's
+	// key. An error means a configured key could not be loaded; the caller
+	// defers rather than deliver the message unsigned.
+	PrepareSubmitted(sender, raw string) (string, error)
 }
 
 // OutboundMessage is a neutral description of a queued outbound message, keeping

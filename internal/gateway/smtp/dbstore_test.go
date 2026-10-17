@@ -78,7 +78,7 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 		db.Where("id = ?", dom.ID).Delete(&models.Domain{})
 	})
 
-	store := NewStore(db)
+	store := NewStore(db, "")
 
 	ref, err := store.PersistSubmittedMessage(SubmittedMessage{
 		Sender:     senderAddr,
@@ -134,7 +134,7 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 // proceeds without a linked reference.
 func TestDBStore_PersistSubmittedMessageNoSenderMailbox(t *testing.T) {
 	db := openStoreTestDB(t)
-	store := NewStore(db)
+	store := NewStore(db, "")
 
 	ref, err := store.PersistSubmittedMessage(SubmittedMessage{
 		Sender:    fmt.Sprintf("nobody-%d@nowhere.test", time.Now().UnixNano()),

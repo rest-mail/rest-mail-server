@@ -710,7 +710,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 			t.Errorf("POP3 STAT after a new password = %v, want a rejection", err)
 		}
 		// SMTP checks the credential before each MAIL FROM, with this store.
-		if usable, err := smtpgw.NewStore(f.db).CredentialUsable(thunderbird.ID); err != nil || usable {
+		if usable, err := smtpgw.NewStore(f.db, "").CredentialUsable(thunderbird.ID); err != nil || usable {
 			t.Errorf("SMTP's check after a new password = %v, %v", usable, err)
 		}
 		if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, thunderbird.Password); !apiclient.IsAuthRejection(err) {
