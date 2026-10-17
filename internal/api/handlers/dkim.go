@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 )
 
@@ -48,7 +50,9 @@ func (h *DKIMHandler) ListKeys(w http.ResponseWriter, r *http.Request) {
 	respond.List(w, entries, nil)
 }
 
-// SetKey sets or updates the DKIM key for a domain.
+// SetKey sets or updates the DKIM key for a domain. The key must be one the
+// domain can sign with (outbound.CheckDKIMKey); a refusal is 422, its message
+// saying which check failed.
 // PUT /api/v1/admin/dkim/{id}
 func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
@@ -76,6 +80,21 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "selector and private_key are required")
 		return
 	}
+	// A key or selector go-dkim will not sign with is refused here, not found
+	// when the domain's mail is deferred because it cannot be signed (#391).
+	if err := outbound.CheckDKIMKey(domain.Name, req.Selector, req.PrivateKey); err != nil {
+		var refused *outbound.DKIMKeyError
+		if !errors.As(err, &refused) {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the DKIM key")
+			return
+		}
+		respond.JSON(w, http.StatusUnprocessableEntity, respond.ErrorResponse{Error: respond.ErrorBody{
+			Code:    "validation_failed",
+			Message: refused.Error(),
+			Details: map[string]interface{}{"fields": map[string]string{refused.Field: refused.Reason}},
+		}})
+		return
+	}
 
 	if h.masterKey == "" {
 		slog.Warn("DKIM private key stored in plaintext: MASTER_KEY not configured")
@@ -89,10 +108,13 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.db.Model(&domain).Updates(map[string]interface{}{
+	if err := h.db.Model(&domain).Updates(map[string]interface{}{
 		"dkim_selector":    req.Selector,
 		"dkim_private_key": keyToStore,
-	})
+	}).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save the DKIM key")
+		return
+	}
 
 	respond.Data(w, http.StatusOK, map[string]interface{}{
 		"domain_id": domain.ID,

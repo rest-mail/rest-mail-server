@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 )
 
@@ -126,6 +127,13 @@ func rotateDomainDKIM(database *gorm.DB, oldKey, newKey string) (processed, fail
 			log.Printf("WARN: failed to decrypt DKIM private key for domain %s (id=%d): %v", d.Name, d.ID, derr)
 			failures++
 			continue
+		}
+		// A key stored before the API checked keys (#391) may be one the API
+		// would now refuse. It is rotated all the same: dropping it, or leaving
+		// it under the old key, would stop the domain's mail at once. Say so,
+		// so it is replaced.
+		if cerr := outbound.CheckDKIMKey(d.Name, d.DKIMSelector, plain); cerr != nil {
+			log.Printf("WARN: DKIM key for domain %s (id=%d) would be refused if set today, replace it: %v", d.Name, d.ID, cerr)
 		}
 		enc, eerr := models.EncryptDKIMPrivateKey(plain, newKey)
 		if eerr != nil {

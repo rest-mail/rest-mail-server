@@ -3495,6 +3495,16 @@ paths:
       tags: ["Admin: DKIM"]
       x-required-capability: domains:write
       summary: Set or replace DKIM key for a domain
+      description: >
+        The key and selector are checked before they are stored, so a domain is
+        never left with a key its outbound mail cannot be signed with (signing
+        fails closed and defers the mail). The selector must be a DNS name: up
+        to 63 characters, labels of letters, digits and hyphens joined by dots,
+        none starting or ending with a hyphen. The key must be an RSA key of at
+        least 2048 bits (PKCS#1 or PKCS#8 PEM) or an Ed25519 key (PKCS#8 PEM),
+        and must sign a test message whose signature verifies against the
+        key's own DNS record. Ed25519 is import-only: the server's own key
+        generation makes RSA keys.
       requestBody:
         required: true
         content:
@@ -3512,6 +3522,22 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMEntry"
+        "400":
+          description: The body is not JSON, or lacks `selector` or `private_key` (`bad_request`)
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: >
+            `validation_failed`: the domain could not sign with this key and
+            selector. `details.fields.selector` when the selector is not a DNS
+            name; `details.fields.private_key` when the key is not a PEM
+            private key, is neither RSA nor Ed25519, is an RSA key under 2048
+            bits, or does not make a signature that verifies. `message` says
+            which check failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
@@ -6563,9 +6589,13 @@ components:
       properties:
         selector:
           type: string
+          maxLength: 63
+          description: A DNS name; the key's record is `<selector>._domainkey.<domain>`
         private_key:
           type: string
-          description: PEM-encoded RSA private key
+          description: >
+            PEM-encoded private key: RSA of at least 2048 bits (PKCS#1 or
+            PKCS#8), or Ed25519 (PKCS#8)
 
     # ─────────────────────────────────────────────────────────────
     # Certificate
