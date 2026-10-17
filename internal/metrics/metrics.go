@@ -173,7 +173,56 @@ var (
 		Name: "restmail_domains_out_of_service_total",
 		Help: "Domains taken out of service because their certificate stopped being valid",
 	})
+
+	// DNSBLChecks, DNSBLListed and DNSBLLastAnswer are the DNSBL monitor's
+	// (issue #148). They exist only while an operator has enabled it, and their
+	// labels are bounded by that operator's config: the sending IPs and the
+	// provider names it lists.
+	DNSBLChecks     = NewDNSBLChecks()
+	DNSBLListed     = NewDNSBLListed()
+	DNSBLLastAnswer = NewDNSBLLastAnswer()
 )
+
+// NewDNSBLChecks counts completed DNSBL checks per provider and status
+// (listed, not_listed, provider_error, indeterminate, unsupported). Alert on
+// provider_error and indeterminate here, apart from reputation: they say the
+// list could not answer, not that an IP is listed.
+func NewDNSBLChecks() *prometheus.CounterVec {
+	return prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "restmail_dnsbl_checks_total",
+			Help: "Completed DNSBL checks by provider and status",
+		},
+		[]string{"provider", "status"},
+	)
+}
+
+// NewDNSBLListed is the last authoritative answer per sending IP and provider:
+// 1 listed, 0 not listed. A pair no list has answered for since start is
+// absent, not 0: unknown is never reported clean. An error answer leaves the
+// value as it was.
+func NewDNSBLListed() *prometheus.GaugeVec {
+	return prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "restmail_dnsbl_listed",
+			Help: "Last known DNSBL listing per IP and provider (1 listed, 0 not listed; absent when unknown)",
+		},
+		[]string{"ip", "provider"},
+	)
+}
+
+// NewDNSBLLastAnswer is the Unix time of the last authoritative answer (listed
+// or not listed) per sending IP and provider, so a listing value that has gone
+// stale behind provider errors can be alerted on.
+func NewDNSBLLastAnswer() *prometheus.GaugeVec {
+	return prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "restmail_dnsbl_last_answer_timestamp_seconds",
+			Help: "Unix time of the last authoritative DNSBL answer per IP and provider",
+		},
+		[]string{"ip", "provider"},
+	)
+}
 
 func init() {
 	prometheus.MustRegister(
@@ -195,5 +244,8 @@ func init() {
 		TraceDropped,
 		TLSCertMissing,
 		DomainsOutOfService,
+		DNSBLChecks,
+		DNSBLListed,
+		DNSBLLastAnswer,
 	)
 }
