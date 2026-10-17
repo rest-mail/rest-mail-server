@@ -52,8 +52,8 @@ func TestDeliver_RejectsControlCharAddress(t *testing.T) {
 			if !errors.As(err, &se) {
 				t.Fatalf("deliver returned %T (%v), want a permanent *SMTPError", err, err)
 			}
-			if !se.IsPermanent() {
-				t.Fatalf("control-character address should fail permanently, got code %d", se.Code)
+			if c := ClassifyFailure(err); !c.Permanent() {
+				t.Fatalf("control-character address should fail permanently, got %q (code %d)", c, se.Code)
 			}
 		})
 	}
