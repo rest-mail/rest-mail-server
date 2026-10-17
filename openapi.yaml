@@ -49,6 +49,15 @@ info:
       A few admin operations (dashboard stats, the non-production test endpoints)
       require only the admin role and carry no `x-required-capability`.
 
+      An admin holds the capabilities of its **grants**: each a role at a scope
+      (`*`, `domain:<name>` or `mailbox:<address>`), read on every request — the
+      token carries none, so a change takes effect at once. An operation on the
+      domain or mailbox named by its `{id}` (`/api/v1/admin/domains/{id}` and
+      everything under it, `/api/v1/admin/dkim/{id}`,
+      `/api/v1/admin/mailboxes/{id}`) accepts the capability held at a scope
+      covering that domain or mailbox; every other operation needs it at `*`.
+      See `/api/v1/admin/grants`.
+
     * **Internal mTLS** — the machine-to-machine gateway routes (`GET /api/mailboxes`,
       `POST /api/v1/messages/deliver`), marked `x-internal-mtls`. When internal mTLS
       is enabled (server `InternalMTLSEnabled`) these are withheld from the public
@@ -80,7 +89,9 @@ info:
     route and its parameters, and how it ended. Passwords and tokens are never
     recorded. Admins holding `audit:read` read it at `GET /api/v1/admin/audit` and
     check the chain at `GET /api/v1/admin/audit/verify`; both reads are themselves
-    recorded.
+    recorded. Each grant change is also recorded as its own entry
+    (`grants.create`, `grants.delete`), written in the same transaction as the
+    change.
   license:
     name: MIT
     identifier: MIT
@@ -4246,6 +4257,132 @@ paths:
                     items:
                       $ref: "#/components/schemas/Capability"
 
+  /api/v1/admin/grants:
+    get:
+      operationId: listGrants
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:read
+      summary: List grants, oldest first
+      description: >-
+        Every grant, active and eligible, or only one holder's. An admin's
+        `roles` (admin users API) are its active grants at `*`.
+      parameters:
+        - name: holder_kind
+          in: query
+          schema:
+            type: string
+            example: admin
+        - name: holder_id
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Grants
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Grant"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createGrant
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:write
+      summary: Grant a role at a scope
+      description: >-
+        Needs a session that signed in with two-factor authentication (`403
+        two_factor_required` otherwise), and the caller must hold every
+        capability of the role at a scope covering the grant's (`403
+        grant_exceeds_held` otherwise); superadmin at `*` may grant anything.
+        An eligible grant does nothing until it is switched on. The change and
+        its audit entry (`grants.create`) commit together.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGrantRequest"
+      responses:
+        "201":
+          description: Granted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Grant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >-
+            Not an admin holding users:write at `*`; a session without 2FA
+            (two_factor_required); or a role beyond what the caller holds
+            (grant_exceeds_held)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/grants/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    delete:
+      operationId: deleteGrant
+      tags: ["Admin: Users & Roles"]
+      x-required-capability: users:write
+      summary: Remove a grant
+      description: >-
+        The same rules as granting: a 2FA session, and the caller must hold
+        everything the grant gives, where it gives it. The last active grant
+        of `*` at `*` held by an active admin cannot be removed (`409
+        last_superadmin`). The change and its audit entry (`grants.delete`)
+        commit together.
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not allowed (see createGrant)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The last superadmin grant (last_superadmin)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ═══════════════════════════════════════════════════════════════
   # Admin: Domains — DNS check
   # ═══════════════════════════════════════════════════════════════
@@ -4893,7 +5030,13 @@ components:
               type: string
         capabilities:
           type: array
-          description: Granted capabilities (admin users only). Empty while setup_required is not.
+          description: >-
+            Admin users only: the capabilities the admin's active grants give at
+            `*`, sorted, or `["*"]` alone for a superadmin; for showing what the
+            session can do. They authorise nothing: the admin API reads the
+            grants on every request, and the token carries none. Capabilities
+            held only on a domain or mailbox are not listed. Empty while
+            setup_required is not.
           items:
             type: string
         setup_required:
@@ -6495,8 +6638,81 @@ components:
           format: date-time
         roles:
           type: array
+          description: The roles of the admin's active grants at `*`.
           items:
             $ref: "#/components/schemas/Role"
+
+    Grant:
+      type: object
+      required: [id, holder, role, role_id, scope, mode, granted_by, granted_at]
+      properties:
+        id:
+          type: integer
+        holder:
+          type: object
+          required: [kind, id]
+          properties:
+            kind:
+              type: string
+              description: "`admin` for now; other kinds of holder come later"
+              example: admin
+            id:
+              type: integer
+        role:
+          type: string
+          example: admin
+        role_id:
+          type: integer
+        scope:
+          type: string
+          description: "`*`, `domain:<name>` or `mailbox:<address>`; covers everything beneath it"
+          example: domain:example.com
+        mode:
+          type: string
+          enum: [active, eligible]
+        granted_by:
+          type: object
+          required: [kind]
+          properties:
+            kind:
+              type: string
+              enum: [admin, system]
+            id:
+              type: [integer, "null"]
+        granted_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+
+    CreateGrantRequest:
+      type: object
+      required: [holder, role, scope]
+      properties:
+        holder:
+          type: object
+          required: [kind, id]
+          properties:
+            kind:
+              type: string
+              enum: [admin]
+            id:
+              type: integer
+        role:
+          type: string
+          description: A role name, e.g. `admin` or `readonly`
+        scope:
+          type: string
+          example: domain:example.com
+        mode:
+          type: string
+          enum: [active, eligible]
+          default: active
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Optional; must be in the future
 
     Role:
       type: object
@@ -6541,6 +6757,10 @@ components:
           type: string
         role_ids:
           type: array
+          description: >-
+            Roles to grant at `*`, under the rules of POST /api/v1/admin/grants
+            (a 2FA session; no more than the caller holds). A refusal creates
+            no account.
           items:
             type: integer
 
@@ -6557,6 +6777,11 @@ components:
           type: boolean
         role_ids:
           type: array
+          description: >-
+            Makes the admin's active grants at `*` exactly these roles, under
+            the rules of POST and DELETE /api/v1/admin/grants. Sending the roles
+            it already holds is not a change and needs no 2FA session. A refused
+            change changes nothing else in the request either.
           items:
             type: integer
 

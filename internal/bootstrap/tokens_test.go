@@ -29,8 +29,8 @@ func migrateTokens(t *testing.T, gdb *gorm.DB) {
 	}
 }
 
-// newAdmin makes an admin the way a server has one: with the superadmin role,
-// and an authenticator still owed.
+// newAdmin makes an admin the way a server has one: superadmin at "*", and an
+// authenticator still owed.
 func newAdmin(t *testing.T, gdb *gorm.DB, username, password string) *models.AdminUser {
 	t.Helper()
 	hash, err := auth.HashPassword(password)
@@ -45,7 +45,10 @@ func newAdmin(t *testing.T, gdb *gorm.DB, username, password string) *models.Adm
 	if err := gdb.Create(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := gdb.Create(&models.UserRole{UserID: admin.ID, RoleID: superadmin.ID}).Error; err != nil {
+	if err := gdb.Create(&models.Grant{
+		HolderKind: models.GrantHolderAdmin, HolderID: admin.ID, RoleID: superadmin.ID,
+		Scope: "*", Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now(),
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 	return &admin
@@ -243,8 +246,11 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 		}
 	})
 	if err := scratch.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.OneTimeToken{}, &models.TwoFactor{},
+		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.OneTimeToken{}, &models.TwoFactor{},
 		&models.TwoFactorRecoveryCode{}, &models.RefreshToken{}); err != nil {
+		t.Fatalf("migrate scratch database: %v", err)
+	}
+	if err := rmdb.MigrateAuditLog(scratch); err != nil {
 		t.Fatalf("migrate scratch database: %v", err)
 	}
 	return scratch

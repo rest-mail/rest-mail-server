@@ -9,22 +9,13 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
 
 func openHealthTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("health DB test skipped: no database reachable (%v)", err)
 	}
@@ -92,7 +83,7 @@ func TestHealth_CertDetailGatedByAuth(t *testing.T) {
 	}
 
 	// Authenticated admin: certificate inventory is included.
-	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin")
 	if err != nil {
 		t.Fatalf("mint admin token: %v", err)
 	}

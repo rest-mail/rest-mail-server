@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -531,7 +530,7 @@ func probeDB(db *gorm.DB) map[string]any {
 
 // seedTestData creates the standard test domains, mailboxes, aliases, and accounts.
 func seedTestData(database *gorm.DB) error {
-	defaultPassword, err := auth.HashPassword("password123")
+	defaultPassword, err := hashPassword("password123")
 	if err != nil {
 		return err
 	}

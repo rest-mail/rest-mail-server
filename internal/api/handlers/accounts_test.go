@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -28,7 +27,7 @@ func seedLinkFixture(t *testing.T, db *gorm.DB, n int) linkFixture {
 	t.Helper()
 
 	const password = "s3cret-pw"
-	hashed, err := auth.HashPassword(password)
+	hashed, err := hashPassword(password)
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}

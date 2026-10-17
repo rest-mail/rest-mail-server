@@ -125,11 +125,13 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 
 ### 3.3 Auth
 - Password hashing: bcrypt cost 10, stored with `{BLF-CRYPT}` prefix (Dovecot-compatible). Implementation at [internal/auth/auth.go](../internal/auth/auth.go).
-- JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. Claims: `sub`, `email`, `webmail_account_id`, `iss=restmail`, `iat`, `exp`, `capabilities[]`.
+- JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. Claims: `sub`, `email`, `webmail_account_id`, `iss=restmail`, `iat`, `exp`; an admin's also `amr` (how it signed in: `pwd`, plus `otp` with 2FA), a mailbox's `mfa` when its sign-in took 2FA; a refresh keeps both. No capabilities. An app password makes no token: the gateways send it with HTTP Basic on every request.
 - Refresh flow: axios response interceptor in admin / webmail detects 401 → `POST /api/v1/auth/refresh` → retry request → logout on refresh failure.
-- RBAC: JWT carries `capabilities[]`. Wildcard `*` = superadmin. Capabilities use `resource:action` format (e.g. `domains:write`, `users:delete`). Server enforces; client-side checks are UX only.
+- RBAC: an admin holds **grants** (`grants` table, [internal/grants](../internal/grants/)): a role at a scope, `*`, `domain:<name>` or `mailbox:<address>`, each covering everything beneath it, `active` or `eligible` (eligible does nothing until switched on, #346). `RequireCapability` reads the caller's active grants on every request (a 5-second cache, emptied by every grant change), never the token. Routes on the domain or mailbox their `{id}` names accept a grant covering it; every other route needs the capability at `*`. Wildcard `*` = superadmin. Capabilities use `resource:action` format (e.g. `domains:write`, `users:delete`). The login response's `capabilities` lists what the grants give at `*` (`["*"]` for a superadmin), for display; client-side checks are UX only.
+- Changing grants (`POST`/`DELETE /admin/grants`, or `role_ids` on an admin user) needs `users:write`, a session whose `amr` includes `otp`, and holding every capability of the role at a scope covering the grant's. Each change and its audit entry commit in one transaction. The last active superadmin grant at `*` cannot be removed.
+- Migration: the first start with grants turns each `admin_users_roles` row into an active grant at `*`, once (`grants.Migrate`). The old table is kept, unread, for one release.
 - App passwords: `POST /api/v1/accounts/{id}/credentials` (a session from a password sign-in, with its 2FA code when the mailbox has 2FA, and the mailbox's current password entered again in `password`: `401 reauth_required` without it, `401 invalid_password` when it is wrong, checked with bcrypt against the hash as it is now and throttled with login's budget) makes one and shows it once; `GET` lists them, `DELETE …/{credential_id}` revokes one. A new password for the mailbox (`PATCH /api/v1/admin/mailboxes/{id}` with `password`) revokes all of them, in the transaction that sets it, with a `credentials.revoke` audit entry for each, `reason` `password_changed`. The mail routes take one with HTTP Basic (`address:app_password`), checked on every request; the gateways sign a client in with one through `POST /api/v1/auth/protocol-sign-in` and send it with each request, so a revoked one stops at the client's next command, and SMTP rechecks it before each message. Its scope is its own mailbox (read, write, send): never a linked one. Refusals are throttled at login's rate, per client IP for guesses and per credential for one whose secret matched. Implementation at [internal/api/middleware/app_password.go](../internal/api/middleware/app_password.go) and [internal/db/repositories/credential.go](../internal/db/repositories/credential.go).
-- Account setup: an admin flagged `password_change_required`, or `two_factor_required` without a confirmed authenticator, is *in setup*. Its sessions carry the `setup` claim and no capabilities; `AdminOnly` answers `403 setup_required` on every admin route, and refresh re-derives the state from the database so it is no way out. Login reports what is owed in `setup_required`. The roles and the first admin of a fresh install come from [internal/bootstrap](../internal/bootstrap/bootstrap.go) at every API start — see [§7.9](#79-first-start-of-a-production-install).
+- Account setup: an admin flagged `password_change_required`, or `two_factor_required` without a confirmed authenticator, is *in setup*. Its sessions carry the `setup` claim; `AdminOnly` answers `403 setup_required` on every admin route, and refresh re-derives the state from the database so it is no way out. Login reports what is owed in `setup_required`. The roles and the first admin of a fresh install come from [internal/bootstrap](../internal/bootstrap/bootstrap.go) at every API start — see [§7.9](#79-first-start-of-a-production-install).
 
 ### 3.4 Web framework & runtime
 - Go: chi router, zero external deps beyond stdlib for middleware (`func(http.Handler) http.Handler`).
@@ -201,7 +203,7 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - MTA-STS: `GET /domains/:id/mta-sts`, `PUT`, `DELETE`
 - TLS-RPT: `GET /tls-reports?domain_id=&policy_type=&reporting_org=`
 - Stats: `GET /stats` (dashboard)
-- Admin users (RBAC): `GET/POST /admin-users`, `GET/PUT/DELETE /admin-users/:id`, `GET /roles`, `GET /capabilities`
+- Admin users (RBAC): `GET/POST /admin-users`, `GET/PUT/DELETE /admin-users/:id`, `GET /roles`, `GET /capabilities`, `GET/POST /grants`, `DELETE /grants/:id`
 
 #### Server-to-server (RESTMAIL protocol, unauthenticated body verified by DKIM/SPF/DMARC)
 - `GET /restmail/capabilities`
@@ -811,7 +813,7 @@ It is proved as `reset-admin` proves ownership, with the same challenge (`POST /
 
 #### The first admin: a bootstrap password
 
-1. If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
+1. If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`: grants of `admin` and `superadmin` at `*`, both active until escalation lands, #346) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
 
 The API **refuses to start** if a bootstrap admin would be created with a password under 16 bytes (a placeholder left in), or while `TOTP_2FA_ENABLED` is off (the admin could never finish setup and would be locked out for good).
 
@@ -877,7 +879,7 @@ curl -s -X POST $API/auth/password -H "Authorization: Bearer $TOKEN" \
 # 5. Sign in for real: new password and a current code.
 curl -s $API/auth/login -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"<yours>","totp_code":"123456","client":"native"}'
-#   → no setup_required, capabilities ["*", …]
+#   → no setup_required, capabilities ["*"]
 ```
 
 After that the account is an ordinary superadmin, except that **2FA cannot be disabled on it** (`403 two_factor_required`): the requirement is a rule, not a one-time gate. The bootstrap password no longer signs in, and can be removed from the Secret — though leaving it does nothing, since an admin now exists.

@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 // signRawToken signs an arbitrary claim set with the given HS256 secret. Used to
@@ -309,16 +311,32 @@ func requestWithClaims(claims *auth.Claims) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), ClaimsKey, claims))
 }
 
+// heldBy is a HeldGrants answering from a fixed table of admins' grants.
+func heldBy(table map[uint][]grants.Entry) HeldGrants {
+	return func(adminID uint) (grants.Held, error) {
+		return grants.HeldOf(table[adminID]...), nil
+	}
+}
+
+// atAll is the entries for capabilities held at "*".
+func atAll(caps ...string) []grants.Entry {
+	out := make([]grants.Entry, len(caps))
+	for i, c := range caps {
+		out[i] = grants.Entry{Scope: grants.All, Capability: c}
+	}
+	return out
+}
+
 func TestRequireCapability_AdminWithCapability(t *testing.T) {
 	claims := &auth.Claims{
-		UserType:     "admin",
-		AdminUserID:  1,
-		Username:     "ops",
-		Capabilities: []string{"domains:read", "queue:read"},
+		UserType:    "admin",
+		AdminUserID: 1,
+		Username:    "ops",
 	}
+	held := heldBy(map[uint][]grants.Entry{1: atAll("domains:read", "queue:read")})
 	rr := httptest.NewRecorder()
 
-	RequireCapability("queue:read")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	RequireCapability(held, "queue:read", nil)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
@@ -327,14 +345,14 @@ func TestRequireCapability_AdminWithCapability(t *testing.T) {
 
 func TestRequireCapability_AdminWithWildcard(t *testing.T) {
 	claims := &auth.Claims{
-		UserType:     "admin",
-		AdminUserID:  1,
-		Username:     "root",
-		Capabilities: []string{"*"},
+		UserType:    "admin",
+		AdminUserID: 1,
+		Username:    "root",
 	}
+	held := heldBy(map[uint][]grants.Entry{1: atAll("*")})
 	rr := httptest.NewRecorder()
 
-	RequireCapability("users:delete")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	RequireCapability(held, "users:delete", nil)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rr.Code)
@@ -343,14 +361,14 @@ func TestRequireCapability_AdminWithWildcard(t *testing.T) {
 
 func TestRequireCapability_AdminMissingCapability(t *testing.T) {
 	claims := &auth.Claims{
-		UserType:     "admin",
-		AdminUserID:  2,
-		Username:     "viewer",
-		Capabilities: []string{"domains:read", "mailboxes:read"},
+		UserType:    "admin",
+		AdminUserID: 2,
+		Username:    "viewer",
 	}
+	held := heldBy(map[uint][]grants.Entry{2: atAll("domains:read", "mailboxes:read")})
 	rr := httptest.NewRecorder()
 
-	RequireCapability("domains:delete")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	RequireCapability(held, "domains:delete", nil)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", rr.Code)
@@ -358,6 +376,98 @@ func TestRequireCapability_AdminMissingCapability(t *testing.T) {
 	errResp := parseErrorResponse(t, rr)
 	if errResp.Error.Message != "Insufficient permissions" {
 		t.Errorf("expected message %q, got %q", "Insufficient permissions", errResp.Error.Message)
+	}
+}
+
+// A token that says it holds everything holds nothing: capabilities come from
+// the grants alone. (Tokens minted before grants carried a capabilities claim.)
+func TestRequireCapability_TokenCapabilitiesIgnored(t *testing.T) {
+	const secret = "test-secret-key-for-middleware"
+	jwtSvc := auth.NewJWTService(secret, 5*time.Minute, 24*time.Hour)
+	raw := signRawToken(t, secret, jwt.MapClaims{
+		"sub":           "admin:7",
+		"iss":           auth.TokenIssuer,
+		"exp":           time.Now().Add(5 * time.Minute).Unix(),
+		"user_type":     "admin",
+		"token_type":    "access",
+		"admin_user_id": 7,
+		"username":      "old-token",
+		"capabilities":  []string{"*"},
+	})
+	held := heldBy(map[uint][]grants.Entry{7: atAll("domains:read")})
+
+	handler := JWTMiddleware(jwtSvc)(RequireCapability(held, "users:delete", nil)(okHandler))
+	req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("a token claiming capabilities its grants lack: expected 403, got %d", rr.Code)
+	}
+}
+
+// scopeIs is a ScopeOf naming one fixed scope.
+func scopeIs(scope string) ScopeOf {
+	return func(*http.Request) (string, bool, error) { return scope, true, nil }
+}
+
+func TestRequireCapability_ScopedGrantCoversItsTargetOnly(t *testing.T) {
+	claims := &auth.Claims{UserType: "admin", AdminUserID: 5, Username: "a-admin"}
+	held := heldBy(map[uint][]grants.Entry{5: {
+		{Scope: "domain:a.com", Capability: "domains:read"},
+		{Scope: "domain:a.com", Capability: "mailboxes:read"},
+	}})
+
+	cases := []struct {
+		name       string
+		capability string
+		target     ScopeOf
+		want       int
+	}{
+		{"its own domain", "domains:read", scopeIs("domain:a.com"), http.StatusOK},
+		{"a mailbox of its domain", "mailboxes:read", scopeIs("mailbox:x@a.com"), http.StatusOK},
+		{"another domain", "domains:read", scopeIs("domain:b.com"), http.StatusForbidden},
+		{"a mailbox of another domain", "mailboxes:read", scopeIs("mailbox:x@b.com"), http.StatusForbidden},
+		{"a capability it lacks there", "domains:write", scopeIs("domain:a.com"), http.StatusForbidden},
+		{"a route that wants *", "domains:read", nil, http.StatusForbidden},
+		{"a target that does not exist", "domains:read", func(*http.Request) (string, bool, error) { return "", false, nil }, http.StatusForbidden},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			RequireCapability(held, tc.capability, tc.target)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+			if rr.Code != tc.want {
+				t.Fatalf("expected %d, got %d", tc.want, rr.Code)
+			}
+		})
+	}
+}
+
+// Holding a capability at "*" needs no lookup of the target, so a target that
+// does not exist reaches the handler (and its 404) exactly as before grants.
+func TestRequireCapability_AtAllSkipsTheTargetLookup(t *testing.T) {
+	claims := &auth.Claims{UserType: "admin", AdminUserID: 1, Username: "ops"}
+	held := heldBy(map[uint][]grants.Entry{1: atAll("domains:read")})
+	target := func(*http.Request) (string, bool, error) {
+		t.Fatal("looked the target up for a grant at *")
+		return "", false, nil
+	}
+	rr := httptest.NewRecorder()
+	RequireCapability(held, "domains:read", target)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+}
+
+// Failing to read the grants refuses the request: it never falls open.
+func TestRequireCapability_UnreadableGrantsRefused(t *testing.T) {
+	claims := &auth.Claims{UserType: "admin", AdminUserID: 1, Username: "ops"}
+	held := func(uint) (grants.Held, error) { return grants.Held{}, errors.New("database down") }
+	rr := httptest.NewRecorder()
+	RequireCapability(held, "domains:read", nil)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status 503, got %d", rr.Code)
 	}
 }
 
@@ -370,7 +480,7 @@ func TestRequireCapability_MailboxTokenDenied(t *testing.T) {
 	}
 	rr := httptest.NewRecorder()
 
-	RequireCapability("domains:read")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	RequireCapability(heldBy(nil), "domains:read", nil)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", rr.Code)
@@ -390,7 +500,7 @@ func TestRequireCapability_LegacyIsAdminClaimIgnored(t *testing.T) {
 	jwtSvc := auth.NewJWTService(secret, 5*time.Minute, 24*time.Hour)
 	raw := signRawToken(t, secret, legacyIsAdminMailboxClaims())
 
-	handler := JWTMiddleware(jwtSvc)(RequireCapability("queue:manage")(okHandler))
+	handler := JWTMiddleware(jwtSvc)(RequireCapability(heldBy(nil), "queue:manage", nil)(okHandler))
 	req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
 	req.Header.Set("Authorization", "Bearer "+raw)
 	rr := httptest.NewRecorder()
@@ -431,7 +541,7 @@ func TestRequireCapability_NoClaims(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
 	rr := httptest.NewRecorder()
 
-	RequireCapability("domains:read")(okHandler).ServeHTTP(rr, req)
+	RequireCapability(heldBy(nil), "domains:read", nil)(okHandler).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401, got %d", rr.Code)
@@ -450,7 +560,7 @@ func TestRequireCapability_EmptyCapabilityListDenied(t *testing.T) {
 	}
 	rr := httptest.NewRecorder()
 
-	RequireCapability("bans:read")(okHandler).ServeHTTP(rr, requestWithClaims(claims))
+	RequireCapability(heldBy(nil), "bans:read", nil)(okHandler).ServeHTTP(rr, requestWithClaims(claims))
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", rr.Code)

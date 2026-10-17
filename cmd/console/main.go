@@ -61,18 +61,20 @@ func main() {
 
 	// Login as admin to get a token for API calls
 	token := ""
+	var capabilities []string
 	if username != "" && pass != "" {
 		loginResp, err := client.LoginAdmin(username, pass)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: admin login failed: %v\n", err)
 		} else {
 			token = loginResp.Data.AccessToken
+			capabilities = loginResp.Data.Capabilities
 		}
 	} else {
 		fmt.Fprintln(os.Stderr, "hint: set -user/-pass flags or RESTMAIL_ADMIN_USERNAME/RESTMAIL_ADMIN_PASSWORD env vars for admin access")
 	}
 
-	model := console.NewModel(client, token)
+	model := console.NewModel(client, token, capabilities)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

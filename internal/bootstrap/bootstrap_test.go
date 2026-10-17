@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"errors"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,8 +36,12 @@ func openBootstrapTestDB(t *testing.T) *gorm.DB {
 		t.Skipf("bootstrap DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.RefreshToken{}); err != nil {
+		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.RefreshToken{}); err != nil {
 		t.Skipf("bootstrap DB test skipped: migrate failed (%v)", err)
+	}
+	// Grants made at bootstrap are recorded in the audit log.
+	if err := rmdb.MigrateAuditLog(gdb); err != nil {
+		t.Skipf("bootstrap DB test skipped: audit log migrate failed (%v)", err)
 	}
 	// One rolled-back transaction per test: "no admin exists" is a fact about the
 	// whole database, and other packages' tests share it and run in parallel.
@@ -46,7 +51,7 @@ func openBootstrapTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() { gdb.Rollback() })
 	// Named by the models, not by hand: a wrong name fails the TRUNCATE.
 	tables := strings.Join([]string{
-		models.UserRole{}.TableName(), models.RoleCapability{}.TableName(),
+		models.Grant{}.TableName(), models.UserRole{}.TableName(), models.RoleCapability{}.TableName(),
 		models.AdminUser{}.TableName(), models.Role{}.TableName(), models.Capability{}.TableName(),
 	}, ", ")
 	if err := gdb.Exec("TRUNCATE " + tables + " RESTART IDENTITY CASCADE").Error; err != nil {
@@ -177,7 +182,7 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 	}
 
 	var user models.AdminUser
-	if err := gdb.Preload("Roles").Where("username = ?", "admin").First(&user).Error; err != nil {
+	if err := gdb.Where("username = ?", "admin").First(&user).Error; err != nil {
 		t.Fatalf("empty username should default to admin: %v", err)
 	}
 	if !user.Active {
@@ -192,8 +197,28 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 	if err := auth.CheckPassword(strongPassword, user.PasswordHash); err != nil {
 		t.Errorf("stored hash does not verify the bootstrap password: %v", err)
 	}
-	if len(user.Roles) != 1 || user.Roles[0].Name != "superadmin" {
-		t.Errorf("roles = %+v, want exactly superadmin", user.Roles)
+	// Superadmin and admin, both at "*" and both active: superadmin becomes
+	// eligible only once it can be switched on (#346).
+	var held []struct{ Name, Scope, Mode string }
+	if err := gdb.Table("grants g").Select("r.name, g.scope, g.mode").
+		Joins("JOIN admin_roles r ON r.id = g.role_id").
+		Where("g.holder_kind = ? AND g.holder_id = ?", models.GrantHolderAdmin, user.ID).
+		Order("r.name").Scan(&held).Error; err != nil {
+		t.Fatal(err)
+	}
+	want := []struct{ Name, Scope, Mode string }{{"admin", "*", "active"}, {"superadmin", "*", "active"}}
+	if !reflect.DeepEqual(held, want) {
+		t.Errorf("grants = %+v, want %+v", held, want)
+	}
+	// Each recorded, by the system, in the same transaction.
+	var recorded int64
+	if err := gdb.Model(&models.AuditEntry{}).
+		Where("action = ? AND actor_kind = ? AND target->>'holder_id' = ?", "grants.create", models.AuditActorSystem, strconv.FormatUint(uint64(user.ID), 10)).
+		Count(&recorded).Error; err != nil {
+		t.Fatal(err)
+	}
+	if recorded != 2 {
+		t.Errorf("audit entries for the bootstrap grants = %d, want 2", recorded)
 	}
 	if want := t0.Add(BootstrapPasswordLifetime); user.BootstrapExpiresAt == nil || !user.BootstrapExpiresAt.Equal(want) {
 		t.Errorf("bootstrap_expires_at = %v, want %v", user.BootstrapExpiresAt, want)

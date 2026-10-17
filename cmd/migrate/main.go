@@ -8,6 +8,7 @@ import (
 
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 func main() {
@@ -38,6 +39,10 @@ func main() {
 	}
 
 	if err := db.AutoMigrate(database, allowDestructive); err != nil {
+		slog.Error("migration failed", "error", err)
+		os.Exit(1)
+	}
+	if _, err := grants.Migrate(database); err != nil {
 		slog.Error("migration failed", "error", err)
 		os.Exit(1)
 	}
