@@ -2461,10 +2461,10 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -2491,10 +2491,10 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
                 /**
                  * @description Suppression ID
                  * @example 1
@@ -3966,6 +3966,11 @@ export interface components {
          * @example 1
          */
         MessageId: number;
+        /**
+         * @description Domain ID
+         * @example 1
+         */
+        DomainId: number;
         /**
          * @description Resource ID
          * @example 1
@@ -9143,10 +9148,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -9171,10 +9176,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
                 /**
                  * @description Suppression ID
                  * @example 1

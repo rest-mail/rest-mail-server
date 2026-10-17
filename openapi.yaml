@@ -5427,7 +5427,7 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/domains/{id}/suppressions:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
     get:
       operationId: listSuppressions
       tags: ["Admin: Suppressions"]
@@ -5457,7 +5457,7 @@ paths:
 
   /api/v1/admin/domains/{id}/suppressions/{sid}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
       - name: sid
         in: path
         required: true
@@ -6004,6 +6004,15 @@ components:
         type: integer
         minimum: 1
       description: Message ID
+      example: 1
+    DomainId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Domain ID
       example: 1
     ResourceId:
       name: id
