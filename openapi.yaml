@@ -2685,12 +2685,14 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RestmailDeliverRequest"
+            # A sender domain that publishes no DMARC record: example.com's
+            # p=reject would have the inbound pipeline reject the message.
             example:
-              from: someone@example.com
+              from: someone@ext-contract.test
               to: [eve@restmail.test]
               subject: Delivered over RESTMAIL
               body_text: Hello, Eve.
-              message_id: <restmail-delivery@example.com>
+              message_id: <restmail-delivery@ext-contract.test>
       responses:
         "201":
           description: Delivery result
@@ -3563,6 +3565,14 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateCustomFilterRequest"
+            example:
+              description: Tags mail about invoices and receipts
+              config:
+                script: |
+                  function filter(email) {
+                    return { action: "continue" };
+                  }
+              enabled: true
       responses:
         "200":
           description: Custom filter updated
@@ -3576,6 +3586,8 @@ paths:
                     $ref: "#/components/schemas/CustomFilter"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteCustomFilter
       tags: ["Admin: Custom Filters"]
@@ -8320,13 +8332,15 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
         description:
           type: string
         filter_type:
           type: string
+          enum: [action, transform]
         direction:
           type: string
-          enum: [inbound, outbound]
+          enum: [inbound, outbound, both]
         config:
           type: object
           description: Filter configuration (opaque JSON)

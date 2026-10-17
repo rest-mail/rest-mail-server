@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 
 import vertrag_hooks as hooks
 
@@ -136,6 +137,31 @@ def a_self_signed_certificate(transaction):
 def ask_for_the_created_domains_policy(transaction):
     # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
     transaction["request"]["headers"]["Host"] = "mta-sts." + (hooks.stash.get("domain") or "")
+
+
+@hooks.before("getMessageTrace")
+def wait_for_the_trace(transaction):
+    # Traces are written in the background, a batch every 500 ms
+    # (internal/trace/recorder.go); the testbed keeps every one
+    # (TRACE_SAMPLE_RATE=1 in tasks/api.yml).
+    time.sleep(1)
+
+
+AUTODISCOVER_REQUEST = """<?xml version="1.0" encoding="utf-8"?>
+<Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
+  <Request>
+    <EMailAddress>eve@restmail.test</EMailAddress>
+    <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
+  </Request>
+</Autodiscover>
+"""
+
+
+@hooks.before("microsoftAutodiscover")
+def an_outlook_autodiscover_request(transaction):
+    # The spec's XML example, which vertrag 0.27 does not send (it sends
+    # JSON request examples only).
+    transaction["request"]["body"] = AUTODISCOVER_REQUEST
 
 
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")

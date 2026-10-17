@@ -46,7 +46,7 @@ def operations(spec_path):
 
 def exclusions(config_path):
     """The excluded operationIds, each with the comment block above it."""
-    reasons, comment, inside = {}, [], False
+    reasons, comment, inside, listed = {}, [], False, False
     for line in open(config_path):
         stripped = line.strip()
         if re.match(r"^exclude-operation-id:", line):
@@ -57,11 +57,15 @@ def exclusions(config_path):
         if line and not line[0].isspace() and stripped:
             break
         if stripped.startswith("#"):
+            # A comment after the operations it explained starts the next reason.
+            if listed:
+                comment, listed = [], False
             comment.append(stripped.lstrip("# "))
         elif stripped.startswith("- "):
             reasons[stripped[2:].strip()] = " ".join(comment)
+            listed = True
         elif not stripped:
-            comment = []
+            comment, listed = [], False
     return reasons
 
 
