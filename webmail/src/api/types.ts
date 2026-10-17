@@ -183,6 +183,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/2fa/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch on a pending authenticator with its first code
+         * @description Completes enrollment (`POST /api/v1/auth/2fa/enroll`) with a current code from the new authenticator, in `totp_code` as sign-in takes it. Until this succeeds, 2FA does not gate sign-in. A wrong code is `403 invalid_totp`, never `401`: the session that sent it is still good, so a client must not renew it or send the code again. Throttled like login.
+         */
+        post: operations["confirmTwoFactor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/2fa/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn two-factor authentication off
+         * @description Takes the second factor the way sign-in does: a current code from the authenticator in `totp_code`, or an unused recovery code in `recovery_code`, which it spends. A wrong one is `403`, never `401` (`invalid_totp`, or `invalid_recovery_code` when only a recovery code was sent): the session that sent it is still good. Turning it off ends every session of the account, this one included; app passwords stay. An account that must have it (the bootstrap admin) cannot (`403 two_factor_required`). Throttled like login.
+         */
+        post: operations["disableTwoFactor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/password": {
         parameters: {
             query?: never;
@@ -194,7 +234,7 @@ export interface paths {
         put?: never;
         /**
          * Replace your own password
-         * @description The signed-in account sets a new password, proving the current one even from a fresh session so a stolen access token alone cannot take the account. The new password replaces every password credential it had. Clears the "password" setup step, revokes every app password (whoever knew the old password could have made one, each recorded as `credentials.revoke` with reason `password_changed`), and revokes every session of the account, this one included: sign in again with the new password. One of the only calls a session in setup (setup_required non-empty) may make. Throttled like login.
+         * @description The signed-in account sets a new password, proving the current one even from a fresh session so a stolen access token alone cannot take the account. The new password replaces every password credential it had. Clears the "password" setup step, revokes every app password (whoever knew the old password could have made one, each recorded as `credentials.revoke` with reason `password_changed`), and revokes every session of the account, this one included: sign in again with the new password. One of the only calls a session in setup (setup_required non-empty) may make. A wrong current password is `403 invalid_password`, never `401`: the session is still good. Throttled like login.
          */
         post: operations["changeOwnPassword"];
         delete?: never;
@@ -1632,7 +1672,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Set or replace DKIM key for a domain */
+        /**
+         * Set or replace DKIM key for a domain
+         * @description The key and selector are checked before they are stored, so a domain is never left with a key its outbound mail cannot be signed with (signing fails closed and defers the mail). The selector must be a DNS name: up to 63 characters, labels of letters, digits and hyphens joined by dots, none starting or ending with a hyphen. The key must be an RSA key of at least 2048 bits (PKCS#1 or PKCS#8 PEM) or an Ed25519 key (PKCS#8 PEM), and must sign a test message whose signature verifies against the key's own DNS record. Ed25519 is import-only: the server's own key generation makes RSA keys.
+         */
         put: operations["setDKIMKey"];
         post?: never;
         /** Delete DKIM key for a domain */
@@ -2150,7 +2193,7 @@ export interface paths {
         put?: never;
         /**
          * Switch one of your eligible grants on for a while
-         * @description Escalation (#346). The grant must be the caller's own (`404` otherwise) and eligible (`409 not_eligible` for an active one). It needs a fresh second factor in the body, a current `totp_code` or an unused `recovery_code`: a session that signed in with 2FA is not enough. No authenticator enrolled is `403 two_factor_required`; no code `403 totp_required`; a wrong one `403 totp_invalid` (403, not 401: the session is still good). While switched on, the grant gives what an active one would, until `expires_at` (never past the grant's own expiry) or until switched off; a grant is switched on at most once at a time (`409 already_active`). The activation and its audit entry (`grants.activate`: who, which grant, the reason, start and end) commit together; a refused activation leaves a recovery code it was given unused. Throttled like sign-in.
+         * @description Escalation (#346). The grant must be the caller's own (`404` otherwise) and eligible (`409 not_eligible` for an active one). It needs a fresh second factor in the body, a current `totp_code` or an unused `recovery_code`: a session that signed in with 2FA is not enough. No authenticator enrolled is `403 two_factor_required`; no code `403 totp_required`; a wrong one `403 invalid_totp` (403, not 401: the session is still good). While switched on, the grant gives what an active one would, until `expires_at` (never past the grant's own expiry) or until switched off; a grant is switched on at most once at a time (`409 already_active`). The activation and its audit entry (`grants.activate`: who, which grant, the reason, start and end) commit together; a refused activation leaves a recovery code it was given unused. Throttled like sign-in.
          */
         post: operations["activateGrant"];
         delete?: never;
@@ -3120,8 +3163,9 @@ export interface components {
             has_key: boolean;
         };
         SetDKIMKeyRequest: {
+            /** @description A DNS name; the key's record is `<selector>._domainkey.<domain>` */
             selector: string;
-            /** @description PEM-encoded RSA private key */
+            /** @description PEM-encoded private key: RSA of at least 2048 bits (PKCS#1 or PKCS#8), or Ed25519 (PKCS#8) */
             private_key: string;
         };
         Certificate: {
@@ -3986,6 +4030,113 @@ export interface operations {
             };
         };
     };
+    confirmTwoFactor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description A current code from the new authenticator */
+                    totp_code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Two-factor authentication is on */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No pending enrollment to confirm */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The code is wrong (`invalid_totp`), or two-factor authentication is turned off on this server (`forbidden`) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Two-factor authentication is already on */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description totp_code missing */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disableTwoFactor: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description A current code from the authenticator */
+                    totp_code?: string;
+                    /** @description One of the account's recovery codes, instead of totp_code; it is spent */
+                    recovery_code?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Two-factor authentication is off; every session of the account is revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Two-factor authentication is not on */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description The code is wrong (`invalid_totp`), the recovery code is wrong or spent (`invalid_recovery_code`), or the account must keep two-factor authentication (`two_factor_required`) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Neither totp_code nor recovery_code sent */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     changeOwnPassword: {
         parameters: {
             query?: never;
@@ -4011,6 +4162,15 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            /** @description The current password is wrong (`invalid_password`) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description New password missing, shorter than 12 characters, or unchanged */
             422: {
                 headers: {
@@ -4347,21 +4507,15 @@ export interface operations {
                     };
                 };
             };
-            /** @description No valid session, or the session's current password was not given (`reauth_required`) or is wrong (`invalid_password`) */
-            401: {
+            401: components["responses"]["Unauthorized"];
+            /** @description The session's current password was not given (`reauth_required`) or is wrong (`invalid_password`), never a 401: the session is still good; or the account has 2FA and the session's sign-in did not take it (`two_factor_required`) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
-            };
-            /** @description The account has 2FA and the session's sign-in did not take it (`two_factor_required`) */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             404: components["responses"]["NotFound"];
             /** @description name missing or longer than 100 characters, or expires_at not in the future */
@@ -6970,6 +7124,23 @@ export interface operations {
                     };
                 };
             };
+            /** @description The body is not JSON, or lacks `selector` or `private_key` (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `validation_failed`: the domain could not sign with this key and selector. `details.fields.selector` when the selector is not a DNS name; `details.fields.private_key` when the key is not a PEM private key, is neither RSA nor Ed25519, is an RSA key under 2048 bits, or does not make a signature that verifies. `message` says which check failed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     deleteDKIMKey: {
@@ -7902,7 +8073,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            /** @description Not an admin; no authenticator (two_factor_required); no code (totp_required); or a wrong one (totp_invalid) */
+            /** @description Not an admin; no authenticator (two_factor_required); no code (totp_required); or a wrong one (invalid_totp) */
             403: {
                 headers: {
                     [name: string]: unknown;

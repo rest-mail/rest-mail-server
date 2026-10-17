@@ -162,7 +162,7 @@ step "enroll an authenticator, as the app would"
 access=$(login "$ADMIN" "$AGENT_PW" | jq -r .data.access_token)
 secret=$(curl -fsS -X POST "$API/auth/2fa/enroll" -H "Authorization: Bearer $access" | jq -r .data.secret)
 curl -fsS -X POST "$API/auth/2fa/confirm" -H "Authorization: Bearer $access" -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg c "$(oathtool --totp -b "$secret")" '{code:$c}')"
+  -d "$(jq -nc --arg c "$(oathtool --totp -b "$secret")" '{totp_code:$c}')"
 ok "enrolled (the agent computes codes from the secret)"
 
 step "sign in for real"

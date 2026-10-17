@@ -911,7 +911,7 @@ func TestTwoFactorRoutes_RateLimited(t *testing.T) {
 			passes := 0
 			got429 := false
 			for i := 0; i < 12; i++ {
-				rr := doRequest(router, http.MethodPost, rt.path, token, `{"code":"000000"}`)
+				rr := doRequest(router, http.MethodPost, rt.path, token, `{"totp_code":"000000"}`)
 				if rr.Code == http.StatusTooManyRequests {
 					got429 = true
 					if rr.Header().Get("Retry-After") == "" {
@@ -946,7 +946,7 @@ func TestTwoFactorRoutes_ThrottleDisabled(t *testing.T) {
 	for _, rt := range twoFactorThrottledRoutes {
 		t.Run(rt.name, func(t *testing.T) {
 			for i := 0; i < 30; i++ {
-				rr := doRequest(router, http.MethodPost, rt.path, token, `{"code":"000000"}`)
+				rr := doRequest(router, http.MethodPost, rt.path, token, `{"totp_code":"000000"}`)
 				if rr.Code == http.StatusTooManyRequests {
 					t.Fatalf("request %d got 429 with throttle disabled", i)
 				}

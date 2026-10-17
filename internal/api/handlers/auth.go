@@ -656,7 +656,8 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cred == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Current password is incorrect")
+		// 403, never 401: the session is still good, only the password is wrong.
+		respond.Error(w, http.StatusForbidden, "invalid_password", "Current password is incorrect")
 		return
 	}
 	if len(req.NewPassword) < minChosenPasswordLength {

@@ -303,7 +303,7 @@ func escalationFailed(w http.ResponseWriter, err error) bool {
 		respond.Error(w, http.StatusForbidden, "totp_required",
 			"A code from your authenticator (totp_code), or a recovery code (recovery_code), is required: the session's own sign-in is not enough")
 	case errors.Is(err, errFreshCodeInvalid):
-		respond.Error(w, http.StatusForbidden, "totp_invalid", "Invalid two-factor authentication code")
+		respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
 	case errors.Is(err, grants.ErrNotEligible):
 		respond.Error(w, http.StatusConflict, "not_eligible", err.Error())
 	case errors.Is(err, grants.ErrAlreadySwitchedOn):

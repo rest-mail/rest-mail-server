@@ -202,9 +202,10 @@ func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
 // as it is now, with the same bcrypt comparison as signing in. A mailbox that
 // is gone or disabled is compared against a dummy hash, so it costs the same,
 // and refused. It writes the error and returns false unless password matches.
+// A refusal is 403, never 401: the session is still good (#392).
 func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, accountID uint, password string) bool {
 	if password == "" {
-		respond.Error(w, http.StatusUnauthorized, "reauth_required",
+		respond.Error(w, http.StatusForbidden, "reauth_required",
 			"Enter your current password to create an app password")
 		return false
 	}
@@ -220,7 +221,7 @@ func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, accountI
 		return false
 	}
 	if cred == nil || err != nil {
-		respond.Error(w, http.StatusUnauthorized, "invalid_password", "The password is incorrect")
+		respond.Error(w, http.StatusForbidden, "invalid_password", "The password is incorrect")
 		return false
 	}
 	return true

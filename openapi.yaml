@@ -564,6 +564,95 @@ paths:
         "422":
           description: Signature malformed
 
+  /api/v1/auth/2fa/confirm:
+    post:
+      operationId: confirmTwoFactor
+      tags: [Auth]
+      summary: Switch on a pending authenticator with its first code
+      description: >
+        Completes enrollment (`POST /api/v1/auth/2fa/enroll`) with a current
+        code from the new authenticator, in `totp_code` as sign-in takes it.
+        Until this succeeds, 2FA does not gate sign-in. A wrong code is
+        `403 invalid_totp`, never `401`: the session that sent it is still
+        good, so a client must not renew it or send the code again. Throttled
+        like login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [totp_code]
+              properties:
+                totp_code:
+                  type: string
+                  description: A current code from the new authenticator
+      responses:
+        "204":
+          description: Two-factor authentication is on
+        "400":
+          description: No pending enrollment to confirm
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >
+            The code is wrong (`invalid_totp`), or two-factor authentication
+            is turned off on this server (`forbidden`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Two-factor authentication is already on
+        "422":
+          description: totp_code missing
+
+  /api/v1/auth/2fa/disable:
+    post:
+      operationId: disableTwoFactor
+      tags: [Auth]
+      summary: Turn two-factor authentication off
+      description: >
+        Takes the second factor the way sign-in does: a current code from the
+        authenticator in `totp_code`, or an unused recovery code in
+        `recovery_code`, which it spends. A wrong one is `403`, never `401`
+        (`invalid_totp`, or `invalid_recovery_code` when only a recovery code
+        was sent): the session that sent it is still good. Turning it off
+        ends every session of the account, this one included; app passwords
+        stay. An account that must have it (the bootstrap admin) cannot
+        (`403 two_factor_required`). Throttled like login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                totp_code:
+                  type: string
+                  description: A current code from the authenticator
+                recovery_code:
+                  type: string
+                  description: One of the account's recovery codes, instead of totp_code; it is spent
+      responses:
+        "204":
+          description: Two-factor authentication is off; every session of the account is revoked
+        "400":
+          description: Two-factor authentication is not on
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >
+            The code is wrong (`invalid_totp`), the recovery code is wrong or
+            spent (`invalid_recovery_code`), or the account must keep
+            two-factor authentication (`two_factor_required`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Neither totp_code nor recovery_code sent
+
   /api/v1/auth/password:
     post:
       operationId: changeOwnPassword
@@ -579,7 +668,8 @@ paths:
         session of the account, this one included: sign in again with the new
         password.
         One of the only calls a session in setup (setup_required non-empty)
-        may make. Throttled like login.
+        may make. A wrong current password is `403 invalid_password`, never
+        `401`: the session is still good. Throttled like login.
       requestBody:
         required: true
         content:
@@ -599,6 +689,12 @@ paths:
           description: Password changed; every session of the account is revoked
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The current password is wrong (`invalid_password`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: New password missing, shorter than 12 characters, or unchanged
 
@@ -934,17 +1030,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/CreatedAppPassword"
         "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
           description: >
-            No valid session, or the session's current password was not given
-            (`reauth_required`) or is wrong (`invalid_password`)
+            The session's current password was not given (`reauth_required`)
+            or is wrong (`invalid_password`), never a 401: the session is
+            still good; or the account has 2FA and the session's sign-in did
+            not take it (`two_factor_required`)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: >
-            The account has 2FA and the session's sign-in did not take it
-            (`two_factor_required`)
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -4471,7 +4567,7 @@ paths:
         needs a fresh second factor in the body, a current `totp_code` or an
         unused `recovery_code`: a session that signed in with 2FA is not
         enough. No authenticator enrolled is `403 two_factor_required`; no
-        code `403 totp_required`; a wrong one `403 totp_invalid` (403, not
+        code `403 totp_required`; a wrong one `403 invalid_totp` (403, not
         401: the session is still good). While switched on, the grant gives
         what an active one would, until `expires_at` (never past the grant's
         own expiry) or until switched off; a grant is switched on at most once
@@ -4507,7 +4603,7 @@ paths:
         "403":
           description: >-
             Not an admin; no authenticator (two_factor_required); no code
-            (totp_required); or a wrong one (totp_invalid)
+            (totp_required); or a wrong one (invalid_totp)
           content:
             application/json:
               schema:
