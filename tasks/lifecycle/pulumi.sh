@@ -109,7 +109,6 @@ password_hash() {
 
 install() {
   local urn version password generated='' hash='' found owner_key
-  owner_key=$(read_owner_key) || exit $?
   if [ -n "$stack" ]; then
     urn=$(stack_release_urn)
     [ -n "$urn" ] && refuse "Mail server \"$NAME\" is already deployed in stack $stack." \
@@ -117,6 +116,11 @@ install() {
     version=${VERSION:-$(config_get chartVersion)}
   else
     version=${VERSION:-}
+  fi
+  # An explicit file replaces the managed value; omission preserves it.
+  owner_key=''
+  if [ -n "${OWNER_KEY:-}" ] || [ -z "$stack" ] || ! config_has ownerKeys || [ -z "$(config_get ownerKeys)" ]; then
+    owner_key=$(choose_owner_key) || exit $?
   fi
   [ -n "$version" ] || version=$(latest_chart_version)
   [ -n "$version" ] || die "Could not read the newest chart from $CHART. Pass --version."

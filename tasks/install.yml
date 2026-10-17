@@ -47,7 +47,7 @@ tasks:
       - name: password
         desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
       - name: owner_key
-        desc: path to the owner's public SSH key (.pub) for signed recovery; private key stays local
+        desc: public SSH key (.pub) for recovery; omitted at a terminal offers local creation or selection
       - name: version
         desc: the chart version (default the newest)
       - name: values
@@ -101,7 +101,7 @@ tasks:
       - name: password
         desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
       - name: owner_key
-        desc: path to the owner's public SSH key (.pub) for signed recovery; private key stays local
+        desc: public SSH key (.pub) for recovery; omitted at a terminal offers local creation or selection
       - name: version
         desc: the chart version (default the newest)
       - name: name

@@ -25,7 +25,6 @@ need helm kubectl jq openssl curl
 PASSWORD=${PASSWORD:-}
 VERSION=${VERSION:-}
 VALUES=${VALUES:-}
-owner_key=$(read_owner_key) || exit $?
 # Relative to where chore was run.
 case "$VALUES" in "" | /*) ;; *) VALUES="${USER_WORKING_DIR:-$PWD}/$VALUES" ;; esac
 
@@ -36,6 +35,8 @@ if release_exists; then
     "  to install again from clean: chore uninstall:helm, then this — the mail is kept" \
     "  to see what is there:        chore server:status"
 fi
+
+owner_key=$(choose_owner_key) || exit $?
 
 if [ -z "$VERSION" ]; then
   VERSION=$(latest_chart_version)

@@ -72,17 +72,28 @@ chore install:helm mail.example.com --owner-key ~/.ssh/restmail_owner.pub
 chore install:pulumi ~/infra mail.example.com --owner-key ~/.ssh/restmail_owner.pub
 ```
 
+At a terminal, omitting `--owner-key` offers to create a dedicated Ed25519
+key pair, select an existing public file, or keep managed keys unchanged.
+Creation needs `ssh-keygen` and `python3` and asks OpenSSH for a passphrase
+directly on your terminal. The default files are `restmail_owner_ed25519`
+and `restmail_owner_ed25519.pub` in the directory where you ran chore. It
+refuses existing files, including symlinks; the private key is mode `0600`.
+Back up that private file securely and keep it out of source control. This
+operation runs on your machine; the private key is never uploaded.
+
 Select a key whose private half you control on your own machine. The installer
 validates the public file and shows its SHA-256 fingerprint, then registers it
 as Helm `api.ownerKeys` or Pulumi `<name>:ownerKeys`. Generated Pulumi programs
-pass that value to the chart. It does not choose a key from your SSH agent,
-generate one, upload a private key, or promote a read-only status key. If no
+pass that value to the chart. It does not choose a key from your SSH agent
+or promote a read-only status key. Pipelines do not prompt or create keys;
+use `--owner-key FILE.pub` or managed owner-key configuration. If no
 owner key is selected, it says recovery will require cluster administrator
 access; existing configured owner keys are preserved.
 
 To recover later, load the corresponding private key into `ssh-agent` and run:
 
 ```bash
+ssh-add ./restmail_owner_ed25519   # or your existing private-key filename
 restmail reset-admin --server https://mail.example.com --address admin@example.com
 ```
 
