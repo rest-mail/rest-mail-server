@@ -182,7 +182,7 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 #### User-level mail (authenticated)
 - `GET /api/v1/accounts` — the session's own account first, then every account it holds a mail grant on; `id` is the mailbox id
 - `POST /api/v1/accounts` — `{address, display_name?, password?}`: create an account (needs `mailboxes:write` covering its domain); the creator gets `owner` on it. `201 {"data": Account}`, `403`, `409`, `422`; audited (`accounts.create`) in the transaction that creates it
-- `POST /api/v1/accounts/link` — `{address, password, display_name?, totp_code?|recovery_code?}`: prove an account's password to get `owner` on it; throttled like sign-in, audited (`accounts.link`)
+- `POST /api/v1/accounts/link` — `{address, password, display_name?, totp_code?|recovery_code?}`: prove an account's password to get `owner` on it; a refused proof is `403` `invalid_credentials`, `totp_required` or `invalid_totp`, never `401`, since the session that sent it is still good; throttled like sign-in, audited (`accounts.link`)
 - `DELETE /api/v1/accounts/:id` — unlink: remove the session's own grants on the account
 - `GET /api/v1/accounts/:id/folders`
 - `GET /api/v1/accounts/:id/folders/:folder/messages` — cursor pagination
