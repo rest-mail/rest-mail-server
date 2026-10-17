@@ -65,9 +65,7 @@ info:
       linked through an `owner` grant. Every operation that needs a
       capability names it as the roles of its `security` requirements (e.g.
       `domains:read`, `queue:manage`, `mail:read`); the superadmin wildcard
-      `*` satisfies every one. A caller missing it gets `403` on an admin
-      operation, and `404` on a mail operation for an account it may not act
-      on, as for one that does not exist.
+      `*` satisfies every one. A caller missing it gets `403`.
 
       An operation on the domain or mailbox named by its `{id}`
       (`/api/v1/admin/domains/{id}` and everything under it,
