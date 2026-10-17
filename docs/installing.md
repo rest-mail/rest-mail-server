@@ -269,3 +269,15 @@ MX, SPF, DMARC, DKIM, the mail host's address and its reverse record. A
 healthy install delivers nothing to Gmail without them, so this is the likeliest
 reason one that passes `server:verify` still "does not work". The DKIM record
 can only come from the server, which made the key.
+
+### Recovering through Admin or Webmail
+
+If the installation password is unavailable, the operator can run
+`restmail-api mint-token --purpose reset-admin --address admin@example.com`
+inside the API container. Give the account owner the token privately; on either
+web app, choose **Use an account recovery token**. The owner chooses a password
+on the site, adds an authenticator using its setup key, saves the recovery
+codes, and confirms a current code. They then sign in with the new password
+and authenticator. The token is single use; redemption ends all previous
+sessions and revokes the old credentials. Do not put tokens or passwords in
+CI logs, issue comments, or repository files.

@@ -2,11 +2,14 @@ import { create } from 'zustand';
 import type { User } from '../types';
 import * as api from '../api/client';
 import { ApiError, type SecondFactor } from '../api/client';
+import type { SetupSession, SetupStep } from '../components/auth/AccountAccess';
 
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  setupRequired: SetupStep[];
+  acceptSession: (session: SetupSession) => void;
   // sessionChecked flips true once the boot-time refresh has resolved, so the UI
   // can avoid flashing the login page before we know whether a session exists.
   sessionChecked: boolean;
@@ -26,6 +29,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
+  setupRequired: [],
+  acceptSession: (data) => set({
+    user: { id: data.user.id!, email: data.user.email, display_name: data.user.display_name || '' },
+    isAuthenticated: true, sessionChecked: true,
+    setupRequired: data.setup_required || [], error: null, totpRequired: false,
+  }),
   sessionChecked: false,
   totpRequired: false,
   error: null,
@@ -38,6 +47,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const resp = await api.login(email, password, second);
       set({
         user: resp.data.user,
+        setupRequired: resp.data.setup_required || [],
         isAuthenticated: true,
         isLoading: false,
         sessionChecked: true,
@@ -67,17 +77,17 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const data = await api.refreshSession();
       if (data?.user) {
-        set({ user: data.user, isAuthenticated: true, sessionChecked: true });
+        set({ user: data.user, isAuthenticated: true, sessionChecked: true, setupRequired: data.setup_required || [] });
         return;
       }
     } catch {
       // fall through to unauthenticated
     }
-    set({ isAuthenticated: false, sessionChecked: true });
+    set({ user: null, isAuthenticated: false, sessionChecked: true, setupRequired: [] });
   },
 
   logout: () => {
     api.logout();
-    set({ user: null, isAuthenticated: false });
+    set({ user: null, isAuthenticated: false, setupRequired: [] });
   },
 }));

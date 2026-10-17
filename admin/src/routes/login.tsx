@@ -72,6 +72,8 @@ function LoginPage() {
           </div>
         )}
 
+        <a href="#reset" className="text-sm underline">Use an account recovery token</a>
+
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           {!totpRequired && (
