@@ -129,7 +129,7 @@ func seedLedger(t *testing.T, db *gorm.DB, pair *auth.TokenPair, accountID uint)
 }
 
 func newDBAuthHandler(db *gorm.DB, jwt *auth.JWTService) *AuthHandler {
-	return NewAuthHandler(db, jwt, "")
+	return NewAuthHandler(db, jwt, "", nil)
 }
 
 // TestRefresh_DisabledMailboxRejected: a still-valid refresh token must stop
@@ -232,7 +232,7 @@ func TestMailboxPasswordChangeRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
 	authH := newDBAuthHandler(db, jwt)
-	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL))
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	mb := seedMailbox(t, db, "pwchange")
 	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
@@ -254,7 +254,7 @@ func TestMailboxPasswordChangeRevokesSessions(t *testing.T) {
 func TestMailboxDisableRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL))
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	mb := seedMailbox(t, db, "disable-mb")
 	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
@@ -276,7 +276,7 @@ func TestMailboxDisableRevokesSessions(t *testing.T) {
 func TestMailboxDeleteRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL))
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	mb := seedMailbox(t, db, "delete-mb")
 	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
@@ -326,7 +326,7 @@ func grantingTx(t *testing.T, db *gorm.DB) (*gorm.DB, *auth.Claims) {
 func TestAdminDeleteRevokesSessions(t *testing.T) {
 	db, granter := grantingTx(t, openRevocationTestDB(t))
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL))
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	admin := seedAdminWithCaps(t, db, "delete-admin", []string{"queue:read"})
 	pair, err := jwt.GenerateSession(admin.ID, admin.Address, 0, []string{auth.AMRPassword}, false)

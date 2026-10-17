@@ -152,10 +152,10 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 		slog.Error("outbound dkim sign: key load failed (fail-closed)", "domain", senderDomain, "error", err)
 		return "", err
 	}
-	priv, err := dkim.ParsePrivateKey(keyPEM)
+	priv, err := ParseDKIMKey(keyPEM)
 	if err != nil {
 		slog.Error("outbound dkim sign: parse key failed (fail-closed)", "domain", senderDomain, "error", err)
-		return "", fmt.Errorf("dkim: parse the key for %s: %w", senderDomain, err)
+		return "", fmt.Errorf("dkim: the key for %s %w", senderDomain, err)
 	}
 	// No Headers or Oversign: go-dkim's defaults sign the RFC 6376 §5.4.1 set
 	// and oversign the fields a reader sees, so a From, Subject or Reply-To

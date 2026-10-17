@@ -45,7 +45,7 @@ func TestLogin_2FAActive_RequiresCode(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	const masterKey = "login-2fa-master-key-0123456789ab"
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc, masterKey)
+	h := NewAuthHandler(gdb, jwtSvc, masterKey, nil)
 
 	const password = "correct-horse-battery"
 	addr := seedLoginMailbox(t, gdb, password)
@@ -92,7 +92,7 @@ func TestLogin_2FAActive_RequiresCode(t *testing.T) {
 func TestLogin_NoTwoFactor_Unchanged(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc, "login-2fa-master-key-0123456789ab")
+	h := NewAuthHandler(gdb, jwtSvc, "login-2fa-master-key-0123456789ab", nil)
 
 	const password = "correct-horse-battery"
 	addr := seedLoginMailbox(t, gdb, password)

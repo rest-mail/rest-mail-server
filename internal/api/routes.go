@@ -67,11 +67,15 @@ func (rt *Routers) Close() {
 // run a separate internal mTLS listener (tests, tooling).
 // The acmeClient parameter is optional; pass nil when ACME is disabled.
 // sessionCheck builds the check that refuses tokens from before the account's
-// last credential change. A variable so this package's route tests, which run
-// on a database that fails every query in order to test the capability gates
-// alone, can stand it aside; the check itself is tested against a real
-// database in the handlers package.
-var sessionCheck = handlers.SessionCurrent
+// sessions last ended, from the router's session cache. A variable so this
+// package's route tests, which run on a database that fails every query in
+// order to test the capability gates alone, can stand it aside; the check
+// itself is tested against a real database.
+var sessionCheck = cachedSessionCheck
+
+func cachedSessionCheck(cache *handlers.SessionCache) middleware.SessionCurrent {
+	return cache.Current
+}
 
 // heldGrants builds what RequireCapability reads an account's grants from:
 // the router's grants cache. A variable for the same reason as sessionCheck;
@@ -144,15 +148,21 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// (#345).
 	grantCache := grants.NewCache(db, grants.CacheTTL)
 	grantH := handlers.NewGrantHandler(db, grantCache, cfg.MasterKey)
+	// Whether a session is still current (its account active, its token from
+	// the account's credential epoch) is read on every request too, through a
+	// cache that every change made here that ends an account's sessions
+	// empties for that account at once (#354).
+	sessions := handlers.NewSessionCache(db, handlers.SessionCacheTTL)
+	sessionCurrent := sessionCheck(sessions)
 
 	healthH := handlers.NewHealthHandler(db, jwtService)
-	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey)
-	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled)
+	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey, sessions)
+	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled, sessions)
 	domainH := handlers.NewDomainHandler(db, dnsProvider)
-	mailboxH := handlers.NewMailboxHandler(db, grantCache)
+	mailboxH := handlers.NewMailboxHandler(db, grantCache, sessions)
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()
-	eventH := handlers.NewEventHandler(db, broker, jwtService, sessionCheck(db))
+	eventH := handlers.NewEventHandler(db, broker, jwtService, sessionCurrent)
 	accountH := handlers.NewAccountHandler(db, grantCache, cfg.MasterKey)
 	searchH := handlers.NewSearchHandler(db)
 	attachmentH := handlers.NewAttachmentHandler(db)
@@ -477,7 +487,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
 		// A token minted before the account's last credential change is dead.
-		r.Use(middleware.RejectStaleSessions(sessionCheck(db)))
+		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		// Double-submit CSRF guard for cookie-authenticated browser sessions on
 		// state-changing methods; Bearer-token (gateway) callers send no cookie
 		// and are transparently exempt (see middleware.CSRF).
@@ -554,7 +564,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(basicCredentials.Authenticate(jwtService))
-		r.Use(middleware.RejectStaleSessions(sessionCheck(db)))
+		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		r.Use(middleware.SetupDone)
 		r.Use(middleware.CSRF())
 		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
@@ -652,7 +662,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// checks below refuse; reads are not, except of the audit log itself.
 		r.Use(auditLog("admin.change", middleware.AuditWritesOnly()))
 		// A token minted before the account's last credential change is dead.
-		r.Use(middleware.RejectStaleSessions(sessionCheck(db)))
+		r.Use(middleware.RejectStaleSessions(sessionCurrent))
 		r.Use(middleware.SetupDone)
 		// Same double-submit CSRF guard as the mailbox surface (cookie sessions
 		// only; Bearer callers exempt).
@@ -713,6 +723,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needsOnMailbox(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
 		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
 		r.With(needsOnMailbox(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
+		// Signing an account out everywhere is a change to it, like a new
+		// password: mailboxes:write on it.
+		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Delete("/api/v1/admin/mailboxes/{id}/sessions", mailboxH.EndSessions)
 
 		// Aliases (mailbox routing config → mailboxes:* capabilities)
 		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)

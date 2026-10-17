@@ -50,7 +50,7 @@ func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
 		t.Fatalf("create mailbox: %v", err)
 	}
 
-	h := NewMailboxHandler(tx, grants.NewCache(tx, grants.CacheTTL))
+	h := NewMailboxHandler(tx, grants.NewCache(tx, grants.CacheTTL), nil)
 
 	// One allowlisted field (display_name) mixed with columns the caller must
 	// never control. domain_id/address/local_part/quota_used_bytes are not part

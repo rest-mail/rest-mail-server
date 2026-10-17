@@ -134,7 +134,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 		t.Fatal(err)
 	}
 	e.store = push.NewStore(tx)
-	e.authH = NewAuthHandler(tx, e.jwt, "")
+	e.authH = NewAuthHandler(tx, e.jwt, "", nil)
 	e.authH.SetPushDevices(e.store)
 
 	auditor := middleware.NewAuditor(func(entry *models.AuditEntry) error { return audit.Append(tx, entry) }, nil, e.jwt)

@@ -140,6 +140,9 @@ type AuthHandler struct {
 	// pushDevices ends the push devices of a session a logout ends (#363).
 	// Nil when push is off.
 	pushDevices sessionDevices
+	// sessions is the cache RejectStaleSessions reads; a password change or
+	// a reset ends the account's sessions, and empties its entry.
+	sessions *SessionCache
 }
 
 // sessionDevices is what a logout needs of the push device store: to delete
@@ -158,8 +161,9 @@ func (h *AuthHandler) SetPushDevices(devices sessionDevices) {
 // decrypt stored TOTP secrets during login enforcement; pass "" when
 // encryption is not configured (2FA enrollment is then refused elsewhere, and
 // login enforcement degrades to recovery-code-only for any pre-existing
-// enrollment — a secret that could not have been stored anyway).
-func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string) *AuthHandler {
+// enrollment — a secret that could not have been stored anyway). sessions is
+// the router's session cache; nil when there is none.
+func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string, sessions *SessionCache) *AuthHandler {
 	var refreshStore refreshTokenStore
 	var tfStore twoFactorStore
 	var accountState accountStateStore
@@ -168,7 +172,7 @@ func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string) 
 		tfStore = repositories.NewTwoFactorRepository(db)
 		accountState = dbAccountState{db: db}
 	}
-	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, accountState: accountState, twoFactorStore: tfStore, masterKey: masterKey}
+	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, accountState: accountState, twoFactorStore: tfStore, masterKey: masterKey, sessions: sessions}
 }
 
 // persistRefreshToken records a freshly issued refresh token in the rotation
@@ -546,6 +550,14 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
 			return
 		}
+		// A refresh token from before the account's sessions last ended (a
+		// new password, a reset, 2FA turned off, an admin ending them) is as
+		// dead as the access tokens of its time: it must not mint one at the
+		// new epoch.
+		if state.CredentialEpoch != claims.CredentialEpoch {
+			respond.Error(w, http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
+			return
+		}
 	}
 
 	// Rotation + revocation (OSI-10): the presented refresh token must still be
@@ -670,24 +682,24 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			"password_change_required": false,
 			// Its own password now: the deploy-time one, and its deadline, are gone.
 			"bootstrap_expires_at": nil,
-			// Every token of the account is dead from now, this one included.
-			"credential_epoch": gorm.Expr("credential_epoch + 1"),
 		}).Error; err != nil {
 			return err
 		}
+		// Every token of the account is dead from now, this one included.
 		return setAccountPassword(tx, r, account.ID, hash, &account.ID, now)
 	})
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
 		return
 	}
+	h.sessions.Forget(account.ID)
 	respond.Data(w, http.StatusOK, map[string]string{"message": "Password changed. Sign in again with the new password."})
 }
 
 // setAccountPassword makes hash the account's one password, in tx: its other
 // passwords and every app password are revoked (each app password recorded in
-// the audit log, as revoked for a new password), and so is every session.
-// setBy is the account setting it.
+// the audit log, as revoked for a new password), and every session ends
+// (endSessions). setBy is the account setting it.
 func setAccountPassword(tx *gorm.DB, r *http.Request, accountID uint, hash string, setBy *uint, now time.Time) error {
 	if _, err := repositories.NewCredentialRepository(tx).SetPassword(accountID, hash, setBy, now); err != nil {
 		return err
@@ -695,7 +707,7 @@ func setAccountPassword(tx *gorm.DB, r *http.Request, accountID uint, hash strin
 	if err := revokeAppPasswordsForNewPassword(tx, r, accountID, now); err != nil {
 		return err
 	}
-	return repositories.NewRefreshTokenRepository(tx).RevokeAllForAccount(accountID)
+	return endSessions(tx, accountID)
 }
 
 // startSession answers with a fresh session for an account whose identity is
@@ -778,6 +790,7 @@ func (h *AuthHandler) Reset(w http.ResponseWriter, r *http.Request) {
 	if h.redeemFailed(w, err) {
 		return
 	}
+	h.sessions.Forget(account.ID)
 	// Redeeming a token is neither a password nor a second factor: the
 	// session records neither, and is in setup until a new authenticator is
 	// enrolled anyway.
@@ -802,24 +815,17 @@ func (h *AuthHandler) redeemFailed(w http.ResponseWriter, err error) bool {
 }
 
 // SessionCurrent is the database's answer to whether an access token is still
-// current (middleware.RejectStaleSessions): the account must exist and be
-// active, not be a bootstrap account whose deploy-time password has expired,
-// and the token must carry its current credential epoch — a reset or a
-// password change bumps it.
+// current (middleware.RejectStaleSessions), read afresh on every call: the
+// account must exist and be active, not be a bootstrap account whose
+// deploy-time password has expired, and the token must carry its current
+// credential epoch, which endSessions moves on. The router reads it through a
+// SessionCache.
 func SessionCurrent(db *gorm.DB) middleware.SessionCurrent {
 	return func(accountID uint, epoch int) (bool, error) {
-		var account models.Mailbox
-		err := db.Select("active", "credential_epoch", "password_change_required", "bootstrap_expires_at").
-			First(&account, accountID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
+		account, err := sessionAccount(db, accountID)
 		if err != nil {
 			return false, err
 		}
-		if !account.Active || account.BootstrapExpired(time.Now()) {
-			return false, nil
-		}
-		return account.CredentialEpoch == epoch, nil
+		return sessionCurrent(account, epoch, time.Now()), nil
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -301,11 +302,11 @@ func dkimRecordValue(stored, masterKey string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	priv, err := dkim.ParsePrivateKey(keyPEM)
+	priv, err := outbound.ParseDKIMKey(keyPEM)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("the key %w", err)
 	}
-	pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	pubDER, err := x509.MarshalPKIXPublicKey(priv.Public())
 	if err != nil {
 		return "", err
 	}

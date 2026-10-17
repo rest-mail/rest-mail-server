@@ -74,7 +74,7 @@ export interface paths {
         put?: never;
         /**
          * Refresh the session (cookie, or body token for native clients)
-         * @description Takes the refresh token from the restmail_refresh cookie, or when there is no cookie from the request body. The replacement pair goes back on the same channel: cookies for a cookie request, body fields for a body request. A request carrying the cookie is always answered with cookies, whatever its body says. The new tokens have a new `jti` but stay in the same session: the `sid` claim minted at sign-in. A refresh token without a `sid` is refused with 401, and the client signs in again.
+         * @description Takes the refresh token from the restmail_refresh cookie, or when there is no cookie from the request body. The replacement pair goes back on the same channel: cookies for a cookie request, body fields for a body request. A request carrying the cookie is always answered with cookies, whatever its body says. The new tokens have a new `jti` but stay in the same session: the `sid` claim minted at sign-in. A refresh token without a `sid` is refused with 401, and the client signs in again. So is one from before the account's sessions last ended (its `cep` is older than the account's), even if it was never revoked.
          */
         post: operations["refreshToken"];
         delete?: never;
@@ -258,7 +258,7 @@ export interface paths {
         put?: never;
         /**
          * Link an existing account by proving its password
-         * @description Grants the session's account the `owner` role on an existing account, by proving one of its passwords — and a code from its authenticator when it has one (`401 totp_required` without), the same proof as signing in to it. A wrong password, an unknown address and an account with no password are the same `401`. An account still in setup cannot be linked (`403 setup_required`). `display_name`, when the account has none, becomes its name. Throttled with login (a wrong guess spends the same budget), and audited (`accounts.link`, and the grant's `grants.create`). Unlinking is removing that grant: `DELETE /api/v1/accounts/{id}`.
+         * @description Grants the session's account the `owner` role on an existing account, by proving one of its passwords — and a code from its authenticator, or one of its recovery codes, when it has one — the same proof as signing in to it. A refused proof is `403`, never `401`: the secrets are the other account's, and the session that sent them is still good, so a client must not renew it or send them again. A wrong password, an unknown address and an account with no password are the same `403 invalid_credentials`; an account with two-factor authentication answers `403 totp_required` without a code and `403 invalid_totp` for a wrong one. An account still in setup cannot be linked (`403 setup_required`). `display_name`, when the account has none, becomes its name. Throttled with login (a wrong guess spends the same budget), and audited (`accounts.link`, and the grant's `grants.create`). Unlinking is removing that grant: `DELETE /api/v1/accounts/{id}`.
          */
         post: operations["linkAccount"];
         delete?: never;
@@ -937,7 +937,7 @@ export interface paths {
         };
         /**
          * Server-Sent Events stream for real-time updates
-         * @description Authenticated by the restmail_access cookie, which a native browser EventSource attaches automatically — no token in the URL and none in JavaScript. Programmatic clients may instead send an Authorization: Bearer header. GET, so no CSRF token is required.
+         * @description Authenticated by the restmail_access cookie, which a native browser EventSource attaches automatically — no token in the URL and none in JavaScript. Programmatic clients may instead send an Authorization: Bearer header. GET, so no CSRF token is required. The session is checked when the stream opens, and again before every event and keepalive: once the account's sessions end, the stream ends without sending anything more, and opening it again with the same token answers 401.
          */
         get: operations["accountEvents"];
         put?: never;
@@ -1132,9 +1132,34 @@ export interface paths {
          *     account had and ends every session of it. It also revokes all the
          *     account's app passwords, in the transaction that sets it, recording
          *     each in the audit log as `credentials.revoke` with `reason`
-         *     `password_changed`.
+         *     `password_changed`. `"active": false` ends every session of it too,
+         *     so enabling it again brings none of them back; its app passwords
+         *     stay, and work again once it is enabled.
          */
         patch: operations["updateMailbox"];
+        trace?: never;
+    };
+    "/api/v1/admin/mailboxes/{id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Sign an account out everywhere
+         * @description Ends every session of the account: its refresh tokens are revoked and its credential epoch moves on, so every access token it was issued is refused at its next request, on the event stream and at refresh. Its passwords and app passwords stay: a mail client signed in with an app password keeps working, and is revoked on its own (`DELETE /api/v1/accounts/{id}/credentials/{credential_id}`).
+         */
+        delete: operations["endMailboxSessions"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/aliases": {
@@ -2583,6 +2608,10 @@ export interface components {
             /** Format: password */
             password: string;
             display_name?: string;
+            /** @description A code from the account's authenticator, when it has two-factor authentication */
+            totp_code?: string;
+            /** @description One of the account's recovery codes, instead of totp_code; it is spent */
+            recovery_code?: string;
         };
         Folder: {
             name: string;
@@ -4157,19 +4186,21 @@ export interface operations {
                     };
                 };
             };
-            /** @description Wrong address or password (`unauthorized`), or its code is needed (`totp_required`) */
+            /** @description The session itself is missing or has ended; never a refused link */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description The account is still in setup */
+            /** @description The link is refused: a wrong address or password (`invalid_credentials`), its code is needed (`totp_required`), its code is wrong (`invalid_totp`), or the account is still in setup (`setup_required`) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Already linked, or the session's own account */
             409: {
@@ -5541,6 +5572,7 @@ export interface operations {
                     "text/event-stream": string;
                 };
             };
+            401: components["responses"]["Unauthorized"];
         };
     };
     checkMailboxAddress: {
@@ -5916,6 +5948,28 @@ export interface operations {
                         data: components["schemas"]["Mailbox"];
                     };
                 };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    endMailboxSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Every session of the account has ended */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: components["responses"]["NotFound"];
         };
@@ -6325,7 +6379,7 @@ export interface operations {
                 };
             };
             422: components["responses"]["ValidationError"];
-            /** @description JS filter sidecar unavailable */
+            /** @description JS filter sidecar unavailable, or it refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6460,7 +6514,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description JS filter sidecar unavailable */
+            /** @description JS filter sidecar unavailable, or it refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar) */
             503: {
                 headers: {
                     [name: string]: unknown;
