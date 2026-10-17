@@ -29,8 +29,8 @@ type AdminUser struct {
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 
-	// Relationships
-	Roles []Role `gorm:"many2many:admin_users_roles;joinForeignKey:UserID;joinReferences:RoleID" json:"roles,omitempty"`
+	// What the account may do is its grants (models.Grant), not a list of
+	// roles here.
 }
 
 func (AdminUser) TableName() string { return "admin_users" }
@@ -70,7 +70,11 @@ type Capability struct {
 
 func (Capability) TableName() string { return "admin_capabilities" }
 
-// UserRole is the junction table tracking user-role assignments with audit info.
+// UserRole is a role assignment from before grants: admin_users_roles. Nothing
+// reads or writes it any more except db.MigrateGrants, which copied each row
+// into grants once, as an active grant at "*". It is kept, unchanged, for one
+// release so that going back to the previous one finds the assignments it
+// knew; the release after drops it.
 type UserRole struct {
 	UserID    uint      `gorm:"primaryKey" json:"user_id"`
 	RoleID    uint      `gorm:"primaryKey" json:"role_id"`

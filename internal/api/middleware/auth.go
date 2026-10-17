@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 type contextKey string
@@ -101,14 +102,29 @@ func AdminOnly(next http.Handler) http.Handler {
 	})
 }
 
-// RequireCapability restricts access to users with a specific capability.
-// The wildcard "*" capability grants access to all endpoints.
+// HeldGrants is what an admin holds right now, from its active grants: a
+// grants.Cache over the database, in production.
+type HeldGrants func(adminID uint) (grants.Held, error)
+
+// ScopeOf finds the scope of the domain or mailbox a request acts on, from
+// its URL parameters. found is false when there is no such domain or mailbox.
+type ScopeOf func(r *http.Request) (scope string, found bool, err error)
+
+// RequireCapability restricts a route to admins holding capability, read
+// from their grants on every request, never from the token. The wildcard "*"
+// capability satisfies every requirement.
 //
-// Only admin tokens (UserType == "admin") are eligible; they are checked against
-// the Capabilities claim issued at login. Every mailbox token is denied — the
-// deprecated IsAdmin mailbox-admin path was removed (OSI-14), so a mailbox token
-// can no longer be treated as a wildcard admin.
-func RequireCapability(capability string) func(http.Handler) http.Handler {
+// With no target, the capability must be held at "*". With a target, a route
+// acting on a domain or a mailbox, it may instead be held at a scope covering
+// that domain or mailbox: a domain admin on domain:a.com reaches a.com and its
+// mailboxes, and is refused on b.com. Someone holding it at "*" is let through
+// without looking the target up, so the handler answers for one that does not
+// exist exactly as before; anyone else is refused for it.
+//
+// Only admin tokens (UserType == "admin") are eligible. Every mailbox token is
+// denied — the deprecated IsAdmin mailbox-admin path was removed (OSI-14), so a
+// mailbox token can no longer be treated as a wildcard admin.
+func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims := GetClaims(r)
@@ -122,21 +138,28 @@ func RequireCapability(capability string) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Check if user has the required capability or wildcard
-			hasCapability := false
-			for _, cap := range claims.Capabilities {
-				if cap == "*" || cap == capability {
-					hasCapability = true
-					break
+			h, err := held(claims.AdminUserID)
+			if err != nil {
+				writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
+				return
+			}
+			if h.Allows(capability, grants.All) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if target != nil && h.AllowsSomewhere(capability) {
+				scope, found, err := target(r)
+				if err != nil {
+					writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
+					return
+				}
+				if found && h.Allows(capability, scope) {
+					next.ServeHTTP(w, r)
+					return
 				}
 			}
 
-			if !hasCapability {
-				writeError(w, http.StatusForbidden, "forbidden", "Insufficient permissions")
-				return
-			}
-
-			next.ServeHTTP(w, r)
+			writeError(w, http.StatusForbidden, "forbidden", "Insufficient permissions")
 		})
 	}
 }

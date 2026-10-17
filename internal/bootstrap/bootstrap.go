@@ -16,6 +16,7 @@ import (
 
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -220,9 +221,12 @@ func EnsureFirstAdminWith(database *gorm.DB, username string, credential Bootstr
 		return FirstAdminUnchanged, fmt.Errorf("a bootstrap admin must enroll in 2FA, but TOTP_2FA_ENABLED is off: it could never finish signing in")
 	}
 
-	var superadmin models.Role
+	var superadmin, admin models.Role
 	if err := database.Where("name = ?", "superadmin").First(&superadmin).Error; err != nil {
 		return FirstAdminUnchanged, fmt.Errorf("superadmin role missing (run EnsureRBAC first): %w", err)
+	}
+	if err := database.Where("name = ?", "admin").First(&admin).Error; err != nil {
+		return FirstAdminUnchanged, fmt.Errorf("admin role missing (run EnsureRBAC first): %w", err)
 	}
 
 	hash, err := credential.stored()
@@ -249,9 +253,16 @@ func EnsureFirstAdminWith(database *gorm.DB, username string, credential Bootstr
 			return res.Error
 		}
 		created = res.RowsAffected > 0
-		var ur models.UserRole
-		return tx.Where("user_id = ? AND role_id = ?", user.ID, superadmin.ID).
-			FirstOrCreate(&ur, models.UserRole{UserID: user.ID, RoleID: superadmin.ID}).Error
+		// The admin role at "*" to work with day to day, and superadmin at "*"
+		// to escalate to. Superadmin is meant to be eligible, switched on only
+		// when needed; until escalation exists (#346) it is active, or the
+		// owner could never use it.
+		for _, role := range []uint{admin.ID, superadmin.ID} {
+			if _, err := grants.EnsureSystem(tx, models.GrantHolderAdmin, user.ID, role, grants.All, models.GrantActive); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return FirstAdminUnchanged, err

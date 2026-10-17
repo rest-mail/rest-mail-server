@@ -142,35 +142,14 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 	if cfg.failuresOnly && outcome == models.AuditOutcomeSuccess {
 		return
 	}
-	e := &models.AuditEntry{
-		OccurredAt: started,
-		ActorKind:  models.AuditActorAnonymous,
-		Action:     action,
-		Outcome:    outcome,
-		Method:     r.Method,
-		Status:     status,
-		Target:     models.AuditTarget{},
-		IP:         clientIP(r),
-		UserAgent:  r.UserAgent(),
-		RequestID:  chimw.GetReqID(r.Context()),
-	}
+	entry := RequestEntry(r, action, status)
+	e := &entry
+	e.OccurredAt = started
 	if status >= 400 {
 		var er ErrorResponse
 		if json.Unmarshal(resp, &er) == nil {
 			e.ErrorCode = er.Error.Code
 		}
-	}
-	if rctx := chi.RouteContext(r.Context()); rctx != nil {
-		e.Route = rctx.RoutePattern()
-		for i, k := range rctx.URLParams.Keys {
-			if k != "" && k != "*" {
-				e.Target[k] = rctx.URLParams.Values[i]
-			}
-		}
-	}
-
-	if claims := GetClaims(r); claims != nil {
-		actorFromClaims(e, claims)
 	}
 	switch {
 	case cfg.signIn:
@@ -220,6 +199,38 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 	if err := a.appendEntry(e); err != nil {
 		slog.Error("failed to write an audit entry", "error", err, "entry", e)
 	}
+}
+
+// RequestEntry is the audit entry for a request with the given action and
+// status, as the Audit middleware records it: the route and its URL
+// parameters, the client, and the actor and session from the token's claims.
+// A handler writing an entry of its own, inside the transaction of the change
+// it records, starts from this.
+func RequestEntry(r *http.Request, action string, status int) models.AuditEntry {
+	e := models.AuditEntry{
+		OccurredAt: time.Now(),
+		ActorKind:  models.AuditActorAnonymous,
+		Action:     action,
+		Outcome:    auditOutcome(status),
+		Method:     r.Method,
+		Status:     status,
+		Target:     models.AuditTarget{},
+		IP:         clientIP(r),
+		UserAgent:  r.UserAgent(),
+		RequestID:  chimw.GetReqID(r.Context()),
+	}
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		e.Route = rctx.RoutePattern()
+		for i, k := range rctx.URLParams.Keys {
+			if k != "" && k != "*" {
+				e.Target[k] = rctx.URLParams.Values[i]
+			}
+		}
+	}
+	if claims := GetClaims(r); claims != nil {
+		actorFromClaims(&e, claims)
+	}
+	return e
 }
 
 // actorFromClaims makes the token's account the actor, and its jti the session.

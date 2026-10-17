@@ -145,6 +145,9 @@ type LoginResponse struct {
 			Email       string `json:"email"`
 			DisplayName string `json:"display_name"`
 		} `json:"user"`
+		// Capabilities is what an admin holds at "*", for showing; the token
+		// carries none.
+		Capabilities []string `json:"capabilities"`
 	} `json:"data"`
 }
 

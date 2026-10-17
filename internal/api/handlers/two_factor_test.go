@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -297,17 +298,27 @@ func TestEnrollRefusedWhenDisabledOrNoMasterKey(t *testing.T) {
 // --- login enforcement (AuthHandler.enforce2FA) ---
 
 func enforce(h *AuthHandler, userType string, subjectID uint, req loginRequest) (bool, *httptest.ResponseRecorder) {
-	rr := httptest.NewRecorder()
-	ok := h.enforce2FA(rr, userType, subjectID, req)
+	ok, _, rr := enforceVerified(h, userType, subjectID, req)
 	return ok, rr
 }
 
+func enforceVerified(h *AuthHandler, userType string, subjectID uint, req loginRequest) (bool, bool, *httptest.ResponseRecorder) {
+	rr := httptest.NewRecorder()
+	ok, verified := h.enforce2FA(rr, userType, subjectID, req)
+	return ok, verified, rr
+}
+
 // TestLoginEnforcement_NoTwoFactorProceeds: an account without active 2FA passes
-// straight through — login is unchanged.
+// straight through — login is unchanged — and its session signed in with a
+// password alone.
 func TestLoginEnforcement_NoTwoFactorProceeds(t *testing.T) {
 	h := &AuthHandler{twoFactorStore: newFakeStore(), masterKey: testMasterKey}
-	if ok, _ := enforce(h, "mailbox", 99, loginRequest{}); !ok {
+	ok, verified, _ := enforceVerified(h, "mailbox", 99, loginRequest{})
+	if !ok {
 		t.Error("account without 2FA was blocked at login")
+	}
+	if amr := signInMethods(verified); !reflect.DeepEqual(amr, []string{auth.AMRPassword}) {
+		t.Errorf("amr = %v, want [pwd]", amr)
 	}
 }
 
@@ -338,15 +349,17 @@ func TestLoginEnforcement_ActiveRequiresCode(t *testing.T) {
 		t.Error("login proceeded with a wrong code")
 	}
 
-	// Valid current code -> proceeds.
+	// Valid current code -> proceeds, and the session records the second factor.
+	withOTP := []string{auth.AMRPassword, auth.AMROTP}
 	valid, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
-	if ok, _ := enforce(h, "mailbox", 7, loginRequest{TOTPCode: valid}); !ok {
-		t.Error("login blocked despite a valid code")
+	if ok, verified, _ := enforceVerified(h, "mailbox", 7, loginRequest{TOTPCode: valid}); !ok || !reflect.DeepEqual(signInMethods(verified), withOTP) {
+		t.Errorf("valid code: ok=%v verified=%v, want a session with %v", ok, verified, withOTP)
 	}
 
-	// Recovery code -> proceeds (and is consumed: a second use fails).
-	if ok, _ := enforce(h, "mailbox", 7, loginRequest{RecoveryCode: resp.RecoveryCodes[0]}); !ok {
-		t.Error("login blocked despite a valid recovery code")
+	// Recovery code -> proceeds as a second factor (and is consumed: a second
+	// use fails).
+	if ok, verified, _ := enforceVerified(h, "mailbox", 7, loginRequest{RecoveryCode: resp.RecoveryCodes[0]}); !ok || !reflect.DeepEqual(signInMethods(verified), withOTP) {
+		t.Errorf("recovery code: ok=%v verified=%v, want a session with %v", ok, verified, withOTP)
 	}
 	if ok, _ := enforce(h, "mailbox", 7, loginRequest{RecoveryCode: resp.RecoveryCodes[0]}); ok {
 		t.Error("recovery code reusable at login")

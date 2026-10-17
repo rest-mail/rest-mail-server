@@ -18,6 +18,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/metrics"
 	pipelineobs "github.com/restmail/restmail/internal/metrics/observer"
 	"github.com/restmail/restmail/internal/netallow"
@@ -65,6 +66,17 @@ func (rt *Routers) Close() {
 // capability gates alone, can stand it aside; the check itself is tested
 // against a real database in the handlers package.
 var adminSessionCheck = handlers.AdminSessionCurrent
+
+// heldGrants builds what RequireCapability reads an admin's grants from: the
+// router's grants cache. A variable for the same reason as adminSessionCheck;
+// the grants themselves are tested against a real database.
+var heldGrants = cachedHeldGrants
+
+func cachedHeldGrants(cache *grants.Cache) middleware.HeldGrants {
+	return func(adminID uint) (grants.Held, error) {
+		return cache.Held(models.GrantHolderAdmin, adminID)
+	}
+}
 
 func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) http.Handler {
 	return NewRouters(db, jwtService, cfg, dnsProvider, acmeClient...).Public
@@ -161,6 +173,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		jwtService,
 	)
 	auditLog := auditor.Audit
+
+	// What each admin may do is read from its grants on every request, through
+	// a cache that every grant change made here empties at once (#345).
+	grantCache := grants.NewCache(db, grants.CacheTTL)
+	grantH := handlers.NewGrantHandler(db, grantCache)
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -545,10 +562,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Admin routes
 	//
 	// AdminOnly gates the whole group (mailbox tokens → 403), then each
-	// route requires the capability for its resource/action. Capability
-	// names are the seeded admin_capabilities names (see
-	// middleware/capabilities.go for the taxonomy); superadmin's "*"
-	// wildcard satisfies all of them.
+	// route requires the capability for its resource/action, read from the
+	// caller's grants. Capability names are the seeded admin_capabilities
+	// names (see middleware/capabilities.go for the taxonomy); superadmin's
+	// "*" wildcard satisfies all of them.
+	//
+	// needs wants the capability at "*". needsOnDomain and needsOnMailbox are
+	// for routes acting on the domain or mailbox their {id} names: a grant on
+	// that domain (or mailbox) is enough, so a domain admin reaches its own
+	// domain and is refused on every other.
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
@@ -564,13 +586,23 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// #184: same request-body cap as the mailbox surface, covering the admin
 		// JSON endpoints (pipeline create/test, custom filters, …).
 		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
-		needs := middleware.RequireCapability
+		held := heldGrants(grantCache)
+		needs := func(capability string) func(http.Handler) http.Handler {
+			return middleware.RequireCapability(held, capability, nil)
+		}
+		onDomain, onMailbox := handlers.DomainScopeOf(db), handlers.MailboxScopeOf(db)
+		needsOnDomain := func(capability string) func(http.Handler) http.Handler {
+			return middleware.RequireCapability(held, capability, onDomain)
+		}
+		needsOnMailbox := func(capability string) func(http.Handler) http.Handler {
+			return middleware.RequireCapability(held, capability, onMailbox)
+		}
 
 		// Dashboard stats — visible to every admin role
 		r.Get("/api/v1/admin/stats", statsH.GetDashboardStats)
 
 		// Admin user management
-		adminUserH := handlers.NewAdminUserHandler(db)
+		adminUserH := handlers.NewAdminUserHandler(db, grantCache)
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/admin-users", adminUserH.ListAdminUsers)
 		r.With(needs(middleware.CapUsersWrite)).Post("/api/v1/admin/admin-users", adminUserH.CreateAdminUser)
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/admin-users/{id}", adminUserH.GetAdminUser)
@@ -581,20 +613,29 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", adminUserH.ListRoles)
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", adminUserH.ListCapabilities)
 
+		// Grants (#345): who holds which role at which scope. Changing them
+		// needs users:write, as changing an admin's roles always has; the
+		// handler adds that the session signed in with 2FA and that the caller
+		// holds everything it grants or removes, and records each change in the
+		// audit log in the change's own transaction.
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/grants", grantH.List)
+		r.With(needs(middleware.CapUsersWrite)).Post("/api/v1/admin/grants", grantH.Create)
+		r.With(needs(middleware.CapUsersWrite)).Delete("/api/v1/admin/grants/{id}", grantH.Delete)
+
 		// Domains
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains", domainH.List)
 		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains", domainH.Create)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}", domainH.Get)
-		r.With(needs(middleware.CapDomainsWrite)).Patch("/api/v1/admin/domains/{id}", domainH.Update)
-		r.With(needs(middleware.CapDomainsDelete)).Delete("/api/v1/admin/domains/{id}", domainH.Delete)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/dns", domainH.DNSCheck)
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}", domainH.Get)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Patch("/api/v1/admin/domains/{id}", domainH.Update)
+		r.With(needsOnDomain(middleware.CapDomainsDelete)).Delete("/api/v1/admin/domains/{id}", domainH.Delete)
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/dns", domainH.DNSCheck)
 
 		// Mailboxes
 		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
 		r.With(needs(middleware.CapMailboxesWrite)).Post("/api/v1/admin/mailboxes", mailboxH.Create)
-		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
-		r.With(needs(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
-		r.With(needs(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
+		r.With(needsOnMailbox(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
+		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
+		r.With(needsOnMailbox(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
 
 		// Aliases (mailbox routing config → mailboxes:* capabilities)
 		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)
@@ -647,25 +688,25 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/{id}", queueH.DeleteQueueEntry)
 
 		// Sender allowlist/blocklist (domain-scoped → domains:* capabilities)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
-		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/allowlist", senderRuleH.AddToAllowlist)
-		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/allowlist/{eid}", senderRuleH.RemoveFromAllowlist)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
-		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
-		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/allowlist", senderRuleH.AddToAllowlist)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/allowlist/{eid}", senderRuleH.RemoveFromAllowlist)
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
 
 		// MTA-STS policy management (domain-scoped → domains:* capabilities)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
-		r.With(needs(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
-		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
 
 		// TLS-RPT reports (domain deliverability telemetry → domains:read)
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)
 
 		// DKIM key management (domain signing material → domains:* capabilities)
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/dkim", dkimH.ListKeys)
-		r.With(needs(middleware.CapDomainsWrite)).Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
-		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
 
 		// Certificate management (domain TLS material → domains:* capabilities)
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/certificates", certH.ListCertificates)

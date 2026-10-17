@@ -189,7 +189,7 @@ func TestLogout_RevokesRefreshToken(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateAdminTokenPair(7, "root", []string{"*"})
+	pair, err := jwt.GenerateAdminTokenPair(7, "root")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,15 +231,15 @@ func TestRefresh_UnknownJTIRejected(t *testing.T) {
 }
 
 // TestRefresh_PreservesTypeWithRotation: the #45 session-type preservation holds
-// through rotation — an admin refresh yields an admin token (with capabilities),
-// a mailbox refresh a mailbox token.
+// through rotation — an admin refresh yields an admin token (with the session's
+// sign-in methods), a mailbox refresh a mailbox token.
 func TestRefresh_PreservesTypeWithRotation(t *testing.T) {
 	jwt := auth.NewJWTService("preserve-secret", 15*time.Minute, 7*24*time.Hour)
 
 	t.Run("admin", func(t *testing.T) {
 		store := newFakeRefreshStore()
 		h := newRefreshHandler(jwt, store)
-		pair, err := jwt.GenerateAdminTokenPair(9, "ops", []string{"queue:read"})
+		pair, err := jwt.GenerateAdminSession(9, "ops", 0, []string{auth.AMRPassword})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -252,8 +252,8 @@ func TestRefresh_PreservesTypeWithRotation(t *testing.T) {
 		if claims.UserType != "admin" || claims.AdminUserID != 9 {
 			t.Errorf("admin claims not preserved: %+v", claims)
 		}
-		if len(claims.Capabilities) != 1 || claims.Capabilities[0] != "queue:read" {
-			t.Errorf("capabilities not preserved: %v", claims.Capabilities)
+		if len(claims.AMR) != 1 || claims.AMR[0] != auth.AMRPassword {
+			t.Errorf("amr not preserved: %v", claims.AMR)
 		}
 	})
 

@@ -32,6 +32,14 @@ const (
 	CSRFHeaderName    = "X-CSRF-Token"
 )
 
+// Authentication methods a session's amr claim lists (RFC 8176): how the
+// session signed in. AMRPassword is a password; AMROTP is a second factor, a
+// TOTP code or a recovery code, on top of it.
+const (
+	AMRPassword = "pwd"
+	AMROTP      = "otp"
+)
+
 // TokenIssuer is the `iss` claim stamped into every minted token and the value
 // the parser pins on validation (#204 defense in depth). Beyond the HMAC-alg
 // pin, the exp check, and the access/refresh token_type separation, requiring a
@@ -42,13 +50,17 @@ const TokenIssuer = "restmail"
 // Claims represents the JWT claims for access and refresh tokens.
 type Claims struct {
 	jwt.RegisteredClaims
-	Email            string   `json:"email,omitempty"`              // For mailbox users
-	WebmailAccountID uint     `json:"webmail_account_id,omitempty"` // For mailbox users
-	MailboxID        uint     `json:"mailbox_id,omitempty"`         // For mailbox users
-	UserType         string   `json:"user_type"`                    // "mailbox" or "admin"
-	AdminUserID      uint     `json:"admin_user_id,omitempty"`      // For admin users
-	Username         string   `json:"username,omitempty"`           // For admin users
-	Capabilities     []string `json:"capabilities,omitempty"`       // For admin users
+	Email            string `json:"email,omitempty"`              // For mailbox users
+	WebmailAccountID uint   `json:"webmail_account_id,omitempty"` // For mailbox users
+	MailboxID        uint   `json:"mailbox_id,omitempty"`         // For mailbox users
+	UserType         string `json:"user_type"`                    // "mailbox" or "admin"
+	AdminUserID      uint   `json:"admin_user_id,omitempty"`      // For admin users
+	Username         string `json:"username,omitempty"`           // For admin users
+	// AMR is how an admin session signed in (AMRPassword, AMROTP), carried
+	// from the sign-in to every token refreshed from it. A token carries no
+	// capabilities: what an admin may do is read from its grants on every
+	// request (internal/grants).
+	AMR []string `json:"amr,omitempty"`
 	// SetupPending marks an admin session whose account is not finished setting
 	// up (a new password, a 2FA enrollment). It reaches only the self-service
 	// endpoints that finish the setup; AdminOnly refuses it everywhere else.
@@ -57,6 +69,16 @@ type Claims struct {
 	// minted (admin tokens); RejectStaleAdminSessions refuses an outdated one.
 	CredentialEpoch int    `json:"cep,omitempty"`
 	TokenType       string `json:"token_type"`
+}
+
+// HasAMR reports whether the session signed in with method.
+func (c *Claims) HasAMR(method string) bool {
+	for _, m := range c.AMR {
+		if m == method {
+			return true
+		}
+	}
+	return false
 }
 
 // TokenPair contains both access and refresh tokens.
@@ -163,26 +185,27 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 	}, nil
 }
 
-// GenerateAdminTokenPair creates both access and refresh tokens for an admin user.
-func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, capabilities []string) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, capabilities, false, 0)
+// GenerateAdminTokenPair creates both access and refresh tokens for an admin
+// user, at credential epoch 0, signed in with a password.
+func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, []string{AMRPassword}, false, 0)
 }
 
 // GenerateAdminSession creates the tokens for an admin's session at the
 // account's current credential epoch, so that a later reset or password change
-// ends it at once.
-func (s *JWTService) GenerateAdminSession(adminUserID uint, username string, capabilities []string, epoch int) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, capabilities, false, epoch)
+// ends it at once. amr is how it signed in.
+func (s *JWTService) GenerateAdminSession(adminUserID uint, username string, epoch int, amr []string) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, amr, false, epoch)
 }
 
 // GenerateSetupTokenPair creates tokens for an admin whose account is still in
-// setup: no capabilities, and the setup claim on both tokens, so neither the
-// access token nor anything refreshed from it reaches the admin API.
-func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string, epoch int) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, nil, true, epoch)
+// setup: the setup claim on both tokens, so neither the access token nor
+// anything refreshed from it reaches the admin API.
+func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string, epoch int, amr []string) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, amr, true, epoch)
 }
 
-func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, capabilities []string, setupPending bool, epoch int) (*TokenPair, error) {
+func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, amr []string, setupPending bool, epoch int) (*TokenPair, error) {
 	now := time.Now()
 
 	// Access token
@@ -201,7 +224,7 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, c
 		UserType:        "admin",
 		AdminUserID:     adminUserID,
 		Username:        username,
-		Capabilities:    capabilities,
+		AMR:             amr,
 		SetupPending:    setupPending,
 		CredentialEpoch: epoch,
 		TokenType:       "access",
@@ -230,7 +253,7 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, c
 		UserType:        "admin",
 		AdminUserID:     adminUserID,
 		Username:        username,
-		Capabilities:    capabilities,
+		AMR:             amr,
 		SetupPending:    setupPending,
 		CredentialEpoch: epoch,
 		TokenType:       "refresh",

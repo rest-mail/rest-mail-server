@@ -34,7 +34,7 @@ func refreshWith(t *testing.T, jwt *auth.JWTService, refreshToken string) *auth.
 
 func TestRefresh_PreservesAdminSession(t *testing.T) {
 	jwt := auth.NewJWTService("test-secret", 15*time.Minute, 7*24*time.Hour)
-	pair, err := jwt.GenerateAdminTokenPair(7, "root", []string{"*"})
+	pair, err := jwt.GenerateAdminSession(7, "root", 0, []string{auth.AMRPassword, auth.AMROTP})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,8 +46,9 @@ func TestRefresh_PreservesAdminSession(t *testing.T) {
 	if claims.AdminUserID != 7 {
 		t.Errorf("AdminUserID=%d, want 7", claims.AdminUserID)
 	}
-	if len(claims.Capabilities) != 1 || claims.Capabilities[0] != "*" {
-		t.Errorf("Capabilities=%v, want [*]", claims.Capabilities)
+	// How the session signed in is kept: a refresh is not a new sign-in.
+	if !claims.HasAMR(auth.AMROTP) || !claims.HasAMR(auth.AMRPassword) {
+		t.Errorf("AMR=%v, want [pwd otp]", claims.AMR)
 	}
 }
 

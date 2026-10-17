@@ -21,6 +21,7 @@ import (
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -167,6 +168,9 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	// The same additive steps the server runs at boot, so this works against a
 	// database the server has not started on yet.
 	if err := db.AutoMigrate(database, false); err != nil {
+		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
+	}
+	if _, err := grants.Migrate(database); err != nil {
 		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
 	}
 	if err := bootstrap.EnsureRBAC(database); err != nil {

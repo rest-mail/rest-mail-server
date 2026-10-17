@@ -10,6 +10,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/instance"
 	"github.com/restmail/restmail/internal/seed"
 	"gorm.io/gorm"
@@ -44,6 +45,10 @@ func main() {
 	// Seeding is additive-only (allowDestructive=false); it never issues
 	// destructive DML (issue #196).
 	if err := db.AutoMigrate(database, false); err != nil {
+		slog.Error("failed to migrate", "error", err)
+		os.Exit(1)
+	}
+	if _, err := grants.Migrate(database); err != nil {
 		slog.Error("failed to migrate", "error", err)
 		os.Exit(1)
 	}
@@ -186,17 +191,17 @@ func seedRBAC(database *gorm.DB) error {
 	}
 	slog.Info("admin user", "username", "admin", "created", result.RowsAffected > 0)
 
-	// Assign superadmin role to admin user
-	var ur models.UserRole
-	result = database.Where("user_id = ? AND role_id = ?", adminUser.ID, superadminRole.ID).
-		FirstOrCreate(&ur, models.UserRole{
-			UserID: adminUser.ID,
-			RoleID: superadminRole.ID,
-		})
-	if result.Error != nil {
-		return result.Error
+	// Superadmin at "*" for the fixture admin.
+	var created bool
+	err = database.Transaction(func(tx *gorm.DB) error {
+		var err error
+		created, err = grants.EnsureSystem(tx, models.GrantHolderAdmin, adminUser.ID, superadminRole.ID, grants.All, models.GrantActive)
+		return err
+	})
+	if err != nil {
+		return err
 	}
-	slog.Info("user role assigned", "user", "admin", "role", "superadmin", "created", result.RowsAffected > 0)
+	slog.Info("grant", "user", "admin", "role", "superadmin", "scope", grants.All, "created", created)
 
 	return nil
 }

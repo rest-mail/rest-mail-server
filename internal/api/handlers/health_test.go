@@ -92,7 +92,7 @@ func TestHealth_CertDetailGatedByAuth(t *testing.T) {
 	}
 
 	// Authenticated admin: certificate inventory is included.
-	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin")
 	if err != nil {
 		t.Fatalf("mint admin token: %v", err)
 	}

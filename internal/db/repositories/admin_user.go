@@ -20,69 +20,24 @@ func NewAdminUserRepository(db *gorm.DB) *AdminUserRepository {
 	return &AdminUserRepository{db: db}
 }
 
-// GetByUsername retrieves a user by username with their roles preloaded.
+// GetByUsername retrieves a user by username.
 func (r *AdminUserRepository) GetByUsername(username string) (*models.AdminUser, error) {
 	var user models.AdminUser
-	err := r.db.Preload("Roles").Where("username = ?", username).First(&user).Error
+	err := r.db.Where("username = ?", username).First(&user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrUserNotFound
 	}
 	return &user, err
 }
 
-// GetByID retrieves a user by ID with their roles preloaded.
+// GetByID retrieves a user by ID.
 func (r *AdminUserRepository) GetByID(id uint) (*models.AdminUser, error) {
 	var user models.AdminUser
-	err := r.db.Preload("Roles").First(&user, id).Error
+	err := r.db.First(&user, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrUserNotFound
 	}
 	return &user, err
-}
-
-// GetCapabilities returns all capabilities for a user across all their roles.
-func (r *AdminUserRepository) GetCapabilities(userID uint) ([]models.Capability, error) {
-	var capabilities []models.Capability
-
-	// Get all role IDs for this user
-	var userRoles []models.UserRole
-	if err := r.db.Where("user_id = ?", userID).Find(&userRoles).Error; err != nil {
-		return nil, err
-	}
-
-	if len(userRoles) == 0 {
-		return capabilities, nil
-	}
-
-	roleIDs := make([]uint, len(userRoles))
-	for i, ur := range userRoles {
-		roleIDs[i] = ur.RoleID
-	}
-
-	// Get all capabilities for these roles
-	err := r.db.Joins("JOIN admin_roles_capabilities ON admin_roles_capabilities.capability_id = admin_capabilities.id").
-		Where("admin_roles_capabilities.role_id IN ?", roleIDs).
-		Distinct().
-		Find(&capabilities).Error
-
-	return capabilities, err
-}
-
-// HasCapability checks if a user has a specific capability.
-// Handles wildcard "*" permission.
-func (r *AdminUserRepository) HasCapability(userID uint, capabilityName string) (bool, error) {
-	capabilities, err := r.GetCapabilities(userID)
-	if err != nil {
-		return false, err
-	}
-
-	for _, cap := range capabilities {
-		if cap.Name == "*" || cap.Name == capabilityName {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // Create creates a new admin user with the provided details.
@@ -126,7 +81,7 @@ func (r *AdminUserRepository) Delete(userID uint) error {
 // List returns all admin users.
 func (r *AdminUserRepository) List() ([]models.AdminUser, error) {
 	var users []models.AdminUser
-	err := r.db.Preload("Roles").Find(&users).Error
+	err := r.db.Find(&users).Error
 	return users, err
 }
 
@@ -139,57 +94,8 @@ func (r *AdminUserRepository) ListUsers(limit, offset int) ([]models.AdminUser, 
 		return nil, 0, err
 	}
 
-	err := r.db.Preload("Roles").Limit(limit).Offset(offset).Find(&users).Error
+	err := r.db.Limit(limit).Offset(offset).Find(&users).Error
 	return users, total, err
-}
-
-// GetRoles returns all roles for a user.
-func (r *AdminUserRepository) GetRoles(userID uint) ([]models.Role, error) {
-	var user models.AdminUser
-	if err := r.db.Preload("Roles").First(&user, userID).Error; err != nil {
-		return nil, err
-	}
-	return user.Roles, nil
-}
-
-// AssignRole assigns a role to a user.
-func (r *AdminUserRepository) AssignRole(userID, roleID uint, grantedBy *uint) error {
-	userRole := models.UserRole{
-		UserID:    userID,
-		RoleID:    roleID,
-		GrantedBy: grantedBy,
-	}
-	return r.db.Create(&userRole).Error
-}
-
-// AssignRoles replaces all roles for a user with the provided role IDs.
-func (r *AdminUserRepository) AssignRoles(userID uint, roleIDs []uint) error {
-	// Start transaction
-	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Delete existing role assignments
-		if err := tx.Where("user_id = ?", userID).Delete(&models.UserRole{}).Error; err != nil {
-			return err
-		}
-
-		// Create new role assignments
-		for _, roleID := range roleIDs {
-			userRole := models.UserRole{
-				UserID: userID,
-				RoleID: roleID,
-			}
-			if err := tx.Create(&userRole).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-}
-
-// RevokeRole removes a role from a user.
-func (r *AdminUserRepository) RevokeRole(userID, roleID uint) error {
-	return r.db.Where("user_id = ? AND role_id = ?", userID, roleID).
-		Delete(&models.UserRole{}).Error
 }
 
 // ListRoles returns all roles.
