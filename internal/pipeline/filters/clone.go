@@ -21,13 +21,3 @@ func cloneRawHeaders(in map[string][]string) map[string][]string {
 	}
 	return out
 }
-
-// cloneStringMap returns a shallow copy of a string map, or a fresh empty map
-// when the input is nil.
-func cloneStringMap(in map[string]string) map[string]string {
-	out := make(map[string]string, len(in)+1)
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}

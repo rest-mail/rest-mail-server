@@ -1871,6 +1871,11 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// counted — this measures mail received from the internet.
 	recordInboundReceived(params.ReceivedTLS)
 
+	// Authentication-Results claiming this server's authserv-id did not come
+	// from this server: remove them before anything parses, verifies or stores
+	// the message (RFC 8601 §5).
+	params.RawMessage = rmime.StripAuthResults(params.RawMessage, pipeline.AuthServID)
+
 	// ── Build pipeline EmailJSON ─────────────────────────────────────
 	var toAddrs []pipeline.Address
 	if params.RecipientsTo != nil {
@@ -1968,6 +1973,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// deliveredTrace, set in the pipeline's continue branch, defers recording the
 	// happy-path trace until the Message row exists so its message_id is non-nil.
 	var deliveredTrace *traceInputs
+	// authResults are the pipeline's verdicts, written onto the stored message.
+	var authResults []pipeline.AuthResult
 	if h.engine != nil {
 		var pipelineCfg *pipeline.PipelineConfig
 		var dbPipeline models.Pipeline
@@ -2040,6 +2047,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			return nil, fmt.Errorf("deferred: try again later")
 		case pipeline.ActionContinue:
 			emailJSON = pipelineResult.FinalEmail
+			authResults = pipelineResult.Auth
 			// Stash the delivered trace; it is recorded after the Message row is
 			// created so message_id is non-nil (the only path where it is set).
 			base := traceBase
@@ -2073,20 +2081,14 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	// ── Persist Authentication-Results ───────────────────────────────
-	// Prepend any Authentication-Results the inbound pipeline produced (the
-	// dkim/spf/dmarc verdicts) onto the stored raw message — standard receiver
+	// Prepend the inbound pipeline's spf/dkim/arc/dmarc verdicts onto the stored
+	// raw message as one Authentication-Results field — standard receiver
 	// behavior — so the outcome is visible via the message API, not buried in
-	// the pipeline execution log.
-	if emailJSON != nil && params.RawMessage != "" {
-		if ars := emailJSON.Headers.Raw["Authentication-Results"]; len(ars) > 0 {
-			var b strings.Builder
-			for _, ar := range ars {
-				b.WriteString("Authentication-Results: ")
-				b.WriteString(ar)
-				b.WriteString("\r\n")
-			}
-			params.RawMessage = b.String() + params.RawMessage
-		}
+	// the pipeline execution log. It is written from the recorded verdicts, not
+	// copied from the pipeline message's headers, which a script may have
+	// changed.
+	if params.RawMessage != "" {
+		params.RawMessage = pipeline.AuthResultsHeader(authResults) + params.RawMessage
 	}
 
 	// ── Ensure Message-ID exists ────────────────────────────────────

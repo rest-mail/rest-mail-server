@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -74,5 +75,44 @@ func TestDeliverMessage_HonorsFolderFlagsAndInternalDate(t *testing.T) {
 	if msg.ReceivedAt.Unix() != want.Unix() {
 		t.Errorf("delivered message INTERNALDATE = %v, want %v (received_at was dropped, defaulted to now())",
 			msg.ReceivedAt.UTC(), want)
+	}
+}
+
+// TestDeliverMessage_StripsOurAuthResults checks the incoming-header scrub on
+// the delivery path (RFC 8601 §5): an Authentication-Results field claiming
+// this server's authserv-id is not stored, while another server's is kept.
+func TestDeliverMessage_StripsOurAuthResults(t *testing.T) {
+	db := openMsgDeleteTestDB(t)
+	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
+		t.Skipf("deliver DB test skipped: migrate quota_usage failed (%v)", err)
+	}
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+
+	fx := seedMsgDeleteFixture(t, tx, 0)
+
+	raw := "Authentication-Results: restmail; spf=pass smtp.mailfrom=victim.example; dkim=pass header.d=victim.example; dmarc=pass\r\n" +
+		"Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=victim.example\r\n" +
+		"From: ceo@victim.example\r\nTo: user@local.test\r\nSubject: Forged results\r\n\r\nhello\r\n"
+	body := fmt.Sprintf(`{"mailbox_id": %d, "sender": "ceo@victim.example", "subject": "Forged results", "raw_message": %q}`,
+		fx.mailbox.ID, base64.StdEncoding.EncodeToString([]byte(raw)))
+
+	h := NewMessageHandler(tx, nil, nil, "", nil)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages/deliver", strings.NewReader(body))
+	h.DeliverMessage(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("deliver: expected 201, got %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	var msg models.Message
+	if err := tx.Where("mailbox_id = ? AND subject = ?", fx.mailbox.ID, "Forged results").First(&msg).Error; err != nil {
+		t.Fatalf("reload delivered message: %v", err)
+	}
+	if strings.Contains(msg.RawMessage, "restmail;") || strings.Contains(msg.RawMessage, "dmarc=pass") {
+		t.Errorf("stored message kept the forged Authentication-Results:\n%s", msg.RawMessage)
+	}
+	if !strings.Contains(msg.RawMessage, "Authentication-Results: mx.example.net;") {
+		t.Errorf("stored message lost another server's Authentication-Results:\n%s", msg.RawMessage)
 	}
 }

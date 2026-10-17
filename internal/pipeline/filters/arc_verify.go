@@ -15,8 +15,10 @@ import (
 // messages per RFC 8617. It validates chain structure (instance numbering, cv
 // values, header set completeness) and, when the raw message is available,
 // cryptographically verifies the chain (most recent ARC-Message-Signature over
-// the message plus every ARC-Seal over the header chain, via github.com/rest-mail/go-arc),
-// adding arc=pass/fail/none to Authentication-Results.
+// the message plus every ARC-Seal over the header chain, via github.com/rest-mail/go-arc).
+// It records the verdict, with the most recent sealer's domain, as an
+// AuthResult for dmarc_check, and writes the matching arc= Authentication-Results
+// entry for downstream scripts.
 type arcVerifyFilter struct{}
 
 func init() {
@@ -51,13 +53,11 @@ var sealDomainRe = regexp.MustCompile(`\bd=([^;\s]+)`)
 func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
 
-	// Clone the maps before mutating them: `modified := *email` shares
-	// Headers.Raw / Headers.Extra / Metadata with the caller's original, so an
-	// in-place append/overwrite (addARCAuthResult, arc_status) would leak back
-	// onto the input (issue #201). Cloning also yields non-nil maps.
+	// Clone the header map before mutating it: `modified := *email` shares
+	// Headers.Raw with the caller's original, so an in-place append
+	// (recordARC) would leak back onto the input (issue #201). Cloning also
+	// yields a non-nil map.
 	modified.Headers.Raw = cloneRawHeaders(email.Headers.Raw)
-	modified.Headers.Extra = cloneStringMap(email.Headers.Extra)
-	modified.Metadata = cloneStringMap(email.Metadata)
 
 	// Collect ARC headers from Raw
 	arcAAR := email.Headers.Raw["Arc-Authentication-Results"]
@@ -66,8 +66,7 @@ func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 
 	// If no ARC headers at all, result is "none"
 	if len(arcAAR) == 0 && len(arcAMS) == 0 && len(arcAS) == 0 {
-		addARCAuthResult(&modified, "none")
-		modified.Metadata["arc_status"] = "none"
+		recordARC(ctx, &modified, "none", "")
 
 		return &pipeline.FilterResult{
 			Type:    pipeline.FilterTypeTransform,
@@ -116,8 +115,7 @@ func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 	}
 
 	if len(sets) == 0 {
-		addARCAuthResult(&modified, "fail")
-		modified.Metadata["arc_status"] = "fail"
+		recordARC(ctx, &modified, "fail", "")
 
 		return &pipeline.FilterResult{
 			Type:    pipeline.FilterTypeTransform,
@@ -156,18 +154,15 @@ func (f *arcVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON
 		}
 	}
 
-	addARCAuthResult(&modified, result)
-	modified.Metadata["arc_status"] = result
-
-	// Record the most recent ARC-Seal's signing domain (its d= tag) so
-	// dmarc_check can gate the DMARC override on the trusted-sealer allowlist
-	// (#178). This is the sealer that vouches for the whole chain; trust is
-	// anchored on it, not on any earlier hop.
+	// Record the most recent ARC-Seal's signing domain (its d= tag) with the
+	// verdict so dmarc_check can gate the DMARC override on the trusted-sealer
+	// allowlist (#178). This is the sealer that vouches for the whole chain;
+	// trust is anchored on it, not on any earlier hop.
+	sealer := ""
 	if s := sets[instances[len(instances)-1]]; s != nil {
-		if d := parseSealDomain(s.Seal); d != "" {
-			modified.Metadata["arc_sealer"] = d
-		}
+		sealer = parseSealDomain(s.Seal)
 	}
+	recordARC(ctx, &modified, result, sealer)
 
 	return &pipeline.FilterResult{
 		Type:    pipeline.FilterTypeTransform,
@@ -274,21 +269,13 @@ func parseSealDomain(seal string) string {
 	return m[1]
 }
 
-// addARCAuthResult appends an arc= authentication result to the email headers.
-func addARCAuthResult(email *pipeline.EmailJSON, result string) {
-	arcResult := "restmail; arc=" + result
-
-	// Add to Raw (append)
+// recordARC records the ARC verdict and the most recent sealer's domain, and
+// appends the matching arc= Authentication-Results entry to the message.
+func recordARC(ctx context.Context, email *pipeline.EmailJSON, result, sealer string) {
+	verdict := pipeline.AuthResult{Method: pipeline.AuthARC, Result: result, Domain: sealer}
+	pipeline.AuthResultsFromContext(ctx).Add(verdict)
 	email.Headers.Raw["Authentication-Results"] = append(
 		email.Headers.Raw["Authentication-Results"],
-		arcResult,
+		pipeline.AuthResultsValue([]pipeline.AuthResult{verdict}),
 	)
-
-	// Add to Extra (append to existing if present)
-	existing := email.Headers.Extra["Authentication-Results"]
-	if existing != "" {
-		email.Headers.Extra["Authentication-Results"] = existing + "; " + arcResult
-	} else {
-		email.Headers.Extra["Authentication-Results"] = arcResult
-	}
 }
