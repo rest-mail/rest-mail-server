@@ -1,0 +1,258 @@
+name: E2E suite
+
+# The full end-to-end topology and everything run against it, as a reusable
+# workflow: e2e.yml runs it on every code change (its gate is the required
+# check `E2E (full topology)`), and contract-fuzz.yml runs it nightly with the
+# contract tests' fuzz phase instead of their gating phases.
+on:
+  workflow_call:
+    inputs:
+      contract-phases:
+        description: >-
+          "gate" runs the contract tests' examples and coverage phases and
+          fails on any finding; "fuzz" runs the fuzz phase, reports what it
+          finds as an artifact, and fails nothing.
+        type: string
+        default: gate
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  suite:
+    name: topology
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # Flip "stack not reachable" preconditions (no admin token, gateway not
+      # dialable, …) from t.Skip into t.Fatal inside the suite — see
+      # tests/e2e/suite_test.go. A half-up topology must go RED, never green by
+      # skipping every stage. Forwarded into the test container by `test:e2e`.
+      E2E_REQUIRE_STACK: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: Install chore (pinned + checksum-verified)
+        # The repo is driven by chores.yml, whose tasks declare `args:`. go-task
+        # parses the file but ignores those declarations, so a task that takes a
+        # parameter silently runs with its default — CI has to use the same runner
+        # as a developer's machine or it is testing something else.
+        #
+        # Do NOT pipe-execute an install script from the network — that is an
+        # arbitrary-code-execution supply-chain surface. Download a specific
+        # release tarball and verify its sha256 before installing.
+        env:
+          CHORE_VERSION: 0.17.0
+          # sha256 of chore-${CHORE_VERSION}-linux-x86_64.tar.gz, taken from that
+          # release's checksums.txt. Bump both together when upgrading. The
+          # release is built reproducibly (-trimpath, -buildvcs=false, pinned
+          # toolchain) and its pipeline rebuilds every artifact to prove the
+          # published hash, so this value is verifiable rather than merely trusted.
+          CHORE_SHA256: b9a565d2937c67e9b9d0e6bdb48a2553f540fe268f78d9910d1f36952ca88b43
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          asset="chore-${CHORE_VERSION}-linux-x86_64.tar.gz"
+          curl --location --silent --show-error --fail \
+            "https://github.com/antimatter-studios/chore/releases/download/v${CHORE_VERSION}/${asset}" \
+            -o "$tmp/chore.tar.gz"
+          echo "${CHORE_SHA256}  $tmp/chore.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/chore.tar.gz" -C "$tmp" chore
+          sudo install -m 0755 "$tmp/chore" /usr/local/bin/chore
+          rm -rf "$tmp"
+          chore --version
+
+      - name: Populate Go module cache
+        # `test:e2e` and `instance:mtls:issue` mount the host GOMODCACHE
+        # read-only into a golang container; it must be complete up front or
+        # those `go` invocations fail trying to write to a read-only cache.
+        run: go mod download
+
+      - name: Route git@github over HTTPS
+        # testbed:init / mailserver:init clone via `git@github.com:`. The hosted
+        # runner has no SSH key, so rewrite those URLs to anonymous HTTPS — the
+        # rest-mail substrate repos are public.
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Clone testbed + reference-mailserver substrate (pinned)
+        # The `testbed` include must resolve before `chore e2e:up` is parsed;
+        # reference-mailserver is also cloned by e2e:up, pre-cloning is harmless.
+        #
+        # The init tasks clone each repo's DEFAULT BRANCH (no ref). Pin the
+        # checkout to a known-good commit so an e2e run is reproducible and
+        # tamper-evident: an upstream force-push or a compromised default branch
+        # cannot silently change what CI executes — a missing/rewritten pin fails
+        # the step loudly instead. Bump these SHAs deliberately when adopting
+        # upstream substrate changes.
+        env:
+          TESTBED_REF: 398d29cd40eb1a8553d710dc25491c2a4b727a37              # rest-mail/testbed @ master
+          REFERENCE_MAILSERVER_REF: 4f6f8e0fb61d6aac9a3adffa38f05c55be27e25d  # rest-mail/reference-mailserver @ master
+        run: |
+          set -euo pipefail
+          chore testbed:init
+          chore mailserver:init
+          git -C .workspace/testbed fetch --quiet origin "$TESTBED_REF" || true
+          git -C .workspace/testbed checkout --quiet "$TESTBED_REF"
+          git -C .workspace/reference-mailserver fetch --quiet origin "$REFERENCE_MAILSERVER_REF" || true
+          git -C .workspace/reference-mailserver checkout --quiet "$REFERENCE_MAILSERVER_REF"
+          echo "testbed pinned @ $(git -C .workspace/testbed rev-parse --short HEAD)"
+          echo "reference-mailserver pinned @ $(git -C .workspace/reference-mailserver rev-parse --short HEAD)"
+
+      - name: Patch reference dkim:provision for native-Linux Docker
+        # reference-mailserver's dkim:provision generates the DKIM key as
+        # container-root, then runs `chmod 644` on it FROM THE HOST. On Docker
+        # Desktop bind-mount files are host-user-owned so that works; on native
+        # Linux (this runner) the file is root-owned and the non-root runner
+        # can't chmod it ("Operation not permitted"). Run that chmod inside a
+        # container instead — the same idiom the task already uses two lines
+        # below for the fragment copy. (Follow-up: fix this upstream in
+        # rest-mail/reference-mailserver so it's portable off Docker Desktop.)
+        run: |
+          # Whichever name that project ships: it is migrating from Taskfile.yml to
+          # chores.yml, and this must not break on either side of that.
+          f=""
+          for c in chores.yml Taskfile.yml; do
+            [ -f ".workspace/reference-mailserver/$c" ] && f=".workspace/reference-mailserver/$c" && break
+          done
+          if [ -z "$f" ]; then
+            echo "::error::no chores.yml or Taskfile.yml in reference-mailserver" >&2
+            exit 1
+          fi
+          perl -pi -e 's{chmod 644 "\$KEYDIR/\$DOMAIN\.\$SEL\.key"}{docker run --rm -v "\$(pwd)/\$KEYDIR:/keys" alpine:3.20 chmod 644 "/keys/\$DOMAIN.\$SEL.key"}g' "$f"
+          if grep -qF 'chmod 644 "$KEYDIR/$DOMAIN.$SEL.key"' "$f"; then
+            echo "::error::dkim:provision chmod patch did not apply — upstream reference-mailserver task file changed"
+            exit 1
+          fi
+          echo "patched host chmod -> containerized chmod:"
+          grep -nF 'alpine:3.20 chmod 644' "$f"
+
+      - name: Bring up e2e topology
+        run: chore e2e:up
+
+      - name: Run e2e stages
+        run: |
+          set -o pipefail
+          chore test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"
+
+      - name: Assert stages executed (guard against silent skips)
+        # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
+        # the stages actually RAN. Fail if any top-level stage skipped, or if
+        # fewer than all 14 stages reached PASS.
+        run: |
+          log="$RUNNER_TEMP/e2e.log"
+          skipped=$(grep -cE -- '--- SKIP: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
+          passed=$(grep -cE -- '--- PASS: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
+          echo "stage-level results — PASS: $passed  SKIP: $skipped"
+          if [ "$skipped" -ne 0 ]; then
+            echo "::error::an e2e stage was SKIPPED — the stack was not fully exercised"
+            grep -E -- '--- SKIP: TestStages/Stage' "$log" || true
+            exit 1
+          fi
+          if [ "$passed" -lt 14 ]; then
+            echo "::error::expected all 14 e2e stages to PASS, only $passed did"
+            exit 1
+          fi
+          echo "all 14 e2e stages executed and passed"
+
+      - name: Install vertrag (pinned + checksum-verified)
+        # The contract tester (#376), as its released binary rather than a Go
+        # dependency: vertrag needs Go 1.26 and this module is on 1.25. Verified
+        # the same way as chore above, never piped from the network.
+        env:
+          VERTRAG_VERSION: 0.27.0
+          # sha256 of vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz, from that
+          # release's checksums.txt. Bump both together when upgrading.
+          VERTRAG_SHA256: 7e9af304768f82cce9b62369d017a92f5c0bfeb9697a4e7a18386342c6876f49
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          asset="vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz"
+          curl --location --silent --show-error --fail \
+            "https://github.com/antimatter-studios/vertrag/releases/download/v${VERTRAG_VERSION}/${asset}" \
+            -o "$tmp/vertrag.tar.gz"
+          echo "${VERTRAG_SHA256}  $tmp/vertrag.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/vertrag.tar.gz" -C "$tmp" vertrag
+          sudo install -m 0755 "$tmp/vertrag" /usr/local/bin/vertrag
+          rm -rf "$tmp"
+          vertrag version
+
+      - name: Contract tests (examples and coverage)
+        # Every operation in openapi.yaml, sent as the fixture admin against the
+        # topology the stages above just exercised, ordered by the spec's links
+        # (--sequence) so each read, update and delete addresses what its create
+        # made. The examples phase checks each documented answer; the coverage
+        # phase sends every boundary each schema implies and requires a 4xx for
+        # each one outside it. Both are deterministic, so both gate, in the
+        # step after this one. See vertrag.yml and tests/contract/.
+        id: contract
+        if: inputs.contract-phases == 'gate'
+        run: |
+          set -o pipefail
+          # 1 is a failed transaction and 2 a failed boundary probe: findings,
+          # which the gate below judges from the report. Anything else means
+          # vertrag could not run at all.
+          code=0
+          # vertrag writes its report here and makes no directories itself.
+          mkdir -p .cache/contract
+          vertrag run --sequence --phases coverage 2>&1 | tee "$RUNNER_TEMP/contract.log" || code=$?
+          echo "vertrag exited $code"
+          if [ "$code" -gt 2 ]; then exit "$code"; fi
+
+      - name: Contract gate (every operation passes; the coverage baseline only shrinks)
+        # Examples: every operation not excluded in vertrag.yml passes. Coverage:
+        # no failing probe outside tests/contract/coverage-baseline.txt, and no
+        # operation left in it once its probes pass.
+        # TODO(antimatter-studios/vertrag#70): `vertrag run --require-surface 100`
+        # for the examples half, once vertrag reports surface coverage itself.
+        if: always() && steps.contract.outcome != 'skipped'
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
+            tests/contract/coverage-baseline.txt
+
+      - name: Contract tests (fuzz)
+        # Values drawn from each schema, with shrinking and a replayable seed
+        # (in the log). Exploratory, so it reports and never fails the run:
+        # findings exit 2, and its report is uploaded with the logs below.
+        if: inputs.contract-phases == 'fuzz'
+        run: |
+          mkdir -p .cache/contract
+          vertrag run --sequence --phases fuzz --output .cache/contract/fuzz.xml --reporter junit \
+            > "$RUNNER_TEMP/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
+          cat "$RUNNER_TEMP/contract-fuzz.log"
+
+      - name: Collect container logs
+        if: always()
+        run: |
+          out="$RUNNER_TEMP/e2e-logs"
+          mkdir -p "$out"
+          cp "$RUNNER_TEMP/e2e.log" "$out/e2e-test-output.log" 2>/dev/null || true
+          cp "$RUNNER_TEMP"/contract*.log "$out/" 2>/dev/null || true
+          cp .cache/contract/*.xml "$out/" 2>/dev/null || true
+          docker ps -a > "$out/docker-ps.txt" 2>&1 || true
+          docker network inspect testbed_mailnet > "$out/network.txt" 2>&1 || true
+          for c in $(docker ps -aq); do
+            name=$(docker inspect --format '{{.Name}}' "$c" | sed 's|^/||')
+            docker logs "$c" > "$out/container-$name.log" 2>&1 || true
+          done
+
+      - name: Upload container logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-container-logs
+          path: ${{ runner.temp }}/e2e-logs
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Tear down e2e topology
+        if: always()
+        run: chore e2e:down

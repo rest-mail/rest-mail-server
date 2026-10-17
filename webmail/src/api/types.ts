@@ -312,7 +312,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -336,7 +339,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -363,8 +369,12 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
+                /** @example 1 */
                 credential_id: number;
             };
             cookie?: never;
@@ -411,7 +421,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description The device's `id` */
+                /**
+                 * @description The device's `id`
+                 * @example 1
+                 */
                 device_id: string;
             };
             cookie?: never;
@@ -434,7 +447,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -455,9 +471,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Folder name (e.g. INBOX, Sent, Drafts, Trash) */
+                /**
+                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
+                 * @example INBOX
+                 */
                 folder: components["parameters"]["FolderName"];
             };
             cookie?: never;
@@ -478,9 +500,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Folder name (e.g. INBOX, Sent, Drafts, Trash) */
+                /**
+                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
+                 * @example INBOX
+                 */
                 folder: components["parameters"]["FolderName"];
             };
             cookie?: never;
@@ -500,7 +528,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -539,7 +570,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -559,7 +593,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -596,7 +633,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -616,7 +656,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -636,9 +679,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Thread identifier */
+                /**
+                 * @description Thread identifier
+                 * @example 1
+                 */
                 threadID: string;
             };
             cookie?: never;
@@ -658,7 +707,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -678,7 +730,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -698,7 +753,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Attachment ID */
+                /**
+                 * @description Attachment ID
+                 * @example 1
+                 */
                 id: number;
             };
             cookie?: never;
@@ -718,7 +776,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -738,7 +799,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -759,9 +823,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Contact ID */
+                /**
+                 * @description Contact ID
+                 * @example 1
+                 */
                 cid: number;
             };
             cookie?: never;
@@ -782,7 +852,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -802,7 +875,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -822,7 +898,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -842,7 +921,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -864,7 +946,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -886,7 +971,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -906,7 +994,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -926,9 +1017,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Quarantine entry ID */
+                /**
+                 * @description Quarantine entry ID
+                 * @example 1
+                 */
                 mid: number;
             };
             cookie?: never;
@@ -948,9 +1045,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Quarantine entry ID */
+                /**
+                 * @description Quarantine entry ID
+                 * @example 1
+                 */
                 mid: number;
             };
             cookie?: never;
@@ -970,7 +1073,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -1108,7 +1214,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1150,7 +1259,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1184,7 +1296,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1225,7 +1340,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1265,7 +1383,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1375,7 +1496,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1397,7 +1521,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1502,7 +1629,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1523,7 +1653,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1543,7 +1676,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1563,7 +1699,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1584,9 +1723,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
-                /** @description Sender rule entry ID */
+                /**
+                 * @description Sender rule entry ID
+                 * @example 1
+                 */
                 eid: number;
             };
             cookie?: never;
@@ -1606,7 +1751,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1627,9 +1775,15 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
-                /** @description Sender rule entry ID */
+                /**
+                 * @description Sender rule entry ID
+                 * @example 1
+                 */
                 eid: number;
             };
             cookie?: never;
@@ -1666,7 +1820,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1708,7 +1865,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1747,7 +1907,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -1767,7 +1930,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description IP address to unban */
+                /**
+                 * @description IP address to unban
+                 * @example 192.0.2.10
+                 */
                 ip: string;
             };
             cookie?: never;
@@ -2023,7 +2189,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -2043,7 +2212,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -2141,7 +2313,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -2184,7 +2359,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -2207,7 +2385,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -2230,7 +2411,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -2253,7 +2437,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -2268,12 +2455,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/domains/{id}/suppressions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Domain ID
+                 * @example 1
+                 */
+                id: components["parameters"]["DomainId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a domain's suppressed recipients
+         * @description Recipients the domain's mail is no longer sent to, because mail from
+         *     the domain to them bounced as undeliverable: the mailbox, or its
+         *     domain, does not exist. A message to one is bounced at once, with a
+         *     DSN to its sender, until the suppression expires (SUPPRESSION_TTL,
+         *     90 days by default). Expired suppressions are not listed.
+         */
+        get: operations["listSuppressions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/suppressions/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Domain ID
+                 * @example 1
+                 */
+                id: components["parameters"]["DomainId"];
+                /**
+                 * @description Suppression ID
+                 * @example 1
+                 */
+                sid: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear a suppression
+         * @description The domain's mail to the address is tried again.
+         */
+        delete: operations["clearSuppression"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/domains/{id}/mta-sts": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -2329,7 +2580,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -2681,21 +2935,17 @@ export interface components {
             thread_id?: string;
             sender: string;
             sender_name?: string;
-            /** @description JSON array of recipient objects */
-            recipients_to?: {
-                address?: string;
-                name?: string;
-            }[] | null;
-            /** @description JSON array of CC recipient objects */
-            recipients_cc?: {
-                address?: string;
-                name?: string;
-            }[] | null;
+            /** @description The recipients' addresses. */
+            recipients_to?: string[] | null;
+            /** @description The CC recipients' addresses. */
+            recipients_cc?: string[] | null;
             subject: string;
             body_text?: string;
             body_html?: string;
-            /** @description Raw email headers as JSON */
-            headers?: Record<string, never> | null;
+            /** @description The message's header fields as it arrived, each name with its values; an empty array when none were recorded (mail sent from here, drafts). */
+            headers?: {
+                [key: string]: string[];
+            } | unknown[] | null;
             size_bytes?: number;
             /** @description Exact octet count of the stored raw RFC 2822 message (the size a protocol client receives when the raw form is served verbatim, e.g. IMAP RFC822.SIZE / POP3 LIST). 0 when the server holds no stored raw form; consumers should fall back to size_bytes. */
             raw_size?: number;
@@ -2904,6 +3154,8 @@ export interface components {
             body_text?: string;
             body_html?: string;
             message_id?: string;
+            /** @description The Date header (RFC 5322); the inbound pipeline rejects a message without one */
+            date?: string;
             in_reply_to?: string;
             references?: string;
             /** @description Raw headers as JSON */
@@ -3057,6 +3309,21 @@ export interface components {
             duration_ms: number;
             /** @description The email after all transformations */
             final_email?: Record<string, never>;
+            /** @description The verdicts the authentication filters (spf_check, dkim_verify, arc_verify, dmarc_check) recorded, in order. A delivered message's Authentication-Results header is written from these. */
+            auth_results?: components["schemas"]["AuthResult"][];
+        };
+        AuthResult: {
+            /** @enum {string} */
+            method: "spf" | "dkim" | "arc" | "dmarc";
+            /** @description The RFC 8601 result, such as pass, fail, softfail, neutral, none, temperror or permerror */
+            result: string;
+            /**
+             * @description The identity checked. Absent for arc.
+             * @enum {string}
+             */
+            property?: "smtp.mailfrom" | "smtp.helo" | "header.d" | "header.from";
+            /** @description The domain checked. For dkim, the signature's d=; for arc, the most recent ARC-Seal's d=. */
+            domain?: string;
         };
         FilterResult: {
             /** @enum {string} */
@@ -3150,6 +3417,36 @@ export interface components {
             created_by?: number | null;
             /** Format: date-time */
             created_at: string;
+        };
+        Suppression: {
+            id: number;
+            /** @description The sending domain */
+            domain_id: number;
+            /** @description The suppressed recipient, lower-cased */
+            address: string;
+            /** @enum {string} */
+            reason: "hard_bounce";
+            /**
+             * @description How the bounce that suppressed the address was classified
+             * @enum {string}
+             */
+            failure_category: "bad_mailbox" | "bad_domain";
+            /** @description The failure that suppressed the address, with the remote's reply */
+            last_error?: string;
+            /** @description The sent message whose bounce suppressed the address */
+            message_id?: number | null;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the address last bounced
+             */
+            updated_at: string;
+            /**
+             * Format: date-time
+             * @description When the address stops being suppressed
+             */
+            expires_at: string;
         };
         CreateSenderRuleRequest: {
             /** @description Email address (spam@evil.com) or domain pattern (@evil.com) */
@@ -3356,8 +3653,11 @@ export interface components {
             /** @enum {string} */
             mode: "active" | "eligible";
             granted_by: {
-                /** @enum {string} */
-                kind: "admin" | "system";
+                /**
+                 * @description An account's grant names the account that made it; the bootstrap admin's is the system's.
+                 * @enum {string}
+                 */
+                kind: "account" | "system";
                 id?: number | null;
             };
             /** Format: date-time */
@@ -3606,9 +3906,10 @@ export interface components {
         UpdateCustomFilterRequest: {
             name?: string;
             description?: string;
-            filter_type?: string;
             /** @enum {string} */
-            direction?: "inbound" | "outbound";
+            filter_type?: "action" | "transform";
+            /** @enum {string} */
+            direction?: "inbound" | "outbound" | "both";
             /** @description Filter configuration (opaque JSON) */
             config?: Record<string, never>;
             enabled?: boolean;
@@ -3655,13 +3956,30 @@ export interface components {
     parameters: {
         /** @description Double-submit CSRF token. Required on state-changing requests (POST/PUT/PATCH/DELETE) that authenticate via the restmail_access cookie: echo the value of the readable restmail_csrf cookie (set at login/refresh). Rejected with 403 when missing or mismatched. Not required for Bearer-authenticated (cookie-less) requests. */
         CSRFToken: string;
-        /** @description Account ID */
+        /**
+         * @description Account ID
+         * @example 1
+         */
         AccountId: number;
-        /** @description Message ID */
+        /**
+         * @description Message ID
+         * @example 1
+         */
         MessageId: number;
-        /** @description Resource ID */
+        /**
+         * @description Domain ID
+         * @example 1
+         */
+        DomainId: number;
+        /**
+         * @description Resource ID
+         * @example 1
+         */
         ResourceId: number;
-        /** @description Folder name (e.g. INBOX, Sent, Drafts, Trash) */
+        /**
+         * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
+         * @example INBOX
+         */
         FolderName: string;
     };
     requestBodies: never;
@@ -4283,6 +4601,13 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "address": "new-account@restmail.test",
+                 *       "display_name": "New Account",
+                 *       "password": "correct-horse-battery"
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateAccountRequest"];
             };
         };
@@ -4384,7 +4709,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -4410,7 +4738,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -4445,7 +4776,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -4472,7 +4806,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -4539,8 +4876,12 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
+                /** @example 1 */
                 credential_id: number;
             };
             cookie?: never;
@@ -4668,7 +5009,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description The device's `id` */
+                /**
+                 * @description The device's `id`
+                 * @example 1
+                 */
                 device_id: string;
             };
             cookie?: never;
@@ -4697,7 +5041,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -4722,13 +5069,21 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "name": "Receipts"
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateFolderRequest"];
             };
         };
@@ -4752,9 +5107,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Folder name (e.g. INBOX, Sent, Drafts, Trash) */
+                /**
+                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
+                 * @example INBOX
+                 */
                 folder: components["parameters"]["FolderName"];
             };
             cookie?: never;
@@ -4776,15 +5137,26 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Folder name (e.g. INBOX, Sent, Drafts, Trash) */
+                /**
+                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
+                 * @example INBOX
+                 */
                 folder: components["parameters"]["FolderName"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "name": "Paid receipts"
+                 *     }
+                 */
                 "application/json": components["schemas"]["RenameFolderRequest"];
             };
         };
@@ -4811,9 +5183,15 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Folder name (e.g. INBOX, Sent, Drafts, Trash) */
+                /**
+                 * @description Folder name (e.g. INBOX, Sent, Drafts, Trash)
+                 * @example INBOX
+                 */
                 folder: components["parameters"]["FolderName"];
             };
             cookie?: never;
@@ -4839,7 +5217,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -4865,7 +5246,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -4887,13 +5271,22 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "is_read": true,
+                 *       "is_flagged": true
+                 *     }
+                 */
                 "application/json": components["schemas"]["UpdateMessageRequest"];
             };
         };
@@ -4921,6 +5314,17 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "from": "admin@restmail.test",
+                 *       "to": [
+                 *         "admin@restmail.test",
+                 *         "someone@imap.restmail.test"
+                 *       ],
+                 *       "subject": "Hello",
+                 *       "body_text": "Sent through the REST API."
+                 *     }
+                 */
                 "application/json": components["schemas"]["SendMessageRequest"];
             };
         };
@@ -4944,7 +5348,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -4957,7 +5364,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
+                    "message/rfc822": string;
                 };
             };
             404: components["responses"]["NotFound"];
@@ -4968,13 +5375,25 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "from": "admin@restmail.test",
+                 *       "to": [
+                 *         "admin@restmail.test"
+                 *       ],
+                 *       "body_text": "See below."
+                 *     }
+                 */
                 "application/json": components["schemas"]["ForwardMessageRequest"];
             };
         };
@@ -5002,6 +5421,16 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "from": "admin@restmail.test",
+                 *       "to": [
+                 *         "admin@restmail.test"
+                 *       ],
+                 *       "subject": "Draft",
+                 *       "body_text": "Not sent yet."
+                 *     }
+                 */
                 "application/json": components["schemas"]["DraftRequest"];
             };
         };
@@ -5024,13 +5453,26 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "from": "admin@restmail.test",
+                 *       "to": [
+                 *         "admin@restmail.test"
+                 *       ],
+                 *       "subject": "Draft, edited",
+                 *       "body_text": "Ready to send."
+                 *     }
+                 */
                 "application/json": components["schemas"]["UpdateDraftRequest"];
             };
         };
@@ -5054,7 +5496,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -5080,9 +5525,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Thread identifier */
+                /**
+                 * @description Thread identifier
+                 * @example 1
+                 */
                 threadID: string;
             };
             cookie?: never;
@@ -5108,7 +5559,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5142,13 +5596,16 @@ export interface operations {
                 /** @description Messages before this date */
                 before?: string;
                 /** @description Only messages with attachments */
-                "has:attachment"?: boolean;
+                has_attachment?: boolean;
                 limit?: number;
                 cursor?: string;
             };
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5174,14 +5631,17 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Attachment ID */
+                /**
+                 * @description Attachment ID
+                 * @example 1
+                 */
                 id: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Attachment binary */
+            /** @description The attachment's bytes, always as application/octet-stream; the type its sender gave it is listAttachments' content_type. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -5198,7 +5658,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -5226,7 +5689,10 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5251,7 +5717,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5281,9 +5750,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Contact ID */
+                /**
+                 * @description Contact ID
+                 * @example 1
+                 */
                 cid: number;
             };
             cookie?: never;
@@ -5305,9 +5780,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Contact ID */
+                /**
+                 * @description Contact ID
+                 * @example 1
+                 */
                 cid: number;
             };
             cookie?: never;
@@ -5337,13 +5818,21 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "email": "spam@example.org"
+                 *     }
+                 */
                 "application/json": {
                     /** Format: email */
                     email: string;
@@ -5351,8 +5840,19 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Sender blocked */
+            /** @description Sender blocked; the contact already existed */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Contact"];
+                    };
+                };
+            };
+            /** @description Sender blocked, as a new contact */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5369,13 +5869,26 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "contacts": [
+                 *         {
+                 *           "email": "carol@example.org",
+                 *           "name": "Carol"
+                 *         }
+                 *       ]
+                 *     }
+                 */
                 "application/json": components["schemas"]["ImportContactsRequest"];
             };
         };
@@ -5398,11 +5911,15 @@ export interface operations {
     suggestContacts: {
         parameters: {
             query: {
+                /** @example ad */
                 q: string;
             };
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5427,7 +5944,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5452,7 +5972,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5481,7 +6004,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5502,7 +6028,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5528,19 +6057,39 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n",
+                 *       "active": true
+                 *     }
+                 */
                 "application/json": components["schemas"]["PutSieveRequest"];
             };
         };
         responses: {
-            /** @description Sieve script saved */
+            /** @description Sieve script replaced */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["SieveScript"];
+                    };
+                };
+            };
+            /** @description Sieve script created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5557,7 +6106,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5585,13 +6137,21 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "script": "require [\"fileinto\"];\nif header :contains \"subject\" \"invoice\" {\n  fileinto \"Invoices\";\n}\n"
+                 *     }
+                 */
                 "application/json": {
                     script: string;
                 };
@@ -5619,7 +6179,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5644,9 +6207,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Quarantine entry ID */
+                /**
+                 * @description Quarantine entry ID
+                 * @example 1
+                 */
                 mid: number;
             };
             cookie?: never;
@@ -5680,9 +6249,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
-                /** @description Quarantine entry ID */
+                /**
+                 * @description Quarantine entry ID
+                 * @example 1
+                 */
                 mid: number;
             };
             cookie?: never;
@@ -5710,7 +6285,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -5732,6 +6310,7 @@ export interface operations {
     checkMailboxAddress: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 address: string;
             };
             header?: never;
@@ -5805,6 +6384,7 @@ export interface operations {
     restmailCheckMailbox: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 address: string;
             };
             header?: never;
@@ -5835,6 +6415,18 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "from": "someone@ext-contract.test",
+                 *       "to": [
+                 *         "eve@restmail.test"
+                 *       ],
+                 *       "subject": "Delivered over RESTMAIL",
+                 *       "body_text": "Hello, Eve.",
+                 *       "message_id": "<restmail-delivery@ext-contract.test>",
+                 *       "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+                 *     }
+                 */
                 "application/json": components["schemas"]["RestmailDeliverRequest"];
             };
         };
@@ -5884,6 +6476,12 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "name": "example.org",
+                 *       "server_type": "restmail"
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateDomainRequest"];
             };
         };
@@ -5908,7 +6506,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -5934,7 +6535,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -5956,7 +6560,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6019,7 +6626,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6045,7 +6655,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6081,13 +6694,23 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "display_name": "Contract Test",
+                 *       "quota_bytes": 1073741824,
+                 *       "active": true
+                 *     }
+                 */
                 "application/json": components["schemas"]["UpdateMailboxRequest"];
             };
         };
@@ -6111,7 +6734,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6161,6 +6787,12 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "source_address": "sales@restmail.test",
+                 *       "destination_address": "admin@restmail.test"
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateAliasRequest"];
             };
         };
@@ -6184,7 +6816,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6210,7 +6845,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6232,7 +6870,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6313,7 +6954,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6341,7 +6985,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6401,6 +7048,40 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "filter_name": "header_validate",
+                 *       "config": {},
+                 *       "email": {
+                 *         "envelope": {
+                 *           "mail_from": "someone@example.com",
+                 *           "rcpt_to": [
+                 *             "eve@restmail.test"
+                 *           ]
+                 *         },
+                 *         "headers": {
+                 *           "from": [
+                 *             {
+                 *               "name": "Someone",
+                 *               "address": "someone@example.com"
+                 *             }
+                 *           ],
+                 *           "to": [
+                 *             {
+                 *               "address": "eve@restmail.test"
+                 *             }
+                 *           ],
+                 *           "subject": "A filter test",
+                 *           "message-id": "<filter-test@example.com>",
+                 *           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
+                 *         },
+                 *         "body": {
+                 *           "content_type": "text/plain",
+                 *           "content": "Hello."
+                 *         }
+                 *       }
+                 *     }
+                 */
                 "application/json": components["schemas"]["TestFilterRequest"];
             };
         };
@@ -6485,6 +7166,18 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "name": "tag-invoices",
+                 *       "description": "Tags mail about invoices",
+                 *       "filter_type": "action",
+                 *       "direction": "inbound",
+                 *       "config": {
+                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+                 *       },
+                 *       "enabled": false
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateCustomFilterRequest"];
             };
         };
@@ -6512,6 +7205,11 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+                 *     }
+                 */
                 "application/json": {
                     /** @description JavaScript filter source to validate */
                     script: string;
@@ -6549,7 +7247,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6575,7 +7276,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6603,13 +7307,25 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "description": "Tags mail about invoices and receipts",
+                 *       "config": {
+                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+                 *       },
+                 *       "enabled": true
+                 *     }
+                 */
                 "application/json": components["schemas"]["UpdateCustomFilterRequest"];
             };
         };
@@ -6626,6 +7342,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     testCustomFilter: {
@@ -6633,7 +7350,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6702,10 +7422,12 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        items: components["schemas"]["OutboundQueue"][];
-                        total: number;
-                        limit: number;
-                        offset: number;
+                        data: {
+                            items: components["schemas"]["OutboundQueue"][];
+                            total: number;
+                            limit: number;
+                            offset: number;
+                        };
                     };
                 };
             };
@@ -6742,6 +7464,13 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "ids": [
+                 *         987654
+                 *       ]
+                 *     }
+                 */
                 "application/json": components["schemas"]["BulkQueueRequest"];
             };
         };
@@ -6768,6 +7497,13 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "ids": [
+                 *         987654
+                 *       ]
+                 *     }
+                 */
                 "application/json": components["schemas"]["BulkQueueRequest"];
             };
         };
@@ -6794,6 +7530,13 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "ids": [
+                 *         987654
+                 *       ]
+                 *     }
+                 */
                 "application/json": components["schemas"]["BulkQueueRequest"];
             };
         };
@@ -6816,7 +7559,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6842,7 +7588,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6864,7 +7613,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6893,7 +7645,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6922,7 +7677,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -6947,13 +7705,22 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "pattern": "@partner.example.com",
+                 *       "reason": "A trusted partner"
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -6977,9 +7744,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
-                /** @description Sender rule entry ID */
+                /**
+                 * @description Sender rule entry ID
+                 * @example 1
+                 */
                 eid: number;
             };
             cookie?: never;
@@ -7001,7 +7774,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -7026,13 +7802,22 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "pattern": "spam@spammer.example.com",
+                 *       "reason": "Sends spam"
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -7056,9 +7841,15 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
-                /** @description Sender rule entry ID */
+                /**
+                 * @description Sender rule entry ID
+                 * @example 1
+                 */
                 eid: number;
             };
             cookie?: never;
@@ -7102,7 +7893,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -7148,7 +7942,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -7219,7 +8016,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -7245,7 +8045,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -7300,6 +8103,15 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "ip": "192.0.2.10",
+                 *       "reason": "Repeated failed sign-ins",
+                 *       "protocol": "all",
+                 *       "duration": "1h",
+                 *       "created_by": "admin@restmail.test"
+                 *     }
+                 */
                 "application/json": components["schemas"]["CreateBanRequest"];
             };
         };
@@ -7323,7 +8135,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -7345,7 +8160,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description IP address to unban */
+                /**
+                 * @description IP address to unban
+                 * @example 192.0.2.10
+                 */
                 ip: string;
             };
             cookie?: never;
@@ -7570,6 +8388,7 @@ export interface operations {
     mozillaAutoconfig: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 emailaddress: string;
             };
             header?: never;
@@ -7599,6 +8418,7 @@ export interface operations {
     mozillaAutoconfigWellKnown: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 emailaddress: string;
             };
             header?: never;
@@ -7634,6 +8454,15 @@ export interface operations {
         };
         requestBody?: {
             content: {
+                /**
+                 * @example <?xml version="1.0" encoding="utf-8"?>
+                 *     <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
+                 *       <Request>
+                 *         <EMailAddress>eve@restmail.test</EMailAddress>
+                 *         <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
+                 *       </Request>
+                 *     </Autodiscover>
+                 */
                 "application/xml": string;
             };
         };
@@ -7685,6 +8514,46 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "organization-name": "Example Reporter",
+                 *       "contact-info": "tlsrpt@reporter.example.com",
+                 *       "report-id": "2026-10-17T00:00:00Z_restmail.test",
+                 *       "date-range": {
+                 *         "start-datetime": "2026-10-16T00:00:00Z",
+                 *         "end-datetime": "2026-10-16T23:59:59Z"
+                 *       },
+                 *       "policies": [
+                 *         {
+                 *           "policy": {
+                 *             "policy-type": "sts",
+                 *             "policy-string": [
+                 *               "version: STSv1",
+                 *               "mode: testing",
+                 *               "mx: mail.restmail.test",
+                 *               "max_age: 86400"
+                 *             ],
+                 *             "policy-domain": "restmail.test",
+                 *             "mx-host": [
+                 *               "mail.restmail.test"
+                 *             ]
+                 *           },
+                 *           "summary": {
+                 *             "total-successful-session-count": 12,
+                 *             "total-failure-session-count": 1
+                 *           },
+                 *           "failure-details": [
+                 *             {
+                 *               "result-type": "certificate-expired",
+                 *               "sending-mta-ip": "192.0.2.1",
+                 *               "receiving-mx-hostname": "mail.restmail.test",
+                 *               "failed-session-count": 1
+                 *             }
+                 *           ]
+                 *         }
+                 *       ]
+                 *     }
+                 */
                 "application/json": components["schemas"]["TLSRPTReport"];
             };
         };
@@ -7720,6 +8589,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @example token */
                 token: string;
             };
             cookie?: never;
@@ -7749,7 +8619,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -7808,7 +8681,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Account ID */
+                /**
+                 * @description Account ID
+                 * @example 1
+                 */
                 id: components["parameters"]["AccountId"];
             };
             cookie?: never;
@@ -7968,7 +8844,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -8041,7 +8920,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -8109,7 +8991,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -8163,7 +9048,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -8230,7 +9118,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -8251,12 +9142,73 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listSuppressions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Domain ID
+                 * @example 1
+                 */
+                id: components["parameters"]["DomainId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suppressions, most recently updated first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Suppression"][];
+                    };
+                };
+            };
+        };
+    };
+    clearSuppression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Domain ID
+                 * @example 1
+                 */
+                id: components["parameters"]["DomainId"];
+                /**
+                 * @description Suppression ID
+                 * @example 1
+                 */
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suppression cleared */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     getMtaStsPolicy: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -8282,13 +9234,24 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "mode": "testing",
+                 *       "mx_hosts": "mail.example.org",
+                 *       "max_age": 86400,
+                 *       "active": true
+                 *     }
+                 */
                 "application/json": components["schemas"]["SetMTASTSPolicyRequest"];
             };
         };
@@ -8324,7 +9287,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -8402,7 +9368,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Message ID */
+                /**
+                 * @description Message ID
+                 * @example 1
+                 */
                 id: components["parameters"]["MessageId"];
             };
             cookie?: never;
@@ -8432,6 +9401,14 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "from": "postmaster@restmail.test",
+                 *       "to": "admin@restmail.test",
+                 *       "subject": "Test",
+                 *       "body": "A test message."
+                 *     }
+                 */
                 "application/json": {
                     /** Format: email */
                     from: string;
@@ -8474,6 +9451,7 @@ export interface operations {
     verifyDelivery: {
         parameters: {
             query: {
+                /** @example admin@restmail.test */
                 to: string;
                 subject?: string;
                 message_id?: string;

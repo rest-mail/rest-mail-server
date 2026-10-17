@@ -27,7 +27,7 @@ func NewSuppressionHandler(db *gorm.DB) *SuppressionHandler {
 // GET /api/v1/admin/domains/{id}/suppressions
 func (h *SuppressionHandler) List(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
@@ -48,7 +48,7 @@ func (h *SuppressionHandler) List(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/v1/admin/domains/{id}/suppressions/{sid}
 func (h *SuppressionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}

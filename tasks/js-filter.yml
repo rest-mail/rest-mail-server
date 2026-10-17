@@ -66,9 +66,9 @@ tasks:
         # NO allow-list is configured here (JS_FILTER_ALLOWED_HOSTS unset), so
         # outbound HTTP is default-denied at the application layer. A dedicated
         # `internal: true` network is the intended container-level backstop but
-        # is not adoptable from this repo alone: the API resolves the sidecar as
-        # `http://js-filter:3100` via the testbed dnsmasq to a fixed mailnet IP
-        # and bypasses Docker's embedded DNS, so the sidecar must stay on the
+        # is not adoptable from this repo alone: the API reaches the sidecar at
+        # its fixed mailnet IP (JS_FILTER_URL, tasks/api.yml) and bypasses
+        # Docker's embedded DNS, so the sidecar must stay on the
         # mailnet at {{.JS_FILTER_IP}} to remain reachable. Moving it behind an
         # internal network requires a testbed dnsmasq/addressing change — see PR
         # notes (OSI-6 follow-up). Others on the mailnet can reach it, which is

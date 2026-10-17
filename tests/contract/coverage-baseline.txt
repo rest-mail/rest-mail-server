@@ -1,0 +1,66 @@
+# The coverage ratchet's baseline (tests/contract/gate.py): the operations
+# whose boundary probes still fail, one operationId a line. Each is a value
+# outside its schema the server accepts (a missing validation), or a schema
+# looser or stricter than its handler: rest-mail/rest-mail-server#388.
+#
+# The gate fails on a failing probe for any operation not listed here, and on
+# an operation listed here whose probes all pass: take it out in the change
+# that fixes it. This initial baseline was seeded in #376 as previously
+# unreachable operations began running. After #376 merges, nothing is added.
+#
+# Regenerate the list (to shrink it) from a run's report:
+#   python3 tests/contract/gate.py --failing-probes openapi.yaml .cache/contract/examples.xml
+bulkBounceQueue
+bulkDeleteQueue
+bulkRetryQueue
+createAccount
+createBan
+createContact
+createDomain
+createFolder
+deleteAlias
+deleteBan
+deleteCustomFilter
+deleteDomain
+deleteMailbox
+deletePipeline
+deleteQueueEntry
+getAlias
+getAttachment
+getDeliveryLogs
+getDomain
+getMailbox
+getQueueEntry
+importContacts
+listAliases
+listAllowlist
+listAuditEntries
+listBans
+listBlocklist
+listContacts
+listCustomFilters
+listGrants
+listMailboxes
+listMessages
+listPipelineLogs
+listPipelines
+listQueue
+listTlsReports
+logout
+probeServices
+putSieveScript
+# First reached in #376: the schema permits an empty recipient list and
+# omits the combinations of sender/date fields the delivery pipeline needs.
+restmailDeliver
+saveDraft
+searchMessages
+sendMessage
+sendTestEmail
+setVacation
+testFilter
+updateAlias
+updateDomain
+updateMailbox
+updatePipeline
+validateSieveScript
+verifyDelivery

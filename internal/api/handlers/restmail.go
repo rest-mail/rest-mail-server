@@ -220,8 +220,8 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var delivered []string
-	var failed []string
+	delivered := []string{}
+	failed := []string{}
 	// The inbound pipeline's verdicts (spf/dkim/arc/dmarc), prepended onto the
 	// stored raw message as Authentication-Results so they are visible — the
 	// same surfacing the SMTP delivery path does.
@@ -420,7 +420,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			threadID = req.InReplyTo
 		}
 
-		recipientsTo, _ := json.Marshal([]map[string]string{{"address": rcpt}})
+		recipientsTo, _ := json.Marshal([]string{rcpt})
 
 		msg := models.Message{
 			MailboxID:    mailbox.ID,
