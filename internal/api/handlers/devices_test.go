@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -542,6 +543,15 @@ func TestPushDeliveryCarriesNoMessageContent(t *testing.T) {
 	id := e.register(t, s, token)
 
 	msg := e.newMail(t, mb, "INBOX")
+	// The payload's values are the device's id, the account's id and 1s; a
+	// message whose id is one of them (on a new database every first row is
+	// 1) could carry it unseen, so it is made again until its id is its own.
+	for msg.ID == 1 || msg.ID == s.account || fmt.Sprint(msg.ID) == id {
+		if err := e.tx.Delete(&msg).Error; err != nil {
+			t.Fatal(err)
+		}
+		msg = e.newMail(t, mb, "INBOX")
+	}
 	e.newMail(t, mb, "Archive") // not the INBOX: no push of its own
 	e.dispatcher.Step(context.Background(), time.Now())
 
@@ -565,15 +575,21 @@ func TestPushDeliveryCarriesNoMessageContent(t *testing.T) {
 	if got, want := string(p.body), string(push.Payload(id, s.account, 1)); got != want {
 		t.Fatalf("payload = %s, want exactly %s", got, want)
 	}
+	// Field by field, every value is the device's, the account's or a count,
+	// none of which is the message's id: there is no room for the message.
 	var whole map[string]map[string]any
 	if err := json.Unmarshal(p.body, &whole); err != nil {
 		t.Fatal(err)
 	}
-	if len(whole) != 2 || len(whole["aps"]) != 1 || whole["aps"]["content-available"] != float64(1) || len(whole["restmail"]) != 4 {
-		t.Fatalf("payload %s holds more than the signal", p.body)
+	want := map[string]map[string]any{
+		"aps":      {"content-available": float64(1)},
+		"restmail": {"v": float64(1), "device": id, "account": float64(s.account), "unread": float64(1)},
+	}
+	if !reflect.DeepEqual(whole, want) {
+		t.Fatalf("payload %s holds more than the signal %v", p.body, want)
 	}
 	for _, leak := range []string{msg.Sender, msg.SenderName, msg.Subject, "LEAK", msg.MsgID, "leak-message-id", mb.Address,
-		"spy.test", fmt.Sprintf(`"%d"`, msg.ID), "alert", "subject", "sender", "from"} {
+		"spy.test", "alert", "subject", "sender", "from"} {
 		if strings.Contains(strings.ToLower(string(p.body)), strings.ToLower(leak)) {
 			t.Errorf("payload %s carries %q", p.body, leak)
 		}
