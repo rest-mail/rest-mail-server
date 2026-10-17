@@ -25,8 +25,21 @@ import (
 // server does (internal/bootstrap/ownerkeys.go, which has its own tests).
 type fakeServer struct {
 	owners   []ssh.PublicKey
+	status   []ssh.PublicKey // RESTMAIL_STATUS_KEYS
 	admins   []string
 	answered []map[string]any
+}
+
+// verifies reports whether req carries a signature over message by one of keys.
+func verifies(req map[string]any, keys []ssh.PublicKey, message []byte) bool {
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(req["public_key"].(string)))
+	listed := false
+	for _, k := range keys {
+		listed = listed || (err == nil && bytes.Equal(k.Marshal(), pub.Marshal()))
+	}
+	raw, _ := base64.StdEncoding.DecodeString(req["signature"].(string))
+	var sig ssh.Signature
+	return listed && ssh.Unmarshal(raw, &sig) == nil && sig.Format != ssh.KeyAlgoRSA && pub.Verify(message, &sig) == nil
 }
 
 func (f *fakeServer) handler() http.Handler {
@@ -37,7 +50,7 @@ func (f *fakeServer) handler() http.Handler {
 	}
 	data := func(w http.ResponseWriter, v any) { _ = json.NewEncoder(w).Encode(map[string]any{"data": v}) }
 	mux.HandleFunc("POST /api/v1/auth/owner/challenge", func(w http.ResponseWriter, r *http.Request) {
-		if len(f.owners) == 0 {
+		if len(f.owners) == 0 && len(f.status) == 0 {
 			fail(w, 409, "no_owner_keys")
 			return
 		}
@@ -47,15 +60,11 @@ func (f *fakeServer) handler() http.Handler {
 		var req map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		f.answered = append(f.answered, req)
-		pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(req["public_key"].(string)))
-		listed := false
-		for _, o := range f.owners {
-			listed = listed || (err == nil && bytes.Equal(o.Marshal(), pub.Marshal()))
+		if len(f.owners) == 0 {
+			fail(w, 409, "no_owner_keys")
+			return
 		}
-		raw, _ := base64.StdEncoding.DecodeString(req["signature"].(string))
-		var sig ssh.Signature
-		if !listed || ssh.Unmarshal(raw, &sig) != nil || sig.Format == ssh.KeyAlgoRSA ||
-			pub.Verify(ownerMessage(req["challenge"].(string), req["purpose"].(string), req["username"].(string)), &sig) != nil {
+		if !verifies(req, f.owners, ownerMessage(req["challenge"].(string), req["purpose"].(string), req["username"].(string))) {
 			fail(w, 403, "not_owner")
 			return
 		}
@@ -67,6 +76,17 @@ func (f *fakeServer) handler() http.Handler {
 		default:
 			data(w, map[string]string{"purpose": req["purpose"].(string), "token": "TOKEN-123", "expires_at": "2026-10-10T21:15:00Z"})
 		}
+	})
+	mux.HandleFunc("POST /api/v1/auth/owner/status", func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		f.answered = append(f.answered, req)
+		if !verifies(req, append(f.status, f.owners...), ownerMessage(req["challenge"].(string), "status", "")) {
+			fail(w, 403, "not_status_key")
+			return
+		}
+		data(w, map[string]string{"version": "0.8.0", "commit": "abc1234",
+			"built_at": "2026-10-17T09:00:00Z", "started_at": "2026-10-17T09:05:00Z"})
 	})
 	return mux
 }

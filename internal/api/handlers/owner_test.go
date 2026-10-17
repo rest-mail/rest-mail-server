@@ -30,15 +30,29 @@ func ownerKey(t *testing.T) ssh.Signer {
 
 func ownerHandler(t *testing.T, f *firstSignIn, listed ...ssh.Signer) *OwnerHandler {
 	t.Helper()
-	var spec []string
-	for _, s := range listed {
-		spec = append(spec, string(ssh.MarshalAuthorizedKey(s.PublicKey())))
+	return keysHandler(t, f, listed, nil)
+}
+
+// keysHandler lists owners in RESTMAIL_OWNER_KEYS and status in
+// RESTMAIL_STATUS_KEYS.
+func keysHandler(t *testing.T, f *firstSignIn, owners, status []ssh.Signer) *OwnerHandler {
+	t.Helper()
+	spec := func(signers []ssh.Signer) string {
+		var lines []string
+		for _, s := range signers {
+			lines = append(lines, string(ssh.MarshalAuthorizedKey(s.PublicKey())))
+		}
+		return strings.Join(lines, "")
 	}
-	keys, err := bootstrap.ParseOwnerKeys(strings.Join(spec, ""))
+	keys, err := bootstrap.ParseOwnerKeys(spec(owners))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewOwnerHandler(f.db, keys, "owner-handler-secret")
+	statusKeys, err := bootstrap.ParseStatusKeys(spec(status))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewOwnerHandler(f.db, keys, statusKeys, "owner-handler-secret")
 }
 
 // askAsOwner does what the CLI does and returns the token response.

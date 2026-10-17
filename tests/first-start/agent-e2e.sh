@@ -8,8 +8,9 @@
 # PASSWORD); signing in with it forces a password of the agent's own and an
 # authenticator. The CLI reaches the server only through its public API, and
 # proves ownership for reset-admin with a key the deployment lists in
-# RESTMAIL_OWNER_KEYS: Docker is just how this test runs a server, not something
-# the CLI knows about.
+# RESTMAIL_OWNER_KEYS, and reads what runs with one listed in
+# RESTMAIL_STATUS_KEYS: Docker is just how this test runs a server, not
+# something the CLI knows about.
 #
 # Run locally (Docker, curl, jq, oathtool, ssh-keygen):
 #   docker build --target prod -t restmail-api:first-start .
@@ -34,10 +35,11 @@ cleanup
 KEYS=$(mktemp -d)
 LOG=$(mktemp)
 
-step "the agent's key, and someone else's"
+step "the agent's key, a deployer's, and someone else's"
 ssh-keygen -q -t ed25519 -N '' -C agent@e2e -f "$KEYS/agent"
+ssh-keygen -q -t ed25519 -N '' -C deployer@e2e -f "$KEYS/deployer"
 ssh-keygen -q -t ed25519 -N '' -C stranger@e2e -f "$KEYS/stranger"
-ok "the deployment will list only the agent's public key"
+ok "the deployment will list the agent's as an owner key, and the deployer's as a status key"
 
 docker network create "$NET" >/dev/null
 docker run -d --name e2e-pg --network "$NET" -e POSTGRES_USER=restmail -e POSTGRES_PASSWORD=restmail \
@@ -51,6 +53,7 @@ api() {
     -e DB_HOST=e2e-pg -e DB_NAME=restmail -e DB_USER=restmail -e DB_PASS=restmail -e DB_SSLMODE=disable \
     -e JWT_SECRET="$JWT_SECRET" -e MASTER_KEY="$MASTER_KEY" \
     -e RESTMAIL_OWNER_KEYS="$(cat "$KEYS/agent.pub")" \
+    -e RESTMAIL_STATUS_KEYS="$(cat "$KEYS/deployer.pub")" \
     -e ENVIRONMENT=development "$@" "$IMAGE" >/dev/null
 }
 JWT_SECRET=$(openssl rand -hex 32)
@@ -86,8 +89,10 @@ step "a fresh install: the bootstrap password the installer chose"
 BOOT_PW=$(openssl rand -base64 24)
 api -e RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD="$BOOT_PW"
 wait_healthy
-curl -fsS http://127.0.0.1:58080/api/health | jq -c .data
-ok "server up, with its first admin, admin"
+health=$(curl -fsS http://127.0.0.1:58080/api/health | jq -c .data)
+echo "$health"
+[[ $(jq -c 'keys' <<<"$health") == '["db","status"]' ]] || die "/api/health says more than it did: $health"
+ok "server up, with its first admin, admin; /api/health says only that"
 
 step "restmail status: what the server says about itself"
 status=$("$RESTMAIL" status --server "$SERVER" --json)
@@ -100,6 +105,24 @@ if [ -n "${EXPECT_VERSION:-}" ]; then
   [[ $(jq -r .version <<<"$status") == "$EXPECT_VERSION" ]] || die "version $(jq -r .version <<<"$status"), want $EXPECT_VERSION"
 fi
 ok "rest-mail ${EXPECT_VERSION:-(version not checked)}"
+
+step "restmail status --key: a status key reads what runs"
+signed=$("$RESTMAIL" status --server "$SERVER" --key "$KEYS/deployer" --json)
+jq -c 'del(.server)' <<<"$signed"
+for field in version commit built_at started_at; do
+  [[ -n $(jq -r ".$field // empty" <<<"$signed") ]] || die "no $field"
+done
+if [ -n "${EXPECT_VERSION:-}" ]; then
+  [[ $(jq -r .version <<<"$signed") == "$EXPECT_VERSION" ]] || die "signed version $(jq -r .version <<<"$signed"), want $EXPECT_VERSION"
+fi
+ok "version, commit, built_at, started_at"
+"$RESTMAIL" status --server "$SERVER" --key "$KEYS/agent" --json >/dev/null || die "an owner key could not read the status"
+ok "an owner key reads it too"
+set +e; "$RESTMAIL" status --server "$SERVER" --key "$KEYS/stranger" --json 2>/tmp/e2e-status.err; status=$?; set -e
+cat /tmp/e2e-status.err
+[[ $status == 6 ]] || die "a key on neither list: exit $status, want 6"
+[[ $(jq -r .error.code /tmp/e2e-status.err) == not_status_key ]] || die "a key on neither list: not refused as not_status_key"
+ok "a key on neither list is refused (exit 6)"
 
 step "nothing claims a server any more"
 code=$(curl -s -o /dev/null -w '%{http_code}' "$API/auth/claim" -H 'Content-Type: application/json' \
@@ -156,6 +179,12 @@ set +e; "$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/stranger" --user
 cat /tmp/e2e-stranger.err
 [[ $status == 6 ]] || die "exit $status, want 6"
 ok "refused with exit 6 (not an owner)"
+
+step "restmail reset-admin with a status key"
+set +e; "$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/deployer" --username admin --json 2>/tmp/e2e-deployer.err; status=$?; set -e
+cat /tmp/e2e-deployer.err
+[[ $status == 6 ]] || die "exit $status, want 6"
+ok "refused with exit 6: a status key reads the status and nothing else"
 
 step "hand-over: restmail reset-admin, the link the owner redeems"
 reset=$("$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/agent" --username admin --json --show-secret)

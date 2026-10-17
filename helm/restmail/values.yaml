@@ -192,6 +192,11 @@ api:
   # secret. Empty: that is possible only with `chore password:reset`, or
   # `restmail-api mint-token` on the server itself.
   ownerKeys: ""
+  # Public keys, in the same format, that may only read which version the
+  # server runs, its commit, and when it was built and started
+  # (`restmail status --key`): how a deploy is confirmed from outside. They can
+  # do nothing else; owner keys can read it too. Not secret.
+  statusKeys: ""
   service:
     type: ClusterIP
     port: 8080

@@ -45,7 +45,7 @@ const (
 	// script written against it does not read some other failure into it.
 	exitNoSuchAdmin = 4 // reset-admin named an account that does not exist
 	exitUnreachable = 5 // the server did not answer, or not as rest-mail
-	exitNotOwner    = 6 // no key offered is one of the server's owner keys
+	exitNotOwner    = 6 // no key offered is one of the server's owner keys (for status: status or owner keys)
 )
 
 const resetUsage = `restmail reset-admin — let an admin back in when every other way is lost
@@ -302,19 +302,11 @@ func (c apiClient) do(ctx context.Context, method, path string, body any, into a
 // prompts: an encrypted key file is refused with a pointer to ssh-agent.
 func localKeys(path string) ([]signer, error) {
 	if path != "" {
-		pem, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		s, err := ssh.ParsePrivateKey(pem)
-		var missing *ssh.PassphraseMissingError
-		if errors.As(err, &missing) {
+		signers, err := keyFile(path)
+		if errors.Is(err, errPassphrase) {
 			return nil, fmt.Errorf("%s is passphrase-protected: add it to ssh-agent (ssh-add %s) and leave out --key", path, path)
 		}
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		return []signer{fromSSHSigner(s)}, nil
+		return signers, err
 	}
 	sock := os.Getenv("SSH_AUTH_SOCK")
 	if sock == "" {
@@ -333,6 +325,27 @@ func localKeys(path string) ([]signer, error) {
 		out = append(out, fromSSHSigner(s))
 	}
 	return out, nil
+}
+
+// errPassphrase: a key file that needs a passphrase, which the CLI never asks
+// for.
+var errPassphrase = errors.New("passphrase-protected")
+
+// keyFile loads the unencrypted private key at path.
+func keyFile(path string) ([]signer, error) {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	s, err := ssh.ParsePrivateKey(pem)
+	var missing *ssh.PassphraseMissingError
+	if errors.As(err, &missing) {
+		return nil, fmt.Errorf("%s: %w", path, errPassphrase)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return []signer{fromSSHSigner(s)}, nil
 }
 
 // fromSSHSigner signs with SHA-2 for RSA keys: the server refuses SHA-1.

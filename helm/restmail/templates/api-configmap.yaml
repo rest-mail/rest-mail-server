@@ -23,3 +23,8 @@ data:
   # back in, over the public API.
   RESTMAIL_OWNER_KEYS: {{ . | quote }}
   {{- end }}
+  {{- with .Values.api.statusKeys }}
+  # Public keys that may only read what the server runs (`restmail status
+  # --key`), in the same format.
+  RESTMAIL_STATUS_KEYS: {{ . | quote }}
+  {{- end }}

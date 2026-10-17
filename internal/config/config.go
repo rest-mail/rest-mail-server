@@ -133,6 +133,10 @@ type Config struct {
 	// can reset its admins over the public API (internal/bootstrap/ownerkeys.go).
 	// Not a secret.
 	OwnerKeys string
+	// StatusKeys lists, in the same format, the public keys whose holders can
+	// read which version the server runs, and nothing else
+	// (internal/bootstrap/statuskeys.go). Not a secret.
+	StatusKeys string
 
 	// DNS Provider
 	DNSProvider string
@@ -476,6 +480,7 @@ func Load() (*Config, error) {
 		// Or a bcrypt hash of it, which a deploy tool can keep as plain config.
 		BootstrapAdminPasswordHash: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH", ""),
 		OwnerKeys:                  getEnv("RESTMAIL_OWNER_KEYS", ""),
+		StatusKeys:                 getEnv("RESTMAIL_STATUS_KEYS", ""),
 
 		DNSProvider: getEnv("DNS_PROVIDER", "dnsmasq"),
 

@@ -346,7 +346,9 @@ paths:
       summary: A challenge for an owner key to sign
       description: >
         The first half of proving ownership of the server with a key listed in
-        RESTMAIL_OWNER_KEYS (what `restmail reset-admin` does). The challenge is stateless, valid two minutes, and answered once.
+        RESTMAIL_OWNER_KEYS (what `restmail reset-admin` does), or of reading
+        its status with a key listed in RESTMAIL_STATUS_KEYS (what
+        `restmail status --key` does). The challenge is stateless, valid two minutes, and answered once.
         Throttled like login.
       security: []
       responses:
@@ -365,7 +367,7 @@ paths:
                       challenge: {type: string}
                       expires_at: {type: string, format: date-time}
         "409":
-          description: no_owner_keys — the server lists none
+          description: no_owner_keys — the server lists neither owner keys nor status keys
 
   /api/v1/auth/owner/token:
     post:
@@ -377,7 +379,8 @@ paths:
         half of `public_key` over the bytes
         `"restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge`,
         so a signature for one request cannot be presented for another. `public_key` must be listed in
-        RESTMAIL_OWNER_KEYS. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
+        RESTMAIL_OWNER_KEYS; a status key (RESTMAIL_STATUS_KEYS) is refused.
+        Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
         accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at
         `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
       security: []
@@ -421,6 +424,60 @@ paths:
           description: no_owner_keys — the server lists none
         "422":
           description: Purpose, username, lifetime or signature malformed
+
+  /api/v1/auth/owner/status:
+    post:
+      operationId: ownerStatus
+      tags: [Auth]
+      summary: Trade a signed challenge for what the server runs
+      description: >
+        How a deploy is confirmed from outside (`restmail status --key`).
+        `signature` is the SSH wire-format signature (base64) by the private
+        half of `public_key` over the bytes
+        `"restmail-owner-v1\n" + "status" + "\n" + "" + "\n" + challenge`:
+        the owner scheme with the purpose `status` and no username, so a
+        signature made to reset an admin does not read the status, nor the
+        other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or
+        RESTMAIL_OWNER_KEYS. A status key reads this and can do nothing else.
+        The challenge is spent, so an answer works once. Keys and signatures as
+        for `/api/v1/auth/owner/token`. Throttled with the owner endpoints.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challenge, public_key, signature]
+              properties:
+                challenge: {type: string}
+                public_key: {type: string, description: authorized_keys format}
+                signature: {type: string, format: byte}
+      responses:
+        "200":
+          description: What runs, and since when. No secrets, no configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [version, commit, built_at, started_at]
+                    properties:
+                      version: {type: string, description: "e.g. 0.8.0; dev for a build with none stamped in"}
+                      commit: {type: string, description: "the commit built; unknown when none was stamped in"}
+                      built_at: {type: string, description: "RFC 3339; unknown when none was stamped in"}
+                      started_at: {type: string, format: date-time, description: when this API process started}
+        "401":
+          description: invalid_challenge — forged, expired, or already answered
+        "403":
+          description: not_status_key — the key is on neither list, or the signature does not verify
+        "409":
+          description: no_status_keys — the server lists neither status keys nor owner keys
+        "422":
+          description: Signature malformed
 
   /api/v1/auth/password:
     post:
