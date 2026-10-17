@@ -86,6 +86,7 @@ principals):
 
 ```sh
 vertrag doctor                          # sends nothing: does every setting reach something?
+mkdir -p .cache/contract                # the report's directory; vertrag makes none
 vertrag run --sequence --phases coverage
 python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
   tests/contract/coverage-baseline.txt

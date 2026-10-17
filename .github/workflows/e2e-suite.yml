@@ -200,6 +200,8 @@ jobs:
           # which the gate below judges from the report. Anything else means
           # vertrag could not run at all.
           code=0
+          # vertrag writes its report here and makes no directories itself.
+          mkdir -p .cache/contract
           vertrag run --sequence --phases coverage 2>&1 | tee "$RUNNER_TEMP/contract.log" || code=$?
           echo "vertrag exited $code"
           if [ "$code" -gt 2 ]; then exit "$code"; fi
@@ -222,6 +224,7 @@ jobs:
         # findings exit 2, and its report is uploaded with the logs below.
         if: inputs.contract-phases == 'fuzz'
         run: |
+          mkdir -p .cache/contract
           vertrag run --sequence --phases fuzz --output .cache/contract/fuzz.xml --reporter junit \
             > "$RUNNER_TEMP/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
           cat "$RUNNER_TEMP/contract-fuzz.log"
