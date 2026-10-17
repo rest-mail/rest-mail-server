@@ -194,6 +194,42 @@ echo "$verify"
 [[ $(jq -r .ok <<<"$verify") == true ]] || die "the audit chain does not verify"
 ok "sign-ins (one refused), the password, 2FA and both admin changes, once each; the chain verifies"
 
+step "escalation: superadmin is eligible, and switching it on takes a fresh code and a reason"
+[[ $(jq -r '.data.capabilities | index("*")' <<<"$agent") == null ]] || die "the first admin signed in as superadmin: $(jq -c .data.capabilities <<<"$agent")"
+mine=$(curl -fsS "$API/admin/grants/mine" -H "Authorization: Bearer $agent_access")
+jq -c '[.data[] | {role, scope, mode}]' <<<"$mine"
+[[ $(jq -c '[.data[] | {role, scope, mode}] | sort_by(.role)' <<<"$mine") == '[{"role":"admin","scope":"*","mode":"active"},{"role":"superadmin","scope":"*","mode":"eligible"}]' ]] ||
+  die "the first admin's grants"
+super=$(jq -r '.data[] | select(.role == "superadmin") | .id' <<<"$mine")
+# add_admin -> the status of adding an admin with an empty body: 403 refused, 4xx reached.
+add_admin() { curl -s -o /dev/null -w '%{http_code}' "$API/admin/admin-users" "${auth[@]}" -d '{}'; }
+# escalate STEP BODY -> the status; the response in $ESC.
+ESC=$(mktemp)
+escalate() { curl -s -o "$ESC" -w '%{http_code}' -X POST "$API/admin/grants/$super/$1" "${auth[@]}" -d "$2"; }
+[[ $(add_admin) == 403 ]] || die "adding an admin before switching superadmin on was not refused"
+ok "signed in with the admin role, superadmin eligible: adding an admin is refused (403)"
+code=$(escalate activate '{"reason":"add an admin"}')
+[[ $code == 403 && $(jq -r .error.code "$ESC") == totp_required ]] || die "switching on without a code: $code $(cat "$ESC")"
+ok "switching on without a code: 403 totp_required"
+code=$(escalate activate "$(jq -nc --arg c "$(oathtool --totp -b "$secret")" '{reason:"add an admin", minutes:30, totp_code:$c}')")
+[[ $code == 201 ]] || die "switching on: $code $(cat "$ESC")"
+[[ $(jq -c .data.capabilities "$ESC") == '["*"]' ]] || die "switched on: $(jq -c .data "$ESC")"
+code=$(add_admin)
+[[ $code =~ ^4 && $code != 403 ]] || die "adding an admin while switched on answered $code"
+ok "switched on for $(jq -r .data.grant.activation.seconds_left "$ESC")s: [\"*\"], adding an admin reaches the handler"
+code=$(escalate deactivate '')
+[[ $code == 200 ]] || die "switching off: $code $(cat "$ESC")"
+[[ $(add_admin) == 403 ]] || die "adding an admin after switching off was not refused"
+ok "switched off: refused again (403)"
+log=$(curl -fsS "$API/admin/audit?limit=200" -H "Authorization: Bearer $agent_access")
+for action in grants.activate grants.deactivate; do
+  [[ $(jq --arg a "$action" '[.data[] | select(.action == $a and .actor_name == "admin" and .target.reason == "add an admin")] | length' <<<"$log") == 1 ]] ||
+    die "$action not recorded once, with who and why"
+done
+[[ $(curl -fsS "$API/admin/audit/verify" -H "Authorization: Bearer $agent_access" | jq -r .data.ok) == true ]] || die "the audit chain does not verify"
+rm -f "$ESC"
+ok "both in the audit log, with who and why; the chain verifies"
+
 step "restmail reset-admin with a key the server does not list"
 set +e; "$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/stranger" --username admin --json 2>/tmp/e2e-stranger.err; status=$?; set -e
 cat /tmp/e2e-stranger.err
