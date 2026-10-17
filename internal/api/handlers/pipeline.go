@@ -450,6 +450,10 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		})
 		return
 	}
+	if errs := customFilterFieldErrors(req.FilterType, req.Direction); errs != nil {
+		respond.ValidationError(w, errs)
+		return
+	}
 
 	cf := models.CustomFilter{
 		DomainID:    req.DomainID,
@@ -467,6 +471,22 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 
 	respond.Data(w, http.StatusCreated, cf)
+}
+
+// customFilterFieldErrors checks a custom filter's type and direction against
+// the values the spec allows, or returns nil when both are allowed.
+func customFilterFieldErrors(filterType, direction string) map[string]string {
+	errs := map[string]string{}
+	if filterType != "action" && filterType != "transform" {
+		errs["filter_type"] = "must be action or transform"
+	}
+	if direction != "inbound" && direction != "outbound" && direction != "both" {
+		errs["direction"] = "must be inbound, outbound or both"
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
 }
 
 // GetCustomFilter returns a single custom filter by ID.
@@ -530,6 +550,14 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 	if req.Enabled != nil {
 		cf.Enabled = *req.Enabled
+	}
+	if cf.Name == "" {
+		respond.ValidationError(w, map[string]string{"name": "required"})
+		return
+	}
+	if errs := customFilterFieldErrors(cf.FilterType, cf.Direction); errs != nil {
+		respond.ValidationError(w, errs)
+		return
 	}
 
 	if err := h.db.Save(&cf).Error; err != nil {

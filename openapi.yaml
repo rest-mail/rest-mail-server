@@ -11,8 +11,9 @@ info:
     ## Authentication & authorization
 
 
-    The API uses seven distinct auth modes; each operation's `security` block and,
-    for admin routes, its `x-required-capability` field state which applies.
+    The API uses seven distinct auth modes; each operation's `security` block
+    states which apply, and the capability it needs as the requirement's roles
+    (OpenAPI 3.1), for example `security: [{BearerAuth: [domains:read]}]`.
 
 
     * **Session cookie** (`CookieAuth`) — the default for browser clients. Login
@@ -61,10 +62,10 @@ info:
       a change takes effect at once. An account holds the owner role's
       capabilities (`mail:read`, `mail:write`, `mail:send`, `mailbox:manage`)
       on its own mailbox without a grant, and on every account it created or
-      linked through an `owner` grant. Admin operations are gated by a named
-      capability, given per operation as `x-required-capability` (e.g.
-      `domains:read`, `queue:manage`); the superadmin wildcard `*` satisfies
-      every one. A caller missing it gets `403`.
+      linked through an `owner` grant. Every operation that needs a
+      capability names it as the roles of its `security` requirements (e.g.
+      `domains:read`, `queue:manage`, `mail:read`); the superadmin wildcard
+      `*` satisfies every one. A caller missing it gets `403`.
 
       An operation on the domain or mailbox named by its `{id}`
       (`/api/v1/admin/domains/{id}` and everything under it,
@@ -214,8 +215,8 @@ tags:
 # Authorization: Bearer header (programmatic clients). Each entry is an
 # alternative, so presenting either satisfies auth. Cookie-authenticated,
 # state-changing requests additionally require the X-CSRF-Token header (see the
-# CSRFToken parameter). Operations override with `security: []` (no auth) and
-# admin operations additionally carry an `x-required-capability`.
+# CSRFToken parameter). Operations override with `security: []` (no auth), or
+# with requirements whose roles name the capability they need.
 security:
   - CookieAuth: []
   - BearerAuth: []
@@ -804,11 +805,95 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Account"
+          links:
+            getAccount:
+              operationId: getAccount
+              parameters:
+                id: '$response.body#/data/0/id'
+            listCredentials:
+              operationId: listCredentials
+              parameters:
+                id: '$response.body#/data/0/id'
+            createAppPassword:
+              operationId: createAppPassword
+              parameters:
+                id: '$response.body#/data/0/id'
+            listFolders:
+              operationId: listFolders
+              parameters:
+                id: '$response.body#/data/0/id'
+            createFolder:
+              operationId: createFolder
+              parameters:
+                id: '$response.body#/data/0/id'
+            listMessages:
+              operationId: listMessages
+              parameters:
+                id: '$response.body#/data/0/id'
+            getQuota:
+              operationId: getQuota
+              parameters:
+                id: '$response.body#/data/0/id'
+            searchMessages:
+              operationId: searchMessages
+              parameters:
+                id: '$response.body#/data/0/id'
+            listContacts:
+              operationId: listContacts
+              parameters:
+                id: '$response.body#/data/0/id'
+            createContact:
+              operationId: createContact
+              parameters:
+                id: '$response.body#/data/0/id'
+            blockSender:
+              operationId: blockSender
+              parameters:
+                id: '$response.body#/data/0/id'
+            importContacts:
+              operationId: importContacts
+              parameters:
+                id: '$response.body#/data/0/id'
+            suggestContacts:
+              operationId: suggestContacts
+              parameters:
+                id: '$response.body#/data/0/id'
+            getVacation:
+              operationId: getVacation
+              parameters:
+                id: '$response.body#/data/0/id'
+            setVacation:
+              operationId: setVacation
+              parameters:
+                id: '$response.body#/data/0/id'
+            disableVacation:
+              operationId: disableVacation
+              parameters:
+                id: '$response.body#/data/0/id'
+            putSieveScript:
+              operationId: putSieveScript
+              parameters:
+                id: '$response.body#/data/0/id'
+            validateSieveScript:
+              operationId: validateSieveScript
+              parameters:
+                id: '$response.body#/data/0/id'
+            listQuarantine:
+              operationId: listQuarantine
+              parameters:
+                id: '$response.body#/data/0/id'
+            listCalendarEvents:
+              operationId: listCalendarEvents
+              parameters:
+                id: '$response.body#/data/0/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
       operationId: createAccount
       tags: [Accounts]
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Create an account
       description: >
         The same for everyone. Needs `mailboxes:write` held at a scope covering
@@ -820,13 +905,16 @@ paths:
         entries (`accounts.create`, `grants.create`) commit together; a refused
         attempt is recorded too. A "sub account" is only this relationship: an
         account another holds the owner grant on.
-      x-required-capability: "mailboxes:write (on the address's domain)"
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateAccountRequest"
+            example:
+              address: new-account@restmail.test
+              display_name: New Account
+              password: correct-horse-battery
       responses:
         "201":
           description: Created
@@ -838,6 +926,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+          links:
+            getMailbox:
+              operationId: getMailbox
+              parameters:
+                id: '$response.body#/data/id'
+            updateMailbox:
+              operationId: updateMailbox
+              parameters:
+                id: '$response.body#/data/id'
+            deleteMailbox:
+              operationId: deleteMailbox
+              parameters:
+                id: '$response.body#/data/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -885,6 +986,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+          links:
+            unlinkAccount:
+              operationId: unlinkAccount
+              parameters:
+                id: '$response.body#/data/id'
         "401":
           description: The session itself is missing or has ended; never a refused link
         "403":
@@ -909,11 +1015,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getAccount
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Accounts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get an account this one may read
       responses:
         "200":
@@ -953,6 +1059,9 @@ paths:
     get:
       operationId: listCredentials
       tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
       summary: List an account's app passwords
       description: >
         The app passwords of the account that are not revoked, newest first;
@@ -980,6 +1089,9 @@ paths:
     post:
       operationId: createAppPassword
       tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
       summary: Make an app password
       description: >
         Makes an app password for a mail client or an automation and answers
@@ -1029,6 +1141,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CreatedAppPassword"
+          links:
+            revokeCredential:
+              operationId: revokeCredential
+              parameters:
+                id: '$request.path.id'
+                credential_id: '$response.body#/data/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1056,9 +1174,13 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
     delete:
       operationId: revokeCredential
       tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
       summary: Revoke an app password
       description: >
         Revokes it: the next request made with it is refused, and an SMTP
@@ -1174,6 +1296,7 @@ paths:
         description: The device's `id`
         schema:
           type: string
+        example: 1
     delete:
       operationId: removePushDevice
       tags: [Push devices]
@@ -1198,11 +1321,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listFolders
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List folders for an account
       responses:
         "200":
@@ -1219,11 +1342,11 @@ paths:
                       $ref: "#/components/schemas/Folder"
     post:
       operationId: createFolder
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Create a new folder
       requestBody:
         required: true
@@ -1231,6 +1354,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateFolderRequest"
+            example:
+              name: Receipts
       responses:
         "201":
           description: Folder created
@@ -1242,6 +1367,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+          links:
+            renameFolder:
+              operationId: renameFolder
+              parameters:
+                id: '$request.path.id'
+                folder: '$response.body#/data/name'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1251,11 +1382,11 @@ paths:
       - $ref: "#/components/parameters/FolderName"
     patch:
       operationId: renameFolder
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Rename a folder
       requestBody:
         required: true
@@ -1263,6 +1394,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RenameFolderRequest"
+            example:
+              name: Paid receipts
       responses:
         "200":
           description: Folder renamed
@@ -1274,15 +1407,21 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+          links:
+            deleteFolder:
+              operationId: deleteFolder
+              parameters:
+                id: '$request.path.id'
+                folder: '$response.body#/data/name'
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteFolder
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Folders]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete a folder
       responses:
         "204":
@@ -1299,11 +1438,11 @@ paths:
       - $ref: "#/components/parameters/FolderName"
     get:
       operationId: listMessages
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List messages in a folder with cursor pagination
       parameters:
         - name: limit
@@ -1336,11 +1475,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: getMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get a single message by ID
       responses:
         "200":
@@ -1353,15 +1492,21 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            getThread:
+              operationId: getThread
+              parameters:
+                id: '$response.body#/data/mailbox_id'
+                threadID: '$response.body#/data/thread_id'
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Update message flags or move to another folder
       requestBody:
         required: true
@@ -1369,6 +1514,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateMessageRequest"
+            example:
+              is_read: true
+              is_flagged: true
       responses:
         "200":
           description: Message updated
@@ -1384,11 +1532,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete a message
       responses:
         "204":
@@ -1399,11 +1547,11 @@ paths:
   /api/v1/messages/send:
     post:
       operationId: sendMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
       summary: Compose and send a new message
       requestBody:
         required: true
@@ -1411,6 +1559,15 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SendMessageRequest"
+            # imap.restmail.test resolves in the testbed but takes no mail on
+            # port 25: the delivery is refused for now and the queue entry is
+            # deferred, so the queue operations' links have one to retry. A
+            # domain that does not resolve bounces at once.
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test, someone@imap.restmail.test]
+              subject: Hello
+              body_text: Sent through the REST API.
       responses:
         "201":
           description: Message sent
@@ -1422,6 +1579,31 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            getMessage:
+              operationId: getMessage
+              parameters:
+                id: '$response.body#/data/id'
+            updateMessage:
+              operationId: updateMessage
+              parameters:
+                id: '$response.body#/data/id'
+            getRawMessage:
+              operationId: getRawMessage
+              parameters:
+                id: '$response.body#/data/id'
+            forwardMessage:
+              operationId: forwardMessage
+              parameters:
+                id: '$response.body#/data/id'
+            listAttachments:
+              operationId: listAttachments
+              parameters:
+                id: '$response.body#/data/id'
+            getMessageTrace:
+              operationId: getMessageTrace
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1430,19 +1612,24 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: getRawMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get the raw RFC 2822 message source
       responses:
         "200":
           description: Raw message
           content:
-            text/plain:
+            message/rfc822:
               schema:
                 type: string
+          links:
+            deleteMessage:
+              operationId: deleteMessage
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1451,11 +1638,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: forwardMessage
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Messages]
+      security:
+        - CookieAuth: [mail:read, mail:send]
+        - BearerAuth: [mail:read, mail:send]
+        - BasicAuth: [mail:read, mail:send]
       summary: Forward a message
       requestBody:
         required: true
@@ -1463,6 +1650,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ForwardMessageRequest"
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test]
+              body_text: See below.
       responses:
         "201":
           description: Message forwarded
@@ -1483,11 +1674,11 @@ paths:
   /api/v1/messages/draft:
     post:
       operationId: saveDraft
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Drafts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Save a new draft
       requestBody:
         required: true
@@ -1495,6 +1686,11 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/DraftRequest"
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test]
+              subject: Draft
+              body_text: Not sent yet.
       responses:
         "201":
           description: Draft saved
@@ -1506,17 +1702,22 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            updateDraft:
+              operationId: updateDraft
+              parameters:
+                id: '$response.body#/data/id'
 
   /api/v1/messages/draft/{id}:
     parameters:
       - $ref: "#/components/parameters/MessageId"
     put:
       operationId: updateDraft
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Drafts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Update an existing draft
       requestBody:
         required: true
@@ -1524,6 +1725,11 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateDraftRequest"
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test]
+              subject: Draft, edited
+              body_text: Ready to send.
       responses:
         "200":
           description: Draft updated
@@ -1535,6 +1741,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            sendDraft:
+              operationId: sendDraft
+              parameters:
+                id: '$response.body#/data/id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1543,11 +1754,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: sendDraft
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Drafts]
+      security:
+        - CookieAuth: [mail:write, mail:send]
+        - BearerAuth: [mail:write, mail:send]
+        - BasicAuth: [mail:write, mail:send]
       summary: Send a saved draft
       responses:
         "201":
@@ -1575,13 +1786,14 @@ paths:
         schema:
           type: string
         description: Thread identifier
+        example: 1
     get:
       operationId: getThread
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Threads]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get all messages in a thread
       responses:
         "200":
@@ -1607,11 +1819,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getQuota
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quota]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get mailbox quota usage
       responses:
         "200":
@@ -1633,11 +1845,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: searchMessages
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Search]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Search messages with filters
       parameters:
         - name: q
@@ -1667,7 +1879,7 @@ paths:
             type: string
             format: date-time
           description: Messages before this date
-        - name: "has:attachment"
+        - name: has_attachment
           in: query
           schema:
             type: boolean
@@ -1708,17 +1920,20 @@ paths:
         schema:
           type: integer
         description: Attachment ID
+        example: 1
     get:
       operationId: getAttachment
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Attachments]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Download an attachment
       responses:
         "200":
-          description: Attachment binary
+          description: >-
+            The attachment's bytes, always as application/octet-stream; the
+            type its sender gave it is listAttachments' content_type.
           content:
             application/octet-stream:
               schema:
@@ -1732,11 +1947,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: listAttachments
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Attachments]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List attachments for a message
       responses:
         "200":
@@ -1760,11 +1975,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listContacts
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List contacts for an account
       parameters:
         - name: trust_level
@@ -1791,11 +2006,11 @@ paths:
                       $ref: "#/components/schemas/Contact"
     post:
       operationId: createContact
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Create a new contact
       requestBody:
         required: true
@@ -1814,6 +2029,17 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Contact"
+          links:
+            updateContact:
+              operationId: updateContact
+              parameters:
+                id: '$request.path.id'
+                cid: '$response.body#/data/id'
+            deleteContact:
+              operationId: deleteContact
+              parameters:
+                id: '$request.path.id'
+                cid: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1826,13 +2052,14 @@ paths:
         schema:
           type: integer
         description: Contact ID
+        example: 1
     patch:
       operationId: updateContact
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Update a contact
       requestBody:
         required: true
@@ -1855,11 +2082,11 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteContact
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete a contact
       responses:
         "204":
@@ -1872,11 +2099,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: blockSender
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Block a sender
       requestBody:
         required: true
@@ -1889,9 +2116,22 @@ paths:
                 email:
                   type: string
                   format: email
+            example:
+              email: spam@example.org
       responses:
+        # 201 first: the run blocks a new sender, then the same one again.
+        "201":
+          description: Sender blocked, as a new contact
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
         "200":
-          description: Sender blocked
+          description: Sender blocked; the contact already existed
           content:
             application/json:
               schema:
@@ -1906,11 +2146,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: importContacts
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Bulk import contacts
       requestBody:
         required: true
@@ -1918,6 +2158,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ImportContactsRequest"
+            example:
+              contacts:
+                - email: carol@example.org
+                  name: Carol
       responses:
         "200":
           description: Import result
@@ -1939,11 +2183,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: suggestContacts
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Contacts]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Autocomplete contacts by query
       parameters:
         - name: q
@@ -1951,6 +2195,7 @@ paths:
           required: true
           schema:
             type: string
+          example: ad
       responses:
         "200":
           description: Contact suggestions
@@ -1973,11 +2218,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getVacation
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Vacation]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get vacation auto-reply settings
       responses:
         "200":
@@ -1992,11 +2237,11 @@ paths:
                     $ref: "#/components/schemas/VacationConfig"
     put:
       operationId: setVacation
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Vacation]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Set vacation auto-reply settings
       requestBody:
         required: true
@@ -2017,11 +2262,11 @@ paths:
                     $ref: "#/components/schemas/VacationConfig"
     delete:
       operationId: disableVacation
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Vacation]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Disable vacation auto-reply
       responses:
         "204":
@@ -2035,11 +2280,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: Get the Sieve filter script
       responses:
         "200":
@@ -2052,15 +2297,20 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/SieveScript"
+          links:
+            deleteSieveScript:
+              operationId: deleteSieveScript
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
     put:
       operationId: putSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Create or replace the Sieve filter script
       requestBody:
         required: true
@@ -2068,9 +2318,17 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PutSieveRequest"
+            example:
+              script: |
+                require ["fileinto"];
+                if header :contains "subject" "invoice" {
+                  fileinto "Invoices";
+                }
+              active: true
       responses:
-        "200":
-          description: Sieve script saved
+        # 201 first: the run creates the script, then replaces it.
+        "201":
+          description: Sieve script created
           content:
             application/json:
               schema:
@@ -2079,13 +2337,28 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/SieveScript"
+        "200":
+          description: Sieve script replaced
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SieveScript"
+          links:
+            getSieveScript:
+              operationId: getSieveScript
+              parameters:
+                id: '$request.path.id'
     delete:
       operationId: deleteSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Delete the Sieve filter script
       responses:
         "200":
@@ -2109,11 +2382,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: validateSieveScript
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Sieve]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Validate a Sieve script without saving
       requestBody:
         required: true
@@ -2125,6 +2398,12 @@ paths:
               properties:
                 script:
                   type: string
+            example:
+              script: |
+                require ["fileinto"];
+                if header :contains "subject" "invoice" {
+                  fileinto "Invoices";
+                }
       responses:
         "200":
           description: Validation result
@@ -2151,11 +2430,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listQuarantine
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quarantine]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List quarantined messages
       responses:
         "200":
@@ -2180,13 +2459,14 @@ paths:
         schema:
           type: integer
         description: Quarantine entry ID
+        example: 1
     post:
       operationId: releaseQuarantine
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quarantine]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Release a quarantined message to inbox
       responses:
         "200":
@@ -2220,13 +2500,14 @@ paths:
         schema:
           type: integer
         description: Quarantine entry ID
+        example: 1
     delete:
       operationId: deleteQuarantine
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Quarantine]
+      security:
+        - CookieAuth: [mail:write]
+        - BearerAuth: [mail:write]
+        - BasicAuth: [mail:write]
       summary: Permanently delete a quarantined message
       responses:
         "200":
@@ -2254,6 +2535,9 @@ paths:
     get:
       operationId: accountEvents
       tags: [SSE]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
       summary: Server-Sent Events stream for real-time updates
       description: >
         Authenticated by the restmail_access cookie, which a native browser
@@ -2264,9 +2548,6 @@ paths:
         keepalive: once the account's sessions end, the stream ends without
         sending anything more, and opening it again with the same token
         answers 401.
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
       responses:
         "200":
           description: SSE event stream
@@ -2300,6 +2581,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Mailbox lookup result
@@ -2378,6 +2660,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Mailbox check result
@@ -2406,6 +2689,15 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RestmailDeliverRequest"
+            # A sender domain that publishes no DMARC record: example.com's
+            # p=reject would have the inbound pipeline reject the message.
+            example:
+              from: someone@ext-contract.test
+              to: [eve@restmail.test]
+              subject: Delivered over RESTMAIL
+              body_text: Hello, Eve.
+              message_id: <restmail-delivery@ext-contract.test>
+              date: "Sat, 17 Oct 2026 12:00:00 +0000"
       responses:
         "201":
           description: Delivery result
@@ -2427,7 +2719,9 @@ paths:
     get:
       operationId: listDomains
       tags: ["Admin: Domains"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List all domains
       responses:
         "200":
@@ -2445,7 +2739,9 @@ paths:
     post:
       operationId: createDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Create a new domain
       description: >-
         The domain is created but not live: `active` is false. Mail for a domain
@@ -2457,6 +2753,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateDomainRequest"
+            example:
+              name: example.org
+              server_type: restmail
       responses:
         "201":
           description: Domain created, not yet live
@@ -2468,6 +2767,47 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Domain"
+          links:
+            getDomain:
+              operationId: getDomain
+              parameters:
+                id: '$response.body#/data/id'
+            updateDomain:
+              operationId: updateDomain
+              parameters:
+                id: '$response.body#/data/id'
+            listAllowlist:
+              operationId: listAllowlist
+              parameters:
+                id: '$response.body#/data/id'
+            addToAllowlist:
+              operationId: addToAllowlist
+              parameters:
+                id: '$response.body#/data/id'
+            listBlocklist:
+              operationId: listBlocklist
+              parameters:
+                id: '$response.body#/data/id'
+            listSuppressions:
+              operationId: listSuppressions
+              parameters:
+                id: '$response.body#/data/id'
+            addToBlocklist:
+              operationId: addToBlocklist
+              parameters:
+                id: '$response.body#/data/id'
+            setDKIMKey:
+              operationId: setDKIMKey
+              parameters:
+                id: '$response.body#/data/id'
+            domainDNSCheck:
+              operationId: domainDNSCheck
+              parameters:
+                id: '$response.body#/data/id'
+            setMtaStsPolicy:
+              operationId: setMtaStsPolicy
+              parameters:
+                id: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
@@ -2479,7 +2819,9 @@ paths:
     get:
       operationId: getDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Get a domain by ID
       responses:
         "200":
@@ -2497,7 +2839,9 @@ paths:
     patch:
       operationId: updateDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Update a domain
       description: >-
         Setting `active` to true makes the domain live, and is refused with 409
@@ -2532,7 +2876,9 @@ paths:
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]
-      x-required-capability: domains:delete
+      security:
+        - CookieAuth: [domains:delete]
+        - BearerAuth: [domains:delete]
       summary: Delete a domain
       responses:
         "204":
@@ -2547,7 +2893,9 @@ paths:
     get:
       operationId: listMailboxes
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: List mailboxes, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -2574,7 +2922,9 @@ paths:
     get:
       operationId: getMailbox
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: Get an account by ID
       responses:
         "200":
@@ -2592,7 +2942,9 @@ paths:
     patch:
       operationId: updateMailbox
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Update an account
       description: |
         A new `password` (12 characters or more) replaces every password the
@@ -2608,6 +2960,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateMailboxRequest"
+            example:
+              display_name: Contract Test
+              quota_bytes: 1073741824
+              active: true
       responses:
         "200":
           description: Mailbox updated
@@ -2624,7 +2980,9 @@ paths:
     delete:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:delete
+      security:
+        - CookieAuth: [mailboxes:delete]
+        - BearerAuth: [mailboxes:delete]
       summary: Delete an account
       description: >
         Its credentials are revoked (kept, for the audit trail) and its
@@ -2648,7 +3006,9 @@ paths:
     delete:
       operationId: endMailboxSessions
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Sign an account out everywhere
       description: >
         Ends every session of the account: its refresh tokens are revoked and
@@ -2670,7 +3030,9 @@ paths:
     get:
       operationId: listAliases
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: List aliases, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -2693,7 +3055,9 @@ paths:
     post:
       operationId: createAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Create a new alias
       requestBody:
         required: true
@@ -2701,6 +3065,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateAliasRequest"
+            example:
+              source_address: sales@restmail.test
+              destination_address: admin@restmail.test
       responses:
         "201":
           description: Alias created
@@ -2712,6 +3079,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Alias"
+          links:
+            getAlias:
+              operationId: getAlias
+              parameters:
+                id: '$response.body#/data/id'
+            updateAlias:
+              operationId: updateAlias
+              parameters:
+                id: '$response.body#/data/id'
+            deleteAlias:
+              operationId: deleteAlias
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -2721,7 +3101,9 @@ paths:
     get:
       operationId: getAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:read
+      security:
+        - CookieAuth: [mailboxes:read]
+        - BearerAuth: [mailboxes:read]
       summary: Get an alias by ID
       responses:
         "200":
@@ -2739,7 +3121,9 @@ paths:
     patch:
       operationId: updateAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Update an alias
       requestBody:
         required: true
@@ -2763,7 +3147,9 @@ paths:
     delete:
       operationId: deleteAlias
       tags: ["Admin: Aliases"]
-      x-required-capability: mailboxes:delete
+      security:
+        - CookieAuth: [mailboxes:delete]
+        - BearerAuth: [mailboxes:delete]
       summary: Delete an alias
       responses:
         "204":
@@ -2778,7 +3164,9 @@ paths:
     get:
       operationId: listPipelines
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: List pipelines, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -2801,7 +3189,9 @@ paths:
     post:
       operationId: createPipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Create a new pipeline
       requestBody:
         required: true
@@ -2820,6 +3210,15 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Pipeline"
+          links:
+            updatePipeline:
+              operationId: updatePipeline
+              parameters:
+                id: '$response.body#/data/id'
+            deletePipeline:
+              operationId: deletePipeline
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -2829,7 +3228,9 @@ paths:
     patch:
       operationId: updatePipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Update a pipeline
       requestBody:
         required: true
@@ -2853,7 +3254,9 @@ paths:
     delete:
       operationId: deletePipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:delete
+      security:
+        - CookieAuth: [pipelines:delete]
+        - BearerAuth: [pipelines:delete]
       summary: Delete a pipeline
       responses:
         "200":
@@ -2876,7 +3279,9 @@ paths:
     post:
       operationId: testPipeline
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Test a pipeline against a sample email
       requestBody:
         required: true
@@ -2900,7 +3305,9 @@ paths:
     post:
       operationId: testFilter
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Test a single filter against a sample email
       requestBody:
         required: true
@@ -2908,6 +3315,22 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TestFilterRequest"
+            example:
+              filter_name: header_validate
+              config: {}
+              email:
+                envelope:
+                  mail_from: someone@example.com
+                  rcpt_to: [eve@restmail.test]
+                headers:
+                  from: [{name: Someone, address: someone@example.com}]
+                  to: [{address: eve@restmail.test}]
+                  subject: A filter test
+                  message-id: <filter-test@example.com>
+                  date: "Sat, 17 Oct 2026 12:00:00 +0000"
+                body:
+                  content_type: text/plain
+                  content: Hello.
       responses:
         "200":
           description: Filter execution result
@@ -2924,7 +3347,9 @@ paths:
     get:
       operationId: listPipelineLogs
       tags: ["Admin: Pipelines"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: List recent per-message pipeline traces
       description: >-
         Newest-first list of per-message pipeline traces. Each row is a
@@ -2994,7 +3419,9 @@ paths:
     get:
       operationId: listCustomFilters
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: List custom filters, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -3017,7 +3444,9 @@ paths:
     post:
       operationId: createCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Create a custom filter
       requestBody:
         required: true
@@ -3025,6 +3454,17 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateCustomFilterRequest"
+            example:
+              name: tag-invoices
+              description: Tags mail about invoices
+              filter_type: action
+              direction: inbound
+              config:
+                script: |
+                  function filter(email) {
+                    return { action: "continue" };
+                  }
+              enabled: false
       responses:
         "201":
           description: Custom filter created
@@ -3036,6 +3476,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CustomFilter"
+          links:
+            getCustomFilter:
+              operationId: getCustomFilter
+              parameters:
+                id: '$response.body#/data/id'
+            updateCustomFilter:
+              operationId: updateCustomFilter
+              parameters:
+                id: '$response.body#/data/id'
+            testCustomFilter:
+              operationId: testCustomFilter
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -3043,7 +3496,9 @@ paths:
     post:
       operationId: validateCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Syntax-check a JavaScript filter script via the sidecar
       requestBody:
         required: true
@@ -3055,10 +3510,16 @@ paths:
               properties:
                 script:
                   type: string
+                  minLength: 1
                   description: JavaScript filter source to validate
                 email:
                   type: object
                   description: Optional sample email passed through to the sidecar
+            example:
+              script: |
+                function filter(email) {
+                  return { action: "continue" };
+                }
       responses:
         "200":
           description: >-
@@ -3086,7 +3547,9 @@ paths:
     get:
       operationId: getCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:read
+      security:
+        - CookieAuth: [pipelines:read]
+        - BearerAuth: [pipelines:read]
       summary: Get a custom filter by ID
       responses:
         "200":
@@ -3104,7 +3567,9 @@ paths:
     patch:
       operationId: updateCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Update a custom filter
       requestBody:
         required: true
@@ -3112,6 +3577,14 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateCustomFilterRequest"
+            example:
+              description: Tags mail about invoices and receipts
+              config:
+                script: |
+                  function filter(email) {
+                    return { action: "continue" };
+                  }
+              enabled: true
       responses:
         "200":
           description: Custom filter updated
@@ -3125,10 +3598,14 @@ paths:
                     $ref: "#/components/schemas/CustomFilter"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:delete
+      security:
+        - CookieAuth: [pipelines:delete]
+        - BearerAuth: [pipelines:delete]
       summary: Delete a custom filter
       responses:
         "200":
@@ -3153,7 +3630,9 @@ paths:
     post:
       operationId: testCustomFilter
       tags: ["Admin: Custom Filters"]
-      x-required-capability: pipelines:write
+      security:
+        - CookieAuth: [pipelines:write]
+        - BearerAuth: [pipelines:write]
       summary: Run a stored custom filter's script against a sample email via the sidecar
       requestBody:
         required: false
@@ -3177,6 +3656,11 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+          links:
+            deleteCustomFilter:
+              operationId: deleteCustomFilter
+              parameters:
+                id: '$request.path.id'
         "400":
           description: Filter config contains no script, or invalid request
           content:
@@ -3201,7 +3685,9 @@ paths:
     get:
       operationId: listQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:read
+      security:
+        - CookieAuth: [queue:read]
+        - BearerAuth: [queue:read]
       summary: List outbound queue entries
       parameters:
         - name: status
@@ -3238,24 +3724,43 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, total, limit, offset]
+                required: [data]
                 properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/OutboundQueue"
-                  total:
-                    type: integer
-                  limit:
-                    type: integer
-                  offset:
-                    type: integer
+                  data:
+                    type: object
+                    required: [items, total, limit, offset]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OutboundQueue"
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+          links:
+            getQueueEntry:
+              operationId: getQueueEntry
+              parameters:
+                id: '$response.body#/data/items/0/id'
+            retryQueueEntry:
+              operationId: retryQueueEntry
+              parameters:
+                id: '$response.body#/data/items/0/id'
+            bounceQueueEntry:
+              operationId: bounceQueueEntry
+              parameters:
+                id: '$response.body#/data/items/0/id'
 
   /api/v1/admin/queue/stats:
     get:
       operationId: getQueueStats
       tags: ["Admin: Queue"]
-      x-required-capability: queue:read
+      security:
+        - CookieAuth: [queue:read]
+        - BearerAuth: [queue:read]
       summary: Get queue status counts
       responses:
         "200":
@@ -3273,7 +3778,9 @@ paths:
     post:
       operationId: bulkRetryQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Retry multiple queue entries
       requestBody:
         required: true
@@ -3281,6 +3788,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
+            example:
+              ids: [987654]
       responses:
         "200":
           description: Bulk retry result
@@ -3297,7 +3806,9 @@ paths:
     post:
       operationId: bulkBounceQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Bounce multiple queue entries
       requestBody:
         required: true
@@ -3305,6 +3816,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
+            example:
+              ids: [987654]
       responses:
         "200":
           description: Bulk bounce result
@@ -3321,7 +3834,9 @@ paths:
     delete:
       operationId: bulkDeleteQueue
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Delete multiple queue entries
       requestBody:
         required: true
@@ -3329,6 +3844,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
+            example:
+              ids: [987654]
       responses:
         "200":
           description: Bulk delete result
@@ -3347,7 +3864,9 @@ paths:
     get:
       operationId: getQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:read
+      security:
+        - CookieAuth: [queue:read]
+        - BearerAuth: [queue:read]
       summary: Get a single queue entry
       responses:
         "200":
@@ -3365,7 +3884,9 @@ paths:
     delete:
       operationId: deleteQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Delete a queue entry
       responses:
         "204":
@@ -3379,7 +3900,9 @@ paths:
     post:
       operationId: retryQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Retry a single queue entry
       responses:
         "200":
@@ -3406,7 +3929,9 @@ paths:
     post:
       operationId: bounceQueueEntry
       tags: ["Admin: Queue"]
-      x-required-capability: queue:manage
+      security:
+        - CookieAuth: [queue:manage]
+        - BearerAuth: [queue:manage]
       summary: Bounce a single queue entry
       responses:
         "200":
@@ -3424,6 +3949,11 @@ paths:
                       status:
                         type: string
                         example: bounced
+          links:
+            deleteQueueEntry:
+              operationId: deleteQueueEntry
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -3436,7 +3966,9 @@ paths:
     get:
       operationId: listAllowlist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List allowlist entries for a domain
       responses:
         "200":
@@ -3454,7 +3986,9 @@ paths:
     post:
       operationId: addToAllowlist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Add an allowlist entry
       requestBody:
         required: true
@@ -3462,6 +3996,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateSenderRuleRequest"
+            example:
+              pattern: "@partner.example.com"
+              reason: A trusted partner
       responses:
         "201":
           description: Entry added
@@ -3473,6 +4010,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+          links:
+            removeFromAllowlist:
+              operationId: removeFromAllowlist
+              parameters:
+                id: '$request.path.id'
+                eid: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
 
@@ -3485,10 +4028,13 @@ paths:
         schema:
           type: integer
         description: Sender rule entry ID
+        example: 1
     delete:
       operationId: removeFromAllowlist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Remove an allowlist entry
       responses:
         "204":
@@ -3502,7 +4048,9 @@ paths:
     get:
       operationId: listBlocklist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List blocklist entries for a domain
       responses:
         "200":
@@ -3520,7 +4068,9 @@ paths:
     post:
       operationId: addToBlocklist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Add a blocklist entry
       requestBody:
         required: true
@@ -3528,6 +4078,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateSenderRuleRequest"
+            example:
+              pattern: spam@spammer.example.com
+              reason: Sends spam
       responses:
         "201":
           description: Entry added
@@ -3539,6 +4092,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+          links:
+            removeFromBlocklist:
+              operationId: removeFromBlocklist
+              parameters:
+                id: '$request.path.id'
+                eid: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
 
@@ -3551,10 +4110,13 @@ paths:
         schema:
           type: integer
         description: Sender rule entry ID
+        example: 1
     delete:
       operationId: removeFromBlocklist
       tags: ["Admin: Sender Rules"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Remove a blocklist entry
       responses:
         "204":
@@ -3569,7 +4131,9 @@ paths:
     get:
       operationId: listDKIMKeys
       tags: ["Admin: DKIM"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List DKIM key entries for all domains
       responses:
         "200":
@@ -3591,7 +4155,9 @@ paths:
     put:
       operationId: setDKIMKey
       tags: ["Admin: DKIM"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Set or replace DKIM key for a domain
       description: >
         The key and selector are checked before they are stored, so a domain is
@@ -3620,6 +4186,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMEntry"
+          links:
+            deleteDKIMKey:
+              operationId: deleteDKIMKey
+              parameters:
+                id: '$request.path.id'
         "400":
           description: The body is not JSON, or lacks `selector` or `private_key` (`bad_request`)
         "404":
@@ -3639,7 +4210,9 @@ paths:
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Delete DKIM key for a domain
       responses:
         "204":
@@ -3654,7 +4227,9 @@ paths:
     get:
       operationId: listCertificates
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List TLS certificates
       responses:
         "200":
@@ -3672,7 +4247,9 @@ paths:
     post:
       operationId: createCertificate
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Upload a new TLS certificate
       requestBody:
         required: true
@@ -3691,6 +4268,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Certificate"
+          links:
+            getCertificate:
+              operationId: getCertificate
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -3700,7 +4282,9 @@ paths:
     get:
       operationId: getCertificate
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Get certificate details (includes cert_pem)
       responses:
         "200":
@@ -3713,12 +4297,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CertificateDetail"
+          links:
+            deleteCertificate:
+              operationId: deleteCertificate
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteCertificate
       tags: ["Admin: Certificates"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Delete a certificate
       responses:
         "204":
@@ -3733,7 +4324,9 @@ paths:
     get:
       operationId: listBans
       tags: ["Admin: Bans"]
-      x-required-capability: bans:read
+      security:
+        - CookieAuth: [bans:read]
+        - BearerAuth: [bans:read]
       summary: List IP bans
       parameters:
         - name: protocol
@@ -3777,7 +4370,9 @@ paths:
     post:
       operationId: createBan
       tags: ["Admin: Bans"]
-      x-required-capability: bans:write
+      security:
+        - CookieAuth: [bans:write]
+        - BearerAuth: [bans:write]
       summary: Create an IP ban
       requestBody:
         required: true
@@ -3785,6 +4380,12 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateBanRequest"
+            example:
+              ip: 192.0.2.10
+              reason: Repeated failed sign-ins
+              protocol: all
+              duration: 1h
+              created_by: admin@restmail.test
       responses:
         "201":
           description: Ban created
@@ -3796,6 +4397,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Ban"
+          links:
+            deleteBan:
+              operationId: deleteBan
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -3805,7 +4411,9 @@ paths:
     delete:
       operationId: deleteBan
       tags: ["Admin: Bans"]
-      x-required-capability: bans:delete
+      security:
+        - CookieAuth: [bans:delete]
+        - BearerAuth: [bans:delete]
       summary: Delete a ban by ID
       responses:
         "204":
@@ -3821,10 +4429,13 @@ paths:
         schema:
           type: string
         description: IP address to unban
+        example: 192.0.2.10
     delete:
       operationId: unbanIP
       tags: ["Admin: Bans"]
-      x-required-capability: bans:delete
+      security:
+        - CookieAuth: [bans:delete]
+        - BearerAuth: [bans:delete]
       summary: Remove all bans for a specific IP
       responses:
         "204":
@@ -3839,7 +4450,9 @@ paths:
     get:
       operationId: getDeliveryLogs
       tags: ["Admin: Logs"]
-      x-required-capability: messages:read
+      security:
+        - CookieAuth: [messages:read]
+        - BearerAuth: [messages:read]
       summary: Query delivery log (outbound queue history)
       parameters:
         - name: status
@@ -3899,7 +4512,9 @@ paths:
     get:
       operationId: listAuditEntries
       tags: ["Admin: Audit"]
-      x-required-capability: audit:read
+      security:
+        - CookieAuth: [audit:read]
+        - BearerAuth: [audit:read]
       summary: Read the audit log, newest first
       description: >-
         Entries newest first. To read the next page, pass the returned
@@ -3988,7 +4603,9 @@ paths:
     get:
       operationId: verifyAuditLog
       tags: ["Admin: Audit"]
-      x-required-capability: audit:read
+      security:
+        - CookieAuth: [audit:read]
+        - BearerAuth: [audit:read]
       summary: Check the audit log's hash chain
       description: >-
         Walks the whole log from its lowest seq and checks that every entry
@@ -4107,6 +4724,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Autoconfig XML document
@@ -4130,6 +4748,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
       responses:
         "200":
           description: Autoconfig XML document
@@ -4152,6 +4771,14 @@ paths:
           application/xml:
             schema:
               type: string
+            example: |
+              <?xml version="1.0" encoding="utf-8"?>
+              <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
+                <Request>
+                  <EMailAddress>eve@restmail.test</EMailAddress>
+                  <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
+                </Request>
+              </Autodiscover>
       responses:
         "200":
           description: Autodiscover XML response
@@ -4190,6 +4817,27 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TLSRPTReport"
+            example:
+              organization-name: Example Reporter
+              contact-info: tlsrpt@reporter.example.com
+              report-id: 2026-10-17T00:00:00Z_restmail.test
+              date-range:
+                start-datetime: "2026-10-16T00:00:00Z"
+                end-datetime: "2026-10-16T23:59:59Z"
+              policies:
+                - policy:
+                    policy-type: sts
+                    policy-string: ["version: STSv1", "mode: testing", "mx: mail.restmail.test", "max_age: 86400"]
+                    policy-domain: restmail.test
+                    mx-host: [mail.restmail.test]
+                  summary:
+                    total-successful-session-count: 12
+                    total-failure-session-count: 1
+                  failure-details:
+                    - result-type: certificate-expired
+                      sending-mta-ip: 192.0.2.1
+                      receiving-mx-hostname: mail.restmail.test
+                      failed-session-count: 1
       responses:
         "201":
           description: Report stored
@@ -4229,6 +4877,7 @@ paths:
           required: true
           schema:
             type: string
+          example: token
       responses:
         "200":
           description: Key authorization for the challenge token
@@ -4247,11 +4896,11 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: respondToCalendar
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Calendar]
+      security:
+        - CookieAuth: [mail:read, mail:send]
+        - BearerAuth: [mail:read, mail:send]
+        - BasicAuth: [mail:read, mail:send]
       summary: Send an iMIP reply to a calendar invitation in a message
       requestBody:
         required: true
@@ -4302,11 +4951,11 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listCalendarEvents
-      security:
-        - CookieAuth: []
-        - BearerAuth: []
-        - BasicAuth: []
       tags: [Calendar]
+      security:
+        - CookieAuth: [mail:read]
+        - BearerAuth: [mail:read]
+        - BasicAuth: [mail:read]
       summary: List calendar events (grouped by UID, latest version) for the mailbox
       responses:
         "200":
@@ -4329,8 +4978,10 @@ paths:
     get:
       operationId: getDashboardStats
       tags: ["Admin: Stats"]
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Dashboard statistics
-      x-required-capability: domains:read
       description: Visible to every admin role, all of which hold domains:read.
       responses:
         "200":
@@ -4351,7 +5002,9 @@ paths:
     get:
       operationId: listRoles
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:read
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
       summary: List roles
       responses:
         "200":
@@ -4371,7 +5024,9 @@ paths:
     get:
       operationId: listCapabilities
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:read
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
       summary: List capabilities
       responses:
         "200":
@@ -4391,7 +5046,9 @@ paths:
     get:
       operationId: listGrants
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:read
+      security:
+        - CookieAuth: [users:read]
+        - BearerAuth: [users:read]
       summary: List grants, oldest first
       description: >-
         Every grant, active and eligible, or only one holder's, or only those
@@ -4443,7 +5100,9 @@ paths:
     post:
       operationId: createGrant
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:write
+      security:
+        - CookieAuth: [users:write]
+        - BearerAuth: [users:write]
       summary: Grant a role at a scope
       description: >-
         Needs a session that signed in with two-factor authentication (`403
@@ -4491,7 +5150,9 @@ paths:
     delete:
       operationId: deleteGrant
       tags: ["Admin: Roles & Grants"]
-      x-required-capability: users:write
+      security:
+        - CookieAuth: [users:write]
+        - BearerAuth: [users:write]
       summary: Remove a grant
       description: >-
         The same rules as granting: a 2FA session, and the caller must hold
@@ -4743,7 +5404,9 @@ paths:
     get:
       operationId: domainDNSCheck
       tags: ["Admin: Domains"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain
       responses:
         "200":
@@ -4764,11 +5427,13 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/domains/{id}/suppressions:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
     get:
       operationId: listSuppressions
       tags: ["Admin: Suppressions"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List a domain's suppressed recipients
       description: |
         Recipients the domain's mail is no longer sent to, because mail from
@@ -4792,17 +5457,20 @@ paths:
 
   /api/v1/admin/domains/{id}/suppressions/{sid}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
       - name: sid
         in: path
         required: true
         schema:
           type: integer
         description: Suppression ID
+        example: 1
     delete:
       operationId: clearSuppression
       tags: ["Admin: Suppressions"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Clear a suppression
       description: The domain's mail to the address is tried again.
       responses:
@@ -4820,7 +5488,9 @@ paths:
     get:
       operationId: getMtaStsPolicy
       tags: ["Admin: MTA-STS"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: Get the MTA-STS policy for a domain
       responses:
         "200":
@@ -4833,12 +5503,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
+          links:
+            deleteMtaStsPolicy:
+              operationId: deleteMtaStsPolicy
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
     put:
       operationId: setMtaStsPolicy
       tags: ["Admin: MTA-STS"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Create or update the MTA-STS policy for a domain
       requestBody:
         required: true
@@ -4846,9 +5523,14 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SetMTASTSPolicyRequest"
+            example:
+              mode: testing
+              mx_hosts: mail.example.org
+              max_age: 86400
+              active: true
       responses:
-        "200":
-          description: Policy updated
+        "201":
+          description: Policy created
           content:
             application/json:
               schema:
@@ -4857,8 +5539,17 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
-        "201":
-          description: Policy created
+          links:
+            getMtaStsPolicy:
+              operationId: getMtaStsPolicy
+              parameters:
+                id: '$request.path.id'
+            # Order only: the policy file is served once a policy exists. The
+            # domain arrives in the Host header (tests/contract/hooks.py).
+            mtaStsPolicyFile:
+              operationId: mtaStsPolicyFile
+        "200":
+          description: Policy updated
           content:
             application/json:
               schema:
@@ -4874,11 +5565,18 @@ paths:
     delete:
       operationId: deleteMtaStsPolicy
       tags: ["Admin: MTA-STS"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Delete the MTA-STS policy for a domain
       responses:
         "204":
           description: Policy deleted
+          links:
+            deleteDomain:
+              operationId: deleteDomain
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -4889,7 +5587,9 @@ paths:
     get:
       operationId: listTlsReports
       tags: ["Admin: TLS Reports"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List received TLS-RPT reports
       parameters:
         - name: domain_id
@@ -4939,7 +5639,9 @@ paths:
     get:
       operationId: getPipelineAnalytics
       tags: ["Admin: Observability"]
-      x-required-capability: observability:read
+      security:
+        - CookieAuth: [observability:read]
+        - BearerAuth: [observability:read]
       summary: Windowed message-lifecycle funnel from pipeline_rollups
       parameters:
         - name: window
@@ -4972,7 +5674,9 @@ paths:
     get:
       operationId: getMessageTrace
       tags: ["Admin: Observability"]
-      x-required-capability: observability:read
+      security:
+        - CookieAuth: [observability:read]
+        - BearerAuth: [observability:read]
       summary: Get the pipeline trace for a delivered message
       description: >-
         Returns the trace joined on message_id, which is set only on the
@@ -4998,8 +5702,10 @@ paths:
   /api/v1/admin/test/send:
     post:
       operationId: sendTestEmail
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Inject a test email directly into a recipient mailbox
       requestBody:
         required: true
@@ -5019,6 +5725,11 @@ paths:
                   type: string
                 body:
                   type: string
+            example:
+              from: postmaster@restmail.test
+              to: admin@restmail.test
+              subject: Test
+              body: A test message.
       responses:
         "201":
           description: Test message created
@@ -5051,8 +5762,10 @@ paths:
   /api/v1/admin/test/verify:
     get:
       operationId: verifyDelivery
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Poll for a delivered message matching the given criteria
       parameters:
         - name: to
@@ -5061,6 +5774,7 @@ paths:
           schema:
             type: string
             format: email
+          example: admin@restmail.test
         - name: subject
           in: query
           schema:
@@ -5100,8 +5814,10 @@ paths:
   /api/v1/admin/test/probe:
     post:
       operationId: probeServices
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Probe connectivity to SMTP/IMAP/POP3/DNS/DB
       requestBody:
         required: false
@@ -5139,8 +5855,10 @@ paths:
   /api/v1/admin/test/reset:
     post:
       operationId: resetTestData
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Wipe all data and re-seed default test data
       responses:
         "200":
@@ -5155,8 +5873,10 @@ paths:
   /api/v1/admin/test/seed:
     post:
       operationId: seedTestData
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Seed default test domains, mailboxes, aliases and accounts
       responses:
         "200":
@@ -5171,8 +5891,10 @@ paths:
   /api/v1/admin/test/snapshot:
     post:
       operationId: snapshotTestData
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Capture the current database state as JSON
       responses:
         "200":
@@ -5192,8 +5914,10 @@ paths:
   /api/v1/admin/test/snapshot/restore:
     post:
       operationId: restoreTestSnapshot
-      x-required-capability: "*"
       tags: ["Admin: Testing"]
+      security:
+        - CookieAuth: ["*"]
+        - BearerAuth: ["*"]
       summary: Restore database state from a previously captured snapshot
       requestBody:
         required: true
@@ -5269,14 +5993,27 @@ components:
       required: true
       schema:
         type: integer
+        minimum: 1
       description: Account ID
+      example: 1
     MessageId:
       name: id
       in: path
       required: true
       schema:
         type: integer
+        minimum: 1
       description: Message ID
+      example: 1
+    DomainId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Domain ID
+      example: 1
     ResourceId:
       name: id
       in: path
@@ -5284,6 +6021,7 @@ components:
       schema:
         type: integer
       description: Resource ID
+      example: 1
     FolderName:
       name: folder
       in: path
@@ -5291,6 +6029,7 @@ components:
       schema:
         type: string
       description: Folder name (e.g. INBOX, Sent, Drafts, Trash)
+      example: INBOX
 
   responses:
     Unauthorized:
@@ -5704,6 +6443,7 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
 
     # ─────────────────────────────────────────────────────────────
     # Message
@@ -5732,28 +6472,18 @@ components:
         sender_name:
           type: string
         recipients_to:
-          description: JSON array of recipient objects
+          description: The recipients' addresses.
           oneOf:
             - type: array
               items:
-                type: object
-                properties:
-                  address:
-                    type: string
-                  name:
-                    type: string
+                type: string
             - type: "null"
         recipients_cc:
-          description: JSON array of CC recipient objects
+          description: The CC recipients' addresses.
           oneOf:
             - type: array
               items:
-                type: object
-                properties:
-                  address:
-                    type: string
-                  name:
-                    type: string
+                type: string
             - type: "null"
         subject:
           type: string
@@ -5762,9 +6492,18 @@ components:
         body_html:
           type: string
         headers:
-          description: Raw email headers as JSON
+          description: >-
+            The message's header fields as it arrived, each name with its
+            values; an empty array when none were recorded (mail sent from
+            here, drafts).
           oneOf:
             - type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            - type: array
+              maxItems: 0
             - type: "null"
         size_bytes:
           type: integer
@@ -6221,6 +6960,9 @@ components:
           type: string
         message_id:
           type: string
+        date:
+          type: string
+          description: The Date header (RFC 5322); the inbound pipeline rejects a message without one
         in_reply_to:
           type: string
         references:
@@ -7157,7 +7899,8 @@ components:
           properties:
             kind:
               type: string
-              enum: [admin, system]
+              enum: [account, system]
+              description: An account's grant names the account that made it; the bootstrap admin's is the system's.
             id:
               type: [integer, "null"]
         granted_at:
@@ -7621,13 +8364,15 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
         description:
           type: string
         filter_type:
           type: string
+          enum: [action, transform]
         direction:
           type: string
-          enum: [inbound, outbound]
+          enum: [inbound, outbound, both]
         config:
           type: object
           description: Filter configuration (opaque JSON)

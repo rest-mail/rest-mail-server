@@ -762,6 +762,12 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	rawMessage = signedRaw
 
+	// The Sent copy keeps the source that was sent, as a delivered copy does,
+	// so its raw source can be read (GET /messages/{id}/raw, IMAP, POP3).
+	if err := h.db.Model(&sentMsg).Updates(map[string]any{"raw_message": rawMessage, "raw_size": len(rawMessage)}).Error; err != nil {
+		slog.Warn("failed to store the sent message's raw source", "message_id", sentMsg.ID, "error", err)
+	}
+
 	// Deliver to each recipient in to + cc + bcc
 	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
 	allRecipients = append(allRecipients, req.To...)

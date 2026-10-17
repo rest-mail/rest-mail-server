@@ -1,0 +1,27 @@
+name: Contract fuzz
+
+# Nightly, the contract tests' fuzz phase (#376): vertrag draws values from
+# every schema in openapi.yaml, shrinks what fails to its smallest input, and
+# prints the seed that replays it. Exploratory rather than deterministic, so it
+# blocks nothing: it runs the E2E topology on its own schedule, and its report
+# (fuzz.xml, with the log) is the run's e2e-container-logs artifact. Anything
+# it finds gets an issue by hand, with the seed.
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: contract-fuzz
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  fuzz:
+    name: Contract tests (fuzz)
+    uses: ./.github/workflows/e2e-suite.yml
+    with:
+      contract-phases: fuzz

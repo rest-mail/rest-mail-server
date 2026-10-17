@@ -26,7 +26,7 @@ export interface MessageSummary {
   message_id: string;
   sender: string;
   sender_name: string;
-  recipients_to: string | null;
+  recipients_to: string[] | null;
   subject: string;
   size_bytes: number;
   has_attachments: boolean;

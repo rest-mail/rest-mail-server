@@ -68,7 +68,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Has attachment filter
-	if r.URL.Query().Get("has:attachment") == "true" {
+	if r.URL.Query().Get("has_attachment") == "true" {
 		query = query.Where("has_attachments = true")
 	}
 

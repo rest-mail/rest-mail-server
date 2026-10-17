@@ -41,6 +41,11 @@ vars:
   API_JWT_SECRET: '{{.API_JWT_SECRET | default "dev-secret-change-in-production"}}'
   API_MASTER_KEY: '{{.API_MASTER_KEY | default "dev-master-key-change-in-production"}}'
   API_JS_FILTER_TOKEN: '{{.API_JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
+  # The sidecar by address: the testbed's DNS has no name for it.
+  API_JS_FILTER_URL: '{{.API_JS_FILTER_URL | default "http://10.99.0.22:3100"}}'
+  # The testbed keeps every message's trace, not a sample, so a test can read
+  # the trace of any message it sent.
+  API_TRACE_SAMPLE_RATE: '{{.API_TRACE_SAMPLE_RATE | default "1"}}'
   API_LOG_LEVEL: '{{.API_LOG_LEVEL | default "debug"}}'
   API_ENVIRONMENT: '{{.API_ENVIRONMENT | default "development"}}'
   API_MAILNET_ONLY: '{{.API_MAILNET_ONLY | default "false"}}'
@@ -160,6 +165,8 @@ tasks:
           -e DB_NAME={{.API_DB_NAME}} \
           -e DB_USER={{.API_DB_USER}} \
           -e API_PORT={{.API_PORT}} \
+          -e JS_FILTER_URL={{.API_JS_FILTER_URL}} \
+          -e TRACE_SAMPLE_RATE={{.API_TRACE_SAMPLE_RATE}} \
           --env-file "$SECRETS_ENV" \
           -e ENVIRONMENT={{.API_ENVIRONMENT}} \
           -e LOG_LEVEL={{.API_LOG_LEVEL}} \
