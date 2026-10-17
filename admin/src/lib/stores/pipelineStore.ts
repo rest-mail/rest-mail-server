@@ -44,9 +44,8 @@ interface TraceStage {
   error?: string
 }
 
-// MessageTrace is the richer per-message observability record returned by the
-// repointed GET /admin/pipelines/logs (list) and GET /admin/messages/{id}/trace
-// (single). It supersedes the old PipelineLog {steps, action} shape, adding
+// MessageTrace is the per-message observability record returned by
+// GET /admin/pipelines/logs (list) and GET /admin/messages/{id}/trace (single):
 // outcome, reason_code, transport, correlation ids and the ordered stage
 // timeline.
 interface MessageTrace {

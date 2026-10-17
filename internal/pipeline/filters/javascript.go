@@ -23,7 +23,7 @@ type jsFilterConfig struct {
 	// reached, times out, errors, or returns an unusable result. It defaults to
 	// "defer" (fail-closed): a wedged or compromised sidecar must not silently
 	// disable JS filtering by letting every message through. An operator may set
-	// "continue" to restore the legacy fail-open behaviour, or "reject".
+	// "continue" to fail open, or "reject".
 	FailureAction string `json:"failure_action"`
 }
 

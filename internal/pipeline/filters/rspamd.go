@@ -74,8 +74,8 @@ func newRspamd(config []byte, hmacSecret string) (pipeline.Filter, error) {
 		TimeoutMS: 5000,
 		// SECURE DEFAULT (OSI-15): defer, not continue. If the scanner is
 		// unreachable or errors, the message is temp-failed (sender retries)
-		// rather than silently delivered unscanned. An operator can restore the
-		// legacy fail-open behavior with "fallback_action":"continue".
+		// rather than silently delivered unscanned. An operator may choose
+		// fail-open with "fallback_action":"continue".
 		FallbackAction: "defer",
 	}
 	if len(config) > 0 {

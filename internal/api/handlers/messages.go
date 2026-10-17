@@ -1818,8 +1818,8 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 // verifyMessageOwnership checks that the authenticated user owns the message.
 // Returns true only if the message belongs to one of the authenticated mailbox
 // account's mailboxes. These are mailbox-scoped webmail routes; there is no
-// cross-mailbox admin bypass here (the deprecated IsAdmin claim was removed —
-// OSI-14). Admin management happens on the capability-gated /admin surface.
+// cross-mailbox admin bypass here (OSI-14). Admin management happens on the
+// capability-gated /admin surface.
 func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.Request, msg *models.Message) bool {
 	claims := middleware.GetClaims(r)
 	if claims == nil {

@@ -45,19 +45,6 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// backfillRawSizeSQL populates messages.raw_size for pre-existing rows:
-// the exact octet count of the stored raw message when one exists
-// (octet_length counts bytes, matching len(raw) at write time), else the
-// legacy size_bytes value so gateways report an unchanged size for
-// messages that never had a stored raw. Guarded on raw_size = 0 so the
-// statement is idempotent across restarts and never overwrites a value a
-// writer recorded.
-const backfillRawSizeSQL = `UPDATE messages SET raw_size = CASE
-	WHEN raw_message IS NOT NULL AND raw_message <> '' THEN octet_length(raw_message)
-	ELSE size_bytes
-END
-WHERE raw_size = 0 AND (COALESCE(raw_message, '') <> '' OR size_bytes <> 0)`
-
 // dedupeLinkedAccountsSQL collapses pre-existing duplicate linked_accounts rows,
 // keeping the earliest (lowest id) link per mailbox, so the standalone unique
 // index on mailbox_id (OSI-21) can be created on a database that predates the
@@ -217,25 +204,6 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 	if err := MigrateAuditLog(db); err != nil {
 		return err
 	}
-
-	// Backfill messages.raw_size for rows created before the column existed.
-	// octet_length (not length) matches Go's len() over the stored text: it
-	// counts bytes in the database encoding, which is exactly what the writer
-	// would have recorded. Rows without a stored raw fall back to size_bytes so
-	// protocol gateways keep reporting the same size they always did for them.
-	// The raw_size = 0 guard makes the backfill idempotent and cheap on
-	// subsequent startups.
-	if err := db.Exec(backfillRawSizeSQL).Error; err != nil {
-		slog.Warn("failed to backfill messages.raw_size", "error", err)
-	}
-
-	// messages.received_tls / messages.tls_version (inbound transport-security
-	// monitoring) are added by AutoMigrate above and deliberately NOT backfilled:
-	// the true transport security of a message that arrived before the column
-	// existed is genuinely unknown, and received_tls is nullable so NULL encodes
-	// exactly that. Defaulting old rows to false would misreport them as
-	// plaintext inbound-MX arrivals and skew the dashboard aggregate, so they are
-	// left NULL ("not applicable / unknown") — the honest, non-breaking default.
 
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {

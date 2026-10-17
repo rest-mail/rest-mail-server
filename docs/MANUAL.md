@@ -260,7 +260,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `vacation` | Action | DB-backed; reads `vacation_configs`, queues reply via `outbound_queue` with RFC 3834 headers: `Auto-Submitted: auto-replied`, `Precedence: bulk`, `In-Reply-To`, `References`, `X-Auto-Response-Suppress: All` |
 | `sieve` | Action | Sieve script execution |
 | `webhook` | Action | HTTP POST notification |
-| `duplicate` | Action | Fork message to webhook/queue |
+| `duplicate` | Action | Fork a copy of the message to a webhook |
 | `javascript` | Action | Runs in [projects/js-filter-sidecar](../projects/js-filter-sidecar/) (Node.js, `vm.runInNewContext` with whitelisted globals, `--max-old-space-size=64`) |
 | `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum |
 | `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected |
@@ -679,9 +679,9 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 The stack is driven by per-service tasks in `chores.yml`, not a single compose file. Run `chore --list` for the full catalog; `chore status` shows what is running and where.
 ```bash
 chore testbed:up          # shared testbed: mailnet network + certs volume + dnsmasq
-chore dev                 # bring up the full restmail stack (alias for restmail:up)
-chore restmail:down       # stop the restmail stack (preserves data volumes)
-chore restmail:restart    # stop + recreate the full stack (rebuilds images)
+chore instance:up         # bring up the full restmail stack (CONFIG defaults to restmail.test)
+chore instance:down       # stop the restmail stack (preserves data volumes)
+chore instance:restart    # stop + recreate the full stack (rebuilds images)
 chore purge               # remove all rest-mail-* containers (keeps volumes)
 chore db:reset            # drop postgres data volume, recreate, then seed (destructive)
 chore db:seed             # seed the instance DB (admin/admin123!@ + restmail.test accounts)

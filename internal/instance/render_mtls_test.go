@@ -41,7 +41,7 @@ func TestParseAcceptsInternalMTLS(t *testing.T) {
 
 // TestRenderTLSInternalModeEnablesMTLS proves the declarative block turns the
 // switch on: mode require/verify — and an empty mode (default require) — all emit
-// RESTMAIL_INTERNAL_MTLS=true, the same line the legacy `internal_mtls` bool emits.
+// RESTMAIL_INTERNAL_MTLS=true, the same line the `internal_mtls` bool emits.
 func TestRenderTLSInternalModeEnablesMTLS(t *testing.T) {
 	for _, mode := range []string{"require", "verify", ""} {
 		m := &Manifest{Project: "p", TLS: TLS{Internal: &InternalTLS{Mode: mode}}}
@@ -68,9 +68,9 @@ func TestRenderTLSInternalModeOffDisablesMTLS(t *testing.T) {
 	}
 }
 
-// TestRenderTLSInternalBlockBeatsLegacyBool proves the block is authoritative
-// over the legacy bool when present: internal_mtls false + mode require → on.
-func TestRenderTLSInternalBlockBeatsLegacyBool(t *testing.T) {
+// TestRenderTLSInternalBlockBeatsBool proves the block is authoritative over the
+// bool when present: internal_mtls false + mode require → on.
+func TestRenderTLSInternalBlockBeatsBool(t *testing.T) {
 	m := &Manifest{Project: "p", InternalMTLS: false, TLS: TLS{Internal: &InternalTLS{Mode: "require"}}}
 	out, err := Render(m)
 	if err != nil {

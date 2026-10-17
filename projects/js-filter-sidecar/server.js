@@ -19,9 +19,8 @@ function toPositiveInt(raw, fallback) {
 // encoding, plus the script) and is overridable for tight deployments.
 const MAX_BODY_BYTES = toPositiveInt(process.env.JS_FILTER_MAX_BODY_BYTES, 32 * 1024 * 1024);
 
-// Default allowed hosts from environment (comma-separated). The allowlist is
-// server-configured; request-supplied hosts are honoured too for backward
-// compatibility with the existing /execute contract.
+// The hosts a script may fetch from (comma-separated). The allowlist is set by
+// whoever runs the sidecar; a request cannot add to it.
 const DEFAULT_ALLOWED_HOSTS = (process.env.JS_FILTER_ALLOWED_HOSTS || '')
   .split(',')
   .map((h) => h.trim())
@@ -149,8 +148,8 @@ const server = http.createServer((req, res) => {
 });
 
 // Execute handler: runs a filter script against an email in a dedicated Worker,
-// with optional async fetch support. Request/response contract is unchanged:
-//   request : { script, email, timeout_ms?, allowed_hosts? }
+// with optional async fetch support. Request/response contract:
+//   request : { script, email, timeout_ms? }
 //   success : 200 { result, logs }
 //   timeout : 408 { error }
 //   failure : 5xx/413/400 { error }
@@ -164,7 +163,7 @@ function handleExecute(req, res) {
       return;
     }
 
-    const { script, email, timeout_ms, allowed_hosts } = parsed;
+    const { script, email, timeout_ms } = parsed;
     if (!script || !email) {
       sendJSON(res, 400, { error: 'script and email are required' });
       return;
@@ -175,10 +174,8 @@ function handleExecute(req, res) {
     const syncTimeout = toPositiveInt(timeout_ms, 500);
     const wallTimeout = Math.max(syncTimeout * 3, 2000);
 
-    const allowedHosts = new Set([...DEFAULT_ALLOWED_HOSTS, ...(Array.isArray(allowed_hosts) ? allowed_hosts : [])]);
-
     runInWorker(
-      { script, email, syncTimeout, allowedHosts: [...allowedHosts] },
+      { script, email, syncTimeout, allowedHosts: DEFAULT_ALLOWED_HOSTS },
       wallTimeout,
       res,
     );

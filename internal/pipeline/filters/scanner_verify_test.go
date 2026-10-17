@@ -190,9 +190,9 @@ func TestRspamd_MissingVerdict_FailsClosed(t *testing.T) {
 }
 
 func TestRspamd_NoSecret_UnsignedCleanVerdict_Passes(t *testing.T) {
-	// Documents backward compatibility: with no scanner secret configured, an
-	// unsigned clean verdict is accepted (verification disabled), but the
-	// fail-closed fallback above still governs unreachable/errored scanners.
+	// With no scanner secret configured, verification is off: an unsigned clean
+	// verdict is accepted, but the fail-closed fallback above still governs
+	// unreachable/errored scanners.
 	stub := scannerStub{scanPath: "/checkv2", body: `{"action":"no action","score":0.0}`}
 	srv := stub.server(t)
 	defer srv.Close()

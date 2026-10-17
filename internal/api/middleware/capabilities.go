@@ -18,10 +18,9 @@ package middleware
 //   - Mailbox tokens: no admin capabilities. They are confined to the
 //     mailbox-scoped route group (accounts, folders, messages, send, drafts,
 //     attachments, contacts, vacation, sieve, search, quarantine, SSE events)
-//     and receive 403 on every capability-gated admin route. The deprecated
-//     mailbox IsAdmin escalation path was removed (OSI-14): a mailbox token can
-//     never satisfy AdminOnly or RequireCapability, regardless of any stale
-//     is_admin payload it may carry.
+//     and receive 403 on every capability-gated admin route. A mailbox token
+//     can never satisfy AdminOnly or RequireCapability, whatever its payload
+//     claims (OSI-14).
 //
 // Route-group mapping (wired in internal/api/routes.go):
 //

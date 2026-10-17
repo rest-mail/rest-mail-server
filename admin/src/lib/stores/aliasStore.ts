@@ -21,23 +21,21 @@ interface AliasState {
   selectedDomain: string | null
 
   // Actions
-  fetchAliases: (token: string, domainId?: string) => Promise<void>
+  fetchAliases: (domainId?: string) => Promise<void>
   createAlias: (
-    token: string,
     data: {
       source_address: string
       destination_address: string
     }
   ) => Promise<void>
   updateAlias: (
-    token: string,
     id: number,
     data: {
       destination_address?: string
       active?: boolean
     }
   ) => Promise<void>
-  deleteAlias: (token: string, id: number) => Promise<void>
+  deleteAlias: (id: number) => Promise<void>
   setSelectedDomain: (domain: string | null) => void
   clearError: () => void
 }
@@ -48,7 +46,7 @@ export const useAliasStore = create<AliasState>((set, get) => ({
   error: null,
   selectedDomain: null,
 
-  fetchAliases: async (token: string, domainId?: string) => {
+  fetchAliases: async (domainId?: string) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -56,7 +54,7 @@ export const useAliasStore = create<AliasState>((set, get) => ({
         ? `/admin/aliases?domain_id=${domainId}`
         : '/admin/aliases'
 
-      const response = await apiV1.request(url, { method: 'GET' }, token)
+      const response = await apiV1.request(url, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -75,18 +73,14 @@ export const useAliasStore = create<AliasState>((set, get) => ({
     }
   },
 
-  createAlias: async (token: string, data) => {
+  createAlias: async (data) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(
-        '/admin/aliases',
-        {
-          method: 'POST',
-          body: JSON.stringify(data),
-        },
-        token
-      )
+      const response = await apiV1.request('/admin/aliases', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      })
 
       if (!response.ok) {
         const error = await response.json()
@@ -94,7 +88,7 @@ export const useAliasStore = create<AliasState>((set, get) => ({
       }
 
       // Refresh the list
-      await get().fetchAliases(token)
+      await get().fetchAliases()
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to create alias',
@@ -104,18 +98,14 @@ export const useAliasStore = create<AliasState>((set, get) => ({
     }
   },
 
-  updateAlias: async (token: string, id: number, data) => {
+  updateAlias: async (id: number, data) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(
-        `/admin/aliases/${id}`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify(data),
-        },
-        token
-      )
+      const response = await apiV1.request(`/admin/aliases/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      })
 
       if (!response.ok) {
         const error = await response.json()
@@ -123,7 +113,7 @@ export const useAliasStore = create<AliasState>((set, get) => ({
       }
 
       // Refresh the list
-      await get().fetchAliases(token)
+      await get().fetchAliases()
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to update alias',
@@ -133,11 +123,11 @@ export const useAliasStore = create<AliasState>((set, get) => ({
     }
   },
 
-  deleteAlias: async (token: string, id: number) => {
+  deleteAlias: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/aliases/${id}`, { method: 'DELETE' }, token)
+      const response = await apiV1.request(`/admin/aliases/${id}`, { method: 'DELETE' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -145,7 +135,7 @@ export const useAliasStore = create<AliasState>((set, get) => ({
       }
 
       // Refresh the list
-      await get().fetchAliases(token)
+      await get().fetchAliases()
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to delete alias',

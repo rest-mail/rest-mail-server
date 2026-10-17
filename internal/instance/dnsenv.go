@@ -36,7 +36,7 @@ func mtaStsID(hostname string) string {
 }
 
 // DNSEnv renders the dns.env for the instance's PRIMARY domain. See
-// dnsEnvFor for the shape. Kept as the back-compatible entry point.
+// dnsEnvFor for the shape.
 func DNSEnv(m *Manifest) ([]byte, error) {
 	return dnsEnvFor(m, m.Domain, m.Hostname)
 }

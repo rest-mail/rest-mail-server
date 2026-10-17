@@ -20,31 +20,24 @@ import (
 // grows without bound.
 //
 // A row is expired when its ExpiresAt (stamped by the filter from ttl_days) is in
-// the past. Rows written before the ExpiresAt column existed carry a NULL
-// horizon; those are collected by a created_at fallback (CreatedAt older than the
-// default TTL) so no row can outlive the retention policy regardless of when it
-// was written.
+// the past.
 type Purger struct {
 	db       *gorm.DB
 	interval time.Duration
-	// fallbackTTL bounds NULL-horizon (legacy) rows by their created_at.
-	fallbackTTL time.Duration
-	now         func() time.Time
+	now      func() time.Time
 
 	stop chan struct{}
 	wg   sync.WaitGroup
 }
 
 // NewPurger builds a greylist purger running every interval (production:
-// hourly). Legacy rows with a NULL expires_at are collected once their created_at
-// is older than models.DefaultGreylistTTLDays.
+// hourly).
 func NewPurger(db *gorm.DB, interval time.Duration) *Purger {
 	return &Purger{
-		db:          db,
-		interval:    interval,
-		fallbackTTL: time.Duration(models.DefaultGreylistTTLDays) * 24 * time.Hour,
-		now:         time.Now,
-		stop:        make(chan struct{}),
+		db:       db,
+		interval: interval,
+		now:      time.Now,
+		stop:     make(chan struct{}),
 	}
 }
 
@@ -84,26 +77,12 @@ func (p *Purger) PurgeOnce(now time.Time) int64 {
 	defer cancel()
 	db := p.db.WithContext(ctx)
 
-	var deleted int64
-
-	// Entries with an explicit horizon in the past.
-	res := db.Where("expires_at IS NOT NULL AND expires_at < ?", now).Delete(&models.GreylistEntry{})
+	res := db.Where("expires_at < ?", now).Delete(&models.GreylistEntry{})
 	if res.Error != nil {
 		slog.Warn("greylist purger: expiry delete failed", "error", res.Error)
-	} else {
-		deleted += res.RowsAffected
+		return 0
 	}
-
-	// Legacy rows with no horizon: bound them by created_at + default TTL so a
-	// pre-migration table can never grow without bound either.
-	fallbackCutoff := now.Add(-p.fallbackTTL)
-	res = db.Where("expires_at IS NULL AND created_at < ?", fallbackCutoff).Delete(&models.GreylistEntry{})
-	if res.Error != nil {
-		slog.Warn("greylist purger: fallback delete failed", "error", res.Error)
-	} else {
-		deleted += res.RowsAffected
-	}
-
+	deleted := res.RowsAffected
 	if deleted > 0 {
 		slog.Info("greylist purger: deleted expired entries", "count", deleted)
 	}

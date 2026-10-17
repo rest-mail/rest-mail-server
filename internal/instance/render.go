@@ -112,8 +112,8 @@ type Manifest struct {
 	// existing manifests render byte-for-byte as before. It carries two
 	// independent concerns: the PUBLIC serving cert (`extra_hostnames`, `acme`)
 	// and the gateway→API INTERNAL mutual-TLS channel (`internal:`). The internal
-	// block is the richer, declarative counterpart of the legacy top-level
-	// `internal_mtls` bool (still supported) — see InternalTLS.
+	// block is the richer, declarative counterpart of the top-level
+	// `internal_mtls` bool shorthand — see InternalTLS.
 	TLS TLS `yaml:"tls"`
 	// binding
 	Components []Component `yaml:"components"`
@@ -136,17 +136,16 @@ type TLS struct {
 	ACME           ACME     `yaml:"acme"`
 	// Internal is the optional gateway→API internal-mTLS sub-block. A pointer so
 	// "block present" is distinguishable from "omitted": present makes the block
-	// authoritative over the legacy `internal_mtls` bool (with mode defaulting to
-	// require/on); omitted falls back to the bool, so existing manifests are
-	// byte-for-byte unchanged.
+	// authoritative over the `internal_mtls` bool (with mode defaulting to
+	// require/on); omitted, the bool decides.
 	Internal *InternalTLS `yaml:"internal"`
 }
 
 // InternalTLS is the optional `tls.internal:` sub-block — the declarative form of
 // the gateway→API internal mutual-TLS switch, and the richer counterpart of the
-// legacy top-level `internal_mtls: bool` (which stays supported for
-// back-compat). Where the bool only toggles on/off, this block also declares HOW
-// the internal trust material is provisioned.
+// top-level `internal_mtls: bool` shorthand that scaffold writes. Where the bool
+// only toggles on/off, this block also declares HOW the internal trust material
+// is provisioned.
 //
 //   - Mode selects the handshake posture. "require" (the default when the block
 //     is present with an empty mode) and "verify" both turn internal mTLS ON: the
@@ -188,9 +187,8 @@ const internalCASourceDefault = "testbed-certgen"
 // internalMTLSEnabled resolves whether this instance runs the gateway→API mutual
 // TLS channel. The optional `tls.internal:` block is authoritative when present:
 // mode require/verify — or an empty mode, which defaults to require — turns it
-// ON; mode off turns it OFF. When the block is OMITTED the legacy top-level
-// `internal_mtls` bool decides, so existing manifests render byte-for-byte as
-// before.
+// ON; mode off turns it OFF. When the block is OMITTED the top-level
+// `internal_mtls` bool decides.
 func (m *Manifest) internalMTLSEnabled() bool {
 	if m.TLS.Internal != nil {
 		return m.TLS.Internal.Mode != internalMTLSModeOff
@@ -276,7 +274,7 @@ func (m *Manifest) Validate() error {
 		default:
 			return fmt.Errorf("tls.internal.ca_source %q invalid (want testbed-certgen|manual)", ti.CASource)
 		}
-		// A manifest that both flips the legacy bool on and sets the block off is
+		// A manifest that both flips the bool on and sets the block off is
 		// contradictory — fail loudly rather than silently pick one.
 		if m.InternalMTLS && ti.Mode == internalMTLSModeOff {
 			return fmt.Errorf("internal_mtls: true conflicts with tls.internal.mode: off — set exactly one")
@@ -437,7 +435,7 @@ func Parse(data []byte) (*Manifest, error) {
 // switching the Taskfile to load this file is behavior-preserving.
 func Render(m *Manifest) ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteString("# GENERATED from manifest.yml by `task instance:render` — DO NOT EDIT.\n")
+	b.WriteString("# GENERATED from manifest.yml by `chore config:render` — DO NOT EDIT.\n")
 	b.WriteString("# Edit manifest.yml, then re-render. Secrets live in secrets.env.\n\n")
 
 	kv := func(k, v string) { fmt.Fprintf(&b, "%s=%s\n", k, v) }
@@ -483,7 +481,7 @@ func Render(m *Manifest) ([]byte, error) {
 	// opt in render byte-for-byte as before (no drift against committed config).
 	// Enablement is resolved from the optional `tls.internal:` block (mode
 	// require/verify, or an empty mode → default require) when present, else the
-	// legacy top-level `internal_mtls` bool — see internalMTLSEnabled.
+	// top-level `internal_mtls` bool — see internalMTLSEnabled.
 	if m.internalMTLSEnabled() {
 		iv("INTERNAL_MTLS", "true")
 	}

@@ -92,10 +92,10 @@ chore testbed:init
 chore testbed:up
 
 # 3. Start the restmail.test product stack
-chore dev   # alias for restmail:up (= instance:up)
+chore instance:up   # CONFIG defaults to restmail.test
 ```
 
-`chore dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `chore status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`chores.yml`](chores.yml).
+`chore instance:up` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `chore status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`chores.yml`](chores.yml).
 
 ### Seed Test Data
 
@@ -339,8 +339,6 @@ chore config:render     # manifest.yml → config.env (after editing a manifest)
 chore config:check      # fail if config.env drifted from its manifest
 ```
 
-`restmail:up` / `restmail:down` / `chore dev` are aliases for `instance:up` / `instance:down` with the default config.
-
 ## Development
 
 ### Prerequisites
@@ -404,7 +402,7 @@ The e2e suite runs inside a container attached to the testbed mailnet with the t
 
 ```bash
 # Start the full restmail.test product stack
-chore dev                       # alias for restmail:up
+chore instance:up               # CONFIG defaults to restmail.test
 
 # Drive a single container
 chore api:up                    # build + run the API
@@ -418,7 +416,7 @@ chore api:logs
 chore smtp-gateway:logs
 
 # Tear it all down
-chore restmail:down
+chore instance:down
 ```
 
 Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
@@ -677,7 +675,7 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | `vacation` | Auto-reply responder |
 | `sieve` | Sieve script execution (via `rest-mail/go-sieve`) |
 | `webhook` | HTTP webhook notifications |
-| `duplicate` | Fork message to webhook/queue |
+| `duplicate` | Fork a copy of the message to a webhook |
 | `javascript` | Custom JS filter via Node.js sidecar |
 | `rspamd` | Rspamd spam scanning (adapter) |
 | `clamav` | ClamAV virus scanning (adapter) |

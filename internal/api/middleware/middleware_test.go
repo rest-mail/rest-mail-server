@@ -28,9 +28,9 @@ func signRawToken(t *testing.T, secret string, claims jwt.MapClaims) string {
 	return s
 }
 
-// legacyIsAdminMailboxClaims is a mailbox access token that still carries the
-// deprecated is_admin flag, as tokens issued before OSI-14 did.
-func legacyIsAdminMailboxClaims() jwt.MapClaims {
+// isAdminMailboxClaims is a mailbox access token whose payload claims
+// is_admin, a field the server does not read (OSI-14).
+func isAdminMailboxClaims() jwt.MapClaims {
 	return jwt.MapClaims{
 		"sub":        "mailbox:10",
 		"iss":        "restmail",
@@ -522,14 +522,14 @@ func TestRequireCapability_MailboxTokenDenied(t *testing.T) {
 	}
 }
 
-func TestRequireCapability_LegacyIsAdminClaimIgnored(t *testing.T) {
-	// A mailbox token that still carries a stale is_admin payload (issued before
-	// OSI-14) must NOT be treated as a wildcard admin. Sign such a token and run
-	// it through the real JWTMiddleware → RequireCapability chain; it is denied
-	// like any other mailbox token, proving the escalation path is gone.
+func TestRequireCapability_IsAdminClaimIgnored(t *testing.T) {
+	// A mailbox token whose payload claims is_admin must NOT be treated as a
+	// wildcard admin. Sign such a token and run it through the real
+	// JWTMiddleware → RequireCapability chain; it is denied like any other
+	// mailbox token.
 	const secret = "test-secret-key-for-middleware"
 	jwtSvc := auth.NewJWTService(secret, 5*time.Minute, 24*time.Hour)
-	raw := signRawToken(t, secret, legacyIsAdminMailboxClaims())
+	raw := signRawToken(t, secret, isAdminMailboxClaims())
 
 	handler := JWTMiddleware(jwtSvc)(RequireCapability(heldBy(nil), "queue:manage", nil)(okHandler))
 	req := httptest.NewRequest(http.MethodGet, "/admin/resource", nil)
@@ -546,12 +546,12 @@ func TestRequireCapability_LegacyIsAdminClaimIgnored(t *testing.T) {
 	}
 }
 
-func TestAdminOnly_LegacyIsAdminClaimIgnored(t *testing.T) {
-	// The AdminOnly counterpart: a stale is_admin mailbox token is refused at the
+func TestAdminOnly_IsAdminClaimIgnored(t *testing.T) {
+	// The AdminOnly counterpart: an is_admin mailbox token is refused at the
 	// admin-group gate (OSI-14 self-escalation blocked).
 	const secret = "test-secret-key-for-middleware"
 	jwtSvc := auth.NewJWTService(secret, 5*time.Minute, 24*time.Hour)
-	raw := signRawToken(t, secret, legacyIsAdminMailboxClaims())
+	raw := signRawToken(t, secret, isAdminMailboxClaims())
 
 	handler := JWTMiddleware(jwtSvc)(AdminOnly(okHandler))
 	req := httptest.NewRequest(http.MethodGet, "/admin", nil)

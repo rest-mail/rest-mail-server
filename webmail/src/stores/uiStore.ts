@@ -40,9 +40,6 @@ function getInitialTheme(): Theme {
   const stored = localStorage.getItem('restmail-theme');
   const valid: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest', 'neon', 'aurora', 'industrial'];
   if (stored && valid.includes(stored as Theme)) return stored as Theme;
-  // Legacy mapping
-  if (stored === 'dark') return 'industrial';
-  if (stored === 'light') return 'dawn';
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'industrial' : 'dawn';
 }
 

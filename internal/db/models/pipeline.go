@@ -146,11 +146,9 @@ type GreylistEntry struct {
 	Passed     bool      `gorm:"default:false" json:"passed"`
 	// ExpiresAt is the TTL horizon after which this entry is purged by the
 	// greylist purge worker and, if it is still present when re-encountered,
-	// re-greylisted. Nullable so rows written before the column existed (NULL)
-	// are handled by the purge worker's created_at fallback rather than living
-	// forever.
-	ExpiresAt *time.Time `gorm:"index" json:"expires_at,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	// re-greylisted. The filter stamps it on every write.
+	ExpiresAt time.Time `gorm:"not null;index" json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (GreylistEntry) TableName() string { return "greylist_entries" }
@@ -237,12 +235,6 @@ func (Attachment) TableName() string { return "attachments" }
 // anyone who can write the script column can recompute the hash. A future
 // upgrade could HMAC the script with a server-held key to make the marker
 // tamper-evident; the 64-char column already fits a sha256 HMAC.
-//
-// Legacy rows created before this column existed carry an empty ScriptHash; the
-// delivery trust check treats an empty hash as "no marker to verify" and behaves
-// exactly as before (parse-only). The hash is backfilled lazily the next time the
-// script is saved through the API, so existing valid scripts keep working with no
-// data migration.
 type SieveScript struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	MailboxID   uint       `gorm:"not null;uniqueIndex" json:"mailbox_id"`

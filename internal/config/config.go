@@ -338,11 +338,10 @@ type Config struct {
 	// API adds to its outbound HTTP client trust store (on top of the system
 	// roots) at startup — so it trusts TLS peers (e.g. MTA-STS policy fetches)
 	// issued by an operator/testbed CA. On the testbed this is the shared testbed
-	// root CA. It de-hardcodes cmd/api's former literal "/certs/ca.crt": the
-	// DEFAULT is that exact path, so the testbed is byte-for-byte unchanged, but a
+	// root CA. The DEFAULT is "/certs/ca.crt", where the testbed mounts it; a
 	// deployer can point it elsewhere, and an EMPTY value skips the extra trust
 	// (system roots only). A missing/unreadable file is not an error — the API
-	// falls back to the system roots (unchanged legacy behavior). This is NOT the
+	// then trusts the system roots only. This is NOT the
 	// internal-mTLS CA (that is INTERNAL_MTLS_CA_CERT); it is the general outbound
 	// trust anchor.
 	TrustedCACertPath string
@@ -1012,8 +1011,8 @@ func (c *Config) RestmailDeliverAuth() RestmailDeliverAuthSettings {
 // mail (OSI-13). Redirect to an arbitrary external domain is a mail-exfiltration
 // vector, so the secure default denies it.
 type SieveRedirectSettings struct {
-	// AllowExternal, when true, permits redirect to ANY domain (legacy behavior);
-	// the redirect is still logged. Default false: a redirect target must be the
+	// AllowExternal, when true, permits redirect to ANY domain; the redirect is
+	// still logged. Default false: a redirect target must be the
 	// recipient's own domain or an explicitly allowlisted domain.
 	AllowExternal bool
 	// AllowedDomains are external domains explicitly permitted as redirect targets
@@ -1033,7 +1032,7 @@ func (c *Config) SieveRedirect() SieveRedirectSettings {
 
 // PipelineFilterErrorAction returns the OSI-18 fail-closed action applied when a
 // pipeline filter cannot be instantiated or errors during execution. One of
-// "continue" (legacy fail-open), "defer" (default, fail-closed temp-fail), or
+// "continue" (fail-open), "defer" (default, fail-closed temp-fail), or
 // "reject". A malformed value falls back to the secure default rather than
 // failing startup — an unparseable knob must never weaken the fail-closed
 // posture. Set with PIPELINE_FILTER_ERROR_ACTION.
@@ -1277,11 +1276,11 @@ const MinJWTSecretLength = 32
 // guessability; 16 bytes is a conservative floor (instance:new generates 64).
 const MinMasterKeyLength = 16
 
-// legacyDefaultJWTSecret is the compiled-in development JWT secret. Shipping it
+// devDefaultJWTSecret is the compiled-in development JWT secret. Shipping it
 // outside development is equivalent to having no secret at all (it is public in
 // the source tree), so it is rejected the same as a blank secret. It matches the
 // default used by getEnv("JWT_SECRET", ...) in Load.
-const legacyDefaultJWTSecret = "dev-secret-change-in-production"
+const devDefaultJWTSecret = "dev-secret-change-in-production"
 
 // IsProduction reports whether ENVIRONMENT names a production deployment. It is
 // the single, typo-resistant answer every fail-closed security gate keys on: the
@@ -1324,7 +1323,7 @@ func (c *Config) validateSecurityConfig() error {
 	switch {
 	case c.JWTSecret == "":
 		findings = append(findings, fmt.Sprintf("JWT_SECRET is empty; set a random secret of at least %d bytes", MinJWTSecretLength))
-	case c.JWTSecret == legacyDefaultJWTSecret:
+	case c.JWTSecret == devDefaultJWTSecret:
 		findings = append(findings, fmt.Sprintf("JWT_SECRET is the built-in development default; set a unique random secret of at least %d bytes", MinJWTSecretLength))
 	case len(c.JWTSecret) < MinJWTSecretLength:
 		findings = append(findings, fmt.Sprintf("JWT_SECRET is too short (%d bytes); use at least %d bytes of randomness", len(c.JWTSecret), MinJWTSecretLength))

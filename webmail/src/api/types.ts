@@ -1440,23 +1440,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/logs/activity": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Query activity audit log */
-        get: operations["getActivityLogs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2116,18 +2099,6 @@ export interface components {
             /** @description Duration string (e.g. "24h", "7d"), omit for permanent */
             duration?: string;
             created_by: string;
-        };
-        ActivityLog: {
-            id: number;
-            actor: string;
-            action: string;
-            resource_type: string;
-            resource_id?: number | null;
-            detail?: string;
-            metadata?: Record<string, never> | null;
-            ip?: string;
-            /** Format: date-time */
-            created_at: string;
         };
     };
     responses: {
@@ -5007,37 +4978,6 @@ export interface operations {
                 content: {
                     "application/json": {
                         data: components["schemas"]["OutboundQueue"][];
-                        pagination?: components["schemas"]["Pagination"];
-                    };
-                };
-            };
-        };
-    };
-    getActivityLogs: {
-        parameters: {
-            query?: {
-                actor?: string;
-                action?: string;
-                resource_type?: string;
-                since?: string;
-                until?: string;
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Activity log entries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["ActivityLog"][];
                         pagination?: components["schemas"]["Pagination"];
                     };
                 };
