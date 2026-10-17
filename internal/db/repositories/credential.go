@@ -68,15 +68,15 @@ func (r *CredentialRepository) CreateAppPassword(mailboxID uint, name string, ex
 		if err == nil {
 			return cred, password, nil
 		}
-		if attempt < 2 && isUniqueViolation(err) {
+		if attempt < 2 && IsUniqueViolation(err) {
 			continue
 		}
 		return nil, "", fmt.Errorf("failed to store the app password: %w", err)
 	}
 }
 
-// isUniqueViolation reports whether err is Postgres refusing a duplicate key.
-func isUniqueViolation(err error) bool {
+// IsUniqueViolation reports whether err is Postgres refusing a duplicate key.
+func IsUniqueViolation(err error) bool {
 	return errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(err.Error(), "SQLSTATE 23505")
 }
 

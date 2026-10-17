@@ -3204,6 +3204,8 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/admin/domains/{id}/allowlist/{eid}:
     parameters:
@@ -3268,6 +3270,8 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+        "409":
+          $ref: "#/components/responses/Conflict"
 
   /api/v1/admin/domains/{id}/blocklist/{eid}:
     parameters:
@@ -5796,14 +5800,12 @@ components:
     # ─────────────────────────────────────────────────────────────
     WebmailAccount:
       type: object
-      required: [id, primary_mailbox_id, is_admin, created_at, updated_at]
+      required: [id, primary_mailbox_id, created_at, updated_at]
       properties:
         id:
           type: integer
         primary_mailbox_id:
           type: integer
-        is_admin:
-          type: boolean
         created_at:
           type: string
           format: date-time
