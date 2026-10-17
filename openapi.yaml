@@ -6286,6 +6286,34 @@ components:
         final_email:
           type: object
           description: The email after all transformations
+        auth_results:
+          type: array
+          description: >-
+            The verdicts the authentication filters (spf_check, dkim_verify,
+            arc_verify, dmarc_check) recorded, in order. A delivered message's
+            Authentication-Results header is written from these.
+          items:
+            $ref: "#/components/schemas/AuthResult"
+
+    AuthResult:
+      type: object
+      required: [method, result]
+      properties:
+        method:
+          type: string
+          enum: [spf, dkim, arc, dmarc]
+        result:
+          type: string
+          description: The RFC 8601 result, such as pass, fail, softfail, neutral, none, temperror or permerror
+        property:
+          type: string
+          enum: [smtp.mailfrom, smtp.helo, header.d, header.from]
+          description: The identity checked. Absent for arc.
+        domain:
+          type: string
+          description: >-
+            The domain checked. For dkim, the signature's d=; for arc, the most
+            recent ARC-Seal's d=.
 
     FilterResult:
       type: object

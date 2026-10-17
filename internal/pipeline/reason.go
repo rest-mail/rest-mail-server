@@ -61,9 +61,9 @@ func Reason(filterName string, action Action, result string) ReasonCode {
 			return ReasonDMARCQuarantine
 		}
 	case "spf_check":
-		// The built-in spf_check never terminates (SPF alone continues; DMARC
-		// enforces). Mapped defensively so a custom SPF-enforcing variant — or a
-		// future change — lands in the right bounded bucket rather than "other".
+		// spf_check terminates only when its fail_action is reject or quarantine
+		// and the MAIL FROM identity fails; by default it continues and DMARC
+		// enforces.
 		if action != ActionContinue {
 			return ReasonSPFFail
 		}

@@ -250,7 +250,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 
 | Filter | Type | Notes |
 |--------|------|-------|
-| `spf_check` | Check | SPF verification (via go-spf); records the result, DMARC decides |
+| `spf_check` | Check | SPF verification (via go-spf) of the HELO and MAIL FROM identities; records the results for DMARC. `fail_action` (tag, reject, quarantine) acts on a MAIL FROM fail; the default, tag, leaves it to DMARC |
 | `dkim_verify` | Check | Verify incoming signatures |
 | `dmarc_check` | Check | DMARC policy enforcement |
 | `arc_verify` | Check | ARC chain verification |

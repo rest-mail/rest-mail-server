@@ -38,7 +38,7 @@ func NewDomainAllowlist(db *gorm.DB) pipeline.FilterFactory {
 func (f *domainAllowlistFilter) Name() string             { return "domain_allowlist" }
 func (f *domainAllowlistFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
-func (f *domainAllowlistFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *domainAllowlistFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	sender := email.Envelope.MailFrom
 	if sender == "" && len(email.Headers.From) > 0 {
 		sender = email.Headers.From[0].Address
@@ -105,7 +105,7 @@ func (f *domainAllowlistFilter) Execute(_ context.Context, email *pipeline.Email
 			// scanned like any other mail.
 			skip := []string{"rspamd", "spamassassin", "greylist"}
 			detail := fmt.Sprintf("sender %s allowed for domain %s", sender, rcptDomain)
-			if !senderAuthenticated(email, senderDomainBare) {
+			if !senderAuthenticated(ctx, senderDomainBare) {
 				skip = nil
 				detail += " (unauthenticated sender: scanning not skipped)"
 			}

@@ -79,17 +79,14 @@ func parseHeaders(h gomessage.Header) pipeline.Headers {
 	// returns the undecoded (RFC 2047-encoded) values, exactly as net/mail did,
 	// which downstream DKIM/ARC/Authentication-Results logic relies on.
 	//
-	// EXCEPT inbound Authentication-Results: these are attacker-controlled on an
-	// untrusted inbound message and MUST NOT be trusted as this server's own
-	// authentication verdict. dmarc_check reads Headers.Raw["Authentication-Results"]
-	// (and Extra) to decide SPF/DKIM alignment, so a forged
-	// "Authentication-Results: x; spf=pass …; dkim=pass …" would otherwise bypass a
-	// p=reject/quarantine policy. The local spf_check/dkim_verify/arc_verify filters
-	// append their genuine verdict to this same key later in the pipeline, so
-	// rehoming the inbound copy to X-Original-Authentication-Results leaves only
-	// server-produced results under the trusted key while preserving the original
-	// for audit. ARC-* headers are cryptographically verified by arc_verify and are
-	// left untouched.
+	// EXCEPT inbound Authentication-Results, which are rehomed to
+	// X-Original-Authentication-Results: they are other servers' claims, so they
+	// are kept for audit but never under the key this server's own
+	// spf_check/dkim_verify/arc_verify entries are appended to. No filter reads
+	// a verdict from either key; verdicts travel as pipeline.AuthResults, and
+	// any field claiming our own authserv-id is removed from the raw message
+	// before it is parsed (StripAuthResults). ARC-* headers are cryptographically
+	// verified by arc_verify and are left untouched.
 	fields := h.Fields()
 	for fields.Next() {
 		key := fields.Key()
