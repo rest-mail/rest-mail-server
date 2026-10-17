@@ -404,6 +404,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		BodyHTML      string                  `json:"body_html"`
 		InReplyTo     string                  `json:"in_reply_to"`
 		CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
+		// ListUnsubscribe, when set, publishes where a recipient unsubscribes
+		// (#144). Absent, the message carries no List-Unsubscribe fields.
+		ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -461,6 +464,14 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
 		return
 	}
+	// The unsubscribe targets become header fields, so they are checked here,
+	// with the addresses, before anything is stored or signed.
+	if req.ListUnsubscribe != nil {
+		if err := req.ListUnsubscribe.validate(); err != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+	}
 
 	// Per-account send rate limit (#184): cap how many messages one authenticated
 	// account may send per minute/hour, mirroring the SMTP submission cap
@@ -490,6 +501,24 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	senderMailbox := *sender
+
+	// RFC 8058 §4: a one-click claim counts only under a DKIM signature that
+	// covers it. A sender domain with no key would send an unsigned claim, so
+	// an HTTPS unsubscribe target is refused for it rather than sent unsigned
+	// or silently downgraded. A mailto-only target makes no claim and is sent
+	// either way.
+	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" {
+		signs, err := outbound.HasDKIMKey(h.db, rmail.DomainFromAddress(req.From))
+		if err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
+			return
+		}
+		if !signs {
+			respond.Error(w, http.StatusUnprocessableEntity, "dkim_required",
+				"list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed")
+			return
+		}
+	}
 
 	// ── Outbound pipeline execution ────────────────────────────────
 	var extraHeaders map[string]string // populated by pipeline transforms (e.g. DKIM-Signature)
@@ -743,7 +772,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		MessageID: messageID,
 		InReplyTo: req.InReplyTo,
 		Date:      now,
-		Extra:     extraHeaders,
+		Extra:     withListUnsubscribe(extraHeaders, req.ListUnsubscribe),
 		ICS:       icsData,
 		ICSMethod: calendarMethod(req.CalendarEvent),
 	})
@@ -757,6 +786,12 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// send (client retries) rather than deliver the message unsigned.
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
+		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
+		return
+	}
+	// The key was there when the request was checked; if the message still
+	// came back unsigned, its one-click claim must not leave.
+	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && signedRaw == rawMessage {
 		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
 		return
 	}
