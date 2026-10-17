@@ -61,6 +61,10 @@ ever sign in to it.
 and how a server is handed over. It proves you own the server with a key listed
 in `api.ownerKeys`.
 
+`restmail status --key` confirms a deploy from outside: the version, commit, and
+when the server was built and started. It signs with a key listed in
+`api.statusKeys`, which can read that and nothing else, or in `api.ownerKeys`.
+
 Or, without the CLI: add a
 `BOOTSTRAP_ADMIN_PASSWORD` key (16+ bytes, generated at deploy time) to the
 Secret named by `api.existingSecret`, and the API creates a superadmin from it

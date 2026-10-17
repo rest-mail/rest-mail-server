@@ -341,9 +341,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		})
 	}
 	ownerKeys, _ := bootstrap.ParseOwnerKeys(cfg.OwnerKeys)
-	ownerH := handlers.NewOwnerHandler(db, ownerKeys, cfg.JWTSecret)
+	statusKeys, _ := bootstrap.ParseStatusKeys(cfg.StatusKeys)
+	ownerH := handlers.NewOwnerHandler(db, ownerKeys, statusKeys, cfg.JWTSecret)
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/token", ownerH.Token)
+	// The same challenge, signed for "status" with a key in
+	// RESTMAIL_STATUS_KEYS (or an owner key), reads the version, commit, build
+	// and start time: a deploy confirmed from outside. Same bucket.
+	r.With(ownerThrottle).Post("/api/v1/auth/owner/status", ownerH.Status)
 
 	// What this server is, for anyone who can reach it: how `restmail status`
 	// and the app confirm what is running. Shares the owner endpoints' bucket,

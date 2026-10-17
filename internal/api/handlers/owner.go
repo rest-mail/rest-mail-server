@@ -10,6 +10,7 @@ import (
 
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/bootstrap"
+	"github.com/restmail/restmail/internal/version"
 	"gorm.io/gorm"
 )
 
@@ -18,23 +19,30 @@ import (
 // lost every other: the server issues a challenge, the owner signs it, the
 // server checks the signature against RESTMAIL_OWNER_KEYS. Works the same
 // however the server is deployed.
+//
+// The same challenge, signed for the purpose "status" by a key listed in
+// RESTMAIL_STATUS_KEYS or by an owner key, reads which version the server
+// runs.
 type OwnerHandler struct {
 	db           *gorm.DB
 	keys         *bootstrap.OwnerKeys
+	statusKeys   *bootstrap.StatusKeys
 	challengeKey []byte
 }
 
 // NewOwnerHandler builds the handler from the configured keys and a server
 // secret the challenge key is derived from.
-func NewOwnerHandler(db *gorm.DB, keys *bootstrap.OwnerKeys, serverSecret string) *OwnerHandler {
-	return &OwnerHandler{db: db, keys: keys, challengeKey: bootstrap.ChallengeKey(serverSecret)}
+func NewOwnerHandler(db *gorm.DB, keys *bootstrap.OwnerKeys, statusKeys *bootstrap.StatusKeys, serverSecret string) *OwnerHandler {
+	return &OwnerHandler{db: db, keys: keys, statusKeys: statusKeys, challengeKey: bootstrap.ChallengeKey(serverSecret)}
 }
 
 // Challenge issues a challenge to sign. Stateless: asking costs the server
 // nothing but a hash.
 func (h *OwnerHandler) Challenge(w http.ResponseWriter, _ *http.Request) {
-	if h.keys.Len() == 0 {
-		respond.Error(w, http.StatusConflict, "no_owner_keys", bootstrap.ErrNoOwnerKeys.Error())
+	if h.keys.Len() == 0 && h.statusKeys.Len() == 0 {
+		// no_owner_keys still, though status keys would do: it is the code a
+		// reset-admin from before status keys knows.
+		respond.Error(w, http.StatusConflict, "no_owner_keys", bootstrap.ErrNoStatusKeys.Error())
 		return
 	}
 	challenge, expires, err := bootstrap.NewChallenge(h.challengeKey, time.Now())
@@ -109,6 +117,62 @@ func (h *OwnerHandler) Token(w http.ResponseWriter, r *http.Request) {
 			"purpose":    req.Purpose,
 			"token":      token,
 			"expires_at": expires.UTC().Format(time.RFC3339),
+		})
+	}
+}
+
+// ownerStatusRequest is the body of POST /api/v1/auth/owner/status. The
+// purpose, "status", is the endpoint's own; it is still part of what is signed.
+type ownerStatusRequest struct {
+	Challenge string `json:"challenge"`
+	PublicKey string `json:"public_key"`
+	Signature string `json:"signature"` // base64 of the ssh wire-format signature
+}
+
+// serverStatus is the answer of POST /api/v1/auth/owner/status: what runs, and
+// since when. No secrets, no configuration.
+type serverStatus struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuiltAt   string `json:"built_at"`
+	StartedAt string `json:"started_at"`
+}
+
+// Status checks a challenge signed for "status" by a status key or an owner
+// key, and answers with what the server runs and since when: how a deploy is
+// confirmed from outside.
+func (h *OwnerHandler) Status(w http.ResponseWriter, r *http.Request) {
+	var req ownerStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	sig, err := base64.StdEncoding.DecodeString(req.Signature)
+	if err != nil {
+		respond.ValidationError(w, map[string]string{"signature": "must be base64"})
+		return
+	}
+	err = bootstrap.CheckStatus(h.db, h.statusKeys, h.keys, h.challengeKey, bootstrap.StatusRequest{
+		Challenge: req.Challenge,
+		PublicKey: req.PublicKey,
+		Signature: sig,
+	}, time.Now())
+	switch {
+	case errors.Is(err, bootstrap.ErrNoStatusKeys):
+		respond.Error(w, http.StatusConflict, "no_status_keys", err.Error())
+	case errors.Is(err, bootstrap.ErrChallengeInvalid):
+		respond.Error(w, http.StatusUnauthorized, "invalid_challenge", err.Error())
+	case errors.Is(err, bootstrap.ErrNotStatusKey):
+		respond.Error(w, http.StatusForbidden, "not_status_key", err.Error())
+	case err != nil:
+		slog.Error("checking a status request failed", "error", err)
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the request")
+	default:
+		respond.Data(w, http.StatusOK, serverStatus{
+			Version:   version.Version,
+			Commit:    version.Commit,
+			BuiltAt:   version.BuildDate,
+			StartedAt: version.Started.UTC().Format(time.RFC3339),
 		})
 	}
 }

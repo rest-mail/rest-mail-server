@@ -92,7 +92,7 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 	case "reset-admin":
 		return runResetAdmin(context.Background(), args[2:], client, localKeys, stdout, stderr), true
 	case "status":
-		return runStatus(context.Background(), args[2:], client, stdout, stderr), true
+		return runStatus(context.Background(), args[2:], client, keyFile, stdout, stderr), true
 	case "sign-in-link":
 		return runSignInLink(args[2:], os.Stdin, stdout, stderr), true
 	case "password-hash":

@@ -54,7 +54,16 @@ type OwnerKeys struct {
 // and # comments are ignored. A line that does not parse is an error, not a
 // skip: a typo here would otherwise lock the owner out without a word.
 func ParseOwnerKeys(spec string) (*OwnerKeys, error) {
-	o := &OwnerKeys{}
+	keys, err := parseKeys("RESTMAIL_OWNER_KEYS", spec)
+	if err != nil {
+		return nil, err
+	}
+	return &OwnerKeys{keys: keys}, nil
+}
+
+// parseKeys reads the authorized_keys list in the variable named name.
+func parseKeys(name, spec string) ([][]byte, error) {
+	var keys [][]byte
 	for i, line := range strings.Split(spec, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -62,11 +71,11 @@ func ParseOwnerKeys(spec string) (*OwnerKeys, error) {
 		}
 		pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
 		if err != nil {
-			return nil, fmt.Errorf("RESTMAIL_OWNER_KEYS line %d: %w", i+1, err)
+			return nil, fmt.Errorf("%s line %d: %w", name, i+1, err)
 		}
-		o.keys = append(o.keys, pub.Marshal())
+		keys = append(keys, pub.Marshal())
 	}
-	return o, nil
+	return keys, nil
 }
 
 // Len is how many owner keys are listed.
@@ -78,8 +87,12 @@ func (o *OwnerKeys) Len() int {
 }
 
 func (o *OwnerKeys) has(pub ssh.PublicKey) bool {
+	return o != nil && listed(o.keys, pub)
+}
+
+func listed(keys [][]byte, pub ssh.PublicKey) bool {
 	wire := pub.Marshal()
-	for _, k := range o.keys {
+	for _, k := range keys {
 		if bytes.Equal(k, wire) {
 			return true
 		}
@@ -141,42 +154,69 @@ func MintForOwner(database *gorm.DB, keys *OwnerKeys, challengeKey []byte, req O
 	if keys.Len() == 0 {
 		return "", time.Time{}, ErrNoOwnerKeys
 	}
-	if err := checkChallenge(challengeKey, req.Challenge, now); err != nil {
+	if err := verifySigned(challengeKey, req.Challenge, req.PublicKey, req.Signature,
+		OwnerMessage(req.Challenge, req.Purpose, req.Username), keys.has, ErrNotOwner, now); err != nil {
 		return "", time.Time{}, err
 	}
-	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(req.PublicKey))
-	if err != nil || !keys.has(pub) {
-		return "", time.Time{}, ErrNotOwner
-	}
-	var sig ssh.Signature
-	if err := ssh.Unmarshal(req.Signature, &sig); err != nil {
-		return "", time.Time{}, ErrNotOwner
-	}
-	// RSA signatures over SHA-1 are refused; rsa-sha2-256/512, ed25519 and
-	// ecdsa are fine.
-	if sig.Format == ssh.KeyAlgoRSA {
-		return "", time.Time{}, ErrNotOwner
-	}
-	if err := pub.Verify(OwnerMessage(req.Challenge, req.Purpose, req.Username), &sig); err != nil {
-		return "", time.Time{}, ErrNotOwner
-	}
-
-	// Spend the challenge: the token table's unique hash makes a second
-	// answer to it fail here.
-	spent := models.OneTimeToken{
-		Purpose:   ownerChallengePurpose,
-		TokenHash: hashToken(req.Challenge),
-		ExpiresAt: now.Add(ChallengeLifetime),
-		UsedAt:    &now,
-	}
-	if err := database.Create(&spent).Error; err != nil {
-		return "", time.Time{}, ErrChallengeInvalid
+	if err := spendChallenge(database, req.Challenge, now); err != nil {
+		return "", time.Time{}, err
 	}
 
 	if req.Purpose != "reset-admin" {
 		return "", time.Time{}, fmt.Errorf("purpose must be reset-admin, got %q", req.Purpose)
 	}
 	return MintResetToken(database, req.Username, req.Lifetime)
+}
+
+// verifySigned checks a signed answer to a challenge: the challenge is this
+// server's and unexpired, publicKey is one of those isListed accepts, and
+// signature is its signature over message. A key that is not listed and a
+// signature that does not verify are both notListed, so the answer does not
+// say which.
+func verifySigned(challengeKey []byte, challenge, publicKey string, signature, message []byte,
+	isListed func(ssh.PublicKey) bool, notListed error, now time.Time) error {
+	if err := checkChallenge(challengeKey, challenge, now); err != nil {
+		return err
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil || !isListed(pub) {
+		return notListed
+	}
+	var sig ssh.Signature
+	if err := ssh.Unmarshal(signature, &sig); err != nil {
+		return notListed
+	}
+	// RSA signatures over SHA-1 are refused; rsa-sha2-256/512, ed25519 and
+	// ecdsa are fine.
+	if sig.Format == ssh.KeyAlgoRSA {
+		return notListed
+	}
+	if err := pub.Verify(message, &sig); err != nil {
+		return notListed
+	}
+	return nil
+}
+
+// spendChallenge records challenge as answered: the token table's unique hash
+// makes a second answer to it fail here. Call it only once the signature has
+// verified, so that only a key holder can make the server write anything.
+func spendChallenge(database *gorm.DB, challenge string, now time.Time) error {
+	// A spent challenge need only be remembered until it expires, after which
+	// checkChallenge refuses it anyway. Forget those that have, so that reading
+	// the status after every deploy does not grow the table for ever. A failure
+	// here leaves rows behind, nothing worse.
+	_ = database.Where("purpose = ? AND expires_at < ?", ownerChallengePurpose, now).
+		Delete(&models.OneTimeToken{}).Error
+	spent := models.OneTimeToken{
+		Purpose:   ownerChallengePurpose,
+		TokenHash: hashToken(challenge),
+		ExpiresAt: now.Add(ChallengeLifetime),
+		UsedAt:    &now,
+	}
+	if err := database.Create(&spent).Error; err != nil {
+		return ErrChallengeInvalid
+	}
+	return nil
 }
 
 // ChallengeKey derives the key owner challenges are signed with from a server

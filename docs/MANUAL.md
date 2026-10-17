@@ -788,6 +788,18 @@ restmail status --server https://mail.example.com
 
 The CLI knows a server only by its address, whatever installed it, so it asks the server (`GET /api/v1/server`): whether it answers, and which version it runs. `--json` gives one object for scripts. It exits 0 when the server answered; 5 when it did not, or not as rest-mail.
 
+#### Confirming a deploy: status keys
+
+```sh
+restmail status --server https://mail.example.com --key ~/.ssh/restmail_status_ed25519
+```
+
+With `--key`, the CLI also learns the commit the server was built from, when it was built, and when it started (`{version, commit, built_at, started_at}`), so a deploy can be seen to have landed and restarted the server. The deployment lists the keys allowed to ask in `RESTMAIL_STATUS_KEYS` (authorized_keys format, as `RESTMAIL_OWNER_KEYS`; Helm value `api.statusKeys`). A status key reads this and nothing else: it cannot reset an admin. Owner keys can read it too.
+
+It is proved as `reset-admin` proves ownership, with the same challenge (`POST /api/v1/auth/owner/challenge`), signed for the purpose `status` instead of `reset-admin` and with no admin named, and sent to `POST /api/v1/auth/owner/status`. A signature made for one purpose cannot be presented for the other, and the challenge is spent, so an answer cannot be replayed. The key file must be unencrypted: the CLI never prompts, and `status` does not use ssh-agent. Exit status 6 means the key is not one the server lists (`not_status_key`), or it lists none.
+
+`GET /api/health` says nothing of this: it stays a liveness probe.
+
 #### The first admin: a bootstrap password
 
 1. If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
@@ -815,7 +827,7 @@ That makes it the hand-over too. Someone — or an agent — who set the server 
 
 #### For agents and scripts
 
-Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 4 no such admin, 5 the server not reachable (or not rest-mail), 6 no key offered is an owner key (or none is listed), 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract on the server; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.
+Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 4 no such admin, 5 the server not reachable (or not rest-mail), 6 no key offered is an owner key (for `status --key`, a status or owner key), or none is listed, 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract on the server; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.
 
 #### What the first admin must do
 

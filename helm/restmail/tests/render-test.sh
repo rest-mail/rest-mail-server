@@ -129,6 +129,13 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.ownerKeys
 assert_contains "RESTMAIL_OWNER_KEYS set"   "$tmp/owner.yaml" "RESTMAIL_OWNER_KEYS: \"$KEY\""
 assert_absent   "no owner keys by default"  "$tmp/prod.yaml"  'RESTMAIL_OWNER_KEYS'
 
+echo "== status keys reach the API =="
+SKEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIStatusKeyForTheRenderTestOnlyxxxxxxxxxxxxx deployer@ci'
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.statusKeys="$SKEY" > "$tmp/status.yaml"
+assert_contains "RESTMAIL_STATUS_KEYS set"  "$tmp/status.yaml" "RESTMAIL_STATUS_KEYS: \"$SKEY\""
+assert_absent   "status keys are not owner keys" "$tmp/status.yaml" 'RESTMAIL_OWNER_KEYS'
+assert_absent   "no status keys by default" "$tmp/prod.yaml"  'RESTMAIL_STATUS_KEYS'
+
 echo "== no setup links =="
 # A server prints no setup code, so it has no link to point anywhere: the first
 # admin comes from the bootstrap password.
