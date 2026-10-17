@@ -6501,12 +6501,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "name": "example.org",
-                 *       "server_type": "restmail"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateDomainRequest"];
             };
         };
@@ -6523,7 +6517,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     getDomain: {
