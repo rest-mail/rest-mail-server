@@ -174,6 +174,26 @@ curl -fsS "$API/auth/login" -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg p "$MAILBOX_PW" '{email:"owner@e2e.test", password:$p, client:"native"}')" | jq -c '.data.user'
 ok "mailbox owner@e2e.test signs in, as the phone app would"
 
+step "the audit log: each of those once, no secret in it, and the chain holds"
+log=$(curl -fsS "$API/admin/audit?limit=200" -H "Authorization: Bearer $agent_access")
+# count ACTION [OUTCOME] -> how many entries the log holds for them.
+count() { jq --arg a "$1" --arg o "${2:-}" '[.data[] | select(.action == $a and ($o == "" or .outcome == $o))] | length' <<<"$log"; }
+[[ $(count auth.sign_in success) == 4 ]] || die "successful sign-ins recorded: $(count auth.sign_in success), want 4"
+[[ $(count auth.sign_in denied) == 1 ]] || die "refused sign-ins recorded: $(count auth.sign_in denied), want 1"
+[[ $(jq -r '[.data[] | select(.action == "auth.sign_in" and .outcome == "denied")][0].actor_name' <<<"$log") == admin ]] ||
+  die "the refused sign-in does not name admin"
+for action in auth.password_change auth.2fa_enroll auth.2fa_confirm; do
+  [[ $(count "$action" success) == 1 ]] || die "$action recorded $(count "$action") times, want once"
+done
+[[ $(count admin.change success) == 2 ]] || die "admin changes recorded: $(count admin.change success), want 2"
+for secret in "$BOOT_PW" "$AGENT_PW" "$MAILBOX_PW" "$agent_access" "$agent_refresh"; do
+  if grep -qF -- "$secret" <<<"$log"; then die "a password or a token is in the audit log"; fi
+done
+verify=$(curl -fsS "$API/admin/audit/verify" -H "Authorization: Bearer $agent_access" | jq -c .data)
+echo "$verify"
+[[ $(jq -r .ok <<<"$verify") == true ]] || die "the audit chain does not verify"
+ok "sign-ins (one refused), the password, 2FA and both admin changes, once each; the chain verifies"
+
 step "restmail reset-admin with a key the server does not list"
 set +e; "$RESTMAIL" reset-admin --server "$SERVER" --key "$KEYS/stranger" --username admin --json 2>/tmp/e2e-stranger.err; status=$?; set -e
 cat /tmp/e2e-stranger.err

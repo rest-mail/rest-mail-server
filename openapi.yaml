@@ -53,6 +53,19 @@ info:
       ingestion, and ACME HTTP-01 challenges. The SSE stream is a special case: it
       is outside the JWT middleware and instead authenticates the access token
       supplied as the `token` query parameter.
+
+
+    ## Audit log
+
+
+    Sign-ins (successful or not), sign-outs, failed refreshes, resets, owner
+    requests, password and 2FA changes, linking and unlinking accounts, and every
+    request other than GET to the admin API are each recorded as one entry in an
+    append-only, hash-chained audit log: who acted (and with which session), the
+    route and its parameters, and how it ended. Passwords and tokens are never
+    recorded. Admins holding `audit:read` read it at `GET /api/v1/admin/audit` and
+    check the chain at `GET /api/v1/admin/audit/verify`; both reads are themselves
+    recorded.
   license:
     name: MIT
     identifier: MIT
@@ -132,6 +145,8 @@ tags:
     description: Admin user, role and capability management (JWT + admin; users:* capabilities)
   - name: "Admin: Observability"
     description: Pipeline analytics funnel and per-message traces (JWT + admin; observability:read)
+  - name: "Admin: Audit"
+    description: The hash-chained audit log and a check of its chain (JWT + admin; audit:read)
   - name: "Admin: MTA-STS"
     description: Per-domain MTA-STS policy management (JWT + admin; domains:* capabilities)
   - name: "Admin: TLS Reports"
@@ -3270,6 +3285,128 @@ paths:
                   pagination:
                     $ref: "#/components/schemas/Pagination"
 
+  /api/v1/admin/audit:
+    get:
+      operationId: listAuditEntries
+      tags: ["Admin: Audit"]
+      x-required-capability: audit:read
+      summary: Read the audit log, newest first
+      description: >-
+        Entries newest first. To read the next page, pass the returned
+        `pagination.cursor` as `before_seq`. A filter that does not parse is
+        refused with 422, never ignored. This read is itself recorded
+        (`audit.read`).
+      parameters:
+        - name: actor_kind
+          in: query
+          schema:
+            type: string
+            enum: [mailbox, admin, system, anonymous]
+        - name: actor_id
+          in: query
+          description: The mailbox or admin user id
+          schema:
+            type: integer
+        - name: actor
+          in: query
+          description: Actor name (address or username) contains this, in any case
+          schema:
+            type: string
+        - name: action
+          in: query
+          description: Exact action, e.g. `auth.sign_in` or `admin.change`
+          schema:
+            type: string
+        - name: outcome
+          in: query
+          schema:
+            type: string
+            enum: [success, denied, failed, error]
+        - name: since
+          in: query
+          description: Entries at or after this time (RFC 3339)
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          description: Entries at or before this time (RFC 3339)
+          schema:
+            type: string
+            format: date-time
+        - name: before_seq
+          in: query
+          description: Entries with a lower seq than this (the previous page's cursor)
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, pagination]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditEntry"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not an admin, or the session lacks audit:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/admin/audit/verify:
+    get:
+      operationId: verifyAuditLog
+      tags: ["Admin: Audit"]
+      x-required-capability: audit:read
+      summary: Check the audit log's hash chain
+      description: >-
+        Walks the whole log from its lowest seq and checks that every entry
+        follows the one before (seq one higher, `prev_hash` its hash) and hashes
+        to its own `hash`. Stops at the first entry that does not hold. If the
+        log does not start at seq 1, the walk starts from the first entry's own
+        `prev_hash` and says so in `note`. This read is itself recorded
+        (`audit.read`).
+      responses:
+        "200":
+          description: What the check found
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AuditVerifyResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not an admin, or the session lacks audit:read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   # ═══════════════════════════════════════════════════════════════
   # System / Discovery (no auth)
   # ═══════════════════════════════════════════════════════════════
@@ -5694,6 +5831,110 @@ components:
         created_at:
           type: string
           format: date-time
+
+    AuditEntry:
+      type: object
+      description: >-
+        One entry of the audit log. `hash` is hex SHA-256 over the JSON array
+        `["restmail-audit-v1", seq, occurred_at (RFC 3339, nanoseconds, UTC),
+        actor_kind, actor_id, actor_name, credential_id, session_id, action,
+        outcome, error_code, method, route, status, target, ip, user_agent,
+        request_id, prev_hash]`, as Go's encoding/json writes it with HTML
+        escaping off and no trailing newline (target's keys sorted).
+      required: [seq, occurred_at, actor_kind, actor_id, actor_name, credential_id, session_id,
+        action, outcome, error_code, method, route, status, target, ip, user_agent, request_id,
+        prev_hash, hash]
+      properties:
+        seq:
+          type: integer
+          format: int64
+          description: 1, 2, 3, … with no gaps
+        occurred_at:
+          type: string
+          format: date-time
+        actor_kind:
+          type: string
+          enum: [mailbox, admin, system, anonymous]
+          description: >-
+            A sign-in names the kind of account it was for (username: admin,
+            email: mailbox) even when it fails; actor_id is set only once the
+            account is proven.
+        actor_id:
+          type: [integer, "null"]
+          description: The mailbox or admin user id
+        actor_name:
+          type: string
+          description: The address or username at the time
+        credential_id:
+          type: [integer, "null"]
+          description: The credential used (not yet recorded)
+        session_id:
+          type: string
+          description: The jti of the token the request carried
+        action:
+          type: string
+          example: admin.change
+        outcome:
+          type: string
+          enum: [success, denied, failed, error]
+          description: 2xx success; 401, 403 and 429 denied; other 4xx failed; 5xx error
+        error_code:
+          type: string
+          description: The error response's `error.code`, if any
+        method:
+          type: string
+        route:
+          type: string
+          example: /api/v1/admin/domains/{id}
+        status:
+          type: integer
+        target:
+          type: object
+          additionalProperties:
+            type: string
+          description: The route's URL parameters, and for account linking the address
+        ip:
+          type: string
+        user_agent:
+          type: string
+        request_id:
+          type: string
+        prev_hash:
+          type: string
+          description: The previous entry's hash; 64 zeros for the first
+        hash:
+          type: string
+
+    AuditVerifyResult:
+      type: object
+      required: [ok, checked, first_seq, last_seq, last_hash]
+      properties:
+        ok:
+          type: boolean
+        checked:
+          type: integer
+          format: int64
+          description: How many entries held
+        first_seq:
+          type: integer
+          format: int64
+        last_seq:
+          type: integer
+          format: int64
+          description: The last entry that held
+        last_hash:
+          type: string
+          description: Its hash; 64 zeros when the log is empty
+        broken_at_seq:
+          type: integer
+          format: int64
+          description: The first entry that does not hold
+        reason:
+          type: string
+          description: Why it does not hold
+        note:
+          type: string
+          description: Set when the log does not start at seq 1
 
     # ─────────────────────────────────────────────────────────────
     # Generic helpers

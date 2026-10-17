@@ -91,6 +91,7 @@ var (
 		"queue:read", "queue:manage",
 		"bans:read", "bans:write", "bans:delete",
 		"observability:read",
+		"audit:read",
 	}
 	readonlyRoleCaps = []string{
 		"domains:read", "mailboxes:read", "pipelines:read",
@@ -243,6 +244,8 @@ func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/bans"},
 		{http.MethodGet, "/api/v1/admin/logs/delivery"},
 		{http.MethodGet, "/api/v1/admin/logs/activity"},
+		{http.MethodGet, "/api/v1/admin/audit"},
+		{http.MethodGet, "/api/v1/admin/audit/verify"},
 		{http.MethodPost, "/api/v1/admin/test/send"},
 	}
 
@@ -498,6 +501,33 @@ func TestObservabilityRoutes_CapabilityGate(t *testing.T) {
 		t.Run("superadmin "+path, func(t *testing.T) {
 			rr := doRequest(router, http.MethodGet, path, super, "")
 			assertReachedHandler(t, rr)
+		})
+	}
+}
+
+// ── Audit log: audit:read, held by admin and superadmin, not readonly ──
+
+func TestAuditRoutes_CapabilityGate(t *testing.T) {
+	router, jwtSvc := newTestRouter(t)
+	auditRoutes := []string{"/api/v1/admin/audit", "/api/v1/admin/audit/verify"}
+
+	for name, caps := range map[string][]string{
+		"admin":      adminRoleCaps,
+		"superadmin": {"*"},
+	} {
+		token := adminToken(t, jwtSvc, caps)
+		for _, path := range auditRoutes {
+			t.Run(name+" reaches "+path, func(t *testing.T) {
+				assertReachedHandler(t, doRequest(router, http.MethodGet, path, token, ""))
+			})
+		}
+	}
+
+	readonly := adminToken(t, jwtSvc, readonlyRoleCaps)
+	for _, path := range auditRoutes {
+		t.Run("readonly denied "+path, func(t *testing.T) {
+			rr := doRequest(router, http.MethodGet, path, readonly, "")
+			assertMiddlewareDenied(t, rr, http.StatusForbidden, "Insufficient permissions")
 		})
 	}
 }
