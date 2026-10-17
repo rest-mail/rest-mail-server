@@ -52,6 +52,10 @@ Add this under \`resources:\` in Pulumi.yaml:
         api:
           bootstrapAdminPasswordHash: \${$NAME:adminPasswordHash}
 EOF
+  # YAML has no optional Config.get: only reference a key the installer set.
+  if [ -n "${OWNER_KEYS_CONFIGURED:-}" ]; then
+    printf '          ownerKeys: ${%s:ownerKeys}\n' "$NAME"
+  fi
   ;;
 nodejs)
   cat <<EOF
@@ -75,7 +79,7 @@ export const release = new k8s.helm.v3.Release("$NAME", {
     skipAwait: true,
     values: {
         mailserver: { hostname: mail.require("hostname"), domain: mail.require("domain") },
-        api: { bootstrapAdminPasswordHash: mail.require("adminPasswordHash") },
+        api: { bootstrapAdminPasswordHash: mail.require("adminPasswordHash"), ownerKeys: mail.get("ownerKeys") || "" },
     },
 });
 
@@ -107,7 +111,7 @@ release = k8s.helm.v3.Release(
     skip_await=True,
     values={
         "mailserver": {"hostname": mail.require("hostname"), "domain": mail.require("domain")},
-        "api": {"bootstrapAdminPasswordHash": mail.require("adminPasswordHash")},
+        "api": {"bootstrapAdminPasswordHash": mail.require("adminPasswordHash"), "ownerKeys": mail.get("ownerKeys") or ""},
     },
 )
 
@@ -144,7 +148,7 @@ func $fn(ctx *pulumi.Context) error {
 		SkipAwait:       pulumi.Bool(true),
 		Values: pulumi.Map{
 			"mailserver": pulumi.Map{"hostname": pulumi.String(mail.Require("hostname")), "domain": pulumi.String(mail.Require("domain"))},
-			"api":        pulumi.Map{"bootstrapAdminPasswordHash": pulumi.String(mail.Require("adminPasswordHash"))},
+			"api":        pulumi.Map{"bootstrapAdminPasswordHash": pulumi.String(mail.Require("adminPasswordHash")), "ownerKeys": pulumi.String(mail.Get("ownerKeys"))},
 		},
 	})
 	return err
@@ -171,6 +175,7 @@ Declare a kubernetes:helm.sh/v3:Release (a Release, not a Chart) with:
   values.mailserver.hostname:        config $NAME:hostname
   values.mailserver.domain:          config $NAME:domain
   values.api.bootstrapAdminPasswordHash: config $NAME:adminPasswordHash
+  values.api.ownerKeys:                 optional config $NAME:ownerKeys (public keys only)
 EOF
   ;;
 esac
