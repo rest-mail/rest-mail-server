@@ -75,6 +75,7 @@ Thumbs.db
 .workspace/
 .claude/workgroup/
 .cache/
+__pycache__/
 
 # GoReleaser output (.goreleaser.yaml)
 /dist/
