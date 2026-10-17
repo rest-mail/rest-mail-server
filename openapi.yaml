@@ -4865,8 +4865,9 @@ components:
         capabilities:
           type: array
           description: >-
-            Admin users only: the capabilities the admin's active grants give at
-            `*`, sorted, or `["*"]` alone for a superadmin; for showing what the
+            Admin users only: the capabilities the admin's grants in force
+            (active ones, and eligible ones while switched on) give at `*`,
+            sorted, or `["*"]` alone for a superadmin; for showing what the
             session can do. They authorise nothing: the admin API reads the
             grants on every request, and the token carries none. Capabilities
             held only on a domain or mailbox are not listed. Empty while

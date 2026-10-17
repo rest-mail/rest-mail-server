@@ -186,8 +186,9 @@ for action in auth.password_change auth.2fa_enroll auth.2fa_confirm; do
   [[ $(count "$action" success) == 1 ]] || die "$action recorded $(count "$action") times, want once"
 done
 [[ $(count admin.change success) == 2 ]] || die "admin changes recorded: $(count admin.change success), want 2"
-for secret in "$BOOT_PW" "$AGENT_PW" "$MAILBOX_PW" "$agent_access" "$agent_refresh"; do
-  if grep -qF -- "$secret" <<<"$log"; then die "a password or a token is in the audit log"; fi
+# Not $secret: that is the authenticator's, and later steps compute codes from it.
+for leaked in "$BOOT_PW" "$AGENT_PW" "$MAILBOX_PW" "$agent_access" "$agent_refresh"; do
+  if grep -qF -- "$leaked" <<<"$log"; then die "a password or a token is in the audit log"; fi
 done
 verify=$(curl -fsS "$API/admin/audit/verify" -H "Authorization: Bearer $agent_access" | jq -c .data)
 echo "$verify"

@@ -9,8 +9,9 @@ package middleware
 // "*" (superadmin) satisfies every requirement.
 //
 // How capabilities derive from token types:
-//   - Admin tokens (UserType "admin"): the admin's active grants, read on every
-//     request (internal/grants), never the token, which carries none. A grant
+//   - Admin tokens (UserType "admin"): the admin's grants in force (active
+//     ones, and eligible ones while switched on, #346), read on every request
+//     (internal/grants), never the token, which carries none. A grant
 //     is a role at a scope; a route acting on a domain or mailbox accepts a
 //     grant covering it, every other route wants the capability at "*". "*"
 //     grants everything.

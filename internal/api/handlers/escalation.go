@@ -117,9 +117,10 @@ func (h *GrantHandler) Activate(w http.ResponseWriter, r *http.Request) {
 	}
 	length := grants.DefaultActivation
 	if req.Minutes != nil {
-		length = time.Duration(*req.Minutes) * time.Minute
-		if length < time.Minute || length > grants.MaxActivation {
+		if *req.Minutes < 1 || *req.Minutes > int(grants.MaxActivation/time.Minute) {
 			problems["minutes"] = "must be from 1 to 240"
+		} else {
+			length = time.Duration(*req.Minutes) * time.Minute
 		}
 	}
 	if len(problems) > 0 {
@@ -228,6 +229,9 @@ func (h *GrantHandler) respondEscalation(w http.ResponseWriter, status int, admi
 		return
 	}
 	resp := escalationResponse{Grant: toGrantResponse(g), Capabilities: held.Capabilities()}
+	if resp.Capabilities == nil {
+		resp.Capabilities = []string{}
+	}
 	if a != nil {
 		resp.Grant.Activation = toActivationResponse(a, now)
 	}
