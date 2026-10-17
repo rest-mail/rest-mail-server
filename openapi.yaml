@@ -5464,6 +5464,7 @@ paths:
         schema:
           type: integer
         description: Suppression ID
+        example: 1
     delete:
       operationId: clearSuppression
       tags: ["Admin: Suppressions"]

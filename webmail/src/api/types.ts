@@ -2495,7 +2495,10 @@ export interface paths {
                  * @example 1
                  */
                 id: components["parameters"]["ResourceId"];
-                /** @description Suppression ID */
+                /**
+                 * @description Suppression ID
+                 * @example 1
+                 */
                 sid: number;
             };
             cookie?: never;
@@ -9172,7 +9175,10 @@ export interface operations {
                  * @example 1
                  */
                 id: components["parameters"]["ResourceId"];
-                /** @description Suppression ID */
+                /**
+                 * @description Suppression ID
+                 * @example 1
+                 */
                 sid: number;
             };
             cookie?: never;
