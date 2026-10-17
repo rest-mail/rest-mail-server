@@ -1,0 +1,52 @@
+{{- /*
+One Ingress per web app, on a host of its own: / is the app, /api the API. The
+apps sign in with SameSite=Strict cookies and allow connect-src 'self' only, so
+the API has to be reached on the app's own origin; a cross-origin API would not
+work, and must not. /api is the path the apps call (webmail/src/api/base.ts,
+admin/src/lib/api.ts), whatever api.ingress.path says for the API's own host.
+*/ -}}
+{{- range $app := list "webmail" "admin" }}
+{{- $v := index $.Values $app }}
+{{- if $v.enabled }}
+{{- $host := include "restmail.webappHost" (list $ $app) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "restmail.componentName" (list $ $app) }}
+  labels:
+    {{- include "restmail.componentLabels" (list $ $app) | nindent 4 }}
+  {{- with $v.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with $v.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- if $v.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ $host | quote }}
+      secretName: {{ default (printf "%s-tls" (include "restmail.componentName" (list $ $app))) $v.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "restmail.componentName" (list $ "api") }}
+                port:
+                  number: {{ $.Values.api.service.port }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "restmail.componentName" (list $ $app) }}
+                port:
+                  number: {{ $v.service.port }}
+{{- end }}
+{{- end }}

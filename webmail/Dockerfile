@@ -12,7 +12,10 @@ RUN corepack enable pnpm && pnpm install --frozen-lockfile
 # ── Stage 2: builder ─────────────────────────────────────────────────
 FROM deps AS builder
 COPY . .
-RUN pnpm run build
+# What the image serves is readable by nginx's uid whatever modes the checkout
+# gave the sources: Vite copies public/ into dist as it finds it, so a checkout
+# made with a tight umask would otherwise ship files nginx answers 403 for.
+RUN pnpm run build && chmod -R u=rwX,go=rX dist
 
 # ── Stage 3: dev (hot reload via Vite HMR) ───────────────────────────
 # Source is bind-mounted at /app by `task webmail:up` (MODE=dev), with
@@ -28,10 +31,14 @@ CMD ["pnpm", "run", "dev"]
 FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0 AS prod
 ARG NGINX_BASE_PATH=/
 ENV NGINX_BASE_PATH=${NGINX_BASE_PATH}
+# The template is kept out of conf.d, where the entrypoint writes the finished
+# config: a read-only root filesystem then needs only conf.d and /tmp writable.
+# Modes are set outright, not taken from the checkout (see the builder).
 USER root
-COPY nginx.conf /etc/nginx/conf.d/default.conf.template
+COPY nginx.conf /etc/nginx/restmail/default.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.d/30-configure-base-path.sh
-RUN chmod +x /docker-entrypoint.d/30-configure-base-path.sh
+RUN chmod 0755 /etc/nginx/restmail /docker-entrypoint.d/30-configure-base-path.sh && \
+    chmod 0644 /etc/nginx/restmail/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html
 # Back to the unprivileged uid the base image ships with.
 USER 101
