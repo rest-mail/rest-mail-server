@@ -208,17 +208,20 @@ func TestCreateAccount(t *testing.T) {
 
 // TestLinkAccount: linking proves one of an account's passwords and grants the
 // caller the owner role on it; a wrong password, an unknown address and an
-// account with no password are all the same 401. Linking twice, or one's own
-// account, is a conflict; unlinking removes the grant.
+// account with no password are all the same 403 invalid_credentials, never a
+// 401, which would say the caller's own session failed. Linking twice, or
+// one's own account, is a conflict; unlinking removes the grant.
 func TestLinkAccount(t *testing.T) {
 	db := openAccountsTestDB(t)
 	fx := seedAccountsFixture(t, db)
 	h := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), "")
-	link := func(accountID uint, address, password string) *httptest.ResponseRecorder {
+	linkWith := func(accountID uint, body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.LinkAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", accountID, nil,
-			fmt.Sprintf(`{"address":%q,"password":%q}`, address, password)))
+		h.LinkAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", accountID, nil, body))
 		return rr
+	}
+	link := func(accountID uint, address, password string) *httptest.ResponseRecorder {
+		return linkWith(accountID, fmt.Sprintf(`{"address":%q,"password":%q}`, address, password))
 	}
 	// An account with no password of its own.
 	nopw := models.Mailbox{DomainID: fx.domain.ID, LocalPart: "nopw", Address: "nopw@" + fx.domain.Name, Active: true}
@@ -233,12 +236,12 @@ func TestLinkAccount(t *testing.T) {
 		{"no password at all, guessed", nopw.Address, accountsPassword},
 	} {
 		rr := link(fx.user.ID, tc.address, tc.password)
-		want := http.StatusUnauthorized
+		want, wantCode := http.StatusForbidden, "invalid_credentials"
 		if tc.password == "" {
-			want = http.StatusUnprocessableEntity
+			want, wantCode = http.StatusUnprocessableEntity, "validation_failed"
 		}
-		if rr.Code != want {
-			t.Errorf("%s: %d, want %d", tc.name, rr.Code, want)
+		if rr.Code != want || errorCodeOf(rr) != wantCode {
+			t.Errorf("%s: %d %s, want %d %s", tc.name, rr.Code, errorCodeOf(rr), want, wantCode)
 		}
 	}
 	if rr := link(fx.user.ID, fx.user.Address, accountsPassword); rr.Code != http.StatusConflict {
@@ -276,8 +279,14 @@ func TestLinkAccount(t *testing.T) {
 	if err := db.Create(&third).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rr := link(third.ID, fx.admin.Address, accountsPassword); rr.Code != http.StatusUnauthorized || errorCodeOf(rr) != "totp_required" {
+	if rr := link(third.ID, fx.admin.Address, accountsPassword); rr.Code != http.StatusForbidden || errorCodeOf(rr) != "totp_required" {
 		t.Errorf("linking an account with 2FA by its password alone: %d %s", rr.Code, rr.Body.String())
+	}
+	for _, second := range []string{`"totp_code":"123456"`, `"recovery_code":"not-a-code"`} {
+		body := fmt.Sprintf(`{"address":%q,"password":%q,%s}`, fx.admin.Address, accountsPassword, second)
+		if rr := linkWith(third.ID, body); rr.Code != http.StatusForbidden || errorCodeOf(rr) != "invalid_totp" {
+			t.Errorf("linking an account with 2FA by a wrong %s: %d %s", second, rr.Code, rr.Body.String())
+		}
 	}
 
 	// Unlinking removes the caller's grant, and only the caller's.

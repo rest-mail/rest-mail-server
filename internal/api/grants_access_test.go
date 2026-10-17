@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
@@ -88,7 +87,7 @@ func openAccessDB(t *testing.T) *gorm.DB {
 // useRealGrants puts back what routes_seams_test.go stands aside, for one test.
 func useRealGrants(t *testing.T) {
 	session, held := sessionCheck, heldGrants
-	sessionCheck, heldGrants = handlers.SessionCurrent, cachedHeldGrants
+	sessionCheck, heldGrants = cachedSessionCheck, cachedHeldGrants
 	t.Cleanup(func() { sessionCheck, heldGrants = session, held })
 }
 

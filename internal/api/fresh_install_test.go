@@ -321,7 +321,9 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 	// 9. Another person links an account by proving its password. bob@ and
 	// carol@ are made with passwords; bob@ sees only itself until it links
 	// carol@, then reads carol@'s mail; a wrong password links nothing;
-	// unlinking takes the grant away.
+	// unlinking takes the grant away. A refused link is 403 with its reason,
+	// never 401: the secrets were another account's, and bob@'s session goes
+	// on working.
 	var bob, carol freshAccount
 	f.expect(f.do(http.MethodPost, "/api/v1/accounts", adminS.bearer(), `{"address":"bob@fresh.test","password":"bob's own password"}`),
 		http.StatusCreated, "create bob@", &bob)
@@ -332,8 +334,21 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 		t.Fatalf("bob@'s accounts before linking: %v", got)
 	}
 	f.expect(f.do(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", carol.ID), bobS.bearer(), ""), http.StatusForbidden, "carol@'s folders before linking", nil)
-	f.expect(f.do(http.MethodPost, "/api/v1/accounts/link", bobS.bearer(), `{"address":"carol@fresh.test","password":"not carol's password"}`),
-		http.StatusUnauthorized, "link with a wrong password", nil)
+	refused := func(body, want, what string) {
+		t.Helper()
+		rr := f.do(http.MethodPost, "/api/v1/accounts/link", bobS.bearer(), body)
+		if got := errorCode(t, rr); rr.Code != http.StatusForbidden || got != want {
+			t.Fatalf("%s: %d %s, want 403 %s", what, rr.Code, got, want)
+		}
+	}
+	wrongCode := code()
+	wrongCode = string('0'+(wrongCode[0]-'0'+1)%10) + wrongCode[1:]
+	refused(`{"address":"carol@fresh.test","password":"not carol's password"}`, "invalid_credentials", "link with a wrong password")
+	refused(fmt.Sprintf(`{"address":%q,"password":%q}`, freshAdmin, freshAdminPW), "totp_required", "link admin@ without its code")
+	refused(fmt.Sprintf(`{"address":%q,"password":%q,"totp_code":%q}`, freshAdmin, freshAdminPW, wrongCode), "invalid_totp", "link admin@ with a wrong code")
+	if got := addresses(f.accounts(bobS)); !slices.Equal(got, []string{"bob@fresh.test"}) {
+		t.Fatalf("bob@'s accounts after the refused links: %v", got)
+	}
 	var linked freshAccount
 	f.expect(f.do(http.MethodPost, "/api/v1/accounts/link", bobS.bearer(), `{"address":"carol@fresh.test","password":"carol's own password"}`),
 		http.StatusCreated, "link carol@", &linked)
@@ -344,8 +359,8 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 		t.Fatalf("bob@'s accounts after linking: %v", got)
 	}
 	f.expect(f.do(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", carol.ID), bobS.bearer(), ""), http.StatusOK, "carol@'s folders, linked", nil)
-	if f.audited("accounts.link", models.AuditOutcomeSuccess) != 1 || f.audited("accounts.link", models.AuditOutcomeDenied) != 1 {
-		t.Fatal("the link and the refused link are not each recorded once")
+	if f.audited("accounts.link", models.AuditOutcomeSuccess) != 1 || f.audited("accounts.link", models.AuditOutcomeDenied) != 3 {
+		t.Fatal("the link and the three refused links are not each recorded once")
 	}
 	f.expect(f.do(http.MethodDelete, fmt.Sprintf("/api/v1/accounts/%d", carol.ID), bobS.bearer(), ""), http.StatusNoContent, "unlink carol@", nil)
 	if got := addresses(f.accounts(bobS)); !slices.Equal(got, []string{"bob@fresh.test"}) {
