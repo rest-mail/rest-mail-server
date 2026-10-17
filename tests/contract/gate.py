@@ -134,7 +134,13 @@ def gate(spec_path, config_path, report_path, baseline_path):
     if not os.path.exists(report_path):
         print("no report at %s: vertrag judged nothing (see its log)" % report_path)
         return 1
-    examples, probed, probes_failed = results(report_path, ops)
+    try:
+        examples, probed, probes_failed = results(report_path, ops)
+    except ET.ParseError as err:
+        # vertrag exits 1 when it cannot read the spec, leaving an empty report.
+        print("the report at %s is unreadable (%s): vertrag judged nothing (see its log)" % (
+            report_path, err))
+        return 1
     required = sorted(all_ids - set(excluded))
     passing = [op for op in required if examples.get(op) and set(examples[op]) == {"passed"}]
     not_passing = [op for op in required if op not in passing]
