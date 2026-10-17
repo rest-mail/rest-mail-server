@@ -26,8 +26,9 @@ var (
 	// ErrExists: the holder already holds the role at that scope.
 	ErrExists = errors.New("the holder already holds this role at this scope")
 	// ErrLastSuperadmin: the change would leave no active admin holding every
-	// capability at "*", and nobody could ever grant anything again.
-	ErrLastSuperadmin = errors.New("this is the last active grant of every capability at \"*\" held by an active admin")
+	// capability at "*", active or eligible, and nobody could ever grant
+	// anything again. An eligible grant counts: its holder can switch it on.
+	ErrLastSuperadmin = errors.New("this is the last grant of every capability at \"*\", active or eligible, held by an active admin")
 )
 
 // changeLockKey serialises grant changes, so that two at once cannot each
@@ -78,19 +79,31 @@ func Add(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 }
 
 // Remove deletes g and writes the audit entry recording it, in tx, unless it
-// is the last active grant of every capability at "*" held by an active admin
-// (ErrLastSuperadmin). The caller holds Lock and has checked Authorize.
+// is the last grant of every capability at "*", active or eligible, held by an
+// active admin (ErrLastSuperadmin). An activation of g still running ends with
+// it, and is recorded as switched off by the same actor. The caller holds Lock
+// and has checked Authorize.
 func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
+	now := time.Now()
+	live, err := liveActivation(tx, g.ID, now)
+	if err != nil {
+		return err
+	}
+	// The grant's activations go with it; the audit log keeps their history.
+	if err := tx.Where("grant_id = ?", g.ID).Delete(&models.GrantActivation{}).Error; err != nil {
+		return err
+	}
 	if err := tx.Delete(&models.Grant{}, g.ID).Error; err != nil {
 		return err
 	}
 	var remaining int64
-	err := tx.Table("grants AS g").
+	err = tx.Table("grants AS g").
 		Joins("JOIN admin_roles_capabilities rc ON rc.role_id = g.role_id").
 		Joins("JOIN admin_capabilities c ON c.id = rc.capability_id").
 		Joins("JOIN admin_users u ON u.id = g.holder_id").
-		Where("g.holder_kind = ? AND g.scope = ? AND g.mode = ? AND c.name = ? AND u.active", models.GrantHolderAdmin, All, models.GrantActive, Wildcard).
-		Where("g.expires_at IS NULL OR g.expires_at > ?", time.Now()).
+		Where("g.holder_kind = ? AND g.scope = ? AND g.mode IN ? AND c.name = ? AND u.active",
+			models.GrantHolderAdmin, All, []string{models.GrantActive, models.GrantEligible}, Wildcard).
+		Where("g.expires_at IS NULL OR g.expires_at > ?", now).
 		Count(&remaining).Error
 	if err != nil {
 		return err
@@ -98,14 +111,25 @@ func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 	if remaining == 0 && wasSuperadmin(tx, g) {
 		return ErrLastSuperadmin
 	}
+	if live != nil {
+		live.EndedAt = &now
+		ended := entry
+		ended.Action = ActionDeactivate
+		if err := appendActivation(tx, g, live, ended); err != nil {
+			return err
+		}
+	}
 	entry.Action = ActionDelete
 	return appendChange(tx, g, entry)
 }
 
-// wasSuperadmin reports whether g, just deleted, was an active grant of every
-// capability at "*" held by an active admin.
+// wasSuperadmin reports whether g, just deleted, was a grant of every
+// capability at "*", active or eligible, held by an active admin.
 func wasSuperadmin(tx *gorm.DB, g *models.Grant) bool {
-	if g.Scope != All || g.Mode != models.GrantActive || g.HolderKind != models.GrantHolderAdmin {
+	if g.Scope != All || g.HolderKind != models.GrantHolderAdmin {
+		return false
+	}
+	if g.Mode != models.GrantActive && g.Mode != models.GrantEligible {
 		return false
 	}
 	if g.ExpiresAt != nil && !g.ExpiresAt.After(time.Now()) {
@@ -153,9 +177,12 @@ func EnsureSystem(tx *gorm.DB, holderKind string, holderID, roleID uint, scope, 
 // appendChange writes the audit entry for a change to g.
 func appendChange(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 	entry.Outcome = models.AuditOutcomeSuccess
-	if entry.Target == nil {
-		entry.Target = models.AuditTarget{}
+	// Never the caller's map: one request may record several entries.
+	target := models.AuditTarget{}
+	for k, v := range entry.Target {
+		target[k] = v
 	}
+	entry.Target = target
 	for k, v := range Describe(tx, g) {
 		entry.Target[k] = v
 	}

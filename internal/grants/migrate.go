@@ -12,11 +12,12 @@ import (
 // migrateLockKey serialises Migrate across replicas starting at once: "grantmig".
 const migrateLockKey int64 = 0x6772616e746d6967
 
-// Migrate creates the grants table and, the one time it creates it, turns each
-// role assignment of admin_users_roles into an active grant of that role at
-// "*", each recorded in the audit log, all in one transaction: the server
-// either comes up with every assignment it had as a grant, or not at all.
-// Every admin keeps exactly the access they had.
+// Migrate creates the grants table, and their activations', and, the one time
+// it creates grants, turns each role assignment of admin_users_roles into an
+// active grant of that role at "*", each recorded in the audit log, all in one
+// transaction: the server either comes up with every assignment it had as a
+// grant, or not at all. Every admin keeps exactly the access they had. Adding
+// activations to a server that already has grants changes no grant.
 //
 // Run it after db.AutoMigrate (which creates admin_users_roles and the audit
 // log) on every start: once the table exists it only adds what a newer model
@@ -29,7 +30,7 @@ func Migrate(db *gorm.DB) (int, error) {
 			return err
 		}
 		fresh := !tx.Migrator().HasTable(&models.Grant{})
-		if err := tx.AutoMigrate(&models.Grant{}); err != nil {
+		if err := tx.AutoMigrate(&models.Grant{}, &models.GrantActivation{}); err != nil {
 			return err
 		}
 		if !fresh || !tx.Migrator().HasTable(&models.UserRole{}) {

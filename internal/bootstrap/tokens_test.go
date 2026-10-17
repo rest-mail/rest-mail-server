@@ -246,7 +246,7 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 		}
 	})
 	if err := scratch.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.OneTimeToken{}, &models.TwoFactor{},
+		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.TwoFactor{},
 		&models.TwoFactorRecoveryCode{}, &models.RefreshToken{}); err != nil {
 		t.Fatalf("migrate scratch database: %v", err)
 	}

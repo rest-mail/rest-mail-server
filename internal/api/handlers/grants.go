@@ -21,14 +21,19 @@ import (
 // A change needs a session that signed in with two-factor authentication, and
 // the granter may only grant or remove a role whose capabilities it holds, at
 // a scope within its own. Each change and its audit entry commit together.
+//
+// It also serves escalation (#346, escalation.go): an admin switching one of
+// its own eligible grants on for a while.
 type GrantHandler struct {
 	db *gorm.DB
 	// cache is the one RequireCapability reads; every change empties it.
 	cache *grants.Cache
+	// masterKey decrypts the TOTP secret a fresh code is checked against.
+	masterKey string
 }
 
-func NewGrantHandler(db *gorm.DB, cache *grants.Cache) *GrantHandler {
-	return &GrantHandler{db: db, cache: cache}
+func NewGrantHandler(db *gorm.DB, cache *grants.Cache, masterKey string) *GrantHandler {
+	return &GrantHandler{db: db, cache: cache, masterKey: masterKey}
 }
 
 type grantHolder struct {
@@ -51,6 +56,8 @@ type grantResponse struct {
 	GrantedBy grantActor  `json:"granted_by"`
 	GrantedAt string      `json:"granted_at"`
 	ExpiresAt *string     `json:"expires_at"`
+	// Activation is the one running now, of an eligible grant switched on.
+	Activation *activationResponse `json:"activation"`
 }
 
 func toGrantResponse(g *models.Grant) grantResponse {
@@ -65,6 +72,26 @@ func toGrantResponse(g *models.Grant) grantResponse {
 		GrantedAt: g.GrantedAt.UTC().Format(time.RFC3339),
 		ExpiresAt: formatTime(g.ExpiresAt),
 	}
+}
+
+// toGrantResponses is each grant, with the activation of it running now.
+func toGrantResponses(db *gorm.DB, rows []models.Grant, now time.Time) ([]grantResponse, error) {
+	ids := make([]uint, len(rows))
+	for i := range rows {
+		ids[i] = rows[i].ID
+	}
+	live, err := grants.LiveActivations(db, ids, now)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]grantResponse, len(rows))
+	for i := range rows {
+		out[i] = toGrantResponse(&rows[i])
+		if a, ok := live[rows[i].ID]; ok {
+			out[i].Activation = toActivationResponse(&a, now)
+		}
+	}
+	return out, nil
 }
 
 // List returns grants, oldest first, optionally only one holder's.
@@ -93,9 +120,10 @@ func (h *GrantHandler) List(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
 		return
 	}
-	out := make([]grantResponse, len(rows))
-	for i := range rows {
-		out[i] = toGrantResponse(&rows[i])
+	out, err := toGrantResponses(h.db, rows, time.Now())
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
+		return
 	}
 	respond.List(w, out, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }

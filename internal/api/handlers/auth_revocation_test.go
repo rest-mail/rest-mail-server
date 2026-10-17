@@ -59,6 +59,7 @@ func openRevocationTestDB(t *testing.T) *gorm.DB {
 		&models.UserRole{},
 		&models.RoleCapability{},
 		&models.Grant{},
+		&models.GrantActivation{},
 	); err != nil {
 		t.Skipf("session-revocation DB test skipped: migrate failed (%v)", err)
 	}

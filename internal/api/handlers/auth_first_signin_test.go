@@ -50,7 +50,7 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 	t.Helper()
 	base := openLoginTestDB(t)
 	if err := base.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
+		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
 		t.Skipf("first sign-in DB test skipped: migrate failed (%v)", err)
 	}
 	// The bootstrap admin's grants are recorded in the audit log.
@@ -254,12 +254,15 @@ func TestFirstSignIn_PasswordAndAuthenticatorUnlockTheAccount(t *testing.T) {
 	if len(done.SetupRequired) != 0 {
 		t.Errorf("setup_required = %v after finishing setup", done.SetupRequired)
 	}
-	hasWildcard := false
+	// The admin role's capabilities, day to day; superadmin's "*" only once it
+	// is switched on (#346).
+	hasWildcard, canBuild := false, false
 	for _, c := range done.Capabilities {
 		hasWildcard = hasWildcard || c == "*"
+		canBuild = canBuild || c == "domains:write"
 	}
-	if !hasWildcard {
-		t.Errorf("superadmin capabilities = %v, want *", done.Capabilities)
+	if hasWildcard || !canBuild {
+		t.Errorf("capabilities = %v, want the admin role's, without *", done.Capabilities)
 	}
 	if got := f.adminAPI(done.AccessToken); got.Code != http.StatusTeapot {
 		t.Errorf("admin API after setup = %d, want it reached", got.Code)
