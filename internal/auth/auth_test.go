@@ -240,7 +240,7 @@ func TestMintedTokensCarryPinnedIssuer(t *testing.T) {
 		}
 	}
 
-	admin, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	admin, err := svc.GenerateAdminTokenPair(1, "admin")
 	if err != nil {
 		t.Fatalf("GenerateAdminTokenPair: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestRefreshToken_HasUniqueRoundTrippingJTI(t *testing.T) {
 	}
 
 	// Admin pairs carry a jti too.
-	ap, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	ap, err := svc.GenerateAdminTokenPair(1, "admin")
 	if err != nil {
 		t.Fatalf("GenerateAdminTokenPair: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestAccessToken_HasItsOwnJTI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateTokenPair: %v", err)
 	}
-	admin, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	admin, err := svc.GenerateAdminTokenPair(1, "admin")
 	if err != nil {
 		t.Fatalf("GenerateAdminTokenPair: %v", err)
 	}

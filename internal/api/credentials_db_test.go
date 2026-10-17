@@ -265,6 +265,27 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		}
 	})
 
+	t.Run("reaches no admin route", func(t *testing.T) {
+		// The admin routes take a session's token alone: Basic is refused
+		// before AdminOnly, so an app password never has its grants read
+		// (#345) and can change none, nor its own mailbox's password.
+		mailbox := fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID)
+		for _, rt := range []struct{ method, path, body string }{
+			{http.MethodGet, "/api/v1/admin/grants", ""},
+			{http.MethodPost, "/api/v1/admin/grants", `{"holder":{"kind":"admin","id":1},"role":"superadmin","scope":"*","mode":"active"}`},
+			{http.MethodGet, mailbox, ""},
+			{http.MethodPatch, mailbox, `{"password":"a-new-password-456"}`},
+			{http.MethodGet, "/api/v1/admin/domains", ""},
+		} {
+			if rr := f.do(rt.method, rt.path, appPassword, rt.body); rr.Code != http.StatusUnauthorized {
+				t.Errorf("%s %s with an app password: %d %s", rt.method, rt.path, rr.Code, rr.Body.String())
+			}
+		}
+		if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusOK {
+			t.Errorf("the app password stopped working after its attempts: %d", rr.Code)
+		}
+	})
+
 	t.Run("a protocol sign-in is recorded with its credential", func(t *testing.T) {
 		rr := f.do(http.MethodPost, "/api/v1/auth/protocol-sign-in", appPassword, `{"protocol":"imap"}`)
 		if rr.Code != http.StatusOK {
@@ -638,6 +659,11 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	t.Cleanup(srv.Close)
 	api := apiclient.New(srv.URL)
 	admin := adminToken(t, f.jwt, []string{middleware.CapMailboxesWrite})
+	// Each test admin has an id of its own, holding its grants (#345).
+	adminClaims, err := f.jwt.ValidateAccessToken(admin)
+	if err != nil {
+		t.Fatalf("the admin's token: %v", err)
+	}
 	mailboxPath := fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID)
 	folders := fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID)
 
@@ -736,7 +762,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 			if e.Target["reason"] != handlers.CredentialRevokedPasswordChanged ||
 				e.Target["credential_id"] != strconv.Itoa(int(created.ID)) || e.Target["public_id"] != created.PublicID ||
 				e.Target["mailbox_id"] != strconv.Itoa(int(f.mailboxID)) ||
-				e.ActorKind != models.AuditActorAdmin || e.ActorID == nil || *e.ActorID != 1 ||
+				e.ActorKind != models.AuditActorAdmin || e.ActorID == nil || *e.ActorID != adminClaims.AdminUserID ||
 				e.Outcome != models.AuditOutcomeSuccess || e.Method != http.MethodPatch ||
 				e.Route != "/api/v1/admin/mailboxes/{id}" || e.CredentialID != nil {
 				t.Errorf("revocation %d: %+v", i, e)

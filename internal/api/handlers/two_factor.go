@@ -152,7 +152,7 @@ func (h *TwoFactorHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 	}
 	hashes := make([]string, len(recoveryCodes))
 	for i, c := range recoveryCodes {
-		hash, herr := auth.HashRecoveryCode(c)
+		hash, herr := hashRecoveryCode(c)
 		if herr != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to secure recovery codes")
 			return

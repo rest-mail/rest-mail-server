@@ -21,6 +21,7 @@ import (
 	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/domainstate"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/greylist"
 	"github.com/restmail/restmail/internal/rollup"
 	"github.com/restmail/restmail/internal/trace"
@@ -119,6 +120,12 @@ func main() {
 	// whichever version boots first silently rewrite data. Destructive one-time
 	// upgrades are the migrate tool's job (issue #196).
 	if err := db.AutoMigrate(database, false); err != nil {
+		slog.Error("failed to run database migration", "error", err)
+		os.Exit(1)
+	}
+	// Role assignments become grants, once; nobody may come up without the
+	// access they had, so a failure stops the server.
+	if _, err := grants.Migrate(database); err != nil {
 		slog.Error("failed to run database migration", "error", err)
 		os.Exit(1)
 	}

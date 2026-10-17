@@ -131,9 +131,12 @@ func legacyAdminMailboxToken(t *testing.T) string {
 	return s
 }
 
+// adminToken signs in a new admin holding caps at "*". The token carries no
+// capabilities: the router reads them from the admin's grants, which these
+// tests keep in testGrants (see routes_seams_test.go).
 func adminToken(t *testing.T, jwtSvc *auth.JWTService, caps []string) string {
 	t.Helper()
-	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin", caps)
+	pair, err := jwtSvc.GenerateAdminTokenPair(testAdminHolding(caps), "admin")
 	if err != nil {
 		t.Fatalf("failed to generate admin token: %v", err)
 	}
@@ -649,7 +652,7 @@ func TestRefresh_MailboxTokenFailsClosedWithoutLedger(t *testing.T) {
 
 func TestRefresh_AdminTokenFailsClosedWithoutLedger(t *testing.T) {
 	router, jwtSvc := newTestRouter(t)
-	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin", []string{"domains:read", "queue:read"})
+	pair, err := jwtSvc.GenerateAdminTokenPair(testAdminHolding([]string{"domains:read", "queue:read"}), "admin")
 	if err != nil {
 		t.Fatalf("failed to generate admin pair: %v", err)
 	}
