@@ -77,7 +77,7 @@ func TestDKIMVerify_DoesNotMutateOriginal(t *testing.T) {
 
 // TestDKIMVerify_CoexistsWithSPFAuthResults proves that running spf_check then
 // dkim_verify leaves BOTH the spf= and dkim= entries in the message — dkim must
-// not overwrite the spf Authentication-Results (Raw and Extra).
+// not overwrite the spf Authentication-Results.
 func TestDKIMVerify_CoexistsWithSPFAuthResults(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Envelope: pipeline.Envelope{ClientIP: "203.0.113.7", MailFrom: "user@example.com"},
@@ -112,17 +112,10 @@ func TestDKIMVerify_CoexistsWithSPFAuthResults(t *testing.T) {
 	if !strings.Contains(raw, "dkim=") {
 		t.Errorf("Raw AR missing the dkim= entry: %q", raw)
 	}
-	extra := final.Headers.Extra["Authentication-Results"]
-	if !strings.Contains(extra, "spf=") {
-		t.Errorf("Extra AR lost the spf= entry (dkim overwrote it): %q", extra)
-	}
-	if !strings.Contains(extra, "dkim=") {
-		t.Errorf("Extra AR missing the dkim= entry: %q", extra)
-	}
 }
 
-// TestARCVerify_DoesNotMutateOriginal proves arc_verify writes its AR / metadata
-// to the returned copy only.
+// TestARCVerify_DoesNotMutateOriginal proves arc_verify writes its AR to the
+// returned copy only.
 func TestARCVerify_DoesNotMutateOriginal(t *testing.T) {
 	orig := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
@@ -141,8 +134,5 @@ func TestARCVerify_DoesNotMutateOriginal(t *testing.T) {
 	}
 	if orig.Headers.Extra["Authentication-Results"] != "" {
 		t.Errorf("original Extra AR mutated by arc_verify: %q", orig.Headers.Extra["Authentication-Results"])
-	}
-	if orig.Metadata["arc_status"] != "" {
-		t.Errorf("original Metadata mutated by arc_verify: %q", orig.Metadata["arc_status"])
 	}
 }

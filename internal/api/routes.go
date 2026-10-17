@@ -170,6 +170,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	vacationH := handlers.NewVacationHandler(db)
 	sieveH := handlers.NewSieveHandler(db)
 	senderRuleH := handlers.NewSenderRuleHandler(db)
+	suppressionH := handlers.NewSuppressionHandler(db)
 	queueH := handlers.NewQueueHandler(db)
 	banH := handlers.NewBanHandler(db)
 	logH := handlers.NewLogHandler(db)
@@ -778,6 +779,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
 		r.With(needsOnDomain(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
 		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
+
+		// Recipients the domain's mail is no longer sent to after a hard bounce (#141)
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/suppressions", suppressionH.List)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/suppressions/{sid}", suppressionH.Delete)
 
 		// MTA-STS policy management (domain-scoped → domains:* capabilities)
 		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)

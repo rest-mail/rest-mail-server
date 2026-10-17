@@ -304,6 +304,8 @@ func accessRoutes(domainID, mailboxID uint) []accessRoute {
 		{"PATCH", "/api/v1/admin/domains/999999", `{}`, "domains:write"},
 		{"DELETE", "/api/v1/admin/domains/999999", "", "domains:delete"},
 		{"GET", "/api/v1/admin/domains/" + d + "/allowlist", "", "domains:read"},
+		{"GET", "/api/v1/admin/domains/" + d + "/suppressions", "", "domains:read"},
+		{"DELETE", "/api/v1/admin/domains/" + d + "/suppressions/999999", "", "domains:write"},
 		{"GET", "/api/v1/admin/mailboxes", "", "mailboxes:read"},
 		{"GET", "/api/v1/admin/mailboxes/" + m, "", "mailboxes:read"},
 		{"PATCH", "/api/v1/admin/mailboxes/999999", `{}`, "mailboxes:write"},

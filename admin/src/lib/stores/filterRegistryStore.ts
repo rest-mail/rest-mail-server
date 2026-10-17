@@ -75,7 +75,7 @@ export const BUILTIN_FILTERS: FilterDefinition[] = [
         options: ['tag', 'reject', 'quarantine'],
         default: 'tag',
         required: true,
-        description: 'What to do when SPF verification fails',
+        description: 'What to do when MAIL FROM fails SPF; tag leaves it to DMARC',
       },
     },
   },

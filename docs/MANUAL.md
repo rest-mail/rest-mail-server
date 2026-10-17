@@ -251,7 +251,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 
 | Filter | Type | Notes |
 |--------|------|-------|
-| `spf_check` | Check | SPF verification (via go-spf); records the result, DMARC decides |
+| `spf_check` | Check | SPF verification (via go-spf) of the HELO and MAIL FROM identities; records the results for DMARC. `fail_action` (tag, reject, quarantine) acts on a MAIL FROM fail; the default, tag, leaves it to DMARC |
 | `dkim_verify` | Check | Verify incoming signatures |
 | `dmarc_check` | Check | DMARC policy enforcement |
 | `arc_verify` | Check | ARC chain verification |
@@ -658,6 +658,7 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 | `POP3_TLS_PORT` | `995` | |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | |
+| `SUPPRESSION_TTL` | `2160h` (90 days) | How long a recipient that hard bounced (no such mailbox or domain) stays suppressed for the sending domain |
 | `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461) |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS` | *(empty)* | Comma-separated CIDRs; empty disables. SMTP gateway only |

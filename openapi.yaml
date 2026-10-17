@@ -185,6 +185,8 @@ tags:
     description: Outbound queue management (JWT + admin)
   - name: "Admin: Sender Rules"
     description: Domain allow/block lists (JWT + admin)
+  - name: "Admin: Suppressions"
+    description: Recipients a domain's mail is no longer sent to after a hard bounce (JWT + admin)
   - name: "Admin: DKIM"
     description: DKIM key management (JWT + admin)
   - name: "Admin: Certificates"
@@ -4758,6 +4760,58 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
+  # Admin: Suppressions
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/admin/domains/{id}/suppressions:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: listSuppressions
+      tags: ["Admin: Suppressions"]
+      x-required-capability: domains:read
+      summary: List a domain's suppressed recipients
+      description: |
+        Recipients the domain's mail is no longer sent to, because mail from
+        the domain to them bounced as undeliverable: the mailbox, or its
+        domain, does not exist. A message to one is bounced at once, with a
+        DSN to its sender, until the suppression expires (SUPPRESSION_TTL,
+        90 days by default). Expired suppressions are not listed.
+      responses:
+        "200":
+          description: Suppressions, most recently updated first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Suppression"
+
+  /api/v1/admin/domains/{id}/suppressions/{sid}:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+        description: Suppression ID
+    delete:
+      operationId: clearSuppression
+      tags: ["Admin: Suppressions"]
+      x-required-capability: domains:write
+      summary: Clear a suppression
+      description: The domain's mail to the address is tried again.
+      responses:
+        "204":
+          description: Suppression cleared
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ═══════════════════════════════════════════════════════════════
   # Admin: MTA-STS
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/domains/{id}/mta-sts:
@@ -6468,6 +6522,34 @@ components:
         final_email:
           type: object
           description: The email after all transformations
+        auth_results:
+          type: array
+          description: >-
+            The verdicts the authentication filters (spf_check, dkim_verify,
+            arc_verify, dmarc_check) recorded, in order. A delivered message's
+            Authentication-Results header is written from these.
+          items:
+            $ref: "#/components/schemas/AuthResult"
+
+    AuthResult:
+      type: object
+      required: [method, result]
+      properties:
+        method:
+          type: string
+          enum: [spf, dkim, arc, dmarc]
+        result:
+          type: string
+          description: The RFC 8601 result, such as pass, fail, softfail, neutral, none, temperror or permerror
+        property:
+          type: string
+          enum: [smtp.mailfrom, smtp.helo, header.d, header.from]
+          description: The identity checked. Absent for arc.
+        domain:
+          type: string
+          description: >-
+            The domain checked. For dkim, the signature's d=; for arc, the most
+            recent ARC-Seal's d=.
 
     FilterResult:
       type: object
@@ -6652,6 +6734,43 @@ components:
         created_at:
           type: string
           format: date-time
+
+    Suppression:
+      type: object
+      required: [id, domain_id, address, reason, failure_category, created_at, updated_at, expires_at]
+      properties:
+        id:
+          type: integer
+        domain_id:
+          type: integer
+          description: The sending domain
+        address:
+          type: string
+          description: The suppressed recipient, lower-cased
+        reason:
+          type: string
+          enum: [hard_bounce]
+        failure_category:
+          type: string
+          enum: [bad_mailbox, bad_domain]
+          description: How the bounce that suppressed the address was classified
+        last_error:
+          type: string
+          description: The failure that suppressed the address, with the remote's reply
+        message_id:
+          type: [integer, "null"]
+          description: The sent message whose bounce suppressed the address
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+          description: When the address last bounced
+        expires_at:
+          type: string
+          format: date-time
+          description: When the address stops being suppressed
 
     CreateSenderRuleRequest:
       type: object

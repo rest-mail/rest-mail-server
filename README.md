@@ -478,6 +478,7 @@ All configuration is done via environment variables. The API, gateways, and tool
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
 | `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `SUPPRESSION_TTL`             | `2160h` (90 days)  | How long a recipient that hard bounced stays suppressed for the sending domain |
 | `MTASTS_ENFORCE`              | `true`             | Enforce recipient MTA-STS policies on outbound delivery |
 | `CORS_ALLOWED_ORIGINS`        | `http://localhost:3000` | Comma-separated CORS origins |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Trusted front-proxy CIDRs. Also gates HTTP `X-Forwarded-For`: a forwarded client IP is honored only when the direct peer is listed; empty = trust no proxy, use the real socket peer |
