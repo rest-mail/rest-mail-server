@@ -27,6 +27,16 @@ info:
       sign in with `"client": "native"` to get it in the body. Bearer requests send
       no cookie and are exempt from the CSRF check.
 
+      Every session of an account ends at once, wherever its tokens are
+      presented (any operation, the event stream, refresh), when its
+      password changes (its own change, or an admin setting one), it is
+      reset, it turns 2FA off, an admin ends its sessions (`DELETE
+      /api/v1/admin/mailboxes/{id}/sessions`) or disables it. Each token
+      carries the account's credential epoch (`cep`), which each of these
+      moves on, and a token from an older epoch answers `401`: sign in again.
+      App passwords are credentials, not sessions: only a new password or a
+      reset revokes them.
+
     * **HTTP Basic** (`BasicAuth`) — an account's address as the user name, and
       as the password one of its app passwords (`rm_<public id>_<secret>`) or
       one of its own passwords. It is how the IMAP, POP3 and SMTP gateways sign
@@ -318,6 +328,8 @@ paths:
         whatever its body says. The new tokens have a new `jti` but stay in the
         same session: the `sid` claim minted at sign-in. A refresh token
         without a `sid` is refused with 401, and the client signs in again.
+        So is one from before the account's sessions last ended (its `cep`
+        is older than the account's), even if it was never revoked.
       security: []
       requestBody:
         required: false
@@ -2149,7 +2161,11 @@ paths:
         Authenticated by the restmail_access cookie, which a native browser
         EventSource attaches automatically — no token in the URL and none in
         JavaScript. Programmatic clients may instead send an Authorization:
-        Bearer header. GET, so no CSRF token is required.
+        Bearer header. GET, so no CSRF token is required. The session is
+        checked when the stream opens, and again before every event and
+        keepalive: once the account's sessions end, the stream ends without
+        sending anything more, and opening it again with the same token
+        answers 401.
       security:
         - CookieAuth: []
         - BearerAuth: []
@@ -2161,6 +2177,8 @@ paths:
               schema:
                 type: string
                 description: SSE formatted event stream
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   # ═══════════════════════════════════════════════════════════════
   # Inbound (Internal / Gateway)
@@ -2483,7 +2501,9 @@ paths:
         account had and ends every session of it. It also revokes all the
         account's app passwords, in the transaction that sets it, recording
         each in the audit log as `credentials.revoke` with `reason`
-        `password_changed`.
+        `password_changed`. `"active": false` ends every session of it too,
+        so enabling it again brings none of them back; its app passwords
+        stay, and work again once it is enabled.
       requestBody:
         required: true
         content:
@@ -2523,6 +2543,27 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: It holds the last superadmin (`last_superadmin`)
+
+  /api/v1/admin/mailboxes/{id}/sessions:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    delete:
+      operationId: endMailboxSessions
+      tags: ["Admin: Mailboxes"]
+      x-required-capability: mailboxes:write
+      summary: Sign an account out everywhere
+      description: >
+        Ends every session of the account: its refresh tokens are revoked and
+        its credential epoch moves on, so every access token it was issued is
+        refused at its next request, on the event stream and at refresh. Its
+        passwords and app passwords stay: a mail client signed in with an app
+        password keeps working, and is revoked on its own
+        (`DELETE /api/v1/accounts/{id}/credentials/{credential_id}`).
+      responses:
+        "204":
+          description: Every session of the account has ended
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Aliases
@@ -6405,6 +6446,15 @@ components:
           type: string
         last_error_code:
           type: integer
+        failure_category:
+          type: string
+          enum: ["", bad_mailbox, bad_domain, policy, other_permanent, mailbox_full, greylisted, rate_limited, connection, tls, dns, other_transient]
+          description: >-
+            What kind of failure the last attempt was, classified from the
+            remote's reply; empty until an attempt fails. bad_mailbox,
+            bad_domain, policy and other_permanent bounce the message at once.
+            The others are transient: each is retried on a schedule of its own
+            until a maximum age, then the message bounces.
         max_retries:
           type: integer
         created_at:

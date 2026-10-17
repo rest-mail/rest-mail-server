@@ -42,6 +42,14 @@ func (rw *responseWriter) Unwrap() http.ResponseWriter {
 	return rw.ResponseWriter
 }
 
+// Flush passes a flush through, so a handler that asks its writer for
+// http.Flusher, as the event stream does, can stream behind this middleware.
+// Without it every stream answered 500.
+func (rw *responseWriter) Flush() {
+	rw.written = true
+	_ = http.NewResponseController(rw.ResponseWriter).Flush()
+}
+
 // HTTPMetrics is a chi-compatible middleware that records request count and
 // duration for every HTTP request. Route patterns are normalised so that
 // path parameters (e.g. /api/v1/messages/42) collapse into their template

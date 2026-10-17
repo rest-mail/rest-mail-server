@@ -110,7 +110,7 @@ func newSubmissionFixture(t *testing.T) *submissionFixture {
 	t.Helper()
 	f := newCredentialFixture(t)
 
-	private, public, err := dkim.GenerateKey(1024)
+	private, public, err := dkim.GenerateKey(2048)
 	if err != nil {
 		t.Fatalf("generate a DKIM key: %v", err)
 	}
