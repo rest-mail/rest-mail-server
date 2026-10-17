@@ -80,3 +80,15 @@ describe('getFiltersByDirectionAndType', () => {
     expect(names(outboundTransforms)).toContain('header_cleanup')
   })
 })
+
+describe('authentication failure settings (#396)', () => {
+  it('offers DKIM fail actions that dkim_verify acts on, defaulting to tag', () => {
+    const failAction = getFilterDefinition('dkim_verify')?.configSchema?.fail_action
+    expect(failAction?.options).toEqual(['tag', 'reject', 'quarantine'])
+    expect(failAction?.default).toBe('tag')
+  })
+
+  it('offers no DMARC setting: the published p= policy decides', () => {
+    expect(getFilterDefinition('dmarc_check')?.configSchema).toEqual({})
+  })
+})

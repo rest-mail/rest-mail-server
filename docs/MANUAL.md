@@ -252,8 +252,8 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | Filter | Type | Notes |
 |--------|------|-------|
 | `spf_check` | Check | SPF verification (via go-spf) of the HELO and MAIL FROM identities; records the results for DMARC. `fail_action` (tag, reject, quarantine) acts on a MAIL FROM fail; the default, tag, leaves it to DMARC |
-| `dkim_verify` | Check | Verify incoming signatures |
-| `dmarc_check` | Check | DMARC policy enforcement |
+| `dkim_verify` | Check | DKIM verification (via go-dkim) of every signature; records one result per signature for DMARC. `fail_action` (tag, reject, quarantine) acts when a signature fails and none passes; none, neutral and the error results never act. The default, tag, leaves it to DMARC |
+| `dmarc_check` | Check | DMARC policy enforcement: a DMARC fail does what the From domain's published `p=` (or `sp=`) asks — reject, quarantine, or nothing for `p=none`. It has no setting of its own |
 | `arc_verify` | Check | ARC chain verification |
 | `rate_limit` | Check | Per-sender/domain |
 | `size_check` | Check | Message size ceiling |
