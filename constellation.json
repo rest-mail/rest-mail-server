@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "name": "REST Mail",
+  "membership": {
+    "githubOrganizations": [
+      "rest-mail"
+    ]
+  },
+  "repositories": [
+    {
+      "repository": "rest-mail/conventions",
+      "role": "shared image conventions"
+    },
+    {
+      "repository": "rest-mail/deploy",
+      "role": "installation and release composition"
+    },
+    {
+      "repository": "rest-mail/go-arc",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-dkim",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-dmarc",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-imap",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-mtasts",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-pop3",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-sieve",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-smtp",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/go-spf",
+      "role": "mail protocol/authentication library"
+    },
+    {
+      "repository": "rest-mail/homebrew-tap",
+      "role": "CLI distribution"
+    },
+    {
+      "repository": "rest-mail/instantmailcheck",
+      "role": "mail diagnostics"
+    },
+    {
+      "repository": "rest-mail/reference-certgen",
+      "role": "reference service image"
+    },
+    {
+      "repository": "rest-mail/reference-clamav",
+      "role": "reference service image"
+    },
+    {
+      "repository": "rest-mail/reference-dnsmasq",
+      "role": "reference service image"
+    },
+    {
+      "repository": "rest-mail/reference-dovecot",
+      "role": "reference service image"
+    },
+    {
+      "repository": "rest-mail/reference-fail2ban",
+      "role": "reference service image"
+    },
+    {
+      "repository": "rest-mail/reference-mailserver",
+      "role": "traditional mail reference stack"
+    },
+    {
+      "repository": "rest-mail/reference-postfix",
+      "role": "reference service image"
+    },
+    {
+      "repository": "rest-mail/reference-rspamd",
+      "role": "reference service image"
+    },
+    {
+      "repository": "rest-mail/rest-mail-mobile",
+      "role": "mobile client"
+    },
+    {
+      "repository": "rest-mail/rest-mail-server",
+      "role": "server, API, webmail, and admin"
+    },
+    {
+      "repository": "rest-mail/testbed",
+      "role": "test network, DNS, and certificate fixtures"
+    },
+    {
+      "repository": "rest-mail/website",
+      "role": "public website"
+    }
+  ],
+  "relatedRepositories": [
+    {
+      "host": "github.com",
+      "repository": "antimatter-studios/vertrag",
+      "role": "contract testing",
+      "issues": [
+        71,
+        73,
+        74
+      ],
+      "scope": "Only REST Mail contract-testing work; other vertrag issues are outside this queue."
+    },
+    {
+      "host": "git.antimatter-studios.com",
+      "repository": "antimatter-studios/antimatter-vps",
+      "role": "production infrastructure",
+      "issues": [],
+      "scope": "Only REST Mail deployment, DNS, certificates, and release configuration. Track the current web-app rollout in rest-mail/rest-mail-server#365."
+    }
+  ]
+}
