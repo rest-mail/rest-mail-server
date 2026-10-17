@@ -5982,6 +5982,7 @@ components:
       required: true
       schema:
         type: integer
+        minimum: 1
       description: Account ID
       example: 1
     MessageId:
@@ -6422,6 +6423,7 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
 
     # ─────────────────────────────────────────────────────────────
     # Message

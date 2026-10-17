@@ -15,6 +15,7 @@ import os
 import subprocess
 import tempfile
 import time
+import urllib.request
 
 import vertrag_hooks as hooks
 
@@ -156,6 +157,34 @@ def wait_for_the_trace(transaction):
     # (internal/trace/recorder.go); the testbed keeps every one
     # (TRACE_SAMPLE_RATE=1 in tasks/api.yml).
     time.sleep(1)
+
+
+@hooks.before("renameFolder")
+def give_each_rename_probe_a_folder(transaction):
+    # A successful rename consumes its source folder. Each boundary probe
+    # needs its own source, or a later valid request sees the earlier one's
+    # 404. Keep the probe's body and account ID exactly as generated.
+    if not transaction.get("name", "").startswith("coverage: "):
+        return
+    path = transaction["fullPath"].split("?")[0]
+    parent, _, _ = path.rpartition("/")
+    account_id = parent.split("/")[-2]
+    if not account_id.isdecimal() or int(account_id) < 1:
+        return
+    serial = hooks.stash.get("rename_probe", 0) + 1
+    hooks.stash["rename_probe"] = serial
+    folder = "contract-rename-%d" % serial
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    request = urllib.request.Request(
+        origin + parent,
+        data=json.dumps({"name": folder}).encode(),
+        headers={"Content-Type": "application/json", "Authorization": basic(ADMIN, ADMIN_PASSWORD)},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 201:
+            raise RuntimeError("could not create a folder for the rename probe")
+    transaction["fullPath"] = parent + "/" + folder
 
 
 AUTODISCOVER_REQUEST = """<?xml version="1.0" encoding="utf-8"?>
