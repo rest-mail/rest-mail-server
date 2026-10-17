@@ -658,6 +658,7 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 | `POP3_TLS_PORT` | `995` | |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | |
+| `SUPPRESSION_TTL` | `2160h` (90 days) | How long a recipient that hard bounced (no such mailbox or domain) stays suppressed for the sending domain |
 | `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461) |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS` | *(empty)* | Comma-separated CIDRs; empty disables. SMTP gateway only |

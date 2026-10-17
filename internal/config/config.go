@@ -301,6 +301,9 @@ type Config struct {
 	// mail-bombing amplification without dropping legitimate low-volume bounces.
 	BounceDSNMaxPerRecipient int
 	BounceDSNRateWindow      time.Duration
+	// SuppressionTTL is how long a recipient that hard bounced (no such
+	// mailbox or domain) stays suppressed for the sending domain (#141).
+	SuppressionTTL time.Duration
 	// ════════════════════════════════════════════════════════════════════
 	// Auth-hardening additions (appended additively — keep contiguous to ease
 	// rebasing alongside other in-flight config.go work).
@@ -775,6 +778,7 @@ func Load() (*Config, error) {
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)
 	cfg.BounceDSNRateWindow = getEnvDuration("BOUNCE_DSN_RATE_WINDOW", time.Hour)
+	cfg.SuppressionTTL = getEnvDuration("SUPPRESSION_TTL", 90*24*time.Hour)
 	// ════════════════════════════════════════════════════════════════════
 	// Auth-hardening additions (OSI-11) — appended additively; keep contiguous.
 	// ════════════════════════════════════════════════════════════════════
