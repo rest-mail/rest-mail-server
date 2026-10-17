@@ -8,6 +8,14 @@ data:
   API_PORT: {{ .Values.api.port | quote }}
   ENVIRONMENT: {{ .Values.api.environment | quote }}
   LOG_LEVEL: {{ .Values.api.logLevel | quote }}
+  ATTACHMENT_STORAGE_TYPE: {{ .Values.api.attachments.storageType | quote }}
+  {{- if eq .Values.api.attachments.storageType "s3" }}
+  ATTACHMENT_S3_ENDPOINT: {{ .Values.api.attachments.s3.endpoint | quote }}
+  ATTACHMENT_S3_REGION: {{ .Values.api.attachments.s3.region | quote }}
+  ATTACHMENT_S3_BUCKET: {{ .Values.api.attachments.s3.bucket | quote }}
+  ATTACHMENT_S3_PREFIX: {{ .Values.api.attachments.s3.prefix | quote }}
+  ATTACHMENT_S3_FORCE_PATH_STYLE: {{ .Values.api.attachments.s3.forcePathStyle | quote }}
+  {{- end }}
   # The API never terminates TLS itself; a front proxy/ingress does. In
   # production the boot validator refuses to serve cleartext auth traffic unless
   # this acknowledgement is set. Keep a TLS-terminating reverse proxy in front.

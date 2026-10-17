@@ -28,6 +28,9 @@ spec:
       annotations:
         # Force redeploy when ConfigMap or Secret content changes.
         checksum/configmap: {{ include (print $.Template.BasePath "/api-configmap.yaml") . | sha256sum }}
+        {{- if and (eq .Values.api.attachments.storageType "s3") (not .Values.api.attachments.s3.existingSecret) }}
+        checksum/attachments-secret: {{ include (print $.Template.BasePath "/api-attachment-secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- if not .Values.api.existingSecret }}
         checksum/secret: {{ include (print $.Template.BasePath "/api-secret.yaml") . | sha256sum }}
         {{- end }}
@@ -61,6 +64,19 @@ spec:
                 name: {{ include "restmail.componentName" (list . "api") }}
           env:
             {{- include "restmail.dbEnv" . | nindent 12 }}
+            {{- if eq .Values.api.attachments.storageType "s3" }}
+            {{- $attachmentSecret := .Values.api.attachments.s3.existingSecret | default (include "restmail.componentName" (list . "api-attachments-s3")) }}
+            - name: ATTACHMENT_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $attachmentSecret }}
+                  key: ACCESS_KEY_ID
+            - name: ATTACHMENT_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $attachmentSecret }}
+                  key: SECRET_ACCESS_KEY
+            {{- end }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:

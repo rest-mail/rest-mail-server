@@ -161,8 +161,10 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
    LB (AWS NLB, GCE LB, MetalLB on bare metal). For kind/k3s without a LB
    driver, override `*.service.type` to `NodePort` (the dev values file
    already does this).
-5. **PersistentVolume provisioner.** PostgreSQL data and API attachments use
-   PVCs.
+5. **PersistentVolume provisioner.** PostgreSQL uses a PVC. API attachments use
+   a PVC by default, or a private S3-compatible bucket with
+   `api.attachments.storageType=s3`. See [attachment storage](../../docs/attachment-storage.md)
+   before disabling an existing attachment volume.
 6. **NetworkPolicy-enforcing CNI** (Calico, Cilium, Weave, …). The chart ships
    default-deny NetworkPolicies. On a cluster whose CNI does not enforce them,
    set `networkPolicy.enabled=false` (the policies are then simply inert, but

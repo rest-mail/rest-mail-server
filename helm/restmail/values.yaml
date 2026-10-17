@@ -244,6 +244,25 @@ api:
       cpu: 1000m
       memory: 512Mi
   attachments:
+    # Select s3 to let API pods share private attachment objects without a PVC.
+    # Keep persistence enabled during migration; migrate-attachments verifies
+    # copies before updating PostgreSQL references and retains source files.
+    storageType: filesystem
+    s3:
+      endpoint: "" # empty uses the AWS endpoint; Garage: http://garage-s3.garage.svc:3900
+      region: us-east-1
+      bucket: ""
+      prefix: attachments/
+      forcePathStyle: true
+      accessKeyId: ""
+      secretAccessKey: ""
+      # Or provide a Secret with ACCESS_KEY_ID and SECRET_ACCESS_KEY.
+      existingSecret: ""
+      # Additional API egress for private stores. Public HTTP(S) is already
+      # allowed. For Garage, select its namespace and app=garage pods on 3900.
+      networkPolicy:
+        port: 443
+        to: []
     persistence:
       enabled: true
       storageClass: ""

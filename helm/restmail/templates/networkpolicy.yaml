@@ -130,6 +130,16 @@ spec:
         - protocol: TCP
           port: {{ .Values.jsFilter.port }}
     # Outbound HTTPS/HTTP for ACME issuance and any remote fetches.
+    {{- if eq .Values.api.attachments.storageType "s3" }}
+    {{- with .Values.api.attachments.s3.networkPolicy.to }}
+    # Private object storage, scoped to the configured peers and S3 port.
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.api.attachments.s3.networkPolicy.port }}
+    {{- end }}
+    {{- end }}
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

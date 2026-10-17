@@ -58,6 +58,7 @@ const (
 )
 
 type Config struct {
+	Attachments AttachmentStorageConfig
 	// Database
 	DBHost            string
 	DBPort            int
@@ -800,6 +801,10 @@ func Load() (*Config, error) {
 	// De-hardcodes cmd/api's former literal "/certs/ca.crt"; the default is that
 	// exact path so the testbed's rendered/provisioned setup is unchanged.
 	cfg.TrustedCACertPath = getEnv("TRUSTED_CA_CERT", "/certs/ca.crt")
+	cfg.Attachments, err = loadAttachmentStorage()
+	if err != nil {
+		return nil, err
+	}
 
 	// ── OSI-4: boot-time security config validation (single append-only call).
 	// Production (ENVIRONMENT=production) refuses to boot on an insecure value;
