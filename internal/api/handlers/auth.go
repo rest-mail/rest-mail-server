@@ -746,7 +746,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := auth.HashPassword(req.NewPassword)
+	hash, err := hashPassword(req.NewPassword)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
 		return

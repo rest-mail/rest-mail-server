@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
@@ -99,7 +98,7 @@ func (h *MailboxHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashedPassword, err := auth.HashPassword(req.Password)
+	hashedPassword, err := hashPassword(req.Password)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
 		return
@@ -192,7 +191,7 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 			respond.ValidationError(w, map[string]string{"password": "must be at least 8 characters"})
 			return
 		}
-		hashed, err := auth.HashPassword(*req.Password)
+		hashed, err := hashPassword(*req.Password)
 		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
 			return

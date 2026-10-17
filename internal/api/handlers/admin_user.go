@@ -206,7 +206,7 @@ func (h *AdminUserHandler) CreateAdminUser(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Hash password
-	passwordHash, err := auth.HashPassword(req.Password)
+	passwordHash, err := hashPassword(req.Password)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
 		return
@@ -324,7 +324,7 @@ func (h *AdminUserHandler) UpdateAdminUser(w http.ResponseWriter, r *http.Reques
 
 	// Update password if provided
 	if req.Password != nil && *req.Password != "" {
-		passwordHash, err := auth.HashPassword(*req.Password)
+		passwordHash, err := hashPassword(*req.Password)
 		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
 			return
