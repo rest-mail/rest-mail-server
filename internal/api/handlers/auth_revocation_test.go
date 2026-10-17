@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,8 +12,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -34,14 +35,7 @@ func revUniq() string {
 // convention.
 func openRevocationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("session-revocation DB test skipped: no database reachable (%v)", err)
 	}
@@ -56,6 +50,7 @@ func openRevocationTestDB(t *testing.T) *gorm.DB {
 		&models.Capability{},
 		&models.UserRole{},
 		&models.RoleCapability{},
+		&models.Grant{},
 		// A mailbox's new password revokes its app passwords.
 		&models.Credential{},
 	); err != nil {
@@ -74,7 +69,7 @@ func seedMailbox(t *testing.T, db *gorm.DB, label string) models.Mailbox {
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
-	hash, err := auth.HashPassword("password123")
+	hash, err := hashPassword("password123")
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
@@ -92,13 +87,13 @@ func seedMailbox(t *testing.T, db *gorm.DB, label string) models.Mailbox {
 	return mb
 }
 
-// seedAdminWithCaps creates an active admin user holding a single role that
-// grants the given capability names, and returns the admin. The label only aids
+// seedAdminWithCaps creates an active admin user holding a single role, at
+// "*", that grants the given capability names, and returns the admin. The label only aids
 // debugging; the username and role name are uniquified.
 func seedAdminWithCaps(t *testing.T, db *gorm.DB, label string, capNames []string) models.AdminUser {
 	t.Helper()
 	tok := revUniq()
-	hash, err := auth.HashPassword("password123")
+	hash, err := hashPassword("password123")
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
@@ -110,8 +105,11 @@ func seedAdminWithCaps(t *testing.T, db *gorm.DB, label string, capNames []strin
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatalf("create role: %v", err)
 	}
-	if err := db.Create(&models.UserRole{UserID: admin.ID, RoleID: role.ID}).Error; err != nil {
-		t.Fatalf("assign role: %v", err)
+	if err := db.Create(&models.Grant{
+		HolderKind: models.GrantHolderAdmin, HolderID: admin.ID, RoleID: role.ID,
+		Scope: "*", Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("grant role: %v", err)
 	}
 	setRoleCaps(t, db, role.ID, capNames)
 	return admin
@@ -187,7 +185,7 @@ func TestRefresh_DisabledAdminRejected(t *testing.T) {
 	h := newDBAuthHandler(db, jwt)
 
 	admin := seedAdminWithCaps(t, db, "disabled-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
+	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,18 +200,17 @@ func TestRefresh_DisabledAdminRejected(t *testing.T) {
 	}
 }
 
-// TestRefresh_AdminCapabilitiesRederivedFromDB: an admin's capabilities are
-// re-derived from the database on refresh, not copied from the (up to 7-day-old)
-// refresh token. A token minted while the admin was privileged must yield a
-// reduced capability set once the admin has been demoted in the database.
+// TestRefresh_AdminCapabilitiesRederivedFromDB: the capabilities a refresh
+// answers with are the admin's grants now. Tokens carry none: the refreshed
+// session's response lists what the database grants, whatever it held when
+// the refresh token was minted.
 func TestRefresh_AdminCapabilitiesRederivedFromDB(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
 	h := newDBAuthHandler(db, jwt)
 
 	admin := seedAdminWithCaps(t, db, "demoted-admin", []string{"queue:read"})
-	// Refresh token still carries the old, elevated capability set.
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"*", "queue:read"})
+	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,9 +220,16 @@ func TestRefresh_AdminCapabilitiesRederivedFromDB(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("admin refresh: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
-	claims := validateBody(t, jwt, rr)
-	if len(claims.Capabilities) != 1 || claims.Capabilities[0] != "queue:read" {
-		t.Fatalf("capabilities not re-derived from DB: got %v, want [queue:read]", claims.Capabilities)
+	var body struct {
+		Data struct {
+			Capabilities []string `json:"capabilities"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body.Data.Capabilities; len(got) != 1 || got[0] != "queue:read" {
+		t.Fatalf("capabilities not re-derived from DB: got %v, want [queue:read]", got)
 	}
 }
 
@@ -316,16 +320,37 @@ func TestMailboxDeleteRevokesSessions(t *testing.T) {
 	}
 }
 
-func adminUpdate(t *testing.T, h *AdminUserHandler, id uint, body string) *httptest.ResponseRecorder {
+func adminUpdate(t *testing.T, h *AdminUserHandler, id uint, body string, as ...*auth.Claims) *httptest.ResponseRecorder {
 	t.Helper()
 	idStr := strconv.FormatUint(uint64(id), 10)
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/users/"+idStr, bytes.NewBufferString(body))
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	if len(as) > 0 {
+		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, as[0]))
+	}
 	rr := httptest.NewRecorder()
 	h.UpdateAdminUser(rr, req)
 	return rr
+}
+
+// grantingTx is a transaction, rolled back after the test, for a test that
+// changes grants: each change writes to the audit log, which cannot be
+// emptied, and this database is shared. It returns the session of a
+// superadmin, signed in with 2FA, to make the changes as.
+func grantingTx(t *testing.T, db *gorm.DB) (*gorm.DB, *auth.Claims) {
+	t.Helper()
+	if err := rmdb.MigrateAuditLog(db); err != nil {
+		t.Skipf("grant change DB test skipped: audit log migrate failed (%v)", err)
+	}
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	granter := seedAdminWithCaps(t, tx, "granter", []string{"*"})
+	return tx, &auth.Claims{
+		UserType: "admin", AdminUserID: granter.ID, Username: granter.Username,
+		AMR: []string{auth.AMRPassword, auth.AMROTP},
+	}
 }
 
 // TestAdminPasswordChangeRevokesSessions: changing an admin password revokes
@@ -333,10 +358,10 @@ func adminUpdate(t *testing.T, h *AdminUserHandler, id uint, body string) *httpt
 func TestAdminPasswordChangeRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
+	adminH := NewAdminUserHandler(db, nil)
 
 	admin := seedAdminWithCaps(t, db, "pw-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
+	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,14 +377,14 @@ func TestAdminPasswordChangeRevokesSessions(t *testing.T) {
 }
 
 // TestAdminRoleChangeRevokesSessions: changing an admin's roles revokes their
-// live sessions so stale capabilities cannot persist in an issued token.
+// live sessions, so the account signs in again to what it now holds.
 func TestAdminRoleChangeRevokesSessions(t *testing.T) {
-	db := openRevocationTestDB(t)
+	db, granter := grantingTx(t, openRevocationTestDB(t))
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
+	adminH := NewAdminUserHandler(db, nil)
 
 	admin := seedAdminWithCaps(t, db, "role-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
+	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +396,7 @@ func TestAdminRoleChangeRevokesSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := `{"role_ids":[` + strconv.FormatUint(uint64(newRole.ID), 10) + `]}`
-	if rr := adminUpdate(t, adminH, admin.ID, body); rr.Code != http.StatusOK {
+	if rr := adminUpdate(t, adminH, admin.ID, body, granter); rr.Code != http.StatusOK {
 		t.Fatalf("admin role change: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
@@ -384,10 +409,10 @@ func TestAdminRoleChangeRevokesSessions(t *testing.T) {
 func TestAdminDisableRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
+	adminH := NewAdminUserHandler(db, nil)
 
 	admin := seedAdminWithCaps(t, db, "disable-admin-h", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
+	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,12 +429,12 @@ func TestAdminDisableRevokesSessions(t *testing.T) {
 
 // TestAdminDeleteRevokesSessions: deleting an admin revokes their sessions.
 func TestAdminDeleteRevokesSessions(t *testing.T) {
-	db := openRevocationTestDB(t)
+	db, granter := grantingTx(t, openRevocationTestDB(t))
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
+	adminH := NewAdminUserHandler(db, nil)
 
 	admin := seedAdminWithCaps(t, db, "delete-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
+	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,6 +445,7 @@ func TestAdminDeleteRevokesSessions(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, granter))
 	rr := httptest.NewRecorder()
 	adminH.DeleteAdminUser(rr, req)
 	if rr.Code != http.StatusNoContent {

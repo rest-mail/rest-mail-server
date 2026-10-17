@@ -302,6 +302,17 @@ func NewAuditEntry(action string, r *http.Request, at time.Time) *models.AuditEn
 	return e
 }
 
+// RequestEntry is NewAuditEntry for a change answered with status, now, as a
+// value: the entry grants.Add and grants.Remove write in the change's own
+// transaction.
+func RequestEntry(r *http.Request, action string, status int) models.AuditEntry {
+	e := newEntry(action, r, status, time.Now())
+	if claims := GetClaims(r); claims != nil {
+		actorFromClaims(e, claims)
+	}
+	return *e
+}
+
 // actorFromClaims makes the token's account the actor, and its jti the session.
 func actorFromClaims(e *models.AuditEntry, claims *auth.Claims) {
 	var id uint

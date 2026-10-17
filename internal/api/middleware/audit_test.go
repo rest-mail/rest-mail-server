@@ -140,7 +140,7 @@ func newAdminGroup(sink *auditSink, jwtSvc *auth.JWTService) http.Handler {
 
 func TestAudit_AdminChangeRecordsRouteParamsAndOutcome(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateAdminTokenPair(3, "ops", []string{"domains:write"})
+	pair, err := jwtSvc.GenerateAdminTokenPair(3, "ops")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestAudit_AdminChangeRecordsRouteParamsAndOutcome(t *testing.T) {
 
 func TestAudit_AdminGetIsNotRecorded(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateAdminTokenPair(3, "ops", []string{"domains:read"})
+	pair, err := jwtSvc.GenerateAdminTokenPair(3, "ops")
 	if err != nil {
 		t.Fatal(err)
 	}

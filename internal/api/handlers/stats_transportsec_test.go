@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -62,14 +60,7 @@ func TestBuildInboundTransportSecurity_ZeroDenominator(t *testing.T) {
 // while CI exercises the real aggregation SQL against seeded rows.
 func openTransportSecTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("inbound transport-security DB test skipped: no database reachable (%v)", err)
 	}

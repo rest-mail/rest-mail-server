@@ -14,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
+	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -49,13 +50,17 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 	t.Helper()
 	base := openLoginTestDB(t)
 	if err := base.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
+		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
 		t.Skipf("first sign-in DB test skipped: migrate failed (%v)", err)
+	}
+	// The bootstrap admin's grants are recorded in the audit log.
+	if err := rmdb.MigrateAuditLog(base); err != nil {
+		t.Skipf("first sign-in DB test skipped: audit log migrate failed (%v)", err)
 	}
 	gdb := base.Begin()
 	t.Cleanup(func() { gdb.Rollback() })
 	tables := strings.Join([]string{
-		models.UserRole{}.TableName(), models.RoleCapability{}.TableName(),
+		models.Grant{}.TableName(), models.UserRole{}.TableName(), models.RoleCapability{}.TableName(),
 		models.AdminUser{}.TableName(), models.Role{}.TableName(), models.Capability{}.TableName(),
 	}, ", ")
 	if err := gdb.Exec("TRUNCATE " + tables + " RESTART IDENTITY CASCADE").Error; err != nil {

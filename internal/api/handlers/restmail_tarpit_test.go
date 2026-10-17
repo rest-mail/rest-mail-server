@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -174,14 +172,7 @@ func TestRestmailClientIP(t *testing.T) {
 // matching the repo's depless-local / DB-in-CI convention.
 func openMailboxTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("restmail tarpit DB test skipped: no database reachable (%v)", err)
 	}

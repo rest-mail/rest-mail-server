@@ -3,14 +3,17 @@ package middleware
 // Capability names used to authorize admin API routes.
 //
 // These MUST match the capability names seeded into the admin_capabilities
-// table (cmd/seed/main.go, seedRBAC): admin access tokens carry a snapshot of
-// the caller's capability names in their claims, so introducing a name here
-// that is not granted to the existing seeded roles would silently lock those
-// roles out. The wildcard "*" (superadmin) satisfies every requirement.
+// table (internal/bootstrap, EnsureRBAC): an admin holds the capabilities of
+// the roles it is granted, so introducing a name here that is not granted to
+// the existing seeded roles would silently lock those roles out. The wildcard
+// "*" (superadmin) satisfies every requirement.
 //
 // How capabilities derive from token types:
-//   - Admin tokens (UserType "admin"): the Capabilities claim issued at login
-//     from the user's roles. "*" grants everything.
+//   - Admin tokens (UserType "admin"): the admin's active grants, read on every
+//     request (internal/grants), never the token, which carries none. A grant
+//     is a role at a scope; a route acting on a domain or mailbox accepts a
+//     grant covering it, every other route wants the capability at "*". "*"
+//     grants everything.
 //   - Mailbox tokens: no admin capabilities. They are confined to the
 //     mailbox-scoped route group (accounts, folders, messages, send, drafts,
 //     attachments, contacts, vacation, sieve, search, quarantine, SSE events)
@@ -24,7 +27,8 @@ package middleware
 //	domains:*    domains CRUD/DNS, sender allow/blocklists, MTA-STS,
 //	             TLS-RPT reports, DKIM keys, certificates
 //	mailboxes:*  mailboxes CRUD, aliases CRUD, webmail accounts
-//	users:*      admin users CRUD, roles/capabilities listing,
+//	users:*      admin users CRUD, roles/capabilities listing, grants
+//	             (read; granting and removing need users:write),
 //	             activity log (read)
 //	pipelines:*  pipelines CRUD/test, custom filters, pipeline logs
 //	queue:read   outbound queue listing/stats/detail
