@@ -6,9 +6,10 @@ version: "3"
 # (no compose). Included by the main Taskfile under namespace `smtp-gateway`.
 #
 # Joins the testbed's mailnet network at a static IP so peers can reach it
-# by name. TLS certs are mounted read-only from the shared testbed certs
-# volume; logs live in a named volume so the container can be recreated
-# without losing them.
+# by name. Its certificates are copied out of the volumes they are issued
+# into, which also hold CA keys, into a volume of its own (stage-certs.sh);
+# logs live in a named volume so the container can be recreated without
+# losing them. It runs as uid 10001.
 #
 # MODE=dev (default) builds the `dev` Dockerfile target (air hot reload)
 # and bind-mounts the project root into /app. MODE=prod builds the prod
@@ -23,7 +24,11 @@ vars:
   SMTP_GATEWAY_PROXY_HOST: '{{.SMTP_GATEWAY_PROXY_HOST | default "restmail.localhost"}}'
   SMTP_GATEWAY_PROJECT: '{{.SMTP_GATEWAY_PROJECT | default "rest-mail"}}'
   SMTP_GATEWAY_NETWORK: '{{.SMTP_GATEWAY_NETWORK | default "testbed_mailnet"}}'
+  # Where certificates are issued: the testbed's volume, which also holds its CA
+  # key, and the internal mTLS volume, which holds the internal CA's. The gateway
+  # mounts neither (#193); `up` copies what it needs into SMTP_GATEWAY_OWN_CERTS_VOLUME.
   SMTP_GATEWAY_CERTS_VOLUME: '{{.SMTP_GATEWAY_CERTS_VOLUME | default "testbed_certs"}}'
+  SMTP_GATEWAY_INTERNAL_MTLS_VOLUME: '{{.SMTP_GATEWAY_INTERNAL_MTLS_VOLUME | default "rest-mail-internal-mtls"}}'
   SMTP_GATEWAY_DNS_IP: '{{.SMTP_GATEWAY_DNS_IP | default "10.99.0.10"}}'
   SMTP_GATEWAY_IP: '{{.SMTP_GATEWAY_IP | default "10.99.0.13"}}'
   SMTP_GATEWAY_RESTMAIL_HOSTNAME: '{{.SMTP_GATEWAY_RESTMAIL_HOSTNAME | default "restmail.test"}}'
@@ -33,6 +38,7 @@ vars:
   SMTP_GATEWAY_IMAGE: '{{.SMTP_GATEWAY_REGISTRY}}/smtp-gateway:{{.SMTP_GATEWAY_IMAGE_TAG}}'
   SMTP_GATEWAY_CONTAINER_NAME: '{{.SMTP_GATEWAY_PROJECT}}-smtp-gateway'
   SMTP_GATEWAY_LOGS_VOLUME: '{{.SMTP_GATEWAY_PROJECT}}-gateway-logs'
+  SMTP_GATEWAY_OWN_CERTS_VOLUME: '{{.SMTP_GATEWAY_CONTAINER_NAME}}-certs'
   SMTP_GATEWAY_API_BASE_URL: '{{.SMTP_GATEWAY_API_BASE_URL | default "http://10.99.0.20:8080"}}'
   SMTP_GATEWAY_DB_HOST: '{{.SMTP_GATEWAY_DB_HOST | default "10.99.0.43"}}'
   SMTP_GATEWAY_DB_PORT: '{{.SMTP_GATEWAY_DB_PORT | default "5432"}}'
@@ -107,7 +113,7 @@ tasks:
 
         # Build the dev-only bind-mount fragment when MODE=dev
         if [ "{{.SMTP_GATEWAY_MODE}}" = "dev" ]; then
-          DEV_MOUNTS="-v $(pwd):/app -v /app/tmp"
+          DEV_MOUNTS="-v $(pwd):/app --tmpfs /app/tmp:exec,uid=10001,gid=10001"
         else
           DEV_MOUNTS=""
         fi
@@ -131,15 +137,28 @@ tasks:
         # embedded DNS. Peer services are addressed by static mailnet IPs.
         mkdir -p {{.ROOT_DIR}}/.cache
         printf 'nameserver %s\n' "{{.SMTP_GATEWAY_DNS_IP}}" > {{.ROOT_DIR}}/.cache/testbed-resolv.conf
-        # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
-        # capabilities then add back only NET_BIND_SERVICE (binds the privileged
-        # SMTP ports 25 and 465), plus pid/mem/cpu ceilings. Rootfs stays
-        # writable: dev mode compiles via `air` into the bind-mounted /app and
-        # the entrypoint runs update-ca-certificates (read-only is a prod-image
-        # follow-up); log volume is separate.
+        # Container hardening (OSI-17, #193): runs as uid 10001, the image's user,
+        # with no privilege escalation and every Linux capability dropped, plus
+        # pid/mem/cpu ceilings. It binds 25 and 465 without NET_BIND_SERVICE because
+        # the sysctl below lets any user bind any port in the container's own
+        # network namespace (Docker's default too; said here so it is not assumed).
+        # Rootfs stays writable: dev mode builds with `air` and Go's cache lives
+        # in the home directory.
         HARDENING="--security-opt no-new-privileges:true \
-          --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          --user 10001:10001 --cap-drop ALL \
+          --sysctl net.ipv4.ip_unprivileged_port_start=0 \
           --pids-limit 512 --memory 1g --cpus 1.5"
+        # Its certificates: its own keypair, the testbed CA certificate to trust
+        # peers with and, with internal mTLS on, the internal CA certificate and the
+        # gateways' client keypair. Copied into a volume of its own, owned by the
+        # user it runs as, so it never mounts a CA key (#193).
+        INTERNAL=""
+        if [ "{{.SMTP_GATEWAY_INTERNAL_MTLS}}" = "true" ]; then
+          INTERNAL="{{.SMTP_GATEWAY_INTERNAL_MTLS_VOLUME}}:internal-ca.crt,internal-client.crt,internal-client.key"
+        fi
+        "{{.TASKFILE_DIR}}/stage-certs.sh" {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}} 10001:10001 \
+          "{{.SMTP_GATEWAY_CERTS_VOLUME}}:$(basename {{.SMTP_GATEWAY_TLS_CERT_PATH}}),$(basename {{.SMTP_GATEWAY_TLS_KEY_PATH}}),ca.crt?" \
+          $INTERNAL || exit 1
         # Secrets (DB_PASS/MASTER_KEY) go through a 0600 env-file rather than -e
         # flags, so they never sit on the `docker run` command line (host process
         # list, shell history, CI logs). MASTER_KEY decrypts at-rest DKIM keys so
@@ -162,7 +181,7 @@ tasks:
           --ip {{.SMTP_GATEWAY_IP}} \
           -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
           $PUBLISH $PROXY \
-          -v {{.SMTP_GATEWAY_CERTS_VOLUME}}:/certs:ro \
+          -v {{.SMTP_GATEWAY_OWN_CERTS_VOLUME}}:/certs:ro \
           -v {{.SMTP_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
           $DEV_MOUNTS \
           --health-cmd 'nc -z localhost {{.SMTP_GATEWAY_PORT_INBOUND}} || exit 1' \

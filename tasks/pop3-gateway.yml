@@ -6,8 +6,9 @@ version: "3"
 # Included by the main Taskfile under namespace `pop3-gateway`.
 #
 # Joins the testbed's mailnet network at a static IP so peers can reach it
-# by name. Mounts the shared certs volume read-only and a per-project logs
-# volume. In dev MODE bind-mounts the source tree for `air` hot reload.
+# by name. Mounts a volume of its own holding only its certificates
+# (stage-certs.sh) and a per-project logs volume, and runs as uid 10001. In
+# dev MODE bind-mounts the source tree for `air` hot reload.
 #
 # Output is friendly by default. Re-run with VERBOSE=1 to see the raw
 # docker / shell output (e.g. VERBOSE=1 chore pop3-gateway:up).
@@ -18,7 +19,11 @@ vars:
   POP3_GATEWAY_PROXY_HOST: '{{.POP3_GATEWAY_PROXY_HOST | default "restmail.localhost"}}'
   POP3_GATEWAY_PROJECT: '{{.POP3_GATEWAY_PROJECT | default "rest-mail"}}'
   POP3_GATEWAY_NETWORK: '{{.POP3_GATEWAY_NETWORK | default "testbed_mailnet"}}'
+  # Where certificates are issued: the testbed's volume, which also holds its CA
+  # key, and the internal mTLS volume, which holds the internal CA's. The gateway
+  # mounts neither (#193); `up` copies what it needs into POP3_GATEWAY_OWN_CERTS_VOLUME.
   POP3_GATEWAY_CERTS_VOLUME: '{{.POP3_GATEWAY_CERTS_VOLUME | default "testbed_certs"}}'
+  POP3_GATEWAY_INTERNAL_MTLS_VOLUME: '{{.POP3_GATEWAY_INTERNAL_MTLS_VOLUME | default "rest-mail-internal-mtls"}}'
   POP3_GATEWAY_DNS_IP: '{{.POP3_GATEWAY_DNS_IP | default "10.99.0.10"}}'
   POP3_GATEWAY_IP: '{{.POP3_GATEWAY_IP | default "10.99.0.16"}}'
   POP3_GATEWAY_RESTMAIL_HOSTNAME: '{{.POP3_GATEWAY_RESTMAIL_HOSTNAME | default "restmail.test"}}'
@@ -28,6 +33,7 @@ vars:
   POP3_GATEWAY_IMAGE: '{{.POP3_GATEWAY_REGISTRY}}/pop3-gateway:{{.POP3_GATEWAY_IMAGE_TAG}}'
   POP3_GATEWAY_CONTAINER_NAME: '{{.POP3_GATEWAY_PROJECT}}-pop3-gateway'
   POP3_GATEWAY_LOGS_VOLUME: '{{.POP3_GATEWAY_PROJECT}}-gateway-logs'
+  POP3_GATEWAY_OWN_CERTS_VOLUME: '{{.POP3_GATEWAY_CONTAINER_NAME}}-certs'
   POP3_GATEWAY_API_BASE_URL: '{{.POP3_GATEWAY_API_BASE_URL | default (printf "http://%s-api:8080" .POP3_GATEWAY_PROJECT)}}'
   POP3_GATEWAY_DB_HOST: '{{.POP3_GATEWAY_DB_HOST | default (printf "%s-postgres" .POP3_GATEWAY_PROJECT)}}'
   POP3_GATEWAY_DB_PORT: '{{.POP3_GATEWAY_DB_PORT | default "5432"}}'
@@ -74,7 +80,7 @@ tasks:
       - |
         echo "  starting pop3-gateway ({{.POP3_GATEWAY_CONTAINER_NAME}} @ {{.POP3_GATEWAY_IP}}, mode {{.POP3_GATEWAY_MODE}})"
         if [ "{{.POP3_GATEWAY_MODE}}" = "dev" ]; then
-          DEV_MOUNTS="-v $(pwd):/app -v /app/tmp"
+          DEV_MOUNTS="-v $(pwd):/app --tmpfs /app/tmp:exec,uid=10001,gid=10001"
         else
           DEV_MOUNTS=""
         fi
@@ -85,14 +91,28 @@ tasks:
         PUBLISH=""
         PROXY="-l docker-proxy.pop3s.proto=tcp -l docker-proxy.pop3s.port={{.POP3_TLS_PORT}} -l docker-proxy.pop3s.host={{.POP3_GATEWAY_PROXY_HOST}} -l docker-proxy.pop3s.ssl=true"
         if [ "{{.POP3_GATEWAY_MAILNET_ONLY}}" = "true" ]; then PUBLISH=""; PROXY=""; fi
-        # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
-        # capabilities then add back only NET_BIND_SERVICE (binds the privileged
-        # POP3 ports 110/995), plus pid/mem/cpu ceilings. Rootfs stays writable
-        # (dev `air` build into bind-mounted /app + update-ca-certificates;
-        # read-only is a prod-image follow-up).
+        # Container hardening (OSI-17, #193): runs as uid 10001, the image's user,
+        # with no privilege escalation and every Linux capability dropped, plus
+        # pid/mem/cpu ceilings. It binds 995 without NET_BIND_SERVICE because
+        # the sysctl below lets any user bind any port in the container's own
+        # network namespace (Docker's default too; said here so it is not assumed).
+        # Rootfs stays writable: dev mode builds with `air` and Go's cache lives
+        # in the home directory.
         HARDENING="--security-opt no-new-privileges:true \
-          --cap-drop ALL --cap-add NET_BIND_SERVICE \
+          --user 10001:10001 --cap-drop ALL \
+          --sysctl net.ipv4.ip_unprivileged_port_start=0 \
           --pids-limit 512 --memory 1g --cpus 1.5"
+        # Its certificates: its own keypair, the testbed CA certificate to trust
+        # peers with and, with internal mTLS on, the internal CA certificate and the
+        # gateways' client keypair. Copied into a volume of its own, owned by the
+        # user it runs as, so it never mounts a CA key (#193).
+        INTERNAL=""
+        if [ "{{.POP3_GATEWAY_INTERNAL_MTLS}}" = "true" ]; then
+          INTERNAL="{{.POP3_GATEWAY_INTERNAL_MTLS_VOLUME}}:internal-ca.crt,internal-client.crt,internal-client.key"
+        fi
+        "{{.TASKFILE_DIR}}/stage-certs.sh" {{.POP3_GATEWAY_OWN_CERTS_VOLUME}} 10001:10001 \
+          "{{.POP3_GATEWAY_CERTS_VOLUME}}:$(basename {{.POP3_GATEWAY_TLS_CERT_PATH}}),$(basename {{.POP3_GATEWAY_TLS_KEY_PATH}}),ca.crt?" \
+          $INTERNAL || exit 1
         # DB_PASS goes through a 0600 env-file rather than an -e flag, so it
         # never sits on the `docker run` command line (host process list, shell
         # history, CI logs). Removed once docker has read it.
@@ -112,7 +132,7 @@ tasks:
           --ip {{.POP3_GATEWAY_IP}} \
           --dns {{.POP3_GATEWAY_DNS_IP}} \
           $PUBLISH $PROXY \
-          -v {{.POP3_GATEWAY_CERTS_VOLUME}}:/certs:ro \
+          -v {{.POP3_GATEWAY_OWN_CERTS_VOLUME}}:/certs:ro \
           -v {{.POP3_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
           $DEV_MOUNTS \
           --health-cmd 'nc -z localhost {{.POP3_TLS_PORT}}' \

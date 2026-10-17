@@ -8,6 +8,10 @@
 #
 #   helm/restmail/tests/render-test.sh
 #
+# Needs helm and yq v4 (https://github.com/mikefarah/yq, preinstalled on GitHub's
+# runners), which reads the rendered manifests as YAML where grep cannot.
+#
+# shellcheck disable=SC2016 # the $names in single quotes are yq's, not the shell's
 set -euo pipefail
 
 CHART_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -33,6 +37,11 @@ assert_absent() {
   pass "$1"
 }
 
+case "$(yq --version 2>/dev/null)" in
+  *mikefarah*" v4."*) ;;
+  *) fail "needs yq v4 from https://github.com/mikefarah/yq (found: $(yq --version 2>&1 || true))" ;;
+esac
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
@@ -54,7 +63,7 @@ assert_contains "bundled Postgres serves TLS"            "$tmp/prod.yaml" 'ssl=o
 # Hardening: securityContexts, capabilities, seccomp, token automount, policy.
 assert_contains "seccomp RuntimeDefault"                 "$tmp/prod.yaml" 'type: RuntimeDefault'
 assert_contains "drop ALL capabilities"                  "$tmp/prod.yaml" '- ALL'
-assert_contains "gateways add NET_BIND_SERVICE"          "$tmp/prod.yaml" '- NET_BIND_SERVICE'
+assert_absent   "no capability added back"               "$tmp/prod.yaml" '- NET_BIND_SERVICE'
 assert_contains "runAsNonRoot present"                   "$tmp/prod.yaml" 'runAsNonRoot: true'
 assert_contains "readOnlyRootFilesystem present"         "$tmp/prod.yaml" 'readOnlyRootFilesystem: true'
 assert_contains "token automount disabled"              "$tmp/prod.yaml" 'automountServiceAccountToken: false'
@@ -70,6 +79,120 @@ echo "== development assertions =="
 assert_contains "dev uses cleartext DB link"             "$tmp/dev.yaml" 'DB_SSLMODE'
 assert_absent   "dev has no NetworkPolicy"               "$tmp/dev.yaml" 'kind: NetworkPolicy'
 assert_absent   "dev Postgres has no TLS"                "$tmp/dev.yaml" 'ssl=on'
+
+echo "== no workload mounts a CA private key (#193) =="
+# Whoever reads a CA's private key can sign a certificate its holders trust: a
+# client certificate the API's internal mTLS listener accepts as a gateway, or a
+# server certificate for the mail hosts. So no pod mounts one. Each mounts its own
+# certificate and key and the CA certificates it verifies peers with, named key by
+# key: a Secret given to the chart may hold more (cert-manager keeps a CA issuer's
+# key in a Secret, for one), and a whole-Secret mount would hand that over too.
+#
+# The chart's workloads are Deployments and StatefulSets; the guard below fails if
+# another kind appears, so it cannot slip past these checks.
+workloads='select(.kind == "Deployment" or .kind == "StatefulSet")'
+MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client.crt client.key AuthKey.p8 "
+# One line per Secret volume: <workload> <volume> <key,key,...>.
+secret_volumes() {
+  yq -N e "$workloads"' | .metadata.name as $w | .spec.template.spec.volumes[] | select(has("secret"))
+    | $w + " " + .name + " " + ((.secret.items // []) | map(.key) | join(","))' "$1"
+}
+check_no_ca_key() { # check_no_ca_key <label> <render>
+  local other volumes w vol keys k
+  other=$(yq -N e 'select(.kind == "Pod" or .kind == "DaemonSet" or .kind == "ReplicaSet" or .kind == "Job" or .kind == "CronJob") | .kind' "$2")
+  [ -z "$other" ] || fail "$1: a workload this test does not look into: $other"
+  other=$(yq -N e "$workloads"' | .metadata.name as $w | .spec.template.spec.volumes[]
+    | select(has("hostPath") or has("projected")) | $w + " " + .name' "$2")
+  [ -z "$other" ] || fail "$1: a volume this test does not look into: $other"
+  other=$(yq -N e "$workloads"' | select([(.spec.template.spec.containers[], .spec.template.spec.initContainers[])
+    | .envFrom[] | select(has("secretRef"))] | length > 0) | .metadata.name' "$2")
+  [ -z "$other" ] || fail "$1: $other takes a whole Secret into its environment"
+  volumes=$(secret_volumes "$2")
+  [ -n "$volumes" ] || fail "$1: no Secret volumes found, so nothing was checked"
+  while read -r w vol keys; do
+    [ -n "$keys" ] || fail "$1: $w mounts all of Secret volume $vol; name the keys it needs"
+    for k in ${keys//,/ }; do
+      case "$MOUNTABLE" in *" $k "*) ;; *) fail "$1: $w mounts $k from volume $vol" ;; esac
+    done
+  done <<< "$volumes"
+  pass "$1: every pod mounts certificates and its own keys, key by key"
+  # And no Secret the chart makes holds a CA's key: the internal CA's lives only
+  # while the chart renders.
+  other=$(yq -N e 'select(.kind == "Secret") | .metadata.name as $s | ((.data // {}) * (.stringData // {})) | keys | .[]
+    | select(test("(^|[-_.])ca([-_.].*)?\\.key$")) | $s + " " + .' "$2")
+  [ -z "$other" ] || fail "$1: a Secret holds a CA key: $other"
+  pass "$1: no Secret the chart makes holds a CA key"
+}
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set internalMtls.existingSecret=mine-mtls > "$tmp/byo-mtls.yaml"
+check_no_ca_key "production"             "$tmp/prod.yaml"
+check_no_ca_key "development"            "$tmp/dev.yaml"
+check_no_ca_key "an internal CA of yours" "$tmp/byo-mtls.yaml"
+# Who gets which keypair: a gateway its client keypair and the mail host's, the
+# API its server keypair and no mail key at all.
+secret_volumes "$tmp/prod.yaml" > "$tmp/volumes.txt"
+for gw in smtp imap pop3; do
+  assert_contains "$gw gateway: the mail host's keypair"   "$tmp/volumes.txt" "restmail-$gw-gateway tls tls.crt,tls.key"
+  assert_contains "$gw gateway: the client keypair"        "$tmp/volumes.txt" "restmail-$gw-gateway internal-mtls ca.crt,client.crt,client.key"
+done
+assert_contains "API: the server keypair"                  "$tmp/volumes.txt" "restmail-api internal-mtls ca.crt,server.crt,server.key"
+assert_contains "API: the mail CA's certificate, no key"   "$tmp/volumes.txt" "restmail-api tls ca.crt"
+grep -q '^restmail-internal-mtls$' <(yq -N e 'select(.kind == "Secret") | .metadata.name' "$tmp/prod.yaml") ||
+  fail "the chart made no internal mTLS Secret, so its keys went unchecked"
+pass "the internal mTLS Secret was checked"
+assert_absent   "a Secret of yours is not made"            "$tmp/byo-mtls.yaml" 'name: restmail-internal-mtls'
+
+echo "== everything runs non-root, and the gateways need no capability (#193) =="
+check_non_root() { # check_non_root <label> <render>
+  local pods containers w user c ape drop add ro nonroot cuser ports p
+  # Fields are |-separated, because a field that is not set comes out empty.
+  pods=$(yq -N e "$workloads"' | .metadata.name + "|" + (.spec.template.spec.securityContext.runAsNonRoot | tostring)
+    + "|" + (.spec.template.spec.securityContext.runAsUser | tostring)' "$2")
+  while IFS='|' read -r w nonroot user; do
+    [ "$nonroot" = true ] || fail "$1: $w does not set runAsNonRoot"
+    case "$user" in ""|0) fail "$1: $w runs as uid ${user:-of its image}" ;; esac
+  done <<< "$pods"
+  containers=$(yq -N e "$workloads"' | .metadata.name as $w
+    | (.spec.template.spec.containers[], .spec.template.spec.initContainers[]) | .securityContext as $s
+    | $w + "|" + .name + "|" + ($s.allowPrivilegeEscalation | tostring)
+    + "|" + (($s.capabilities.drop // []) | join(",")) + "|[" + (($s.capabilities.add // []) | join(",")) + "]"
+    + "|" + ($s.readOnlyRootFilesystem | tostring) + "|" + ($s.runAsNonRoot | tostring) + "|" + ($s.runAsUser | tostring)
+    + "|" + ((.ports // []) | map(.containerPort | tostring) | join(","))' "$2")
+  while IFS='|' read -r w c ape drop add ro nonroot cuser ports; do
+    [ "$ape" = false ]   || fail "$1: $w/$c may escalate privileges"
+    [ "$drop" = ALL ]    || fail "$1: $w/$c does not drop every capability (drop: $drop)"
+    [ "$add" = "[]" ]    || fail "$1: $w/$c adds capabilities back: $add"
+    if [ "$nonroot" = false ] || [ "$cuser" = 0 ]; then fail "$1: $w/$c overrides the pod and runs as root"; fi
+    case "$w" in
+      *-gateway)
+        [ "$ro" = true ] || fail "$1: $w/$c has a writable root filesystem"
+        for p in ${ports//,/ }; do
+          [ "$p" -ge 1024 ] || fail "$1: $w/$c listens on $p, which needs a capability"
+        done ;;
+    esac
+  done <<< "$containers"
+  pass "$1: every pod runs non-root, and no container adds a capability"
+  pass "$1: the gateways listen on unprivileged ports on a read-only root filesystem"
+}
+check_non_root "production"  "$tmp/prod.yaml"
+check_non_root "development" "$tmp/dev.yaml"
+# The mail ports are still the public ones: each Service maps them onto the
+# port the gateway listens on, and the NetworkPolicy opens that port.
+gateway_ports() { # gateway_ports <render> <kind> <name> <expression>
+  yq -N e "select(.kind == \"$2\" and .metadata.name == \"$3\") | $4" "$1" | paste -sd, -
+}
+for gw in smtp:25,465:10025,10465 imap:993:10993 pop3:995:10995; do
+  IFS=: read -r name public listening <<< "$gw"
+  svc=$(gateway_ports "$tmp/prod.yaml" Service "restmail-$name-gateway" '.spec.ports[].port')
+  [ "$svc" = "$public" ] || fail "$name gateway's Service exposes $svc, want $public"
+  pod=$(gateway_ports "$tmp/prod.yaml" Deployment "restmail-$name-gateway" '.spec.template.spec.containers[0].ports[].containerPort')
+  [ "$pod" = "$listening" ] || fail "$name gateway listens on $pod, want $listening"
+  targets=$(gateway_ports "$tmp/prod.yaml" Service "restmail-$name-gateway" '.spec.ports[].targetPort')
+  names=$(gateway_ports "$tmp/prod.yaml" Deployment "restmail-$name-gateway" '.spec.template.spec.containers[0].ports[].name')
+  [ "$targets" = "$names" ] || fail "$name gateway's Service targets $targets, but the pod's ports are $names"
+  policy=$(gateway_ports "$tmp/prod.yaml" NetworkPolicy "restmail-$name-gateway" '.spec.ingress[].ports[].port')
+  [ "$policy" = "$listening" ] || fail "$name gateway's NetworkPolicy opens $policy, want $listening"
+  pass "$name gateway: public $public onto $listening, and the policy opens $listening"
+done
 
 echo "== the API's rollout can finish with a single-node volume =="
 # A rolling update cannot hand a ReadWriteOnce volume from the old pod to a new
@@ -102,8 +225,8 @@ if grep -Eq -- "containerPort: (587|143|110)\$" "$tmp/prod.yaml" ||
 fi
 pass "587, 143 and 110 neither listened on nor exposed"
 # The probes knock on a port that is listening, or the pods never go ready.
-assert_contains "IMAP probed on 993"      "$tmp/prod.yaml" 'port: imaps'
-assert_contains "POP3 probed on 995"      "$tmp/prod.yaml" 'port: pop3s'
+assert_contains "IMAP probed on its TLS port" "$tmp/prod.yaml" 'port: imaps'
+assert_contains "POP3 probed on its TLS port" "$tmp/prod.yaml" 'port: pop3s'
 
 echo "== API only: the gateways can be turned off =="
 # Without this the chart could only be installed somewhere able to give three

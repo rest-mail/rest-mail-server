@@ -27,6 +27,10 @@ func envOr(key, fallback string) string {
 // scratchDatabase points the operator command (which reads its configuration
 // from the environment, as in the container) at a database of its own, dropped
 // afterwards, and returns a connection to it for the test's own checks.
+//
+// The drop fails while anything still holds a connection to the database, so
+// a failed drop fails the test: something left a pool open. The database is
+// then dropped by force, so a shared Postgres does not collect them either way.
 func scratchDatabase(t *testing.T) *gorm.DB {
 	t.Helper()
 	port, _ := strconv.Atoi(envOr("DB_PORT", "5432"))
@@ -42,20 +46,25 @@ func scratchDatabase(t *testing.T) *gorm.DB {
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
 		t.Skipf("operator test skipped: cannot create a database (%v)", err)
 	}
-	cfg.DBName = name
-	scratch, err := rmdb.Connect(&cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var scratch *gorm.DB
 	t.Cleanup(func() {
-		if s, err := scratch.DB(); err == nil {
-			_ = s.Close()
+		if scratch != nil {
+			closeDatabase(scratch)
 		}
-		admin.Exec("DROP DATABASE IF EXISTS " + name)
-		if s, err := admin.DB(); err == nil {
-			_ = s.Close()
+		defer closeDatabase(admin)
+		err := admin.Exec("DROP DATABASE IF EXISTS " + name).Error
+		if err == nil {
+			return
+		}
+		t.Errorf("dropping %s: %v", name, err)
+		if err := admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)").Error; err != nil {
+			t.Errorf("dropping %s by force: %v; drop it by hand", name, err)
 		}
 	})
+	cfg.DBName = name
+	if scratch, err = rmdb.Connect(&cfg); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("DB_HOST", cfg.DBHost)
 	t.Setenv("DB_PORT", strconv.Itoa(cfg.DBPort))
 	t.Setenv("DB_NAME", name)

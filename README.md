@@ -44,13 +44,14 @@ The application itself is deliberately thin: the protocol engines and email-auth
 
 ## The Library Family
 
-RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is seven focused libraries, all MIT-licensed and each usable entirely on its own:
+RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is eight focused libraries, all MIT-licensed and each usable entirely on its own:
 
 | Library | What it is |
 |---------|------------|
 | [`rest-mail/go-pop3`](https://github.com/rest-mail/go-pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
 | [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap) | IMAP server engine with the same bring-a-`Backend` design |
 | [`rest-mail/go-dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
+| [`rest-mail/go-spf`](https://github.com/rest-mail/go-spf) | RFC 7208 SPF evaluation, zero external deps |
 | [`rest-mail/go-arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
 | [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
 | [`rest-mail/go-mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
@@ -355,7 +356,7 @@ chore config:check      # fail if config.env drifted from its manifest
 chore setup
 ```
 
-TLS certificates are provisioned per config into the shared `testbed_certs` volume (`chore instance:certs:issue`, run automatically by `instance:new`). To pull the dev CA out of the testbed for browser/IMAP-client trust:
+TLS certificates are provisioned per config into the shared `testbed_certs` volume (`chore instance:certs:issue`, run automatically by `instance:new`), and the internal mTLS ones into `<project>-internal-mtls` (`chore instance:mtls:issue`). Both hold a CA's private key, so no service mounts them: each service's `up` copies the files that service needs into a volume of its own, `<container>-certs` ([tasks/stage-certs.sh](tasks/stage-certs.sh)). To pull the dev CA out of the testbed for browser/IMAP-client trust:
 
 ```bash
 cd .workspace/testbed && chore ca:fetch    # writes ./ca.crt
@@ -546,9 +547,15 @@ the in-repo certgen — idempotent and CA-preserving (it re-mints the server lea
 if the requested SANs drift, e.g. the api IP changes on a persistent volume):
 
 ```
-go run ./cmd/certgen --internal-mtls --out /certs \
+go run ./cmd/certgen --internal-mtls --out /internal-mtls \
   --server-ip 127.0.0.1,<api-ip> --server-dns api,localhost,<hostname>
 ```
+
+That directory then holds the internal CA's private key, so mount it into
+nothing that serves: give the API the CA certificate and its server keypair,
+and each gateway the CA certificate and the client keypair. `chore
+instance:mtls:issue` does exactly that with its own volume, and the Helm chart
+keeps no CA key at all.
 
 When enabled, set the gateways' `API_INTERNAL_BASE_URL` to the https internal
 listener (e.g. `https://<api-host>:8443`) and leave `API_BASE_URL` on the public
@@ -686,7 +693,7 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 
 | Filter | Description |
 |--------|-------------|
-| `spf_check` | SPF record validation |
+| `spf_check` | SPF verification (via `rest-mail/go-spf`) |
 | `dkim_verify` | DKIM signature verification (via `rest-mail/go-dkim`) |
 | `dmarc_check` | DMARC policy enforcement (via `rest-mail/go-dmarc`) |
 | `arc_verify` | ARC chain verification (via `rest-mail/go-arc`) |

@@ -282,13 +282,12 @@ Pod-level securityContext for a component. Produces a hardened baseline keyed by
 component name, then deep-merges the operator's global .Values.podSecurityContext
 on top (operator values win), so a cluster can override any field globally.
 
-The protocol gateways (smtp/imap/pop3) bind privileged ports (<1024). The current
-gateway images run as root and carry no file capabilities, so they cannot run as
-a non-root UID and still bind those ports (Kubernetes does not yet populate the
-ambient capability set from securityContext.capabilities). They therefore keep
-runAsNonRoot unset here and rely on the container-level "drop ALL, add only
-NET_BIND_SERVICE" posture below. The API, js-filter and Postgres images ship a
-non-root user, so they run fully non-root, and so do the web apps, whose
+Every workload runs non-root. The protocol gateways (smtp/imap/pop3) run as uid
+10001, the uid their images declare, like the API and js-filter. They listen on
+unprivileged ports (*.containerPorts) and their Services map the public mail
+ports onto them, so they need no capability to bind: a non-root process would
+not get NET_BIND_SERVICE anyway, because Kubernetes does not populate the
+ambient capability set from securityContext.capabilities. The web apps'
 unprivileged nginx image runs as uid 101 on port 8080.
 
 Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
@@ -297,7 +296,7 @@ Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
 {{- $root := index . 0 -}}
 {{- $comp := index . 1 -}}
 {{- $base := dict "seccompProfile" (dict "type" "RuntimeDefault") -}}
-{{- if eq $comp "api" -}}
+{{- if or (eq $comp "api") (eq $comp "smtp-gateway") (eq $comp "imap-gateway") (eq $comp "pop3-gateway") -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "fsGroup" 10001) -}}
 {{- else if eq $comp "js-filter" -}}
 {{- /* A numeric runAsUser is required: the image declares a NAMED user
@@ -319,14 +318,15 @@ Container-level securityContext for a component. Hardened baseline keyed by
 component, deep-merged under the operator's global .Values.securityContext
 (operator values win).
 
-Gateways: drop ALL, add back only NET_BIND_SERVICE so a root process can bind
-25/465/993/995 and nothing else; read-only rootfs is safe because the
-queue is DB-backed and the CA-trust entrypoint only writes when /certs/ca.crt is
-present (the chart projects tls.crt/tls.key only). API: read-only rootfs is off
-because its entrypoint may run update-ca-certificates. js-filter: read-only rootfs
-on (its image is built for it). Postgres: read-only rootfs off (writes PGDATA,
-sockets, runtime config). Web apps: read-only rootfs on; nginx writes only the
-config its entrypoint makes (conf.d) and /tmp, both emptyDirs.
+Gateways: non-root with every capability dropped and none added back (they
+listen on unprivileged ports); read-only rootfs is safe because the queue is
+DB-backed and the CA-trust entrypoint writes only to /tmp, an emptyDir, and only
+when /certs/ca.crt is present (the chart projects tls.crt/tls.key only). API:
+read-only rootfs is off because its entrypoint may run update-ca-certificates.
+js-filter: read-only rootfs on (its image is built for it). Postgres: read-only
+rootfs off (writes PGDATA, sockets, runtime config). Web apps: read-only rootfs
+on; nginx writes only the config its entrypoint makes (conf.d) and /tmp, both
+emptyDirs.
 
 Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 */}}
@@ -335,7 +335,7 @@ Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 {{- $comp := index . 1 -}}
 {{- $base := dict "allowPrivilegeEscalation" false -}}
 {{- if or (eq $comp "smtp-gateway") (eq $comp "imap-gateway") (eq $comp "pop3-gateway") -}}
-{{- $base = merge $base (dict "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL") "add" (list "NET_BIND_SERVICE"))) -}}
+{{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- else if eq $comp "api" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" false "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- else if eq $comp "js-filter" -}}
