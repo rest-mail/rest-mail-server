@@ -136,6 +136,26 @@ assert_contains "RESTMAIL_STATUS_KEYS set"  "$tmp/status.yaml" "RESTMAIL_STATUS_
 assert_absent   "status keys are not owner keys" "$tmp/status.yaml" 'RESTMAIL_OWNER_KEYS'
 assert_absent   "no status keys by default" "$tmp/prod.yaml"  'RESTMAIL_STATUS_KEYS'
 
+echo "== push notifications are off, until given an APNs key from a Secret =="
+assert_absent "no APNs by default"        "$tmp/prod.yaml" 'RESTMAIL_APNS'
+assert_absent "no APNs key mounted"       "$tmp/prod.yaml" 'apns-key'
+APNS_ARGS=(--set api.push.apns.enabled=true --set api.push.apns.existingSecret=restmail-apns
+           --set api.push.apns.keyId=KEY1234567 --set api.push.apns.teamId=TEAM123456)
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" "${APNS_ARGS[@]}" > "$tmp/apns.yaml"
+assert_contains "the key file is set"     "$tmp/apns.yaml" 'RESTMAIL_APNS_KEY_FILE: "/etc/restmail/apns/AuthKey.p8"'
+assert_contains "the key id"              "$tmp/apns.yaml" 'RESTMAIL_APNS_KEY_ID: "KEY1234567"'
+assert_contains "the team id"             "$tmp/apns.yaml" 'RESTMAIL_APNS_TEAM_ID: "TEAM123456"'
+assert_contains "the app's topic"         "$tmp/apns.yaml" 'RESTMAIL_APNS_TOPIC: "com.antimatterstudios.restmail"'
+assert_contains "the key from the Secret" "$tmp/apns.yaml" 'secretName: restmail-apns'
+assert_contains "mounted where it is read" "$tmp/apns.yaml" 'mountPath: /etc/restmail/apns'
+nosecret=$(helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.push.apns.enabled=true \
+  --set api.push.apns.keyId=KEY1234567 --set api.push.apns.teamId=TEAM123456 2>&1) &&
+  fail "push was turned on with no Secret for its key"
+case "$nosecret" in *"existingSecret"*) pass "no Secret, no push" ;; *) fail "refused, but not for the right reason: $nosecret" ;; esac
+noids=$(helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.push.apns.enabled=true \
+  --set api.push.apns.existingSecret=restmail-apns 2>&1) && fail "push was turned on with no key id or team id"
+case "$noids" in *"keyId"*) pass "no ids, no push" ;; *) fail "refused, but not for the right reason: $noids" ;; esac
+
 echo "== no setup links =="
 # A server prints no setup code, so it has no link to point anywhere: the first
 # admin comes from the bootstrap password.

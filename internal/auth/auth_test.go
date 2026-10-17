@@ -428,3 +428,73 @@ func TestCheckPassword_NoPrefixHash(t *testing.T) {
 		t.Errorf("CheckPassword(raw bcrypt) unexpected error: %v", err)
 	}
 }
+
+// TestSessionIDIsMintedAtSignInAndCarriedByRefresh: both tokens of a sign-in
+// carry one new sid; a second sign-in gets another; tokens minted to continue
+// a session keep its sid under a new jti, and a session without one gets one.
+func TestSessionIDIsMintedAtSignInAndCarriedByRefresh(t *testing.T) {
+	svc := NewJWTService("sid-secret", 15*time.Minute, 7*24*time.Hour)
+	sids := func(p *TokenPair) (access, refresh *Claims) {
+		t.Helper()
+		a, err := svc.ValidateAccessToken(p.AccessToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := svc.ValidateRefreshToken(p.RefreshToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a, r
+	}
+
+	signIn, err := svc.GenerateMailboxSession(7, "u@example.com", 3, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, refresh := sids(signIn)
+	if len(access.SessionID) != 32 || access.SessionID != refresh.SessionID || signIn.SessionID != access.SessionID {
+		t.Fatalf("sign-in sids: access %q, refresh %q, pair %q; want one 128-bit hex sid in all three",
+			access.SessionID, refresh.SessionID, signIn.SessionID)
+	}
+
+	again, err := svc.GenerateMailboxSession(7, "u@example.com", 3, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.SessionID == signIn.SessionID {
+		t.Fatal("a second sign-in reused the first one's sid")
+	}
+
+	refreshed, err := svc.GenerateMailboxSession(7, "u@example.com", 3, false, ContinueSession(refresh.SessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	access2, refresh2 := sids(refreshed)
+	if access2.SessionID != signIn.SessionID || refresh2.SessionID != signIn.SessionID {
+		t.Fatalf("refreshed sids %q/%q, want the session's %q", access2.SessionID, refresh2.SessionID, signIn.SessionID)
+	}
+	if refresh2.ID == refresh.ID {
+		t.Fatal("a refresh kept the refresh token's jti; it must rotate")
+	}
+
+	legacy, err := svc.GenerateMailboxSession(7, "u@example.com", 3, false, ContinueSession(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.SessionID == "" || legacy.SessionID == signIn.SessionID || legacy.SessionID == again.SessionID {
+		t.Fatalf("continuing a session without a sid gave %q; want a new sid", legacy.SessionID)
+	}
+
+	admin, err := svc.GenerateAdminSession(1, "admin", 0, []string{AMRPassword})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminAccess, _ := sids(admin)
+	setup, err := svc.GenerateSetupTokenPair(1, "admin", 0, nil, ContinueSession(adminAccess.SessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adminAccess.SessionID == "" || setup.SessionID != adminAccess.SessionID {
+		t.Fatalf("admin sids %q then %q; want one sid carried", adminAccess.SessionID, setup.SessionID)
+	}
+}

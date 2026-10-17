@@ -28,3 +28,13 @@ data:
   # --key`), in the same format.
   RESTMAIL_STATUS_KEYS: {{ . | quote }}
   {{- end }}
+  {{- with .Values.api.push.apns }}
+  {{- if .enabled }}
+  # Push notifications through APNs. The key file is mounted from the Secret
+  # api.push.apns.existingSecret names (templates/api-deployment.yaml).
+  RESTMAIL_APNS_KEY_FILE: "/etc/restmail/apns/AuthKey.p8"
+  RESTMAIL_APNS_KEY_ID: {{ .keyId | quote }}
+  RESTMAIL_APNS_TEAM_ID: {{ .teamId | quote }}
+  RESTMAIL_APNS_TOPIC: {{ .topic | quote }}
+  {{- end }}
+  {{- end }}

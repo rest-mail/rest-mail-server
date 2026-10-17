@@ -42,6 +42,23 @@ type MessageHandler struct {
 	// every request).
 	maxRecipients int
 	sendLimiter   *ratelimit.SubmissionLimiter
+
+	// newMail is told of each message delivered into a mailbox's INBOX, to
+	// push to the phones of the sessions that list it (#363). Nil when push
+	// is off.
+	newMail NewMailNotifier
+}
+
+// NewMailNotifier is told that a message reached the INBOX of a mailbox. It
+// must not block: delivery waits for it. *push.Dispatcher is one.
+type NewMailNotifier interface {
+	NewMail(mailboxID uint)
+}
+
+// SetNewMailNotifier tells n of every message delivered into an INBOX. Call
+// before the router serves traffic.
+func (h *MessageHandler) SetNewMailNotifier(n NewMailNotifier) {
+	h.newMail = n
 }
 
 func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
@@ -2339,6 +2356,11 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				"unread_count": unreadCount,
 			},
 		})
+	}
+	// ── Push to phones: only that there is mail, never what it is ───
+	// A message copied in already read (an IMAP COPY or APPEND) is not news.
+	if h.newMail != nil && msg.Folder == "INBOX" && !msg.IsRead {
+		h.newMail.NewMail(mailbox.ID)
 	}
 
 	return &msg, nil

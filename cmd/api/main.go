@@ -140,6 +140,12 @@ func main() {
 		slog.Error("invalid status keys", "error", err)
 		os.Exit(1)
 	}
+	// Push is off unless APNs is configured; an APNs key that is set and will
+	// not load would leave it off without a word.
+	if err := api.CheckPush(cfg); err != nil {
+		slog.Error("invalid APNs configuration", "error", err)
+		os.Exit(1)
+	}
 
 	// A fresh install has no admin and no roles, and the production image carries
 	// no seed tool, so nobody could ever sign in. Both steps are no-ops once done.

@@ -1879,3 +1879,61 @@ func (c *Config) TrustedARCSealers() []string {
 
 // END trusted-ARC-sealer allowlist
 // ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN push notifications through APNs (#363)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The settings are read lazily through a *Config accessor
+// over the getEnv helper above; the Config struct and Load() are untouched.
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultAPNsTopic is the bundle id of the REST Mail app, the topic pushes are
+// addressed to when RESTMAIL_APNS_TOPIC is unset.
+const DefaultAPNsTopic = "com.antimatterstudios.restmail"
+
+// APNsSettings is how the server pushes to iPhones through Apple's push
+// service with token auth: the .p8 key Apple issued (a file, mounted from a
+// secret), its key id, the developer team it belongs to, and the topic. One key
+// serves both the production and the sandbox service.
+type APNsSettings struct {
+	KeyFile string // RESTMAIL_APNS_KEY_FILE
+	KeyID   string // RESTMAIL_APNS_KEY_ID
+	TeamID  string // RESTMAIL_APNS_TEAM_ID
+	Topic   string // RESTMAIL_APNS_TOPIC, default DefaultAPNsTopic
+}
+
+// APNs reads the APNs settings. Push is off unless the key file, key id and
+// team id are all set; the topic has a default.
+func (c *Config) APNs() APNsSettings {
+	topic := strings.TrimSpace(getEnv("RESTMAIL_APNS_TOPIC", ""))
+	if topic == "" {
+		topic = DefaultAPNsTopic
+	}
+	return APNsSettings{
+		KeyFile: strings.TrimSpace(getEnv("RESTMAIL_APNS_KEY_FILE", "")),
+		KeyID:   strings.TrimSpace(getEnv("RESTMAIL_APNS_KEY_ID", "")),
+		TeamID:  strings.TrimSpace(getEnv("RESTMAIL_APNS_TEAM_ID", "")),
+		Topic:   topic,
+	}
+}
+
+// Configured reports whether everything APNs needs is set.
+func (s APNsSettings) Configured() bool {
+	return s.KeyFile != "" && s.KeyID != "" && s.TeamID != "" && s.Topic != ""
+}
+
+// Partial reports whether some, but not all, of the key file, key id and team
+// id are set: most likely a mistake, and push stays off.
+func (s APNsSettings) Partial() bool {
+	set := 0
+	for _, v := range []string{s.KeyFile, s.KeyID, s.TeamID} {
+		if v != "" {
+			set++
+		}
+	}
+	return set > 0 && set < 3
+}
+
+// END push notifications through APNs
+// ══════════════════════════════════════════════════════════════════════════
