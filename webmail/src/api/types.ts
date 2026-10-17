@@ -3093,6 +3093,8 @@ export interface components {
             body_text?: string;
             body_html?: string;
             message_id?: string;
+            /** @description The Date header (RFC 5322); the inbound pipeline rejects a message without one */
+            date?: string;
             in_reply_to?: string;
             references?: string;
             /** @description Raw headers as JSON */
@@ -3246,6 +3248,21 @@ export interface components {
             duration_ms: number;
             /** @description The email after all transformations */
             final_email?: Record<string, never>;
+            /** @description The verdicts the authentication filters (spf_check, dkim_verify, arc_verify, dmarc_check) recorded, in order. A delivered message's Authentication-Results header is written from these. */
+            auth_results?: components["schemas"]["AuthResult"][];
+        };
+        AuthResult: {
+            /** @enum {string} */
+            method: "spf" | "dkim" | "arc" | "dmarc";
+            /** @description The RFC 8601 result, such as pass, fail, softfail, neutral, none, temperror or permerror */
+            result: string;
+            /**
+             * @description The identity checked. Absent for arc.
+             * @enum {string}
+             */
+            property?: "smtp.mailfrom" | "smtp.helo" | "header.d" | "header.from";
+            /** @description The domain checked. For dkim, the signature's d=; for arc, the most recent ARC-Seal's d=. */
+            domain?: string;
         };
         FilterResult: {
             /** @enum {string} */
@@ -5206,7 +5223,7 @@ export interface operations {
                  *       "from": "admin@restmail.test",
                  *       "to": [
                  *         "admin@restmail.test",
-                 *         "someone@unreachable.test"
+                 *         "someone@imap.restmail.test"
                  *       ],
                  *       "subject": "Hello",
                  *       "body_text": "Sent through the REST API."
@@ -5251,7 +5268,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
+                    "message/rfc822": string;
                 };
             };
             404: components["responses"]["NotFound"];
@@ -6310,7 +6327,8 @@ export interface operations {
                  *       ],
                  *       "subject": "Delivered over RESTMAIL",
                  *       "body_text": "Hello, Eve.",
-                 *       "message_id": "<restmail-delivery@ext-contract.test>"
+                 *       "message_id": "<restmail-delivery@ext-contract.test>",
+                 *       "date": "Sat, 17 Oct 2026 12:00:00 +0000"
                  *     }
                  */
                 "application/json": components["schemas"]["RestmailDeliverRequest"];
