@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/audit"
-	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -22,14 +21,7 @@ import (
 // fails) when no database is reachable.
 func openAuditTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	admin, err := rmdb.Connect(&cfg)
+	admin, err := connectTestDB()
 	if err != nil {
 		t.Skipf("audit API DB test skipped: no database reachable (%v)", err)
 	}
@@ -37,8 +29,9 @@ func openAuditTestDB(t *testing.T) *gorm.DB {
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
 		t.Skipf("audit API DB test skipped: cannot create a database (%v)", err)
 	}
+	cfg := testDBConfig()
 	cfg.DBName = name
-	scratch, err := rmdb.Connect(&cfg)
+	scratch, err := rmdb.Connect(cfg)
 	if err != nil {
 		t.Fatalf("connect to scratch database: %v", err)
 	}
@@ -47,9 +40,6 @@ func openAuditTestDB(t *testing.T) *gorm.DB {
 			_ = sqlDB.Close()
 		}
 		admin.Exec("DROP DATABASE IF EXISTS " + name)
-		if sqlDB, err := admin.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
 	})
 	if err := rmdb.MigrateAuditLog(scratch); err != nil {
 		t.Fatalf("migrate the audit log: %v", err)

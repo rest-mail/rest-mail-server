@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -63,7 +64,10 @@ type auditConfig struct {
 	startedSession bool
 	identifiedOnly bool
 	bodyFields     []string
+	responseFields []responseField
 }
+
+type responseField struct{ field, key string }
 
 func (c *auditConfig) readsBody() bool {
 	return c.signIn || c.refreshToken || len(c.bodyFields) > 0
@@ -94,6 +98,13 @@ func AuditIdentifiedOnly() AuditOption { return func(c *auditConfig) { c.identif
 // AuditBodyFields adds the named string fields of the body to the target.
 func AuditBodyFields(names ...string) AuditOption {
 	return func(c *auditConfig) { c.bodyFields = append(c.bodyFields, names...) }
+}
+
+// AuditResponseField adds field, a string or a number of a successful
+// response's data, to the target as key: the id of what a request created.
+// Never name a secret: the target is recorded as it is.
+func AuditResponseField(field, key string) AuditOption {
+	return func(c *auditConfig) { c.responseFields = append(c.responseFields, responseField{field, key}) }
 }
 
 // Audit records each request to the route it wraps as one entry with the
@@ -134,6 +145,32 @@ func (a *Auditor) Audit(action string, opts ...AuditOption) func(http.Handler) h
 	}
 }
 
+// newEntry starts the entry for request r, answered with status: the action,
+// the outcome, the route and its URL parameters, and where it came from.
+func newEntry(action string, r *http.Request, status int, started time.Time) *models.AuditEntry {
+	e := &models.AuditEntry{
+		OccurredAt: started,
+		ActorKind:  models.AuditActorAnonymous,
+		Action:     action,
+		Outcome:    auditOutcome(status),
+		Method:     r.Method,
+		Status:     status,
+		Target:     models.AuditTarget{},
+		IP:         clientIP(r),
+		UserAgent:  r.UserAgent(),
+		RequestID:  chimw.GetReqID(r.Context()),
+	}
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		e.Route = rctx.RoutePattern()
+		for i, k := range rctx.URLParams.Keys {
+			if k != "" && k != "*" {
+				e.Target[k] = rctx.URLParams.Values[i]
+			}
+		}
+	}
+	return e
+}
+
 func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, status int, resp, body []byte, started time.Time) {
 	if status == 0 {
 		status = http.StatusOK // nothing written: net/http sends 200
@@ -142,14 +179,16 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 	if cfg.failuresOnly && outcome == models.AuditOutcomeSuccess {
 		return
 	}
-	entry := RequestEntry(r, action, status)
-	e := &entry
-	e.OccurredAt = started
+	e := newEntry(action, r, status, started)
 	if status >= 400 {
 		var er ErrorResponse
 		if json.Unmarshal(resp, &er) == nil {
 			e.ErrorCode = er.Error.Code
 		}
+	}
+
+	if claims := GetClaims(r); claims != nil {
+		actorFromClaims(e, claims)
 	}
 	switch {
 	case cfg.signIn:
@@ -192,45 +231,86 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 			}
 		}
 	}
+	if len(cfg.responseFields) > 0 && outcome == models.AuditOutcomeSuccess {
+		var created struct {
+			Data map[string]json.RawMessage `json:"data"`
+		}
+		decodeFirst(resp, &created)
+		for _, f := range cfg.responseFields {
+			if _, taken := e.Target[f.key]; taken {
+				continue
+			}
+			var v any
+			if json.Unmarshal(created.Data[f.field], &v) != nil {
+				continue
+			}
+			switch v := v.(type) {
+			case string:
+				e.Target[f.key] = v
+			case float64:
+				e.Target[f.key] = strconv.FormatFloat(v, 'f', -1, 64)
+			}
+		}
+	}
 	if cfg.identifiedOnly && e.ActorKind == models.AuditActorAnonymous {
 		return
 	}
 
+	a.write(e)
+}
+
+// write appends e; if that fails it logs the whole entry with slog.Error.
+func (a *Auditor) write(e *models.AuditEntry) {
 	if err := a.appendEntry(e); err != nil {
 		slog.Error("failed to write an audit entry", "error", err, "entry", e)
 	}
 }
 
-// RequestEntry is the audit entry for a request with the given action and
-// status, as the Audit middleware records it: the route and its URL
-// parameters, the client, and the actor and session from the token's claims.
-// A handler writing an entry of its own, inside the transaction of the change
-// it records, starts from this.
-func RequestEntry(r *http.Request, action string, status int) models.AuditEntry {
-	e := models.AuditEntry{
-		OccurredAt: time.Now(),
-		ActorKind:  models.AuditActorAnonymous,
-		Action:     action,
-		Outcome:    auditOutcome(status),
-		Method:     r.Method,
-		Status:     status,
-		Target:     models.AuditTarget{},
-		IP:         clientIP(r),
-		UserAgent:  r.UserAgent(),
-		RequestID:  chimw.GetReqID(r.Context()),
+// AppPasswordRefused records an app password AppPasswords refused, as one
+// auth.app_password entry: the address given, why it was refused, the public
+// id presented, and the credential when its secret matched. It never records
+// the password.
+func (a *Auditor) AppPasswordRefused(r *http.Request, address string, refusal *auth.AppPasswordRefusal) {
+	e := newEntry(AuditActionAppPassword, r, http.StatusUnauthorized, time.Now())
+	e.ErrorCode = "unauthorized"
+	e.ActorKind, e.ActorName = models.AuditActorMailbox, address
+	e.CredentialID = refusal.CredentialID
+	e.Target["reason"] = refusal.Reason
+	if refusal.PublicID != "" {
+		e.Target["public_id"] = refusal.PublicID
 	}
-	if rctx := chi.RouteContext(r.Context()); rctx != nil {
-		e.Route = rctx.RoutePattern()
-		for i, k := range rctx.URLParams.Keys {
-			if k != "" && k != "*" {
-				e.Target[k] = rctx.URLParams.Values[i]
-			}
-		}
-	}
+	a.write(e)
+}
+
+// AuditActionAppPassword is the action of a refused app password.
+const AuditActionAppPassword = "auth.app_password"
+
+// AuditActionCredentialsRevoke is the action of a revoked credential: one its
+// owner revoked, or one revoked with a reason, such as a change of password.
+const AuditActionCredentialsRevoke = "credentials.revoke"
+
+// NewAuditEntry starts an entry for a change a handler records itself, with
+// audit.Append inside the transaction that makes the change, so the two commit
+// together: the action, the route and its URL parameters, where the request
+// came from and, from its claims, who made it. It is a success, answered 200,
+// at the given time; the handler adds to the target.
+func NewAuditEntry(action string, r *http.Request, at time.Time) *models.AuditEntry {
+	e := newEntry(action, r, http.StatusOK, at)
 	if claims := GetClaims(r); claims != nil {
-		actorFromClaims(&e, claims)
+		actorFromClaims(e, claims)
 	}
 	return e
+}
+
+// RequestEntry is NewAuditEntry for a change answered with status, now, as a
+// value: the entry grants.Add and grants.Remove write in the change's own
+// transaction.
+func RequestEntry(r *http.Request, action string, status int) models.AuditEntry {
+	e := newEntry(action, r, status, time.Now())
+	if claims := GetClaims(r); claims != nil {
+		actorFromClaims(e, claims)
+	}
+	return *e
 }
 
 // actorFromClaims makes the token's account the actor, and its jti the session.
@@ -243,6 +323,10 @@ func actorFromClaims(e *models.AuditEntry, claims *auth.Claims) {
 	}
 	e.ActorID = &id
 	e.SessionID = claims.ID
+	if claims.CredentialID != 0 {
+		credentialID := claims.CredentialID
+		e.CredentialID = &credentialID
+	}
 }
 
 // namedActor makes the account a request names the actor; its id is looked up

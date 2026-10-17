@@ -416,8 +416,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		t.Log("AUTH PLAIN after STARTTLS succeeded")
 
 		// Authenticated submission relays OUTBOUND to an external recipient (the
-		// real use case) — queued for delivery, not looped back through the
-		// inbound DMARC pipeline as a same-domain self-inject.
+		// real use case) — queued for delivery.
 		subject := fmt.Sprintf("auth-tls-test-%d", time.Now().UnixNano())
 		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "RCPT TO:<alice@mail1.test>", "250")

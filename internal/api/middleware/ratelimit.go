@@ -93,6 +93,27 @@ func (rl *rateLimiter) allow(key string) (bool, time.Duration) {
 	return false, wait
 }
 
+// available reports whether key has a token to spend now, without spending
+// it: for a limiter that charges only for failures, checked before the work
+// whose failure it charges for. When it does not, it returns the estimated
+// wait until one accrues.
+func (rl *rateLimiter) available(key string) (bool, time.Duration) {
+	now := rl.now()
+
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	b, ok := rl.buckets[key]
+	if !ok {
+		return true, 0
+	}
+	tokens := math.Min(rl.burst, b.tokens+now.Sub(b.last).Seconds()*rl.rps)
+	if tokens >= 1 {
+		return true, 0
+	}
+	return false, time.Duration((1 - tokens) / rl.rps * float64(time.Second))
+}
+
 // sweepLocked evicts buckets untouched for longer than ttl. It runs at most once
 // per ttl window to keep the amortized cost negligible. Caller holds rl.mu.
 func (rl *rateLimiter) sweepLocked(now time.Time) {
@@ -129,15 +150,20 @@ func RateLimit(cfg RateLimitConfig) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			allowed, retry := rl.allow(clientIP(r))
 			if !allowed {
-				secs := int(math.Ceil(retry.Seconds()))
-				if secs < 1 {
-					secs = 1
-				}
-				w.Header().Set("Retry-After", strconv.Itoa(secs))
-				writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests; please slow down")
+				writeRateLimited(w, retry)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// writeRateLimited answers 429 with a Retry-After of retry, at least a second.
+func writeRateLimited(w http.ResponseWriter, retry time.Duration) {
+	secs := int(math.Ceil(retry.Seconds()))
+	if secs < 1 {
+		secs = 1
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests; please slow down")
 }

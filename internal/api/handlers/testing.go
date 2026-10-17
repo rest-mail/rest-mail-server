@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -281,7 +280,7 @@ func (h *TestHandler) ResetTestData(w http.ResponseWriter, r *http.Request) {
 			"attachments", "messages", "outbound_queue",
 			"quarantines", "vacation_configs", "vacation_responses",
 			"contacts", "sieve_scripts", "quota_usages",
-			"linked_accounts", "webmail_accounts",
+			"credentials", "linked_accounts", "webmail_accounts",
 			"aliases", "pipeline_logs", "message_traces", "pipelines", "custom_filters",
 			"bans", "activity_logs", "restmail_capabilities",
 			"dkim_keys", "certificates",
@@ -403,7 +402,7 @@ func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 			"attachments", "messages", "outbound_queue",
 			"quarantines", "vacation_configs", "vacation_responses",
 			"contacts", "sieve_scripts", "quota_usages",
-			"linked_accounts", "webmail_accounts",
+			"credentials", "linked_accounts", "webmail_accounts",
 			"aliases", "pipeline_logs", "message_traces", "pipelines", "custom_filters",
 			"bans", "activity_logs", "restmail_capabilities",
 			"dkim_keys", "certificates",
@@ -531,7 +530,7 @@ func probeDB(db *gorm.DB) map[string]any {
 
 // seedTestData creates the standard test domains, mailboxes, aliases, and accounts.
 func seedTestData(database *gorm.DB) error {
-	defaultPassword, err := auth.HashPassword("password123")
+	defaultPassword, err := hashPassword("password123")
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
+	rmail "github.com/restmail/restmail/internal/mail"
+	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 )
 
@@ -14,11 +17,14 @@ import (
 // and no longer imports gorm or the DB models.
 type dbStore struct {
 	db *gorm.DB
+	// masterKey decrypts a domain's at-rest DKIM key, as the queue worker's
+	// does (Worker.SetMasterKey). Empty when keys are stored as plaintext.
+	masterKey string
 }
 
 // NewStore returns a database-backed Store for the SMTP gateway.
-func NewStore(db *gorm.DB) Store {
-	return &dbStore{db: db}
+func NewStore(db *gorm.DB, masterKey string) Store {
+	return &dbStore{db: db, masterKey: masterKey}
 }
 
 // SenderAuthorized runs the same linked_accounts -> mailboxes lookup the session
@@ -80,6 +86,19 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 		return nil, err
 	}
 	return &row.ID, nil
+}
+
+// CredentialUsable checks the credentials table directly, as SenderAuthorized
+// checks linked accounts.
+func (s *dbStore) CredentialUsable(credentialID uint) (bool, error) {
+	return repositories.NewCredentialRepository(s.db).Usable(credentialID, time.Now())
+}
+
+// PrepareSubmitted runs the transforms the queue worker runs on the same
+// submission's remote copies, so a local mailbox receives what a remote one
+// does.
+func (s *dbStore) PrepareSubmitted(sender, raw string) (string, error) {
+	return outbound.Prepare(s.db, s.masterKey, rmail.DomainFromAddress(sender), raw)
 }
 
 // EnqueueOutbound inserts the message into the outbound queue with the same

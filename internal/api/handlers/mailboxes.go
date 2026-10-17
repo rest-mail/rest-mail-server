@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
@@ -98,7 +98,7 @@ func (h *MailboxHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hashedPassword, err := auth.HashPassword(req.Password)
+	hashedPassword, err := hashPassword(req.Password)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
 		return
@@ -191,7 +191,7 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 			respond.ValidationError(w, map[string]string{"password": "must be at least 8 characters"})
 			return
 		}
-		hashed, err := auth.HashPassword(*req.Password)
+		hashed, err := hashPassword(*req.Password)
 		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
 			return
@@ -217,7 +217,18 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(cols) > 0 {
-		if err := h.db.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
+				return err
+			}
+			// A new password revokes every app password made under the old
+			// one, in this transaction: none may outlive it.
+			if req.Password != nil {
+				return revokeAppPasswordsForNewPassword(tx, r, mailbox.ID, time.Now())
+			}
+			return nil
+		})
+		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
 			return
 		}

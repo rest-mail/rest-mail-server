@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-17 — App passwords
+A mailbox can give each mail client or automation a named, revocable app password (`rm_<public id>_<secret>`), shown once and stored only as a SHA-256 of its secret. It signs in over IMAP, POP3 and SMTP, and with HTTP Basic on the mail routes of the REST API, reaching only its own mailbox; it never signs in at `POST /api/v1/auth/login` and never manages credentials, passwords or 2FA. Making one takes the mailbox's current password, entered again. Revoking one stops it at the next request, and a new password for the mailbox revokes them all. Creation, revocation, refusals and protocol sign-ins go into the audit log. [§3.3](#33-auth).
+
 ### 2026-10-15 — The installer shows the admin password as a QR code
 `restmail sign-in-link` draws the link that opens the rest-mail app signed in — `https://rest-mail.com/setup#server=…&username=…&password=…` — as a QR code a phone's camera opens, and always prints the link, server, username and password as text too. `chore install:helm`, `install:pulumi` and `password:reset` show the password they made that way. [§7.9](#79-first-start-of-a-production-install).
 
@@ -112,6 +115,7 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 - `aliases` — domain_id, source_address, destination_address, active
 - `webmail_accounts` — primary_mailbox_id
 - `linked_accounts` — webmail_account_id, mailbox_id
+- `credentials` — owner_kind + owner_id (a mailbox), kind (`app_password`), name, public_id (unique), secret_hash (SHA-256), scope (JSONB), created_by_kind + created_by_id, created_at, last_used_at, expires_at, revoked_at. Never deleted: a revoked one stays for the audit trail.
 - `messages` — mailbox_id, folder, message_id, subject, body_text, body_html, sender, recipients_to/cc (JSONB), size_bytes, is_read / is_flagged / is_starred / is_draft / is_deleted, received_at, date_header, thread_id, in_reply_to, references
 - `quota_usage` — mailbox_id, subject_bytes, body_bytes, attachment_bytes, total_bytes (GENERATED), message_count
 - `attachments` — message_id, filename, content_type, size, checksum (indexed for dedup), storage_type, storage_ref, is_inline
@@ -121,13 +125,14 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 
 ### 3.3 Auth
 - Password hashing: bcrypt cost 10, stored with `{BLF-CRYPT}` prefix (Dovecot-compatible). Implementation at [internal/auth/auth.go](../internal/auth/auth.go).
-- JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. Claims: `sub`, `email`, `webmail_account_id`, `iss=restmail`, `iat`, `exp`; an admin's also `amr` (how it signed in: `pwd`, plus `otp` with 2FA). No capabilities.
+- JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. Claims: `sub`, `email`, `webmail_account_id`, `iss=restmail`, `iat`, `exp`; an admin's also `amr` (how it signed in: `pwd`, plus `otp` with 2FA), a mailbox's `mfa` when its sign-in took 2FA; a refresh keeps both. No capabilities. An app password makes no token: the gateways send it with HTTP Basic on every request.
 - Refresh flow: axios response interceptor in admin / webmail detects 401 → `POST /api/v1/auth/refresh` → retry request → logout on refresh failure.
 - RBAC: an admin holds **grants** (`grants` table, [internal/grants](../internal/grants/)): a role at a scope, `*`, `domain:<name>` or `mailbox:<address>`, each covering everything beneath it, `active` or `eligible` (eligible does nothing until switched on). `RequireCapability` reads the caller's grants in force on every request (a 5-second cache, emptied by every grant change made through that replica, and never kept past an expiry), never the token. Routes on the domain or mailbox their `{id}` names accept a grant covering it; every other route needs the capability at `*`. Wildcard `*` = superadmin. Capabilities use `resource:action` format (e.g. `domains:write`, `users:delete`). The login response's `capabilities` lists what the grants give at `*` (`["*"]` for a superadmin), for display; client-side checks are UX only.
 - Changing grants (`POST`/`DELETE /admin/grants`, or `role_ids` on an admin user) needs `users:write`, a session whose `amr` includes `otp`, and holding every capability of the role at a scope covering the grant's. Each change and its audit entry commit in one transaction. The last superadmin grant at `*` held by an active admin who can use it (active, or eligible with an authenticator to switch it on) cannot be removed.
 - Escalation (#346): an **eligible** grant gives nothing until its holder switches it on: `POST /admin/grants/{id}/activate` with `{reason, minutes, totp_code}` (or `recovery_code`). `minutes` defaults to 60, at most 240; the code must be given in the body, as a session's own 2FA is not enough. It stays on until it runs out (never past the grant's own expiry) or `POST /admin/grants/{id}/deactivate`. Only the grant's holder can do either (anyone else gets 404). `GET /admin/grants/mine` lists the caller's grants with any activation and `seconds_left`, for an "Escalate" button. Activations live in `grant_activations`; `grants.activate`, `grants.deactivate` and `grants.expire` go into the audit log in the same transaction. Expiry is recorded when noticed, by a sweeper in the API every minute or when `grants/mine` is read; the access stops at the moment it runs out regardless.
 - Superadmin is eligible for a new install's first admin, who works day to day with `admin` at `*`. An admin holding a grant active (the owner of an install from before #346 holds `superadmin` active) can choose to hold it only when needed: `POST /admin/grants/{id}/make-eligible` with a fresh code, recorded as `grants.make_eligible`. Nothing makes it eligible for them. An owner whose only grant is `superadmin` should first grant themselves `admin` at `*` (`POST /admin/grants`), or day-to-day work needs escalating too. Making a grant eligible is one way: only another superadmin can make it active again.
 - Migration: the first start with grants turns each `admin_users_roles` row into an active grant at `*`, once (`grants.Migrate`). The old table is kept, unread, for one release.
+- App passwords: `POST /api/v1/accounts/{id}/credentials` (a session from a password sign-in, with its 2FA code when the mailbox has 2FA, and the mailbox's current password entered again in `password`: `401 reauth_required` without it, `401 invalid_password` when it is wrong, checked with bcrypt against the hash as it is now and throttled with login's budget) makes one and shows it once; `GET` lists them, `DELETE …/{credential_id}` revokes one. A new password for the mailbox (`PATCH /api/v1/admin/mailboxes/{id}` with `password`) revokes all of them, in the transaction that sets it, with a `credentials.revoke` audit entry for each, `reason` `password_changed`. The mail routes take one with HTTP Basic (`address:app_password`), checked on every request; the gateways sign a client in with one through `POST /api/v1/auth/protocol-sign-in` and send it with each request, so a revoked one stops at the client's next command, and SMTP rechecks it before each message. Its scope is its own mailbox (read, write, send): never a linked one. Refusals are throttled at login's rate, per client IP for guesses and per credential for one whose secret matched. Implementation at [internal/api/middleware/app_password.go](../internal/api/middleware/app_password.go) and [internal/db/repositories/credential.go](../internal/db/repositories/credential.go).
 - Account setup: an admin flagged `password_change_required`, or `two_factor_required` without a confirmed authenticator, is *in setup*. Its sessions carry the `setup` claim; `AdminOnly` answers `403 setup_required` on every admin route, and refresh re-derives the state from the database so it is no way out. Login reports what is owed in `setup_required`. The roles and the first admin of a fresh install come from [internal/bootstrap](../internal/bootstrap/bootstrap.go) at every API start — see [§7.9](#79-first-start-of-a-production-install).
 
 ### 3.4 Web framework & runtime
@@ -157,6 +162,8 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - `POST /api/v1/auth/login` — returns access token + sets refresh cookie
 - `POST /api/v1/auth/logout` — revoke session
 - `POST /api/v1/auth/refresh` — rotate access token
+- `POST /api/v1/auth/protocol-sign-in` — a gateway signs a mail client in with an app password (HTTP Basic)
+- `GET|POST /api/v1/accounts/:id/credentials`, `DELETE /api/v1/accounts/:id/credentials/:credential_id` — app passwords
 
 #### User-level mail (authenticated)
 - `GET /api/v1/accounts` — list linked mailboxes
@@ -268,6 +275,8 @@ Implementations at [internal/gateway/smtp/](../internal/gateway/smtp/), [interna
 - **SMTP**: inbound (25), submission (587), implicit TLS (465). Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+72h`, `MaxRetries: 30`.
 - **IMAP**: 143 / 993. A thin `Backend` adapter over the `rest-mail/imap` server library; the library handles the IMAP protocol (SELECT/FETCH/SEARCH/EXPUNGE/CREATE etc.) and the gateway serves mailbox data from the REST/DB layer.
 - **POP3**: 110 / 995. A thin `Backend` adapter over the `rest-mail/pop3` server library (STAT/LIST/RETR/DELE/QUIT).
+
+All three sign a client in through the API: the mailbox's own password through `POST /api/v1/auth/login`, an app password (recognised by its format) through `POST /api/v1/auth/protocol-sign-in`, after which every API call carries it with HTTP Basic.
 
 #### Outbound queue worker
 At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Polls `outbound_queue`, attempts delivery, parses SMTP errors via `SMTPError{Code, Enhanced, Message}` + `parseSMTPError()`, and:

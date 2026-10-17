@@ -40,7 +40,7 @@ func (h *SieveHandler) resolveMailboxID(r *http.Request, accountIDStr string) (u
 	if err != nil {
 		return 0, err
 	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
+	return resolveAccountMailbox(h.db, uint(accountID), claims)
 }
 
 // GetScript returns the Sieve script for a mailbox.

@@ -65,8 +65,11 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # -timeout is per package, and the race detector slows these packages
+      # several times over: internal/api/handlers once ran past go test's
+      # default 10 minutes. 20 leaves headroom while a hung test still fails.
       - name: Run unit tests with race detector
-        run: go test -race -count=1 -coverprofile=coverage.out ./internal/...
+        run: go test -race -count=1 -timeout=20m -coverprofile=coverage.out ./internal/...
         env:
           DB_HOST: localhost
           DB_PORT: "5432"

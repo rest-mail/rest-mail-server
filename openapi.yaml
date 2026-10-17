@@ -11,7 +11,7 @@ info:
     ## Authentication & authorization
 
 
-    The API uses six distinct auth modes; each operation's `security` block and,
+    The API uses seven distinct auth modes; each operation's `security` block and,
     for admin routes, its `x-required-capability` field state which applies.
 
 
@@ -27,6 +27,19 @@ info:
       is no longer in the login/refresh JSON body). Bearer requests send no cookie
       and are exempt from the CSRF check. Admin operations additionally require the
       caller's token to carry the admin role (mailbox-only tokens get `403`).
+
+    * **App password** (`AppPasswordAuth`) — HTTP Basic, with a mailbox's
+      address as the user name and one of its app passwords
+      (`rm_<public id>_<secret>`) as the password. For mail clients and
+      automations: accepted only by the operations whose `security` lists it,
+      the mail routes of the mailbox it belongs to (folders, messages, drafts,
+      attachments, contacts, vacation, Sieve, search, quarantine, calendar). It
+      reaches that mailbox alone, never one its account has linked. It is
+      checked on every request, so one that is revoked or expires stops working
+      at the next. Never accepted by `POST /api/v1/auth/login`, nor by password,
+      2FA, linking or credential operations: those need a session from signing
+      in with a password. A mailbox's own password is never accepted with Basic.
+      A refused one gets `401`; repeated refusals from one client get `429`.
 
     * **RBAC capability** — admin operations are gated by a named capability in
       addition to the admin role. The required capability is given per operation as
@@ -73,7 +86,9 @@ info:
 
 
     Sign-ins (successful or not), sign-outs, failed refreshes, resets, owner
-    requests, password and 2FA changes, linking and unlinking accounts, and every
+    requests, password and 2FA changes, linking and unlinking accounts, creating
+    and revoking app passwords, every refused app password, sign-ins with one
+    over IMAP, POP3 or SMTP, and every
     request other than GET to the admin API are each recorded as one entry in an
     append-only, hash-chained audit log: who acted (and with which session), the
     route and its parameters, and how it ended. Passwords and tokens are never
@@ -98,6 +113,8 @@ tags:
     description: Authentication (no auth)
   - name: Accounts
     description: Linked mailbox accounts (JWT)
+  - name: Credentials
+    description: A mailbox's app passwords (JWT from a password sign-in; never an app password)
   - name: Folders
     description: Mailbox folders (JWT)
   - name: Messages
@@ -547,12 +564,79 @@ paths:
         "422":
           description: New password missing, shorter than 12 characters, or unchanged
 
+  /api/v1/auth/protocol-sign-in:
+    post:
+      operationId: protocolSignIn
+      tags: [Auth]
+      summary: Sign a mail client in with an app password (protocol gateways)
+      description: >
+        How the IMAP, POP3 and SMTP gateways sign in a mail client that gave an
+        app password: the request carries the address and the app password with
+        HTTP Basic, and the audit log records the sign-in
+        (`auth.protocol_sign_in`) with the credential and the protocol. It
+        answers with the account, so the gateway knows which account the
+        requests it then makes, each with the same Basic credentials, are for.
+        No session is made. A session cannot use it. A refused app password is
+        recorded as `auth.app_password`. Throttled like login.
+      security:
+        - AppPasswordAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [protocol]
+              properties:
+                protocol:
+                  type: string
+                  enum: [imap, pop3, smtp]
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [user, credential_id]
+                    properties:
+                      user:
+                        type: object
+                        required: [id, email, display_name]
+                        properties:
+                          id:
+                            type: integer
+                            description: The account id, as in /api/v1/accounts/{id}
+                          email:
+                            type: string
+                            format: email
+                          display_name:
+                            type: string
+                      credential_id:
+                        type: integer
+        "400":
+          description: Not an app password (`app_password_required`), or an invalid body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: protocol is not imap, pop3 or smtp
+        "429":
+          description: Too many refused app passwords from this client, or too many sign-ins
+
   # ═══════════════════════════════════════════════════════════════
   # Accounts
   # ═══════════════════════════════════════════════════════════════
   /api/v1/accounts:
     get:
       operationId: listAccounts
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Accounts]
       summary: List linked mailbox accounts
       responses:
@@ -603,6 +687,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getAccount
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Accounts]
       summary: Get a specific linked account
       responses:
@@ -656,6 +744,135 @@ paths:
           $ref: "#/components/responses/ValidationError"
 
   # ═══════════════════════════════════════════════════════════════
+  # Credentials (app passwords)
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/accounts/{id}/credentials:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listCredentials
+      tags: [Credentials]
+      summary: List the mailbox's app passwords
+      description: >
+        The app passwords of the session's own mailbox that are not revoked,
+        newest first; expired ones are included. Never a secret or its hash.
+        `{id}` must be the session's own account: never one it has linked.
+      responses:
+        "200":
+          description: The app passwords
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Credential"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a mailbox session
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createAppPassword
+      tags: [Credentials]
+      summary: Make an app password
+      description: >
+        Makes an app password for a mail client or an automation and answers
+        with it, the only time it is ever shown; the server keeps only a SHA-256
+        of its secret. Its scope is the mailbox, with mail:read, mail:write and
+        mail:send. Needs a session from signing in with the mailbox's password,
+        and, when the mailbox has 2FA, with its code too (`403
+        two_factor_required` otherwise). It also needs the mailbox's current
+        password, entered again in `password`, as Gmail and GitHub ask for it:
+        a session from before a change of password works until its access
+        token expires, and must not make an app password that outlives the
+        change. Throttled like login, with the same budget. Recorded in the
+        audit log as `credentials.create`, with the name, id and public id; a
+        refused attempt is recorded as denied, with its error code. The
+        password is never stored, recorded or answered with.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, password]
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                  example: iPhone Mail
+                expires_at:
+                  type: string
+                  format: date-time
+                  description: When it stops working; in the future. Omit for never.
+                password:
+                  type: string
+                  format: password
+                  writeOnly: true
+                  description: The mailbox's current password, entered again.
+      responses:
+        "201":
+          description: Made; `password` is shown this once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CreatedAppPassword"
+        "401":
+          description: >
+            No valid session, or the mailbox's current password was not given
+            (`reauth_required`) or is wrong (`invalid_password`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: >
+            Not a mailbox session, or the mailbox has 2FA and the session's
+            sign-in did not take it (`two_factor_required`)
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: name missing or longer than 100 characters, or expires_at not in the future
+        "429":
+          description: Too many attempts from this client; shares login's budget
+
+  /api/v1/accounts/{id}/credentials/{credential_id}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - name: credential_id
+        in: path
+        required: true
+        schema:
+          type: integer
+    delete:
+      operationId: revokeCredential
+      tags: [Credentials]
+      summary: Revoke an app password
+      description: >
+        Revokes it: the next request made with it is refused, and an SMTP
+        session signed in with it sends nothing more. It stays in the table,
+        revoked, for the audit trail, and leaves the list. Recorded in the audit
+        log as `credentials.revoke`.
+      responses:
+        "204":
+          description: Revoked
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a mailbox session
+        "404":
+          description: No such app password of this mailbox, or already revoked
+
+  # ═══════════════════════════════════════════════════════════════
   # Folders
   # ═══════════════════════════════════════════════════════════════
   /api/v1/accounts/{id}/folders:
@@ -663,6 +880,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listFolders
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Folders]
       summary: List folders for an account
       responses:
@@ -680,6 +901,10 @@ paths:
                       $ref: "#/components/schemas/Folder"
     post:
       operationId: createFolder
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Folders]
       summary: Create a new folder
       requestBody:
@@ -708,6 +933,10 @@ paths:
       - $ref: "#/components/parameters/FolderName"
     patch:
       operationId: renameFolder
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Folders]
       summary: Rename a folder
       requestBody:
@@ -731,6 +960,10 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteFolder
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Folders]
       summary: Delete a folder
       responses:
@@ -748,6 +981,10 @@ paths:
       - $ref: "#/components/parameters/FolderName"
     get:
       operationId: listMessages
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Messages]
       summary: List messages in a folder with cursor pagination
       parameters:
@@ -781,6 +1018,10 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: getMessage
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Messages]
       summary: Get a single message by ID
       responses:
@@ -798,6 +1039,10 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       operationId: updateMessage
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Messages]
       summary: Update message flags or move to another folder
       requestBody:
@@ -821,6 +1066,10 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteMessage
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Messages]
       summary: Delete a message
       responses:
@@ -832,6 +1081,10 @@ paths:
   /api/v1/messages/send:
     post:
       operationId: sendMessage
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Messages]
       summary: Compose and send a new message
       requestBody:
@@ -859,6 +1112,10 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: getRawMessage
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Messages]
       summary: Get the raw RFC 2822 message source
       responses:
@@ -876,6 +1133,10 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: forwardMessage
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Messages]
       summary: Forward a message
       requestBody:
@@ -904,6 +1165,10 @@ paths:
   /api/v1/messages/draft:
     post:
       operationId: saveDraft
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Drafts]
       summary: Save a new draft
       requestBody:
@@ -929,6 +1194,10 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     put:
       operationId: updateDraft
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Drafts]
       summary: Update an existing draft
       requestBody:
@@ -956,6 +1225,10 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: sendDraft
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Drafts]
       summary: Send a saved draft
       responses:
@@ -986,6 +1259,10 @@ paths:
         description: Thread identifier
     get:
       operationId: getThread
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Threads]
       summary: Get all messages in a thread
       responses:
@@ -1012,6 +1289,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getQuota
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Quota]
       summary: Get mailbox quota usage
       responses:
@@ -1034,6 +1315,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: searchMessages
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Search]
       summary: Search messages with filters
       parameters:
@@ -1107,6 +1392,10 @@ paths:
         description: Attachment ID
     get:
       operationId: getAttachment
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Attachments]
       summary: Download an attachment
       responses:
@@ -1125,6 +1414,10 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     get:
       operationId: listAttachments
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Attachments]
       summary: List attachments for a message
       responses:
@@ -1149,6 +1442,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listContacts
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Contacts]
       summary: List contacts for an account
       parameters:
@@ -1176,6 +1473,10 @@ paths:
                       $ref: "#/components/schemas/Contact"
     post:
       operationId: createContact
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Contacts]
       summary: Create a new contact
       requestBody:
@@ -1209,6 +1510,10 @@ paths:
         description: Contact ID
     patch:
       operationId: updateContact
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Contacts]
       summary: Update a contact
       requestBody:
@@ -1232,6 +1537,10 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: deleteContact
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Contacts]
       summary: Delete a contact
       responses:
@@ -1245,6 +1554,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: blockSender
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Contacts]
       summary: Block a sender
       requestBody:
@@ -1275,6 +1588,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: importContacts
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Contacts]
       summary: Bulk import contacts
       requestBody:
@@ -1304,6 +1621,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: suggestContacts
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Contacts]
       summary: Autocomplete contacts by query
       parameters:
@@ -1334,6 +1655,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getVacation
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Vacation]
       summary: Get vacation auto-reply settings
       responses:
@@ -1349,6 +1674,10 @@ paths:
                     $ref: "#/components/schemas/VacationConfig"
     put:
       operationId: setVacation
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Vacation]
       summary: Set vacation auto-reply settings
       requestBody:
@@ -1370,6 +1699,10 @@ paths:
                     $ref: "#/components/schemas/VacationConfig"
     delete:
       operationId: disableVacation
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Vacation]
       summary: Disable vacation auto-reply
       responses:
@@ -1384,6 +1717,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: getSieveScript
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Sieve]
       summary: Get the Sieve filter script
       responses:
@@ -1401,6 +1738,10 @@ paths:
           $ref: "#/components/responses/NotFound"
     put:
       operationId: putSieveScript
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Sieve]
       summary: Create or replace the Sieve filter script
       requestBody:
@@ -1422,6 +1763,10 @@ paths:
                     $ref: "#/components/schemas/SieveScript"
     delete:
       operationId: deleteSieveScript
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Sieve]
       summary: Delete the Sieve filter script
       responses:
@@ -1446,6 +1791,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     post:
       operationId: validateSieveScript
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Sieve]
       summary: Validate a Sieve script without saving
       requestBody:
@@ -1484,6 +1833,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listQuarantine
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Quarantine]
       summary: List quarantined messages
       responses:
@@ -1511,6 +1864,10 @@ paths:
         description: Quarantine entry ID
     post:
       operationId: releaseQuarantine
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Quarantine]
       summary: Release a quarantined message to inbox
       responses:
@@ -1547,6 +1904,10 @@ paths:
         description: Quarantine entry ID
     delete:
       operationId: deleteQuarantine
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Quarantine]
       summary: Permanently delete a quarantined message
       responses:
@@ -1935,6 +2296,11 @@ paths:
       tags: ["Admin: Mailboxes"]
       x-required-capability: mailboxes:write
       summary: Update a mailbox
+      description: |
+        A new `password` ends every session of the mailbox. It also revokes
+        all the mailbox's app passwords, in the transaction that sets it,
+        recording each in the audit log as `credentials.revoke` with `reason`
+        `password_changed`.
       requestBody:
         required: true
         content:
@@ -3654,6 +4020,10 @@ paths:
       - $ref: "#/components/parameters/MessageId"
     post:
       operationId: respondToCalendar
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Calendar]
       summary: Send an iMIP reply to a calendar invitation in a message
       requestBody:
@@ -3705,6 +4075,10 @@ paths:
       - $ref: "#/components/parameters/AccountId"
     get:
       operationId: listCalendarEvents
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+        - AppPasswordAuth: []
       tags: [Calendar]
       summary: List calendar events (grouped by UID, latest version) for the mailbox
       responses:
@@ -4664,6 +5038,14 @@ components:
         cannot read it. This is the transport used by the web frontends. State-
         changing requests (POST/PUT/PATCH/DELETE) additionally require the
         double-submit CSRF header (see the CSRFToken parameter).
+    AppPasswordAuth:
+      type: http
+      scheme: basic
+      description: >
+        A mailbox's address and one of its app passwords, as HTTP Basic
+        (`curl -u 'address:rm_…'`). Checked on every request. Accepted only by
+        the operations that list it; see "App password" above. Answers never
+        carry WWW-Authenticate.
     BearerAuth:
       type: http
       scheme: bearer
@@ -4950,6 +5332,46 @@ components:
           type: string
         is_primary:
           type: boolean
+
+    Credential:
+      type: object
+      description: An app password, as its owner sees it. Never its secret or hash.
+      required: [id, name, kind, public_id, created_at, last_used_at, expires_at]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [app_password]
+        public_id:
+          type: string
+          description: The part of the app password after `rm_` and before the secret
+          example: 7Kq2xT9bLm4P
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+          description: When it was last used, to within a minute
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+
+    CreatedAppPassword:
+      allOf:
+        - $ref: "#/components/schemas/Credential"
+        - type: object
+          required: [password]
+          properties:
+            password:
+              type: string
+              pattern: "^rm_[A-Za-z0-9]{12}_[A-Za-z0-9]{43}$"
+              description: >
+                The app password, shown this once. Use it with the mailbox's
+                address as the password of a mail client, or with HTTP Basic.
 
     LinkAccountRequest:
       type: object
@@ -6232,7 +6654,10 @@ components:
           description: The address or username at the time
         credential_id:
           type: [integer, "null"]
-          description: The credential used (not yet recorded)
+          description: >
+            The app password the request was made with, or the one refused when
+            its secret matched (revoked, expired, another mailbox's); null for a
+            session
         session_id:
           type: string
           description: The jti of the token the request carried

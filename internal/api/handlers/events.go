@@ -258,7 +258,7 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Resolve mailbox ID (same logic as MessageHandler.resolveAccountMailbox)
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -330,6 +330,6 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 // resolveAccountMailbox looks up the mailbox ID for an account. It first checks
 // if the account is a WebmailAccount owned by the caller, then falls back to
 // checking LinkedAccounts.
-func (h *EventHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
-	return resolveAccountMailbox(h.db, accountID, webmailAccountID)
+func (h *EventHandler) resolveAccountMailbox(accountID uint, claims *auth.Claims) (uint, error) {
+	return resolveAccountMailbox(h.db, accountID, claims)
 }

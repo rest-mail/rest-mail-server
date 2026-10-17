@@ -204,6 +204,9 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		// (secret encrypted at rest) plus its hashed one-time recovery codes.
 		&models.TwoFactor{},
 		&models.TwoFactorRecoveryCode{},
+		// Credentials (#344): app passwords, 0..n per mailbox, kept after
+		// revocation for the audit trail.
+		&models.Credential{},
 		// DMARC aggregate (rua) reporting
 		&models.DMARCAggregateRecord{},
 	)

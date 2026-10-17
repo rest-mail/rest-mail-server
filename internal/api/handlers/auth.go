@@ -486,7 +486,8 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 	// Second factor (OSI-19): only reached with a correct password, so a 2FA
 	// challenge never leaks whether the address exists or has 2FA. No-op for
 	// mailboxes without 2FA, before any account side effects.
-	if ok, _ := h.enforce2FA(w, "mailbox", mailbox.ID, req); !ok {
+	ok, twoFactor := h.enforce2FA(w, "mailbox", mailbox.ID, req)
+	if !ok {
 		return
 	}
 
@@ -500,8 +501,9 @@ func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
 		}
 	}
 
-	// Generate tokens
-	tokens, err := h.jwtService.GenerateTokenPair(mailbox.ID, mailbox.Address, account.ID)
+	// Generate tokens. The session remembers whether the sign-in took a second
+	// factor: creating an app password needs one, on a mailbox that has 2FA.
+	tokens, err := h.jwtService.GenerateMailboxSession(mailbox.ID, mailbox.Address, account.ID, twoFactor)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
@@ -650,7 +652,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		tokens, err = h.jwtService.GenerateAdminSession(claims.AdminUserID, claims.Username, epoch, claims.AMR)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else {
-		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID)
+		tokens, err = h.jwtService.GenerateMailboxSession(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.TwoFactor)
 		userType, subjectID = "mailbox", claims.MailboxID
 	}
 	if err != nil {
@@ -744,7 +746,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := auth.HashPassword(req.NewPassword)
+	hash, err := hashPassword(req.NewPassword)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
 		return

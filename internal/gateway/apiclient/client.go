@@ -11,7 +11,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
+
+	"github.com/restmail/restmail/internal/auth"
 )
 
 const (
@@ -138,6 +141,9 @@ func New(baseURL string, opts ...Option) *Client {
 
 type LoginResponse struct {
 	Data struct {
+		// AccessToken is what the calls that follow pass as their token: the
+		// session's JWT, or after SignInWithAppPassword the app password's HTTP
+		// Basic credentials.
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 		User        struct {
@@ -148,12 +154,65 @@ type LoginResponse struct {
 		// Capabilities is what an admin holds at "*", for showing; the token
 		// carries none.
 		Capabilities []string `json:"capabilities"`
+		// CredentialID is the app password signed in with; 0 after Login.
+		CredentialID uint `json:"credential_id"`
 	} `json:"data"`
 }
 
 // Login authenticates a mailbox user and returns an access token.
 func (c *Client) Login(email, password string) (*LoginResponse, error) {
 	return c.login(map[string]string{"email": email, "password": password})
+}
+
+// SignIn signs a mail client in over protocol ("imap", "pop3" or "smtp") with
+// what it gave as its password: an app password (#344), which the API refuses
+// at /api/v1/auth/login, or else the mailbox's own password.
+func (c *Client) SignIn(email, password, protocol string) (*LoginResponse, error) {
+	if auth.IsAppPassword(password) {
+		return c.SignInWithAppPassword(email, password, protocol)
+	}
+	return c.Login(email, password)
+}
+
+// SignInWithAppPassword signs a mail client in with an app password, and
+// returns the account it is for. No session is made: the response's
+// AccessToken holds the address and app password as HTTP Basic credentials,
+// which every call that follows sends, and the API checks them each time, so a
+// revoked app password stops working at the next call.
+func (c *Client) SignInWithAppPassword(email, appPassword, protocol string) (*LoginResponse, error) {
+	jsonBody, err := json.Marshal(map[string]string{"protocol": protocol})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", c.baseURL+"/api/v1/auth/protocol-sign-in", bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(email, appPassword)
+	req.Header.Set("Content-Type", "application/json")
+	httpResp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("POST /api/v1/auth/protocol-sign-in: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	var resp LoginResponse
+	if err := c.decodeResponse(httpResp, &resp); err != nil {
+		return nil, err
+	}
+	resp.Data.AccessToken = req.Header.Get("Authorization")
+	return &resp, nil
+}
+
+// authorize sets the Authorization header of a call made with token: HTTP Basic
+// credentials as SignInWithAppPassword returns them, or else a JWT access
+// token, sent as Bearer.
+func authorize(req *http.Request, token string) {
+	if strings.HasPrefix(token, "Basic ") {
+		req.Header.Set("Authorization", token)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 }
 
 // LoginAdmin authenticates an admin user and returns an access token.
@@ -470,7 +529,7 @@ func (c *Client) GetRawMessage(token string, msgID uint) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	authorize(req, token)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("GET raw message %d: %w", msgID, err)
@@ -747,7 +806,7 @@ func (c *Client) getAuth(path, token string, out interface{}) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	authorize(req, token)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("GET %s: %w", path, err)
@@ -765,7 +824,7 @@ func (c *Client) postAuth(path, token string, body interface{}, out interface{})
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -787,7 +846,7 @@ func (c *Client) patchAuth(path, token string, body interface{}, out interface{}
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	authorize(req, token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -805,7 +864,7 @@ func (c *Client) deleteAuth(path, token string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	authorize(req, token)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("DELETE %s: %w", path, err)

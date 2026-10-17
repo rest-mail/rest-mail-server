@@ -117,9 +117,7 @@ func testStage3GatewayInbound(t *testing.T) {
 
 		// Authenticated submission relays OUTBOUND to an external recipient (the
 		// real submission use case) — verified on the mail1 reference server.
-		// (A same-domain self-submit would loop back through the inbound DMARC
-		// pipeline, which SPF-fails an unauthenticated-looking restmail.test
-		// sender from the submitting client IP.)
+		// Stage 14 sends to a local mailbox.
 		sc.authPlain(t, "testuser@restmail.test", adminPassword)
 		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "RCPT TO:<alice@mail1.test>", "250")

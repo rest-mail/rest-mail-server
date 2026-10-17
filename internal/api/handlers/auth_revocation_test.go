@@ -14,7 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -36,14 +35,7 @@ func revUniq() string {
 // convention.
 func openRevocationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("session-revocation DB test skipped: no database reachable (%v)", err)
 	}
@@ -61,6 +53,8 @@ func openRevocationTestDB(t *testing.T) *gorm.DB {
 		&models.Grant{},
 		&models.GrantActivation{},
 		&models.TwoFactor{},
+		// A mailbox's new password revokes its app passwords.
+		&models.Credential{},
 	); err != nil {
 		t.Skipf("session-revocation DB test skipped: migrate failed (%v)", err)
 	}
@@ -77,7 +71,7 @@ func seedMailbox(t *testing.T, db *gorm.DB, label string) models.Mailbox {
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
-	hash, err := auth.HashPassword("password123")
+	hash, err := hashPassword("password123")
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
@@ -101,7 +95,7 @@ func seedMailbox(t *testing.T, db *gorm.DB, label string) models.Mailbox {
 func seedAdminWithCaps(t *testing.T, db *gorm.DB, label string, capNames []string) models.AdminUser {
 	t.Helper()
 	tok := revUniq()
-	hash, err := auth.HashPassword("password123")
+	hash, err := hashPassword("password123")
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
