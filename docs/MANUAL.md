@@ -268,7 +268,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `sieve` | Action | Sieve script execution |
 | `webhook` | Action | HTTP POST notification |
 | `duplicate` | Action | Fork a copy of the message to a webhook |
-| `javascript` | Action | Runs in [projects/js-filter-sidecar](../projects/js-filter-sidecar/) (Node.js, `vm.runInNewContext` with whitelisted globals, `--max-old-space-size=64`) |
+| `javascript` | Action | Runs in [projects/js-filter-sidecar](../projects/js-filter-sidecar/): each script in its own QuickJS engine compiled to WebAssembly, in a Worker, with a memory limit, a CPU budget (`timeout_ms`) and a wall-clock deadline. The API calls it at `JS_FILTER_URL` with `JS_FILTER_TOKEN`; a filter's config cannot point it elsewhere |
 | `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum |
 | `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected |
 

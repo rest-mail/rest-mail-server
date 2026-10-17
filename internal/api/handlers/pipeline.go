@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -105,11 +104,18 @@ func validateDuplicatePipelineFilters(raw json.RawMessage) error {
 type PipelineHandler struct {
 	db     *gorm.DB
 	engine *pipeline.Engine
+	// jsSidecar runs custom filter scripts for the test and validate routes.
+	jsSidecar filters.JSSidecar
 }
 
-func NewPipelineHandler(db *gorm.DB, engine *pipeline.Engine) *PipelineHandler {
-	return &PipelineHandler{db: db, engine: engine}
+func NewPipelineHandler(db *gorm.DB, engine *pipeline.Engine, jsSidecar filters.JSSidecar) *PipelineHandler {
+	return &PipelineHandler{db: db, engine: engine, jsSidecar: jsSidecar}
 }
+
+// jsSidecarRefused is the error when the sidecar refuses the API's token. It is
+// a 503, never the sidecar's 401, which would read as the admin's own session
+// having ended.
+const jsSidecarRefused = "JS filter sidecar refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar)"
 
 // ListPipelines returns all pipelines for a domain.
 func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) {
@@ -595,14 +601,17 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 	}
 	bodyBytes, _ := json.Marshal(sidecarBody)
 
-	sidecarURL := "http://js-filter:3100/execute"
 	client := &http.Client{Timeout: 10 * time.Second}
-	sidecarResp, err := client.Post(sidecarURL, "application/json", bytes.NewReader(bodyBytes))
+	sidecarResp, err := h.jsSidecar.Post(r.Context(), client, "/execute", bodyBytes)
 	if err != nil {
 		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
 		return
 	}
 	defer sidecarResp.Body.Close()
+	if sidecarResp.StatusCode == http.StatusUnauthorized {
+		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
+		return
+	}
 
 	respBody, _ := io.ReadAll(sidecarResp.Body)
 
@@ -633,14 +642,17 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 	}
 	bodyBytes, _ := json.Marshal(sidecarBody)
 
-	sidecarURL := "http://js-filter:3100/validate"
 	client := &http.Client{Timeout: 5 * time.Second}
-	sidecarResp, err := client.Post(sidecarURL, "application/json", bytes.NewReader(bodyBytes))
+	sidecarResp, err := h.jsSidecar.Post(r.Context(), client, "/validate", bodyBytes)
 	if err != nil {
 		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
 		return
 	}
 	defer sidecarResp.Body.Close()
+	if sidecarResp.StatusCode == http.StatusUnauthorized {
+		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
+		return
+	}
 
 	respBody, _ := io.ReadAll(sidecarResp.Body)
 

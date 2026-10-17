@@ -71,6 +71,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "restmail.api.secretName" . }}
                   key: MASTER_KEY
+            # The JS filter sidecar runs a script only for a caller with its
+            # token (#160); the API is that caller.
+            - name: JS_FILTER_URL
+              value: {{ include "restmail.jsFilter.url" . | quote }}
+            - name: JS_FILTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.api.secretName" . }}
+                  key: JS_FILTER_TOKEN
             # The first account of a fresh install, admin@ the mail domain,
             # made only while no admin exists, holding superadmin, and made to
             # set a new password and enroll 2FA at first sign-in. Optional: a

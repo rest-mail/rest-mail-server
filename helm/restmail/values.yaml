@@ -140,13 +140,14 @@ api:
     repository: ghcr.io/rest-mail/api
     tag: ""        # falls back to .Chart.AppVersion when empty
     pullPolicy: ""
-  # Empty: the chart makes JWT_SECRET and MASTER_KEY itself, keeps them across
-  # upgrades, and keeps them when uninstalled (templates/api-secret.yaml) —
-  # nothing to prepare. MASTER_KEY encrypts private keys at rest, so it must
-  # never change. Or name a Secret you manage, with keys JWT_SECRET and
-  # MASTER_KEY, and optionally BOOTSTRAP_ADMIN_PASSWORD. Tools that render
-  # without a cluster (Argo CD, `helm template`) cannot keep generated values,
-  # so need this.
+  # Empty: the chart makes JWT_SECRET, MASTER_KEY and JS_FILTER_TOKEN itself,
+  # keeps them across upgrades, and keeps them when uninstalled
+  # (templates/api-secret.yaml) — nothing to prepare. MASTER_KEY encrypts
+  # private keys at rest, so it must never change. Or name a Secret you manage,
+  # with keys JWT_SECRET, MASTER_KEY and JS_FILTER_TOKEN (any random string of
+  # 16 characters or more: the API and the JS filter sidecar both read it), and
+  # optionally BOOTSTRAP_ADMIN_PASSWORD. Tools that render without a cluster
+  # (Argo CD, `helm template`) cannot keep generated values, so need this.
   existingSecret: ""
   # Only when the chart makes the Secret. Empty: generated once, then kept.
   jwtSecret: ""
@@ -243,6 +244,9 @@ api:
       accessMode: ReadWriteOnce
 
 # ── JS filter sidecar ─────────────────────────────────────────────────────
+# Runs the javascript filters' scripts for the API, each in its own QuickJS
+# WebAssembly sandbox. It runs one only for a request with JS_FILTER_TOKEN,
+# from the API Secret, and the NetworkPolicy lets only the API reach it.
 jsFilter:
   replicaCount: 1
   image:

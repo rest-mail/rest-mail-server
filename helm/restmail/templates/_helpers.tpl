@@ -350,6 +350,13 @@ Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 {{- end -}}
 
 {{/*
+The JS filter sidecar's in-cluster URL, which the API calls (JS_FILTER_URL).
+*/}}
+{{- define "restmail.jsFilter.url" -}}
+http://{{ include "restmail.componentName" (list . "js-filter") }}:{{ .Values.jsFilter.service.port }}
+{{- end -}}
+
+{{/*
 Internal mTLS: Secret name (operator-provided existingSecret, else chart-generated).
 */}}
 {{- define "restmail.internalMtls.secretName" -}}

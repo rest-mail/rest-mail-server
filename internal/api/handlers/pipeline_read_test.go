@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 
@@ -63,7 +64,7 @@ func seedTraceReadFixtures(t *testing.T, tx *gorm.DB) *PipelineHandler {
 	if err := tx.Create(&rejected).Error; err != nil {
 		t.Fatalf("persist rejected trace: %v", err)
 	}
-	return NewPipelineHandler(tx, nil)
+	return NewPipelineHandler(tx, nil, filters.JSSidecar{})
 }
 
 // listTraces calls ListPipelineLogs with the given raw query string and decodes
