@@ -45,93 +45,16 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// dedupeLinkedAccountsSQL collapses pre-existing duplicate linked_accounts rows,
-// keeping the earliest (lowest id) link per mailbox, so the standalone unique
-// index on mailbox_id (OSI-21) can be created on a database that predates the
-// constraint. It DELETEs rows, so it is DESTRUCTIVE and one-time: it runs only on
-// the explicit opt-in migrate path, never on a server boot (issue #196).
-const dedupeLinkedAccountsSQL = `DELETE FROM linked_accounts a USING linked_accounts b WHERE a.mailbox_id = b.mailbox_id AND a.id > b.id`
-
-// countLinkedAccountDuplicatesSQL counts the rows a dedupe would remove: any link
-// for a mailbox that already has an earlier (lower-id) link. Used on the additive
-// boot path to detect — WITHOUT deleting anything — whether a legacy database
-// still holds duplicates that would block creating the unique index.
-const countLinkedAccountDuplicatesSQL = `SELECT count(*) FROM linked_accounts a WHERE EXISTS (SELECT 1 FROM linked_accounts b WHERE b.mailbox_id = a.mailbox_id AND b.id < a.id)`
-
-// pendingDestructiveMigrations returns the destructive, one-time DML a migration
-// run would issue for the given opt-in. On the additive/boot path (allowDestructive
-// == false) it is ALWAYS empty: booting the API, seeding, or any default run never
-// issues destructive DML, so a rolling deploy can never have whichever code
-// version boots first silently rewrite data (issue #196). The destructive steps
-// run only when an operator explicitly opts in via the migrate tool.
-func pendingDestructiveMigrations(allowDestructive bool) []string {
-	if !allowDestructive {
-		return nil
-	}
-	return []string{dedupeLinkedAccountsSQL}
-}
-
-// migrateLinkedAccountsDedupe applies (or, on the boot path, guards against) the
-// one-time destructive collapse of duplicate linked_accounts rows. When
-// allowDestructive is true it runs the dedupe; when false (every server boot) it
-// deletes nothing and, if a legacy database still holds duplicates that would make
-// the unique-index creation fail opaquely, it refuses with an actionable error so
-// the operator runs the migrate tool rather than the API silently rewriting data.
-func migrateLinkedAccountsDedupe(db *gorm.DB, allowDestructive bool) error {
-	// Fresh database: the table does not exist yet, so there is nothing to collapse
-	// and nothing to guard — a no-op for the common install case.
-	if !db.Migrator().HasTable(&models.LinkedAccount{}) {
-		return nil
-	}
-
-	for _, stmt := range pendingDestructiveMigrations(allowDestructive) {
-		if err := db.Exec(stmt).Error; err != nil {
-			return fmt.Errorf("destructive migration failed: %w", err)
-		}
-	}
-	if allowDestructive {
-		return nil
-	}
-
-	// Additive/boot path: never delete. If duplicates remain, the unique index
-	// below would fail with an opaque error — surface an actionable one and refuse.
-	var dupes int64
-	if err := db.Raw(countLinkedAccountDuplicatesSQL).Scan(&dupes).Error; err != nil {
-		// Could not even introspect (e.g. an unrelated quirk on a very old schema):
-		// do not block boot on the check itself — proceed additive-only.
-		slog.Warn("could not check linked_accounts for duplicates; proceeding additive-only", "error", err)
-		return nil
-	}
-	if dupes > 0 {
-		return fmt.Errorf("linked_accounts holds %d duplicate row(s) that block the unique index; a server boot never modifies data — run the migrate tool with DB_ALLOW_DESTRUCTIVE_MIGRATIONS=true to collapse duplicates", dupes)
-	}
-	return nil
-}
-
 // AutoMigrate runs GORM's auto-migration for all models. It is ADDITIVE and
-// idempotent by default: it adds tables/columns/indexes and runs guarded,
-// WHERE-0 backfills — all safe to re-run on every startup. Destructive one-time
-// upgrades (currently the linked_accounts dedupe) run ONLY when allowDestructive
-// is true, i.e. from the dedicated migrate tool with an explicit opt-in, never
-// from a server boot (issue #196).
-func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
-	slog.Info("running database auto-migration", "allow_destructive", allowDestructive)
-
-	// OSI-21: linked_accounts carries a standalone unique index on mailbox_id (a
-	// mailbox may be linked to at most one webmail account). On a database that
-	// predates the constraint, duplicate links must be collapsed first or the
-	// unique-index creation below would fail — but that collapse is destructive, so
-	// it is gated behind the explicit opt-in (see migrateLinkedAccountsDedupe).
-	if err := migrateLinkedAccountsDedupe(db, allowDestructive); err != nil {
-		return err
-	}
+// idempotent: it adds tables/columns/indexes, safe to re-run on every
+// startup. A server boot never issues destructive DML (issue #196).
+func AutoMigrate(db *gorm.DB) error {
+	slog.Info("running database auto-migration")
 
 	err := db.AutoMigrate(
 		&models.Domain{},
 		&models.Mailbox{},
 		&models.Alias{},
-		&models.WebmailAccount{},
-		&models.LinkedAccount{},
 		&models.Message{},
 		&models.QuotaUsage{},
 		&models.Certificate{},
@@ -171,23 +94,21 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		&models.TLSReport{},
 		// Calendar event lifecycle tracking
 		&models.CalendarEventVersion{},
-		// RBAC models
-		&models.AdminUser{},
+		// Roles, their capabilities, and the grants that give them to accounts
+		// at a scope (#345).
 		&models.Role{},
 		&models.Capability{},
-		&models.UserRole{},
 		&models.RoleCapability{},
+		&models.Grant{},
+		&models.GrantActivation{},
 		// Refresh-token rotation/revocation ledger (OSI-10): one row per issued
 		// refresh token, keyed by jti, tracking active/rotated/revoked state.
 		&models.RefreshToken{},
-		// Single-use setup and admin-reset tokens (internal/bootstrap).
+		// Single-use account-reset tokens (internal/bootstrap).
 		&models.OneTimeToken{},
-		// Optional TOTP two-factor auth (OSI-19): one enrollment per account
-		// (secret encrypted at rest) plus its hashed one-time recovery codes.
-		&models.TwoFactor{},
-		&models.TwoFactorRecoveryCode{},
-		// Credentials (#344): app passwords, 0..n per mailbox, kept after
-		// revocation for the audit trail.
+		// Credentials: everything an account signs in with (passwords, TOTP
+		// secrets encrypted at rest, recovery codes, app passwords), 0..n per
+		// account, kept after revocation for the audit trail.
 		&models.Credential{},
 		// Phones registered for push (#363), each by the session that
 		// registered it, gone when it ends.

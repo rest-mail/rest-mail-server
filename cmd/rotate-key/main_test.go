@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/crypto"
@@ -28,9 +30,11 @@ func envIntOr(key string, def int) int {
 	return def
 }
 
-// openRotateTestDB connects to the unit-test Postgres and migrates the tables
-// rotate-key touches. It skips (never fails) when no database is reachable,
-// matching the repo's depless-local / DB-in-CI convention.
+// openRotateTestDB is a database of the test's own on the unit-test Postgres,
+// migrated as the server migrates it and dropped when the test ends: the
+// shared database may hold another branch's tables. It skips (never fails)
+// when no database is reachable, matching the repo's depless-local / DB-in-CI
+// convention.
 func openRotateTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	cfg := &config.Config{
@@ -40,26 +44,43 @@ func openRotateTestDB(t *testing.T) *gorm.DB {
 		DBUser: envOr("DB_USER", "restmail"),
 		DBPass: envOr("DB_PASS", "restmail"),
 	}
-	gdb, err := rmdb.Connect(cfg)
+	server, err := rmdb.Connect(cfg)
 	if err != nil {
 		t.Skipf("rotate-key test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.TwoFactor{}, &models.Certificate{}); err != nil {
-		t.Skipf("rotate-key test skipped: migrate failed (%v)", err)
+	name := fmt.Sprintf("restmail_rotate_%d_%d", os.Getpid(), time.Now().UnixNano())
+	if err := server.Exec("CREATE DATABASE " + name).Error; err != nil {
+		t.Skipf("rotate-key test skipped: cannot create a database (%v)", err)
+	}
+	cfg.DBName = name
+	gdb, err := rmdb.Connect(cfg)
+	if err != nil {
+		t.Fatalf("connect to the test's database: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := gdb.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		server.Exec("DROP DATABASE IF EXISTS " + name)
+		if sqlDB, err := server.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	if err := rmdb.AutoMigrate(gdb); err != nil {
+		t.Fatalf("migrate: %v", err)
 	}
 	return gdb
 }
 
 // TestRotate_ReEncryptsDKIMAndTwoFactor is the regression guard for #165: a
 // rotation must re-encrypt the columns the running server actually reads —
-// domains.dkim_private_key and two_factor.encrypted_secret. After rotating from
-// oldKey to newKey, both secrets must decrypt under newKey and no longer under
-// oldKey.
+// domains.dkim_private_key and credentials.encrypted_secret. After rotating
+// from oldKey to newKey, both secrets must decrypt under newKey and no longer
+// under oldKey.
 //
-// The whole test runs inside a transaction that is rolled back, so it never
-// mutates the shared test database (rotate() scans every row, but any change is
-// discarded; rows encrypted under a different key simply fail to decrypt and are
-// left untouched).
+// The whole test runs inside a transaction that is rolled back (rotate() scans
+// every row; rows encrypted under a different key fail to decrypt and are left
+// untouched).
 func TestRotate_ReEncryptsDKIMAndTwoFactor(t *testing.T) {
 	base := openRotateTestDB(t)
 
@@ -90,14 +111,15 @@ func TestRotate_ReEncryptsDKIMAndTwoFactor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EncryptString: %v", err)
 	}
-	tf := models.TwoFactor{
-		UserType:        models.TwoFactorUserTypeMailbox,
-		SubjectID:       987654321, // unlikely to collide within the rolled-back tx
+	tf := models.Credential{
+		AccountID:       987654321, // unlikely to collide within the rolled-back tx
+		Kind:            models.CredentialKindTOTP,
+		Name:            "Authenticator",
+		PublicID:        "rotatetest01",
 		EncryptedSecret: storedSecret,
-		Confirmed:       true,
 	}
 	if err := tx.Create(&tf).Error; err != nil {
-		t.Fatalf("create two_factor: %v", err)
+		t.Fatalf("create the TOTP credential: %v", err)
 	}
 
 	// Rotate within the transaction.
@@ -122,9 +144,9 @@ func TestRotate_ReEncryptsDKIMAndTwoFactor(t *testing.T) {
 		t.Fatal("DKIM key still decrypts under the OLD key after rotation — it was not re-encrypted")
 	}
 
-	var gotTF models.TwoFactor
+	var gotTF models.Credential
 	if err := tx.First(&gotTF, tf.ID).Error; err != nil {
-		t.Fatalf("reload two_factor: %v", err)
+		t.Fatalf("reload the TOTP credential: %v", err)
 	}
 	secret, err := crypto.DecryptString(gotTF.EncryptedSecret, newKey)
 	if err != nil {

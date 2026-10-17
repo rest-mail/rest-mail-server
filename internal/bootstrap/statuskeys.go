@@ -23,7 +23,7 @@ import (
 // deployment, like the owner keys.
 
 // StatusPurpose is what a request to read the status signs, in the place
-// reset-admin takes. Its username is always empty.
+// reset-admin takes. Its address is always empty.
 const StatusPurpose = "status"
 
 var (

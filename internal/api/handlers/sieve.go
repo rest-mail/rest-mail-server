@@ -26,8 +26,8 @@ func NewSieveHandler(db *gorm.DB) *SieveHandler {
 }
 
 // resolveMailboxID resolves the account ID from the URL to a mailbox ID,
-// verifying that the authenticated user owns the account (either as their
-// primary account or a linked account). Without this check the {id} path
+// verifying that the session may reach the account (its own, or one it holds
+// a mail grant on). Without this check the {id} path
 // segment was trusted as a raw mailbox ID, letting any authenticated caller
 // read/overwrite/delete another mailbox's Sieve script (IDOR).
 func (h *SieveHandler) resolveMailboxID(r *http.Request, accountIDStr string) (uint, error) {
@@ -40,7 +40,7 @@ func (h *SieveHandler) resolveMailboxID(r *http.Request, accountIDStr string) (u
 	if err != nil {
 		return 0, err
 	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims)
+	return resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
 }
 
 // GetScript returns the Sieve script for a mailbox.

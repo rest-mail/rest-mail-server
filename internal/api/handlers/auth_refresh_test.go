@@ -72,9 +72,9 @@ func (f *fakeRefreshStore) Revoke(jti string) error {
 	return nil
 }
 
-func (f *fakeRefreshStore) RevokeAllForSubject(userType string, subjectID uint) error {
+func (f *fakeRefreshStore) RevokeAllForAccount(accountID uint) error {
 	for _, rec := range f.rows {
-		if rec.UserType == userType && rec.SubjectID == subjectID && rec.Status == models.RefreshTokenActive {
+		if rec.AccountID == accountID && rec.Status == models.RefreshTokenActive {
 			rec.Status = models.RefreshTokenRevoked
 		}
 	}
@@ -111,11 +111,10 @@ func refreshCookieValue(rr *httptest.ResponseRecorder) string {
 	return ""
 }
 
-func seedActive(store *fakeRefreshStore, pair *auth.TokenPair, userType string, subjectID uint) {
+func seedActive(store *fakeRefreshStore, pair *auth.TokenPair, accountID uint) {
 	_ = store.Save(&models.RefreshToken{
 		Jti:       pair.RefreshJTI,
-		UserType:  userType,
-		SubjectID: subjectID,
+		AccountID: accountID,
 		SessionID: pair.SessionID,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: pair.RefreshExpiresAt,
@@ -130,11 +129,11 @@ func TestRefresh_RotationInvalidatesOldToken(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateTokenPair(42, "user@example.test", 3)
+	pair, err := jwt.GenerateSession(42, "user@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, pair, "mailbox", 42)
+	seedActive(store, pair, 42)
 
 	// First refresh succeeds and hands back a rotated refresh cookie.
 	rr := doRefresh(h, pair.RefreshToken)
@@ -167,11 +166,11 @@ func TestRefresh_RevokedTokenBlocked(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateTokenPair(1, "u@example.test", 1)
+	pair, err := jwt.GenerateSession(1, "u@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, pair, "mailbox", 1)
+	seedActive(store, pair, 1)
 
 	if err := store.Revoke(pair.RefreshJTI); err != nil {
 		t.Fatal(err)
@@ -190,11 +189,11 @@ func TestLogout_RevokesRefreshToken(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateAdminTokenPair(7, "root")
+	pair, err := jwt.GenerateSession(7, "root@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, pair, "admin", 7)
+	seedActive(store, pair, 7)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: "restmail_refresh", Value: pair.RefreshToken})
@@ -221,7 +220,7 @@ func TestRefresh_UnknownJTIRejected(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateTokenPair(5, "ghost@example.test", 2)
+	pair, err := jwt.GenerateSession(5, "ghost@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,48 +230,47 @@ func TestRefresh_UnknownJTIRejected(t *testing.T) {
 	}
 }
 
-// TestRefresh_PreservesTypeWithRotation: the #45 session-type preservation holds
-// through rotation — an admin refresh yields an admin token (with the session's
-// sign-in methods), a mailbox refresh a mailbox token.
-func TestRefresh_PreservesTypeWithRotation(t *testing.T) {
+// TestRefresh_PreservesTheSessionWithRotation: a refresh through rotation
+// keeps the account, and the session's sign-in methods.
+func TestRefresh_PreservesTheSessionWithRotation(t *testing.T) {
 	jwt := auth.NewJWTService("preserve-secret", 15*time.Minute, 7*24*time.Hour)
 
-	t.Run("admin", func(t *testing.T) {
+	t.Run("password", func(t *testing.T) {
 		store := newFakeRefreshStore()
 		h := newRefreshHandler(jwt, store)
-		pair, err := jwt.GenerateAdminSession(9, "ops", 0, []string{auth.AMRPassword})
+		pair, err := jwt.GenerateSession(9, "ops@example.test", 0, []string{auth.AMRPassword}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		seedActive(store, pair, "admin", 9)
+		seedActive(store, pair, 9)
 		rr := doRefresh(h, pair.RefreshToken)
 		if rr.Code != http.StatusOK {
-			t.Fatalf("admin refresh: %d (%s)", rr.Code, rr.Body.String())
+			t.Fatalf("refresh: %d (%s)", rr.Code, rr.Body.String())
 		}
 		claims := validateBody(t, jwt, rr)
-		if claims.UserType != "admin" || claims.AdminUserID != 9 {
-			t.Errorf("admin claims not preserved: %+v", claims)
+		if claims.AccountID != 9 || claims.Address != "ops@example.test" {
+			t.Errorf("claims not preserved: %+v", claims)
 		}
 		if len(claims.AMR) != 1 || claims.AMR[0] != auth.AMRPassword {
 			t.Errorf("amr not preserved: %v", claims.AMR)
 		}
 	})
 
-	t.Run("mailbox", func(t *testing.T) {
+	t.Run("another account", func(t *testing.T) {
 		store := newFakeRefreshStore()
 		h := newRefreshHandler(jwt, store)
-		pair, err := jwt.GenerateTokenPair(21, "user@example.test", 4)
+		pair, err := jwt.GenerateSession(21, "user@example.test", 0, []string{auth.AMRPassword}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		seedActive(store, pair, "mailbox", 21)
+		seedActive(store, pair, 21)
 		rr := doRefresh(h, pair.RefreshToken)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("mailbox refresh: %d (%s)", rr.Code, rr.Body.String())
 		}
 		claims := validateBody(t, jwt, rr)
-		if claims.UserType == "admin" || claims.MailboxID != 21 {
-			t.Errorf("mailbox claims not preserved: %+v", claims)
+		if claims.AccountID != 21 {
+			t.Errorf("claims not preserved: %+v", claims)
 		}
 	})
 }

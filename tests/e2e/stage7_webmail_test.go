@@ -1,7 +1,6 @@
 package e2e
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -10,17 +9,17 @@ import (
 
 func testStage7WebmailFlows(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
-	createMailbox(t, adminClient, "alice@restmail.test", adminPassword, "Alice")
+	createMailbox(t, adminClient, "alice@restmail.test", accountPassword, "Alice")
 	ensureE2EPipeline(t, adminClient)
-	_, aliceAcct := restmailInbox(t, "alice@restmail.test", adminPassword)
+	_, aliceAcct := restmailInbox(t, "alice@restmail.test", accountPassword)
 
 	t.Run("WebmailLogin", func(t *testing.T) {
 		client := newAPIClient()
-		err := client.login("alice@restmail.test", adminPassword)
+		err := client.login("alice@restmail.test", accountPassword)
 		requireNoError(t, err)
 		if client.token == "" {
 			t.Fatal("no token after login")
@@ -30,7 +29,7 @@ func testStage7WebmailFlows(t *testing.T) {
 
 	t.Run("WebmailListFolders", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@restmail.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", accountPassword))
 
 		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders", aliceAcct))
 		requireNoError(t, err)
@@ -63,7 +62,7 @@ func testStage7WebmailFlows(t *testing.T) {
 
 	t.Run("WebmailReadMessage", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@restmail.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", accountPassword))
 
 		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=10", aliceAcct))
 		requireNoError(t, err)
@@ -101,11 +100,11 @@ func testStage7WebmailFlows(t *testing.T) {
 	})
 
 	t.Run("WebmailComposeAndSend", func(t *testing.T) {
-		createMailbox(t, adminClient, "bob@restmail.test", adminPassword, "Bob")
+		createMailbox(t, adminClient, "bob@restmail.test", accountPassword, "Bob")
 		subject := fmt.Sprintf("webmail-compose-%d", time.Now().UnixNano())
 
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@restmail.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", accountPassword))
 
 		// Compose = the OUTBOUND path (/messages/send). /messages/deliver is
 		// inbound-only and DMARC-rejects a same-domain injected sender.
@@ -120,14 +119,14 @@ func testStage7WebmailFlows(t *testing.T) {
 		resp.Body.Close()
 
 		// Verify delivery
-		bobClient, bobAcct := restmailInbox(t, "bob@restmail.test", adminPassword)
+		bobClient, bobAcct := restmailInbox(t, "bob@restmail.test", accountPassword)
 		msgID := waitForMessage(t, bobClient, bobAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Webmail compose delivered: id=%d", msgID)
 	})
 
 	t.Run("WebmailMarkAsRead", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@restmail.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", accountPassword))
 
 		// Get first unread message
 		resp, err := client.get(fmt.Sprintf("/api/v1/accounts/%d/folders/INBOX/messages?limit=10", aliceAcct))
@@ -161,7 +160,7 @@ func testStage7WebmailFlows(t *testing.T) {
 
 	t.Run("WebmailDeleteMessage", func(t *testing.T) {
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@restmail.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", accountPassword))
 
 		// First create a throwaway message via a self-send (outbound path).
 		subject := fmt.Sprintf("delete-me-%d", time.Now().UnixNano())
@@ -201,20 +200,50 @@ func testStage7WebmailFlows(t *testing.T) {
 	})
 
 	t.Run("WebmailAccountSwitching", func(t *testing.T) {
-		// Login as alice, check accounts
+		// Alice links bob's account by proving its password: it is listed
+		// after her own, and she reads its mail.
+		createMailbox(t, adminClient, "bob@restmail.test", accountPassword, "Bob")
 		client := newAPIClient()
-		requireNoError(t, client.login("alice@restmail.test", adminPassword))
+		requireNoError(t, client.login("alice@restmail.test", accountPassword))
 
-		resp, err := client.get("/api/v1/accounts")
+		resp, err := client.post("/api/v1/accounts/link", map[string]string{
+			"address": "bob@restmail.test", "password": accountPassword,
+		})
+		requireNoError(t, err)
+		// 409: linked by an earlier run against this database.
+		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict {
+			t.Fatalf("link bob@restmail.test: %d: %s", resp.StatusCode, readBody(resp))
+		}
+		resp.Body.Close()
+
+		resp, err = client.get("/api/v1/accounts")
 		requireNoError(t, err)
 		requireStatus(t, resp, http.StatusOK)
 
 		var result struct {
-			Data []json.RawMessage `json:"data"`
+			Data []struct {
+				ID      uint   `json:"id"`
+				Address string `json:"address"`
+			} `json:"data"`
 		}
 		if err := decodeJSON(resp, &result); err != nil {
 			t.Fatalf("decode accounts: %v", err)
 		}
-		t.Logf("Accounts for alice: %d entries", len(result.Data))
+		if len(result.Data) < 2 || result.Data[0].Address != "alice@restmail.test" {
+			t.Fatalf("alice's accounts: %+v, want her own first, then bob's", result.Data)
+		}
+		var bob uint
+		for _, a := range result.Data {
+			if a.Address == "bob@restmail.test" {
+				bob = a.ID
+			}
+		}
+		if bob == 0 {
+			t.Fatalf("alice's accounts: %+v, bob's is not among them", result.Data)
+		}
+		resp, err = client.get(fmt.Sprintf("/api/v1/accounts/%d/folders", bob))
+		requireNoError(t, err)
+		requireStatus(t, resp, http.StatusOK)
+		resp.Body.Close()
 	})
 }

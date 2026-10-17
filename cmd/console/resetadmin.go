@@ -23,7 +23,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 )
 
-// `restmail reset-admin` lets an admin back in when every other way is lost,
+// `restmail reset-admin` lets an account back in when every other way is lost,
 // proving ownership of the server over its public API, whatever runs it. The
 // deployment lists the owner's public keys (RESTMAIL_OWNER_KEYS); the CLI signs
 // a challenge the server issues with the matching private key, and gets back a
@@ -43,18 +43,18 @@ const (
 	exitUsage  = 2 // a flag that does not exist, or is missing
 	// 3 was already_claimed, from when a server could be claimed. Unused, so a
 	// script written against it does not read some other failure into it.
-	exitNoSuchAdmin = 4 // reset-admin named an account that does not exist
-	exitUnreachable = 5 // the server did not answer, or not as rest-mail
-	exitNotOwner    = 6 // no key offered is one of the server's owner keys (for status: status or owner keys)
+	exitNoSuchAccount = 4 // reset-admin named an account that does not exist
+	exitUnreachable   = 5 // the server did not answer, or not as rest-mail
+	exitNotOwner      = 6 // no key offered is one of the server's owner keys (for status: status or owner keys)
 )
 
-const resetUsage = `restmail reset-admin — let an admin back in when every other way is lost
+const resetUsage = `restmail reset-admin — let an account back in when every other way is lost
 
-  restmail reset-admin --server https://mail.example.com --username NAME [--key PATH]
+  restmail reset-admin --server https://mail.example.com --address ADDRESS [--key PATH]
 
 Proves you own the server with a private key whose public half the deployment
 lists in RESTMAIL_OWNER_KEYS (authorized_keys format), then shows a single-use
-link for that admin as a QR code. Whoever redeems it chooses a new password and
+link for that account as a QR code. Whoever redeems it chooses a new password and
 enrolls a new authenticator, and every session the account had ends: anyone who
 held the old credentials is locked out. This is also how a server set up by
 someone else, or by an agent, is handed over.
@@ -63,7 +63,7 @@ Works the same however the server is deployed: it only talks to the server's
 public API.
 
   --server URL    the server's address (https; http only for localhost)
-  --username NAME the admin to let back in
+  --address ADDR  the account to let back in, e.g. admin@example.com
   --key PATH      a private key file (unencrypted; put a passphrase-protected
                   key in ssh-agent instead). Without it, the keys in ssh-agent
                   are tried.
@@ -71,7 +71,7 @@ public API.
   --show-secret   include the link itself in --json output (it grants admin)
   --lifetime D    how long the link works, e.g. 1h (default 15m, at most 24h)
 
-Exit status: 0 ok, 2 usage, 4 no such admin, 5 server not reachable, 6 no key
+Exit status: 0 ok, 2 usage, 4 no such account, 5 server not reachable, 6 no key
 offered is an owner key, 1 anything else.
 `
 
@@ -90,7 +90,7 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 	fs.SetOutput(io.Discard)
 	server := fs.String("server", "", "the server's address")
 	keyPath := fs.String("key", "", "a private key file")
-	username := fs.String("username", "", "the admin to let back in")
+	address := fs.String("address", "", "the account to let back in")
 	lifetime := fs.Duration("lifetime", 15*time.Minute, "how long the link works")
 	asJSON := fs.Bool("json", false, "JSON output")
 	showSecret := fs.Bool("show-secret", false, "include the link in --json output")
@@ -106,8 +106,8 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 		_, _ = io.WriteString(stdout, resetUsage)
 		return exitOK
 	}
-	if *username == "" {
-		return o.fail(exitUsage, "bad_flag", "--username is required")
+	if *address == "" {
+		return o.fail(exitUsage, "bad_flag", "--address is required")
 	}
 	if *lifetime <= 0 || *lifetime > 24*time.Hour {
 		return o.fail(exitUsage, "bad_flag", "--lifetime must be between 1s and 24h")
@@ -138,7 +138,7 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 		} else if code != "" {
 			return o.fail(statusFor(code), code, msg)
 		}
-		sig, err := s.sign(ownerMessage(ch.Challenge, purpose, *username))
+		sig, err := s.sign(ownerMessage(ch.Challenge, purpose, *address))
 		if err != nil {
 			return o.fail(exitFailed, "sign_failed", err.Error())
 		}
@@ -151,7 +151,7 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 			"public_key":       strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.pub))),
 			"signature":        base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
 			"purpose":          purpose,
-			"username":         *username,
+			"address":          *address,
 			"lifetime_seconds": int(lifetime.Seconds()),
 		}, &minted)
 		if err != nil {
@@ -171,12 +171,12 @@ func runResetAdmin(ctx context.Context, args []string, client *http.Client, keys
 		return o.fail(exitNotOwner, "not_owner", fmt.Sprintf("none of the %d key(s) offered is an owner key of this server: %s", len(signers), lastNotOwner))
 	}
 
-	return o.link(purpose, base, token, expires, *username, *showSecret)
+	return o.link(purpose, base, token, expires, *address, *showSecret)
 }
 
 // link shows the app's link for token: as a QR code and text for people, or as
 // JSON — without the link unless showSecret — for programs.
-func (o output) link(purpose string, base *url.URL, token, expires, username string, showSecret bool) int {
+func (o output) link(purpose string, base *url.URL, token, expires, address string, showSecret bool) int {
 	link := setuplink.Reset(base.String(), token)
 	if o.json {
 		result := map[string]any{"purpose": purpose, "server": base.String()}
@@ -191,7 +191,7 @@ func (o output) link(purpose string, base *url.URL, token, expires, username str
 		_ = json.NewEncoder(o.stdout).Encode(result)
 		return exitOK
 	}
-	what := "choose a new password and authenticator for " + username
+	what := "choose a new password and authenticator for " + address
 	fmt.Fprintf(o.stdout, "Scan with the rest-mail app to %s.\n\n", what)
 	qrterminal.GenerateWithConfig(link, qrterminal.Config{Level: qrterminal.M, Writer: o.stdout, HalfBlocks: true, QuietZone: 2})
 	fmt.Fprintf(o.stdout, "\nOr open: %s\n", link)
@@ -204,15 +204,15 @@ func (o output) link(purpose string, base *url.URL, token, expires, username str
 }
 
 // ownerMessage must match bootstrap.OwnerMessage on the server.
-func ownerMessage(challenge, purpose, username string) []byte {
-	return []byte("restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge)
+func ownerMessage(challenge, purpose, address string) []byte {
+	return []byte("restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge)
 }
 
 // statusFor maps the server's error codes to exit statuses.
 func statusFor(code string) int {
 	switch code {
-	case "no_such_admin":
-		return exitNoSuchAdmin
+	case "no_such_account":
+		return exitNoSuchAccount
 	case "not_owner", "no_owner_keys":
 		return exitNotOwner
 	}

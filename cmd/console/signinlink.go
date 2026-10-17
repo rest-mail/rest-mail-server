@@ -16,8 +16,9 @@ import (
 
 // `restmail sign-in-link` shows the link that opens the rest-mail app signed in
 // to a server: as a QR code a phone's camera opens, and always as text, with
-// the server, username and password beside it. The installer shows the first
-// admin's password this way, and `chore password:reset` a reset one.
+// the server, the account's address and its password beside it. The installer
+// shows the first account's password this way, and `chore password:reset` a
+// reset one.
 //
 // The QR code is drawn only where it can be: on a terminal wide enough for it.
 // The text is there every time, because nothing here can tell whether a QR code
@@ -27,16 +28,16 @@ import (
 
 const signInUsage = `restmail sign-in-link — the link that opens the rest-mail app, signed in
 
-  printf '%s' "$PASSWORD" | restmail sign-in-link --server https://mail.example.com
+  printf '%s' "$PASSWORD" | restmail sign-in-link --server https://mail.example.com --address admin@example.com
 
 Shows it as a QR code, when the terminal is wide enough for one, and always as
-text with the server, username and password beside it. A phone's camera opens
+text with the server, address and password beside it. A phone's camera opens
 the app from the QR code with the sign-in filled in. The password is read from
 stdin, never from the command line, where any process on the machine could
 read it.
 
   --server URL     the server's address (https; http only for localhost)
-  --username NAME  whose password it is (default admin)
+  --address ADDR   whose password it is: the account's address
   --no-qr          the text only
   --json           one JSON object on stdout; errors as one on stderr
   --show-secret    include the link and the password in --json output
@@ -71,7 +72,7 @@ func runSignInLink(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	fs := flag.NewFlagSet("sign-in-link", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	server := fs.String("server", "", "the server's address")
-	username := fs.String("username", "admin", "whose password it is")
+	address := fs.String("address", "", "whose password it is")
 	noQR := fs.Bool("no-qr", false, "the text only")
 	asJSON := fs.Bool("json", false, "JSON output")
 	showSecret := fs.Bool("show-secret", false, "include the link and the password in --json output")
@@ -90,12 +91,12 @@ func runSignInLink(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	if err != nil {
 		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
-	name := strings.TrimSpace(*username)
-	if name == "" {
-		return o.fail(exitUsage, "bad_flag", "--username must name someone")
+	name := strings.ToLower(strings.TrimSpace(*address))
+	if local, domain, ok := strings.Cut(name, "@"); !ok || local == "" || domain == "" {
+		return o.fail(exitUsage, "bad_flag", "--address must be the account's address, such as admin@example.com")
 	}
 	if isTerminal(stdin) {
-		return o.fail(exitUsage, "no_password", `the password comes on stdin: printf '%s' "$PASSWORD" | restmail sign-in-link --server URL`)
+		return o.fail(exitUsage, "no_password", `the password comes on stdin: printf '%s' "$PASSWORD" | restmail sign-in-link --server URL --address ADDRESS`)
 	}
 	raw, err := io.ReadAll(io.LimitReader(stdin, 4096))
 	if err != nil {
@@ -103,12 +104,12 @@ func runSignInLink(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	}
 	password := strings.TrimRight(string(raw), "\r\n")
 	if password == "" {
-		return o.fail(exitUsage, "no_password", `no password on stdin: printf '%s' "$PASSWORD" | restmail sign-in-link --server URL`)
+		return o.fail(exitUsage, "no_password", `no password on stdin: printf '%s' "$PASSWORD" | restmail sign-in-link --server URL --address ADDRESS`)
 	}
 
 	link := setuplink.SignIn(base.String(), name, password)
 	if o.json {
-		result := map[string]any{"server": base.String(), "username": name}
+		result := map[string]any{"server": base.String(), "address": name}
 		if *showSecret {
 			result["link"], result["password"] = link, password
 		} else {
@@ -123,9 +124,9 @@ func runSignInLink(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		qrterminal.GenerateWithConfig(link, qrterminal.Config{Level: qrterminal.M, Writer: stdout, HalfBlocks: true, QuietZone: qrQuietZone})
 		fmt.Fprintln(stdout)
 	} else {
-		fmt.Fprint(stdout, "  Open this link on your phone: it opens the rest-mail app, signed in.\n  Or sign in by hand, with the server, username and password below.\n\n")
+		fmt.Fprint(stdout, "  Open this link on your phone: it opens the rest-mail app, signed in.\n  Or sign in by hand, with the server, address and password below.\n\n")
 	}
-	fmt.Fprintf(stdout, "  Link:      %s\n  Server:    %s\n  Username:  %s\n  Password:  %s\n", link, base, name, password)
+	fmt.Fprintf(stdout, "  Link:      %s\n  Server:    %s\n  Address:   %s\n  Password:  %s\n", link, base, name, password)
 	return exitOK
 }
 

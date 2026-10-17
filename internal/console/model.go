@@ -48,13 +48,13 @@ type Model struct {
 	// RBAC
 	capabilities []string
 	isSuperAdmin bool
-	username     string
+	address      string
 }
 
 // NewModel creates the root console model. capabilities are the ones the
 // sign-in answered with: the token carries none.
 func NewModel(api *apiclient.Client, token string, capabilities []string) Model {
-	username := tokenUsername(token)
+	address := tokenAddress(token)
 	isSuperAdmin := false
 	for _, c := range capabilities {
 		if c == "*" {
@@ -67,7 +67,7 @@ func NewModel(api *apiclient.Client, token string, capabilities []string) Model 
 		token:        token,
 		capabilities: capabilities,
 		isSuperAdmin: isSuperAdmin,
-		username:     username,
+		address:      address,
 		menuItems: []string{
 			"Domains     - Manage mail domains",
 			"Users       - Manage mailboxes and users",
@@ -85,8 +85,8 @@ func NewModel(api *apiclient.Client, token string, capabilities []string) Model 
 	}
 }
 
-// tokenUsername reads who the JWT token is for.
-func tokenUsername(tokenStr string) string {
+// tokenAddress reads which account the JWT token is for.
+func tokenAddress(tokenStr string) string {
 	if tokenStr == "" {
 		return "anonymous"
 	}
@@ -103,13 +103,8 @@ func tokenUsername(tokenStr string) string {
 		return "unknown"
 	}
 
-	if un, ok := claims["username"].(string); ok {
-		return un
-	}
-	if email, ok := claims["email"].(string); ok {
-		return email
-	}
-	return ""
+	address, _ := claims["address"].(string)
+	return address
 }
 
 func (m Model) Init() tea.Cmd {
@@ -348,7 +343,7 @@ func (m Model) renderStatusBar() string {
 	banStr := fmt.Sprintf("Bans: %d active", m.status.ActiveBans())
 
 	// Add user info and capability warning
-	userInfo := fmt.Sprintf("User: %s", m.username)
+	userInfo := fmt.Sprintf("Account: %s", m.address)
 	if !m.isSuperAdmin {
 		warning := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("202")). // Orange/warning color

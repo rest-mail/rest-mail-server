@@ -25,12 +25,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// These tests run the real router on a real database of their own, from the
-// schema a server before grants left behind: role assignments in
-// admin_users_roles and no grants table. They turn the assignments into grants
-// as a server start does, then sign in as each kind of admin and check that
-// every route answers exactly as the old rule (the capabilities of the
-// assigned roles, from the token) said it would.
+// These tests run the real router on a real database of their own: accounts
+// holding roles at "*" and on domains, signed in as each kind of admin, with
+// every route checked against the capabilities its roles hold.
 
 const (
 	accessPassword  = "an admin's own password, long"
@@ -79,11 +76,8 @@ func openAccessDB(t *testing.T) *gorm.DB {
 			_ = sqlDB.Close()
 		}
 	})
-	if err := rmdb.AutoMigrate(scratch, false); err != nil {
+	if err := rmdb.AutoMigrate(scratch); err != nil {
 		t.Fatalf("migrate: %v", err)
-	}
-	if scratch.Migrator().HasTable(&models.Grant{}) {
-		t.Fatal("db.AutoMigrate made the grants table: the test no longer starts from the schema before grants")
 	}
 	if err := bootstrap.EnsureRBAC(scratch); err != nil {
 		t.Fatalf("roles: %v", err)
@@ -93,9 +87,9 @@ func openAccessDB(t *testing.T) *gorm.DB {
 
 // useRealGrants puts back what routes_seams_test.go stands aside, for one test.
 func useRealGrants(t *testing.T) {
-	session, held := adminSessionCheck, heldGrants
-	adminSessionCheck, heldGrants = handlers.AdminSessionCurrent, cachedHeldGrants
-	t.Cleanup(func() { adminSessionCheck, heldGrants = session, held })
+	session, held := sessionCheck, heldGrants
+	sessionCheck, heldGrants = handlers.SessionCurrent, cachedHeldGrants
+	t.Cleanup(func() { sessionCheck, heldGrants = session, held })
 }
 
 func accessRouter(t *testing.T, db *gorm.DB) http.Handler {
@@ -111,8 +105,8 @@ func accessRouter(t *testing.T, db *gorm.DB) http.Handler {
 	return NewRouter(db, jwtSvc, cfg, nil)
 }
 
-// legacyAdmin is an admin as a server before grants had one.
-type legacyAdmin struct {
+// fixtureAdmin is an admin: an account holding roles at "*".
+type fixtureAdmin struct {
 	name      string
 	roles     []string
 	inactive  bool
@@ -120,7 +114,7 @@ type legacyAdmin struct {
 	setup     bool // the bootstrap admin, not yet set up
 }
 
-var legacyAdmins = []legacyAdmin{
+var fixtureAdmins = []fixtureAdmin{
 	{name: "root", roles: []string{"superadmin"}},
 	{name: "owner", roles: []string{"superadmin"}, twoFactor: true},
 	{name: "ops", roles: []string{"admin"}},
@@ -132,23 +126,27 @@ var legacyAdmins = []legacyAdmin{
 }
 
 type seededAdmin struct {
-	legacyAdmin
-	user   models.AdminUser
+	fixtureAdmin
+	user   models.Mailbox
 	secret string // TOTP secret, when twoFactor
 }
 
-// seedLegacyAdmins writes each admin, and its role assignments, the way a
-// server before grants did: rows in admin_users_roles.
-func seedLegacyAdmins(t *testing.T, db *gorm.DB, admins []legacyAdmin) map[string]*seededAdmin {
+// seedAdmins makes each admin an account of access.test, with the
+// password accessPassword, holding each of its roles actively at "*".
+func seedAdmins(t *testing.T, db *gorm.DB, admins []fixtureAdmin) map[string]*seededAdmin {
 	t.Helper()
 	hash, err := auth.HashPassword(accessPassword)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var domain models.Domain
+	if err := db.Where("name = ?", "access.test").FirstOrCreate(&domain, models.Domain{Name: "access.test", ServerType: "restmail", Active: true}).Error; err != nil {
+		t.Fatal(err)
+	}
 	out := map[string]*seededAdmin{}
 	for _, a := range admins {
-		s := &seededAdmin{legacyAdmin: a}
-		s.user = models.AdminUser{Username: a.name, PasswordHash: hash, Active: true}
+		s := &seededAdmin{fixtureAdmin: a}
+		s.user = models.Mailbox{DomainID: domain.ID, LocalPart: a.name, Address: a.name + "@access.test", Active: true}
 		if a.setup {
 			expires := time.Now().Add(time.Hour)
 			s.user.PasswordChangeRequired, s.user.TwoFactorRequired, s.user.BootstrapExpiresAt = true, true, &expires
@@ -157,6 +155,9 @@ func seedLegacyAdmins(t *testing.T, db *gorm.DB, admins []legacyAdmin) map[strin
 			s.user.TwoFactorRequired = true
 		}
 		if err := db.Create(&s.user).Error; err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repositories.NewCredentialRepository(db).SetPassword(s.user.ID, hash, nil, time.Now()); err != nil {
 			t.Fatal(err)
 		}
 		if a.inactive {
@@ -169,7 +170,8 @@ func seedLegacyAdmins(t *testing.T, db *gorm.DB, admins []legacyAdmin) map[strin
 			if err := db.Where("name = ?", roleName).First(&role).Error; err != nil {
 				t.Fatal(err)
 			}
-			if err := db.Create(&models.UserRole{UserID: s.user.ID, RoleID: role.ID}).Error; err != nil {
+			if err := db.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: s.user.ID, RoleID: role.ID,
+				Scope: grants.All, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -192,7 +194,7 @@ func enrollTOTP(t *testing.T, db *gorm.DB, adminID uint) string {
 		t.Fatal(err)
 	}
 	repo := repositories.NewTwoFactorRepository(db)
-	tf, err := repo.Enroll(models.TwoFactorUserTypeAdmin, adminID, enc, nil)
+	tf, err := repo.Enroll(adminID, enc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,23 +204,24 @@ func enrollTOTP(t *testing.T, db *gorm.DB, adminID uint) string {
 	return key.Secret()
 }
 
-// legacyCapabilities is what a server before grants put in an admin's token:
-// every capability of every role assigned to it in admin_users_roles.
-func legacyCapabilities(t *testing.T, db *gorm.DB, adminID uint) []string {
+// roleCapabilities is every capability of every role the admin holds at
+// "*": what it may do anywhere.
+func roleCapabilities(t *testing.T, db *gorm.DB, adminID uint) []string {
 	t.Helper()
 	var names []string
-	err := db.Raw(`SELECT DISTINCT c.name FROM admin_capabilities c
-		JOIN admin_roles_capabilities rc ON rc.capability_id = c.id
-		JOIN admin_users_roles ur ON ur.role_id = rc.role_id
-		WHERE ur.user_id = ? ORDER BY c.name`, adminID).Scan(&names).Error
+	err := db.Raw(`SELECT DISTINCT c.name FROM capabilities c
+		JOIN role_capabilities rc ON rc.capability_id = c.id
+		JOIN grants g ON g.role_id = rc.role_id
+		WHERE g.holder_id = ? AND g.scope = '*' AND g.mode = 'active' ORDER BY c.name`, adminID).Scan(&names).Error
 	if err != nil {
 		t.Fatal(err)
 	}
 	return names
 }
 
-// legacyAllows is the rule a server before grants checked a route against.
-func legacyAllows(caps []string, need string) bool {
+// rolesAllow is the rule: a route wanting need is reached by an admin
+// holding need, or "*".
+func rolesAllow(caps []string, need string) bool {
 	if need == "" {
 		return true
 	}
@@ -240,7 +243,7 @@ type accessSession struct {
 
 func (s *seededAdmin) login(t *testing.T, router http.Handler) accessSession {
 	t.Helper()
-	body := map[string]string{"username": s.name, "password": accessPassword, "client": "native"}
+	body := map[string]string{"email": s.user.Address, "password": accessPassword, "client": "native"}
 	if s.secret != "" {
 		code, err := auth.GenerateTOTPCode(s.secret, time.Now())
 		if err != nil {
@@ -290,10 +293,10 @@ type accessRoute struct {
 func accessRoutes(domainID, mailboxID uint) []accessRoute {
 	d, m := strconv.FormatUint(uint64(domainID), 10), strconv.FormatUint(uint64(mailboxID), 10)
 	return []accessRoute{
-		{"GET", "/api/v1/admin/stats", "", ""},
-		{"GET", "/api/v1/admin/admin-users", "", "users:read"},
-		{"POST", "/api/v1/admin/admin-users", `{}`, "users:write"},
-		{"DELETE", "/api/v1/admin/admin-users/x", "", "users:delete"},
+		{"GET", "/api/v1/admin/stats", "", "domains:read"},
+		{"GET", "/api/v1/admin/grants", "", "users:read"},
+		{"POST", "/api/v1/admin/grants", `{}`, "users:write"},
+		{"DELETE", "/api/v1/admin/grants/999999", "", "users:write"},
 		{"GET", "/api/v1/admin/roles", "", "users:read"},
 		{"GET", "/api/v1/admin/capabilities", "", "users:read"},
 		{"GET", "/api/v1/admin/domains", "", "domains:read"},
@@ -328,8 +331,7 @@ func seedDomain(t *testing.T, db *gorm.DB, name string) (models.Domain, models.M
 	if err := db.Create(&d).Error; err != nil {
 		t.Fatal(err)
 	}
-	hash, _ := auth.HashPassword("mailbox password")
-	m := models.Mailbox{DomainID: d.ID, LocalPart: "x", Address: "x@" + name, Password: hash, Active: true}
+	m := models.Mailbox{DomainID: d.ID, LocalPart: "x", Address: "x@" + name, Active: true}
 	if err := db.Create(&m).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -357,56 +359,24 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// TestGrantsMigration_NobodyLosesAccess is the proof the migration keeps
-// everyone's access: each admin, signed in after the role assignments became
-// grants, reaches exactly the routes its assigned roles reached before, and is
-// shown the same capabilities.
-func TestGrantsMigration_NobodyLosesAccess(t *testing.T) {
+// TestGrants_EveryAdminReachesWhatItsRolesHold is the proof the admin API
+// checks grants: each admin, an account holding roles at "*", reaches exactly
+// the routes its roles' capabilities reach, and is shown those capabilities.
+// One in setup reaches none; one disabled cannot sign in; one holding nothing
+// is refused everywhere.
+func TestGrants_EveryAdminReachesWhatItsRolesHold(t *testing.T) {
 	db := openAccessDB(t)
 	domain, mailbox := seedDomain(t, db, "a.test")
-	admins := seedLegacyAdmins(t, db, legacyAdmins)
+	admins := seedAdmins(t, db, fixtureAdmins)
 
-	// Before: what each admin's token would have carried.
 	before := map[string][]string{}
 	for name, a := range admins {
-		before[name] = legacyCapabilities(t, db, a.user.ID)
-	}
-	var assignments int64
-	db.Model(&models.UserRole{}).Count(&assignments)
-
-	copied, err := grants.Migrate(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if int64(copied) != assignments {
-		t.Fatalf("migrated %d assignments, want all %d", copied, assignments)
-	}
-	// Every start runs it again; it copies nothing more.
-	if again, err := grants.Migrate(db); err != nil || again != 0 {
-		t.Fatalf("second migration copied %d (err %v), want 0", again, err)
-	}
-
-	// Each assignment is an active grant of the same role at "*", recorded.
-	var mismatched int64
-	db.Raw(`SELECT count(*) FROM admin_users_roles ur WHERE NOT EXISTS (
-		SELECT 1 FROM grants g WHERE g.holder_kind = 'admin' AND g.holder_id = ur.user_id
-		AND g.role_id = ur.role_id AND g.scope = '*' AND g.mode = 'active' AND g.expires_at IS NULL)`).Scan(&mismatched)
-	var grantCount, recorded int64
-	db.Model(&models.Grant{}).Count(&grantCount)
-	db.Model(&models.AuditEntry{}).Where("action = ? AND actor_kind = ?", grants.ActionMigrate, models.AuditActorSystem).Count(&recorded)
-	if mismatched != 0 || grantCount != assignments || recorded != assignments {
-		t.Fatalf("assignments without their grant: %d; grants %d, audit entries %d, want %d each", mismatched, grantCount, recorded, assignments)
-	}
-	// The old table is left as it was, for going back one release.
-	var left int64
-	db.Model(&models.UserRole{}).Count(&left)
-	if left != assignments {
-		t.Fatalf("admin_users_roles has %d rows after the migration, want %d", left, assignments)
+		before[name] = roleCapabilities(t, db, a.user.ID)
 	}
 
 	router := accessRouter(t, db)
 	routes := accessRoutes(domain.ID, mailbox.ID)
-	for _, a := range legacyAdmins {
+	for _, a := range fixtureAdmins {
 		a := admins[a.name]
 		t.Run(a.name, func(t *testing.T) {
 			s := a.login(t, router)
@@ -431,9 +401,9 @@ func TestGrantsMigration_NobodyLosesAccess(t *testing.T) {
 				if rr.Code >= 500 {
 					t.Errorf("%s %s: %d %s", rt.method, rt.path, rr.Code, rr.Body.String())
 				}
-				wantReached := !a.setup && legacyAllows(before[a.name], rt.need)
+				wantReached := !a.setup && rolesAllow(before[a.name], rt.need)
 				if reached := !refusedForAccess(rr); reached != wantReached {
-					t.Errorf("%s %s: reached=%v (status %d %s), before it would have been %v",
+					t.Errorf("%s %s: reached=%v (status %d %s), its roles say %v",
 						rt.method, rt.path, reached, rr.Code, strings.TrimSpace(rr.Body.String()), wantReached)
 				}
 				if a.setup && rr.Code == http.StatusForbidden && !strings.Contains(rr.Body.String(), "setup_required") {
@@ -444,12 +414,12 @@ func TestGrantsMigration_NobodyLosesAccess(t *testing.T) {
 	}
 
 	if res, err := audit.VerifyDB(db); err != nil || !res.OK {
-		t.Fatalf("audit chain after the migration: %+v, %v", res, err)
+		t.Fatalf("audit chain: %+v, %v", res, err)
 	}
 }
 
-// grantsFixture is a migrated server with the admins above, the router, and
-// two domains, each with a mailbox.
+// grantsFixture is a server with the admins above, the router, and two
+// domains, each with a mailbox.
 type grantsFixture struct {
 	db     *gorm.DB
 	router http.Handler
@@ -458,16 +428,13 @@ type grantsFixture struct {
 	ma, mb models.Mailbox
 }
 
-func newGrantsFixture(t *testing.T, extra ...legacyAdmin) *grantsFixture {
+func newGrantsFixture(t *testing.T, extra ...fixtureAdmin) *grantsFixture {
 	t.Helper()
 	db := openAccessDB(t)
 	f := &grantsFixture{db: db}
 	f.a, f.ma = seedDomain(t, db, "a.test")
 	f.b, f.mb = seedDomain(t, db, "b.test")
-	f.admins = seedLegacyAdmins(t, db, append(append([]legacyAdmin(nil), legacyAdmins...), extra...))
-	if _, err := grants.Migrate(db); err != nil {
-		t.Fatal(err)
-	}
+	f.admins = seedAdmins(t, db, append(append([]fixtureAdmin(nil), fixtureAdmins...), extra...))
 	f.router = accessRouter(t, db)
 	return f
 }
@@ -483,7 +450,7 @@ func (f *grantsFixture) token(t *testing.T, name string) string {
 
 func (f *grantsFixture) grant(t *testing.T, token string, holder uint, role, scope string) *httptest.ResponseRecorder {
 	t.Helper()
-	body := fmt.Sprintf(`{"holder":{"kind":"admin","id":%d},"role":%q,"scope":%q}`, holder, role, scope)
+	body := fmt.Sprintf(`{"holder":{"kind":"account","id":%d},"role":%q,"scope":%q}`, holder, role, scope)
 	return doRequest(f.router, http.MethodPost, "/api/v1/admin/grants", token, body)
 }
 
@@ -513,7 +480,7 @@ func grantErrorCode(rr *httptest.ResponseRecorder) string {
 // A domain admin on domain:a.test reaches a.test and its mailboxes, and is
 // refused on b.test, on lists (which want "*"), and on anything else.
 func TestGrants_DomainAdminIsBoundedByItsDomain(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "dom"})
+	f := newGrantsFixture(t, fixtureAdmin{name: "dom"})
 	owner := f.token(t, "owner")
 	dom := f.admins["dom"].user.ID
 	if rr := f.grant(t, owner, dom, "admin", "domain:a.test"); rr.Code != http.StatusCreated {
@@ -560,13 +527,13 @@ func TestGrants_DomainAdminIsBoundedByItsDomain(t *testing.T) {
 
 // Eligible grants, and expired ones, give nothing.
 func TestGrants_EligibleAndExpiredGrantsDoNothing(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "waiting"}, legacyAdmin{name: "lapsed"})
+	f := newGrantsFixture(t, fixtureAdmin{name: "waiting"}, fixtureAdmin{name: "lapsed"})
 	var admin models.Role
 	f.db.Where("name = ?", "admin").First(&admin)
 	past := time.Now().Add(-time.Minute)
 	for _, g := range []models.Grant{
-		{HolderKind: "admin", HolderID: f.admins["waiting"].user.ID, RoleID: admin.ID, Scope: "*", Mode: models.GrantEligible},
-		{HolderKind: "admin", HolderID: f.admins["lapsed"].user.ID, RoleID: admin.ID, Scope: "*", Mode: models.GrantActive, ExpiresAt: &past},
+		{HolderKind: models.GrantHolderAccount, HolderID: f.admins["waiting"].user.ID, RoleID: admin.ID, Scope: "*", Mode: models.GrantEligible},
+		{HolderKind: models.GrantHolderAccount, HolderID: f.admins["lapsed"].user.ID, RoleID: admin.ID, Scope: "*", Mode: models.GrantActive, ExpiresAt: &past},
 	} {
 		g.GrantedByKind, g.GrantedAt = models.AuditActorSystem, time.Now()
 		if err := f.db.Create(&g).Error; err != nil {
@@ -588,8 +555,8 @@ func TestGrants_EligibleAndExpiredGrantsDoNothing(t *testing.T) {
 // what the granter holds, at a scope within its own.
 func TestGrants_ChangingThemNeedsTwoFactorAndOnlyWhatYouHold(t *testing.T) {
 	f := newGrantsFixture(t,
-		legacyAdmin{name: "delegate", twoFactor: true},
-		legacyAdmin{name: "target"},
+		fixtureAdmin{name: "delegate", twoFactor: true},
+		fixtureAdmin{name: "target"},
 	)
 	// A role that may change grants but holds little else.
 	delegate := models.Role{Name: "delegate"}
@@ -603,7 +570,7 @@ func TestGrants_ChangingThemNeedsTwoFactorAndOnlyWhatYouHold(t *testing.T) {
 			f.db.Create(&models.RoleCapability{RoleID: role, CapabilityID: c.ID})
 		}
 	}
-	f.db.Create(&models.Grant{HolderKind: "admin", HolderID: f.admins["delegate"].user.ID, RoleID: delegate.ID,
+	f.db.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: f.admins["delegate"].user.ID, RoleID: delegate.ID,
 		Scope: "*", Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()})
 	target := f.admins["target"].user.ID
 
@@ -634,7 +601,7 @@ func TestGrants_ChangingThemNeedsTwoFactorAndOnlyWhatYouHold(t *testing.T) {
 	// Removing is held to the same rule: delegate cannot take away the
 	// owner's superadmin.
 	var ownerSuper models.Grant
-	f.db.Joins("JOIN admin_roles r ON r.id = grants.role_id").
+	f.db.Joins("JOIN roles r ON r.id = grants.role_id").
 		Where("grants.holder_id = ? AND r.name = ?", f.admins["owner"].user.ID, "superadmin").First(&ownerSuper)
 	del2 := doRequest(f.router, "DELETE", "/api/v1/admin/grants/"+strconv.FormatUint(uint64(ownerSuper.ID), 10), del, "")
 	if del2.Code != http.StatusForbidden || grantErrorCode(del2) != "grant_exceeds_held" {
@@ -659,83 +626,10 @@ func TestGrants_ChangingThemNeedsTwoFactorAndOnlyWhatYouHold(t *testing.T) {
 	}
 }
 
-// The admin users API's role_ids set an admin's grants at "*" under the same
-// rules: unchanged roles need nothing, a change needs 2FA, and a superadmin's
-// last grant at "*" cannot go.
-func TestGrants_AdminUserRoleIDsFollowTheSameRules(t *testing.T) {
-	f := newGrantsFixture(t)
-	var adminRole, readonlyRole models.Role
-	f.db.Where("name = ?", "admin").First(&adminRole)
-	f.db.Where("name = ?", "readonly").First(&readonlyRole)
-	ops := f.admins["ops"].user.ID
-	opsPath := "/api/v1/admin/admin-users/" + strconv.FormatUint(uint64(ops), 10)
-	root, owner := f.token(t, "root"), f.token(t, "owner")
-
-	// The admin UI sends the roles back on every save: that is not a change.
-	same := fmt.Sprintf(`{"email":"ops@example.test","role_ids":[%d]}`, adminRole.ID)
-	if rr := doRequest(f.router, "PUT", opsPath, root, same); rr.Code != http.StatusOK {
-		t.Fatalf("saving unchanged roles without 2FA = %d %s", rr.Code, rr.Body.String())
-	}
-	more := fmt.Sprintf(`{"role_ids":[%d,%d]}`, adminRole.ID, readonlyRole.ID)
-	if rr := doRequest(f.router, "PUT", opsPath, root, more); grantErrorCode(rr) != "two_factor_required" {
-		t.Fatalf("changing roles without 2FA = %d %s", rr.Code, rr.Body.String())
-	}
-	if rr := doRequest(f.router, "PUT", opsPath, owner, more); rr.Code != http.StatusOK {
-		t.Fatalf("changing roles with 2FA = %d %s", rr.Code, rr.Body.String())
-	}
-	var roles []string
-	f.db.Table("grants g").Joins("JOIN admin_roles r ON r.id = g.role_id").
-		Where("g.holder_id = ? AND g.scope = '*' AND g.mode = 'active'", ops).Order("r.name").Pluck("r.name", &roles)
-	if strings.Join(roles, ",") != "admin,readonly" {
-		t.Fatalf("ops holds %v, want admin and readonly", roles)
-	}
-	rr := doRequest(f.router, "GET", opsPath, owner, "")
-	if !strings.Contains(rr.Body.String(), `"name":"readonly"`) {
-		t.Errorf("the admin user does not show its new role: %s", rr.Body.String())
-	}
-
-	// Creating an admin with roles needs 2FA too, and a refusal creates nothing.
-	create := fmt.Sprintf(`{"username":"newbie","password":"a long password","role_ids":[%d]}`, readonlyRole.ID)
-	if rr := doRequest(f.router, "POST", "/api/v1/admin/admin-users", root, create); grantErrorCode(rr) != "two_factor_required" {
-		t.Fatalf("creating with roles without 2FA = %d %s", rr.Code, rr.Body.String())
-	}
-	var made int64
-	f.db.Model(&models.AdminUser{}).Where("username = ?", "newbie").Count(&made)
-	if made != 0 {
-		t.Fatal("a refused role grant still created the account")
-	}
-	if rr := doRequest(f.router, "POST", "/api/v1/admin/admin-users", owner, create); rr.Code != http.StatusCreated {
-		t.Fatalf("creating with roles with 2FA = %d %s", rr.Code, rr.Body.String())
-	}
-
-	// The last active superadmin grant held by an active admin cannot go:
-	// remove root's and fresh's first, then owner's own is refused.
-	for _, name := range []string{"root", "fresh"} {
-		path := "/api/v1/admin/admin-users/" + strconv.FormatUint(uint64(f.admins[name].user.ID), 10)
-		if rr := doRequest(f.router, "PUT", path, owner, `{"role_ids":[]}`); rr.Code != http.StatusOK {
-			t.Fatalf("taking superadmin from %s = %d %s", name, rr.Code, rr.Body.String())
-		}
-	}
-	ownerPath := "/api/v1/admin/admin-users/" + strconv.FormatUint(uint64(f.admins["owner"].user.ID), 10)
-	if rr := doRequest(f.router, "PUT", ownerPath, owner, fmt.Sprintf(`{"role_ids":[%d]}`, adminRole.ID)); grantErrorCode(rr) != "last_superadmin" {
-		t.Fatalf("removing the last superadmin = %d %s, want last_superadmin", rr.Code, rr.Body.String())
-	}
-	if rr := doRequest(f.router, "DELETE", ownerPath, owner, ""); grantErrorCode(rr) != "last_superadmin" {
-		t.Fatalf("deleting the last superadmin = %d %s, want last_superadmin", rr.Code, rr.Body.String())
-	}
-	if rr := doRequest(f.router, "GET", "/api/v1/admin/admin-users", owner, ""); refusedForAccess(rr) {
-		t.Fatalf("the owner lost access: %d", rr.Code)
-	}
-	// An admin whose roles were assigned before grants can be deleted.
-	if rr := doRequest(f.router, "DELETE", opsPath, owner, ""); rr.Code != http.StatusNoContent {
-		t.Fatalf("deleting a migrated admin = %d %s", rr.Code, rr.Body.String())
-	}
-}
-
 // Every grant change is in the audit log, written in the change's own
 // transaction: what rolls back leaves neither.
 func TestGrants_EveryChangeIsAuditedAtomically(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "target"})
+	f := newGrantsFixture(t, fixtureAdmin{name: "target"})
 	owner := f.token(t, "owner")
 	target := f.admins["target"].user.ID
 
@@ -754,7 +648,7 @@ func TestGrants_EveryChangeIsAuditedAtomically(t *testing.T) {
 		if err != nil {
 			t.Fatalf("no %s entry for grant %s: %v", action, idStr, err)
 		}
-		if e.ActorKind != models.AuditActorAdmin || e.ActorID == nil || *e.ActorID != f.admins["owner"].user.ID ||
+		if e.ActorKind != models.AuditActorAccount || e.ActorID == nil || *e.ActorID != f.admins["owner"].user.ID ||
 			e.SessionID == "" || e.Target["scope"] != "domain:a.test" || e.Target["role"] != "readonly" || e.Outcome != models.AuditOutcomeSuccess {
 			t.Errorf("%s entry = %+v", action, e)
 		}
@@ -771,7 +665,7 @@ func TestGrants_EveryChangeIsAuditedAtomically(t *testing.T) {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		g := &models.Grant{HolderKind: "admin", HolderID: target, RoleID: readonly.ID, Scope: "*", Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem}
+		g := &models.Grant{HolderKind: models.GrantHolderAccount, HolderID: target, RoleID: readonly.ID, Scope: "*", Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem}
 		if err := grants.Add(tx, g, models.AuditEntry{ActorKind: models.AuditActorSystem, ActorName: "system"}); err != nil {
 			return err
 		}

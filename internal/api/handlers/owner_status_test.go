@@ -19,7 +19,7 @@ import (
 // the version the server runs.
 
 // askForStatus does what `restmail status --key` does, signing for purpose
-// and username (which it leaves empty), and returns the status response.
+// and address (which it leaves empty), and returns the status response.
 func askForStatus(t *testing.T, h *OwnerHandler, s ssh.Signer, purpose, username string) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()

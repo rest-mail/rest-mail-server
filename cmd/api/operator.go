@@ -21,7 +21,6 @@ import (
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
-	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -42,26 +41,26 @@ const (
 	exitUsage  = 2 // a command or flag that does not exist, or is missing
 	// 3 was already_claimed, from when a server could be claimed. Unused, so a
 	// script written against it does not read some other failure into it.
-	exitNoSuchAdmin = 4 // reset-admin named an account that does not exist
+	exitNoSuchAccount = 4 // the command named an account that does not exist
 )
 
 const operatorUsage = `restmail-api operator commands
 
-  restmail-api mint-token --purpose reset-admin --username NAME [--lifetime 15m]
-      A single-use token that lets an admin choose a new password and enroll a
-      new authenticator, for when every other way in is lost.
+  restmail-api mint-token --purpose reset-admin --address ADDRESS [--lifetime 15m]
+      A single-use token that lets the account at ADDRESS choose a new password
+      and enroll a new authenticator, for when every other way in is lost.
 
       Output: {"purpose": ..., "token": ..., "expires_at": ...}
 
-  restmail-api reset-password --username NAME < password
-      Gives an admin the password read from stdin and puts the account back in
-      setup: it must choose its own at the next sign-in and enroll a new
-      authenticator. Every session it had ends.
-      Output: {"username": ..., "setup_required": ["password", "two_factor"]}
+  restmail-api reset-password --address ADDRESS < password
+      Gives the account at ADDRESS the password read from stdin and puts it
+      back in setup: it must choose its own at the next sign-in and enroll a
+      new authenticator. Every session and app password it had ends.
+      Output: {"address": ..., "setup_required": ["password", "two_factor"]}
 
   restmail-api revoke-sessions
-      Signs everybody out: every refresh token, then every admin's epoch.
-      Output: {"refresh_tokens": N, "admins": N}
+      Signs everybody out: every refresh token, then every account's epoch.
+      Output: {"refresh_tokens": N, "accounts": N}
 
   restmail-api dns-records --mail-host HOST [--ip ADDRESS]
       The records each domain must publish: MX, SPF, DMARC, and DKIM where the
@@ -69,7 +68,7 @@ const operatorUsage = `restmail-api operator commands
       Output: {"domains": [{"domain": ..., "records": [...]}]}
 
 Results are one JSON object on stdout. Errors: {"error": {"code": ...,
-"message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_admin) or
+"message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_account) or
 1 (anything else). Nothing else is written to either;
 RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr.
 Usually run for you: chore password:reset, chore sessions:revoke,
@@ -113,7 +112,7 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mint-token", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	purpose := fs.String("purpose", "", "reset-admin, the only one")
-	username := fs.String("username", "", "the admin to reset (reset-admin)")
+	address := fs.String("address", "", "the account to reset (reset-admin)")
 	lifetime := fs.Duration("lifetime", bootstrap.DefaultTokenLifetime, "how long the token can be redeemed")
 	if err := fs.Parse(args); err != nil {
 		return fail(stderr, exitUsage, "bad_flag", err.Error())
@@ -121,8 +120,8 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 	if *purpose != "reset-admin" {
 		return fail(stderr, exitUsage, "bad_flag", `--purpose must be "reset-admin"`)
 	}
-	if *username == "" {
-		return fail(stderr, exitUsage, "bad_flag", "--username is required with --purpose reset-admin")
+	if *address == "" {
+		return fail(stderr, exitUsage, "bad_flag", "--address is required with --purpose reset-admin")
 	}
 	if *lifetime <= 0 || *lifetime > 24*time.Hour {
 		return fail(stderr, exitUsage, "bad_flag", "--lifetime must be between 1s and 24h")
@@ -133,10 +132,10 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 		return status
 	}
 
-	token, expires, err := bootstrap.MintResetToken(database, *username, *lifetime)
+	token, expires, err := bootstrap.MintResetToken(database, *address, *lifetime)
 	switch {
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
-		return fail(stderr, exitNoSuchAdmin, "no_such_admin", fmt.Sprintf("no admin named %q", *username))
+		return fail(stderr, exitNoSuchAccount, "no_such_account", fmt.Sprintf("no account at %q", *address))
 	case err != nil:
 		return fail(stderr, exitFailed, "mint_failed", err.Error())
 	}
@@ -167,10 +166,7 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	database = database.Session(&gorm.Session{Logger: operatorDBLogger(stderr)})
 	// The same additive steps the server runs at boot, so this works against a
 	// database the server has not started on yet.
-	if err := db.AutoMigrate(database, false); err != nil {
-		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
-	}
-	if _, err := grants.Migrate(database); err != nil {
+	if err := db.AutoMigrate(database); err != nil {
 		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
 	}
 	if err := bootstrap.EnsureRBAC(database); err != nil {
@@ -184,12 +180,12 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 func resetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("reset-password", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	username := fs.String("username", "", "the admin whose password to reset")
+	address := fs.String("address", "", "the account whose password to reset")
 	if err := fs.Parse(args); err != nil {
 		return fail(stderr, exitUsage, "bad_flag", err.Error())
 	}
-	if *username == "" {
-		return fail(stderr, exitUsage, "bad_flag", "--username is required")
+	if *address == "" {
+		return fail(stderr, exitUsage, "bad_flag", "--address is required")
 	}
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -204,15 +200,15 @@ func resetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	if status != exitOK {
 		return status
 	}
-	admin, err := bootstrap.ResetPassword(database, *username, password)
+	account, err := bootstrap.ResetPassword(database, *address, password)
 	switch {
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
-		return fail(stderr, exitNoSuchAdmin, "no_such_admin", fmt.Sprintf("no admin named %q", *username))
+		return fail(stderr, exitNoSuchAccount, "no_such_account", fmt.Sprintf("no account at %q", *address))
 	case err != nil:
 		return fail(stderr, exitFailed, "reset_failed", err.Error())
 	}
 	_ = json.NewEncoder(stdout).Encode(map[string]any{
-		"username":       admin.Username,
+		"address":        account.Address,
 		"setup_required": []string{"password", "two_factor"},
 	})
 	return exitOK

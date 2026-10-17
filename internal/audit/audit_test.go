@@ -13,7 +13,7 @@ func entryAt(seq int64) models.AuditEntry {
 	return models.AuditEntry{
 		Seq:        seq,
 		OccurredAt: time.Date(2026, 10, 17, 9, 30, 0, int(seq)*1000, time.UTC),
-		ActorKind:  models.AuditActorAdmin,
+		ActorKind:  models.AuditActorAccount,
 		ActorID:    &id,
 		ActorName:  "admin",
 		SessionID:  "0123456789abcdef0123456789abcdef",
@@ -89,7 +89,7 @@ func TestHash_CoversEveryField(t *testing.T) {
 	edits := map[string]func(e *models.AuditEntry){
 		"seq":           func(e *models.AuditEntry) { e.Seq = 2 },
 		"occurred_at":   func(e *models.AuditEntry) { e.OccurredAt = e.OccurredAt.Add(time.Microsecond) },
-		"actor_kind":    func(e *models.AuditEntry) { e.ActorKind = models.AuditActorMailbox },
+		"actor_kind":    func(e *models.AuditEntry) { e.ActorKind = models.AuditActorSystem },
 		"actor_id":      func(e *models.AuditEntry) { e.ActorID = &other },
 		"actor_name":    func(e *models.AuditEntry) { e.ActorName = "root" },
 		"credential_id": func(e *models.AuditEntry) { e.CredentialID = &other },

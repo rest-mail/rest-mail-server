@@ -2,28 +2,20 @@ package api
 
 import (
 	"reflect"
-	"strings"
+	"sort"
 	"testing"
 
 	"github.com/restmail/restmail"
-	"github.com/restmail/restmail/internal/db/models"
 	yaml "go.yaml.in/yaml/v2"
 )
 
-// The spec documents a webmail account as the server sends it (#358): every
-// property it lists is a field the server has. It listed an is_admin that went
-// with OSI-14. There is one spec, the root openapi.yaml: the API serves it and
-// the webmail's types are generated from it.
-func TestOpenAPI_WebmailAccountMatchesTheModel(t *testing.T) {
-	fields := map[string]bool{}
-	typ := reflect.TypeOf(models.WebmailAccount{})
-	for i := 0; i < typ.NumField(); i++ {
-		if name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ","); name != "" && name != "-" {
-			fields[name] = true
-		}
-	}
-
-	spec, err := restmail.OpenAPI.ReadFile("openapi.yaml")
+// The spec documents an account as the server sends it, in GET and POST
+// /api/v1/accounts (#347): exactly the fields it has, all of them required.
+// There is no webmail account any more, and the spec says so by not having
+// one.
+func TestOpenAPI_AccountMatchesTheServer(t *testing.T) {
+	want := []string{"address", "display_name", "id", "is_primary"}
+	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
 		t.Fatalf("read the spec: %v", err)
 	}
@@ -35,21 +27,26 @@ func TestOpenAPI_WebmailAccountMatchesTheModel(t *testing.T) {
 			} `yaml:"schemas"`
 		} `yaml:"components"`
 	}
-	if err := yaml.Unmarshal(spec, &doc); err != nil {
+	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	schema, ok := doc.Components.Schemas["WebmailAccount"]
+	for _, gone := range []string{"WebmailAccount", "LinkedAccount", "AdminUser"} {
+		if _, ok := doc.Components.Schemas[gone]; ok {
+			t.Errorf("the spec still documents %s", gone)
+		}
+	}
+	schema, ok := doc.Components.Schemas["Account"]
 	if !ok {
-		t.Fatal("no WebmailAccount schema")
+		t.Fatal("no Account schema")
 	}
-	for prop := range schema.Properties {
-		if !fields[prop] {
-			t.Errorf("WebmailAccount documents %q, which the server does not send", prop)
-		}
+	var props []string
+	for p := range schema.Properties {
+		props = append(props, p)
 	}
-	for _, prop := range schema.Required {
-		if !fields[prop] {
-			t.Errorf("WebmailAccount requires %q, which the server does not send", prop)
-		}
+	sort.Strings(props)
+	required := append([]string(nil), schema.Required...)
+	sort.Strings(required)
+	if !reflect.DeepEqual(props, want) || !reflect.DeepEqual(required, want) {
+		t.Errorf("Account: properties %v, required %v; want %v for both", props, required, want)
 	}
 }

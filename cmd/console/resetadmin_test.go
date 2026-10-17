@@ -64,15 +64,15 @@ func (f *fakeServer) handler() http.Handler {
 			fail(w, 409, "no_owner_keys")
 			return
 		}
-		if !verifies(req, f.owners, ownerMessage(req["challenge"].(string), req["purpose"].(string), req["username"].(string))) {
+		if !verifies(req, f.owners, ownerMessage(req["challenge"].(string), req["purpose"].(string), req["address"].(string))) {
 			fail(w, 403, "not_owner")
 			return
 		}
 		switch {
 		case req["purpose"] != "reset-admin":
 			fail(w, 422, "validation_error")
-		case !contains(f.admins, req["username"].(string)):
-			fail(w, 404, "no_such_admin")
+		case !contains(f.admins, req["address"].(string)):
+			fail(w, 404, "no_such_account")
 		default:
 			data(w, map[string]string{"purpose": req["purpose"].(string), "token": "TOKEN-123", "expires_at": "2026-10-10T21:15:00Z"})
 		}
@@ -133,9 +133,9 @@ func run(t *testing.T, f *fakeServer, keys keySource, args ...string) (int, stri
 
 func TestResetAdmin_OwnerKeyGetsALink(t *testing.T) {
 	owner := edSigner(t)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent@example.com"}}
 
-	status, out, errOut := run(t, f, keysOf(owner), "--username", "agent", "--json", "--show-secret")
+	status, out, errOut := run(t, f, keysOf(owner), "--address", "agent@example.com", "--json", "--show-secret")
 	if status != exitOK {
 		t.Fatalf("status %d, stderr %s", status, errOut)
 	}
@@ -153,20 +153,20 @@ func TestResetAdmin_OwnerKeyGetsALink(t *testing.T) {
 	if got["expires_at"] != "2026-10-10T21:15:00Z" {
 		t.Errorf("expires_at = %v", got["expires_at"])
 	}
-	if f.answered[0]["username"] != "agent" || f.answered[0]["purpose"] != "reset-admin" {
+	if f.answered[0]["address"] != "agent@example.com" || f.answered[0]["purpose"] != "reset-admin" {
 		t.Errorf("asked for %v", f.answered[0])
 	}
 }
 
 func TestResetAdmin_LinkIsRedactedUnlessAsked(t *testing.T) {
 	owner := edSigner(t)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
-	_, out, _ := run(t, f, keysOf(owner), "--username", "agent", "--json")
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent@example.com"}}
+	_, out, _ := run(t, f, keysOf(owner), "--address", "agent@example.com", "--json")
 	if strings.Contains(out, "TOKEN-123") || !strings.Contains(out, `"link_redacted":true`) {
 		t.Errorf("--json without --show-secret printed %s", out)
 	}
 	// People get the QR code and the link.
-	_, out, _ = run(t, f, keysOf(owner), "--username", "agent")
+	_, out, _ = run(t, f, keysOf(owner), "--address", "agent@example.com")
 	if !strings.Contains(out, "TOKEN-123") || !strings.Contains(out, "Scan with the rest-mail app") {
 		t.Errorf("text output: %s", out)
 	}
@@ -175,8 +175,8 @@ func TestResetAdmin_LinkIsRedactedUnlessAsked(t *testing.T) {
 // ssh-agent may hold several keys; any one of them may be the owner's.
 func TestResetAdmin_TriesEachKey(t *testing.T) {
 	other, owner := edSigner(t), edSigner(t)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
-	if status, _, errOut := run(t, f, keysOf(other, owner), "--username", "agent", "--json"); status != exitOK {
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent@example.com"}}
+	if status, _, errOut := run(t, f, keysOf(other, owner), "--address", "agent@example.com", "--json"); status != exitOK {
 		t.Fatalf("status %d: %s", status, errOut)
 	}
 	if len(f.answered) != 2 {
@@ -188,8 +188,8 @@ func TestResetAdmin_TriesEachKey(t *testing.T) {
 func TestResetAdmin_RSAKeySignsWithSHA2(t *testing.T) {
 	k, _ := rsa.GenerateKey(rand.Reader, 2048)
 	owner, _ := ssh.NewSignerFromKey(k)
-	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent"}}
-	if status, _, errOut := run(t, f, keysOf(owner), "--username", "agent", "--json"); status != exitOK {
+	f := &fakeServer{owners: []ssh.PublicKey{owner.PublicKey()}, admins: []string{"agent@example.com"}}
+	if status, _, errOut := run(t, f, keysOf(owner), "--address", "agent@example.com", "--json"); status != exitOK {
 		t.Fatalf("status %d: %s", status, errOut)
 	}
 }
@@ -197,7 +197,7 @@ func TestResetAdmin_RSAKeySignsWithSHA2(t *testing.T) {
 func TestResetAdmin_ExitStatuses(t *testing.T) {
 	owner, stranger := edSigner(t), edSigner(t)
 	listed := []ssh.PublicKey{owner.PublicKey()}
-	agent := []string{"--username", "agent"}
+	agent := []string{"--address", "agent@example.com"}
 	cases := []struct {
 		name string
 		f    *fakeServer
@@ -206,11 +206,11 @@ func TestResetAdmin_ExitStatuses(t *testing.T) {
 		want int
 		code string
 	}{
-		{"not an owner key", &fakeServer{owners: listed, admins: []string{"agent"}}, keysOf(stranger), agent, exitNotOwner, "not_owner"},
+		{"not an owner key", &fakeServer{owners: listed, admins: []string{"agent@example.com"}}, keysOf(stranger), agent, exitNotOwner, "not_owner"},
 		{"no keys at all", &fakeServer{owners: listed}, keysOf(), agent, exitNotOwner, "no_key"},
 		{"server lists no owners", &fakeServer{}, keysOf(owner), agent, exitNotOwner, "no_owner_keys"},
-		{"no such admin", &fakeServer{owners: listed, admins: []string{"agent"}}, keysOf(owner), []string{"--username", "nobody"}, exitNoSuchAdmin, "no_such_admin"},
-		{"no username", &fakeServer{owners: listed}, keysOf(owner), nil, exitUsage, "bad_flag"},
+		{"no such account", &fakeServer{owners: listed, admins: []string{"agent@example.com"}}, keysOf(owner), []string{"--address", "nobody@example.com"}, exitNoSuchAccount, "no_such_account"},
+		{"no address", &fakeServer{owners: listed}, keysOf(owner), nil, exitUsage, "bad_flag"},
 		{"unknown flag", &fakeServer{owners: listed}, keysOf(owner), append([]string{"--kube-context", "prod"}, agent...), exitUsage, "bad_flag"},
 		{"the setup code is gone", &fakeServer{owners: listed}, keysOf(owner), append([]string{"--code", "ABCD-EFGH"}, agent...), exitUsage, "bad_flag"},
 		{"lifetime too long", &fakeServer{owners: listed}, keysOf(owner), append([]string{"--lifetime", "48h"}, agent...), exitUsage, "bad_flag"},
@@ -236,7 +236,7 @@ func TestResetAdmin_NotARestMailServer(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
 	var out, errOut bytes.Buffer
-	status := runResetAdmin(context.Background(), []string{"--server", srv.URL, "--username", "agent", "--json"}, srv.Client(), keysOf(edSigner(t)), &out, &errOut)
+	status := runResetAdmin(context.Background(), []string{"--server", srv.URL, "--address", "agent@example.com", "--json"}, srv.Client(), keysOf(edSigner(t)), &out, &errOut)
 	if status != exitUnreachable {
 		t.Errorf("status %d, want %d: %s", status, exitUnreachable, errOut.String())
 	}

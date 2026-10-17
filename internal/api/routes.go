@@ -66,22 +66,20 @@ func (rt *Routers) Close() {
 // returns the public handler. It is the entry point for callers that do not
 // run a separate internal mTLS listener (tests, tooling).
 // The acmeClient parameter is optional; pass nil when ACME is disabled.
-// adminSessionCheck builds the check that refuses admin tokens from before the
-// account's last credential change. A variable so this package's route tests,
-// which run on a database that fails every query in order to test the
-// capability gates alone, can stand it aside; the check itself is tested
-// against a real database in the handlers package.
-var adminSessionCheck = handlers.AdminSessionCurrent
+// sessionCheck builds the check that refuses tokens from before the account's
+// last credential change. A variable so this package's route tests, which run
+// on a database that fails every query in order to test the capability gates
+// alone, can stand it aside; the check itself is tested against a real
+// database in the handlers package.
+var sessionCheck = handlers.SessionCurrent
 
-// heldGrants builds what RequireCapability reads an admin's grants from: the
-// router's grants cache. A variable for the same reason as adminSessionCheck;
+// heldGrants builds what RequireCapability reads an account's grants from:
+// the router's grants cache. A variable for the same reason as sessionCheck;
 // the grants themselves are tested against a real database.
 var heldGrants = cachedHeldGrants
 
 func cachedHeldGrants(cache *grants.Cache) middleware.HeldGrants {
-	return func(adminID uint) (grants.Held, error) {
-		return cache.Held(models.GrantHolderAdmin, adminID)
-	}
+	return cache.Held
 }
 
 func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) http.Handler {
@@ -141,17 +139,22 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Use(metrics.HTTPMetrics)
 
 	// Initialize handlers
+	// What each account may do is read from its grants on every request,
+	// through a cache that every grant change made here empties at once
+	// (#345).
+	grantCache := grants.NewCache(db, grants.CacheTTL)
+	grantH := handlers.NewGrantHandler(db, grantCache, cfg.MasterKey)
+
 	healthH := handlers.NewHealthHandler(db, jwtService)
 	authH := handlers.NewAuthHandler(db, jwtService, cfg.MasterKey)
 	twofaH := handlers.NewTwoFactorHandler(db, cfg.MasterKey, cfg.TOTP2FAEnabled)
 	domainH := handlers.NewDomainHandler(db, dnsProvider)
-	mailboxH := handlers.NewMailboxHandler(db)
+	mailboxH := handlers.NewMailboxHandler(db, grantCache)
 	aliasH := handlers.NewAliasHandler(db)
 	broker := handlers.NewSSEBroker()
-	eventH := handlers.NewEventHandler(db, broker, jwtService)
-	accountH := handlers.NewAccountHandler(db)
+	eventH := handlers.NewEventHandler(db, broker, jwtService, sessionCheck(db))
+	accountH := handlers.NewAccountHandler(db, grantCache, cfg.MasterKey)
 	searchH := handlers.NewSearchHandler(db)
-	webmailH := handlers.NewWebmailAccountHandler(db)
 	attachmentH := handlers.NewAttachmentHandler(db)
 	contactH := handlers.NewContactHandler(db)
 	vacationH := handlers.NewVacationHandler(db)
@@ -180,20 +183,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	)
 	auditLog := auditor.Audit
 
-	// What each admin may do is read from its grants on every request, through
-	// a cache that every grant change made here empties at once (#345).
-	grantCache := grants.NewCache(db, grants.CacheTTL)
-	grantH := handlers.NewGrantHandler(db, grantCache, cfg.MasterKey)
-
-	// App passwords (#344): the mail routes below also take one, sent with HTTP
-	// Basic as address:app_password and checked on every request, so a revoked
-	// one stops working at once. Each refusal is recorded, and refusals are
-	// throttled at login's rate (see middleware.AppPasswords).
-	var appPasswordRefusals *middleware.RateLimitConfig
+	// HTTP Basic: the mail routes below also take a credential sent as
+	// address:password, an app password (#344) or one of the account's
+	// passwords, checked against the credentials table on every request, so a
+	// revoked one stops working at once. It is how the protocol gateways sign
+	// mail clients in, one path for both. Each refusal is recorded, and
+	// refusals are throttled at login's rate (see middleware.BasicCredentials).
+	var basicRefusals *middleware.RateLimitConfig
 	if cfg.AuthRateLimitEnabled {
-		appPasswordRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
+		basicRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
 	}
-	appPasswords := middleware.NewAppPasswords(handlers.AppPasswordVerifier(db), auditor.AppPasswordRefused, appPasswordRefusals)
+	basicCredentials := middleware.NewBasicCredentials(handlers.BasicVerifier(db), auditor.BasicRefused, basicRefusals)
 	credentialH := handlers.NewCredentialHandler(db)
 
 	// Register DB-backed filters that need a database connection.
@@ -466,14 +466,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 	// ═══════════════════════════════════════════════════════════════
 	// Authenticated routes that need a person: a session from signing in
-	// with a password. They take no app password, so one can never change a
-	// password or 2FA, link a mailbox, or create or revoke a credential
-	// (#341, Decided 5).
+	// with a password. They take no credential over HTTP Basic, so an app
+	// password can never change a password or 2FA, create or link an
+	// account, or create or revoke a credential (#341, Decided 5).
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
-		// An admin token minted before the account's last credential change is dead.
-		r.Use(middleware.RejectStaleAdminSessions(adminSessionCheck(db)))
+		// A token minted before the account's last credential change is dead.
+		r.Use(middleware.RejectStaleSessions(sessionCheck(db)))
 		// Double-submit CSRF guard for cookie-authenticated browser sessions on
 		// state-changing methods; Bearer-token (gateway) callers send no cookie
 		// and are transparently exempt (see middleware.CSRF).
@@ -483,9 +483,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// cannot exhaust memory. cfg.APIMaxBodyBytes <= 0 makes this a no-op.
 		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
 
-		// Two-factor auth (OSI-19) — an authenticated account manages its own
-		// TOTP enrollment. Available to both mailbox and admin tokens (no
-		// AdminOnly gate); each endpoint keys on the caller's own claims.
+		// Finishing an account's setup, and managing its own 2FA (OSI-19):
+		// the only routes a session still in setup reaches.
 		//
 		// #204: the state-changing / code-verifying endpoints share the SAME
 		// per-client-IP auth throttle as /auth/login (same limiter instance). Left
@@ -495,64 +494,71 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// status read carries no secret to guess and is left unthrottled so the SPA
 		// can poll it freely.
 		r.Get("/api/v1/auth/2fa", twofaH.Status)
-		// An admin replaces their own password; the only call a session flagged
-		// password_change_required can make. Throttled like login: it checks a
-		// password.
+		// An account replaces its own password; with 2FA enrollment, all a
+		// session in setup can do. Throttled like login: it checks a password.
 		r.With(authThrottle, auditLog("auth.password_change")).Post("/api/v1/auth/password", authH.ChangePassword)
 		r.With(authThrottle, auditLog("auth.2fa_enroll")).Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
 		r.With(authThrottle, auditLog("auth.2fa_confirm")).Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
 		r.With(authThrottle, auditLog("auth.2fa_disable")).Post("/api/v1/auth/2fa/disable", twofaH.Disable)
 
-		// Linked accounts.
-		//
-		// LinkAccount and TestConnection each verify a supplied address+password
-		// against a mailbox and reveal correctness (200 vs 401). Left unthrottled
-		// they are online password-guessing oracles a holder of any valid
-		// low-privilege token could hammer to brute-force arbitrary credentials,
-		// bypassing the login rate limit entirely. They share the SAME per-client-IP
-		// auth throttle as /auth/login and /auth/refresh (same limiter instance), so
-		// a wrong guess consumes the same budget as a failed login and cannot be used
-		// to sidestep it. The read/list/unlink routes carry no such risk.
-		r.With(authThrottle, auditLog("accounts.link", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts", accountH.LinkAccount)
-		r.With(auditLog("accounts.unlink")).Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
-		r.With(authThrottle, auditLog("accounts.test_connection", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts/test-connection", accountH.TestConnection)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.SetupDone)
 
-		// Credentials (#344): a mailbox's app passwords. The secret is in the
-		// answer to creating one, once, and never in the audit log. Creating
-		// one takes the mailbox's current password, so it is throttled like
-		// login, with the same limiter: a wrong one spends login's budget.
-		r.Get("/api/v1/accounts/{id}/credentials", credentialH.List)
-		r.With(authThrottle, auditLog("credentials.create", middleware.AuditBodyFields("name"),
-			middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
-			Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
-		r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
+			// Accounts (#347). Creating one needs mailboxes:write covering its
+			// domain, and makes the creator its owner; the account, its grant
+			// and their entries are recorded in the change's transaction, and a
+			// refused attempt here.
+			r.With(auditLog(handlers.ActionAccountsCreate, middleware.AuditBodyFields("address"), middleware.AuditFailuresOnly())).
+				Post("/api/v1/accounts", accountH.CreateAccount)
+			// Linking proves an account's password (and its 2FA), so it is an
+			// online password-guessing oracle: it shares the SAME per-client-IP
+			// auth throttle as /auth/login (same limiter instance), so a wrong
+			// guess consumes the same budget as a failed login and cannot be
+			// used to sidestep it. Unlinking removes the caller's own grants on
+			// the account.
+			r.With(authThrottle, auditLog("accounts.link", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts/link", accountH.LinkAccount)
+			r.With(auditLog("accounts.unlink")).Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
 
-		// Push devices (#363): the phones this session registers, only when
-		// push is configured; otherwise there are no such routes, and the 404
-		// tells the app push is off. Never the token in the audit log.
-		if pushSvc != nil {
-			r.Get("/api/v1/devices", pushSvc.devices.List)
-			r.With(auditLog(push.ActionDeviceRegister, middleware.AuditBodyFields("platform", "environment"),
-				middleware.AuditResponseField("id", "device_id"))).Post("/api/v1/devices", pushSvc.devices.Register)
-			r.With(auditLog(push.ActionDeviceRemove)).Delete("/api/v1/devices/{device_id}", pushSvc.devices.Remove)
-		}
+			// Credentials (#344): an account's app passwords, its own or one it
+			// holds mailbox:manage on. The secret is in the answer to creating
+			// one, once, and never in the audit log. Creating one takes the
+			// session's current password, so it is throttled like login, with
+			// the same limiter: a wrong one spends login's budget.
+			r.Get("/api/v1/accounts/{id}/credentials", credentialH.List)
+			r.With(authThrottle, auditLog("credentials.create", middleware.AuditBodyFields("name"),
+				middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
+				Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
+			r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
+
+			// Push devices (#363): the phones this session registers, only when
+			// push is configured; otherwise there are no such routes, and the
+			// 404 tells the app push is off. Never the token in the audit log.
+			if pushSvc != nil {
+				r.Get("/api/v1/devices", pushSvc.devices.List)
+				r.With(auditLog(push.ActionDeviceRegister, middleware.AuditBodyFields("platform", "environment"),
+					middleware.AuditResponseField("id", "device_id"))).Post("/api/v1/devices", pushSvc.devices.Register)
+				r.With(auditLog(push.ActionDeviceRemove)).Delete("/api/v1/devices/{device_id}", pushSvc.devices.Remove)
+			}
+		})
 	})
 
 	// ═══════════════════════════════════════════════════════════════
-	// Authenticated routes (mail server operations): a session, or an app
-	// password with HTTP Basic, whose scope is its own mailbox with read,
-	// write and send. The protocol gateways reach them both ways.
+	// Authenticated routes (mail server operations): a session, or a
+	// credential sent with HTTP Basic (an app password, whose scope is its own
+	// mailbox with read, write and send, or one of the account's passwords).
+	// The protocol gateways reach them with Basic.
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
-		r.Use(appPasswords.Authenticate(jwtService))
-		r.Use(middleware.RejectStaleAdminSessions(adminSessionCheck(db)))
+		r.Use(basicCredentials.Authenticate(jwtService))
+		r.Use(middleware.RejectStaleSessions(sessionCheck(db)))
+		r.Use(middleware.SetupDone)
 		r.Use(middleware.CSRF())
 		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
 
-		// A protocol gateway signs in a mail client that gave it an app
-		// password. Throttled like login, which the gateways call for a
-		// mailbox's own password; a refused app password is recorded by
-		// appPasswords, a successful sign-in here.
+		// A protocol gateway signs a mail client in with what it gave as its
+		// password, sent with HTTP Basic. Throttled like login; a refused
+		// credential is recorded by basicCredentials, a successful sign-in
+		// here.
 		r.With(authThrottle, auditLog("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))).
 			Post("/api/v1/auth/protocol-sign-in", credentialH.ProtocolSignIn)
 
@@ -625,11 +631,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// Admin routes
 	//
-	// AdminOnly gates the whole group (mailbox tokens → 403), then each
-	// route requires the capability for its resource/action, read from the
-	// caller's grants. Capability names are the seeded admin_capabilities
-	// names (see middleware/capabilities.go for the taxonomy); superadmin's
-	// "*" wildcard satisfies all of them.
+	// A session only (no credential over HTTP Basic), whose account is set
+	// up; then each route requires the capability for its resource/action,
+	// read from the caller's grants. Capability names are the seeded
+	// capabilities (see middleware/capabilities.go for the taxonomy);
+	// superadmin's "*" wildcard satisfies all of them.
 	//
 	// needs wants the capability at "*". needsOnDomain and needsOnMailbox are
 	// for routes acting on the domain or mailbox their {id} names: a grant on
@@ -641,9 +647,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// Every change through the admin API is recorded, including those the
 		// checks below refuse; reads are not, except of the audit log itself.
 		r.Use(auditLog("admin.change", middleware.AuditWritesOnly()))
-		// An admin token minted before the account's last credential change is dead.
-		r.Use(middleware.RejectStaleAdminSessions(adminSessionCheck(db)))
-		r.Use(middleware.AdminOnly)
+		// A token minted before the account's last credential change is dead.
+		r.Use(middleware.RejectStaleSessions(sessionCheck(db)))
+		r.Use(middleware.SetupDone)
 		// Same double-submit CSRF guard as the mailbox surface (cookie sessions
 		// only; Bearer callers exempt).
 		r.Use(middleware.CSRF())
@@ -662,23 +668,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			return middleware.RequireCapability(held, capability, onMailbox)
 		}
 
-		// Dashboard stats — visible to every admin role
-		r.Get("/api/v1/admin/stats", statsH.GetDashboardStats)
+		// Dashboard stats — every admin role holds domains:read
+		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/stats", statsH.GetDashboardStats)
 
-		// Admin user management
-		adminUserH := handlers.NewAdminUserHandler(db, grantCache)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/admin-users", adminUserH.ListAdminUsers)
-		r.With(needs(middleware.CapUsersWrite)).Post("/api/v1/admin/admin-users", adminUserH.CreateAdminUser)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/admin-users/{id}", adminUserH.GetAdminUser)
-		r.With(needs(middleware.CapUsersWrite)).Put("/api/v1/admin/admin-users/{id}", adminUserH.UpdateAdminUser)
-		r.With(needs(middleware.CapUsersDelete)).Delete("/api/v1/admin/admin-users/{id}", adminUserH.DeleteAdminUser)
+		// Roles and capabilities, for granting
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", grantH.ListRoles)
+		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", grantH.ListCapabilities)
 
-		// Role and capability management
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", adminUserH.ListRoles)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", adminUserH.ListCapabilities)
-
-		// Grants (#345): who holds which role at which scope. Changing them
-		// needs users:write, as changing an admin's roles always has; the
+		// Grants (#345): which account holds which role at which scope; what
+		// makes an account an admin. Changing them needs users:write; the
 		// handler adds that the session signed in with 2FA and that the caller
 		// holds everything it grants or removes, and records each change in the
 		// audit log in the change's own transaction.
@@ -705,9 +703,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needsOnDomain(middleware.CapDomainsDelete)).Delete("/api/v1/admin/domains/{id}", domainH.Delete)
 		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/dns", domainH.DNSCheck)
 
-		// Mailboxes
+		// Accounts (mailboxes). Creating one is POST /api/v1/accounts, the same
+		// for everyone; deleting one removes its grants under the grants rules.
 		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
-		r.With(needs(middleware.CapMailboxesWrite)).Post("/api/v1/admin/mailboxes", mailboxH.Create)
 		r.With(needsOnMailbox(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
 		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
 		r.With(needsOnMailbox(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
@@ -718,12 +716,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases/{id}", aliasH.Get)
 		r.With(needs(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
 		r.With(needs(middleware.CapMailboxesDel)).Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
-
-		// Webmail accounts (mailbox-scoped → mailboxes:* capabilities)
-		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/webmail-accounts", webmailH.List)
-		r.With(needs(middleware.CapMailboxesWrite)).Post("/api/v1/admin/webmail-accounts", webmailH.Create)
-		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/webmail-accounts/{id}", webmailH.Get)
-		r.With(needs(middleware.CapMailboxesDel)).Delete("/api/v1/admin/webmail-accounts/{id}", webmailH.Delete)
 
 		// Pipelines
 		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines", pipelineH.ListPipelines)
@@ -803,14 +795,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit", auditH.List)
 		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit/verify", auditH.Verify)
 
-		// Test endpoints (non-production only)
-		r.Post("/api/v1/admin/test/send", testH.SendTestEmail)
-		r.Get("/api/v1/admin/test/verify", testH.VerifyDelivery)
-		r.Post("/api/v1/admin/test/probe", testH.ProbeServices)
-		r.Post("/api/v1/admin/test/reset", testH.ResetTestData)
-		r.Post("/api/v1/admin/test/seed", testH.SeedTestData)
-		r.Post("/api/v1/admin/test/snapshot", testH.Snapshot)
-		r.Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
+		// Test endpoints (non-production only): "*" itself
+		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/send", testH.SendTestEmail)
+		r.With(needs(grants.Wildcard)).Get("/api/v1/admin/test/verify", testH.VerifyDelivery)
+		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/probe", testH.ProbeServices)
+		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/reset", testH.ResetTestData)
+		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/seed", testH.SeedTestData)
+		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot", testH.Snapshot)
+		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
 	})
 
 	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc}

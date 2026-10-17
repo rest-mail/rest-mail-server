@@ -20,7 +20,7 @@ func testStage2TraditionalMail(t *testing.T) {
 	// admin below.
 
 	t.Run("Setup", func(t *testing.T) {
-		if err := client.loginAdmin("admin", "admin123!@"); err != nil {
+		if err := client.loginAdmin(); err != nil {
 			t.Fatalf("RBAC admin login failed: %v", err)
 		}
 	})
@@ -49,7 +49,7 @@ func testStage2TraditionalMail(t *testing.T) {
 		if client.token == "" {
 			skipOrFail(t, "no admin token")
 		}
-		probe := createMailbox(t, client, probeAddr, adminPassword, "E2E Probe")
+		probe := createMailbox(t, client, probeAddr, accountPassword, "E2E Probe")
 		t.Logf("probe mailbox %s id=%d", probeAddr, probe.ID)
 	})
 
@@ -181,7 +181,7 @@ func testStage2TraditionalMail(t *testing.T) {
 
 		// The gateway refuses plaintext LOGIN; dialIMAPTLS already gave us an
 		// implicit-TLS session, so LOGIN goes straight out.
-		result, _ := ic.command(t, "LOGIN "+probeAddr+" "+adminPassword)
+		result, _ := ic.command(t, "LOGIN "+probeAddr+" "+accountPassword)
 		if !strings.Contains(result, "OK") {
 			t.Fatalf("IMAP gateway cannot auth API-created user: %s", result)
 		}

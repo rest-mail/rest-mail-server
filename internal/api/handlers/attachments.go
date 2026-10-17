@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -106,20 +105,19 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Mailbox-scoped: the attachment's message must be in a mailbox the caller
+	// may read: its own, or one it owns or has linked. An attachment it may not
+	// read is answered as one that does not exist.
 	var att models.Attachment
-	query := h.db.Joins("JOIN messages ON messages.id = attachments.message_id").
-		Joins("JOIN mailboxes ON mailboxes.id = messages.mailbox_id")
-
-	// Mailbox-scoped: restrict to the authenticated account's mailboxes. There is
-	// no cross-mailbox admin bypass (OSI-14).
-	mailboxIDs := h.getUserMailboxIDs(claims)
-	if len(mailboxIDs) == 0 {
+	var mailboxIDs []uint
+	if err := h.db.First(&att, id).Error; err == nil {
+		h.db.Model(&models.Message{}).Where("id = ?", att.MessageID).Pluck("mailbox_id", &mailboxIDs)
+	}
+	if len(mailboxIDs) != 1 {
 		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
 		return
 	}
-	query = query.Where("mailboxes.id IN ?", mailboxIDs)
-
-	if err := query.First(&att, id).Error; err != nil {
+	if _, err := mayReach(h.db, claims, mailboxIDs[0], models.CapMailRead); err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
 		return
 	}
@@ -181,16 +179,9 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 		respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
 		return
 	}
-	// Mailbox-scoped: the message must belong to the authenticated account. No
-	// cross-mailbox admin bypass (OSI-14).
-	mailboxIDs := h.getUserMailboxIDs(claims)
-	owned := false
-	for _, mid := range mailboxIDs {
-		if msg.MailboxID == mid {
-			owned = true
-			break
-		}
-	}
+	// Mailbox-scoped: the message must be in a mailbox the caller may read.
+	_, err = mayReach(h.db, claims, msg.MailboxID, models.CapMailRead)
+	owned := err == nil
 	if !owned {
 		respond.Error(w, http.StatusNotFound, "not_found", "Message not found")
 		return
@@ -200,20 +191,4 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 	h.db.Where("message_id = ?", messageID).Order("id ASC").Find(&attachments)
 
 	respond.List(w, attachments, nil)
-}
-
-// getUserMailboxIDs returns all mailbox IDs the user has access to (primary +
-// linked; an app password has no linked ones).
-func (h *AttachmentHandler) getUserMailboxIDs(claims *auth.Claims) []uint {
-	var ids []uint
-	var account models.WebmailAccount
-	if err := h.db.First(&account, claims.WebmailAccountID).Error; err == nil {
-		ids = append(ids, account.PrimaryMailboxID)
-	}
-	var linked []models.LinkedAccount
-	h.db.Where("webmail_account_id = ?", claims.LinkedAccountsOwner()).Find(&linked)
-	for _, la := range linked {
-		ids = append(ids, la.MailboxID)
-	}
-	return ids
 }

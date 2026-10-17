@@ -71,11 +71,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "restmail.api.secretName" . }}
                   key: MASTER_KEY
-            # First superadmin of a fresh install, created only while no admin
-            # exists, and made to set a new password and enroll 2FA at first
-            # sign-in. Optional: a Secret without the key means no bootstrap admin.
-            - name: RESTMAIL_BOOTSTRAP_ADMIN_USERNAME
-              value: {{ .Values.api.bootstrapAdminUsername | default "admin" | quote }}
+            # The first account of a fresh install, admin@ the mail domain,
+            # made only while no admin exists, holding superadmin, and made to
+            # set a new password and enroll 2FA at first sign-in. Optional: a
+            # Secret without the password key means no bootstrap account.
+            - name: RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS
+              value: {{ printf "admin@%s" .Values.mailserver.domain | quote }}
             - name: RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:

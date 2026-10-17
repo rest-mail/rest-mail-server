@@ -69,11 +69,11 @@ func (r *RefreshTokenRepository) Revoke(jti string) error {
 		Updates(map[string]any{"status": models.RefreshTokenRevoked, "updated_at": time.Now()}).Error
 }
 
-// RevokeAllForSubject revokes every still-active refresh token for one owner
-// (password change / account disable), killing all of that user's sessions at
-// their next refresh.
-func (r *RefreshTokenRepository) RevokeAllForSubject(userType string, subjectID uint) error {
+// RevokeAllForAccount revokes every still-active refresh token of one account
+// (password change / account disable), killing all of its sessions at their
+// next refresh.
+func (r *RefreshTokenRepository) RevokeAllForAccount(accountID uint) error {
 	return r.db.Model(&models.RefreshToken{}).
-		Where("user_type = ? AND subject_id = ? AND status = ?", userType, subjectID, models.RefreshTokenActive).
+		Where("account_id = ? AND status = ?", accountID, models.RefreshTokenActive).
 		Updates(map[string]any{"status": models.RefreshTokenRevoked, "updated_at": time.Now()}).Error
 }

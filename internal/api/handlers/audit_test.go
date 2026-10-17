@@ -82,10 +82,10 @@ func TestAuditAPI_ListFiltersAndPages(t *testing.T) {
 	adminID, mailboxID := uint(1), uint(5)
 	for i, e := range []models.AuditEntry{
 		{ActorKind: models.AuditActorAnonymous, ActorName: "admin", Action: "auth.sign_in", Outcome: models.AuditOutcomeDenied, Status: 401},
-		{ActorKind: models.AuditActorAdmin, ActorID: &adminID, ActorName: "admin", Action: "auth.sign_in", Outcome: models.AuditOutcomeSuccess, Status: 200},
-		{ActorKind: models.AuditActorAdmin, ActorID: &adminID, ActorName: "admin", Action: "admin.change", Outcome: models.AuditOutcomeSuccess, Status: 201},
-		{ActorKind: models.AuditActorMailbox, ActorID: &mailboxID, ActorName: "Chris_100%@example.com", Action: "auth.password_change", Outcome: models.AuditOutcomeFailed, Status: 422},
-		{ActorKind: models.AuditActorAdmin, ActorID: &adminID, ActorName: "admin", Action: "admin.change", Outcome: models.AuditOutcomeError, Status: 500},
+		{ActorKind: models.AuditActorAccount, ActorID: &adminID, ActorName: "admin@example.com", Action: "auth.sign_in", Outcome: models.AuditOutcomeSuccess, Status: 200},
+		{ActorKind: models.AuditActorAccount, ActorID: &adminID, ActorName: "admin@example.com", Action: "admin.change", Outcome: models.AuditOutcomeSuccess, Status: 201},
+		{ActorKind: models.AuditActorAccount, ActorID: &mailboxID, ActorName: "Chris_100%@example.com", Action: "auth.password_change", Outcome: models.AuditOutcomeFailed, Status: 422},
+		{ActorKind: models.AuditActorAccount, ActorID: &adminID, ActorName: "admin@example.com", Action: "admin.change", Outcome: models.AuditOutcomeError, Status: 500},
 	} {
 		e.OccurredAt = base.Add(time.Duration(i) * time.Hour)
 		if err := audit.Append(db, &e); err != nil {
@@ -113,16 +113,17 @@ func TestAuditAPI_ListFiltersAndPages(t *testing.T) {
 	}
 
 	for query, want := range map[string]string{
-		"actor_kind=admin":                     "[5 3 2]",
-		"actor_id=5":                           "[4]",
-		"actor=CHRIS_100%25":                   "[4]", // contains, any case, % and _ taken literally
-		"actor=C_ris":                          "[]",  // _ would match the h
-		"actor=C%25example":                    "[]",  // % would match "hris_100"
-		"action=admin.change":                  "[5 3]",
-		"outcome=denied":                       "[1]",
-		"since=2026-10-17T11:00:00Z":           "[5 4 3]",
-		"until=2026-10-17T10:00:00Z":           "[2 1]",
-		"action=auth.sign_in&actor_kind=admin": "[2]",
+		"actor_kind=account":                     "[5 4 3 2]",
+		"actor_kind=anonymous":                   "[1]",
+		"actor_id=5":                             "[4]",
+		"actor=CHRIS_100%25":                     "[4]", // contains, any case, % and _ taken literally
+		"actor=C_ris":                            "[]",  // _ would match the h
+		"actor=C%25example":                      "[]",  // % would match "hris_100"
+		"action=admin.change":                    "[5 3]",
+		"outcome=denied":                         "[1]",
+		"since=2026-10-17T11:00:00Z":             "[5 4 3]",
+		"until=2026-10-17T10:00:00Z":             "[2 1]",
+		"action=auth.sign_in&actor_kind=account": "[2]",
 	} {
 		code, page := listAudit(t, h, query)
 		if code != http.StatusOK || fmt.Sprint(seqs(page)) != want {

@@ -1,8 +1,8 @@
 package handlers
 
 import (
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -318,7 +318,7 @@ func (h *PipelineHandler) DeletePipeline(w http.ResponseWriter, r *http.Request)
 // TestPipeline runs a sample email through a pipeline and returns step-by-step results.
 func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PipelineID uint              `json:"pipeline_id"`
+		PipelineID uint                `json:"pipeline_id"`
 		Email      *pipeline.EmailJSON `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -659,8 +659,8 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 
 // ListQuarantine returns quarantined messages for a mailbox.
 // resolveMailboxID resolves the account ID from the URL to a mailbox ID,
-// verifying that the authenticated user owns the account (either as their
-// primary account or a linked account). Quarantine rows are per-mailbox
+// verifying that the session may reach the account (its own, or one it holds
+// a mail grant on). Quarantine rows are per-mailbox
 // confidential mail; without this check the {id} path segment was trusted as a
 // raw mailbox ID and quarantine rows were released/deleted by row ID with no
 // owner check, letting any authenticated caller view/release/delete another
@@ -675,7 +675,7 @@ func (h *PipelineHandler) resolveMailboxID(r *http.Request, accountIDStr string)
 	if err != nil {
 		return 0, err
 	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims)
+	return resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
 }
 
 func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request) {

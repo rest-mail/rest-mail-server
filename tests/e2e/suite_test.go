@@ -44,6 +44,10 @@ var (
 	adminPassword      = envOr("ADMIN_PASSWORD", "password123")
 )
 
+// accountPassword is the password of every account the suite makes on REST
+// Mail; the server takes no password shorter than 12 characters.
+const accountPassword = "password1234"
+
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -165,30 +169,6 @@ func tokenFromCookies(resp *http.Response) string {
 	return ""
 }
 
-// loginAdmin authenticates as an RBAC admin user (admin_users table — the
-// seeded `admin` account) and stores the access token. The same endpoint
-// serves both flows: `username` selects the admin path, `email` the mailbox
-// path.
-func (c *apiClient) rawLoginAdmin(username, password string) error {
-	resp, err := c.post("/api/v1/auth/login", map[string]string{
-		"username": username,
-		"password": password,
-	})
-	if err != nil {
-		return fmt.Errorf("admin login request: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("admin login failed (%d): %s", resp.StatusCode, body)
-	}
-	c.token = tokenFromCookies(resp)
-	if c.token == "" {
-		return fmt.Errorf("admin login: no %s cookie in response", accessCookieName)
-	}
-	return nil
-}
-
 // login authenticates and stores the access token.
 func (c *apiClient) rawLogin(email, password string) error {
 	resp, err := c.post("/api/v1/auth/login", map[string]string{
@@ -222,9 +202,9 @@ func (c *apiClient) rawLogin(email, password string) error {
 // rate_limited part-way through the run — the limiter doing exactly its job
 // against what looks like credential brute-force. A real client logs in ONCE
 // and reuses its access token (valid 15m by default, far longer than a whole
-// suite run), so login()/loginAdmin() memoize the token per (identifier,
-// password). This keeps the rate limiter ON — full security coverage — while
-// staying within its budget. Negative-auth checks in the suite all go through
+// suite run), so login() memoizes the token per (address, password). This
+// keeps the rate limiter ON — full security coverage — while staying within
+// its budget. Negative-auth checks in the suite all go through
 // the SMTP/IMAP/POP3 protocols (never this HTTP endpoint), and the one HTTP
 // password change re-logs in under a NEW password (a distinct cache key), so
 // caching never masks an auth regression.
@@ -233,7 +213,9 @@ var (
 	tokenCache   = map[string]string{}
 )
 
-func (c *apiClient) cachedLogin(key, identifier, password string, admin bool) error {
+// login authenticates as an account, reusing a cached token when present.
+func (c *apiClient) login(email, password string) error {
+	key := email + "\x00" + password
 	tokenCacheMu.Lock()
 	tok, ok := tokenCache[key]
 	tokenCacheMu.Unlock()
@@ -242,13 +224,7 @@ func (c *apiClient) cachedLogin(key, identifier, password string, admin bool) er
 		return nil
 	}
 
-	var err error
-	if admin {
-		err = c.rawLoginAdmin(identifier, password)
-	} else {
-		err = c.rawLogin(identifier, password)
-	}
-	if err != nil {
+	if err := c.rawLogin(email, password); err != nil {
 		return err
 	}
 
@@ -258,14 +234,16 @@ func (c *apiClient) cachedLogin(key, identifier, password string, admin bool) er
 	return nil
 }
 
-// login authenticates as a mailbox user, reusing a cached token when present.
-func (c *apiClient) login(email, password string) error {
-	return c.cachedLogin("user\x00"+email+"\x00"+password, email, password, false)
-}
+// The seeded admin (cmd/seed): the account admin@<the testbed's domain>, an
+// account like any other, with the admin role.
+const (
+	seedAdminAddress  = "admin@restmail.test"
+	seedAdminPassword = "admin123!@"
+)
 
-// loginAdmin authenticates as an RBAC admin, reusing a cached token when present.
-func (c *apiClient) loginAdmin(username, password string) error {
-	return c.cachedLogin("admin\x00"+username+"\x00"+password, username, password, true)
+// loginAdmin signs in as the seeded admin.
+func (c *apiClient) loginAdmin() error {
+	return c.login(seedAdminAddress, seedAdminPassword)
 }
 
 // ── JSON decode helper ───────────────────────────────────────────────
@@ -453,10 +431,11 @@ func getDomainByName(t *testing.T, client *apiClient, name string) domainInfo {
 	return domainInfo{}
 }
 
-// createMailbox creates a mailbox via the admin API.
+// createMailbox makes an account (POST /api/v1/accounts); the client's account
+// becomes its owner. An account that already exists is looked up instead.
 func createMailbox(t *testing.T, client *apiClient, address, password, displayName string) mailboxInfo {
 	t.Helper()
-	resp, err := client.post("/api/v1/admin/mailboxes", map[string]string{
+	resp, err := client.post("/api/v1/accounts", map[string]string{
 		"address":      address,
 		"password":     password,
 		"display_name": displayName,
@@ -473,10 +452,10 @@ func createMailbox(t *testing.T, client *apiClient, address, password, displayNa
 	}
 	if resp.StatusCode != http.StatusCreated {
 		body := readBody(resp)
-		t.Fatalf("create mailbox %s: status %d: %s", address, resp.StatusCode, body)
+		t.Fatalf("create account %s: status %d: %s", address, resp.StatusCode, body)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatalf("decode create mailbox: %v", err)
+		t.Fatalf("decode create account: %v", err)
 	}
 	resp.Body.Close()
 	return result.Data
@@ -623,11 +602,8 @@ func ensureE2EPipeline(t *testing.T, client *apiClient) {
 	t.Log("created inbound pipeline with e2e pipeline (no greylist)")
 }
 
-// restmailInbox logs in as a restmail mailbox user and returns an authed
-// client plus the user's own primary webmail-account id — the {id} that the
-// /accounts/{id}/folders/... message endpoints expect (NOT the mailbox id).
-// Both seeded and admin-created mailboxes get a primary webmail account
-// automatically.
+// restmailInbox signs in to a REST Mail account and returns an authed client
+// plus the account's id (its mailbox id), the {id} of /accounts/{id}/....
 func restmailInbox(t *testing.T, address, password string) (*apiClient, uint) {
 	t.Helper()
 	c := newAPIClient()
@@ -649,7 +625,7 @@ func restmailInbox(t *testing.T, address, password string) (*apiClient, uint) {
 	if len(result.Data) > 0 {
 		return c, result.Data[0].ID
 	}
-	t.Fatalf("no webmail account for %s", address)
+	t.Fatalf("no account for %s", address)
 	return nil, 0
 }
 

@@ -123,9 +123,10 @@ type Config struct {
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
-	// First superadmin for a fresh install, created at startup only while no admin
-	// exists (internal/bootstrap). Empty password: no bootstrap admin.
-	BootstrapAdminUsername     string
+	// The first account of a fresh install, admin@<mail domain>, holding
+	// superadmin: created at startup only while no admin exists
+	// (internal/bootstrap). Empty password: no bootstrap account.
+	BootstrapAdminAddress      string
 	BootstrapAdminPassword     string
 	BootstrapAdminPasswordHash string
 
@@ -474,7 +475,8 @@ func Load() (*Config, error) {
 
 		MasterKey: getEnv("MASTER_KEY", ""),
 
-		BootstrapAdminUsername: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_USERNAME", "admin"),
+		// The chart sets it to admin@ its mailserver.domain.
+		BootstrapAdminAddress:  getEnv("RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS", ""),
 		BootstrapAdminPassword: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", ""),
 		// Or a bcrypt hash of it, which a deploy tool can keep as plain config.
 		BootstrapAdminPasswordHash: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH", ""),

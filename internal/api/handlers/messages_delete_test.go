@@ -18,24 +18,16 @@ func openMsgDeleteTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Skipf("message-delete DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(
-		&models.Domain{},
-		&models.Mailbox{},
-		&models.WebmailAccount{},
-		&models.LinkedAccount{},
-		&models.Message{},
-		&models.Attachment{},
-	); err != nil {
+	if err := gdb.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{})...); err != nil {
 		t.Skipf("message-delete DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
 }
 
-// msgDeleteFixture is one owner mailbox + webmail account with a known starting
-// quota, ready to receive seeded messages.
+// msgDeleteFixture is one account with a known starting quota, ready to
+// receive seeded messages.
 type msgDeleteFixture struct {
 	mailbox models.Mailbox
-	account models.WebmailAccount
 }
 
 func seedMsgDeleteFixture(t *testing.T, db *gorm.DB, quotaUsed int64) msgDeleteFixture {
@@ -48,18 +40,14 @@ func seedMsgDeleteFixture(t *testing.T, db *gorm.DB, quotaUsed int64) msgDeleteF
 		DomainID:       domain.ID,
 		LocalPart:      "owner",
 		Address:        "owner@delq.test",
-		Password:       "x",
+		Active:         true,
 		QuotaBytes:     1 << 30,
 		QuotaUsedBytes: quotaUsed,
 	}
 	if err := db.Create(&mb).Error; err != nil {
 		t.Fatalf("create mailbox: %v", err)
 	}
-	acct := models.WebmailAccount{PrimaryMailboxID: mb.ID}
-	if err := db.Create(&acct).Error; err != nil {
-		t.Fatalf("create account: %v", err)
-	}
-	return msgDeleteFixture{mailbox: mb, account: acct}
+	return msgDeleteFixture{mailbox: mb}
 }
 
 func quotaUsedBytes(t *testing.T, db *gorm.DB, mailboxID uint) int64 {
@@ -104,7 +92,7 @@ func TestDeleteMessage_GatewayPermanentReclaimsQuota(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr+"?permanent=true",
-		fx.account.ID, map[string]string{"id": idStr}, "")
+		fx.mailbox.ID, map[string]string{"id": idStr}, "")
 	h.DeleteMessage(rr, req)
 
 	if rr.Code != http.StatusNoContent {
@@ -153,7 +141,7 @@ func TestDeleteMessage_GatewayPermanentReclaimsAttachments(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr+"?permanent=true",
-		fx.account.ID, map[string]string{"id": idStr}, "")
+		fx.mailbox.ID, map[string]string{"id": idStr}, "")
 	h.DeleteMessage(rr, req)
 
 	if rr.Code != http.StatusNoContent {
@@ -195,7 +183,7 @@ func TestDeleteMessage_WebmailMoveToTrashVisibleAndCounted(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr,
-		fx.account.ID, map[string]string{"id": idStr}, "")
+		fx.mailbox.ID, map[string]string{"id": idStr}, "")
 	h.DeleteMessage(rr, req)
 
 	if rr.Code != http.StatusNoContent {
@@ -241,7 +229,7 @@ func TestDeleteMessage_WebmailPurgeFromTrashReclaims(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr,
-		fx.account.ID, map[string]string{"id": idStr}, "")
+		fx.mailbox.ID, map[string]string{"id": idStr}, "")
 	h.DeleteMessage(rr, req)
 
 	if rr.Code != http.StatusNoContent {

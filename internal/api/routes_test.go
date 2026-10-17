@@ -100,34 +100,36 @@ var (
 	}
 )
 
+// mailboxToken is the session of an account holding no grant: it reaches its
+// own mail, and no admin route.
 func mailboxToken(t *testing.T, jwtSvc *auth.JWTService) string {
 	t.Helper()
-	pair, err := jwtSvc.GenerateTokenPair(10, "user@example.com", 1)
+	pair, err := jwtSvc.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatalf("failed to generate mailbox token: %v", err)
 	}
 	return pair.AccessToken
 }
 
-// isAdminMailboxToken signs a mailbox access token whose payload claims
-// is_admin, a field the server does not read (OSI-14). The JWTService never
-// mints such a token, so it is signed directly with the router test secret to
-// prove the admin surface refuses it.
-func isAdminMailboxToken(t *testing.T) string {
+// strayClaimsToken forges an access token carrying claims of its own making
+// (is_admin, a user_type, capabilities), signed with the router test secret,
+// to prove the admin surface reads grants, never the token.
+func strayClaimsToken(t *testing.T) string {
 	t.Helper()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":        "mailbox:10",
-		"iss":        "restmail",
-		"exp":        time.Now().Add(5 * time.Minute).Unix(),
-		"user_type":  "mailbox",
-		"token_type": "access",
-		"is_admin":   true,
-		"mailbox_id": 10,
-		"sid":        "0123456789abcdef0123456789abcdef",
+		"sub":          "account:10",
+		"iss":          "restmail",
+		"exp":          time.Now().Add(5 * time.Minute).Unix(),
+		"user_type":    "admin",
+		"token_type":   "access",
+		"is_admin":     true,
+		"capabilities": []string{"*"},
+		"account_id":   10,
+		"sid":          "0123456789abcdef0123456789abcdef",
 	})
 	s, err := tok.SignedString([]byte(routerTestSecret))
 	if err != nil {
-		t.Fatalf("failed to sign the is_admin mailbox token: %v", err)
+		t.Fatalf("failed to sign the token: %v", err)
 	}
 	return s
 }
@@ -137,7 +139,7 @@ func isAdminMailboxToken(t *testing.T) string {
 // tests keep in testGrants (see routes_seams_test.go).
 func adminToken(t *testing.T, jwtSvc *auth.JWTService, caps []string) string {
 	t.Helper()
-	pair, err := jwtSvc.GenerateAdminTokenPair(testAdminHolding(caps), "admin")
+	pair, err := jwtSvc.GenerateSession(testAdminHolding(caps), "admin@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatalf("failed to generate admin token: %v", err)
 	}
@@ -162,8 +164,8 @@ func doRequest(router http.Handler, method, path, token, body string) *httptest.
 // means authorization admitted the request.
 var middlewareDenialMessages = map[string]bool{
 	"Authentication required":  true,
-	"Admin access required":    true,
 	"Insufficient permissions": true,
+	"Finish setting up this account first: a new password and two-factor authentication": true,
 }
 
 func errorMessage(t *testing.T, rr *httptest.ResponseRecorder) string {
@@ -211,7 +213,7 @@ func assertReachedHandler(t *testing.T, rr *httptest.ResponseRecorder) {
 	}
 }
 
-// ── DENY: mailbox tokens on the admin surface ─────────────────────────
+// ── DENY: an account holding no admin grant on the admin surface ──────
 
 func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 	router, jwtSvc := newTestRouter(t)
@@ -221,17 +223,16 @@ func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 		method, path string
 	}{
 		{http.MethodGet, "/api/v1/admin/stats"},
-		{http.MethodGet, "/api/v1/admin/admin-users"},
-		{http.MethodPost, "/api/v1/admin/admin-users"},
 		{http.MethodGet, "/api/v1/admin/roles"},
 		{http.MethodGet, "/api/v1/admin/capabilities"},
 		{http.MethodGet, "/api/v1/admin/domains"},
 		{http.MethodPost, "/api/v1/admin/domains"},
 		{http.MethodDelete, "/api/v1/admin/domains/1"},
 		{http.MethodGet, "/api/v1/admin/mailboxes"},
-		{http.MethodPost, "/api/v1/admin/mailboxes"},
+		{http.MethodPatch, "/api/v1/admin/mailboxes/1"},
 		{http.MethodGet, "/api/v1/admin/aliases"},
-		{http.MethodGet, "/api/v1/admin/webmail-accounts"},
+		{http.MethodGet, "/api/v1/admin/grants"},
+		{http.MethodPost, "/api/v1/admin/grants"},
 		{http.MethodGet, "/api/v1/admin/pipelines"},
 		{http.MethodGet, "/api/v1/admin/pipelines/analytics"},
 		{http.MethodGet, "/api/v1/admin/messages/1/trace"},
@@ -255,7 +256,7 @@ func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
 			rr := doRequest(router, rt.method, rt.path, token, "")
-			assertMiddlewareDenied(t, rr, http.StatusForbidden, "Admin access required")
+			assertMiddlewareDenied(t, rr, http.StatusForbidden, "Insufficient permissions")
 		})
 	}
 }
@@ -289,16 +290,12 @@ func TestAdminRoutes_ReadonlyRoleDeniedOnWrites(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/domains"},
 		{http.MethodPatch, "/api/v1/admin/domains/1"},
 		{http.MethodDelete, "/api/v1/admin/domains/1"},
-		{http.MethodPost, "/api/v1/admin/mailboxes"},
 		{http.MethodPatch, "/api/v1/admin/mailboxes/1"},
 		{http.MethodDelete, "/api/v1/admin/mailboxes/1"},
 		{http.MethodPost, "/api/v1/admin/aliases"},
 		{http.MethodDelete, "/api/v1/admin/aliases/1"},
-		{http.MethodPost, "/api/v1/admin/webmail-accounts"},
-		{http.MethodDelete, "/api/v1/admin/webmail-accounts/1"},
-		{http.MethodPost, "/api/v1/admin/admin-users"},
-		{http.MethodPut, "/api/v1/admin/admin-users/1"},
-		{http.MethodDelete, "/api/v1/admin/admin-users/1"},
+		{http.MethodPost, "/api/v1/admin/grants"},
+		{http.MethodDelete, "/api/v1/admin/grants/1"},
 		{http.MethodPost, "/api/v1/admin/pipelines"},
 		{http.MethodDelete, "/api/v1/admin/pipelines/1"},
 		{http.MethodPost, "/api/v1/admin/pipelines/test"},
@@ -324,18 +321,18 @@ func TestAdminRoutes_ReadonlyRoleDeniedOnWrites(t *testing.T) {
 	}
 }
 
-func TestAdminRoutes_AdminRoleDeniedOnAdminUserManagement(t *testing.T) {
-	// The seeded "admin" role has users:read only; creating, updating, and
-	// deleting admin users requires users:write / users:delete (superadmin).
+func TestAdminRoutes_AdminRoleDeniedOnGranting(t *testing.T) {
+	// The seeded "admin" role has users:read only; granting and removing roles
+	// requires users:write (superadmin), and the test endpoints "*".
 	router, jwtSvc := newTestRouter(t)
 	token := adminToken(t, jwtSvc, adminRoleCaps)
 
 	routes := []struct {
 		method, path string
 	}{
-		{http.MethodPost, "/api/v1/admin/admin-users"},
-		{http.MethodPut, "/api/v1/admin/admin-users/1"},
-		{http.MethodDelete, "/api/v1/admin/admin-users/1"},
+		{http.MethodPost, "/api/v1/admin/grants"},
+		{http.MethodDelete, "/api/v1/admin/grants/1"},
+		{http.MethodPost, "/api/v1/admin/test/reset"},
 	}
 
 	for _, rt := range routes {
@@ -354,13 +351,12 @@ func TestAdminRoutes_ReadonlyRoleAllowedOnReads(t *testing.T) {
 
 	paths := []string{
 		"/api/v1/admin/stats",
-		"/api/v1/admin/admin-users",
+		"/api/v1/admin/grants",
 		"/api/v1/admin/roles",
 		"/api/v1/admin/capabilities",
 		"/api/v1/admin/domains",
 		"/api/v1/admin/mailboxes",
 		"/api/v1/admin/aliases",
-		"/api/v1/admin/webmail-accounts",
 		"/api/v1/admin/pipelines",
 		"/api/v1/admin/pipelines/analytics",
 		"/api/v1/admin/messages/1/trace",
@@ -402,7 +398,7 @@ func TestAdminRoutes_AdminRoleAllowedOnManagedSurfaces(t *testing.T) {
 		{http.MethodDelete, "/api/v1/admin/bans/1", ""},
 		{http.MethodPut, "/api/v1/admin/dkim/1", `{}`},
 		{http.MethodPost, "/api/v1/admin/certificates", `{}`},
-		{http.MethodGet, "/api/v1/admin/admin-users", ""},
+		{http.MethodGet, "/api/v1/admin/grants", ""},
 	}
 
 	for _, rt := range routes {
@@ -421,8 +417,8 @@ func TestAdminRoutes_SuperadminWildcardAllowedEverywhere(t *testing.T) {
 		method, path, body string
 	}{
 		{http.MethodGet, "/api/v1/admin/stats", ""},
-		{http.MethodPost, "/api/v1/admin/admin-users", `{}`},
-		{http.MethodDelete, "/api/v1/admin/admin-users/1", ""},
+		{http.MethodPost, "/api/v1/admin/grants", `{}`},
+		{http.MethodDelete, "/api/v1/admin/grants/1", ""},
 		{http.MethodDelete, "/api/v1/admin/domains/1", ""},
 		{http.MethodDelete, "/api/v1/admin/mailboxes/1", ""},
 		{http.MethodDelete, "/api/v1/admin/queue/1", ""},
@@ -438,11 +434,11 @@ func TestAdminRoutes_SuperadminWildcardAllowedEverywhere(t *testing.T) {
 	}
 }
 
-func TestAdminRoutes_IsAdminMailboxDenied(t *testing.T) {
-	// OSI-14: a mailbox token whose payload claims is_admin is REFUSED on the
-	// admin surface.
+func TestAdminRoutes_StrayClaimsDenied(t *testing.T) {
+	// A token whose claims say it is an admin, or holds "*", holds nothing for
+	// them: the admin surface reads the account's grants.
 	router, _ := newTestRouter(t)
-	token := isAdminMailboxToken(t)
+	token := strayClaimsToken(t)
 
 	routes := []struct {
 		method, path, body string
@@ -455,7 +451,7 @@ func TestAdminRoutes_IsAdminMailboxDenied(t *testing.T) {
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
 			rr := doRequest(router, rt.method, rt.path, token, rt.body)
-			assertMiddlewareDenied(t, rr, http.StatusForbidden, "Admin access required")
+			assertMiddlewareDenied(t, rr, http.StatusForbidden, "Insufficient permissions")
 		})
 	}
 }
@@ -577,6 +573,58 @@ func TestMailboxRoutes_NoTokenUnauthorized(t *testing.T) {
 	}
 }
 
+// A session whose account is still in setup reaches nothing but finishing
+// it: not its mail, not creating or linking accounts, not the admin API, even
+// holding "*".
+func TestRoutes_SetupSessionReachesOnlySetup(t *testing.T) {
+	router, jwtSvc := newTestRouter(t)
+	pair, err := jwtSvc.GenerateSession(testAdminHolding([]string{"*"}), "admin@example.test", 0, []string{auth.AMRPassword}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rt := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/accounts"},
+		{http.MethodGet, "/api/v1/accounts/1/folders"},
+		{http.MethodPost, "/api/v1/accounts"},
+		{http.MethodPost, "/api/v1/accounts/link"},
+		{http.MethodGet, "/api/v1/accounts/1/credentials"},
+		{http.MethodGet, "/api/v1/admin/stats"},
+		{http.MethodGet, "/api/v1/admin/domains"},
+	} {
+		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
+			rr := doRequest(router, rt.method, rt.path, pair.AccessToken, "{}")
+			if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "setup_required") {
+				t.Fatalf("got %d %s, want 403 setup_required", rr.Code, rr.Body.String())
+			}
+		})
+	}
+	for _, rt := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/auth/2fa"},
+		{http.MethodPost, "/api/v1/auth/password"},
+	} {
+		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
+			assertReachedHandler(t, doRequest(router, rt.method, rt.path, pair.AccessToken, "{}"))
+		})
+	}
+}
+
+// Every account may ask to create one; the handler checks mailboxes:write on
+// the domain. HTTP Basic reaches no admin route, and no route that needs a
+// person.
+func TestRoutes_AccountsAndBasic(t *testing.T) {
+	router, jwtSvc := newTestRouter(t)
+	assertReachedHandler(t, doRequest(router, http.MethodPost, "/api/v1/accounts", mailboxToken(t, jwtSvc), `{"address":"x@example.com"}`))
+	for _, path := range []string{"/api/v1/admin/domains", "/api/v1/accounts/1/credentials"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.SetBasicAuth("user@example.com", "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec")
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Errorf("%s with Basic: %d, want 401", path, rr.Code)
+		}
+	}
+}
+
 // ── Regression: SSE events endpoint auth ──────────────────────────────
 
 func TestSSEEvents_NoTokenUnauthorized(t *testing.T) {
@@ -634,7 +682,7 @@ func refreshWithCookie(router http.Handler, refreshToken string) *httptest.Respo
 
 func TestRefresh_MailboxTokenFailsClosedWithoutLedger(t *testing.T) {
 	router, jwtSvc := newTestRouter(t)
-	pair, err := jwtSvc.GenerateTokenPair(10, "user@example.com", 1)
+	pair, err := jwtSvc.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatalf("failed to generate mailbox pair: %v", err)
 	}
@@ -650,7 +698,7 @@ func TestRefresh_MailboxTokenFailsClosedWithoutLedger(t *testing.T) {
 
 func TestRefresh_AdminTokenFailsClosedWithoutLedger(t *testing.T) {
 	router, jwtSvc := newTestRouter(t)
-	pair, err := jwtSvc.GenerateAdminTokenPair(testAdminHolding([]string{"domains:read", "queue:read"}), "admin")
+	pair, err := jwtSvc.GenerateSession(testAdminHolding([]string{"domains:read", "queue:read"}), "admin@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatalf("failed to generate admin pair: %v", err)
 	}
@@ -732,7 +780,7 @@ func TestPipelineTestRoutes_ThrottleDisabled(t *testing.T) {
 	}
 }
 
-// ── Password-verification oracles: test-connection + LinkAccount ──────
+// ── Password-verification oracle: linking an account ──────────────────
 
 // verifyOracleRoutes are the two authenticated endpoints that verify a supplied
 // address+password against a mailbox and reveal correctness (200 vs 401). Both
@@ -740,12 +788,11 @@ func TestPipelineTestRoutes_ThrottleDisabled(t *testing.T) {
 // holder of a valid low-privilege token cannot use them as an unthrottled
 // online password-guessing oracle that bypasses the login rate limit.
 var verifyOracleRoutes = []struct{ name, path string }{
-	{"test-connection", "/api/v1/accounts/test-connection"},
-	{"link-account", "/api/v1/accounts"},
+	{"link-account", "/api/v1/accounts/link"},
 }
 
 // TestVerifyOracleRoutes_RateLimited proves that repeated wrong-password
-// attempts against test-connection and LinkAccount are throttled: once the
+// attempts against linking an account are throttled: once the
 // per-IP burst is spent, further attempts get 429 with a Retry-After header,
 // exactly like /auth/login. Without the throttle these routes process every
 // guess at full speed.

@@ -15,6 +15,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
@@ -40,6 +41,20 @@ func credentialTestEnv(key, def string) string {
 
 func openCredentialScratchDB(t *testing.T) *gorm.DB {
 	t.Helper()
+	scratch := createScratchDB(t, "credentials")
+	if err := rmdb.AutoMigrate(scratch); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := bootstrap.EnsureRBAC(scratch); err != nil {
+		t.Fatalf("roles: %v", err)
+	}
+	return scratch
+}
+
+// createScratchDB is a new, empty database, restmail_<purpose>_…, dropped when
+// the test ends. The test skips when no database server is reachable.
+func createScratchDB(t *testing.T, purpose string) *gorm.DB {
+	t.Helper()
 	port, _ := strconv.Atoi(credentialTestEnv("DB_PORT", "5432"))
 	cfg := config.Config{
 		DBHost: credentialTestEnv("DB_HOST", "localhost"),
@@ -50,11 +65,11 @@ func openCredentialScratchDB(t *testing.T) *gorm.DB {
 	}
 	admin, err := rmdb.Connect(&cfg)
 	if err != nil {
-		t.Skipf("app password DB test skipped: no database reachable (%v)", err)
+		t.Skipf("skipped: no database reachable (%v)", err)
 	}
-	name := fmt.Sprintf("restmail_credentials_%d_%d", os.Getpid(), time.Now().UnixNano())
+	name := fmt.Sprintf("restmail_%s_%d_%d", purpose, os.Getpid(), time.Now().UnixNano())
 	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
-		t.Skipf("app password DB test skipped: cannot create a database (%v)", err)
+		t.Skipf("skipped: cannot create a database (%v)", err)
 	}
 	cfg.DBName = name
 	scratch, err := rmdb.Connect(&cfg)
@@ -70,9 +85,6 @@ func openCredentialScratchDB(t *testing.T) *gorm.DB {
 			_ = sqlDB.Close()
 		}
 	})
-	if err := rmdb.AutoMigrate(scratch, false); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
 	return scratch
 }
 
@@ -134,11 +146,38 @@ func (f *credentialFixture) seedMailbox(domainID uint, local string) uint {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	mb := models.Mailbox{DomainID: domainID, LocalPart: local, Address: local + "@example.test", Password: hash, Active: true}
+	mb := models.Mailbox{DomainID: domainID, LocalPart: local, Address: local + "@example.test", Active: true}
 	if err := f.db.Create(&mb).Error; err != nil {
 		f.t.Fatalf("seed mailbox: %v", err)
 	}
+	if _, err := repositories.NewCredentialRepository(f.db).SetPassword(mb.ID, hash, nil, time.Now()); err != nil {
+		f.t.Fatalf("seed password: %v", err)
+	}
 	return mb.ID
+}
+
+// own gives chris@ the owner grant on the account id at address.
+func (f *credentialFixture) own(id uint, address string) {
+	f.t.Helper()
+	var owner models.Role
+	if err := f.db.Where("name = ?", models.RoleOwner).First(&owner).Error; err != nil {
+		f.t.Fatal(err)
+	}
+	if err := f.db.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: f.mailboxID, RoleID: owner.ID,
+		Scope: "mailbox:" + address, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
+		f.t.Fatal(err)
+	}
+}
+
+// passwordHash is the hash of chris@'s one usable password.
+func (f *credentialFixture) passwordHash() string {
+	f.t.Helper()
+	var hashes []string
+	f.db.Model(&models.Credential{}).Where("account_id = ? AND kind = ? AND revoked_at IS NULL", f.mailboxID, models.CredentialKindPassword).Pluck("secret_hash", &hashes)
+	if len(hashes) != 1 {
+		f.t.Fatalf("chris@ has %d usable passwords, want 1", len(hashes))
+	}
+	return hashes[0]
 }
 
 // do sends a request with the given Authorization header ("" for none).
@@ -267,7 +306,7 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 
 	t.Run("reaches no admin route", func(t *testing.T) {
 		// The admin routes take a session's token alone: Basic is refused
-		// before AdminOnly, so an app password never has its grants read
+		// before RequireCapability, so an app password never has its grants read
 		// (#345) and can change none, nor switch one on (#346), nor its own
 		// mailbox's password.
 		mailbox := fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID)
@@ -329,12 +368,17 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		if rr := f.do(http.MethodGet, folders, basic(f.address, wrong), ""); rr.Code != http.StatusUnauthorized {
 			t.Fatalf("a wrong secret: %d", rr.Code)
 		}
-		if rr := f.do(http.MethodGet, folders, basic(f.address, credentialTestPassword), ""); rr.Code != http.StatusUnauthorized {
-			t.Fatalf("the mailbox's own password with Basic: %d", rr.Code)
+		// The account's own password is a credential too, and Basic takes it:
+		// it is how the gateways sign in, one path for both.
+		if rr := f.do(http.MethodGet, folders, basic(f.address, credentialTestPassword), ""); rr.Code != http.StatusOK {
+			t.Fatalf("the account's own password with Basic: %d", rr.Code)
 		}
-		es := f.entries("auth.app_password")
-		if len(es) != 2 || es[0].Target["reason"] != auth.AppPasswordWrongSecret || es[0].CredentialID != nil ||
-			es[1].Target["reason"] != auth.AppPasswordMalformed || es[0].ActorName != f.address {
+		if rr := f.do(http.MethodGet, folders, basic(f.address, "not the password"), ""); rr.Code != http.StatusUnauthorized {
+			t.Fatalf("a wrong password with Basic: %d", rr.Code)
+		}
+		es := f.entries(middleware.AuditActionBasicRefused)
+		if len(es) != 2 || es[0].Target["reason"] != auth.CredentialWrongSecret || es[0].CredentialID != nil ||
+			es[1].Target["reason"] != auth.CredentialWrongPassword || es[0].ActorName != f.address {
 			t.Errorf("refusal entries: %+v", es)
 		}
 	})
@@ -347,9 +391,9 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 		if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
 			t.Fatalf("folders after revoking: %d", rr.Code)
 		}
-		es := f.entries("auth.app_password")
+		es := f.entries(middleware.AuditActionBasicRefused)
 		last := es[len(es)-1]
-		if last.Target["reason"] != auth.AppPasswordRevoked || last.CredentialID == nil || *last.CredentialID != created.ID {
+		if last.Target["reason"] != auth.CredentialRevoked || last.CredentialID == nil || *last.CredentialID != created.ID {
 			t.Errorf("refusal after revoking: %+v", last)
 		}
 		// It stays in the table, revoked, and leaves the list.
@@ -419,19 +463,18 @@ func TestAppPasswords_Expiry(t *testing.T) {
 	if rr := f.do(http.MethodGet, folders, appPassword, ""); rr.Code != http.StatusUnauthorized {
 		t.Fatalf("after expiry: %d", rr.Code)
 	}
-	es := f.entries("auth.app_password")
-	if len(es) != 1 || es[0].Target["reason"] != auth.AppPasswordExpired {
+	es := f.entries(middleware.AuditActionBasicRefused)
+	if len(es) != 1 || es[0].Target["reason"] != auth.CredentialExpired {
 		t.Errorf("refusal entries: %+v", es)
 	}
 }
 
 func TestAppPasswords_CreatingNeedsTheSecondFactor(t *testing.T) {
 	f := newCredentialFixture(t)
-	if err := f.db.Create(&models.TwoFactor{
-		UserType: models.TwoFactorUserTypeMailbox, SubjectID: f.mailboxID, EncryptedSecret: "x", Confirmed: true,
-	}).Error; err != nil {
+	if _, err := repositories.NewTwoFactorRepository(f.db).Enroll(f.mailboxID, "x", nil); err != nil {
 		t.Fatalf("seed 2FA: %v", err)
 	}
+	f.db.Model(&models.Credential{}).Where("account_id = ? AND kind = ?", f.mailboxID, models.CredentialKindTOTP).Update("confirmed_at", time.Now())
 	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
 	body := fmt.Sprintf(`{"name":"iPhone Mail","password":%q}`, f.password)
 
@@ -441,7 +484,7 @@ func TestAppPasswords_CreatingNeedsTheSecondFactor(t *testing.T) {
 	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "two_factor_required") {
 		t.Fatalf("without a second factor: %d %s", rr.Code, rr.Body.String())
 	}
-	pair, err := f.jwt.GenerateMailboxSession(f.mailboxID, f.address, f.accountID, true)
+	pair, err := f.jwt.GenerateSession(f.mailboxID, f.address, 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +540,7 @@ func TestAppPasswords_CreatingNeedsTheCurrentPassword(t *testing.T) {
 		for i, code := range []string{"reauth_required", "reauth_required", "invalid_password"} {
 			if e := es[i]; e.Outcome != models.AuditOutcomeDenied || e.Status != http.StatusUnauthorized ||
 				e.ErrorCode != code || e.Target["name"] != "stolen" || e.Target["credential_id"] != "" ||
-				e.ActorKind != models.AuditActorMailbox || e.ActorID == nil || *e.ActorID != f.mailboxID {
+				e.ActorKind != models.AuditActorAccount || e.ActorID == nil || *e.ActorID != f.mailboxID {
 				t.Errorf("refusal %d: %+v", i, e)
 			}
 		}
@@ -573,14 +616,13 @@ func TestAppPasswords_CreatingIsThrottledLikeLogin(t *testing.T) {
 
 func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
 	f := newCredentialFixture(t)
-	// receipts@ is linked to chris@'s account, so chris@'s session reaches it.
+	// chris@ holds the owner grant on receipts@, so chris@'s session reaches
+	// it.
 	var domain models.Domain
 	f.db.First(&domain)
 	receipts := f.seedMailbox(domain.ID, "receipts")
-	receiptsAccount := models.WebmailAccount{PrimaryMailboxID: receipts}
-	f.db.Create(&receiptsAccount)
-	f.db.Create(&models.LinkedAccount{WebmailAccountID: f.accountID, MailboxID: receipts})
-	linkedFolders := fmt.Sprintf("/api/v1/accounts/%d/folders", receiptsAccount.ID)
+	f.own(receipts, "receipts@example.test")
+	linkedFolders := fmt.Sprintf("/api/v1/accounts/%d/folders", receipts)
 	if rr := f.do(http.MethodGet, linkedFolders, f.session, ""); rr.Code != http.StatusOK {
 		t.Fatalf("the session on a linked mailbox: %d %s", rr.Code, rr.Body.String())
 	}
@@ -597,10 +639,29 @@ func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
 	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "not authorized to send from this address") {
 		t.Errorf("sending as a linked mailbox with the app password: %d %s", rr.Code, rr.Body.String())
 	}
-	// Only a mailbox makes credentials for itself, never for one it has linked.
-	rr = f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", receiptsAccount.ID), f.session, fmt.Sprintf(`{"name":"x","password":%q}`, credentialTestPassword))
+	// An app password never makes credentials; the session of an owner
+	// does, for an account it owns (mailbox:manage), proving its own
+	// password.
+	rr = f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", receipts), appPassword, fmt.Sprintf(`{"name":"x","password":%q}`, credentialTestPassword))
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("an app password making a credential: %d %s", rr.Code, rr.Body.String())
+	}
+	rr = f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", receipts), f.session, fmt.Sprintf(`{"name":"for receipts","password":%q}`, credentialTestPassword))
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("the owner making an app password for receipts@: %d %s", rr.Code, rr.Body.String())
+	}
+	var made createdCredential
+	decodeInto(t, rr, &struct {
+		Data *createdCredential `json:"data"`
+	}{&made})
+	if rr := f.do(http.MethodGet, linkedFolders, basic("receipts@example.test", made.Password), ""); rr.Code != http.StatusOK {
+		t.Errorf("receipts@'s own app password: %d %s", rr.Code, rr.Body.String())
+	}
+	// An account it does not own is answered as one that does not exist.
+	stranger := f.seedMailbox(domain.ID, "stranger")
+	rr = f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", stranger), f.session, fmt.Sprintf(`{"name":"x","password":%q}`, credentialTestPassword))
 	if rr.Code != http.StatusNotFound {
-		t.Errorf("creating a credential for a linked mailbox: %d %s", rr.Code, rr.Body.String())
+		t.Errorf("creating a credential for an account it does not own: %d %s", rr.Code, rr.Body.String())
 	}
 }
 
@@ -632,11 +693,11 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 	if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, credentialTestPassword); err != nil {
 		t.Fatalf("IMAP sign-in with the mailbox's password: %v", err)
 	}
-	if n := len(f.entries("auth.protocol_sign_in")); n != 2 {
-		t.Errorf("%d protocol sign-ins recorded, want 2", n)
+	if n := len(f.entries("auth.protocol_sign_in")); n != 3 {
+		t.Errorf("%d protocol sign-ins recorded, want 3", n)
 	}
-	if es := f.entries("auth.sign_in"); len(es) != 2 { // the fixture's and the IMAP one with the password
-		t.Errorf("%d interactive sign-ins recorded, want 2", len(es))
+	if es := f.entries("auth.sign_in"); len(es) != 1 { // the fixture's; the gateways never sign in interactively
+		t.Errorf("%d interactive sign-ins recorded, want 1", len(es))
 	}
 
 	if rr := f.do(http.MethodDelete, fmt.Sprintf("/api/v1/accounts/%d/credentials/%d", f.accountID, created.ID), f.session, ""); rr.Code != http.StatusNoContent {
@@ -685,13 +746,11 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 	var domain models.Domain
 	f.db.First(&domain)
 	danaID := f.seedMailbox(domain.ID, "dana")
-	danaAccount := models.WebmailAccount{PrimaryMailboxID: danaID}
-	f.db.Create(&danaAccount)
-	dana, danaPassword, err := repositories.NewCredentialRepository(f.db).CreateAppPassword(danaID, "Dana's phone", nil)
+	dana, danaPassword, err := repositories.NewCredentialRepository(f.db).CreateAppPassword(danaID, danaID, "Dana's phone", nil)
 	if err != nil {
 		t.Fatalf("an app password for dana@: %v", err)
 	}
-	danaFolders := fmt.Sprintf("/api/v1/accounts/%d/folders", danaAccount.ID)
+	danaFolders := fmt.Sprintf("/api/v1/accounts/%d/folders", danaID)
 
 	// An IMAP and a POP3 session, open before the change.
 	imapMailbox, err := imapgw.NewBackend(api, nil).Authenticate(f.address, thunderbird.Password)
@@ -728,8 +787,8 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 				t.Errorf("folders with %d after a new password: %d", created.ID, rr.Code)
 			}
 		}
-		es := f.entries(middleware.AuditActionAppPassword)
-		if len(es) == 0 || es[len(es)-1].Target["reason"] != auth.AppPasswordRevoked {
+		es := f.entries(middleware.AuditActionBasicRefused)
+		if len(es) == 0 || es[len(es)-1].Target["reason"] != auth.CredentialRevoked {
 			t.Errorf("refusals after a new password: %+v", es)
 		}
 	})
@@ -752,7 +811,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 
 	t.Run("their rows stay, revoked", func(t *testing.T) {
 		var creds []models.Credential
-		f.db.Where("owner_kind = ? AND owner_id = ?", models.CredentialOwnerMailbox, f.mailboxID).Find(&creds)
+		f.db.Where("account_id = ? AND kind = ?", f.mailboxID, models.CredentialKindAppPassword).Find(&creds)
 		if len(creds) != 2 || creds[0].RevokedAt == nil || creds[1].RevokedAt == nil {
 			t.Errorf("chris@'s credentials: %+v", creds)
 		}
@@ -767,8 +826,8 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 			e := es[i]
 			if e.Target["reason"] != handlers.CredentialRevokedPasswordChanged ||
 				e.Target["credential_id"] != strconv.Itoa(int(created.ID)) || e.Target["public_id"] != created.PublicID ||
-				e.Target["mailbox_id"] != strconv.Itoa(int(f.mailboxID)) ||
-				e.ActorKind != models.AuditActorAdmin || e.ActorID == nil || *e.ActorID != adminClaims.AdminUserID ||
+				e.Target["account_id"] != strconv.Itoa(int(f.mailboxID)) ||
+				e.ActorKind != models.AuditActorAccount || e.ActorID == nil || *e.ActorID != adminClaims.AccountID ||
 				e.Outcome != models.AuditOutcomeSuccess || e.Method != http.MethodPatch ||
 				e.Route != "/api/v1/admin/mailboxes/{id}" || e.CredentialID != nil {
 				t.Errorf("revocation %d: %+v", i, e)
@@ -818,8 +877,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 func TestAppPasswords_NewPasswordAndItsRevocationsCommitTogether(t *testing.T) {
 	f := newCredentialFixture(t)
 	created := f.createAppPassword("Thunderbird")
-	var before models.Mailbox
-	f.db.First(&before, f.mailboxID)
+	before := f.passwordHash()
 
 	// This scratch database's audit log now refuses every entry.
 	if err := f.db.Exec(`CREATE FUNCTION refuse_audit_entries() RETURNS trigger LANGUAGE plpgsql AS
@@ -836,9 +894,7 @@ func TestAppPasswords_NewPasswordAndItsRevocationsCommitTogether(t *testing.T) {
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("a new password with no audit log: %d %s", rr.Code, rr.Body.String())
 	}
-	var after models.Mailbox
-	f.db.First(&after, f.mailboxID)
-	if after.Password != before.Password {
+	if after := f.passwordHash(); after != before {
 		t.Error("the password changed although its revocations were not recorded")
 	}
 	var cred models.Credential

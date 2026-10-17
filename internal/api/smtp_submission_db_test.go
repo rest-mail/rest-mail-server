@@ -21,6 +21,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
 	"golang.org/x/net/dns/dnsmessage"
+	"gorm.io/gorm"
 )
 
 // serveTXT answers DNS queries on the loopback from records (lower-case names
@@ -128,7 +129,16 @@ func newSubmissionFixture(t *testing.T) *submissionFixture {
 		"rm1._domainkey.example.test": {record},
 	})
 
-	srv := httptest.NewServer(f.router)
+	api, addr, rootCAs := startSubmission(t, f.db, f.router)
+	return &submissionFixture{credentialFixture: f, api: api, addr: addr, rootCAs: rootCAs}
+}
+
+// startSubmission puts the SMTP gateway's submission port in front of router:
+// it returns the API client the gateway uses, the port's address, and the
+// roots the port's certificate verifies against.
+func startSubmission(t *testing.T, db *gorm.DB, router http.Handler) (*apiclient.Client, string, *x509.CertPool) {
+	t.Helper()
+	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 	api := apiclient.New(srv.URL)
 
@@ -147,32 +157,38 @@ func newSubmissionFixture(t *testing.T) *submissionFixture {
 	_ = free.Close()
 	gateway := smtpgw.NewServer("mail.example.test", api,
 		&tls.Config{Certificates: certSrv.TLS.Certificates, MinVersion: tls.VersionTLS12},
-		smtpgw.NewStore(f.db, ""), connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 100}))
+		smtpgw.NewStore(db, ""), connlimiter.New(connlimiter.Config{MaxPerIP: 100, MaxGlobal: 100}))
 	if err := gateway.ListenAndServe(smtpgw.SMTPPorts{SubmissionTLS: port}); err != nil {
 		t.Fatalf("start the SMTP gateway: %v", err)
 	}
 	t.Cleanup(gateway.Shutdown)
-
-	return &submissionFixture{credentialFixture: f, api: api, addr: fmt.Sprintf("127.0.0.1:%d", port), rootCAs: rootCAs}
+	return api, fmt.Sprintf("127.0.0.1:%d", port), rootCAs
 }
 
 // dial opens a submission session signed in as address with password.
 func (f *submissionFixture) dial(address, password string) *smtp.Client {
 	f.t.Helper()
-	conn, err := tls.Dial("tcp", f.addr, &tls.Config{RootCAs: f.rootCAs, MinVersion: tls.VersionTLS12})
+	return dialSubmission(f.t, f.addr, f.rootCAs, address, password)
+}
+
+// dialSubmission opens a session on the submission port at addr, signed in as
+// address with password.
+func dialSubmission(t *testing.T, addr string, rootCAs *x509.CertPool, address, password string) *smtp.Client {
+	t.Helper()
+	conn, err := tls.Dial("tcp", addr, &tls.Config{RootCAs: rootCAs, MinVersion: tls.VersionTLS12})
 	if err != nil {
-		f.t.Fatalf("dial the submission port: %v", err)
+		t.Fatalf("dial the submission port: %v", err)
 	}
 	c, err := smtp.NewClient(conn, "127.0.0.1")
 	if err != nil {
-		f.t.Fatalf("SMTP greeting: %v", err)
+		t.Fatalf("SMTP greeting: %v", err)
 	}
-	f.t.Cleanup(func() { _ = c.Close() })
+	t.Cleanup(func() { _ = c.Close() })
 	if err := c.Hello("client.test"); err != nil {
-		f.t.Fatalf("EHLO: %v", err)
+		t.Fatalf("EHLO: %v", err)
 	}
 	if err := c.Auth(smtp.PlainAuth("", address, password, "127.0.0.1")); err != nil {
-		f.t.Fatalf("AUTH: %v", err)
+		t.Fatalf("AUTH: %v", err)
 	}
 	return c
 }
@@ -263,14 +279,14 @@ func TestSMTPSubmission_ToALocalMailbox(t *testing.T) {
 	})
 }
 
-// An app password sends only as its own mailbox, never as one its account has
-// linked, although the mailbox's password may.
+// An app password sends only as its own mailbox, never as an account its
+// account owns, although the account's password may.
 func TestSMTPSubmission_AppPasswordNeverSendsAsALinkedMailbox(t *testing.T) {
 	f := newSubmissionFixture(t)
 	var domain models.Domain
 	f.db.First(&domain)
 	receipts := f.seedMailbox(domain.ID, "receipts")
-	f.db.Create(&models.LinkedAccount{WebmailAccountID: f.accountID, MailboxID: receipts})
+	f.own(receipts, "receipts@example.test")
 	const linked = "receipts@example.test"
 	created := f.createAppPassword("Thunderbird")
 

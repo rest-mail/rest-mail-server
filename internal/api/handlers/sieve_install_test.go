@@ -40,7 +40,7 @@ func TestSieveInstall_InvalidScriptRejected(t *testing.T) {
 	fx := seedAuthzFixture(t, tx)
 	h := NewSieveHandler(tx)
 
-	rr := putSieve(t, h, fx.ownerAccount.ID,
+	rr := putSieve(t, h, fx.ownerMailbox.ID,
 		`{"script":"if header :contains \"Subject\" \"x\" { fileinto \"Spam\"; }","active":true}`)
 
 	if rr.Code != http.StatusBadRequest {
@@ -60,7 +60,7 @@ func TestSieveInstall_DryRunErrorRejected(t *testing.T) {
 	fx := seedAuthzFixture(t, tx)
 	h := NewSieveHandler(tx)
 
-	rr := putSieve(t, h, fx.ownerAccount.ID, `{"script":"redirect \"bogus\";","active":true}`)
+	rr := putSieve(t, h, fx.ownerMailbox.ID, `{"script":"redirect \"bogus\";","active":true}`)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for a dry-run failure, got %d (%s)", rr.Code, rr.Body.String())
@@ -80,7 +80,7 @@ func TestSieveInstall_ValidScriptStoredWithHash(t *testing.T) {
 	h := NewSieveHandler(tx)
 
 	script := "require \"fileinto\";\nif header :contains \"Subject\" \"x\" { fileinto \"Filed\"; }"
-	rr := putSieve(t, h, fx.ownerAccount.ID,
+	rr := putSieve(t, h, fx.ownerMailbox.ID,
 		`{"script":"require \"fileinto\";\nif header :contains \"Subject\" \"x\" { fileinto \"Filed\"; }","active":true}`)
 
 	if rr.Code != http.StatusCreated {

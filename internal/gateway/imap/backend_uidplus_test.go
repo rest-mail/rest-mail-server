@@ -122,7 +122,7 @@ var fakeReceivedAt = time.Date(2025, 3, 15, 10, 0, 0, 0, time.UTC)
 
 func (f *fakeAPI) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v1/auth/login", f.login)
+	mux.HandleFunc("POST /api/v1/auth/protocol-sign-in", f.login)
 	mux.HandleFunc("GET /api/v1/accounts/{acct}/folders/{folder}/messages", f.listMessages)
 	mux.HandleFunc("POST /api/v1/messages/deliver", f.deliver)
 	mux.HandleFunc("GET /api/v1/messages/{id}/raw", f.raw)
@@ -144,9 +144,8 @@ func pathID(r *http.Request) uint {
 
 func (f *fakeAPI) login(w http.ResponseWriter, _ *http.Request) {
 	var lr apiclient.LoginResponse
-	lr.Data.AccessToken = "tok"
-	lr.Data.ExpiresIn = 3600
 	lr.Data.User.ID = 7
+	lr.Data.CredentialID, lr.Data.CredentialKind = 1, "password"
 	lr.Data.User.Email = "alice@example.com"
 	writeJSON(w, lr)
 }

@@ -96,7 +96,7 @@ func TestClient_TwoListeners_PerEndpointRouting(t *testing.T) {
 	c := New(pubTS.URL, WithInternalMTLS(intTS.URL, clientTLS))
 
 	// PUBLIC routes must succeed against the public listener.
-	login, err := c.Login("u@e.test", "pw")
+	login, err := c.Login("u@e.test", "pw", "")
 	if err != nil {
 		t.Fatalf("Login (public) failed: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestClient_DefaultOff_SingleListener(t *testing.T) {
 	if _, err := c.CheckMailbox("a@b.test"); err != nil {
 		t.Fatalf("CheckMailbox default-off failed: %v", err)
 	}
-	if _, err := c.Login("u@e.test", "pw"); err != nil {
+	if _, err := c.Login("u@e.test", "pw", ""); err != nil {
 		t.Fatalf("Login default-off failed: %v", err)
 	}
 	// Both hit the single server.

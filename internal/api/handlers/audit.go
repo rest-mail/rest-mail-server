@@ -40,10 +40,10 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	if kind := q.Get("actor_kind"); kind != "" {
 		switch kind {
-		case models.AuditActorMailbox, models.AuditActorAdmin, models.AuditActorSystem, models.AuditActorAnonymous:
+		case models.AuditActorAccount, models.AuditActorSystem, models.AuditActorAnonymous:
 			query = query.Where("actor_kind = ?", kind)
 		default:
-			invalid["actor_kind"] = "must be mailbox, admin, system or anonymous"
+			invalid["actor_kind"] = "must be account, system or anonymous"
 		}
 	}
 	if v := q.Get("actor_id"); v != "" {

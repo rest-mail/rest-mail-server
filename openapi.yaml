@@ -23,40 +23,47 @@ info:
 
     * **JWT bearer** (`BearerAuth`) — the transport for programmatic (non-browser)
       clients. Send the access token as `Authorization: Bearer`; obtain it from
-      the `restmail_access` cookie in the login response's `Set-Cookie` header (it
-      is no longer in the login/refresh JSON body). Bearer requests send no cookie
-      and are exempt from the CSRF check. Admin operations additionally require the
-      caller's token to carry the admin role (mailbox-only tokens get `403`).
+      the `restmail_access` cookie in the login response's `Set-Cookie` header, or
+      sign in with `"client": "native"` to get it in the body. Bearer requests send
+      no cookie and are exempt from the CSRF check.
 
-    * **App password** (`AppPasswordAuth`) — HTTP Basic, with a mailbox's
-      address as the user name and one of its app passwords
-      (`rm_<public id>_<secret>`) as the password. For mail clients and
-      automations: accepted only by the operations whose `security` lists it,
-      the mail routes of the mailbox it belongs to (folders, messages, drafts,
-      attachments, contacts, vacation, Sieve, search, quarantine, calendar). It
-      reaches that mailbox alone, never one its account has linked. It is
-      checked on every request, so one that is revoked or expires stops working
-      at the next. Never accepted by `POST /api/v1/auth/login`, nor by password,
-      2FA, linking or credential operations: those need a session from signing
-      in with a password. A mailbox's own password is never accepted with Basic.
-      A refused one gets `401`; repeated refusals from one client get `429`.
+    * **HTTP Basic** (`BasicAuth`) — an account's address as the user name, and
+      as the password one of its app passwords (`rm_<public id>_<secret>`) or
+      one of its own passwords. It is how the IMAP, POP3 and SMTP gateways sign
+      mail clients in and act for them: one path for both kinds. Accepted only
+      by the operations whose `security` lists it, the mail routes (folders,
+      messages, drafts, attachments, contacts, vacation, Sieve, search,
+      quarantine, calendar). An app password reaches its own account's mailbox
+      alone; the account's password reaches what the account's grants reach.
+      The account's password is refused with Basic when the account has
+      two-factor authentication (`401 app_password_required`: a mail client
+      cannot send a code) or is still in setup (`401 setup_required`). Every
+      credential is checked on every request, so one that is revoked or
+      expires, or a password that changes, stops working at the next. Never
+      accepted by `POST /api/v1/auth/login`, nor by password, 2FA, account,
+      credential or admin operations: those need a session. A refused
+      credential gets `401`; repeated refusals from one client get `429`.
 
-    * **RBAC capability** — admin operations are gated by a named capability in
-      addition to the admin role. The required capability is given per operation as
-      `x-required-capability` (e.g. `domains:read`, `queue:manage`). Capability
-      names are the seeded `admin_capabilities` (resource:action); the superadmin
-      wildcard `*` satisfies every one. A caller missing the capability gets `403`.
-      A few admin operations (dashboard stats, the non-production test endpoints)
-      require only the admin role and carry no `x-required-capability`.
+    * **RBAC capability** — there is one kind of account, a mailbox, and one
+      kind of session. What an account may do beyond its own mailbox is its
+      **grants**: each a role at a scope (`*`, `domain:<name>` or
+      `mailbox:<address>`), read on every request — the token carries none, so
+      a change takes effect at once. An account holds the owner role's
+      capabilities (`mail:read`, `mail:write`, `mail:send`, `mailbox:manage`)
+      on its own mailbox without a grant, and on every account it created or
+      linked through an `owner` grant. Admin operations are gated by a named
+      capability, given per operation as `x-required-capability` (e.g.
+      `domains:read`, `queue:manage`); the superadmin wildcard `*` satisfies
+      every one. A caller missing it gets `403`.
 
-      An admin holds the capabilities of its **grants**: each a role at a scope
-      (`*`, `domain:<name>` or `mailbox:<address>`), read on every request — the
-      token carries none, so a change takes effect at once. An operation on the
-      domain or mailbox named by its `{id}` (`/api/v1/admin/domains/{id}` and
-      everything under it, `/api/v1/admin/dkim/{id}`,
-      `/api/v1/admin/mailboxes/{id}`) accepts the capability held at a scope
-      covering that domain or mailbox; every other operation needs it at `*`.
-      See `/api/v1/admin/grants`.
+      An operation on the domain or mailbox named by its `{id}`
+      (`/api/v1/admin/domains/{id}` and everything under it,
+      `/api/v1/admin/dkim/{id}`, `/api/v1/admin/mailboxes/{id}`) accepts the
+      capability held at a scope covering that domain or mailbox; every other
+      operation needs it at `*`. A session still in setup (a deploy-time
+      password, an authenticator owed) gets `403 setup_required` everywhere but
+      `/api/v1/auth/password` and `/api/v1/auth/2fa/*`. See
+      `/api/v1/admin/grants`.
 
       A grant is **active** (always in force) or **eligible**: it gives nothing
       until its holder switches it on for a while, with a fresh code from their
@@ -112,9 +119,9 @@ tags:
   - name: Auth
     description: Authentication (no auth)
   - name: Accounts
-    description: Linked mailbox accounts (JWT)
+    description: The accounts a session reaches, its own and those it holds mail grants on; creating and linking them (JWT)
   - name: Credentials
-    description: A mailbox's app passwords (JWT from a password sign-in; never an app password)
+    description: An account's app passwords (JWT from a password sign-in; never an app password)
   - name: Push devices
     description: >
       Phones a session registers for push notifications (JWT from a password
@@ -157,11 +164,9 @@ tags:
   - name: "Admin: Domains"
     description: Domain management (JWT + admin)
   - name: "Admin: Mailboxes"
-    description: Mailbox management (JWT + admin)
+    description: Account (mailbox) management (JWT + admin)
   - name: "Admin: Aliases"
     description: Alias management (JWT + admin)
-  - name: "Admin: Webmail Accounts"
-    description: Webmail account management (JWT + admin)
   - name: "Admin: Pipelines"
     description: Pipeline management (JWT + admin)
   - name: "Admin: Custom Filters"
@@ -180,8 +185,8 @@ tags:
     description: Delivery log (JWT + admin)
   - name: "Admin: Stats"
     description: Dashboard statistics (JWT + admin; admin role only, no capability)
-  - name: "Admin: Users & Roles"
-    description: Admin user, role and capability management (JWT + admin; users:* capabilities)
+  - name: "Admin: Roles & Grants"
+    description: Roles, capabilities and the grants accounts hold (JWT + admin; users:* capabilities)
   - name: "Admin: Observability"
     description: Pipeline analytics funnel and per-message traces (JWT + admin; observability:read)
   - name: "Admin: Audit"
@@ -232,8 +237,15 @@ paths:
     post:
       operationId: login
       tags: [Auth]
-      summary: Authenticate with email and password
+      summary: Sign an account in with its address and password
       description: >
+        Takes the account's address (`email`), a password matching one of its
+        password credentials, and a code from one of its authenticators when it
+        has one (`totp_code`, or a `recovery_code`); without the code the
+        answer is `401 totp_required`. An account with no password (one reached
+        only through its owners) cannot be signed in to, and is answered as a
+        wrong password. There is no other kind of sign-in: no username.
+
         On success a browser gets three cookies: restmail_access (httpOnly, the
         session token), restmail_refresh (httpOnly, scoped to /api/v1/auth), and
         restmail_csrf (readable, for the double-submit CSRF header), and no
@@ -241,7 +253,7 @@ paths:
         access_token, refresh_token and refresh_expires_in in the body instead,
         with no cookies; it sends the access token as Authorization: Bearer.
 
-        The bootstrap admin's deploy-time password works for 72 hours, until
+        The bootstrap account's deploy-time password works for 72 hours, until
         the account chooses its own. After that, the right password answers
         401 bootstrap_expired — only the right one, so a guesser learns
         nothing — and the cure is to deploy again with a new password. Signing
@@ -331,14 +343,15 @@ paths:
     post:
       operationId: resetAdmin
       tags: [Auth]
-      summary: Let an admin back in with a reset token; also hands a server over
+      summary: Let an account back in with a reset token; also hands a server over
       description: >
         Redeems a single-use reset_admin token (`restmail reset-admin`). The
-        admin it names gets the password the redeemer chose, loses its
-        authenticator and must enroll a new one, and every token it was issued
-        is dead at once — refresh tokens are revoked, and access tokens carry a
-        credential epoch the reset bumps. Whoever held the old credentials, a
-        person or an agent that set the server up, is locked out.
+        account it names gets the password the redeemer chose, loses its
+        authenticator and must enroll a new one, its app passwords are revoked,
+        and every token it was issued is dead at once — refresh tokens are
+        revoked, and access tokens carry a credential epoch the reset bumps.
+        Whoever held the old credentials, a person or an agent that set the
+        server up, is locked out.
       security: []
       requestBody:
         required: true
@@ -435,7 +448,7 @@ paths:
       description: >
         `signature` is the SSH wire-format signature (base64) by the private
         half of `public_key` over the bytes
-        `"restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge`,
+        `"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge`,
         so a signature for one request cannot be presented for another. `public_key` must be listed in
         RESTMAIL_OWNER_KEYS; a status key (RESTMAIL_STATUS_KEYS) is refused.
         Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
@@ -448,13 +461,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [challenge, public_key, signature, purpose, username]
+              required: [challenge, public_key, signature, purpose, address]
               properties:
                 challenge: {type: string}
                 public_key: {type: string, description: authorized_keys format}
                 signature: {type: string, format: byte}
                 purpose: {type: string, enum: [reset-admin], description: "the only one; part of what is signed"}
-                username: {type: string, description: the admin to let back in}
+                address: {type: string, format: email, description: "the account to let back in, as signed"}
                 lifetime_seconds: {type: integer, minimum: 0, maximum: 86400, description: "0: 15 minutes"}
       responses:
         "200":
@@ -477,11 +490,11 @@ paths:
         "403":
           description: not_owner — the key is not listed, or the signature does not verify
         "404":
-          description: no_such_admin
+          description: no_such_account
         "409":
           description: no_owner_keys — the server lists none
         "422":
-          description: Purpose, username, lifetime or signature malformed
+          description: Purpose, address, lifetime or signature malformed
 
   /api/v1/auth/owner/status:
     post:
@@ -493,7 +506,7 @@ paths:
         `signature` is the SSH wire-format signature (base64) by the private
         half of `public_key` over the bytes
         `"restmail-owner-v1\n" + "status" + "\n" + "" + "\n" + challenge`:
-        the owner scheme with the purpose `status` and no username, so a
+        the owner scheme with the purpose `status` and no address, so a
         signature made to reset an admin does not read the status, nor the
         other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or
         RESTMAIL_OWNER_KEYS. A status key reads this and can do nothing else.
@@ -541,12 +554,16 @@ paths:
     post:
       operationId: changeOwnPassword
       tags: [Auth]
-      summary: Replace your own password (admin accounts)
+      summary: Replace your own password
       description: >
-        The signed-in admin sets a new password, proving the current one even
+        The signed-in account sets a new password, proving the current one even
         from a fresh session so a stolen access token alone cannot take the
-        account. Clears the "password" setup step, and revokes every session of
-        the account, this one included: sign in again with the new password.
+        account. The new password replaces every password credential it had.
+        Clears the "password" setup step, revokes every app password (whoever
+        knew the old password could have made one, each recorded as
+        `credentials.revoke` with reason `password_changed`), and revokes every
+        session of the account, this one included: sign in again with the new
+        password.
         One of the only calls a session in setup (setup_required non-empty)
         may make. Throttled like login.
       requestBody:
@@ -568,8 +585,6 @@ paths:
           description: Password changed; every session of the account is revoked
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Not an admin session
         "422":
           description: New password missing, shorter than 12 characters, or unchanged
 
@@ -577,18 +592,20 @@ paths:
     post:
       operationId: protocolSignIn
       tags: [Auth]
-      summary: Sign a mail client in with an app password (protocol gateways)
+      summary: Sign a mail client in (protocol gateways)
       description: >
-        How the IMAP, POP3 and SMTP gateways sign in a mail client that gave an
-        app password: the request carries the address and the app password with
-        HTTP Basic, and the audit log records the sign-in
-        (`auth.protocol_sign_in`) with the credential and the protocol. It
-        answers with the account, so the gateway knows which account the
-        requests it then makes, each with the same Basic credentials, are for.
-        No session is made. A session cannot use it. A refused app password is
-        recorded as `auth.app_password`. Throttled like login.
+        The one way the IMAP, POP3 and SMTP gateways sign a mail client in,
+        whatever it gave as its password: the request carries the address and
+        that password with HTTP Basic, checked against the account's
+        credentials — an app password, or one of the account's passwords — and
+        the audit log records the sign-in (`auth.protocol_sign_in`) with the
+        credential and the protocol. It answers with the account, so the
+        gateway knows which account the requests it then makes, each with the
+        same Basic credentials, are for. No session is made. A session cannot
+        use it. A refused credential is recorded as `auth.basic`. Throttled
+        like login.
       security:
-        - AppPasswordAuth: []
+        - BasicAuth: []
       requestBody:
         required: true
         content:
@@ -611,7 +628,7 @@ paths:
                 properties:
                   data:
                     type: object
-                    required: [user, credential_id]
+                    required: [user, credential_id, credential_kind]
                     properties:
                       user:
                         type: object
@@ -627,14 +644,24 @@ paths:
                             type: string
                       credential_id:
                         type: integer
+                      credential_kind:
+                        type: string
+                        enum: [password, app_password]
+                        description: >
+                          An app password reaches only its own account's
+                          mailbox; the account's password reaches what its
+                          grants reach (sending as an account it owns, say).
         "400":
-          description: Not an app password (`app_password_required`), or an invalid body
+          description: Not HTTP Basic (`basic_required`), or an invalid body
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: >
+            `unauthorized` for a wrong address or password;
+            `app_password_required` for the right password of an account with
+            two-factor authentication; `setup_required` for one still in setup.
         "422":
           description: protocol is not imap, pop3 or smtp
         "429":
-          description: Too many refused app passwords from this client, or too many sign-ins
+          description: Too many refused credentials from this client, or too many sign-ins
 
   # ═══════════════════════════════════════════════════════════════
   # Accounts
@@ -645,12 +672,18 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Accounts]
-      summary: List linked mailbox accounts
+      summary: List the accounts this one reaches
+      description: >
+        The session's own account first (`is_primary`), then every account it
+        holds an active mail grant on at that account's own scope
+        (`mailbox:<address>`): the ones it created or linked, by address.
+        Domain and server-wide admin grants reach mailboxes too, but are
+        administration, and list none. With an app password, only its own.
       responses:
         "200":
-          description: List of accounts
+          description: The accounts
           content:
             application/json:
               schema:
@@ -664,18 +697,29 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
-      operationId: linkAccount
+      operationId: createAccount
       tags: [Accounts]
-      summary: Link an additional mailbox account
+      summary: Create an account
+      description: >
+        The same for everyone. Needs `mailboxes:write` held at a scope covering
+        the address's domain. The creator gets the `owner` grant on the new
+        account (mail read, write, send, and `mailbox:manage`). With
+        `password`, the account gets a password credential and can be signed
+        in to; without one it has no credentials, and is reached only through
+        its owners. The account, its credential, the grant and their audit
+        entries (`accounts.create`, `grants.create`) commit together; a refused
+        attempt is recorded too. A "sub account" is only this relationship: an
+        account another holds the owner grant on.
+      x-required-capability: "mailboxes:write (on the address's domain)"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LinkAccountRequest"
+              $ref: "#/components/schemas/CreateAccountRequest"
       responses:
         "201":
-          description: Account linked
+          description: Created
           content:
             application/json:
               schema:
@@ -686,10 +730,56 @@ paths:
                     $ref: "#/components/schemas/Account"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: No mailboxes:write covering the domain, or a session in setup
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: An account with this address exists
+        "422":
+          description: Not an address, a password under 12 characters, or a domain this server does not host
+
+  /api/v1/accounts/link:
+    post:
+      operationId: linkAccount
+      tags: [Accounts]
+      summary: Link an existing account by proving its password
+      description: >
+        Grants the session's account the `owner` role on an existing account,
+        by proving one of its passwords — and a code from its authenticator
+        when it has one (`401 totp_required` without), the same proof as
+        signing in to it. A wrong password, an unknown address and an account
+        with no password are the same `401`. An account still in setup cannot
+        be linked (`403 setup_required`). `display_name`, when the account has
+        none, becomes its name. Throttled with login (a wrong guess spends the
+        same budget), and audited (`accounts.link`, and the grant's
+        `grants.create`). Unlinking is removing that grant:
+        `DELETE /api/v1/accounts/{id}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkAccountRequest"
+      responses:
+        "201":
+          description: Linked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Account"
+        "401":
+          description: Wrong address or password (`unauthorized`), or its code is needed (`totp_required`)
+        "403":
+          description: The account is still in setup
+        "409":
+          description: Already linked, or the session's own account
         "422":
           $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many attempts from this client
 
   /api/v1/accounts/{id}:
     parameters:
@@ -699,9 +789,9 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Accounts]
-      summary: Get a specific linked account
+      summary: Get an account this one may read
       responses:
         "200":
           description: Account details
@@ -718,39 +808,18 @@ paths:
     delete:
       operationId: unlinkAccount
       tags: [Accounts]
-      summary: Unlink a secondary mailbox account
+      summary: Give up access to an account
+      description: >
+        Removes the session's own grants on the account (`grants.delete` for
+        each, in one transaction): giving up access needs nothing more. Its
+        own account cannot be unlinked (`409 own_account`).
       responses:
         "204":
-          description: Account unlinked
+          description: Unlinked
         "404":
-          $ref: "#/components/responses/NotFound"
-
-  /api/v1/accounts/test-connection:
-    post:
-      operationId: testConnection
-      tags: [Accounts]
-      summary: Test mailbox credentials
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TestConnectionRequest"
-      responses:
-        "200":
-          description: Credentials valid
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    $ref: "#/components/schemas/TestConnectionResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "422":
-          $ref: "#/components/responses/ValidationError"
+          description: The session holds no grant on it
+        "409":
+          description: The session's own account
 
   # ═══════════════════════════════════════════════════════════════
   # Credentials (app passwords)
@@ -761,11 +830,13 @@ paths:
     get:
       operationId: listCredentials
       tags: [Credentials]
-      summary: List the mailbox's app passwords
+      summary: List an account's app passwords
       description: >
-        The app passwords of the session's own mailbox that are not revoked,
-        newest first; expired ones are included. Never a secret or its hash.
-        `{id}` must be the session's own account: never one it has linked.
+        The app passwords of the account that are not revoked, newest first;
+        expired ones are included. Never a secret or its hash. `{id}` is the
+        session's own account, or one it holds `mailbox:manage` on (an account
+        it owns, such as an automation's with no password of its own); any
+        other is answered 404.
       responses:
         "200":
           description: The app passwords
@@ -781,8 +852,6 @@ paths:
                       $ref: "#/components/schemas/Credential"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Not a mailbox session
         "404":
           $ref: "#/components/responses/NotFound"
     post:
@@ -792,11 +861,13 @@ paths:
       description: >
         Makes an app password for a mail client or an automation and answers
         with it, the only time it is ever shown; the server keeps only a SHA-256
-        of its secret. Its scope is the mailbox, with mail:read, mail:write and
-        mail:send. Needs a session from signing in with the mailbox's password,
-        and, when the mailbox has 2FA, with its code too (`403
-        two_factor_required` otherwise). It also needs the mailbox's current
-        password, entered again in `password`, as Gmail and GitHub ask for it:
+        of its secret. Its scope is the account's mailbox, with mail:read,
+        mail:write and mail:send. `{id}` is the session's own account or one it
+        holds `mailbox:manage` on. Needs a session from signing in with a
+        password, and, when the session's account has 2FA, with its code too
+        (`403 two_factor_required` otherwise). It also needs the session's own
+        current password, entered again in `password`, as Gmail and GitHub ask
+        for it:
         a session from before a change of password works until its access
         token expires, and must not make an app password that outlives the
         change. Throttled like login, with the same budget. Recorded in the
@@ -823,7 +894,7 @@ paths:
                   type: string
                   format: password
                   writeOnly: true
-                  description: The mailbox's current password, entered again.
+                  description: The session's own current password, entered again.
       responses:
         "201":
           description: Made; `password` is shown this once
@@ -837,7 +908,7 @@ paths:
                     $ref: "#/components/schemas/CreatedAppPassword"
         "401":
           description: >
-            No valid session, or the mailbox's current password was not given
+            No valid session, or the session's current password was not given
             (`reauth_required`) or is wrong (`invalid_password`)
           content:
             application/json:
@@ -845,8 +916,8 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: >
-            Not a mailbox session, or the mailbox has 2FA and the session's
-            sign-in did not take it (`two_factor_required`)
+            The account has 2FA and the session's sign-in did not take it
+            (`two_factor_required`)
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -876,10 +947,8 @@ paths:
           description: Revoked
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          description: Not a mailbox session
         "404":
-          description: No such app password of this mailbox, or already revoked
+          description: No such app password of this account, or already revoked
 
   # ═══════════════════════════════════════════════════════════════
   # Push devices (#363)
@@ -1009,7 +1078,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Folders]
       summary: List folders for an account
       responses:
@@ -1030,7 +1099,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Folders]
       summary: Create a new folder
       requestBody:
@@ -1062,7 +1131,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Folders]
       summary: Rename a folder
       requestBody:
@@ -1089,7 +1158,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Folders]
       summary: Delete a folder
       responses:
@@ -1110,7 +1179,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Messages]
       summary: List messages in a folder with cursor pagination
       parameters:
@@ -1147,7 +1216,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Messages]
       summary: Get a single message by ID
       responses:
@@ -1168,7 +1237,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Messages]
       summary: Update message flags or move to another folder
       requestBody:
@@ -1195,7 +1264,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Messages]
       summary: Delete a message
       responses:
@@ -1210,7 +1279,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Messages]
       summary: Compose and send a new message
       requestBody:
@@ -1241,7 +1310,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Messages]
       summary: Get the raw RFC 2822 message source
       responses:
@@ -1262,7 +1331,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Messages]
       summary: Forward a message
       requestBody:
@@ -1294,7 +1363,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Drafts]
       summary: Save a new draft
       requestBody:
@@ -1323,7 +1392,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Drafts]
       summary: Update an existing draft
       requestBody:
@@ -1354,7 +1423,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Drafts]
       summary: Send a saved draft
       responses:
@@ -1388,7 +1457,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Threads]
       summary: Get all messages in a thread
       responses:
@@ -1418,7 +1487,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Quota]
       summary: Get mailbox quota usage
       responses:
@@ -1444,7 +1513,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Search]
       summary: Search messages with filters
       parameters:
@@ -1521,7 +1590,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Attachments]
       summary: Download an attachment
       responses:
@@ -1543,7 +1612,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Attachments]
       summary: List attachments for a message
       responses:
@@ -1571,7 +1640,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Contacts]
       summary: List contacts for an account
       parameters:
@@ -1602,7 +1671,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Contacts]
       summary: Create a new contact
       requestBody:
@@ -1639,7 +1708,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Contacts]
       summary: Update a contact
       requestBody:
@@ -1666,7 +1735,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Contacts]
       summary: Delete a contact
       responses:
@@ -1683,7 +1752,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Contacts]
       summary: Block a sender
       requestBody:
@@ -1717,7 +1786,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Contacts]
       summary: Bulk import contacts
       requestBody:
@@ -1750,7 +1819,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Contacts]
       summary: Autocomplete contacts by query
       parameters:
@@ -1784,7 +1853,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Vacation]
       summary: Get vacation auto-reply settings
       responses:
@@ -1803,7 +1872,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Vacation]
       summary: Set vacation auto-reply settings
       requestBody:
@@ -1828,7 +1897,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Vacation]
       summary: Disable vacation auto-reply
       responses:
@@ -1846,7 +1915,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Sieve]
       summary: Get the Sieve filter script
       responses:
@@ -1867,7 +1936,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Sieve]
       summary: Create or replace the Sieve filter script
       requestBody:
@@ -1892,7 +1961,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Sieve]
       summary: Delete the Sieve filter script
       responses:
@@ -1920,7 +1989,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Sieve]
       summary: Validate a Sieve script without saving
       requestBody:
@@ -1962,7 +2031,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Quarantine]
       summary: List quarantined messages
       responses:
@@ -1993,7 +2062,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Quarantine]
       summary: Release a quarantined message to inbox
       responses:
@@ -2033,7 +2102,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Quarantine]
       summary: Permanently delete a quarantined message
       responses:
@@ -2369,32 +2438,6 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Mailbox"
-    post:
-      operationId: createMailbox
-      tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:write
-      summary: Create a new mailbox
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateMailboxRequest"
-      responses:
-        "201":
-          description: Mailbox created
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    $ref: "#/components/schemas/Mailbox"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "422":
-          $ref: "#/components/responses/ValidationError"
 
   /api/v1/admin/mailboxes/{id}:
     parameters:
@@ -2403,7 +2446,7 @@ paths:
       operationId: getMailbox
       tags: ["Admin: Mailboxes"]
       x-required-capability: mailboxes:read
-      summary: Get a mailbox by ID
+      summary: Get an account by ID
       responses:
         "200":
           description: Mailbox details
@@ -2421,11 +2464,12 @@ paths:
       operationId: updateMailbox
       tags: ["Admin: Mailboxes"]
       x-required-capability: mailboxes:write
-      summary: Update a mailbox
+      summary: Update an account
       description: |
-        A new `password` ends every session of the mailbox. It also revokes
-        all the mailbox's app passwords, in the transaction that sets it,
-        recording each in the audit log as `credentials.revoke` with `reason`
+        A new `password` (12 characters or more) replaces every password the
+        account had and ends every session of it. It also revokes all the
+        account's app passwords, in the transaction that sets it, recording
+        each in the audit log as `credentials.revoke` with `reason`
         `password_changed`.
       requestBody:
         required: true
@@ -2450,12 +2494,22 @@ paths:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
       x-required-capability: mailboxes:delete
-      summary: Delete a mailbox
+      summary: Delete an account
+      description: >
+        Its credentials are revoked (kept, for the audit trail) and its
+        sessions end. Every grant it held is removed under the grants rules
+        (a session with 2FA, holding what it removes; the last superadmin
+        cannot go), and every grant others held on it, so a new account at
+        the same address inherits no owner. Each removal is recorded.
       responses:
         "204":
-          description: Mailbox deleted
+          description: Deleted
+        "403":
+          description: It holds grants and the session has no 2FA (`two_factor_required`), or holds less than they give (`grant_exceeds_held`)
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: It holds the last superadmin (`last_superadmin`)
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Aliases
@@ -2562,89 +2616,6 @@ paths:
       responses:
         "204":
           description: Alias deleted
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  # ═══════════════════════════════════════════════════════════════
-  # Admin: Webmail Accounts
-  # ═══════════════════════════════════════════════════════════════
-  /api/v1/admin/webmail-accounts:
-    get:
-      operationId: listWebmailAccounts
-      tags: ["Admin: Webmail Accounts"]
-      x-required-capability: mailboxes:read
-      summary: List webmail accounts
-      responses:
-        "200":
-          description: Webmail account list
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/WebmailAccount"
-    post:
-      operationId: createWebmailAccount
-      tags: ["Admin: Webmail Accounts"]
-      x-required-capability: mailboxes:write
-      summary: Create a webmail account
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [primary_mailbox_id]
-              properties:
-                primary_mailbox_id:
-                  type: integer
-      responses:
-        "201":
-          description: Webmail account created
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    $ref: "#/components/schemas/WebmailAccount"
-        "409":
-          $ref: "#/components/responses/Conflict"
-
-  /api/v1/admin/webmail-accounts/{id}:
-    parameters:
-      - $ref: "#/components/parameters/ResourceId"
-    get:
-      operationId: getWebmailAccount
-      tags: ["Admin: Webmail Accounts"]
-      x-required-capability: mailboxes:read
-      summary: Get a webmail account by ID
-      responses:
-        "200":
-          description: Webmail account details
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    $ref: "#/components/schemas/WebmailAccount"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    delete:
-      operationId: deleteWebmailAccount
-      tags: ["Admin: Webmail Accounts"]
-      x-required-capability: mailboxes:delete
-      summary: Delete a webmail account
-      responses:
-        "204":
-          description: Webmail account deleted
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -3758,15 +3729,15 @@ paths:
           in: query
           schema:
             type: string
-            enum: [mailbox, admin, system, anonymous]
+            enum: [account, system, anonymous]
         - name: actor_id
           in: query
-          description: The mailbox or admin user id
+          description: The account (mailbox) id
           schema:
             type: integer
         - name: actor
           in: query
-          description: Actor name (address or username) contains this, in any case
+          description: Actor name (an address) contains this, in any case
           schema:
             type: string
         - name: action
@@ -4097,7 +4068,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Calendar]
       summary: Send an iMIP reply to a calendar invitation in a message
       requestBody:
@@ -4152,7 +4123,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
-        - AppPasswordAuth: []
+        - BasicAuth: []
       tags: [Calendar]
       summary: List calendar events (grouped by UID, latest version) for the mailbox
       responses:
@@ -4177,7 +4148,8 @@ paths:
       operationId: getDashboardStats
       tags: ["Admin: Stats"]
       summary: Dashboard statistics
-      description: Visible to any admin role; requires no specific capability.
+      x-required-capability: domains:read
+      description: Visible to every admin role, all of which hold domains:read.
       responses:
         "200":
           description: Dashboard statistics
@@ -4191,112 +4163,12 @@ paths:
                     $ref: "#/components/schemas/DashboardStats"
 
   # ═══════════════════════════════════════════════════════════════
-  # Admin: Users & Roles
+  # Admin: Roles & Grants
   # ═══════════════════════════════════════════════════════════════
-  /api/v1/admin/admin-users:
-    get:
-      operationId: listAdminUsers
-      tags: ["Admin: Users & Roles"]
-      x-required-capability: users:read
-      summary: List admin users
-      responses:
-        "200":
-          description: Admin users
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/AdminUser"
-    post:
-      operationId: createAdminUser
-      tags: ["Admin: Users & Roles"]
-      x-required-capability: users:write
-      summary: Create an admin user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateAdminUserRequest"
-      responses:
-        "201":
-          description: Admin user created
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    $ref: "#/components/schemas/AdminUser"
-        "422":
-          $ref: "#/components/responses/ValidationError"
-
-  /api/v1/admin/admin-users/{id}:
-    parameters:
-      - $ref: "#/components/parameters/ResourceId"
-    get:
-      operationId: getAdminUser
-      tags: ["Admin: Users & Roles"]
-      x-required-capability: users:read
-      summary: Get an admin user by ID
-      responses:
-        "200":
-          description: Admin user
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    $ref: "#/components/schemas/AdminUser"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    put:
-      operationId: updateAdminUser
-      tags: ["Admin: Users & Roles"]
-      x-required-capability: users:write
-      summary: Update an admin user
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateAdminUserRequest"
-      responses:
-        "200":
-          description: Update acknowledgement
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      message:
-                        type: string
-                        example: Admin user updated successfully
-    delete:
-      operationId: deleteAdminUser
-      tags: ["Admin: Users & Roles"]
-      x-required-capability: users:delete
-      summary: Delete an admin user
-      responses:
-        "204":
-          description: Admin user deleted
-
   /api/v1/admin/roles:
     get:
       operationId: listRoles
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       x-required-capability: users:read
       summary: List roles
       responses:
@@ -4316,7 +4188,7 @@ paths:
   /api/v1/admin/capabilities:
     get:
       operationId: listCapabilities
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       x-required-capability: users:read
       summary: List capabilities
       responses:
@@ -4336,22 +4208,28 @@ paths:
   /api/v1/admin/grants:
     get:
       operationId: listGrants
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       x-required-capability: users:read
       summary: List grants, oldest first
       description: >-
-        Every grant, active and eligible, or only one holder's. An admin's
-        `roles` (admin users API) are its active grants at `*`.
+        Every grant, active and eligible, or only one holder's, or only those
+        at one scope (`scope=mailbox:chris@example.com`: who owns chris@). A
+        holder is an account (`holder_kind` `account`, `holder_id` its id).
       parameters:
         - name: holder_kind
           in: query
           schema:
             type: string
-            example: admin
+            example: account
         - name: holder_id
           in: query
           schema:
             type: integer
+        - name: scope
+          in: query
+          description: Only the grants at this scope, e.g. `mailbox:chris@example.com`
+          schema:
+            type: string
         - name: limit
           in: query
           schema:
@@ -4382,7 +4260,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     post:
       operationId: createGrant
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       x-required-capability: users:write
       summary: Grant a role at a scope
       description: >-
@@ -4430,7 +4308,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     delete:
       operationId: deleteGrant
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       x-required-capability: users:write
       summary: Remove a grant
       description: >-
@@ -4464,7 +4342,7 @@ paths:
   /api/v1/admin/grants/mine:
     get:
       operationId: listMyGrants
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       summary: The caller's own grants
       description: >-
         Every grant the signed-in admin holds, active and eligible, each with
@@ -4499,7 +4377,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: activateGrant
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       summary: Switch one of your eligible grants on for a while
       description: >-
         Escalation (#346). The grant must be the caller's own (`404`
@@ -4570,7 +4448,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: deactivateGrant
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       summary: Switch one of your grants off before it runs out
       description: >-
         Ends the caller's own activation of the grant now (`404` for anyone
@@ -4616,7 +4494,7 @@ paths:
       - $ref: "#/components/parameters/ResourceId"
     post:
       operationId: makeGrantEligible
-      tags: ["Admin: Users & Roles"]
+      tags: ["Admin: Roles & Grants"]
       summary: Hold one of your active grants only when you switch it on
       description: >-
         Turns the caller's own active grant eligible: from then on it gives
@@ -4886,6 +4764,7 @@ paths:
   /api/v1/admin/test/send:
     post:
       operationId: sendTestEmail
+      x-required-capability: "*"
       tags: ["Admin: Testing"]
       summary: Inject a test email directly into a recipient mailbox
       requestBody:
@@ -4938,6 +4817,7 @@ paths:
   /api/v1/admin/test/verify:
     get:
       operationId: verifyDelivery
+      x-required-capability: "*"
       tags: ["Admin: Testing"]
       summary: Poll for a delivered message matching the given criteria
       parameters:
@@ -4986,6 +4866,7 @@ paths:
   /api/v1/admin/test/probe:
     post:
       operationId: probeServices
+      x-required-capability: "*"
       tags: ["Admin: Testing"]
       summary: Probe connectivity to SMTP/IMAP/POP3/DNS/DB
       requestBody:
@@ -5024,6 +4905,7 @@ paths:
   /api/v1/admin/test/reset:
     post:
       operationId: resetTestData
+      x-required-capability: "*"
       tags: ["Admin: Testing"]
       summary: Wipe all data and re-seed default test data
       responses:
@@ -5039,6 +4921,7 @@ paths:
   /api/v1/admin/test/seed:
     post:
       operationId: seedTestData
+      x-required-capability: "*"
       tags: ["Admin: Testing"]
       summary: Seed default test domains, mailboxes, aliases and accounts
       responses:
@@ -5054,6 +4937,7 @@ paths:
   /api/v1/admin/test/snapshot:
     post:
       operationId: snapshotTestData
+      x-required-capability: "*"
       tags: ["Admin: Testing"]
       summary: Capture the current database state as JSON
       responses:
@@ -5074,6 +4958,7 @@ paths:
   /api/v1/admin/test/snapshot/restore:
     post:
       operationId: restoreTestSnapshot
+      x-required-capability: "*"
       tags: ["Admin: Testing"]
       summary: Restore database state from a previously captured snapshot
       requestBody:
@@ -5112,7 +4997,7 @@ components:
         cannot read it. This is the transport used by the web frontends. State-
         changing requests (POST/PUT/PATCH/DELETE) additionally require the
         double-submit CSRF header (see the CSRFToken parameter).
-    AppPasswordAuth:
+    BasicAuth:
       type: http
       scheme: basic
       description: >
@@ -5278,9 +5163,16 @@ components:
         email:
           type: string
           format: email
+          description: The account's address. There is no username.
         password:
           type: string
           format: password
+        totp_code:
+          type: string
+          description: A current code from one of the account's authenticators, when it has one.
+        recovery_code:
+          type: string
+          description: Instead of totp_code, one of the account's unused recovery codes.
         client:
           type: string
           enum: [native]
@@ -5322,11 +5214,12 @@ components:
         capabilities:
           type: array
           description: >-
-            Admin users only: the capabilities the admin's grants in force
+            The capabilities the account's grants in force
             (active ones, and eligible ones while switched on) give at `*`,
             sorted, or `["*"]` alone for a superadmin; for showing what the
-            session can do. They authorise nothing: the admin API reads the
-            grants on every request, and the token carries none. Capabilities
+            session can do (absent for an account holding no admin role). They
+            authorise nothing: the API reads the grants on every request, and
+            the token carries none. Capabilities
             held only on a domain or mailbox are not listed. Empty while
             setup_required is not.
           items:
@@ -5334,13 +5227,13 @@ components:
         setup_required:
           type: array
           description: >
-            Admin accounts only, and absent once the account is set up. What the
-            account must still do before its sessions may use the admin API,
-            which until then answers 403 with code setup_required — and so does
-            every session refreshed from this one. "password": POST
+            Absent once the account is set up. What the account must still do
+            before its sessions reach anything else, which until then answers
+            403 with code setup_required — and so does every session refreshed
+            from this one. "password": POST
             /api/v1/auth/password. "two_factor": POST /api/v1/auth/2fa/enroll,
-            then /api/v1/auth/2fa/confirm. A fresh install's bootstrap admin
-            starts with both.
+            then /api/v1/auth/2fa/confirm. A fresh install's bootstrap account,
+            admin@<mail domain>, starts with both.
           items:
             type: string
             enum: [password, two_factor]
@@ -5393,11 +5286,13 @@ components:
     # ─────────────────────────────────────────────────────────────
     Account:
       type: object
-      required: [id, mailbox_id, address, display_name, is_primary]
+      description: >
+        An account, which is a mailbox: what GET and POST /api/v1/accounts
+        answer with. `id` is the mailbox's id, the `{id}` of every
+        /api/v1/accounts/{id}/… route.
+      required: [id, address, display_name, is_primary]
       properties:
         id:
-          type: integer
-        mailbox_id:
           type: integer
         address:
           type: string
@@ -5406,6 +5301,24 @@ components:
           type: string
         is_primary:
           type: boolean
+          description: The session's own account.
+
+    CreateAccountRequest:
+      type: object
+      required: [address]
+      properties:
+        address:
+          type: string
+          format: email
+          description: On a domain this server hosts.
+        display_name:
+          type: string
+        password:
+          type: string
+          minLength: 12
+          description: >
+            Optional. With one, the account can be signed in to; without one
+            it has no credentials, and is reached only through its owners.
 
     Credential:
       type: object
@@ -5514,30 +5427,6 @@ components:
         password:
           type: string
           format: password
-        display_name:
-          type: string
-
-    TestConnectionRequest:
-      type: object
-      required: [address, password]
-      properties:
-        address:
-          type: string
-          format: email
-        password:
-          type: string
-          format: password
-
-    TestConnectionResponse:
-      type: object
-      required: [status, address, display_name]
-      properties:
-        status:
-          type: string
-          example: ok
-        address:
-          type: string
-          format: email
         display_name:
           type: string
 
@@ -6183,7 +6072,11 @@ components:
     # ─────────────────────────────────────────────────────────────
     Mailbox:
       type: object
-      required: [id, domain_id, local_part, address, display_name, quota_bytes, quota_used_bytes, active, created_at, updated_at]
+      description: >
+        An account, as the admin API shows it: a mailbox is the account. Its
+        passwords, authenticators and app passwords are its credentials,
+        never shown here; what it may do is its grants (/api/v1/admin/grants).
+      required: [id, domain_id, local_part, address, display_name, quota_bytes, quota_used_bytes, active, password_change_required, two_factor_required, created_at, updated_at]
       properties:
         id:
           type: integer
@@ -6207,28 +6100,21 @@ components:
         last_login_at:
           type: [string, "null"]
           format: date-time
+        password_change_required:
+          type: boolean
+          description: In setup until it chooses its own password (the bootstrap account)
+        two_factor_required:
+          type: boolean
+          description: In setup until it enrolls an authenticator, which it may never disable
+        last_password_change:
+          type: [string, "null"]
+          format: date-time
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-
-    CreateMailboxRequest:
-      type: object
-      required: [address, password]
-      properties:
-        address:
-          type: string
-          format: email
-        password:
-          type: string
-          format: password
-        display_name:
-          type: string
-        quota_bytes:
-          type: integer
-          format: int64
 
     UpdateMailboxRequest:
       type: object
@@ -6286,24 +6172,6 @@ components:
           format: email
         active:
           type: boolean
-
-    # ─────────────────────────────────────────────────────────────
-    # WebmailAccount
-    # ─────────────────────────────────────────────────────────────
-    WebmailAccount:
-      type: object
-      required: [id, primary_mailbox_id, created_at, updated_at]
-      properties:
-        id:
-          type: integer
-        primary_mailbox_id:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
 
     # ─────────────────────────────────────────────────────────────
     # Pipeline
@@ -6746,23 +6614,22 @@ components:
           format: date-time
         actor_kind:
           type: string
-          enum: [mailbox, admin, system, anonymous]
+          enum: [account, system, anonymous]
           description: >-
-            A sign-in names the kind of account it was for (username: admin,
-            email: mailbox) even when it fails; actor_id is set only once the
-            account is proven.
+            A sign-in names the account it was for even when it fails;
+            actor_id is set only once the account is proven.
         actor_id:
           type: [integer, "null"]
-          description: The mailbox or admin user id
+          description: The account (mailbox) id
         actor_name:
           type: string
-          description: The address or username at the time
+          description: The account's address at the time
         credential_id:
           type: [integer, "null"]
           description: >
-            The app password the request was made with, or the one refused when
-            its secret matched (revoked, expired, another mailbox's); null for a
-            session
+            The credential a request was made with over HTTP Basic (an app
+            password, or the account's password through a gateway), or the one
+            refused when its secret matched; null for a session
         session_id:
           type: string
           description: The jti of the token the request carried
@@ -6936,37 +6803,8 @@ components:
               type: integer
 
     # ─────────────────────────────────────────────────────────────
-    # Admin: Users, roles, capabilities
+    # Admin: Roles, capabilities, grants
     # ─────────────────────────────────────────────────────────────
-    AdminUser:
-      type: object
-      required: [id, username, active, password_change_required, created_at, updated_at]
-      properties:
-        id:
-          type: integer
-        username:
-          type: string
-        email:
-          type: [string, "null"]
-        active:
-          type: boolean
-        password_change_required:
-          type: boolean
-        last_password_change:
-          type: [string, "null"]
-          format: date-time
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-        roles:
-          type: array
-          description: The roles of the admin's active grants at `*`.
-          items:
-            $ref: "#/components/schemas/Role"
-
     Grant:
       type: object
       required: [id, holder, role, role_id, scope, mode, granted_by, granted_at]
@@ -7084,7 +6922,7 @@ components:
           properties:
             kind:
               type: string
-              enum: [admin]
+              enum: [account]
             id:
               type: integer
         role:
@@ -7104,16 +6942,21 @@ components:
 
     Role:
       type: object
-      required: [id, name]
+      required: [id, name, capabilities]
       properties:
         id:
           type: integer
         name:
           type: string
+          description: superadmin, admin, readonly, owner, or one made later
         description:
           type: string
         system_role:
           type: boolean
+        capabilities:
+          type: array
+          items:
+            type: string
 
     Capability:
       type: object
@@ -7132,46 +6975,6 @@ components:
         action:
           type: string
           example: read
-
-    CreateAdminUserRequest:
-      type: object
-      required: [username, password]
-      properties:
-        username:
-          type: string
-        email:
-          type: [string, "null"]
-        password:
-          type: string
-        role_ids:
-          type: array
-          description: >-
-            Roles to grant at `*`, under the rules of POST /api/v1/admin/grants
-            (a 2FA session; no more than the caller holds). A refusal creates
-            no account.
-          items:
-            type: integer
-
-    UpdateAdminUserRequest:
-      type: object
-      properties:
-        email:
-          type: [string, "null"]
-        password:
-          type: string
-        active:
-          type: boolean
-        password_change_required:
-          type: boolean
-        role_ids:
-          type: array
-          description: >-
-            Makes the admin's active grants at `*` exactly these roles, under
-            the rules of POST and DELETE /api/v1/admin/grants. Sending the roles
-            it already holds is not a change and needs no 2FA session. A refused
-            change changes nothing else in the request either.
-          items:
-            type: integer
 
     # ─────────────────────────────────────────────────────────────
     # Admin: DNS check
