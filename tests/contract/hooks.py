@@ -163,9 +163,8 @@ def wait_for_the_trace(transaction):
 def give_each_rename_probe_a_folder(transaction):
     # A successful rename consumes its source folder. Each boundary probe
     # needs its own source, or a later valid request sees the earlier one's
-    # 404. Keep the probe's body and account ID exactly as generated.
-    if not transaction.get("name", "").startswith("coverage: "):
-        return
+    # 404. Hooks see the operation's original name in every phase, so prepare
+    # the example too. Keep the body and account ID exactly as generated.
     path = transaction["fullPath"].split("?")[0]
     parent, _, _ = path.rpartition("/")
     account_id = parent.split("/")[-2]
