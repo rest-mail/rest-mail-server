@@ -79,42 +79,47 @@ type createdAppPassword struct {
 	Password string `json:"password"`
 }
 
-// ownMailbox resolves /accounts/{id} for the credential routes: only the
-// session's own account, whose mailbox the session signed in to. A credential
-// is a way into a mailbox, so for now only that mailbox may make one, never an
-// account it has linked. It writes the error and returns false otherwise.
-func (h *CredentialHandler) ownMailbox(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
+// managedAccount resolves /accounts/{id} for the credential routes: the
+// session's own account, or one it holds mailbox:manage on (one it owns,
+// such as an automation's account with no password of its own). It writes the
+// error and returns false otherwise; an account the session cannot manage is
+// answered as one that does not exist.
+func (h *CredentialHandler) managedAccount(w http.ResponseWriter, r *http.Request) (*auth.Claims, uint, bool) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return nil, false
+		return nil, 0, false
 	}
-	// The routes take no app password, but a credential must never manage
-	// credentials, whatever the route says.
-	if claims.UserType != "mailbox" || claims.CredentialID != 0 {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Only a mailbox, signed in with its password, manages its app passwords")
-		return nil, false
+	// The routes take no credential over HTTP Basic, but a credential must
+	// never manage credentials, whatever the route says.
+	if claims.CredentialID != 0 {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Sign in with your password to manage app passwords")
+		return nil, 0, false
 	}
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return nil, false
+		return nil, 0, false
 	}
-	if uint(accountID) != claims.WebmailAccountID {
-		respond.Error(w, http.StatusNotFound, "not_found", "Account not found")
-		return nil, false
+	if _, err := mayReach(h.db, claims, uint(id), models.CapMailboxManage); err != nil {
+		if errors.Is(err, errNoAccess) {
+			respond.Error(w, http.StatusNotFound, "not_found", "Account not found")
+		} else {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the account")
+		}
+		return nil, 0, false
 	}
-	return claims, true
+	return claims, uint(id), true
 }
 
 // List returns the mailbox's app passwords that are not revoked.
 // GET /api/v1/accounts/{id}/credentials
 func (h *CredentialHandler) List(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.ownMailbox(w, r)
+	_, accountID, ok := h.managedAccount(w, r)
 	if !ok {
 		return
 	}
-	creds, err := h.repo.ListForMailbox(claims.MailboxID)
+	creds, err := h.repo.ListForAccount(accountID, models.CredentialKindAppPassword)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list credentials")
 		return
@@ -137,7 +142,7 @@ type createCredentialRequest struct {
 // Create makes an app password and answers with it, once.
 // POST /api/v1/accounts/{id}/credentials
 func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.ownMailbox(w, r)
+	claims, accountID, ok := h.managedAccount(w, r)
 	if !ok {
 		return
 	}
@@ -167,13 +172,13 @@ func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// now. A session outlives a change of password by up to its access token's
 	// lifetime, and an app password made in that window, by whoever learnt the
 	// old password, would outlive the change.
-	if !h.checkCurrentPassword(w, claims.MailboxID, req.Password) {
+	if !h.checkCurrentPassword(w, claims.AccountID, req.Password) {
 		return
 	}
 
 	// It also needs a session whose sign-in took the mailbox's second factor,
 	// when the mailbox has one.
-	_, err := h.twoFactor.GetActive(models.TwoFactorUserTypeMailbox, claims.MailboxID)
+	_, err := h.twoFactor.GetActive(claims.AccountID)
 	switch {
 	case err == nil && !claims.TwoFactor:
 		respond.Error(w, http.StatusForbidden, "two_factor_required",
@@ -184,9 +189,9 @@ func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cred, password, err := h.repo.CreateAppPassword(claims.MailboxID, req.Name, req.ExpiresAt)
+	cred, password, err := h.repo.CreateAppPassword(accountID, claims.AccountID, req.Name, req.ExpiresAt)
 	if err != nil {
-		slog.Error("creating an app password failed", "mailbox_id", claims.MailboxID, "error", err)
+		slog.Error("creating an app password failed", "account_id", accountID, "error", err)
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create the app password")
 		return
 	}
@@ -197,23 +202,24 @@ func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
 // as it is now, with the same bcrypt comparison as signing in. A mailbox that
 // is gone or disabled is compared against a dummy hash, so it costs the same,
 // and refused. It writes the error and returns false unless password matches.
-func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, mailboxID uint, password string) bool {
+func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, accountID uint, password string) bool {
 	if password == "" {
 		respond.Error(w, http.StatusUnauthorized, "reauth_required",
-			"Enter the mailbox's current password to create an app password")
+			"Enter your current password to create an app password")
 		return false
 	}
-	var mailbox models.Mailbox
-	err := h.db.Select("password").Where("id = ? AND active = ?", mailboxID, true).Take(&mailbox).Error
-	passwordHash := auth.DummyPasswordHash
-	switch {
-	case err == nil:
-		passwordHash = mailbox.Password
-	case !errors.Is(err, gorm.ErrRecordNotFound):
+	var account models.Mailbox
+	err := h.db.Select("id").Where("id = ? AND active = ?", accountID, true).Take(&account).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
 		return false
 	}
-	if auth.CheckPassword(password, passwordHash) != nil || err != nil {
+	cred, matchErr := h.repo.MatchPassword(account.ID, password, h.now())
+	if matchErr != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
+		return false
+	}
+	if cred == nil || err != nil {
 		respond.Error(w, http.StatusUnauthorized, "invalid_password", "The password is incorrect")
 		return false
 	}
@@ -224,7 +230,7 @@ func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, mailboxI
 // for the audit trail; the next request made with it is refused.
 // DELETE /api/v1/accounts/{id}/credentials/{credential_id}
 func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.ownMailbox(w, r)
+	_, accountID, ok := h.managedAccount(w, r)
 	if !ok {
 		return
 	}
@@ -233,7 +239,7 @@ func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid credential ID")
 		return
 	}
-	err = h.repo.Revoke(claims.MailboxID, uint(id), h.now())
+	err = h.repo.Revoke(accountID, uint(id), h.now())
 	if errors.Is(err, repositories.ErrCredentialNotFound) {
 		respond.Error(w, http.StatusNotFound, "not_found", "Credential not found")
 		return
@@ -256,14 +262,14 @@ const CredentialRevokedPasswordChanged = "password_changed"
 // as a credentials.revoke entry with the reason, in the same transaction, so
 // the new password, the revocations and their entries commit together or not
 // at all.
-func revokeAppPasswordsForNewPassword(tx *gorm.DB, r *http.Request, mailboxID uint, now time.Time) error {
-	revoked, err := repositories.NewCredentialRepository(tx).RevokeAppPasswords(mailboxID, now)
+func revokeAppPasswordsForNewPassword(tx *gorm.DB, r *http.Request, accountID uint, now time.Time) error {
+	revoked, err := repositories.NewCredentialRepository(tx).RevokeAppPasswords(accountID, now)
 	if err != nil {
 		return err
 	}
 	for _, cred := range revoked {
 		e := middleware.NewAuditEntry(middleware.AuditActionCredentialsRevoke, r, now)
-		e.Target["mailbox_id"] = strconv.FormatUint(uint64(mailboxID), 10)
+		e.Target["account_id"] = strconv.FormatUint(uint64(accountID), 10)
 		e.Target["credential_id"] = strconv.FormatUint(uint64(cred.ID), 10)
 		e.Target["public_id"] = cred.PublicID
 		e.Target["name"] = cred.Name
@@ -282,18 +288,20 @@ type protocolSignInRequest struct {
 	Protocol string `json:"protocol"`
 }
 
-// ProtocolSignIn is how a protocol gateway signs in a mail client that gave it
-// an app password: the request carries the address and the app password with
-// HTTP Basic, already checked by the middleware, and the audit log records the
-// sign-in with its credential. It answers with the account, as login does, so
-// the gateway knows which account the requests it then makes, each carrying
-// the same Basic credentials, are for. A session cannot use it.
+// ProtocolSignIn is how a protocol gateway signs in a mail client: the request
+// carries the address and what the client gave as its password (an app
+// password, or one of the account's passwords) with HTTP Basic, already
+// checked by the middleware against the account's credentials, and the audit
+// log records the sign-in with its credential. It answers with the account,
+// as login does, so the gateway knows which account the requests it then
+// makes, each carrying the same Basic credentials, are for. A session cannot
+// use it.
 // POST /api/v1/auth/protocol-sign-in
 func (h *CredentialHandler) ProtocolSignIn(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	if claims == nil || claims.CredentialID == 0 {
-		respond.Error(w, http.StatusBadRequest, "app_password_required",
-			"Sign in here with an app password, sent with HTTP Basic as address:app_password")
+		respond.Error(w, http.StatusBadRequest, "basic_required",
+			"Sign in here with HTTP Basic: the account's address, and its password or an app password")
 		return
 	}
 	var req protocolSignInRequest
@@ -305,72 +313,55 @@ func (h *CredentialHandler) ProtocolSignIn(w http.ResponseWriter, r *http.Reques
 		respond.ValidationError(w, map[string]string{"protocol": `must be "imap", "pop3" or "smtp"`})
 		return
 	}
-	var mailbox models.Mailbox
-	if err := h.db.Select("id", "address", "display_name").Take(&mailbox, claims.MailboxID).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load the mailbox")
+	var account models.Mailbox
+	if err := h.db.Select("id", "address", "display_name").Take(&account, claims.AccountID).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load the account")
 		return
 	}
 	respond.Data(w, http.StatusOK, map[string]any{
 		"user": userInfo{
-			ID:          claims.WebmailAccountID,
-			Email:       mailbox.Address,
-			DisplayName: mailbox.DisplayName,
+			ID:          account.ID,
+			Email:       account.Address,
+			DisplayName: account.DisplayName,
 		},
-		"credential_id": claims.CredentialID,
+		"credential_id":   claims.CredentialID,
+		"credential_kind": claims.CredentialKind,
 	})
 }
 
-// AppPasswordVerifier checks app passwords against the credentials table, for
-// middleware.AppPasswords: the claims it returns are the owning mailbox's, with
-// CredentialID set, and with its webmail account, created as at a first
-// sign-in when there is none yet. A use is recorded in last_used_at, at most
-// once a minute.
-func AppPasswordVerifier(db *gorm.DB) middleware.AppPasswordVerify {
+// BasicVerifier checks credentials sent with HTTP Basic against the
+// credentials table (an app password, or one of the account's passwords) for
+// middleware.BasicCredentials, and builds the claims the request runs with:
+// the account's, with the credential set. It records the credential's use, at
+// most once a minute.
+//
+// A gateway sends the same Basic credentials on every call it makes for a
+// mail client, so a password that has just been checked is remembered for a
+// short while (passwordChecks) rather than costing a bcrypt comparison on
+// every IMAP command. Only a match is remembered, keyed by the credential and
+// its hash as well as the secret: a new password, a revoked one, or another
+// password misses, and the credential's row is read on every request anyway.
+func BasicVerifier(db *gorm.DB) middleware.BasicVerify {
 	repo := repositories.NewCredentialRepository(db)
-	return func(address, password string) (*auth.Claims, error) {
+	checks := newPasswordChecks(passwordCheckTTL)
+	return func(address, secret string) (*auth.Claims, error) {
 		now := time.Now()
-		cred, mailbox, err := repo.VerifyAppPassword(address, password, now)
-		if err != nil {
-			return nil, err
-		}
-		account, err := webmailAccountFor(db, mailbox.ID)
+		cred, account, err := checks.verify(repo, address, secret, now)
 		if err != nil {
 			return nil, err
 		}
 		if cred.LastUsedAt == nil || now.Sub(*cred.LastUsedAt) >= repositories.LastUsedEvery {
 			if err := repo.TouchLastUsed(cred.ID, now); err != nil {
-				slog.Warn("could not record an app password's use", "credential_id", cred.ID, "error", err)
+				slog.Warn("could not record a credential's use", "credential_id", cred.ID, "error", err)
 			}
 		}
 		return &auth.Claims{
-			RegisteredClaims: jwt.RegisteredClaims{Subject: fmt.Sprintf("mailbox:%d", mailbox.ID)},
-			Email:            mailbox.Address,
-			WebmailAccountID: account.ID,
-			MailboxID:        mailbox.ID,
-			UserType:         "mailbox",
+			RegisteredClaims: jwt.RegisteredClaims{Subject: fmt.Sprintf("account:%d", account.ID)},
+			AccountID:        account.ID,
+			Address:          account.Address,
 			TokenType:        "access",
 			CredentialID:     cred.ID,
+			CredentialKind:   cred.Kind,
 		}, nil
 	}
-}
-
-// webmailAccountFor finds the webmail account of a mailbox, creating it as a
-// first sign-in does when there is none.
-func webmailAccountFor(db *gorm.DB, mailboxID uint) (*models.WebmailAccount, error) {
-	var account models.WebmailAccount
-	err := db.Where("primary_mailbox_id = ?", mailboxID).Take(&account).Error
-	if err == nil {
-		return &account, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-	account = models.WebmailAccount{PrimaryMailboxID: mailboxID}
-	if err := db.Create(&account).Error; err != nil {
-		// Another request may have just made it: primary_mailbox_id is unique.
-		if err := db.Where("primary_mailbox_id = ?", mailboxID).Take(&account).Error; err != nil {
-			return nil, err
-		}
-	}
-	return &account, nil
 }

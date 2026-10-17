@@ -70,7 +70,6 @@ func TestRecipientCheck_Subaddressing(t *testing.T) {
 		DomainID:  dom.ID,
 		LocalPart: "user",
 		Address:   "user@" + domainName,
-		Password:  "x",
 		Active:    true,
 	}
 	if err := db.Create(&mb).Error; err != nil {

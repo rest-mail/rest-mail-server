@@ -24,11 +24,10 @@ type PushDevice struct {
 	// SessionID is the sid of the session that registered the device. One
 	// session registers a token once: (session_id, token) is unique.
 	SessionID string `gorm:"size:64;not null;uniqueIndex:idx_push_devices_session_token" json:"-"`
-	// MailboxID and WebmailAccountID are the session's: its own mailbox, and
-	// the webmail account whose primary and linked mailboxes it lists.
-	MailboxID        uint   `gorm:"not null;index" json:"-"`
-	WebmailAccountID uint   `gorm:"not null;index" json:"-"`
-	Platform         string `gorm:"size:16;not null" json:"platform"`
+	// MailboxID is the session's account: its own mailbox, which, with every
+	// account it owns or has linked, is what it lists (GET /api/v1/accounts).
+	MailboxID uint   `gorm:"not null;index" json:"-"`
+	Platform  string `gorm:"size:16;not null" json:"platform"`
 	// Token is the push service's address for the phone. Never sent back.
 	Token       string    `gorm:"size:256;not null;uniqueIndex:idx_push_devices_session_token" json:"-"`
 	Environment string    `gorm:"size:16;not null" json:"environment"`

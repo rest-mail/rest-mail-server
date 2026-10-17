@@ -5,7 +5,7 @@ Four steps, whichever way you install:
 1. **Pick a method** — Helm, or Pulumi.
 2. **Install.** The installer makes the admin password and shows it to you once.
 3. **Verify.** Every install ends in `chore server:verify`.
-4. **Sign in** with the rest-mail app as `admin`, with that password.
+4. **Sign in** with the rest-mail app as `admin@<your mail domain>`, with that password.
 
 After that, the same tasks look after it: upgrade, back up, take it offline when
 something is wrong, uninstall. They are all [chore](https://github.com/antimatter-studios/chore)
@@ -46,10 +46,11 @@ The chart itself refuses to install without one, and will not invent one: a
 chart runs where there is nobody to show it to.
 
 **Shown as a QR code, and always as text.** Point your phone's camera at the
-QR code and it opens the rest-mail app with the server, username and password
-filled in (`https://rest-mail.com/setup#server=…&username=…&password=…`; the
-details ride after the `#`, which no web server is sent). The link, server,
-username and password are printed beneath it every time, so a QR code that
+QR code and it opens the rest-mail app with the server, the first account's
+address (`admin@<your mail domain>`) and the password filled in
+(`https://rest-mail.com/setup#server=…&address=…&password=…`; the details ride
+after the `#`, which no web server is sent). The link, server, address and
+password are printed beneath it every time, so a QR code that
 will not scan — a small font, a terminal that mangles it — never leaves you
 stuck. The QR code needs the `restmail` CLI (`brew install antimatter-studios/tap/restmail`)
 and a terminal at least about 55 columns wide; without either, you get the

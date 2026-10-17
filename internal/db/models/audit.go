@@ -9,8 +9,7 @@ import (
 
 // Who an audit entry says acted.
 const (
-	AuditActorMailbox   = "mailbox"
-	AuditActorAdmin     = "admin"
+	AuditActorAccount   = "account"
 	AuditActorSystem    = "system"
 	AuditActorAnonymous = "anonymous"
 )
@@ -35,15 +34,16 @@ type AuditEntry struct {
 	// sequence, which would leave gaps behind rolled-back transactions.
 	Seq        int64     `gorm:"primaryKey;autoIncrement:false" json:"seq"`
 	OccurredAt time.Time `gorm:"not null;index" json:"occurred_at"`
-	// ActorKind is one of the AuditActor* kinds. A sign-in names the kind of
-	// account it was for (username: admin, email: mailbox) even when it fails;
-	// ActorID is set only once the account is proven.
+	// ActorKind is one of the AuditActor* kinds. A sign-in names the account
+	// it was for even when it fails; ActorID is set only once the account is
+	// proven.
 	ActorKind string `gorm:"size:16;not null;index:idx_audit_log_actor" json:"actor_kind"`
 	ActorID   *uint  `gorm:"index:idx_audit_log_actor" json:"actor_id"`
-	// ActorName is the address or username at the time.
+	// ActorName is the account's address at the time.
 	ActorName string `gorm:"type:text;not null" json:"actor_name"`
-	// CredentialID is the credential used: the app password a request was
-	// made with, or the one refused when its secret matched. Nil for a session.
+	// CredentialID is the credential used: the app password or password a
+	// request was made with over HTTP Basic, or the one refused when its secret
+	// matched. Nil for a session.
 	CredentialID *uint `json:"credential_id"`
 	// SessionID is the jti of the token the request carried.
 	SessionID string `gorm:"type:text;not null" json:"session_id"`

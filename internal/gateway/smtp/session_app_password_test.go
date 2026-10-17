@@ -101,11 +101,11 @@ func TestSMTP_AppPasswordCheckFailureIsTemporary(t *testing.T) {
 	}
 }
 
-// TestSMTP_PasswordSessionIsNotCheckedAsACredential: the mailbox's own
-// password signs in as before, with no credential to check.
-func TestSMTP_PasswordSessionIsNotCheckedAsACredential(t *testing.T) {
+// TestSMTP_PasswordSessionIsCheckedAsACredential: the account's own password
+// is a credential like an app password: a session signed in with it holds it
+// only while it lasts, checked before each MAIL FROM.
+func TestSMTP_PasswordSessionIsCheckedAsACredential(t *testing.T) {
 	store := newMockStore()
-	store.credentialErr = errors.New("must not be called")
 	back := newMockBackend()
 	h := newSMTPHarness(t, back, store, true)
 	h.ehlo()
@@ -114,5 +114,12 @@ func TestSMTP_PasswordSessionIsNotCheckedAsACredential(t *testing.T) {
 	}
 	if r := h.cmd("MAIL FROM:<alice@example.com>"); replyCode(r) != "250" {
 		t.Fatalf("MAIL FROM = %q", r)
+	}
+	store.mu.Lock()
+	store.unusable = map[uint]bool{1: true}
+	store.mu.Unlock()
+	_ = h.cmd("RSET")
+	if r := h.cmd("MAIL FROM:<alice@example.com>"); replyCode(r) != "530" {
+		t.Fatalf("MAIL FROM after the password changed = %q, want 530", r)
 	}
 }

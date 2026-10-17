@@ -49,10 +49,11 @@ func deviceJSON(d *models.PushDevice) deviceResponse {
 	return deviceResponse{ID: push.DeviceID(d), Platform: d.Platform, Environment: d.Environment, CreatedAt: d.CreatedAt}
 }
 
-// pushSession says whether a session can have devices: a mailbox's, signed
-// in with a password. An admin has no mailbox to be told about.
+// pushSession says whether a session can have devices: a session signed in
+// with a password, not a credential sent with HTTP Basic. Every account is a
+// mailbox, so every session has mail to be told about.
 func pushSession(claims *auth.Claims) bool {
-	return claims.UserType == "mailbox" && claims.CredentialID == 0
+	return claims.CredentialID == 0
 }
 
 // List answers which push services the server can use for this session, and
@@ -137,12 +138,11 @@ func (h *DeviceHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	device, created, err := h.store.Register(&models.PushDevice{
-		SessionID:        claims.SessionID,
-		MailboxID:        claims.MailboxID,
-		WebmailAccountID: claims.WebmailAccountID,
-		Platform:         req.Platform,
-		Token:            req.Token,
-		Environment:      req.Environment,
+		SessionID:   claims.SessionID,
+		MailboxID:   claims.AccountID,
+		Platform:    req.Platform,
+		Token:       req.Token,
+		Environment: req.Environment,
 	})
 	if errors.Is(err, push.ErrTooManyDevices) {
 		respond.ValidationError(w, map[string]string{

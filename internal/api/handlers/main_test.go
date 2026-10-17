@@ -8,6 +8,7 @@ import (
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
+	"github.com/restmail/restmail/internal/db/models"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -66,6 +67,14 @@ func connectTestDB() (*gorm.DB, error) {
 		testDB, testDBErr = rmdb.Connect(testDBConfig())
 	})
 	return testDB, testDBErr
+}
+
+// accountModels are the tables an account lives in: its mailbox, its
+// credentials, and the roles and grants that say what it may do.
+var accountModels = []interface{}{
+	&models.Domain{}, &models.Mailbox{}, &models.QuotaUsage{}, &models.Credential{},
+	&models.Role{}, &models.Capability{}, &models.RoleCapability{},
+	&models.Grant{}, &models.GrantActivation{}, &models.RefreshToken{},
 }
 
 func closeTestDB() {

@@ -13,8 +13,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/restmail/restmail/internal/auth"
 )
 
 const (
@@ -142,44 +140,37 @@ func New(baseURL string, opts ...Option) *Client {
 type LoginResponse struct {
 	Data struct {
 		// AccessToken is what the calls that follow pass as their token: the
-		// session's JWT, or after SignInWithAppPassword the app password's HTTP
-		// Basic credentials.
+		// session's JWT after Login, or after SignIn the HTTP Basic
+		// credentials the client gave.
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 		User        struct {
+			// ID is the account's: the {id} of /api/v1/accounts/{id}/….
 			ID          uint   `json:"id"`
 			Email       string `json:"email"`
 			DisplayName string `json:"display_name"`
 		} `json:"user"`
-		// Capabilities is what an admin holds at "*", for showing; the token
-		// carries none.
+		// Capabilities is what the account holds at "*", for showing; the
+		// token carries none.
 		Capabilities []string `json:"capabilities"`
-		// CredentialID is the app password signed in with; 0 after Login.
-		CredentialID uint `json:"credential_id"`
+		// SetupRequired lists what an account in setup must still do.
+		SetupRequired []string `json:"setup_required"`
+		// CredentialID and CredentialKind are the credential SignIn signed in
+		// with: the account's password, or an app password. Zero after Login.
+		CredentialID   uint   `json:"credential_id"`
+		CredentialKind string `json:"credential_kind"`
 	} `json:"data"`
 }
 
-// Login authenticates a mailbox user and returns an access token.
-func (c *Client) Login(email, password string) (*LoginResponse, error) {
-	return c.login(map[string]string{"email": email, "password": password})
-}
-
 // SignIn signs a mail client in over protocol ("imap", "pop3" or "smtp") with
-// what it gave as its password: an app password (#344), which the API refuses
-// at /api/v1/auth/login, or else the mailbox's own password.
+// what it gave as its password: one of the account's passwords, or an app
+// password (#344). It is the one way the gateways sign in. No session is made:
+// the response's AccessToken holds the address and password as HTTP Basic
+// credentials, which every call that follows sends, and the API checks them
+// against the account's credentials each time, so a revoked app password or a
+// changed password stops working at the next call. An account with
+// two-factor authentication signs in only with an app password.
 func (c *Client) SignIn(email, password, protocol string) (*LoginResponse, error) {
-	if auth.IsAppPassword(password) {
-		return c.SignInWithAppPassword(email, password, protocol)
-	}
-	return c.Login(email, password)
-}
-
-// SignInWithAppPassword signs a mail client in with an app password, and
-// returns the account it is for. No session is made: the response's
-// AccessToken holds the address and app password as HTTP Basic credentials,
-// which every call that follows sends, and the API checks them each time, so a
-// revoked app password stops working at the next call.
-func (c *Client) SignInWithAppPassword(email, appPassword, protocol string) (*LoginResponse, error) {
 	jsonBody, err := json.Marshal(map[string]string{"protocol": protocol})
 	if err != nil {
 		return nil, err
@@ -188,7 +179,7 @@ func (c *Client) SignInWithAppPassword(email, appPassword, protocol string) (*Lo
 	if err != nil {
 		return nil, err
 	}
-	req.SetBasicAuth(email, appPassword)
+	req.SetBasicAuth(email, password)
 	req.Header.Set("Content-Type", "application/json")
 	httpResp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -205,8 +196,8 @@ func (c *Client) SignInWithAppPassword(email, appPassword, protocol string) (*Lo
 }
 
 // authorize sets the Authorization header of a call made with token: HTTP Basic
-// credentials as SignInWithAppPassword returns them, or else a JWT access
-// token, sent as Bearer.
+// credentials as SignIn returns them, or else a JWT access token, sent as
+// Bearer.
 func authorize(req *http.Request, token string) {
 	if strings.HasPrefix(token, "Basic ") {
 		req.Header.Set("Authorization", token)
@@ -215,21 +206,20 @@ func authorize(req *http.Request, token string) {
 	req.Header.Set("Authorization", "Bearer "+token)
 }
 
-// LoginAdmin authenticates an admin user and returns an access token.
-func (c *Client) LoginAdmin(username, password string) (*LoginResponse, error) {
-	return c.login(map[string]string{"username": username, "password": password})
-}
-
-// login POSTs credentials and extracts the access token. The API delivers the
-// token as the httpOnly restmail_access cookie (it is no longer in the response
-// body), so the token is read from the Set-Cookie header. A body access_token is
-// used as a fallback for compatibility with older servers/mocks that still
-// return it there.
+// Login signs an account in interactively, with its address and password and,
+// when it has two-factor authentication, a TOTP code, and returns the session.
+// The API delivers the access token as the httpOnly restmail_access cookie (it
+// is not in the response body for a browser), so the token is read from the
+// Set-Cookie header.
 //
-// The gateway keeps sending the token as an Authorization: Bearer header on
-// subsequent calls (it holds no cookie jar), so those requests carry no cookie
-// and are transparently exempt from the API's CSRF guard.
-func (c *Client) login(body map[string]string) (*LoginResponse, error) {
+// Later calls send the token as an Authorization: Bearer header (there is no
+// cookie jar), so those requests carry no cookie and are transparently exempt
+// from the API's CSRF guard.
+func (c *Client) Login(email, password, totpCode string) (*LoginResponse, error) {
+	body := map[string]string{"email": email, "password": password}
+	if totpCode != "" {
+		body["totp_code"] = totpCode
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -655,15 +645,18 @@ func (c *Client) ListMailboxes(token string) (*MailboxListResponse, error) {
 	return &resp, nil
 }
 
-// CreateMailbox creates a new mailbox (admin only).
-func (c *Client) CreateMailbox(token string, address, displayName, password string, domainID uint) error {
+// CreateMailbox creates an account, owned by the session's: POST
+// /api/v1/accounts, which needs mailboxes:write on its domain. An empty
+// password makes one with no password, reached only through its owner.
+func (c *Client) CreateMailbox(token string, address, displayName, password string) error {
 	body := map[string]interface{}{
 		"address":      address,
 		"display_name": displayName,
-		"password":     password,
-		"domain_id":    domainID,
 	}
-	return c.postAuth("/api/v1/admin/mailboxes", token, body, nil)
+	if password != "" {
+		body["password"] = password
+	}
+	return c.postAuth("/api/v1/accounts", token, body, nil)
 }
 
 // DeleteMailbox deletes a mailbox by ID (admin only).

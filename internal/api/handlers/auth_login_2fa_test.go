@@ -25,14 +25,16 @@ func enroll2FAForMailbox(t *testing.T, gdb *gorm.DB, mailboxID uint, masterKey s
 		t.Fatalf("EncryptString: %v", err)
 	}
 	repo := repositories.NewTwoFactorRepository(gdb)
-	tf, err := repo.Enroll("mailbox", mailboxID, enc, nil)
+	tf, err := repo.Enroll(mailboxID, enc, nil)
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
 	if err := repo.Confirm(tf.ID); err != nil {
 		t.Fatalf("Confirm: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.Delete("mailbox", mailboxID) })
+	t.Cleanup(func() {
+		gdb.Where("account_id = ? AND kind IN ?", mailboxID, []string{models.CredentialKindTOTP, models.CredentialKindRecoveryCode}).Delete(&models.Credential{})
+	})
 	return key.Secret()
 }
 
@@ -41,9 +43,6 @@ func enroll2FAForMailbox(t *testing.T, gdb *gorm.DB, mailboxID uint, masterKey s
 // (totp_required); a correct password plus a valid TOTP code succeeds.
 func TestLogin_2FAActive_RequiresCode(t *testing.T) {
 	gdb := openLoginTestDB(t)
-	if err := gdb.AutoMigrate(&models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
-		t.Skipf("2FA login test skipped: migrate failed (%v)", err)
-	}
 	const masterKey = "login-2fa-master-key-0123456789ab"
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
 	h := NewAuthHandler(gdb, jwtSvc, masterKey)
@@ -88,13 +87,10 @@ func TestLogin_2FAActive_RequiresCode(t *testing.T) {
 	}
 }
 
-// TestLogin_NoTwoFactor_Unchanged: a mailbox without 2FA logs in with just a
+// TestLogin_NoTwoFactor_Unchanged: an account without 2FA logs in with just a
 // password even when the handler is 2FA-capable — non-2FA accounts are unchanged.
 func TestLogin_NoTwoFactor_Unchanged(t *testing.T) {
 	gdb := openLoginTestDB(t)
-	if err := gdb.AutoMigrate(&models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
-		t.Skipf("2FA login test skipped: migrate failed (%v)", err)
-	}
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
 	h := NewAuthHandler(gdb, jwtSvc, "login-2fa-master-key-0123456789ab")
 

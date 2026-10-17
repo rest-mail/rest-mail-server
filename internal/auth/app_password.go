@@ -93,6 +93,13 @@ func AppPasswordSecretMatches(secret, hash string) bool {
 	return match && hash != ""
 }
 
+// NewPublicID returns a fresh public id for a credential that is not an app
+// password: the same shape as an app password's, so every credential is named
+// alike in the audit log.
+func NewPublicID() (string, error) {
+	return randomBase62(appPasswordIDLength)
+}
+
 // randomBase62 returns n characters drawn uniformly from base62Alphabet,
 // rejecting the bytes that would bias the draw.
 func randomBase62(n int) (string, error) {
@@ -122,29 +129,40 @@ func isBase62(s string) bool {
 	return true
 }
 
-// Why an app password was refused. The audit log records which; whoever
-// presented it is told only that the address or the app password is wrong.
+// Why a credential presented with HTTP Basic (an app password, or an
+// account's password through a protocol gateway) was refused. The audit log
+// records which; whoever presented it is told only that the address or the
+// password is wrong.
 const (
-	AppPasswordMalformed       = "malformed"     // not in the app password format
-	AppPasswordUnknown         = "unknown"       // no credential has its public id
-	AppPasswordWrongSecret     = "wrong_secret"  // the secret does not match
-	AppPasswordWrongAddress    = "wrong_address" // it belongs to another mailbox
-	AppPasswordRevoked         = "revoked"
-	AppPasswordExpired         = "expired"
-	AppPasswordMailboxInactive = "mailbox_inactive"
+	CredentialUnknown         = "unknown"       // no app password has its public id
+	CredentialWrongSecret     = "wrong_secret"  // the app password's secret does not match
+	CredentialWrongAddress    = "wrong_address" // it belongs to another account
+	CredentialRevoked         = "revoked"
+	CredentialExpired         = "expired"
+	CredentialAccountInactive = "account_inactive"
+	// CredentialWrongPassword: no password of the account matches, or there
+	// is no such account.
+	CredentialWrongPassword = "wrong_password"
+	// CredentialNeedsAppPassword: the password matched, but the account has
+	// two-factor authentication, which a mail client cannot take; it needs an
+	// app password.
+	CredentialNeedsAppPassword = "app_password_required"
+	// CredentialAccountInSetup: the password matched, but the account must
+	// first choose its own password and enroll an authenticator.
+	CredentialAccountInSetup = "setup_required"
 )
 
-// AppPasswordRefusal is the error for an app password that was checked and
+// CredentialRefusal is the error for a credential that was checked and
 // refused.
-type AppPasswordRefusal struct {
-	// Reason is one of the AppPassword* reasons above.
+type CredentialRefusal struct {
+	// Reason is one of the Credential* reasons above.
 	Reason string
-	// PublicID is the public id presented, when the password had the format.
+	// PublicID is the public id presented, for an app password.
 	PublicID string
 	// CredentialID is set once the secret has matched, so the credential was
-	// really presented: refused as revoked, expired, for another address, or
-	// for an inactive mailbox.
+	// really presented: refused as revoked, expired, for another address, for
+	// an inactive account, or for an account that cannot use it here.
 	CredentialID *uint
 }
 
-func (e *AppPasswordRefusal) Error() string { return "app password refused: " + e.Reason }
+func (e *CredentialRefusal) Error() string { return "credential refused: " + e.Reason }

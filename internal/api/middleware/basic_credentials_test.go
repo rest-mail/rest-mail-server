@@ -22,8 +22,8 @@ const testAppPassword = "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsec
 // of mailbox 10, and refuses everything else as a wrong secret.
 type fakeAppPasswords struct {
 	calls   int
-	refusal *auth.AppPasswordRefusal // when set, what every check returns
-	err     error                    // when set, the check fails outright
+	refusal *auth.CredentialRefusal // when set, what every check returns
+	err     error                   // when set, the check fails outright
 }
 
 func (f *fakeAppPasswords) verify(address, password string) (*auth.Claims, error) {
@@ -34,22 +34,22 @@ func (f *fakeAppPasswords) verify(address, password string) (*auth.Claims, error
 	case f.refusal != nil:
 		return nil, f.refusal
 	case address == "user@example.com" && password == testAppPassword:
-		return &auth.Claims{Email: address, MailboxID: 10, WebmailAccountID: 3, UserType: "mailbox", TokenType: "access", CredentialID: 7}, nil
+		return &auth.Claims{Address: address, AccountID: 10, TokenType: "access", CredentialID: 7, CredentialKind: models.CredentialKindAppPassword}, nil
 	}
-	return nil, &auth.AppPasswordRefusal{Reason: auth.AppPasswordWrongSecret, PublicID: "AAAAAAAAAAAA"}
+	return nil, &auth.CredentialRefusal{Reason: auth.CredentialWrongSecret, PublicID: "AAAAAAAAAAAA"}
 }
 
 // appPasswordRouter serves GET /api/v1/accounts/{id}/folders behind
-// AppPasswords, answering with the claims it saw.
+// BasicCredentials, answering with the claims it saw.
 func appPasswordRouter(f *fakeAppPasswords, sink *auditSink, failures *RateLimitConfig) (http.Handler, *auth.JWTService) {
 	jwtSvc := auth.NewJWTService("app-password-test", time.Minute, time.Hour)
-	a := NewAppPasswords(f.verify, sink.auditor(nil).AppPasswordRefused, failures)
+	a := NewBasicCredentials(f.verify, sink.auditor(nil).BasicRefused, failures)
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.With(a.Authenticate(jwtSvc)).Get("/api/v1/accounts/{id}/folders", func(w http.ResponseWriter, r *http.Request) {
 		claims := GetClaims(r)
 		w.Header().Set("X-Credential", strings.Repeat("c", int(claims.CredentialID)))
-		w.Header().Set("X-Email", claims.Email)
+		w.Header().Set("X-Email", claims.Address)
 		w.WriteHeader(http.StatusOK)
 	})
 	return r, jwtSvc
@@ -63,7 +63,7 @@ func basicRequest(address, password, ip string) *http.Request {
 	return req
 }
 
-func TestAppPasswords_BasicRunsAsTheCredential(t *testing.T) {
+func TestBasicCredentials_BasicRunsAsTheCredential(t *testing.T) {
 	f, sink := &fakeAppPasswords{}, &auditSink{}
 	router, _ := appPasswordRouter(f, sink, nil)
 	rr := httptest.NewRecorder()
@@ -79,12 +79,12 @@ func TestAppPasswords_BasicRunsAsTheCredential(t *testing.T) {
 	}
 }
 
-func TestAppPasswords_RefusalIsRecordedAndUniform(t *testing.T) {
+func TestBasicCredentials_RefusalIsRecordedAndUniform(t *testing.T) {
 	credentialID := uint(7)
-	for _, refusal := range []*auth.AppPasswordRefusal{
-		{Reason: auth.AppPasswordWrongSecret, PublicID: "AAAAAAAAAAAA"},
-		{Reason: auth.AppPasswordRevoked, PublicID: "AAAAAAAAAAAA", CredentialID: &credentialID},
-		{Reason: auth.AppPasswordMalformed},
+	for _, refusal := range []*auth.CredentialRefusal{
+		{Reason: auth.CredentialWrongSecret, PublicID: "AAAAAAAAAAAA"},
+		{Reason: auth.CredentialRevoked, PublicID: "AAAAAAAAAAAA", CredentialID: &credentialID},
+		{Reason: auth.CredentialWrongPassword},
 	} {
 		t.Run(refusal.Reason, func(t *testing.T) {
 			f, sink := &fakeAppPasswords{refusal: refusal}, &auditSink{}
@@ -97,7 +97,7 @@ func TestAppPasswords_RefusalIsRecordedAndUniform(t *testing.T) {
 			if rr.Code != http.StatusUnauthorized || errorCode(t, rr) != "unauthorized" {
 				t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
 			}
-			if !strings.Contains(rr.Body.String(), "Invalid address or app password") || strings.Contains(rr.Body.String(), refusal.Reason) {
+			if !strings.Contains(rr.Body.String(), "Invalid address or password") || strings.Contains(rr.Body.String(), refusal.Reason) {
 				t.Errorf("the answer says more than that the credentials are wrong: %s", rr.Body.String())
 			}
 			if rr.Header().Get("WWW-Authenticate") != "" {
@@ -105,10 +105,10 @@ func TestAppPasswords_RefusalIsRecordedAndUniform(t *testing.T) {
 			}
 
 			e := sink.only(t)
-			if e.Action != AuditActionAppPassword || e.Outcome != models.AuditOutcomeDenied || e.Status != http.StatusUnauthorized {
+			if e.Action != AuditActionBasicRefused || e.Outcome != models.AuditOutcomeDenied || e.Status != http.StatusUnauthorized {
 				t.Errorf("entry: %+v", e)
 			}
-			if e.ActorKind != models.AuditActorMailbox || e.ActorName != "user@example.com" || e.ActorID != nil {
+			if e.ActorKind != models.AuditActorAccount || e.ActorName != "user@example.com" || e.ActorID != nil {
 				t.Errorf("actor %s/%q/%v", e.ActorKind, e.ActorName, e.ActorID)
 			}
 			if e.Target["reason"] != refusal.Reason || e.Target["public_id"] != refusal.PublicID || e.Target["id"] != "3" {
@@ -125,7 +125,7 @@ func TestAppPasswords_RefusalIsRecordedAndUniform(t *testing.T) {
 	}
 }
 
-func TestAppPasswords_CheckFailureIsUnavailable(t *testing.T) {
+func TestBasicCredentials_CheckFailureIsUnavailable(t *testing.T) {
 	f, sink := &fakeAppPasswords{err: errors.New("database down")}, &auditSink{}
 	router, _ := appPasswordRouter(f, sink, nil)
 	rr := httptest.NewRecorder()
@@ -138,10 +138,10 @@ func TestAppPasswords_CheckFailureIsUnavailable(t *testing.T) {
 	}
 }
 
-func TestAppPasswords_SessionsStillWork(t *testing.T) {
+func TestBasicCredentials_SessionsStillWork(t *testing.T) {
 	f, sink := &fakeAppPasswords{}, &auditSink{}
 	router, jwtSvc := appPasswordRouter(f, sink, nil)
-	pair, err := jwtSvc.GenerateTokenPair(10, "user@example.com", 3)
+	pair, err := jwtSvc.GenerateSession(10, "user@example.com", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestAppPasswords_SessionsStillWork(t *testing.T) {
 	}
 }
 
-func TestAppPasswords_GuessesAreThrottledPerIP(t *testing.T) {
+func TestBasicCredentials_GuessesAreThrottledPerIP(t *testing.T) {
 	f, sink := &fakeAppPasswords{}, &auditSink{}
 	router, _ := appPasswordRouter(f, sink, &RateLimitConfig{RPS: 0.001, Burst: 3})
 
@@ -192,7 +192,7 @@ func TestAppPasswords_GuessesAreThrottledPerIP(t *testing.T) {
 	}
 }
 
-func TestAppPasswords_SuccessesCostNothing(t *testing.T) {
+func TestBasicCredentials_SuccessesCostNothing(t *testing.T) {
 	f, sink := &fakeAppPasswords{}, &auditSink{}
 	router, _ := appPasswordRouter(f, sink, &RateLimitConfig{RPS: 0.001, Burst: 2})
 	for i := 0; i < 20; i++ {
@@ -207,12 +207,12 @@ func TestAppPasswords_SuccessesCostNothing(t *testing.T) {
 // A mail client still using an app password its owner revoked must not use up
 // the budget of the address it arrives from: a protocol gateway's, which every
 // other user of the gateway shares.
-func TestAppPasswords_RevokedCredentialIsChargedToItself(t *testing.T) {
+func TestBasicCredentials_RevokedCredentialIsChargedToItself(t *testing.T) {
 	credentialID := uint(9)
 	f, sink := &fakeAppPasswords{}, &auditSink{}
 	router, _ := appPasswordRouter(f, sink, &RateLimitConfig{RPS: 0.001, Burst: 2})
 
-	f.refusal = &auth.AppPasswordRefusal{Reason: auth.AppPasswordRevoked, PublicID: "BBBBBBBBBBBB", CredentialID: &credentialID}
+	f.refusal = &auth.CredentialRefusal{Reason: auth.CredentialRevoked, PublicID: "BBBBBBBBBBBB", CredentialID: &credentialID}
 	codes := []int{}
 	for i := 0; i < 4; i++ {
 		rr := httptest.NewRecorder()
@@ -239,7 +239,7 @@ func TestAudit_RecordsTheCredentialOfTheRequest(t *testing.T) {
 	sink := &auditSink{}
 	h := sink.auditor(nil).Audit("auth.protocol_sign_in", AuditBodyFields("protocol"))(okHandler)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/protocol-sign-in", strings.NewReader(`{"protocol":"imap"}`))
-	claims := &auth.Claims{Email: "user@example.com", MailboxID: 10, UserType: "mailbox", CredentialID: 7}
+	claims := &auth.Claims{Address: "user@example.com", AccountID: 10, CredentialID: 7, CredentialKind: models.CredentialKindAppPassword}
 	req = req.WithContext(withClaims(req, claims))
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
@@ -254,7 +254,7 @@ func TestAudit_RecordsTheCredentialOfTheRequest(t *testing.T) {
 	// A session has no credential.
 	sink.entries = nil
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/auth/protocol-sign-in", strings.NewReader(`{}`))
-	req = req.WithContext(withClaims(req, &auth.Claims{Email: "user@example.com", MailboxID: 10, UserType: "mailbox"}))
+	req = req.WithContext(withClaims(req, &auth.Claims{Address: "user@example.com", AccountID: 10}))
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	if e := sink.only(t); e.CredentialID != nil {
 		t.Errorf("a session's entry names credential %d", *e.CredentialID)

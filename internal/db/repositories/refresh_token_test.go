@@ -51,12 +51,11 @@ func envIntOr(key string, def int) int {
 	return def
 }
 
-func saveActive(t *testing.T, r *RefreshTokenRepository, jti, userType string, subject uint) {
+func saveActive(t *testing.T, r *RefreshTokenRepository, jti string, accountID uint) {
 	t.Helper()
 	if err := r.Save(&models.RefreshToken{
 		Jti:       jti,
-		UserType:  userType,
-		SubjectID: subject,
+		AccountID: accountID,
 		SessionID: "sid-" + jti,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: time.Now().Add(time.Hour),
@@ -75,7 +74,7 @@ func TestRefreshTokenRepository_SessionIDRequired(t *testing.T) {
 	t.Cleanup(func() { gdb.Where("jti LIKE ?", jti+"%").Delete(&models.RefreshToken{}) })
 
 	if err := r.Save(&models.RefreshToken{
-		Jti: jti, UserType: "mailbox", SubjectID: 1,
+		Jti: jti, AccountID: 1,
 		Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour),
 	}); err == nil {
 		t.Error("saved a refresh token with an empty session_id")
@@ -85,7 +84,7 @@ func TestRefreshTokenRepository_SessionIDRequired(t *testing.T) {
 		t.Error("stored a refresh token with a NULL session_id")
 	}
 	if err := r.Save(&models.RefreshToken{
-		Jti: jti + "-ok", UserType: "mailbox", SubjectID: 1, SessionID: "sid-" + jti,
+		Jti: jti + "-ok", AccountID: 1, SessionID: "sid-" + jti,
 		Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour),
 	}); err != nil {
 		t.Errorf("a refresh token with a session_id was refused: %v", err)
@@ -98,7 +97,7 @@ func TestRefreshTokenRepository_RotateIsSingleUse(t *testing.T) {
 	jti := "rot-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	t.Cleanup(func() { gdb.Where("jti = ?", jti).Delete(&models.RefreshToken{}) })
 
-	saveActive(t, r, jti, "mailbox", 101)
+	saveActive(t, r, jti, 101)
 
 	// First rotate succeeds and flips active→rotated.
 	if err := r.Rotate(jti); err != nil {
@@ -124,7 +123,7 @@ func TestRefreshTokenRepository_RevokeBlocksRotate(t *testing.T) {
 	jti := "rev-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	t.Cleanup(func() { gdb.Where("jti = ?", jti).Delete(&models.RefreshToken{}) })
 
-	saveActive(t, r, jti, "mailbox", 102)
+	saveActive(t, r, jti, 102)
 
 	if err := r.Revoke(jti); err != nil {
 		t.Fatalf("Revoke: %v", err)
@@ -143,18 +142,18 @@ func TestRefreshTokenRepository_GetByJTIUnknown(t *testing.T) {
 	}
 }
 
-func TestRefreshTokenRepository_RevokeAllForSubject(t *testing.T) {
+func TestRefreshTokenRepository_RevokeAllForAccount(t *testing.T) {
 	gdb := openRefreshTokenTestDB(t)
 	r := NewRefreshTokenRepository(gdb)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	jtiA, jtiB := "sub-a-"+suffix, "sub-b-"+suffix
 	t.Cleanup(func() { gdb.Where("jti IN ?", []string{jtiA, jtiB}).Delete(&models.RefreshToken{}) })
 
-	saveActive(t, r, jtiA, "admin", 500)
-	saveActive(t, r, jtiB, "admin", 500)
+	saveActive(t, r, jtiA, 500)
+	saveActive(t, r, jtiB, 500)
 
-	if err := r.RevokeAllForSubject("admin", 500); err != nil {
-		t.Fatalf("RevokeAllForSubject: %v", err)
+	if err := r.RevokeAllForAccount(500); err != nil {
+		t.Fatalf("RevokeAllForAccount: %v", err)
 	}
 	for _, jti := range []string{jtiA, jtiB} {
 		if err := r.Rotate(jti); !errors.Is(err, ErrRefreshTokenNotFound) {

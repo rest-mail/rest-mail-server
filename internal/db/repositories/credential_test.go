@@ -41,22 +41,22 @@ func openCredentialTestDB(t *testing.T) *gorm.DB {
 func seedCredentialMailbox(t *testing.T, gdb *gorm.DB) *models.Mailbox {
 	t.Helper()
 	local := "cred-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	mb := &models.Mailbox{DomainID: 1, LocalPart: local, Address: local + "@example.test", Password: "x", Active: true}
+	mb := &models.Mailbox{DomainID: 1, LocalPart: local, Address: local + "@example.test", Active: true}
 	if err := gdb.Create(mb).Error; err != nil {
 		t.Fatalf("seed mailbox: %v", err)
 	}
 	t.Cleanup(func() {
-		gdb.Where("owner_kind = ? AND owner_id = ?", models.CredentialOwnerMailbox, mb.ID).Delete(&models.Credential{})
+		gdb.Where("account_id = ?", mb.ID).Delete(&models.Credential{})
 		gdb.Delete(&models.Mailbox{}, mb.ID)
 	})
 	return mb
 }
 
-func refusalReason(t *testing.T, err error) *auth.AppPasswordRefusal {
+func refusalReason(t *testing.T, err error) *auth.CredentialRefusal {
 	t.Helper()
-	var refusal *auth.AppPasswordRefusal
+	var refusal *auth.CredentialRefusal
 	if !errors.As(err, &refusal) {
-		t.Fatalf("got %v, want an *auth.AppPasswordRefusal", err)
+		t.Fatalf("got %v, want an *auth.CredentialRefusal", err)
 	}
 	return refusal
 }
@@ -66,7 +66,7 @@ func TestCredential_CreateStoresOnlyTheHash(t *testing.T) {
 	repo := NewCredentialRepository(gdb)
 	mb := seedCredentialMailbox(t, gdb)
 
-	cred, password, err := repo.CreateAppPassword(mb.ID, "iPhone Mail", nil)
+	cred, password, err := repo.CreateAppPassword(mb.ID, mb.ID, "iPhone Mail", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -82,8 +82,8 @@ func TestCredential_CreateStoresOnlyTheHash(t *testing.T) {
 	if row.SecretHash != auth.HashAppPasswordSecret(secret) {
 		t.Error("the stored hash is not the secret's SHA-256")
 	}
-	if row.Kind != models.CredentialKindAppPassword || row.OwnerKind != models.CredentialOwnerMailbox ||
-		row.OwnerID != mb.ID || row.CreatedByID != mb.ID || row.Name != "iPhone Mail" {
+	if row.Kind != models.CredentialKindAppPassword || row.AccountID != mb.ID ||
+		row.CreatedByID == nil || *row.CreatedByID != mb.ID || row.Name != "iPhone Mail" {
 		t.Errorf("row = %+v", row)
 	}
 	if row.Scope.MailboxID != mb.ID || strings.Join(row.Scope.Capabilities, ",") != "mail:read,mail:write,mail:send" {
@@ -108,7 +108,7 @@ func TestCredential_VerifyAppPassword(t *testing.T) {
 	other := seedCredentialMailbox(t, gdb)
 	now := time.Now()
 
-	cred, password, err := repo.CreateAppPassword(mb.ID, "Thunderbird", nil)
+	cred, password, err := repo.CreateAppPassword(mb.ID, mb.ID, "Thunderbird", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -128,11 +128,11 @@ func TestCredential_VerifyAppPassword(t *testing.T) {
 		name, address, password, reason string
 		credential                      bool // the refusal names the credential
 	}{
-		{"its mailbox's own password", mb.Address, "x", auth.AppPasswordMalformed, false},
-		{"wrong secret", mb.Address, wrongSecret, auth.AppPasswordWrongSecret, false},
-		{"unknown public id", mb.Address, unknownID, auth.AppPasswordUnknown, false},
-		{"another mailbox's address", other.Address, password, auth.AppPasswordWrongAddress, true},
-		{"an address nobody has", "nobody@example.test", password, auth.AppPasswordWrongAddress, true},
+		{"not an app password", mb.Address, "x", auth.CredentialWrongSecret, false},
+		{"wrong secret", mb.Address, wrongSecret, auth.CredentialWrongSecret, false},
+		{"unknown public id", mb.Address, unknownID, auth.CredentialUnknown, false},
+		{"another mailbox's address", other.Address, password, auth.CredentialWrongAddress, true},
+		{"an address nobody has", "nobody@example.test", password, auth.CredentialWrongAddress, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, err := repo.VerifyAppPassword(tc.address, tc.password, now)
@@ -156,7 +156,7 @@ func TestCredential_RevocationAndExpiry(t *testing.T) {
 	mb := seedCredentialMailbox(t, gdb)
 	now := time.Now()
 
-	revoked, revokedPassword, err := repo.CreateAppPassword(mb.ID, "old phone", nil)
+	revoked, revokedPassword, err := repo.CreateAppPassword(mb.ID, mb.ID, "old phone", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestCredential_RevocationAndExpiry(t *testing.T) {
 		t.Fatalf("Revoke: %v", err)
 	}
 	_, _, err = repo.VerifyAppPassword(mb.Address, revokedPassword, now)
-	if refusal := refusalReason(t, err); refusal.Reason != auth.AppPasswordRevoked {
+	if refusal := refusalReason(t, err); refusal.Reason != auth.CredentialRevoked {
 		t.Errorf("revoked: reason %q", refusal.Reason)
 	}
 	if usable, err := repo.Usable(revoked.ID, now); err != nil || usable {
@@ -184,7 +184,7 @@ func TestCredential_RevocationAndExpiry(t *testing.T) {
 	}
 
 	expiry := now.Add(time.Hour)
-	expiring, expiringPassword, err := repo.CreateAppPassword(mb.ID, "n8n invoices", &expiry)
+	expiring, expiringPassword, err := repo.CreateAppPassword(mb.ID, mb.ID, "n8n invoices", &expiry)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestCredential_RevocationAndExpiry(t *testing.T) {
 	}
 	later := expiry.Add(time.Second)
 	_, _, err = repo.VerifyAppPassword(mb.Address, expiringPassword, later)
-	if refusal := refusalReason(t, err); refusal.Reason != auth.AppPasswordExpired {
+	if refusal := refusalReason(t, err); refusal.Reason != auth.CredentialExpired {
 		t.Errorf("expired: reason %q", refusal.Reason)
 	}
 	if usable, _ := repo.Usable(expiring.ID, later); usable {
@@ -201,13 +201,13 @@ func TestCredential_RevocationAndExpiry(t *testing.T) {
 	}
 
 	// A disabled mailbox's app passwords stop working too.
-	active, activePassword, err := repo.CreateAppPassword(mb.ID, "laptop", nil)
+	active, activePassword, err := repo.CreateAppPassword(mb.ID, mb.ID, "laptop", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
 	gdb.Model(&models.Mailbox{}).Where("id = ?", mb.ID).Update("active", false)
 	_, _, err = repo.VerifyAppPassword(mb.Address, activePassword, now)
-	if refusal := refusalReason(t, err); refusal.Reason != auth.AppPasswordMailboxInactive {
+	if refusal := refusalReason(t, err); refusal.Reason != auth.CredentialAccountInactive {
 		t.Errorf("inactive mailbox: reason %q", refusal.Reason)
 	}
 	if usable, _ := repo.Usable(active.ID, now); usable {
@@ -215,9 +215,9 @@ func TestCredential_RevocationAndExpiry(t *testing.T) {
 	}
 
 	// Listing leaves out the revoked one, and keeps the expired one.
-	list, err := repo.ListForMailbox(mb.ID)
+	list, err := repo.ListForAccount(mb.ID, models.CredentialKindAppPassword)
 	if err != nil {
-		t.Fatalf("ListForMailbox: %v", err)
+		t.Fatalf("ListForAccount: %v", err)
 	}
 	var names []string
 	for _, c := range list {
@@ -234,7 +234,7 @@ func TestCredential_RevokeOnlyYourOwn(t *testing.T) {
 	mb := seedCredentialMailbox(t, gdb)
 	other := seedCredentialMailbox(t, gdb)
 
-	cred, password, err := repo.CreateAppPassword(mb.ID, "iPhone Mail", nil)
+	cred, password, err := repo.CreateAppPassword(mb.ID, mb.ID, "iPhone Mail", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -256,16 +256,16 @@ func TestCredential_RevokeAppPasswords(t *testing.T) {
 	other := seedCredentialMailbox(t, gdb)
 	now := time.Now()
 
-	phone, phonePassword, err := repo.CreateAppPassword(mb.ID, "iPhone Mail", nil)
+	phone, phonePassword, err := repo.CreateAppPassword(mb.ID, mb.ID, "iPhone Mail", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
 	past := now.Add(-time.Hour)
-	expired, _, err := repo.CreateAppPassword(mb.ID, "n8n invoices", &past)
+	expired, _, err := repo.CreateAppPassword(mb.ID, mb.ID, "n8n invoices", &past)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
-	earlier, _, err := repo.CreateAppPassword(mb.ID, "old laptop", nil)
+	earlier, _, err := repo.CreateAppPassword(mb.ID, mb.ID, "old laptop", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestCredential_RevokeAppPasswords(t *testing.T) {
 	if err := repo.Revoke(mb.ID, earlier.ID, earlierAt); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	others, othersPassword, err := repo.CreateAppPassword(other.ID, "Thunderbird", nil)
+	others, othersPassword, err := repo.CreateAppPassword(other.ID, other.ID, "Thunderbird", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestCredential_RevokeAppPasswords(t *testing.T) {
 		t.Fatalf("revoked %+v, want the phone's and the expired one", revoked)
 	}
 	_, _, err = repo.VerifyAppPassword(mb.Address, phonePassword, now)
-	if refusal := refusalReason(t, err); refusal.Reason != auth.AppPasswordRevoked {
+	if refusal := refusalReason(t, err); refusal.Reason != auth.CredentialRevoked {
 		t.Errorf("after a new password: reason %q", refusal.Reason)
 	}
 	// The SMTP gateway's check before each message.
@@ -295,7 +295,7 @@ func TestCredential_RevokeAppPasswords(t *testing.T) {
 		t.Errorf("Usable after a new password = %v, %v", usable, err)
 	}
 	var rows []models.Credential
-	gdb.Where("owner_kind = ? AND owner_id = ?", models.CredentialOwnerMailbox, mb.ID).Order("id").Find(&rows)
+	gdb.Where("account_id = ?", mb.ID).Order("id").Find(&rows)
 	if len(rows) != 3 {
 		t.Fatalf("%d rows left, want all 3", len(rows))
 	}
@@ -325,7 +325,7 @@ func TestCredential_LastUsedAtMostOnceAMinute(t *testing.T) {
 	gdb := openCredentialTestDB(t)
 	repo := NewCredentialRepository(gdb)
 	mb := seedCredentialMailbox(t, gdb)
-	cred, _, err := repo.CreateAppPassword(mb.ID, "iPhone Mail", nil)
+	cred, _, err := repo.CreateAppPassword(mb.ID, mb.ID, "iPhone Mail", nil)
 	if err != nil {
 		t.Fatalf("CreateAppPassword: %v", err)
 	}
@@ -362,5 +362,113 @@ func TestCredential_LastUsedAtMostOnceAMinute(t *testing.T) {
 	}
 	if got := lastUsed(); !got.Equal(next) {
 		t.Errorf("last used %v after a minute, want %v", got, next)
+	}
+}
+
+type countingMemo struct {
+	remembered map[string]bool
+	hits       int
+}
+
+func (m *countingMemo) key(c *models.Credential, secret string) string {
+	return strconv.FormatUint(uint64(c.ID), 10) + "|" + c.SecretHash + "|" + secret
+}
+
+func (m *countingMemo) Remembered(c *models.Credential, secret string) bool {
+	if m.remembered[m.key(c, secret)] {
+		m.hits++
+		return true
+	}
+	return false
+}
+
+func (m *countingMemo) Remember(c *models.Credential, secret string) {
+	m.remembered[m.key(c, secret)] = true
+}
+
+// TestCredential_PasswordsAreCredentials: an account's password is a
+// credential; setting a new one revokes the old, a password-less account
+// matches nothing, and HTTP Basic takes a password only from an account that
+// is active, set up and without 2FA.
+func TestCredential_PasswordsAreCredentials(t *testing.T) {
+	gdb := openCredentialTestDB(t)
+	repo := NewCredentialRepository(gdb)
+	mb := seedCredentialMailbox(t, gdb)
+	now := time.Now()
+
+	if ok, err := repo.HasPassword(mb.ID, now); err != nil || ok {
+		t.Fatalf("a new account has a password: %v %v", ok, err)
+	}
+	if c, err := repo.MatchPassword(mb.ID, "anything", now); err != nil || c != nil {
+		t.Fatalf("a password-less account matched: %v %v", c, err)
+	}
+	hash, err := auth.HashPassword("first password!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := repo.SetPassword(mb.ID, hash, nil, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Kind != models.CredentialKindPassword || first.PublicID == "" || first.CreatedByID != nil {
+		t.Errorf("password credential = %+v", first)
+	}
+	if c, _ := repo.MatchPassword(mb.ID, "first password!", now); c == nil || c.ID != first.ID {
+		t.Fatalf("the password does not match its credential: %v", c)
+	}
+	hash2, _ := auth.HashPassword("second password!")
+	if _, err := repo.SetPassword(mb.ID, hash2, &mb.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := repo.MatchPassword(mb.ID, "first password!", now); c != nil {
+		t.Error("the old password still matches after a new one was set")
+	}
+	var rows []models.Credential
+	gdb.Where("account_id = ? AND kind = ?", mb.ID, models.CredentialKindPassword).Order("id").Find(&rows)
+	if len(rows) != 2 || rows[0].RevokedAt == nil || rows[1].RevokedAt != nil {
+		t.Fatalf("password rows = %+v, want the old one revoked and kept", rows)
+	}
+
+	memo := &countingMemo{remembered: map[string]bool{}}
+	cred, account, err := repo.VerifyBasic(mb.Address, "second password!", now, memo)
+	if err != nil || cred.ID != rows[1].ID || account.ID != mb.ID {
+		t.Fatalf("VerifyBasic(password) = %v %v %v", cred, account, err)
+	}
+	if _, _, err := repo.VerifyBasic(mb.Address, "second password!", now, memo); err != nil || memo.hits != 1 {
+		t.Errorf("the second check was not remembered: hits %d, err %v", memo.hits, err)
+	}
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "wrong", now, memo); return e }()); got.Reason != auth.CredentialWrongPassword || got.CredentialID != nil {
+		t.Errorf("wrong password refused as %+v", got)
+	}
+	if got := refusalReason(t, func() error {
+		_, _, e := repo.VerifyBasic("nobody@example.test", "second password!", now, nil)
+		return e
+	}()); got.Reason != auth.CredentialWrongPassword {
+		t.Errorf("unknown address refused as %+v", got)
+	}
+
+	// An authenticator makes the password unusable over Basic: a mail client
+	// needs an app password.
+	totp := &models.Credential{AccountID: mb.ID, Kind: models.CredentialKindTOTP, Name: "Authenticator", PublicID: "t" + strconv.FormatInt(time.Now().UnixNano(), 36), Scope: accountScope(mb.ID)}
+	if err := gdb.Create(totp).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := repo.VerifyBasic(mb.Address, "second password!", now, nil); err != nil {
+		t.Errorf("an unconfirmed authenticator already counts: %v", err)
+	}
+	gdb.Model(totp).Update("confirmed_at", now)
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialNeedsAppPassword || got.CredentialID == nil {
+		t.Errorf("password of a 2FA account refused as %+v", got)
+	}
+	gdb.Model(totp).Update("revoked_at", now)
+
+	// An account in setup, or disabled, cannot use its password over Basic.
+	gdb.Model(&models.Mailbox{}).Where("id = ?", mb.ID).Update("password_change_required", true)
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialAccountInSetup {
+		t.Errorf("password of an account in setup refused as %+v", got)
+	}
+	gdb.Model(&models.Mailbox{}).Where("id = ?", mb.ID).Updates(map[string]any{"password_change_required": false, "active": false})
+	if got := refusalReason(t, func() error { _, _, e := repo.VerifyBasic(mb.Address, "second password!", now, nil); return e }()); got.Reason != auth.CredentialAccountInactive {
+		t.Errorf("password of a disabled account refused as %+v", got)
 	}
 }

@@ -8,8 +8,11 @@ func TestBuildFixtureUsesDomain(t *testing.T) {
 	if fx.Domain.Name != "mail4.test" {
 		t.Errorf("domain = %q, want mail4.test", fx.Domain.Name)
 	}
-	if len(fx.Mailboxes) != 3 || len(fx.Aliases) != 2 || len(fx.WebmailAddresses) != 2 {
-		t.Fatalf("unexpected counts: %d mailboxes, %d aliases, %d webmail", len(fx.Mailboxes), len(fx.Aliases), len(fx.WebmailAddresses))
+	if len(fx.Mailboxes) != 3 || len(fx.Aliases) != 1 {
+		t.Fatalf("unexpected counts: %d mailboxes, %d aliases", len(fx.Mailboxes), len(fx.Aliases))
+	}
+	if fx.PasswordHash != "hash123" {
+		t.Errorf("password hash = %q, want hash123", fx.PasswordHash)
 	}
 
 	wantAddrs := map[string]bool{"eve@mail4.test": false, "frank@mail4.test": false, "postmaster@mail4.test": false}
@@ -18,9 +21,6 @@ func TestBuildFixtureUsesDomain(t *testing.T) {
 			t.Errorf("unexpected mailbox address %q", mb.Address)
 		}
 		wantAddrs[mb.Address] = true
-		if mb.Password != "hash123" {
-			t.Errorf("mailbox %q password = %q, want hash123", mb.Address, mb.Password)
-		}
 		if mb.DomainID != 0 {
 			t.Errorf("mailbox %q DomainID = %d, want 0 (filled after domain create)", mb.Address, mb.DomainID)
 		}

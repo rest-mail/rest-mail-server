@@ -12,7 +12,7 @@ import (
 // verified between the admin endpoints that DO exist.)
 func testStage9DatabaseConsistency(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 

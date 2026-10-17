@@ -31,11 +31,11 @@ func TestRefresh_DeliversAccessTokenAsHttpOnlyCookieNotBody(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateTokenPair(42, "user@example.test", 3)
+	pair, err := jwt.GenerateSession(42, "user@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, pair, "mailbox", 42)
+	seedActive(store, pair, 42)
 
 	rr := doRefresh(h, pair.RefreshToken)
 	if rr.Code != http.StatusOK {
@@ -94,11 +94,11 @@ func TestLogout_ClearsSessionCookies(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateTokenPair(1, "u@example.test", 1)
+	pair, err := jwt.GenerateSession(1, "u@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, pair, "mailbox", 1)
+	seedActive(store, pair, 1)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: auth.RefreshCookieName, Value: pair.RefreshToken})

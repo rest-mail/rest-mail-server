@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
 
@@ -218,14 +219,18 @@ type EventHandler struct {
 	db         *gorm.DB
 	broker     *SSEBroker
 	jwtService *auth.JWTService
+	// sessionCurrent is RejectStaleSessions' check, which this route, outside
+	// the middleware groups, makes itself.
+	sessionCurrent middleware.SessionCurrent
 }
 
 // NewEventHandler creates a new EventHandler.
-func NewEventHandler(db *gorm.DB, broker *SSEBroker, jwtService *auth.JWTService) *EventHandler {
+func NewEventHandler(db *gorm.DB, broker *SSEBroker, jwtService *auth.JWTService, sessionCurrent middleware.SessionCurrent) *EventHandler {
 	return &EventHandler{
-		db:         db,
-		broker:     broker,
-		jwtService: jwtService,
+		db:             db,
+		broker:         broker,
+		jwtService:     jwtService,
+		sessionCurrent: sessionCurrent,
 	}
 }
 
@@ -249,6 +254,16 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
 		return
 	}
+	// As on every other route: a session from before the account's last
+	// credential change is dead, and one still in setup reaches nothing.
+	if current, err := h.sessionCurrent(claims.AccountID, claims.CredentialEpoch); err != nil || !current {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
+		return
+	}
+	if claims.SetupPending {
+		respond.Error(w, http.StatusForbidden, "setup_required", "Finish setting up this account first: a new password and two-factor authentication")
+		return
+	}
 
 	// 2. Parse account ID from URL
 	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
@@ -257,8 +272,8 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Resolve mailbox ID (same logic as MessageHandler.resolveAccountMailbox)
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
+	// 3. Resolve the mailbox: one the caller may read.
+	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -325,11 +340,4 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-}
-
-// resolveAccountMailbox looks up the mailbox ID for an account. It first checks
-// if the account is a WebmailAccount owned by the caller, then falls back to
-// checking LinkedAccounts.
-func (h *EventHandler) resolveAccountMailbox(accountID uint, claims *auth.Claims) (uint, error) {
-	return resolveAccountMailbox(h.db, accountID, claims)
 }

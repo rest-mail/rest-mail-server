@@ -3,7 +3,7 @@
 // server actually reads, or a "successful" rotation silently breaks signing/login:
 //
 //   - domains.dkim_private_key   — the live DKIM signing keys (dkim:v1: form)
-//   - two_factor.encrypted_secret — enrolled TOTP secrets
+//   - credentials.encrypted_secret — TOTP secrets
 //   - certificates.key_pem        — ACME/TLS private keys
 package main
 
@@ -140,12 +140,13 @@ func rotateDomainDKIM(database *gorm.DB, oldKey, newKey string) (processed, fail
 	return processed, failures, nil
 }
 
-// rotateTwoFactorSecrets re-encrypts two_factor.encrypted_secret — the enrolled
-// TOTP secrets (base64 AES-256-GCM ciphertext, no prefix).
+// rotateTwoFactorSecrets re-encrypts credentials.encrypted_secret — the TOTP
+// credentials' secrets (base64 AES-256-GCM ciphertext, no prefix), revoked
+// ones too, so none is left under the old key.
 func rotateTwoFactorSecrets(database *gorm.DB, oldKey, newKey string) (processed, failures int, err error) {
-	var tfs []models.TwoFactor
-	if err := database.Find(&tfs).Error; err != nil {
-		return 0, 0, fmt.Errorf("query two_factor: %w", err)
+	var tfs []models.Credential
+	if err := database.Where("kind = ?", models.CredentialKindTOTP).Find(&tfs).Error; err != nil {
+		return 0, 0, fmt.Errorf("query credentials: %w", err)
 	}
 	for i := range tfs {
 		tf := &tfs[i]
@@ -154,7 +155,7 @@ func rotateTwoFactorSecrets(database *gorm.DB, oldKey, newKey string) (processed
 		}
 		plain, derr := crypto.DecryptString(tf.EncryptedSecret, oldKey)
 		if derr != nil {
-			log.Printf("WARN: failed to decrypt 2FA secret (id=%d, %s/%d): %v", tf.ID, tf.UserType, tf.SubjectID, derr)
+			log.Printf("WARN: failed to decrypt 2FA secret (credential id=%d, account %d): %v", tf.ID, tf.AccountID, derr)
 			failures++
 			continue
 		}
@@ -166,7 +167,7 @@ func rotateTwoFactorSecrets(database *gorm.DB, oldKey, newKey string) (processed
 			return processed, failures, fmt.Errorf("update 2FA secret id=%d: %w", tf.ID, uerr)
 		}
 		processed++
-		log.Printf("rotated 2FA secret (id=%d, %s/%d)", tf.ID, tf.UserType, tf.SubjectID)
+		log.Printf("rotated 2FA secret (credential id=%d, account %d)", tf.ID, tf.AccountID)
 	}
 	return processed, failures, nil
 }

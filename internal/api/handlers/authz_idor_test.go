@@ -28,8 +28,12 @@ func openAuthzTestDB(t *testing.T) *gorm.DB {
 	if err := gdb.AutoMigrate(
 		&models.Domain{},
 		&models.Mailbox{},
-		&models.WebmailAccount{},
-		&models.LinkedAccount{},
+		&models.Role{},
+		&models.Capability{},
+		&models.RoleCapability{},
+		&models.Grant{},
+		&models.GrantActivation{},
+		&models.Credential{},
 		&models.SieveScript{},
 		&models.Quarantine{},
 		&models.Message{},
@@ -39,14 +43,12 @@ func openAuthzTestDB(t *testing.T) *gorm.DB {
 	return gdb
 }
 
-// authzFixture is a pair of isolated tenants: an owner and an unrelated attacker,
-// each with its own mailbox and webmail account. The two are never linked, so the
-// attacker must never be able to resolve or touch the owner's mailbox data.
+// authzFixture is a pair of isolated tenants: an owner and an unrelated
+// attacker, each an account of its own. Neither holds a grant on the other, so
+// the attacker must never be able to resolve or touch the owner's mailbox data.
 type authzFixture struct {
 	ownerMailbox    models.Mailbox
-	ownerAccount    models.WebmailAccount
 	attackerMailbox models.Mailbox
-	attackerAccount models.WebmailAccount
 }
 
 func seedAuthzFixture(t *testing.T, db *gorm.DB) authzFixture {
@@ -61,44 +63,28 @@ func seedAuthzFixture(t *testing.T, db *gorm.DB) authzFixture {
 			DomainID:  domain.ID,
 			LocalPart: local,
 			Address:   local + "@idor.test",
-			Password:  "x",
+			Active:    true,
 		}
 		if err := db.Create(&mb).Error; err != nil {
 			t.Fatalf("create mailbox %s: %v", local, err)
 		}
 		return mb
 	}
-	ownerMB := mk("owner")
-	attackerMB := mk("attacker")
-
-	ownerAcct := models.WebmailAccount{PrimaryMailboxID: ownerMB.ID}
-	if err := db.Create(&ownerAcct).Error; err != nil {
-		t.Fatalf("create owner account: %v", err)
-	}
-	attackerAcct := models.WebmailAccount{PrimaryMailboxID: attackerMB.ID}
-	if err := db.Create(&attackerAcct).Error; err != nil {
-		t.Fatalf("create attacker account: %v", err)
-	}
-
 	return authzFixture{
-		ownerMailbox:    ownerMB,
-		ownerAccount:    ownerAcct,
-		attackerMailbox: attackerMB,
-		attackerAccount: attackerAcct,
+		ownerMailbox:    mk("owner"),
+		attackerMailbox: mk("attacker"),
 	}
 }
 
-// authzRequest builds a request carrying the given mailbox-user claims and chi
-// URL params, exactly as the JWT middleware + router would supply them.
-func authzRequest(method, target string, webmailAccountID uint, params map[string]string, body string) *http.Request {
+// authzRequest builds a request carrying the given account's session claims
+// and chi URL params, exactly as the JWT middleware + router would supply
+// them.
+func authzRequest(method, target string, accountID uint, params map[string]string, body string) *http.Request {
 	rctx := chi.NewRouteContext()
 	for k, v := range params {
 		rctx.URLParams.Add(k, v)
 	}
-	claims := &auth.Claims{
-		UserType:         "mailbox",
-		WebmailAccountID: webmailAccountID,
-	}
+	claims := &auth.Claims{AccountID: accountID}
 	ctx := context.WithValue(context.Background(), chi.RouteCtxKey, rctx)
 	ctx = context.WithValue(ctx, middleware.ClaimsKey, claims)
 
@@ -132,25 +118,25 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 	}
 
 	h := NewSieveHandler(tx)
-	acctParam := map[string]string{"id": uintToStr(fx.ownerAccount.ID)}
+	acctParam := map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}
 
 	// Owner GET → 200.
 	rr := httptest.NewRecorder()
-	h.GetScript(rr, authzRequest(http.MethodGet, "/sieve", fx.ownerAccount.ID, acctParam, ""))
+	h.GetScript(rr, authzRequest(http.MethodGet, "/sieve", fx.ownerMailbox.ID, acctParam, ""))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner GET: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
 	// Attacker GET on the owner's account → 403.
 	rr = httptest.NewRecorder()
-	h.GetScript(rr, authzRequest(http.MethodGet, "/sieve", fx.attackerAccount.ID, acctParam, ""))
+	h.GetScript(rr, authzRequest(http.MethodGet, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker GET: expected 403, got %d", rr.Code)
 	}
 
 	// Attacker PUT (overwrite) → 403, and the owner's script is unchanged.
 	rr = httptest.NewRecorder()
-	h.PutScript(rr, authzRequest(http.MethodPut, "/sieve", fx.attackerAccount.ID, acctParam, `{"script":"# pwned","active":true}`))
+	h.PutScript(rr, authzRequest(http.MethodPut, "/sieve", fx.attackerMailbox.ID, acctParam, `{"script":"# pwned","active":true}`))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker PUT: expected 403, got %d", rr.Code)
 	}
@@ -164,7 +150,7 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Attacker DELETE → 403, and the owner's script is still present.
 	rr = httptest.NewRecorder()
-	h.DeleteScript(rr, authzRequest(http.MethodDelete, "/sieve", fx.attackerAccount.ID, acctParam, ""))
+	h.DeleteScript(rr, authzRequest(http.MethodDelete, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker DELETE: expected 403, got %d", rr.Code)
 	}
@@ -176,7 +162,7 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Owner PUT → 200 (the legitimate path still works).
 	rr = httptest.NewRecorder()
-	h.PutScript(rr, authzRequest(http.MethodPut, "/sieve", fx.ownerAccount.ID, acctParam, `{"script":"# updated","active":true}`))
+	h.PutScript(rr, authzRequest(http.MethodPut, "/sieve", fx.ownerMailbox.ID, acctParam, `{"script":"# updated","active":true}`))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner PUT: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -204,11 +190,11 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 	}
 
 	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
-	ownerAcct := map[string]string{"id": uintToStr(fx.ownerAccount.ID)}
+	ownerAcct := map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}
 
 	// Owner LIST → 200 with the one row.
 	rr := httptest.NewRecorder()
-	h.ListQuarantine(rr, authzRequest(http.MethodGet, "/quarantine", fx.ownerAccount.ID, ownerAcct, ""))
+	h.ListQuarantine(rr, authzRequest(http.MethodGet, "/quarantine", fx.ownerMailbox.ID, ownerAcct, ""))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner LIST: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -218,15 +204,15 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Attacker LIST on the owner's account id → 403 (account not owned).
 	rr = httptest.NewRecorder()
-	h.ListQuarantine(rr, authzRequest(http.MethodGet, "/quarantine", fx.attackerAccount.ID, ownerAcct, ""))
+	h.ListQuarantine(rr, authzRequest(http.MethodGet, "/quarantine", fx.attackerMailbox.ID, ownerAcct, ""))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker LIST (foreign account): expected 403, got %d", rr.Code)
 	}
 
 	// Attacker RELEASE targeting the owner's account id → 403.
 	rr = httptest.NewRecorder()
-	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.attackerAccount.ID,
-		map[string]string{"id": uintToStr(fx.ownerAccount.ID), "mid": uintToStr(q.ID)}, ""))
+	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.attackerMailbox.ID,
+		map[string]string{"id": uintToStr(fx.ownerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker RELEASE (foreign account): expected 403, got %d", rr.Code)
 	}
@@ -234,8 +220,8 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 	// Attacker RELEASE using their OWN valid account but the owner's row id → 404,
 	// and the row must remain un-released (the cross-mailbox-by-row-id vector).
 	rr = httptest.NewRecorder()
-	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.attackerAccount.ID,
-		map[string]string{"id": uintToStr(fx.attackerAccount.ID), "mid": uintToStr(q.ID)}, ""))
+	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.attackerMailbox.ID,
+		map[string]string{"id": uintToStr(fx.attackerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("attacker RELEASE (foreign row via own account): expected 404, got %d", rr.Code)
 	}
@@ -250,8 +236,8 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 	// Attacker DELETE using their OWN account but the owner's row id → 404, and
 	// the row must still exist.
 	rr = httptest.NewRecorder()
-	h.DeleteQuarantine(rr, authzRequest(http.MethodDelete, "/quarantine", fx.attackerAccount.ID,
-		map[string]string{"id": uintToStr(fx.attackerAccount.ID), "mid": uintToStr(q.ID)}, ""))
+	h.DeleteQuarantine(rr, authzRequest(http.MethodDelete, "/quarantine", fx.attackerMailbox.ID,
+		map[string]string{"id": uintToStr(fx.attackerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("attacker DELETE (foreign row via own account): expected 404, got %d", rr.Code)
 	}
@@ -263,8 +249,8 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Owner RELEASE → 200 and the row is marked released (legitimate path works).
 	rr = httptest.NewRecorder()
-	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.ownerAccount.ID,
-		map[string]string{"id": uintToStr(fx.ownerAccount.ID), "mid": uintToStr(q.ID)}, ""))
+	h.ReleaseQuarantine(rr, authzRequest(http.MethodPost, "/quarantine/release", fx.ownerMailbox.ID,
+		map[string]string{"id": uintToStr(fx.ownerMailbox.ID), "mid": uintToStr(q.ID)}, ""))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner RELEASE: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}

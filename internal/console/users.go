@@ -250,7 +250,7 @@ func (m UsersModel) updateCreating(msg tea.KeyMsg) (UsersModel, tea.Cmd) {
 			m.nameInput.Reset()
 			m.passInput.Reset()
 			return m, func() tea.Msg {
-				err := m.api.CreateMailbox(m.token, email, name, pass, 0)
+				err := m.api.CreateMailbox(m.token, email, name, pass)
 				return userCreatedMsg{err: err}
 			}
 		}

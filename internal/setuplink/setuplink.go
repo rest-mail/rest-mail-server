@@ -17,16 +17,16 @@ import (
 const SignInBase = "https://rest-mail.com/setup"
 
 // SignIn is the link that opens the app with a sign-in filled in: the server,
-// the username and the password. The installer shows it for the first admin,
-// whose password is the bootstrap one. In the order a person reads them, so
-// that the link shown as text is legible.
-func SignIn(server, username, password string) string {
+// the account's address and the password. The installer shows it for the
+// first admin, whose password is the bootstrap one. In the order a person
+// reads them, so that the link shown as text is legible.
+func SignIn(server, address, password string) string {
 	var b strings.Builder
 	b.WriteString(SignInBase)
 	b.WriteString("#server=")
 	b.WriteString(url.QueryEscape(server))
-	b.WriteString("&username=")
-	b.WriteString(url.QueryEscape(username))
+	b.WriteString("&address=")
+	b.WriteString(url.QueryEscape(address))
 	b.WriteString("&password=")
 	b.WriteString(url.QueryEscape(password))
 	return b.String()

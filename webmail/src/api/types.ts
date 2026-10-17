@@ -30,7 +30,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Authenticate with email and password */
+        /**
+         * Sign an account in with its address and password
+         * @description Takes the account's address (`email`), a password matching one of its password credentials, and a code from one of its authenticators when it has one (`totp_code`, or a `recovery_code`); without the code the answer is `401 totp_required`. An account with no password (one reached only through its owners) cannot be signed in to, and is answered as a wrong password. There is no other kind of sign-in: no username.
+         *     On success a browser gets three cookies: restmail_access (httpOnly, the session token), restmail_refresh (httpOnly, scoped to /api/v1/auth), and restmail_csrf (readable, for the double-submit CSRF header), and no tokens in the body. A native client sends "client": "native" and gets access_token, refresh_token and refresh_expires_in in the body instead, with no cookies; it sends the access token as Authorization: Bearer.
+         *     The bootstrap account's deploy-time password works for 72 hours, until the account chooses its own. After that, the right password answers 401 bootstrap_expired — only the right one, so a guesser learns nothing — and the cure is to deploy again with a new password. Signing in with it spends nothing: the session is in setup (setup_required) and the password keeps working, so an install can be verified by signing in.
+         */
         post: operations["login"];
         delete?: never;
         options?: never;
@@ -47,7 +52,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Log out and clear refresh token cookie */
+        /**
+         * Log out — revoke the session and clear the auth cookies
+         * @description Revokes the refresh token server-side and expires the restmail_access, restmail_refresh and restmail_csrf cookies. The refresh token is the restmail_refresh cookie, or for a native client the request body. When that ends the session, the phones it registered for push (`/api/v1/devices`) are removed with it.
+         */
         post: operations["logout"];
         delete?: never;
         options?: never;
@@ -64,8 +72,151 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Refresh access token using HTTP-only cookie */
+        /**
+         * Refresh the session (cookie, or body token for native clients)
+         * @description Takes the refresh token from the restmail_refresh cookie, or when there is no cookie from the request body. The replacement pair goes back on the same channel: cookies for a cookie request, body fields for a body request. A request carrying the cookie is always answered with cookies, whatever its body says. The new tokens have a new `jti` but stay in the same session: the `sid` claim minted at sign-in. A refresh token without a `sid` is refused with 401, and the client signs in again.
+         */
         post: operations["refreshToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Let an account back in with a reset token; also hands a server over
+         * @description Redeems a single-use reset_admin token (`restmail reset-admin`). The account it names gets the password the redeemer chose, loses its authenticator and must enroll a new one, its app passwords are revoked, and every token it was issued is dead at once — refresh tokens are revoked, and access tokens carry a credential epoch the reset bumps. Whoever held the old credentials, a person or an agent that set the server up, is locked out.
+         */
+        post: operations["resetAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What this server is
+         * @description For anyone who can reach the server. A client knows a server only by its address, so the server describes itself; the version is the one deliberate disclosure, so what runs can be confirmed from outside. `restmail status` prints this. Throttled with the owner endpoints, not with sign-in. (Before 0.7 it also said whether the server was claimed, and how to claim it; a server is no longer claimed — its first admin is the bootstrap one.)
+         */
+        get: operations["describeServer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/owner/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A challenge for an owner key to sign
+         * @description The first half of proving ownership of the server with a key listed in RESTMAIL_OWNER_KEYS (what `restmail reset-admin` does), or of reading its status with a key listed in RESTMAIL_STATUS_KEYS (what `restmail status --key` does). The challenge is stateless, valid two minutes, and answered once. Throttled like login.
+         */
+        post: operations["ownerChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/owner/token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trade a signed challenge for a reset-admin token
+         * @description `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge`, so a signature for one request cannot be presented for another. `public_key` must be listed in RESTMAIL_OWNER_KEYS; a status key (RESTMAIL_STATUS_KEYS) is refused. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
+         */
+        post: operations["ownerToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/owner/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trade a signed challenge for what the server runs
+         * @description How a deploy is confirmed from outside (`restmail status --key`). `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + "status" + "\n" + "" + "\n" + challenge`: the owner scheme with the purpose `status` and no address, so a signature made to reset an admin does not read the status, nor the other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or RESTMAIL_OWNER_KEYS. A status key reads this and can do nothing else. The challenge is spent, so an answer works once. Keys and signatures as for `/api/v1/auth/owner/token`. Throttled with the owner endpoints.
+         */
+        post: operations["ownerStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace your own password
+         * @description The signed-in account sets a new password, proving the current one even from a fresh session so a stolen access token alone cannot take the account. The new password replaces every password credential it had. Clears the "password" setup step, revokes every app password (whoever knew the old password could have made one, each recorded as `credentials.revoke` with reason `password_changed`), and revokes every session of the account, this one included: sign in again with the new password. One of the only calls a session in setup (setup_required non-empty) may make. Throttled like login.
+         */
+        post: operations["changeOwnPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/protocol-sign-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign a mail client in (protocol gateways)
+         * @description The one way the IMAP, POP3 and SMTP gateways sign a mail client in, whatever it gave as its password: the request carries the address and that password with HTTP Basic, checked against the account's credentials — an app password, or one of the account's passwords — and the audit log records the sign-in (`auth.protocol_sign_in`) with the credential and the protocol. It answers with the account, so the gateway knows which account the requests it then makes, each with the same Basic credentials, are for. No session is made. A session cannot use it. A refused credential is recorded as `auth.basic`. Throttled like login.
+         */
+        post: operations["protocolSignIn"];
         delete?: never;
         options?: never;
         head?: never;
@@ -79,10 +230,36 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List linked mailbox accounts */
+        /**
+         * List the accounts this one reaches
+         * @description The session's own account first (`is_primary`), then every account it holds an active mail grant on at that account's own scope (`mailbox:<address>`): the ones it created or linked, by address. Domain and server-wide admin grants reach mailboxes too, but are administration, and list none. With an app password, only its own.
+         */
         get: operations["listAccounts"];
         put?: never;
-        /** Link an additional mailbox account */
+        /**
+         * Create an account
+         * @description The same for everyone. Needs `mailboxes:write` held at a scope covering the address's domain. The creator gets the `owner` grant on the new account (mail read, write, send, and `mailbox:manage`). With `password`, the account gets a password credential and can be signed in to; without one it has no credentials, and is reached only through its owners. The account, its credential, the grant and their audit entries (`accounts.create`, `grants.create`) commit together; a refused attempt is recorded too. A "sub account" is only this relationship: an account another holds the owner grant on.
+         */
+        post: operations["createAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Link an existing account by proving its password
+         * @description Grants the session's account the `owner` role on an existing account, by proving one of its passwords — and a code from its authenticator when it has one (`401 totp_required` without), the same proof as signing in to it. A wrong password, an unknown address and an account with no password are the same `401`. An account still in setup cannot be linked (`403 setup_required`). `display_name`, when the account has none, becomes its name. Throttled with login (a wrong guess spends the same budget), and audited (`accounts.link`, and the grant's `grants.create`). Unlinking is removing that grant: `DELETE /api/v1/accounts/{id}`.
+         */
         post: operations["linkAccount"];
         delete?: never;
         options?: never;
@@ -100,29 +277,113 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get a specific linked account */
+        /** Get an account this one may read */
         get: operations["getAccount"];
         put?: never;
         post?: never;
-        /** Unlink a secondary mailbox account */
+        /**
+         * Give up access to an account
+         * @description Removes the session's own grants on the account (`grants.delete` for each, in one transaction): giving up access needs nothing more. Its own account cannot be unlinked (`409 own_account`).
+         */
         delete: operations["unlinkAccount"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/accounts/test-connection": {
+    "/api/v1/accounts/{id}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Account ID */
+                id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List an account's app passwords
+         * @description The app passwords of the account that are not revoked, newest first; expired ones are included. Never a secret or its hash. `{id}` is the session's own account, or one it holds `mailbox:manage` on (an account it owns, such as an automation's with no password of its own); any other is answered 404.
+         */
+        get: operations["listCredentials"];
+        put?: never;
+        /**
+         * Make an app password
+         * @description Makes an app password for a mail client or an automation and answers with it, the only time it is ever shown; the server keeps only a SHA-256 of its secret. Its scope is the account's mailbox, with mail:read, mail:write and mail:send. `{id}` is the session's own account or one it holds `mailbox:manage` on. Needs a session from signing in with a password, and, when the session's account has 2FA, with its code too (`403 two_factor_required` otherwise). It also needs the session's own current password, entered again in `password`, as Gmail and GitHub ask for it: a session from before a change of password works until its access token expires, and must not make an app password that outlives the change. Throttled like login, with the same budget. Recorded in the audit log as `credentials.create`, with the name, id and public id; a refused attempt is recorded as denied, with its error code. The password is never stored, recorded or answered with.
+         */
+        post: operations["createAppPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Account ID */
+                id: components["parameters"]["AccountId"];
+                credential_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke an app password
+         * @description Revokes it: the next request made with it is refused, and an SMTP session signed in with it sends nothing more. It stays in the table, revoked, for the audit trail, and leaves the list. Recorded in the audit log as `credentials.revoke`.
+         */
+        delete: operations["revokeCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
+        /**
+         * The push services the server can use, and this session's devices
+         * @description Answers 404 when the server has no push credentials configured, which a client reads as "no push here". `platforms` lists the services this session can register a device with: empty for an administrator's session, which has no mailbox. A device's token is never returned.
+         */
+        get: operations["listPushDevices"];
+        put?: never;
+        /**
+         * Register this phone with this session
+         * @description The device belongs to the session that registers it and is removed when the session ends: at logout, when it is revoked (a password change, a disabled mailbox), or when its refresh token expires. From then on new mail into the INBOX of any mailbox the session lists in `GET /api/v1/accounts` sends it a background push (APNs `content-available`, priority 5, an hour's expiry, at most one per device and account every 5 seconds) whose whole payload is `{"aps":{"content-available":1},"restmail":{"v":1,"device":"<id>","account":<id in GET /accounts>,"unread":<INBOX unread>}}`: never a sender, a subject, an address, a message id or any text. A device APNs says is gone (410, `BadDeviceToken`, `DeviceTokenNotForTopic`) is removed. Registering a token the session has already registered answers 200 with that device; the key is (session, token). Recorded in the audit log as `devices.register`, without the token. 404 when push is not configured.
+         */
+        post: operations["registerPushDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device's `id` */
+                device_id: string;
+            };
+            cookie?: never;
+        };
         get?: never;
         put?: never;
-        /** Test mailbox credentials */
-        post: operations["testConnection"];
-        delete?: never;
+        post?: never;
+        /**
+         * Stop pushes to a device this session registered
+         * @description Recorded in the audit log as `devices.remove`. A device the server removes itself (its session ended, or APNs said it is gone) is recorded the same way, by the system, with the reason.
+         */
+        delete: operations["removePushDevice"];
         options?: never;
         head?: never;
         patch?: never;
@@ -674,7 +935,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Server-Sent Events stream for real-time updates */
+        /**
+         * Server-Sent Events stream for real-time updates
+         * @description Authenticated by the restmail_access cookie, which a native browser EventSource attaches automatically — no token in the URL and none in JavaScript. Programmatic clients may instead send an Authorization: Bearer header. GET, so no CSRF token is required.
+         */
         get: operations["accountEvents"];
         put?: never;
         post?: never;
@@ -691,7 +955,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Check if a mailbox address exists (used by SMTP gateway) */
+        /**
+         * Check if a mailbox address exists (used by SMTP gateway)
+         * @description Machine-to-machine recipient check. When internal mTLS is enabled this route is served ONLY on the dedicated internal listener (verified gateway client certificate required) and is absent from the public listener; when disabled it is unauthenticated on the public listener. Never accepts a user JWT.
+         */
         get: operations["checkMailboxAddress"];
         put?: never;
         post?: never;
@@ -710,7 +977,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deliver a message from the SMTP gateway */
+        /**
+         * Deliver a message from the SMTP gateway
+         * @description Machine-to-machine inbound delivery. When internal mTLS is enabled this route is served ONLY on the dedicated internal listener (verified gateway client certificate required) and is absent from the public listener; when disabled it is unauthenticated on the public listener. Never accepts a user JWT.
+         */
         post: operations["deliverMessage"];
         delete?: never;
         options?: never;
@@ -761,7 +1031,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deliver a message via RESTMAIL protocol */
+        /**
+         * Deliver a message via RESTMAIL protocol
+         * @description Server-to-server delivery. Unauthenticated at the HTTP layer; the message's authenticity is verified out-of-band from its DKIM signature and the SPF result of the sending host.
+         */
         post: operations["restmailDeliver"];
         delete?: never;
         options?: never;
@@ -779,7 +1052,10 @@ export interface paths {
         /** List all domains */
         get: operations["listDomains"];
         put?: never;
-        /** Create a new domain */
+        /**
+         * Create a new domain
+         * @description The domain is created but not live: `active` is false. Mail for a domain is only ever carried over TLS, so it goes live only once it has a certificate of its own, by a separate PATCH setting `active` to true.
+         */
         post: operations["createDomain"];
         delete?: never;
         options?: never;
@@ -805,7 +1081,10 @@ export interface paths {
         delete: operations["deleteDomain"];
         options?: never;
         head?: never;
-        /** Update a domain */
+        /**
+         * Update a domain
+         * @description Setting `active` to true makes the domain live, and is refused with 409 `certificate_required` unless the domain has a currently valid certificate: mail for it is only ever carried over TLS. Setting `active` to false takes it out of service and is always allowed.
+         */
         patch: operations["updateDomain"];
         trace?: never;
     };
@@ -819,8 +1098,7 @@ export interface paths {
         /** List mailboxes, optionally filtered by domain */
         get: operations["listMailboxes"];
         put?: never;
-        /** Create a new mailbox */
-        post: operations["createMailbox"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -837,15 +1115,25 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Get a mailbox by ID */
+        /** Get an account by ID */
         get: operations["getMailbox"];
         put?: never;
         post?: never;
-        /** Delete a mailbox */
+        /**
+         * Delete an account
+         * @description Its credentials are revoked (kept, for the audit trail) and its sessions end. Every grant it held is removed under the grants rules (a session with 2FA, holding what it removes; the last superadmin cannot go), and every grant others held on it, so a new account at the same address inherits no owner. Each removal is recorded.
+         */
         delete: operations["deleteMailbox"];
         options?: never;
         head?: never;
-        /** Update a mailbox */
+        /**
+         * Update an account
+         * @description A new `password` (12 characters or more) replaces every password the
+         *     account had and ends every session of it. It also revokes all the
+         *     account's app passwords, in the transaction that sets it, recording
+         *     each in the audit log as `credentials.revoke` with `reason`
+         *     `password_changed`.
+         */
         patch: operations["updateMailbox"];
         trace?: never;
     };
@@ -887,45 +1175,6 @@ export interface paths {
         head?: never;
         /** Update an alias */
         patch: operations["updateAlias"];
-        trace?: never;
-    };
-    "/api/v1/admin/webmail-accounts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List webmail accounts */
-        get: operations["listWebmailAccounts"];
-        put?: never;
-        /** Create a webmail account */
-        post: operations["createWebmailAccount"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/webmail-accounts/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Resource ID */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        /** Get a webmail account by ID */
-        get: operations["getWebmailAccount"];
-        put?: never;
-        post?: never;
-        /** Delete a webmail account */
-        delete: operations["deleteWebmailAccount"];
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/pipelines": {
@@ -1008,7 +1257,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List pipeline execution logs */
+        /**
+         * List recent per-message pipeline traces
+         * @description Newest-first list of per-message pipeline traces. Each row is a MessageTrace (outcome, reason_code, transport, envelope, stage timeline, duration). The `action` filter matches the trace's final_action.
+         */
         get: operations["listPipelineLogs"];
         put?: never;
         post?: never;
@@ -1036,7 +1288,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/custom-filters/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Syntax-check a JavaScript filter script via the sidecar */
+        post: operations["validateCustomFilter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/custom-filters/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /** Get a custom filter by ID */
+        get: operations["getCustomFilter"];
+        put?: never;
+        post?: never;
+        /** Delete a custom filter */
+        delete: operations["deleteCustomFilter"];
+        options?: never;
+        head?: never;
+        /** Update a custom filter */
+        patch: operations["updateCustomFilter"];
+        trace?: never;
+    };
+    "/api/v1/admin/custom-filters/{id}/test": {
         parameters: {
             query?: never;
             header?: never;
@@ -1048,9 +1339,9 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
-        /** Delete a custom filter */
-        delete: operations["deleteCustomFilter"];
+        /** Run a stored custom filter's script against a sample email via the sidecar */
+        post: operations["testCustomFilter"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1440,6 +1731,673 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the audit log, newest first
+         * @description Entries newest first. To read the next page, pass the returned `pagination.cursor` as `before_seq`. A filter that does not parse is refused with 422, never ignored. This read is itself recorded (`audit.read`).
+         */
+        get: operations["listAuditEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/audit/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check the audit log's hash chain
+         * @description Walks the whole log from its lowest seq and checks that every entry follows the one before (seq one higher, `prev_hash` its hash) and hashes to its own `hash`. Stops at the first entry that does not hold. If the log does not start at seq 1, the walk starts from the first entry's own `prev_hash` and says so in `note`. This read is itself recorded (`audit.read`).
+         */
+        get: operations["verifyAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** API discovery — name, version and key links */
+        get: operations["apiRoot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/docs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Swagger UI documentation page */
+        get: operations["swaggerUI"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/docs/openapi.yaml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This OpenAPI specification document */
+        get: operations["openapiSpec"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Prometheus metrics exposition */
+        get: operations["prometheusMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mail/config-v1.1.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mozilla/Thunderbird autoconfiguration */
+        get: operations["mozillaAutoconfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/autoconfig/mail/config-v1.1.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mozilla/Thunderbird autoconfiguration (well-known path) */
+        get: operations["mozillaAutoconfigWellKnown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/autodiscover/autodiscover.xml": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Microsoft Outlook autodiscover */
+        post: operations["microsoftAutodiscover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/mta-sts.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * MTA-STS policy file (RFC 8461)
+         * @description Served to external MTAs. The domain is resolved from the Host header.
+         */
+        get: operations["mtaStsPolicyFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/smtp-tlsrpt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * TLS-RPT report ingestion (RFC 8460)
+         * @description Receives JSON TLS-RPT reports from external MTAs. No auth by design.
+         */
+        post: operations["receiveTlsReport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/.well-known/acme-challenge/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ACME HTTP-01 challenge response
+         * @description Registered only when ACME is enabled. Served to the ACME CA for domain validation. No auth by design.
+         */
+        get: operations["acmeChallenge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messages/{id}/calendar-reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Message ID */
+                id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send an iMIP reply to a calendar invitation in a message */
+        post: operations["respondToCalendar"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/calendar-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Account ID */
+                id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        /** List calendar events (grouped by UID, latest version) for the mailbox */
+        get: operations["listCalendarEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard statistics
+         * @description Visible to every admin role, all of which hold domains:read.
+         */
+        get: operations["getDashboardStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List roles */
+        get: operations["listRoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List capabilities */
+        get: operations["listCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List grants, oldest first
+         * @description Every grant, active and eligible, or only one holder's, or only those at one scope (`scope=mailbox:chris@example.com`: who owns chris@). A holder is an account (`holder_kind` `account`, `holder_id` its id).
+         */
+        get: operations["listGrants"];
+        put?: never;
+        /**
+         * Grant a role at a scope
+         * @description Needs a session that signed in with two-factor authentication (`403 two_factor_required` otherwise), and the caller must hold every capability of the role at a scope covering the grant's (`403 grant_exceeds_held` otherwise); superadmin at `*` may grant anything. An eligible grant does nothing until it is switched on. The change and its audit entry (`grants.create`) commit together.
+         */
+        post: operations["createGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a grant
+         * @description The same rules as granting: a 2FA session, and the caller must hold everything the grant gives, where it gives it. The last grant of `*` at `*` held by an active admin who can use it (active, or eligible with an authenticator to switch it on) cannot be removed (`409 last_superadmin`). An activation of the grant still running ends with it (`grants.deactivate`). The change and its audit entries (`grants.delete`) commit together.
+         */
+        delete: operations["deleteGrant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's own grants
+         * @description Every grant the signed-in admin holds, active and eligible, each with any activation running now and its time left: what a client needs to offer an "Escalate" button. Any admin may read its own; no capability is needed. Activations that ran out are recorded as expired (`grants.expire`) when this is read.
+         */
+        get: operations["listMyGrants"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch one of your eligible grants on for a while
+         * @description Escalation (#346). The grant must be the caller's own (`404` otherwise) and eligible (`409 not_eligible` for an active one). It needs a fresh second factor in the body, a current `totp_code` or an unused `recovery_code`: a session that signed in with 2FA is not enough. No authenticator enrolled is `403 two_factor_required`; no code `403 totp_required`; a wrong one `403 totp_invalid` (403, not 401: the session is still good). While switched on, the grant gives what an active one would, until `expires_at` (never past the grant's own expiry) or until switched off; a grant is switched on at most once at a time (`409 already_active`). The activation and its audit entry (`grants.activate`: who, which grant, the reason, start and end) commit together; a refused activation leaves a recovery code it was given unused. Throttled like sign-in.
+         */
+        post: operations["activateGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch one of your grants off before it runs out
+         * @description Ends the caller's own activation of the grant now (`404` for anyone else's grant, `409 not_active` when it is not switched on). Needs no second factor: it only takes access away. The end and its audit entry (`grants.deactivate`) commit together.
+         */
+        post: operations["deactivateGrant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/grants/{id}/make-eligible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Hold one of your active grants only when you switch it on
+         * @description Turns the caller's own active grant eligible: from then on it gives nothing until switched on. This is how the owner of a server set up before escalation, who holds `superadmin` always, chooses to hold it only when needed. Like activating, it needs a fresh `totp_code` or `recovery_code` (the same 403 codes), so nobody makes a grant eligible without being able to switch it on again. There is no way back to active for your own grant: that would be escalating for good. The change and its audit entry (`grants.make_eligible`) commit together. Throttled like sign-in.
+         */
+        post: operations["makeGrantEligible"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /** Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain */
+        get: operations["domainDNSCheck"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/mta-sts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /** Get the MTA-STS policy for a domain */
+        get: operations["getMtaStsPolicy"];
+        /** Create or update the MTA-STS policy for a domain */
+        put: operations["setMtaStsPolicy"];
+        post?: never;
+        /** Delete the MTA-STS policy for a domain */
+        delete: operations["deleteMtaStsPolicy"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/tls-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List received TLS-RPT reports */
+        get: operations["listTlsReports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/pipelines/analytics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Windowed message-lifecycle funnel from pipeline_rollups */
+        get: operations["getPipelineAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/messages/{id}/trace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Message ID */
+                id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the pipeline trace for a delivered message
+         * @description Returns the trace joined on message_id, which is set only on the delivered/queued path. Non-delivered or unknown ids yield 404 (correlate those via rfc_message_id on the pipeline logs endpoint instead).
+         */
+        get: operations["getMessageTrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/test/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inject a test email directly into a recipient mailbox */
+        post: operations["sendTestEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/test/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Poll for a delivered message matching the given criteria */
+        get: operations["verifyDelivery"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/test/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Probe connectivity to SMTP/IMAP/POP3/DNS/DB */
+        post: operations["probeServices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/test/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wipe all data and re-seed default test data */
+        post: operations["resetTestData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/test/seed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Seed default test domains, mailboxes, aliases and accounts */
+        post: operations["seedTestData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/test/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Capture the current database state as JSON */
+        post: operations["snapshotTestData"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/test/snapshot/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore database state from a previously captured snapshot */
+        post: operations["restoreTestSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1480,14 +2438,30 @@ export interface components {
             db: string;
         };
         LoginRequest: {
-            /** Format: email */
+            /**
+             * Format: email
+             * @description The account's address. There is no username.
+             */
             email: string;
             /** Format: password */
             password: string;
+            /** @description A current code from one of the account's authenticators, when it has one. */
+            totp_code?: string;
+            /** @description Instead of totp_code, one of the account's unused recovery codes. */
+            recovery_code?: string;
+            /**
+             * @description "native" for a client that is not a browser: the tokens come back in the body rather than as cookies. Omit for a browser.
+             * @enum {string}
+             */
+            client?: "native";
         };
+        /** @description Sent by native clients only; browsers send no body. */
+        RefreshRequest: {
+            refresh_token?: string;
+        };
+        /** @description Login/refresh success body. For a browser it carries NO tokens: the access token is delivered only as the httpOnly restmail_access cookie (Set-Cookie), so JavaScript cannot read it, and a readable restmail_csrf cookie is set alongside for the double-submit CSRF defence. The token fields are present only for a native client. */
         LoginResponse: {
-            access_token: string;
-            /** @description Token lifetime in seconds */
+            /** @description Access-token lifetime in seconds (lets the client schedule a refresh) */
             expires_in: number;
             user: {
                 id: number;
@@ -1495,18 +2469,113 @@ export interface components {
                 email: string;
                 display_name: string;
             };
+            /** @description The capabilities the account's grants in force (active ones, and eligible ones while switched on) give at `*`, sorted, or `["*"]` alone for a superadmin; for showing what the session can do (absent for an account holding no admin role). They authorise nothing: the API reads the grants on every request, and the token carries none. Capabilities held only on a domain or mailbox are not listed. Empty while setup_required is not. */
+            capabilities?: string[];
+            /** @description Absent once the account is set up. What the account must still do before its sessions reach anything else, which until then answers 403 with code setup_required — and so does every session refreshed from this one. "password": POST /api/v1/auth/password. "two_factor": POST /api/v1/auth/2fa/enroll, then /api/v1/auth/2fa/confirm. A fresh install's bootstrap account, admin@<mail domain>, starts with both. */
+            setup_required?: ("password" | "two_factor")[];
+            /** @description Native clients only. Send as Authorization Bearer. */
+            access_token?: string;
+            /** @description Native clients only. Single use; each refresh returns a new one. */
+            refresh_token?: string;
+            /** @description Native clients only. Refresh-token lifetime in seconds. */
+            refresh_expires_in?: number;
         };
+        /** @description Same shape and delivery as LoginResponse: cookies for a cookie refresh, body tokens for a native (body-token) refresh. */
         RefreshResponse: {
-            access_token: string;
             expires_in: number;
+            user: {
+                id: number;
+                /** Format: email */
+                email: string;
+                display_name: string;
+            };
+            capabilities?: string[];
+            /** @description Native clients only. Send as Authorization Bearer. */
+            access_token?: string;
+            /** @description Native clients only. Single use; each refresh returns a new one. */
+            refresh_token?: string;
+            /** @description Native clients only. Refresh-token lifetime in seconds. */
+            refresh_expires_in?: number;
         };
+        /** @description An account, which is a mailbox: what GET and POST /api/v1/accounts answer with. `id` is the mailbox's id, the `{id}` of every /api/v1/accounts/{id}/… route. */
         Account: {
             id: number;
-            mailbox_id: number;
             /** Format: email */
             address: string;
             display_name: string;
+            /** @description The session's own account. */
             is_primary: boolean;
+        };
+        CreateAccountRequest: {
+            /**
+             * Format: email
+             * @description On a domain this server hosts.
+             */
+            address: string;
+            display_name?: string;
+            /** @description Optional. With one, the account can be signed in to; without one it has no credentials, and is reached only through its owners. */
+            password?: string;
+        };
+        /** @description An app password, as its owner sees it. Never its secret or hash. */
+        Credential: {
+            id: number;
+            name: string;
+            /** @enum {string} */
+            kind: "app_password";
+            /**
+             * @description The part of the app password after `rm_` and before the secret
+             * @example 7Kq2xT9bLm4P
+             */
+            public_id: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When it was last used, to within a minute
+             */
+            last_used_at: string | null;
+            /** Format: date-time */
+            expires_at: string | null;
+        };
+        CreatedAppPassword: components["schemas"]["Credential"] & {
+            /** @description The app password, shown this once. Use it with the mailbox's address as the password of a mail client, or with HTTP Basic. */
+            password: string;
+        };
+        PushDevices: {
+            /** @description The push services this session can register a device with */
+            platforms: "apns"[];
+            devices: components["schemas"]["PushDevice"][];
+        };
+        /** @description A phone registered for push by a session. Never its token. */
+        PushDevice: {
+            /**
+             * @description Opaque; the `device` of the pushes it gets
+             * @example 12
+             */
+            id: string;
+            /** @enum {string} */
+            platform: "apns";
+            /** @enum {string} */
+            environment: "production" | "sandbox";
+            /** Format: date-time */
+            created_at: string;
+        };
+        RegisterPushDeviceRequest: {
+            /** @enum {string} */
+            platform: "apns";
+            /** @description The APNs device token, lowercase hex */
+            token: string;
+            /**
+             * @description production for App Store and TestFlight builds, sandbox for builds run from Xcode: which APNs host the pushes go to.
+             * @default production
+             * @enum {string}
+             */
+            environment: "production" | "sandbox";
+            /**
+             * @description The app's bundle id; must be the server's APNs topic when given
+             * @example com.antimatterstudios.restmail
+             */
+            app_id?: string;
         };
         LinkAccountRequest: {
             /** Format: email */
@@ -1514,19 +2583,6 @@ export interface components {
             /** Format: password */
             password: string;
             display_name?: string;
-        };
-        TestConnectionRequest: {
-            /** Format: email */
-            address: string;
-            /** Format: password */
-            password: string;
-        };
-        TestConnectionResponse: {
-            /** @example ok */
-            status: string;
-            /** Format: email */
-            address: string;
-            display_name: string;
         };
         Folder: {
             name: string;
@@ -1569,6 +2625,8 @@ export interface components {
             /** @description Raw email headers as JSON */
             headers?: Record<string, never> | null;
             size_bytes?: number;
+            /** @description Exact octet count of the stored raw RFC 2822 message (the size a protocol client receives when the raw form is served verbatim, e.g. IMAP RFC822.SIZE / POP3 LIST). 0 when the server holds no stored raw form; consumers should fall back to size_bytes. */
+            raw_size?: number;
             has_attachments?: boolean;
             is_read: boolean;
             is_flagged: boolean;
@@ -1746,7 +2804,10 @@ export interface components {
             message_id?: string;
             in_reply_to?: string;
             references?: string;
-            /** @description Full RFC 2822 raw message */
+            /**
+             * Format: byte
+             * @description Full RFC 2822 raw message, base64-encoded. Encoding it as base64 (rather than a plain JSON string) lets arbitrary non-UTF-8 octets (8bit/binary bodies, undeclared-charset high bytes) round-trip byte-for-byte, preserving DKIM body hashes and BODY[] fidelity.
+             */
             raw_message?: string;
             client_ip?: string;
             helo_name?: string;
@@ -1815,6 +2876,7 @@ export interface components {
             /** Format: int64 */
             default_quota_bytes?: number;
         };
+        /** @description An account, as the admin API shows it: a mailbox is the account. Its passwords, authenticators and app passwords are its credentials, never shown here; what it may do is its grants (/api/v1/admin/grants). */
         Mailbox: {
             id: number;
             domain_id: number;
@@ -1829,19 +2891,16 @@ export interface components {
             active: boolean;
             /** Format: date-time */
             last_login_at?: string | null;
+            /** @description In setup until it chooses its own password (the bootstrap account) */
+            password_change_required: boolean;
+            /** @description In setup until it enrolls an authenticator, which it may never disable */
+            two_factor_required: boolean;
+            /** Format: date-time */
+            last_password_change?: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
-        };
-        CreateMailboxRequest: {
-            /** Format: email */
-            address: string;
-            /** Format: password */
-            password: string;
-            display_name?: string;
-            /** Format: int64 */
-            quota_bytes?: number;
         };
         UpdateMailboxRequest: {
             /** Format: password */
@@ -1872,14 +2931,6 @@ export interface components {
             /** Format: email */
             destination_address?: string;
             active?: boolean;
-        };
-        WebmailAccount: {
-            id: number;
-            primary_mailbox_id: number;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            updated_at: string;
         };
         Pipeline: {
             id: number;
@@ -1914,20 +2965,6 @@ export interface components {
                 config?: Record<string, never>;
             }[];
             active?: boolean;
-        };
-        PipelineLog: {
-            id: number;
-            pipeline_id: number;
-            message_id?: number | null;
-            /** @enum {string} */
-            direction: "inbound" | "outbound";
-            /** @enum {string} */
-            action: "continue" | "reject" | "quarantine" | "discard";
-            steps: Record<string, never>[];
-            /** Format: int64 */
-            duration_ms: number;
-            /** Format: date-time */
-            created_at: string;
         };
         TestPipelineRequest: {
             pipeline_id: number;
@@ -2100,6 +3137,404 @@ export interface components {
             duration?: string;
             created_by: string;
         };
+        /** @description One entry of the audit log. `hash` is hex SHA-256 over the JSON array `["restmail-audit-v1", seq, occurred_at (RFC 3339, nanoseconds, UTC), actor_kind, actor_id, actor_name, credential_id, session_id, action, outcome, error_code, method, route, status, target, ip, user_agent, request_id, prev_hash]`, as Go's encoding/json writes it with HTML escaping off and no trailing newline (target's keys sorted). */
+        AuditEntry: {
+            /**
+             * Format: int64
+             * @description 1, 2, 3, … with no gaps
+             */
+            seq: number;
+            /** Format: date-time */
+            occurred_at: string;
+            /**
+             * @description A sign-in names the account it was for even when it fails; actor_id is set only once the account is proven.
+             * @enum {string}
+             */
+            actor_kind: "account" | "system" | "anonymous";
+            /** @description The account (mailbox) id */
+            actor_id: number | null;
+            /** @description The account's address at the time */
+            actor_name: string;
+            /** @description The credential a request was made with over HTTP Basic (an app password, or the account's password through a gateway), or the one refused when its secret matched; null for a session */
+            credential_id: number | null;
+            /** @description The jti of the token the request carried */
+            session_id: string;
+            /** @example admin.change */
+            action: string;
+            /**
+             * @description 2xx success; 401, 403 and 429 denied; other 4xx failed; 5xx error
+             * @enum {string}
+             */
+            outcome: "success" | "denied" | "failed" | "error";
+            /** @description The error response's `error.code`, if any */
+            error_code: string;
+            method: string;
+            /** @example /api/v1/admin/domains/{id} */
+            route: string;
+            status: number;
+            /** @description The route's URL parameters, and for account linking the address */
+            target: {
+                [key: string]: string;
+            };
+            ip: string;
+            user_agent: string;
+            request_id: string;
+            /** @description The previous entry's hash; 64 zeros for the first */
+            prev_hash: string;
+            hash: string;
+        };
+        AuditVerifyResult: {
+            ok: boolean;
+            /**
+             * Format: int64
+             * @description How many entries held
+             */
+            checked: number;
+            /** Format: int64 */
+            first_seq: number;
+            /**
+             * Format: int64
+             * @description The last entry that held
+             */
+            last_seq: number;
+            /** @description Its hash; 64 zeros when the log is empty */
+            last_hash: string;
+            /**
+             * Format: int64
+             * @description The first entry that does not hold
+             */
+            broken_at_seq?: number;
+            /** @description Why it does not hold */
+            reason?: string;
+            /** @description Set when the log does not start at seq 1 */
+            note?: string;
+        };
+        StatusResponse: {
+            data: {
+                /** @example reset_complete */
+                status: string;
+            };
+        };
+        CalendarEventSummary: {
+            uid: string;
+            /** @description iCalendar METHOD (REQUEST, REPLY, CANCEL, ...) */
+            method: string;
+            status: string;
+            summary: string;
+            sequence: number;
+            is_cancelled: boolean;
+            message_id?: number | null;
+            /** @description Number of stored versions for this UID */
+            versions: number;
+        };
+        DashboardStats: {
+            domainCount: number;
+            mailboxCount: number;
+            queueStats: {
+                pending: number;
+                processing: number;
+                failed: number;
+            };
+            messageVolume: {
+                /** @example Jul 23 */
+                date?: string;
+                count?: number;
+            }[];
+            recentActivity: {
+                id?: string;
+                type?: string;
+                description?: string;
+                /** Format: date-time */
+                timestamp?: string;
+            }[];
+            inboundTransportSecurity: {
+                totalInboundMX?: number;
+                overTLS?: number;
+                plaintext?: number;
+                tlsPercent?: number;
+                plaintextPercent?: number;
+                plaintextAuthPass?: number;
+                plaintextAuthFail?: number;
+            };
+        };
+        Grant: {
+            id: number;
+            holder: {
+                /**
+                 * @description `admin` for now; other kinds of holder come later
+                 * @example admin
+                 */
+                kind: string;
+                id: number;
+            };
+            /** @example admin */
+            role: string;
+            role_id: number;
+            /**
+             * @description `*`, `domain:<name>` or `mailbox:<address>`; covers everything beneath it
+             * @example domain:example.com
+             */
+            scope: string;
+            /** @enum {string} */
+            mode: "active" | "eligible";
+            granted_by: {
+                /** @enum {string} */
+                kind: "admin" | "system";
+                id?: number | null;
+            };
+            /** Format: date-time */
+            granted_at: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** @description The activation running now, of an eligible grant switched on; null otherwise. */
+            activation?: components["schemas"]["GrantActivation"] | null;
+        };
+        GrantActivation: {
+            id: number;
+            /** Format: date-time */
+            activated_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            reason: string;
+            seconds_left: number;
+        };
+        GrantEscalation: {
+            grant: components["schemas"]["Grant"];
+            /** @description What the caller now holds at `*`, as sign-in lists it. */
+            capabilities: string[];
+        };
+        /** @description One of the two, given just now. */
+        FreshSecondFactor: {
+            /**
+             * @description A current code from the caller's authenticator
+             * @example 123456
+             */
+            totp_code?: string;
+            /** @description An unused recovery code, used up if it works */
+            recovery_code?: string;
+        };
+        ActivateGrantRequest: components["schemas"]["FreshSecondFactor"] & {
+            /**
+             * @description Why you are switching it on; recorded in the audit log
+             * @example Add an admin for the new office
+             */
+            reason: string;
+            /** @default 60 */
+            minutes: number;
+        };
+        CreateGrantRequest: {
+            holder: {
+                /** @enum {string} */
+                kind: "account";
+                id: number;
+            };
+            /** @description A role name, e.g. `admin` or `readonly` */
+            role: string;
+            /** @example domain:example.com */
+            scope: string;
+            /**
+             * @default active
+             * @enum {string}
+             */
+            mode: "active" | "eligible";
+            /**
+             * Format: date-time
+             * @description Optional; must be in the future
+             */
+            expires_at?: string | null;
+        };
+        Role: {
+            id: number;
+            /** @description superadmin, admin, readonly, owner, or one made later */
+            name: string;
+            description?: string;
+            system_role?: boolean;
+            capabilities: string[];
+        };
+        Capability: {
+            id: number;
+            /** @example domains:read */
+            name: string;
+            description?: string;
+            /** @example domains */
+            resource?: string;
+            /** @example read */
+            action?: string;
+        };
+        DNSCheckResult: {
+            domain: string;
+            /** @example 4/5 records verified */
+            summary: string;
+            records: {
+                /** @example MX */
+                type: string;
+                name: string;
+                /** @enum {string} */
+                status: "ok" | "missing" | "error";
+                value?: string;
+                message?: string;
+            }[];
+        };
+        MTASTSPolicy: {
+            id: number;
+            domain_id: number;
+            /** @enum {string} */
+            mode: "none" | "testing" | "enforce";
+            /** @description Comma-separated MX host patterns */
+            mx_hosts?: string;
+            /** @description Policy lifetime in seconds */
+            max_age: number;
+            active: boolean;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        SetMTASTSPolicyRequest: {
+            /** @enum {string} */
+            mode?: "none" | "testing" | "enforce";
+            /** @description Comma-separated MX host patterns */
+            mx_hosts?: string;
+            max_age?: number;
+            active?: boolean;
+        };
+        TLSReport: {
+            id: number;
+            domain_id: number;
+            reporting_org: string;
+            /** Format: date-time */
+            start_date: string;
+            /** Format: date-time */
+            end_date: string;
+            /** @enum {string} */
+            policy_type: "sts" | "tlsa" | "no-policy";
+            policy_domain: string;
+            /** Format: int64 */
+            total_successful?: number;
+            /** Format: int64 */
+            total_failure?: number;
+            /** @description Raw failure-details JSON from the report */
+            failure_details?: Record<string, never> | unknown[] | null;
+            raw_report?: string;
+            /** Format: date-time */
+            received_at: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        /** @description Inbound TLS-RPT report (RFC 8460 §4) */
+        TLSRPTReport: {
+            "organization-name": string;
+            "contact-info"?: string;
+            "report-id"?: string;
+            "date-range": {
+                /** Format: date-time */
+                "start-datetime": string;
+                /** Format: date-time */
+                "end-datetime": string;
+            };
+            policies: {
+                policy?: {
+                    "policy-type"?: string;
+                    "policy-string"?: string[];
+                    "policy-domain"?: string;
+                    "mx-host"?: string[];
+                };
+                summary?: {
+                    /** Format: int64 */
+                    "total-successful-session-count"?: number;
+                    /** Format: int64 */
+                    "total-failure-session-count"?: number;
+                };
+                "failure-details"?: {
+                    [key: string]: unknown;
+                }[];
+            }[];
+        };
+        MessageTrace: {
+            id: number;
+            /** @description Set only on the delivered/queued path; null otherwise */
+            message_id?: number | null;
+            /** @description RFC 5322 Message-ID correlation key */
+            rfc_message_id?: string;
+            /** @enum {string} */
+            direction: "inbound" | "outbound";
+            /**
+             * @description Empty when transport is not applicable
+             * @enum {string}
+             */
+            transport: "" | "tls" | "plaintext";
+            mail_from?: string;
+            /** @description First envelope recipient */
+            rcpt_to?: string;
+            client_ip?: string;
+            pipeline_id: number;
+            /** @enum {string} */
+            final_action: "continue" | "reject" | "quarantine" | "discard" | "defer";
+            /** @enum {string} */
+            outcome: "delivered" | "queued" | "rejected" | "quarantined" | "discarded" | "deferred";
+            /** @description Bounded reason for a non-continue terminal; empty otherwise */
+            reason_code?: string;
+            spam_score?: number | null;
+            /** Format: int64 */
+            duration_ms: number;
+            /** @description Serialized []StepResult timeline */
+            stages?: {
+                [key: string]: unknown;
+            }[] | null;
+            sampled: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at?: string | null;
+        };
+        PipelineFunnel: {
+            received?: {
+                transport?: string;
+                count?: number;
+            }[];
+            auth_verdicts?: {
+                mechanism?: string;
+                result?: string;
+                count?: number;
+            }[];
+            stage_decisions?: {
+                filter?: string;
+                action?: string;
+                count?: number;
+            }[];
+            terminal_outcomes?: {
+                direction?: string;
+                outcome?: string;
+                count?: number;
+            }[];
+            top_reject_reasons?: {
+                reason_code?: string;
+                count?: number;
+            }[];
+        };
+        PipelineAnalyticsResponse: {
+            window: {
+                /** Format: date-time */
+                since: string;
+                /** Format: date-time */
+                until: string;
+                /** @description Echoes the ?window value; empty when ?since was used */
+                label?: string;
+            };
+            funnel: components["schemas"]["PipelineFunnel"];
+            /** @description Cumulative-since-process-start snapshot from the in-process registry (NOT windowed); absent if the registry could not be gathered. */
+            live_totals?: components["schemas"]["PipelineFunnel"];
+        };
+        UpdateCustomFilterRequest: {
+            name?: string;
+            description?: string;
+            filter_type?: string;
+            /** @enum {string} */
+            direction?: "inbound" | "outbound";
+            /** @description Filter configuration (opaque JSON) */
+            config?: Record<string, never>;
+            enabled?: boolean;
+        };
     };
     responses: {
         /** @description Authentication required or invalid credentials */
@@ -2140,6 +3575,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Double-submit CSRF token. Required on state-changing requests (POST/PUT/PATCH/DELETE) that authenticate via the restmail_access cookie: echo the value of the readable restmail_csrf cookie (set at login/refresh). Rejected with 403 when missing or mismatched. Not required for Bearer-authenticated (cookie-less) requests. */
+        CSRFToken: string;
         /** @description Account ID */
         AccountId: number;
         /** @description Message ID */
@@ -2212,7 +3649,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
         responses: {
             /** @description Logged out */
             204: {
@@ -2230,7 +3671,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
         responses: {
             /** @description Token refreshed */
             200: {
@@ -2246,6 +3691,372 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    resetAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                    password: string;
+                    /** @enum {string} */
+                    client?: "native";
+                };
+            };
+        };
+        responses: {
+            /** @description Reset; the session owes an authenticator */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LoginResponse"];
+                    };
+                };
+            };
+            /** @description invalid_token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Password under 12 characters (the token is not spent) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    describeServer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The description */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** @enum {string} */
+                            product: "rest-mail";
+                            /** @description e.g. 0.7.0; dev for a build with none stamped in */
+                            version: string;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    ownerChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A challenge */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            challenge: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                        };
+                    };
+                };
+            };
+            /** @description no_owner_keys — the server lists neither owner keys nor status keys */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ownerToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    challenge: string;
+                    /** @description authorized_keys format */
+                    public_key: string;
+                    /** Format: byte */
+                    signature: string;
+                    /**
+                     * @description the only one; part of what is signed
+                     * @enum {string}
+                     */
+                    purpose: "reset-admin";
+                    /**
+                     * Format: email
+                     * @description the account to let back in, as signed
+                     */
+                    address: string;
+                    /** @description 0: 15 minutes */
+                    lifetime_seconds?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description A single-use token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            purpose: string;
+                            token: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                        };
+                    };
+                };
+            };
+            /** @description invalid_challenge — forged, expired, or already answered */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not_owner — the key is not listed, or the signature does not verify */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no_such_account */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no_owner_keys — the server lists none */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Purpose, address, lifetime or signature malformed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ownerStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    challenge: string;
+                    /** @description authorized_keys format */
+                    public_key: string;
+                    /** Format: byte */
+                    signature: string;
+                };
+            };
+        };
+        responses: {
+            /** @description What runs, and since when. No secrets, no configuration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** @description e.g. 0.8.0; dev for a build with none stamped in */
+                            version: string;
+                            /** @description the commit built; unknown when none was stamped in */
+                            commit: string;
+                            /** @description RFC 3339; unknown when none was stamped in */
+                            built_at: string;
+                            /**
+                             * Format: date-time
+                             * @description when this API process started
+                             */
+                            started_at: string;
+                        };
+                    };
+                };
+            };
+            /** @description invalid_challenge — forged, expired, or already answered */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description not_status_key — the key is on neither list, or the signature does not verify */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no_status_keys — the server lists neither status keys nor owner keys */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Signature malformed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    changeOwnPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    current_password: string;
+                    /** @description Must differ from the current password. */
+                    new_password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Password changed; every session of the account is revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description New password missing, shorter than 12 characters, or unchanged */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    protocolSignIn: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    protocol: "imap" | "pop3" | "smtp";
+                };
+            };
+        };
+        responses: {
+            /** @description Signed in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            user: {
+                                /** @description The account id, as in /api/v1/accounts/{id} */
+                                id: number;
+                                /** Format: email */
+                                email: string;
+                                display_name: string;
+                            };
+                            credential_id: number;
+                            /**
+                             * @description An app password reaches only its own account's mailbox; the account's password reaches what its grants reach (sending as an account it owns, say).
+                             * @enum {string}
+                             */
+                            credential_kind: "password" | "app_password";
+                        };
+                    };
+                };
+            };
+            /** @description Not HTTP Basic (`basic_required`), or an invalid body */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `unauthorized` for a wrong address or password; `app_password_required` for the right password of an account with two-factor authentication; `setup_required` for one still in setup. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description protocol is not imap, pop3 or smtp */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many refused credentials from this client, or too many sign-ins */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listAccounts: {
         parameters: {
             query?: never;
@@ -2255,7 +4066,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of accounts */
+            /** @description The accounts */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2267,6 +4078,54 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    createAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Account"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No mailboxes:write covering the domain, or a session in setup */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description An account with this address exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an address, a password under 12 characters, or a domain this server does not host */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     linkAccount: {
@@ -2282,7 +4141,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Account linked */
+            /** @description Linked */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -2293,9 +4152,35 @@ export interface operations {
                     };
                 };
             };
-            401: components["responses"]["Unauthorized"];
-            409: components["responses"]["Conflict"];
+            /** @description Wrong address or password (`unauthorized`), or its code is needed (`totp_required`) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The account is still in setup */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already linked, or the session's own account */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             422: components["responses"]["ValidationError"];
+            /** @description Too many attempts from this client */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getAccount: {
@@ -2336,17 +4221,190 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Account unlinked */
+            /** @description Unlinked */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description The session holds no grant on it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The session's own account */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Account ID */
+                id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The app passwords */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Credential"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
-    testConnection: {
+    createAppPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Account ID */
+                id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @example iPhone Mail */
+                    name: string;
+                    /**
+                     * Format: date-time
+                     * @description When it stops working; in the future. Omit for never.
+                     */
+                    expires_at?: string;
+                    /**
+                     * Format: password
+                     * @description The session's own current password, entered again.
+                     */
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Made; `password` is shown this once */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CreatedAppPassword"];
+                    };
+                };
+            };
+            /** @description No valid session, or the session's current password was not given (`reauth_required`) or is wrong (`invalid_password`) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The account has 2FA and the session's sign-in did not take it (`two_factor_required`) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            /** @description name missing or longer than 100 characters, or expires_at not in the future */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many attempts from this client; shares login's budget */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revokeCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Account ID */
+                id: components["parameters"]["AccountId"];
+                credential_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description No such app password of this account, or already revoked */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listPushDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The services and the devices */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PushDevices"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Push is not configured on this server */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    registerPushDevice: {
         parameters: {
             query?: never;
             header?: never;
@@ -2355,23 +4413,93 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TestConnectionRequest"];
+                "application/json": components["schemas"]["RegisterPushDeviceRequest"];
             };
         };
         responses: {
-            /** @description Credentials valid */
+            /** @description The session had already registered this token */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        data: components["schemas"]["TestConnectionResponse"];
+                        data?: components["schemas"]["PushDevice"];
                     };
                 };
             };
+            /** @description Registered */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data?: components["schemas"]["PushDevice"];
+                    };
+                };
+            };
+            /** @description The body is not JSON (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in, or the session has ended (its access token outlived it) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Push is not configured on this server */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `validation_failed`, with `details.fields.platform` when the platform is not configured here or the session is an administrator's, which has no mailbox, and `fields.token`, `fields.environment` or `fields.app_id` for a bad value. Also `fields.token` when the session already has 10 devices. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    removePushDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The device's `id` */
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             401: components["responses"]["Unauthorized"];
-            422: components["responses"]["ValidationError"];
+            /** @description Not one of this session's devices, or push is not configured */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listFolders: {
@@ -3345,7 +5473,11 @@ export interface operations {
                         data: {
                             /** @example released */
                             status: string;
-                            message_id: number;
+                            /**
+                             * @description ID of the newly delivered INBOX message (decimal string)
+                             * @example 4210
+                             */
+                            message_id: string;
                         };
                     };
                 };
@@ -3385,10 +5517,7 @@ export interface operations {
     };
     accountEvents: {
         parameters: {
-            query: {
-                /** @description JWT access token for authentication */
-                token: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 /** @description Account ID */
@@ -3568,7 +5697,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Domain created */
+            /** @description Domain created, not yet live */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3659,6 +5788,15 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            /** @description The domain has no currently valid certificate, so it cannot go live */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     listMailboxes: {
@@ -3683,34 +5821,6 @@ export interface operations {
                     };
                 };
             };
-        };
-    };
-    createMailbox: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateMailboxRequest"];
-            };
-        };
-        responses: {
-            /** @description Mailbox created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["Mailbox"];
-                    };
-                };
-            };
-            409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationError"];
         };
     };
     getMailbox: {
@@ -3751,14 +5861,28 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Mailbox deleted */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description It holds grants and the session has no 2FA (`two_factor_required`), or holds less than they give (`grant_exceeds_held`) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: components["responses"]["NotFound"];
+            /** @description It holds the last superadmin (`last_superadmin`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     updateMailbox: {
@@ -3916,105 +6040,6 @@ export interface operations {
                         data: components["schemas"]["Alias"];
                     };
                 };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listWebmailAccounts: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Webmail account list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["WebmailAccount"][];
-                    };
-                };
-            };
-        };
-    };
-    createWebmailAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    primary_mailbox_id: number;
-                };
-            };
-        };
-        responses: {
-            /** @description Webmail account created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["WebmailAccount"];
-                    };
-                };
-            };
-            409: components["responses"]["Conflict"];
-        };
-    };
-    getWebmailAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Resource ID */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Webmail account details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        data: components["schemas"]["WebmailAccount"];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
-    };
-    deleteWebmailAccount: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Resource ID */
-                id: components["parameters"]["ResourceId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Webmail account deleted */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             404: components["responses"]["NotFound"];
         };
@@ -4185,7 +6210,12 @@ export interface operations {
             query?: {
                 pipeline_id?: number;
                 direction?: "inbound" | "outbound";
-                action?: "continue" | "reject" | "quarantine" | "discard";
+                /** @description Matches MessageTrace.final_action */
+                action?: "continue" | "reject" | "quarantine" | "discard" | "defer";
+                /** @description RFC 5322 Message-ID correlation key */
+                rfc_message_id?: string;
+                outcome?: "delivered" | "queued" | "rejected" | "quarantined" | "discarded" | "deferred";
+                reason_code?: string;
                 limit?: number;
                 offset?: number;
             };
@@ -4195,14 +6225,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Pipeline logs */
+            /** @description Pipeline message traces */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        data: components["schemas"]["PipelineLog"][];
+                        data: components["schemas"]["MessageTrace"][];
                         pagination?: components["schemas"]["Pagination"];
                     };
                 };
@@ -4260,6 +6290,73 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
+    validateCustomFilter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description JavaScript filter source to validate */
+                    script: string;
+                    /** @description Optional sample email passed through to the sidecar */
+                    email?: Record<string, never>;
+                };
+            };
+        };
+        responses: {
+            /** @description Raw validation result proxied verbatim from the JS filter sidecar (shape determined by the sidecar). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            422: components["responses"]["ValidationError"];
+            /** @description JS filter sidecar unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getCustomFilter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Custom filter details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CustomFilter"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     deleteCustomFilter: {
         parameters: {
             query?: never;
@@ -4284,6 +6381,87 @@ export interface operations {
                             status: string;
                         };
                     };
+                };
+            };
+        };
+    };
+    updateCustomFilter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCustomFilterRequest"];
+            };
+        };
+        responses: {
+            /** @description Custom filter updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CustomFilter"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    testCustomFilter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description Optional sample email. When omitted a minimal built-in sample is used. */
+                    email?: Record<string, never>;
+                };
+            };
+        };
+        responses: {
+            /** @description Raw execution result proxied verbatim from the JS filter sidecar (status and shape determined by the sidecar). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Filter config contains no script, or invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description JS filter sidecar unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -4578,6 +6756,7 @@ export interface operations {
                     };
                 };
             };
+            409: components["responses"]["Conflict"];
         };
     };
     removeFromAllowlist: {
@@ -4656,6 +6835,7 @@ export interface operations {
                     };
                 };
             };
+            409: components["responses"]["Conflict"];
         };
     };
     removeFromBlocklist: {
@@ -4981,6 +7161,1292 @@ export interface operations {
                         pagination?: components["schemas"]["Pagination"];
                     };
                 };
+            };
+        };
+    };
+    listAuditEntries: {
+        parameters: {
+            query?: {
+                actor_kind?: "account" | "system" | "anonymous";
+                /** @description The account (mailbox) id */
+                actor_id?: number;
+                /** @description Actor name (an address) contains this, in any case */
+                actor?: string;
+                /** @description Exact action, e.g. `auth.sign_in` or `admin.change` */
+                action?: string;
+                outcome?: "success" | "denied" | "failed" | "error";
+                /** @description Entries at or after this time (RFC 3339) */
+                since?: string;
+                /** @description Entries at or before this time (RFC 3339) */
+                until?: string;
+                /** @description Entries with a lower seq than this (the previous page's cursor) */
+                before_seq?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuditEntry"][];
+                        pagination: components["schemas"]["Pagination"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an admin, or the session lacks audit:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    verifyAuditLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the check found */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["AuditVerifyResult"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an admin, or the session lacks audit:read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    apiRoot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** @example restmail */
+                            name?: string;
+                            version?: string;
+                            commit?: string;
+                            build_date?: string;
+                            links?: {
+                                [key: string]: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    swaggerUI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description HTML Swagger UI page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    openapiSpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The raw OpenAPI YAML document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/yaml": string;
+                };
+            };
+        };
+    };
+    prometheusMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metrics in Prometheus text exposition format */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    mozillaAutoconfig: {
+        parameters: {
+            query: {
+                emailaddress: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Autoconfig XML document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+            /** @description Domain not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mozillaAutoconfigWellKnown: {
+        parameters: {
+            query: {
+                emailaddress: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Autoconfig XML document */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+            /** @description Domain not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    microsoftAutodiscover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/xml": string;
+            };
+        };
+        responses: {
+            /** @description Autodiscover XML response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/xml": string;
+                };
+            };
+        };
+    };
+    mtaStsPolicyFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description MTA-STS policy in text/plain */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Domain unknown or no active policy */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    receiveTlsReport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TLSRPTReport"];
+            };
+        };
+        responses: {
+            /** @description Report stored */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** @description Number of policy entries persisted */
+                            stored?: number;
+                        };
+                    };
+                };
+            };
+            /** @description Malformed report */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    acmeChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Key authorization for the challenge token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Unknown challenge token */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    respondToCalendar: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Message ID */
+                id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    response: "ACCEPTED" | "DECLINED" | "TENTATIVE";
+                    /**
+                     * Format: email
+                     * @description Sender address for the reply; must belong to the caller
+                     */
+                    from: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Reply sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            /** @example sent */
+                            status?: string;
+                            /** @example ACCEPTED */
+                            response?: string;
+                        };
+                    };
+                };
+            };
+            /** @description Message has no calendar event, or invalid response value */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Caller does not own the message or the from address */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listCalendarEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Account ID */
+                id: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Calendar event summaries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["CalendarEventSummary"][];
+                    };
+                };
+            };
+        };
+    };
+    getDashboardStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dashboard statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DashboardStats"];
+                    };
+                };
+            };
+        };
+    };
+    listRoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Roles */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Role"][];
+                    };
+                };
+            };
+        };
+    };
+    listCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capabilities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Capability"][];
+                    };
+                };
+            };
+        };
+    };
+    listGrants: {
+        parameters: {
+            query?: {
+                holder_kind?: string;
+                holder_id?: number;
+                /** @description Only the grants at this scope, e.g. `mailbox:chris@example.com` */
+                scope?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Grants */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Grant"][];
+                        pagination: components["schemas"]["Pagination"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Granted */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Grant"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an admin holding users:write at `*`; a session without 2FA (two_factor_required); or a role beyond what the caller holds (grant_exceeds_held) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    deleteGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not allowed (see createGrant) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The last superadmin grant (last_superadmin) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listMyGrants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's grants, oldest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Grant"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an admin, or an account still in setup */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    activateGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description Switched on */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GrantEscalation"];
+                    };
+                };
+            };
+            /** @description Not a grant id (invalid_id), or a body that is not JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an admin; no authenticator (two_factor_required); no code (totp_required); or a wrong one (totp_invalid) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Active, not eligible (not_eligible); already switched on (already_active); or the grant itself expired (grant_expired) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+            /** @description Too many tries from this address; the same limit as sign-in */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    deactivateGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switched off */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GrantEscalation"];
+                    };
+                };
+            };
+            /** @description Not a grant id (invalid_id), or a body that is not JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an admin, or an account still in setup */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Not switched on (not_active) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    makeGrantEligible: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FreshSecondFactor"];
+            };
+        };
+        responses: {
+            /** @description Now eligible */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["GrantEscalation"];
+                    };
+                };
+            };
+            /** @description Not a grant id (invalid_id), or a body that is not JSON */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Not an admin, or the second factor is missing or wrong (see activateGrant) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Eligible already (already_eligible) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many tries from this address; the same limit as sign-in */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    domainDNSCheck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description DNS check result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DNSCheckResult"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMtaStsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description MTA-STS policy */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MTASTSPolicy"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setMtaStsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetMTASTSPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Policy updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MTASTSPolicy"];
+                    };
+                };
+            };
+            /** @description Policy created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MTASTSPolicy"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    deleteMtaStsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Resource ID */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTlsReports: {
+        parameters: {
+            query?: {
+                domain_id?: number;
+                policy_type?: "sts" | "tlsa" | "no-policy";
+                reporting_org?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description TLS-RPT reports */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["TLSReport"][];
+                        pagination?: components["schemas"]["Pagination"];
+                    };
+                };
+            };
+        };
+    };
+    getPipelineAnalytics: {
+        parameters: {
+            query?: {
+                /** @description Look-back as a Go duration (e.g. 24h). Ignored when `since` is given. */
+                window?: string;
+                /** @description RFC3339 lower bound; takes precedence over `window`. */
+                since?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pipeline analytics funnel */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["PipelineAnalyticsResponse"];
+                    };
+                };
+            };
+        };
+    };
+    getMessageTrace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Message ID */
+                id: components["parameters"]["MessageId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Message trace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["MessageTrace"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    sendTestEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    from: string;
+                    /** Format: email */
+                    to: string;
+                    subject?: string;
+                    body?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Test message created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            message_id?: number;
+                            msg_id?: string;
+                            from?: string;
+                            to?: string;
+                            subject?: string;
+                        };
+                    };
+                };
+            };
+            /** @description Disabled in production */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    verifyDelivery: {
+        parameters: {
+            query: {
+                to: string;
+                subject?: string;
+                message_id?: string;
+                /** @description Go duration, capped at 30s */
+                timeout?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verification result (found true/false) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            found?: boolean;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description Disabled in production */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    probeServices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    services?: ("smtp" | "smtp_submission" | "imap" | "pop3" | "dns" | "db")[];
+                    host?: string;
+                    timeout?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Per-service probe results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            [key: string]: {
+                                [key: string]: unknown;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Disabled in production */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resetTestData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reset complete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Disabled in production */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    seedTestData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Seed complete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Disabled in production */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    snapshotTestData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Snapshot payload (restore via /snapshot/restore) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description Disabled in production */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restoreTestSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Restore complete */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Malformed snapshot data */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Disabled in production */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

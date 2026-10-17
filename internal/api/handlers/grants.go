@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -94,8 +95,9 @@ func toGrantResponses(db *gorm.DB, rows []models.Grant, now time.Time) ([]grantR
 	return out, nil
 }
 
-// List returns grants, oldest first, optionally only one holder's.
-// GET /api/v1/admin/grants?holder_kind=admin&holder_id=3
+// List returns grants, oldest first, optionally only one holder's, or only
+// those at one scope.
+// GET /api/v1/admin/grants?holder_kind=account&holder_id=3&scope=mailbox:chris@example.com
 func (h *GrantHandler) List(w http.ResponseWriter, r *http.Request) {
 	q := h.db.Model(&models.Grant{})
 	if kind := r.URL.Query().Get("holder_kind"); kind != "" {
@@ -108,6 +110,9 @@ func (h *GrantHandler) List(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		q = q.Where("holder_id = ?", id)
+	}
+	if scope := r.URL.Query().Get("scope"); scope != "" {
+		q = q.Where("scope = ?", strings.ToLower(strings.TrimSpace(scope)))
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -137,7 +142,7 @@ type createGrantRequest struct {
 }
 
 // Create grants a role at a scope.
-// POST /api/v1/admin/grants {"holder":{"kind":"admin","id":3},"role":"admin","scope":"domain:a.com","mode":"active"}
+// POST /api/v1/admin/grants {"holder":{"kind":"account","id":3},"role":"admin","scope":"domain:a.com","mode":"active"}
 func (h *GrantHandler) Create(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	if !requireTwoFactor(w, claims) {
@@ -150,9 +155,9 @@ func (h *GrantHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	problems := map[string]string{}
 	if req.Holder == nil || req.Holder.Kind == "" || req.Holder.ID == 0 {
-		problems["holder"] = `required: {"kind": "admin", "id": <admin user id>}`
-	} else if req.Holder.Kind != models.GrantHolderAdmin {
-		problems["holder"] = `only admin holders can be granted roles yet`
+		problems["holder"] = `required: {"kind": "account", "id": <account id>}`
+	} else if req.Holder.Kind != models.GrantHolderAccount {
+		problems["holder"] = `only accounts can be granted roles yet`
 	}
 	if req.Role == "" {
 		problems["role"] = "required: a role name"
@@ -186,8 +191,8 @@ func (h *GrantHandler) Create(w http.ResponseWriter, r *http.Request) {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		var admin models.AdminUser
-		if err := tx.Select("id").First(&admin, g.HolderID).Error; err != nil {
+		var account models.Mailbox
+		if err := tx.Select("id").First(&account, g.HolderID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errNoSuchHolder
 			}
@@ -244,7 +249,6 @@ func (h *GrantHandler) Delete(w http.ResponseWriter, r *http.Request) {
 var (
 	errNoSuchHolder      = errors.New("no such holder")
 	errNoSuchRole        = errors.New("no such role")
-	errNoSuchRoleID      = errors.New("no such role id")
 	errNoSuchGrant       = errors.New("no such grant")
 	errTwoFactorRequired = errors.New("two-factor session required")
 )
@@ -260,7 +264,7 @@ func requireTwoFactor(w http.ResponseWriter, claims *auth.Claims) bool {
 	return false
 }
 
-// grantChange makes grant changes for the admin a request comes from: each
+// grantChange makes grant changes for the account a request comes from: each
 // checked against what it holds, and recorded in the audit log in the same
 // transaction.
 type grantChange struct {
@@ -269,16 +273,16 @@ type grantChange struct {
 }
 
 func (c grantChange) add(tx *gorm.DB, g *models.Grant, status int) error {
-	if err := grants.Authorize(tx, models.GrantHolderAdmin, c.claims.AdminUserID, g.RoleID, g.Scope); err != nil {
+	if err := grants.Authorize(tx, c.claims.AccountID, g.RoleID, g.Scope); err != nil {
 		return err
 	}
-	granter := c.claims.AdminUserID
-	g.GrantedByKind, g.GrantedByID = models.AuditActorAdmin, &granter
+	granter := c.claims.AccountID
+	g.GrantedByKind, g.GrantedByID = models.AuditActorAccount, &granter
 	return grants.Add(tx, g, middleware.RequestEntry(c.r, grants.ActionCreate, status))
 }
 
 func (c grantChange) remove(tx *gorm.DB, g *models.Grant, status int) error {
-	if err := grants.Authorize(tx, models.GrantHolderAdmin, c.claims.AdminUserID, g.RoleID, g.Scope); err != nil {
+	if err := grants.Authorize(tx, c.claims.AccountID, g.RoleID, g.Scope); err != nil {
 		return err
 	}
 	return grants.Remove(tx, g, middleware.RequestEntry(c.r, grants.ActionDelete, status))
@@ -291,11 +295,9 @@ func grantChangeFailed(w http.ResponseWriter, err error) bool {
 	case err == nil:
 		return false
 	case errors.Is(err, errNoSuchHolder):
-		respond.ValidationError(w, map[string]string{"holder": "no such admin user"})
+		respond.ValidationError(w, map[string]string{"holder": "no such account"})
 	case errors.Is(err, errNoSuchRole):
 		respond.ValidationError(w, map[string]string{"role": "no such role"})
-	case errors.Is(err, errNoSuchRoleID):
-		respond.ValidationError(w, map[string]string{"role_ids": "no such role"})
 	case errors.Is(err, errTwoFactorRequired):
 		respond.Error(w, http.StatusForbidden, "two_factor_required",
 			"Changing grants needs a session signed in with two-factor authentication: sign in again with your code")
@@ -312,6 +314,69 @@ func grantChangeFailed(w http.ResponseWriter, err error) bool {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to change grants")
 	}
 	return true
+}
+
+type roleResponse struct {
+	ID           uint     `json:"id"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	SystemRole   bool     `json:"system_role"`
+	Capabilities []string `json:"capabilities"`
+}
+
+type capabilityResponse struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Resource    string `json:"resource"`
+	Action      string `json:"action"`
+}
+
+// ListRoles lists the roles that can be granted, each with its capabilities.
+// GET /api/v1/admin/roles
+func (h *GrantHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
+	var roles []models.Role
+	if err := h.db.Order("id").Find(&roles).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch roles")
+		return
+	}
+	out := make([]roleResponse, len(roles))
+	for i, role := range roles {
+		caps, err := grants.RoleCapabilities(h.db, role.ID)
+		if err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch roles")
+			return
+		}
+		if caps == nil {
+			caps = []string{}
+		}
+		out[i] = roleResponse{ID: role.ID, Name: role.Name, Description: role.Description, SystemRole: role.SystemRole, Capabilities: caps}
+	}
+	respond.Data(w, http.StatusOK, out)
+}
+
+// ListCapabilities lists every capability.
+// GET /api/v1/admin/capabilities
+func (h *GrantHandler) ListCapabilities(w http.ResponseWriter, r *http.Request) {
+	var caps []models.Capability
+	if err := h.db.Order("name").Find(&caps).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch capabilities")
+		return
+	}
+	out := make([]capabilityResponse, len(caps))
+	for i, c := range caps {
+		out[i] = capabilityResponse{ID: c.ID, Name: c.Name, Description: c.Description, Resource: c.Resource, Action: c.Action}
+	}
+	respond.Data(w, http.StatusOK, out)
+}
+
+// formatTime renders t in RFC 3339, or nil.
+func formatTime(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	formatted := t.Format("2006-01-02T15:04:05Z07:00")
+	return &formatted
 }
 
 // DomainScopeOf finds the domain an admin route's {id} names, for

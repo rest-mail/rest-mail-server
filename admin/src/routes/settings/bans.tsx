@@ -268,7 +268,7 @@ function BansPage() {
               )
             }
           }}
-          currentUser={user?.username || 'admin'}
+          currentUser={user?.email || ''}
         />
       )}
     </AppShell>

@@ -71,7 +71,7 @@ func (h *GrantHandler) Mine(w http.ResponseWriter, r *http.Request) {
 	}
 	var rows []models.Grant
 	err := h.db.Preload("Role").
-		Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAdmin, claims.AdminUserID).
+		Where("holder_kind = ? AND holder_id = ?", models.GrantHolderAccount, claims.AccountID).
 		Order("id").Find(&rows).Error
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
@@ -131,13 +131,13 @@ func (h *GrantHandler) Activate(w http.ResponseWriter, r *http.Request) {
 	var g models.Grant
 	var a *models.GrantActivation
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		if err := h.freshSecondFactor(tx, claims.AdminUserID, req.TOTPCode, req.RecoveryCode); err != nil {
+		if err := h.freshSecondFactor(tx, claims.AccountID, req.TOTPCode, req.RecoveryCode); err != nil {
 			return err
 		}
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		if err := ownGrant(tx, claims.AdminUserID, id, &g); err != nil {
+		if err := ownGrant(tx, claims.AccountID, id, &g); err != nil {
 			return err
 		}
 		var err error
@@ -148,7 +148,7 @@ func (h *GrantHandler) Activate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cache.Invalidate()
-	h.respondEscalation(w, http.StatusCreated, claims.AdminUserID, &g, a)
+	h.respondEscalation(w, http.StatusCreated, claims.AccountID, &g, a)
 }
 
 // Deactivate switches one of the caller's grants off before its activation
@@ -165,7 +165,7 @@ func (h *GrantHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		if err := ownGrant(tx, claims.AdminUserID, id, &g); err != nil {
+		if err := ownGrant(tx, claims.AccountID, id, &g); err != nil {
 			return err
 		}
 		_, err := grants.Deactivate(tx, &g, middleware.RequestEntry(r, grants.ActionDeactivate, http.StatusOK))
@@ -175,7 +175,7 @@ func (h *GrantHandler) Deactivate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cache.Invalidate()
-	h.respondEscalation(w, http.StatusOK, claims.AdminUserID, &g, nil)
+	h.respondEscalation(w, http.StatusOK, claims.AccountID, &g, nil)
 }
 
 type secondFactorRequest struct {
@@ -203,13 +203,13 @@ func (h *GrantHandler) MakeEligible(w http.ResponseWriter, r *http.Request) {
 	}
 	var g models.Grant
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		if err := h.freshSecondFactor(tx, claims.AdminUserID, req.TOTPCode, req.RecoveryCode); err != nil {
+		if err := h.freshSecondFactor(tx, claims.AccountID, req.TOTPCode, req.RecoveryCode); err != nil {
 			return err
 		}
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		if err := ownGrant(tx, claims.AdminUserID, id, &g); err != nil {
+		if err := ownGrant(tx, claims.AccountID, id, &g); err != nil {
 			return err
 		}
 		return grants.MakeEligible(tx, &g, middleware.RequestEntry(r, grants.ActionMakeEligible, http.StatusOK))
@@ -218,12 +218,12 @@ func (h *GrantHandler) MakeEligible(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cache.Invalidate()
-	h.respondEscalation(w, http.StatusOK, claims.AdminUserID, &g, nil)
+	h.respondEscalation(w, http.StatusOK, claims.AccountID, &g, nil)
 }
 
-func (h *GrantHandler) respondEscalation(w http.ResponseWriter, status int, adminID uint, g *models.Grant, a *models.GrantActivation) {
+func (h *GrantHandler) respondEscalation(w http.ResponseWriter, status int, accountID uint, g *models.Grant, a *models.GrantActivation) {
 	now := time.Now()
-	held, err := grants.Load(h.db, models.GrantHolderAdmin, adminID, now)
+	held, err := grants.Load(h.db, accountID, now)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load user capabilities")
 		return
@@ -247,9 +247,9 @@ var (
 // freshSecondFactor checks, in tx, a code the admin has just given: a current
 // code from its authenticator, or an unused recovery code, which it uses up.
 // In tx, so a step refused after the check leaves that recovery code unused.
-func (h *GrantHandler) freshSecondFactor(tx *gorm.DB, adminID uint, totpCode, recoveryCode string) error {
+func (h *GrantHandler) freshSecondFactor(tx *gorm.DB, accountID uint, totpCode, recoveryCode string) error {
 	store := repositories.NewTwoFactorRepository(tx)
-	tf, err := store.GetActive(models.TwoFactorUserTypeAdmin, adminID)
+	_, err := store.GetActive(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
 		return errNoSecondFactor
 	}
@@ -259,22 +259,22 @@ func (h *GrantHandler) freshSecondFactor(tx *gorm.DB, adminID uint, totpCode, re
 	if strings.TrimSpace(totpCode) == "" && strings.TrimSpace(recoveryCode) == "" {
 		return errFreshCodeRequired
 	}
-	if !verifyTOTPOrRecovery(store, h.masterKey, tf, totpCode, recoveryCode) {
+	if !verifyTOTPOrRecovery(store, h.masterKey, accountID, totpCode, recoveryCode) {
 		return errFreshCodeInvalid
 	}
 	return nil
 }
 
-// ownGrant reads, into g, the grant with id held by the admin adminID:
+// ownGrant reads, into g, the grant with id held by the admin accountID:
 // errNoSuchGrant for one that does not exist or is anyone else's.
-func ownGrant(tx *gorm.DB, adminID uint, id uint64, g *models.Grant) error {
+func ownGrant(tx *gorm.DB, accountID uint, id uint64, g *models.Grant) error {
 	if err := tx.Preload("Role").First(g, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errNoSuchGrant
 		}
 		return err
 	}
-	if g.HolderKind != models.GrantHolderAdmin || g.HolderID != adminID {
+	if g.HolderKind != models.GrantHolderAccount || g.HolderID != accountID {
 		return errNoSuchGrant
 	}
 	return nil

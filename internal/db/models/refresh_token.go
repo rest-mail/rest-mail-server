@@ -26,12 +26,9 @@ type RefreshToken struct {
 	// Jti is the refresh token's JWT ID claim (RegisteredClaims.ID). Unique so a
 	// jti maps to exactly one ledger row.
 	Jti string `gorm:"size:64;uniqueIndex;not null" json:"jti"`
-	// UserType mirrors the token's user_type claim ("mailbox" or "admin") and,
-	// with SubjectID, identifies the owner for bulk revocation.
-	UserType string `gorm:"size:16;index:idx_refresh_owner" json:"user_type"`
-	// SubjectID is the owning mailbox ID (mailbox tokens) or admin user ID
-	// (admin tokens). Paired with UserType for RevokeAllForSubject.
-	SubjectID uint `gorm:"index:idx_refresh_owner" json:"subject_id"`
+	// AccountID is the account (mailbox) the session is for, so every session
+	// of one account can be revoked at once (RevokeAllForAccount).
+	AccountID uint `gorm:"not null;index" json:"account_id"`
 	// SessionID is the token's sid: the same on every row of one session, from
 	// its sign-in through each rotation. The session is alive while one of its
 	// rows is active and unexpired. Every token carries one, so the column

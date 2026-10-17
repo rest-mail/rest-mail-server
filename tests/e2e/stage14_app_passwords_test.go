@@ -14,13 +14,13 @@ import (
 // the interactive sign-in, and stops working the moment it is revoked.
 func testStage14AppPasswords(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 	const user = "apppw-user@restmail.test"
 	createDomain(t, adminClient, "restmail.test", "restmail")
-	createMailbox(t, adminClient, user, "password123", "App Password User")
-	client, accountID := restmailInbox(t, user, "password123")
+	createMailbox(t, adminClient, user, accountPassword, "App Password User")
+	client, accountID := restmailInbox(t, user, accountPassword)
 
 	// Making one takes the mailbox's current password, entered again.
 	resp, err := client.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", accountID), map[string]string{"name": "e2e Thunderbird"})
@@ -28,7 +28,7 @@ func testStage14AppPasswords(t *testing.T) {
 	requireStatus(t, resp, http.StatusUnauthorized)
 	resp.Body.Close()
 	resp, err = client.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", accountID),
-		map[string]string{"name": "e2e Thunderbird", "password": "password123"})
+		map[string]string{"name": "e2e Thunderbird", "password": accountPassword})
 	requireNoError(t, err)
 	requireStatus(t, resp, http.StatusCreated)
 	var created struct {

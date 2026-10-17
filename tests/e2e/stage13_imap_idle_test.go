@@ -12,22 +12,22 @@ import (
 
 func testStage13ImapIdle(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
 	// Ensure domain and mailboxes exist
 	createDomain(t, adminClient, "restmail.test", "restmail")
 	createDomain(t, adminClient, "mail1.test", "traditional")
-	createMailbox(t, adminClient, "idle-user@restmail.test", "password123", "IDLE Test User")
-	createMailbox(t, adminClient, "idle-sender@restmail.test", "password123", "IDLE Sender")
+	createMailbox(t, adminClient, "idle-user@restmail.test", accountPassword, "IDLE Test User")
+	createMailbox(t, adminClient, "idle-sender@restmail.test", accountPassword, "IDLE Sender")
 
 	t.Run("IDLE_CapabilityAdvertised", func(t *testing.T) {
 		// Verify that the IMAP gateway advertises the IDLE capability
 		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "idle-user@restmail.test", "password123")
+		ic.login(t, "idle-user@restmail.test", accountPassword)
 
 		result, lines := ic.command(t, "CAPABILITY")
 		if !strings.Contains(result, "OK") {
@@ -87,7 +87,7 @@ func testStage13ImapIdle(t *testing.T) {
 		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "idle-user@restmail.test", "password123")
+		ic.login(t, "idle-user@restmail.test", accountPassword)
 
 		// Try IDLE without SELECT
 		result, _ := ic.command(t, "IDLE")
@@ -132,7 +132,7 @@ func testStage13ImapIdle(t *testing.T) {
 		// The product IMAP gateway requires STARTTLS before LOGIN.
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test %s\r\n", accountPassword)
 		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
@@ -211,7 +211,7 @@ func testStage13ImapIdle(t *testing.T) {
 		// The product IMAP gateway requires STARTTLS before LOGIN.
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test %s\r\n", accountPassword)
 		conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
@@ -344,7 +344,7 @@ func testStage13ImapIdle(t *testing.T) {
 		}
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN idle-user@restmail.test %s\r\n", accountPassword)
 		_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 		loginResp := readUntilTagRaw(t, reader, "A001")
 		if !strings.Contains(loginResp, "OK") {
@@ -392,7 +392,7 @@ func testStage13ImapIdle(t *testing.T) {
 		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "idle-user@restmail.test", "password123")
+		ic.login(t, "idle-user@restmail.test", accountPassword)
 
 		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {

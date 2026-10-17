@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// openTwoFactorTestDB connects to the unit-test Postgres and migrates the 2FA
-// tables. It skips (never fails) when no database is reachable, matching the
+// openTwoFactorTestDB connects to the unit-test Postgres and migrates the
+// credentials table, where 2FA lives. It skips (never fails) when no database is reachable, matching the
 // repo's depless-local / DB-in-CI convention.
 func openTwoFactorTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
@@ -29,13 +29,13 @@ func openTwoFactorTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Skipf("two-factor repo test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
+	if err := gdb.AutoMigrate(&models.Credential{}); err != nil {
 		t.Skipf("two-factor repo test skipped: migrate failed (%v)", err)
 	}
 	return gdb
 }
 
-func enrollForTest(t *testing.T, r *TwoFactorRepository, subject uint) ([]string, *models.TwoFactor) {
+func enrollForTest(t *testing.T, r *TwoFactorRepository, subject uint) ([]string, *models.Credential) {
 	t.Helper()
 	plain, err := auth.GenerateRecoveryCodes()
 	if err != nil {
@@ -49,7 +49,7 @@ func enrollForTest(t *testing.T, r *TwoFactorRepository, subject uint) ([]string
 		}
 		hashes[i] = h
 	}
-	tf, err := r.Enroll(models.TwoFactorUserTypeMailbox, subject, "enc-secret-"+strconv.Itoa(int(subject)), hashes)
+	tf, err := r.Enroll(subject, "enc-secret-"+strconv.Itoa(int(subject)), hashes)
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
@@ -62,25 +62,25 @@ func TestTwoFactor_EnrollPendingThenConfirm(t *testing.T) {
 	gdb := openTwoFactorTestDB(t)
 	r := NewTwoFactorRepository(gdb)
 	subject := uint(time.Now().UnixNano() % 1_000_000)
-	t.Cleanup(func() { _ = r.Delete(models.TwoFactorUserTypeMailbox, subject) })
+	t.Cleanup(func() { gdb.Where("account_id = ?", subject).Delete(&models.Credential{}) })
 
 	_, tf := enrollForTest(t, r, subject)
 
-	if got, err := r.Get(models.TwoFactorUserTypeMailbox, subject); err != nil || got.Confirmed {
+	if got, err := r.Get(subject); err != nil || got.ConfirmedAt != nil {
 		t.Fatalf("Get after enroll: got=%+v err=%v; want pending row", got, err)
 	}
-	if _, err := r.GetActive(models.TwoFactorUserTypeMailbox, subject); !errors.Is(err, ErrTwoFactorNotFound) {
+	if _, err := r.GetActive(subject); !errors.Is(err, ErrTwoFactorNotFound) {
 		t.Errorf("GetActive on pending = %v, want ErrTwoFactorNotFound", err)
 	}
 
 	if err := r.Confirm(tf.ID); err != nil {
 		t.Fatalf("Confirm: %v", err)
 	}
-	active, err := r.GetActive(models.TwoFactorUserTypeMailbox, subject)
+	active, err := r.GetActive(subject)
 	if err != nil {
 		t.Fatalf("GetActive after confirm: %v", err)
 	}
-	if !active.Confirmed || active.ConfirmedAt == nil {
+	if active.ConfirmedAt == nil {
 		t.Errorf("confirmed row missing Confirmed/ConfirmedAt: %+v", active)
 	}
 
@@ -96,22 +96,22 @@ func TestTwoFactor_RecoveryCodeSingleUse(t *testing.T) {
 	gdb := openTwoFactorTestDB(t)
 	r := NewTwoFactorRepository(gdb)
 	subject := uint(time.Now().UnixNano()%1_000_000) + 1
-	t.Cleanup(func() { _ = r.Delete(models.TwoFactorUserTypeMailbox, subject) })
+	t.Cleanup(func() { gdb.Where("account_id = ?", subject).Delete(&models.Credential{}) })
 
-	plain, tf := enrollForTest(t, r, subject)
+	plain, _ := enrollForTest(t, r, subject)
 
-	if used, err := r.ConsumeRecoveryCode(tf.ID, plain[0]); err != nil || !used {
+	if used, err := r.ConsumeRecoveryCode(subject, plain[0]); err != nil || !used {
 		t.Fatalf("first ConsumeRecoveryCode: used=%v err=%v", used, err)
 	}
-	if used, err := r.ConsumeRecoveryCode(tf.ID, plain[0]); err != nil || used {
+	if used, err := r.ConsumeRecoveryCode(subject, plain[0]); err != nil || used {
 		t.Errorf("reused recovery code: used=%v err=%v, want used=false", used, err)
 	}
 	// A different, still-unused code works.
-	if used, err := r.ConsumeRecoveryCode(tf.ID, plain[1]); err != nil || !used {
+	if used, err := r.ConsumeRecoveryCode(subject, plain[1]); err != nil || !used {
 		t.Errorf("second distinct code: used=%v err=%v, want used=true", used, err)
 	}
 	// An unknown code never matches.
-	if used, err := r.ConsumeRecoveryCode(tf.ID, "zzzzz-zzzzz"); err != nil || used {
+	if used, err := r.ConsumeRecoveryCode(subject, "zzzzz-zzzzz"); err != nil || used {
 		t.Errorf("unknown code: used=%v err=%v, want used=false", used, err)
 	}
 }
@@ -122,41 +122,46 @@ func TestTwoFactor_ReenrollReplacesPriorCodes(t *testing.T) {
 	gdb := openTwoFactorTestDB(t)
 	r := NewTwoFactorRepository(gdb)
 	subject := uint(time.Now().UnixNano()%1_000_000) + 2
-	t.Cleanup(func() { _ = r.Delete(models.TwoFactorUserTypeMailbox, subject) })
+	t.Cleanup(func() { gdb.Where("account_id = ?", subject).Delete(&models.Credential{}) })
 
 	oldPlain, _ := enrollForTest(t, r, subject)
-	_, newTF := enrollForTest(t, r, subject)
+	_, _ = enrollForTest(t, r, subject)
 
 	// Old recovery code no longer matches the (replaced) enrollment.
-	if used, err := r.ConsumeRecoveryCode(newTF.ID, oldPlain[0]); err != nil || used {
+	if used, err := r.ConsumeRecoveryCode(subject, oldPlain[0]); err != nil || used {
 		t.Errorf("stale recovery code after re-enroll: used=%v err=%v, want used=false", used, err)
 	}
-	// Exactly one enrollment row remains for the owner.
-	var count int64
-	gdb.Model(&models.TwoFactor{}).Where("user_type = ? AND subject_id = ?", models.TwoFactorUserTypeMailbox, subject).Count(&count)
-	if count != 1 {
-		t.Errorf("enrollment rows for owner = %d, want 1", count)
+	// Exactly one TOTP credential is still unrevoked for the account; the old
+	// one is kept, revoked.
+	var live, all int64
+	gdb.Model(&models.Credential{}).Where("account_id = ? AND kind = ? AND revoked_at IS NULL", subject, models.CredentialKindTOTP).Count(&live)
+	gdb.Model(&models.Credential{}).Where("account_id = ? AND kind = ?", subject, models.CredentialKindTOTP).Count(&all)
+	if live != 1 || all != 2 {
+		t.Errorf("TOTP credentials: %d unrevoked of %d, want 1 of 2", live, all)
 	}
 }
 
-// TestTwoFactor_DeleteRemovesEnrollmentAndCodes: disable removes the enrollment
-// and leaves no orphan recovery-code rows.
+// TestTwoFactor_DeleteRemovesEnrollmentAndCodes: disable revokes the TOTP
+// credential and every recovery code, keeping the rows.
 func TestTwoFactor_DeleteRemovesEnrollmentAndCodes(t *testing.T) {
 	gdb := openTwoFactorTestDB(t)
 	r := NewTwoFactorRepository(gdb)
 	subject := uint(time.Now().UnixNano()%1_000_000) + 3
-	t.Cleanup(func() { _ = r.Delete(models.TwoFactorUserTypeMailbox, subject) })
+	t.Cleanup(func() { gdb.Where("account_id = ?", subject).Delete(&models.Credential{}) })
 
-	_, tf := enrollForTest(t, r, subject)
-	if err := r.Delete(models.TwoFactorUserTypeMailbox, subject); err != nil {
+	plain, _ := enrollForTest(t, r, subject)
+	if err := r.Delete(subject); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
-	if _, err := r.Get(models.TwoFactorUserTypeMailbox, subject); !errors.Is(err, ErrTwoFactorNotFound) {
+	if _, err := r.Get(subject); !errors.Is(err, ErrTwoFactorNotFound) {
 		t.Errorf("Get after delete = %v, want ErrTwoFactorNotFound", err)
 	}
-	var codeCount int64
-	gdb.Model(&models.TwoFactorRecoveryCode{}).Where("two_factor_id = ?", tf.ID).Count(&codeCount)
-	if codeCount != 0 {
-		t.Errorf("orphan recovery codes after delete = %d, want 0", codeCount)
+	var live int64
+	gdb.Model(&models.Credential{}).Where("account_id = ? AND kind = ? AND revoked_at IS NULL", subject, models.CredentialKindRecoveryCode).Count(&live)
+	if live != 0 {
+		t.Errorf("recovery codes still unrevoked after delete = %d, want 0", live)
+	}
+	if used, err := r.ConsumeRecoveryCode(subject, plain[0]); err != nil || used {
+		t.Errorf("a recovery code after disabling: used=%v err=%v", used, err)
 	}
 }

@@ -13,8 +13,10 @@ import (
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // TestHandler provides endpoints for testing and debugging the mail system.
@@ -185,11 +187,11 @@ func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
 		var msg models.Message
 		if err := query.Order("received_at DESC").First(&msg).Error; err == nil {
 			respond.Data(w, http.StatusOK, map[string]any{
-				"found":      true,
-				"message_id": msg.ID,
-				"msg_id":     msg.MsgID,
-				"subject":    msg.Subject,
-				"sender":     msg.Sender,
+				"found":       true,
+				"message_id":  msg.ID,
+				"msg_id":      msg.MsgID,
+				"subject":     msg.Subject,
+				"sender":      msg.Sender,
 				"received_at": msg.ReceivedAt,
 			})
 			return
@@ -274,26 +276,7 @@ func (h *TestHandler) ResetTestData(w http.ResponseWriter, r *http.Request) {
 
 	slog.Warn("test: resetting all data")
 
-	err := h.db.Transaction(func(tx *gorm.DB) error {
-		// Delete in correct order to respect FK constraints
-		tables := []string{
-			"attachments", "messages", "outbound_queue",
-			"quarantines", "vacation_configs", "vacation_responses",
-			"contacts", "sieve_scripts", "quota_usages",
-			"credentials", "linked_accounts", "webmail_accounts",
-			"aliases", "message_traces", "pipelines", "custom_filters",
-			"bans", "restmail_capabilities", "certificates",
-			"sender_rules", "greylist_entries",
-			"mailboxes", "domains",
-		}
-		for _, table := range tables {
-			if err := tx.Exec(fmt.Sprintf("DELETE FROM %s", table)).Error; err != nil {
-				slog.Debug("test: delete from table", "table", table, "error", err)
-				// Ignore errors for tables that may not exist
-			}
-		}
-		return nil
-	})
+	err := h.db.Transaction(clearTestData)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal", "failed to reset data: "+err.Error())
 		return
@@ -354,10 +337,6 @@ func (h *TestHandler) Snapshot(w http.ResponseWriter, r *http.Request) {
 	h.db.Find(&queue)
 	snap["queue"] = queue
 
-	var webmailAccounts []models.WebmailAccount
-	h.db.Find(&webmailAccounts)
-	snap["webmail_accounts"] = webmailAccounts
-
 	var pipelines []models.Pipeline
 	h.db.Find(&pipelines)
 	snap["pipelines"] = pipelines
@@ -380,14 +359,13 @@ func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var snap struct {
-		Domains         []models.Domain         `json:"domains"`
-		Mailboxes       []models.Mailbox        `json:"mailboxes"`
-		Aliases         []models.Alias          `json:"aliases"`
-		Messages        []models.Message        `json:"messages"`
-		Queue           []models.OutboundQueue  `json:"queue"`
-		WebmailAccounts []models.WebmailAccount `json:"webmail_accounts"`
-		Pipelines       []models.Pipeline       `json:"pipelines"`
-		Bans            []models.Ban            `json:"bans"`
+		Domains   []models.Domain        `json:"domains"`
+		Mailboxes []models.Mailbox       `json:"mailboxes"`
+		Aliases   []models.Alias         `json:"aliases"`
+		Messages  []models.Message       `json:"messages"`
+		Queue     []models.OutboundQueue `json:"queue"`
+		Pipelines []models.Pipeline      `json:"pipelines"`
+		Bans      []models.Ban           `json:"bans"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&snap); err != nil {
@@ -396,40 +374,25 @@ func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err := h.db.Transaction(func(tx *gorm.DB) error {
-		// Clear existing data
-		tables := []string{
-			"attachments", "messages", "outbound_queue",
-			"quarantines", "vacation_configs", "vacation_responses",
-			"contacts", "sieve_scripts", "quota_usages",
-			"credentials", "linked_accounts", "webmail_accounts",
-			"aliases", "message_traces", "pipelines", "custom_filters",
-			"bans", "restmail_capabilities", "certificates",
-			"sender_rules", "greylist_entries",
-			"mailboxes", "domains",
-		}
-		for _, table := range tables {
-			tx.Exec(fmt.Sprintf("DELETE FROM %s", table))
+		// Clear existing data, sparing the admins.
+		if err := clearTestData(tx); err != nil {
+			return err
 		}
 
 		// Restore in FK-safe order
 		for i := range snap.Domains {
-			if err := tx.Create(&snap.Domains[i]).Error; err != nil {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&snap.Domains[i]).Error; err != nil {
 				return fmt.Errorf("restore domains: %w", err)
 			}
 		}
 		for i := range snap.Mailboxes {
-			if err := tx.Create(&snap.Mailboxes[i]).Error; err != nil {
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&snap.Mailboxes[i]).Error; err != nil {
 				return fmt.Errorf("restore mailboxes: %w", err)
 			}
 		}
 		for i := range snap.Aliases {
 			if err := tx.Create(&snap.Aliases[i]).Error; err != nil {
 				return fmt.Errorf("restore aliases: %w", err)
-			}
-		}
-		for i := range snap.WebmailAccounts {
-			if err := tx.Create(&snap.WebmailAccounts[i]).Error; err != nil {
-				return fmt.Errorf("restore webmail accounts: %w", err)
 			}
 		}
 		for i := range snap.Messages {
@@ -462,6 +425,37 @@ func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond.Data(w, http.StatusOK, map[string]string{"status": "restore_complete"})
+}
+
+// testDataAdmins are the accounts the test endpoints never clear: those
+// holding a grant at "*", whoever runs the tests among them.
+const testDataAdmins = `(SELECT holder_id FROM grants WHERE holder_kind = 'account' AND scope = '*')`
+
+// clearTestData deletes the test data, in tx: every account but the admins
+// (with their credentials and the grants on them), and everything else the
+// fixtures make.
+func clearTestData(tx *gorm.DB) error {
+	stmts := []string{
+		"DELETE FROM attachments", "DELETE FROM messages", "DELETE FROM outbound_queue",
+		"DELETE FROM quarantines", "DELETE FROM vacation_configs", "DELETE FROM vacation_responses",
+		"DELETE FROM contacts", "DELETE FROM sieve_scripts", "DELETE FROM quota_usages",
+		"DELETE FROM credentials WHERE account_id NOT IN " + testDataAdmins,
+		"DELETE FROM grants WHERE scope LIKE 'mailbox:%' OR holder_id NOT IN " + testDataAdmins,
+		"DELETE FROM aliases", "DELETE FROM message_traces",
+		"DELETE FROM custom_filters", "DELETE FROM bans",
+		"DELETE FROM restmail_capabilities", "DELETE FROM certificates",
+		"DELETE FROM sender_rules", "DELETE FROM greylist_entries",
+		"DELETE FROM mailboxes WHERE id NOT IN " + testDataAdmins,
+		"DELETE FROM pipelines WHERE domain_id NOT IN (SELECT domain_id FROM mailboxes)",
+		"DELETE FROM domains WHERE id NOT IN (SELECT domain_id FROM mailboxes)",
+	}
+	for _, stmt := range stmts {
+		if err := tx.Exec(stmt).Error; err != nil {
+			// Ignore errors for tables that may not exist
+			slog.Debug("test: clear table", "statement", stmt, "error", err)
+		}
+	}
+	return nil
 }
 
 // --- helpers ---
@@ -526,7 +520,8 @@ func probeDB(db *gorm.DB) map[string]any {
 	return map[string]any{"status": "ok", "latency": time.Since(start).String()}
 }
 
-// seedTestData creates the standard test domains, mailboxes, aliases, and accounts.
+// seedTestData creates the standard test domains, accounts (each with the
+// password "password123") and aliases.
 func seedTestData(database *gorm.DB) error {
 	defaultPassword, err := hashPassword("password123")
 	if err != nil {
@@ -543,19 +538,25 @@ func seedTestData(database *gorm.DB) error {
 	}
 
 	mailboxes := []models.Mailbox{
-		{DomainID: domains[0].ID, LocalPart: "alice", Address: "alice@mail1.test", Password: defaultPassword, DisplayName: "Alice Smith", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[0].ID, LocalPart: "bob", Address: "bob@mail1.test", Password: defaultPassword, DisplayName: "Bob Jones", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[0].ID, LocalPart: "postmaster", Address: "postmaster@mail1.test", Password: defaultPassword, DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[1].ID, LocalPart: "charlie", Address: "charlie@mail2.test", Password: defaultPassword, DisplayName: "Charlie Brown", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[1].ID, LocalPart: "diana", Address: "diana@mail2.test", Password: defaultPassword, DisplayName: "Diana Prince", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[1].ID, LocalPart: "postmaster", Address: "postmaster@mail2.test", Password: defaultPassword, DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[2].ID, LocalPart: "eve", Address: "eve@restmail.test", Password: defaultPassword, DisplayName: "Eve Wilson", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[2].ID, LocalPart: "frank", Address: "frank@restmail.test", Password: defaultPassword, DisplayName: "Frank Miller", QuotaBytes: 1073741824, Active: true},
-		{DomainID: domains[2].ID, LocalPart: "postmaster", Address: "postmaster@restmail.test", Password: defaultPassword, DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[0].ID, LocalPart: "alice", Address: "alice@mail1.test", DisplayName: "Alice Smith", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[0].ID, LocalPart: "bob", Address: "bob@mail1.test", DisplayName: "Bob Jones", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[0].ID, LocalPart: "postmaster", Address: "postmaster@mail1.test", DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[1].ID, LocalPart: "charlie", Address: "charlie@mail2.test", DisplayName: "Charlie Brown", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[1].ID, LocalPart: "diana", Address: "diana@mail2.test", DisplayName: "Diana Prince", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[1].ID, LocalPart: "postmaster", Address: "postmaster@mail2.test", DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[2].ID, LocalPart: "eve", Address: "eve@restmail.test", DisplayName: "Eve Wilson", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[2].ID, LocalPart: "frank", Address: "frank@restmail.test", DisplayName: "Frank Miller", QuotaBytes: 1073741824, Active: true},
+		{DomainID: domains[2].ID, LocalPart: "postmaster", Address: "postmaster@restmail.test", DisplayName: "Postmaster", QuotaBytes: 1073741824, Active: true},
 	}
+	creds := repositories.NewCredentialRepository(database)
 	for i := range mailboxes {
-		database.Where("address = ?", mailboxes[i].Address).FirstOrCreate(&mailboxes[i])
+		res := database.Where("address = ?", mailboxes[i].Address).FirstOrCreate(&mailboxes[i])
 		database.Where("mailbox_id = ?", mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: mailboxes[i].ID})
+		if res.Error == nil && res.RowsAffected > 0 {
+			if _, err := creds.SetPassword(mailboxes[i].ID, defaultPassword, nil, time.Now()); err != nil {
+				return err
+			}
+		}
 	}
 
 	aliases := []models.Alias{
@@ -566,13 +567,6 @@ func seedTestData(database *gorm.DB) error {
 	}
 	for i := range aliases {
 		database.Where("source_address = ? AND destination_address = ?", aliases[i].SourceAddress, aliases[i].DestinationAddress).FirstOrCreate(&aliases[i])
-	}
-
-	for _, addr := range []string{"eve@restmail.test", "frank@restmail.test"} {
-		var mailbox models.Mailbox
-		database.Where("address = ?", addr).First(&mailbox)
-		var account models.WebmailAccount
-		database.Where("primary_mailbox_id = ?", mailbox.ID).FirstOrCreate(&account, models.WebmailAccount{PrimaryMailboxID: mailbox.ID})
 	}
 
 	return nil

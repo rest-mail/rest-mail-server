@@ -19,12 +19,13 @@ import (
 // repositories.TwoFactorRepository) so the handler state machine can be
 // unit-tested against an in-memory fake with no database.
 type twoFactorStore interface {
-	Get(userType string, subjectID uint) (*models.TwoFactor, error)
-	GetActive(userType string, subjectID uint) (*models.TwoFactor, error)
-	Enroll(userType string, subjectID uint, encryptedSecret string, recoveryHashes []string) (*models.TwoFactor, error)
+	Get(accountID uint) (*models.Credential, error)
+	GetActive(accountID uint) (*models.Credential, error)
+	Active(accountID uint) ([]models.Credential, error)
+	Enroll(accountID uint, encryptedSecret string, recoveryHashes []string) (*models.Credential, error)
 	Confirm(id uint) error
-	Delete(userType string, subjectID uint) error
-	ConsumeRecoveryCode(twoFactorID uint, plaintext string) (bool, error)
+	Delete(accountID uint) error
+	ConsumeRecoveryCode(accountID uint, plaintext string) (bool, error)
 }
 
 // TwoFactorHandler serves the authenticated 2FA management endpoints:
@@ -48,19 +49,14 @@ func NewTwoFactorHandler(db *gorm.DB, masterKey string, enabled bool) *TwoFactor
 	return &TwoFactorHandler{db: db, store: store, masterKey: masterKey, enabled: enabled}
 }
 
-// twoFactorOwner resolves the authenticated caller to a (userType, subjectID,
-// label) 2FA owner. label is the account's human name used in the otpauth URI.
-func twoFactorOwner(c *auth.Claims) (userType string, subjectID uint, label string, ok bool) {
-	if c == nil {
-		return "", 0, "", false
+// twoFactorOwner is the account a session's 2FA requests act on: its own, and
+// its address, which labels the authenticator entry. Only a session: a
+// credential sent with HTTP Basic never reaches these routes.
+func twoFactorOwner(c *auth.Claims) (accountID uint, label string, ok bool) {
+	if c == nil || c.AccountID == 0 || c.CredentialID != 0 {
+		return 0, "", false
 	}
-	switch c.UserType {
-	case "admin":
-		return models.TwoFactorUserTypeAdmin, c.AdminUserID, c.Username, c.AdminUserID != 0
-	case "mailbox":
-		return models.TwoFactorUserTypeMailbox, c.MailboxID, c.Email, c.MailboxID != 0
-	}
-	return "", 0, "", false
+	return c.AccountID, c.Address, true
 }
 
 type twoFactorStatusResponse struct {
@@ -73,12 +69,12 @@ type twoFactorStatusResponse struct {
 // Status reports whether the caller has 2FA active and/or a pending enrollment.
 // GET /api/v1/auth/2fa
 func (h *TwoFactorHandler) Status(w http.ResponseWriter, r *http.Request) {
-	userType, subjectID, _, ok := twoFactorOwner(middleware.GetClaims(r))
+	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 		return
 	}
-	tf, err := h.store.Get(userType, subjectID)
+	tf, err := h.store.Get(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
 		respond.Data(w, http.StatusOK, twoFactorStatusResponse{})
 		return
@@ -87,7 +83,7 @@ func (h *TwoFactorHandler) Status(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA status")
 		return
 	}
-	respond.Data(w, http.StatusOK, twoFactorStatusResponse{Enabled: tf.Confirmed, Pending: !tf.Confirmed})
+	respond.Data(w, http.StatusOK, twoFactorStatusResponse{Enabled: tf.ConfirmedAt != nil, Pending: tf.ConfirmedAt == nil})
 }
 
 type enrollResponse struct {
@@ -117,7 +113,7 @@ func (h *TwoFactorHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusServiceUnavailable, "unavailable", "Two-factor authentication requires server encryption to be configured")
 		return
 	}
-	userType, subjectID, label, ok := twoFactorOwner(middleware.GetClaims(r))
+	accountID, label, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 		return
@@ -126,7 +122,7 @@ func (h *TwoFactorHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 	// A confirmed enrollment must be explicitly disabled before re-enrolling, so
 	// an attacker holding a live session can't silently swap the secret out from
 	// under an active 2FA user. A pending enrollment may be freely replaced.
-	if existing, err := h.store.Get(userType, subjectID); err == nil && existing.Confirmed {
+	if existing, err := h.store.Get(accountID); err == nil && existing.ConfirmedAt != nil {
 		respond.Error(w, http.StatusConflict, "conflict", "Two-factor authentication is already enabled; disable it first")
 		return
 	} else if err != nil && !errors.Is(err, repositories.ErrTwoFactorNotFound) {
@@ -160,7 +156,7 @@ func (h *TwoFactorHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		hashes[i] = hash
 	}
 
-	if _, err := h.store.Enroll(userType, subjectID, encrypted, hashes); err != nil {
+	if _, err := h.store.Enroll(accountID, encrypted, hashes); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save 2FA enrollment")
 		return
 	}
@@ -185,7 +181,7 @@ func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Two-factor authentication is disabled on this server")
 		return
 	}
-	userType, subjectID, _, ok := twoFactorOwner(middleware.GetClaims(r))
+	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 		return
@@ -200,7 +196,7 @@ func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tf, err := h.store.Get(userType, subjectID)
+	tf, err := h.store.Get(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "No pending 2FA enrollment to confirm")
 		return
@@ -209,7 +205,7 @@ func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA enrollment")
 		return
 	}
-	if tf.Confirmed {
+	if tf.ConfirmedAt != nil {
 		respond.Error(w, http.StatusConflict, "conflict", "Two-factor authentication is already enabled")
 		return
 	}
@@ -240,7 +236,7 @@ type disableRequest struct {
 // can't strip the protection without the second factor.
 // POST /api/v1/auth/2fa/disable
 func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
-	userType, subjectID, _, ok := twoFactorOwner(middleware.GetClaims(r))
+	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 		return
@@ -251,7 +247,7 @@ func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tf, err := h.store.GetActive(userType, subjectID)
+	_, err := h.store.GetActive(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Two-factor authentication is not enabled")
 		return
@@ -261,51 +257,53 @@ func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifySecondFactor(tf, req.Code, req.RecoveryCode) {
+	if !h.verifySecondFactor(accountID, req.Code, req.RecoveryCode) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid 2FA code")
 		return
 	}
 	// Where 2FA is required (the bootstrap admin), turning it off would make the
 	// requirement a one-time gate rather than a rule.
-	if userType == models.TwoFactorUserTypeAdmin && h.db != nil {
-		var admin models.AdminUser
-		if err := h.db.Select("two_factor_required").First(&admin, subjectID).Error; err != nil {
+	if h.db != nil {
+		var account models.Mailbox
+		if err := h.db.Select("two_factor_required").First(&account, accountID).Error; err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account")
 			return
 		}
-		if admin.TwoFactorRequired {
+		if account.TwoFactorRequired {
 			respond.Error(w, http.StatusForbidden, "two_factor_required", "Two-factor authentication is required for this account and cannot be disabled")
 			return
 		}
 	}
-	if err := h.store.Delete(userType, subjectID); err != nil {
+	if err := h.store.Delete(accountID); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to disable 2FA")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// verifySecondFactor reports whether a valid current TOTP code or an unused
-// recovery code was supplied for an active enrollment.
-func (h *TwoFactorHandler) verifySecondFactor(tf *models.TwoFactor, totpCode, recoveryCode string) bool {
-	return verifyTOTPOrRecovery(h.store, h.masterKey, tf, totpCode, recoveryCode)
+// verifySecondFactor checks a TOTP code or a recovery code for the account.
+func (h *TwoFactorHandler) verifySecondFactor(accountID uint, totpCode, recoveryCode string) bool {
+	return verifyTOTPOrRecovery(h.store, h.masterKey, accountID, totpCode, recoveryCode)
 }
 
-// verifyTOTPOrRecovery reports whether totpCode is a valid current code for the
-// enrollment's (decrypted) secret, or recoveryCode is an unused recovery code.
-// A matching recovery code is consumed (single-use) as a side effect. Shared by
-// the 2FA Disable endpoint and the login enforcement path so both accept the
-// same proofs identically.
-func verifyTOTPOrRecovery(store twoFactorStore, masterKey string, tf *models.TwoFactor, totpCode, recoveryCode string) bool {
+// verifyTOTPOrRecovery reports whether totpCode is a current code of one of
+// the account's confirmed TOTP credentials, or recoveryCode one of its unspent
+// recovery codes, which it spends. A TOTP code is tried first; a recovery code
+// only when no TOTP code matched, so one is never spent needlessly.
+func verifyTOTPOrRecovery(store twoFactorStore, masterKey string, accountID uint, totpCode, recoveryCode string) bool {
 	if totpCode != "" && masterKey != "" {
-		if secret, err := crypto.DecryptString(tf.EncryptedSecret, masterKey); err == nil {
-			if auth.ValidateTOTPCode(totpCode, secret) {
-				return true
+		creds, err := store.Active(accountID)
+		if err == nil {
+			for i := range creds {
+				secret, err := crypto.DecryptString(creds[i].EncryptedSecret, masterKey)
+				if err == nil && auth.ValidateTOTPCode(totpCode, secret) {
+					return true
+				}
 			}
 		}
 	}
 	if recoveryCode != "" {
-		if consumed, err := store.ConsumeRecoveryCode(tf.ID, recoveryCode); err == nil && consumed {
+		if consumed, err := store.ConsumeRecoveryCode(accountID, recoveryCode); err == nil && consumed {
 			return true
 		}
 	}
