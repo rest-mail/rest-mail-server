@@ -42,7 +42,8 @@ type AuditEntry struct {
 	ActorID   *uint  `gorm:"index:idx_audit_log_actor" json:"actor_id"`
 	// ActorName is the address or username at the time.
 	ActorName string `gorm:"type:text;not null" json:"actor_name"`
-	// CredentialID is the credential used. Unused until credentials (#344).
+	// CredentialID is the credential used: the app password a request was
+	// made with, or the one refused when its secret matched. Nil for a session.
 	CredentialID *uint `json:"credential_id"`
 	// SessionID is the jti of the token the request carried.
 	SessionID string `gorm:"type:text;not null" json:"session_id"`

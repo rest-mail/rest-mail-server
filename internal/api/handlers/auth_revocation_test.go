@@ -59,6 +59,8 @@ func openRevocationTestDB(t *testing.T) *gorm.DB {
 		&models.UserRole{},
 		&models.RoleCapability{},
 		&models.Grant{},
+		// A mailbox's new password revokes its app passwords.
+		&models.Credential{},
 	); err != nil {
 		t.Skipf("session-revocation DB test skipped: migrate failed (%v)", err)
 	}

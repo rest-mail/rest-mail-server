@@ -67,8 +67,27 @@ type Claims struct {
 	SetupPending bool `json:"setup,omitempty"`
 	// CredentialEpoch is the account's credential version when the token was
 	// minted (admin tokens); RejectStaleAdminSessions refuses an outdated one.
-	CredentialEpoch int    `json:"cep,omitempty"`
-	TokenType       string `json:"token_type"`
+	CredentialEpoch int `json:"cep,omitempty"`
+	// TwoFactor marks a mailbox session whose sign-in took a second factor as
+	// well as the password. A refresh keeps it.
+	TwoFactor bool   `json:"mfa,omitempty"`
+	TokenType string `json:"token_type"`
+
+	// CredentialID is the credential a request was made with: an app password,
+	// sent with HTTP Basic. Zero for a session. It is never part of a token:
+	// only the API sets it, on claims it builds from a credential it has just
+	// checked.
+	CredentialID uint `json:"-"`
+}
+
+// LinkedAccountsOwner is the webmail account whose linked mailboxes a request
+// may also reach: the session's own account, or none (0) for a request made
+// with a credential, whose scope is the one mailbox it belongs to (#344).
+func (c *Claims) LinkedAccountsOwner() uint {
+	if c.CredentialID != 0 {
+		return 0
+	}
+	return c.WebmailAccountID
 }
 
 // HasAMR reports whether the session signed in with method.
@@ -121,6 +140,13 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 // caller can persist a rotation/revocation ledger row for it. The access token
 // carries one of its own, which the audit log records as the session.
 func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAccountID uint) (*TokenPair, error) {
+	return s.GenerateMailboxSession(mailboxID, email, webmailAccountID, false)
+}
+
+// GenerateMailboxSession is GenerateTokenPair for a sign-in that may have taken
+// a second factor: twoFactor marks both tokens, so the session can do what
+// needs one, such as creating an app password.
+func (s *JWTService) GenerateMailboxSession(mailboxID uint, email string, webmailAccountID uint, twoFactor bool) (*TokenPair, error) {
 	now := time.Now()
 
 	// Access token
@@ -140,6 +166,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
 		UserType:         "mailbox",
+		TwoFactor:        twoFactor,
 		TokenType:        "access",
 	}
 
@@ -167,6 +194,7 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		WebmailAccountID: webmailAccountID,
 		MailboxID:        mailboxID,
 		UserType:         "mailbox",
+		TwoFactor:        twoFactor,
 		TokenType:        "refresh",
 	}
 

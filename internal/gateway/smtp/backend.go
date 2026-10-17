@@ -8,8 +8,9 @@ import "github.com/restmail/restmail/internal/gateway/apiclient"
 // The concrete *apiclient.Client satisfies this interface structurally, so the
 // production wiring keeps passing the real client unchanged.
 type Backend interface {
-	// Login authenticates a mailbox user (submission AUTH).
-	Login(email, password string) (*apiclient.LoginResponse, error)
+	// SignIn authenticates a mailbox user (submission AUTH), with the mailbox's
+	// password or an app password (apiclient.Client.SignIn).
+	SignIn(email, password, protocol string) (*apiclient.LoginResponse, error)
 	// CheckMailbox verifies a recipient address exists locally.
 	CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error)
 	// DeliverMessage delivers a message to a local mailbox.
@@ -40,6 +41,16 @@ type Store interface {
 	// EnqueueOutbound appends a message to the outbound delivery queue for the
 	// queue worker to deliver to a remote MX.
 	EnqueueOutbound(msg OutboundMessage) error
+	// CredentialUsable reports whether the app password a session signed in
+	// with can still be used: not revoked, not expired, its mailbox active.
+	// Checked before each message, so revoking one stops it sending at once.
+	CredentialUsable(credentialID uint) (bool, error)
+	// PrepareSubmitted applies the outbound transforms (outbound.Prepare) to
+	// an authenticated submission before a local mailbox receives it: the Bcc
+	// header stripped, and the message DKIM-signed with the sender domain's
+	// key. An error means a configured key could not be loaded; the caller
+	// defers rather than deliver the message unsigned.
+	PrepareSubmitted(sender, raw string) (string, error)
 }
 
 // OutboundMessage is a neutral description of a queued outbound message, keeping

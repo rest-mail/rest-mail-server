@@ -179,6 +179,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	grantCache := grants.NewCache(db, grants.CacheTTL)
 	grantH := handlers.NewGrantHandler(db, grantCache)
 
+	// App passwords (#344): the mail routes below also take one, sent with HTTP
+	// Basic as address:app_password and checked on every request, so a revoked
+	// one stops working at once. Each refusal is recorded, and refusals are
+	// throttled at login's rate (see middleware.AppPasswords).
+	var appPasswordRefusals *middleware.RateLimitConfig
+	if cfg.AuthRateLimitEnabled {
+		appPasswordRefusals = &middleware.RateLimitConfig{RPS: cfg.AuthRateLimitRPS, Burst: cfg.AuthRateLimitBurst}
+	}
+	appPasswords := middleware.NewAppPasswords(handlers.AppPasswordVerifier(db), auditor.AppPasswordRefused, appPasswordRefusals)
+	credentialH := handlers.NewCredentialHandler(db)
+
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
 	pipeline.DefaultRegistry.Register("vacation", filters.NewVacation(db))
@@ -444,7 +455,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	r.Get("/api/v1/accounts/{id}/events", eventH.Events)
 
 	// ═══════════════════════════════════════════════════════════════
-	// Authenticated routes (mail server operations)
+	// Authenticated routes that need a person: a session from signing in
+	// with a password. They take no app password, so one can never change a
+	// password or 2FA, link a mailbox, or create or revoke a credential
+	// (#341, Decided 5).
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
@@ -489,11 +503,41 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// auth throttle as /auth/login and /auth/refresh (same limiter instance), so
 		// a wrong guess consumes the same budget as a failed login and cannot be used
 		// to sidestep it. The read/list/unlink routes carry no such risk.
-		r.Get("/api/v1/accounts", accountH.ListAccounts)
-		r.Get("/api/v1/accounts/{id}", accountH.GetAccount)
 		r.With(authThrottle, auditLog("accounts.link", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts", accountH.LinkAccount)
 		r.With(auditLog("accounts.unlink")).Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
 		r.With(authThrottle, auditLog("accounts.test_connection", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts/test-connection", accountH.TestConnection)
+
+		// Credentials (#344): a mailbox's app passwords. The secret is in the
+		// answer to creating one, once, and never in the audit log. Creating
+		// one takes the mailbox's current password, so it is throttled like
+		// login, with the same limiter: a wrong one spends login's budget.
+		r.Get("/api/v1/accounts/{id}/credentials", credentialH.List)
+		r.With(authThrottle, auditLog("credentials.create", middleware.AuditBodyFields("name"),
+			middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
+			Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
+		r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
+	})
+
+	// ═══════════════════════════════════════════════════════════════
+	// Authenticated routes (mail server operations): a session, or an app
+	// password with HTTP Basic, whose scope is its own mailbox with read,
+	// write and send. The protocol gateways reach them both ways.
+	// ═══════════════════════════════════════════════════════════════
+	r.Group(func(r chi.Router) {
+		r.Use(appPasswords.Authenticate(jwtService))
+		r.Use(middleware.RejectStaleAdminSessions(adminSessionCheck(db)))
+		r.Use(middleware.CSRF())
+		r.Use(middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))
+
+		// A protocol gateway signs in a mail client that gave it an app
+		// password. Throttled like login, which the gateways call for a
+		// mailbox's own password; a refused app password is recorded by
+		// appPasswords, a successful sign-in here.
+		r.With(authThrottle, auditLog("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))).
+			Post("/api/v1/auth/protocol-sign-in", credentialH.ProtocolSignIn)
+
+		r.Get("/api/v1/accounts", accountH.ListAccounts)
+		r.Get("/api/v1/accounts/{id}", accountH.GetAccount)
 
 		// Folders
 		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)

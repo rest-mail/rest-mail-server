@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
@@ -102,7 +103,7 @@ func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		folder = "INBOX"
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -473,10 +474,10 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check linked accounts
+	// Check linked accounts (none for an app password: LinkedAccountsOwner is 0)
 	if !authorized {
 		var linked models.LinkedAccount
-		if err := h.db.Joins("Mailbox").Where("linked_accounts.webmail_account_id = ? AND \"Mailbox\".address = ?", claims.WebmailAccountID, req.From).First(&linked).Error; err == nil {
+		if err := h.db.Joins("Mailbox").Where("linked_accounts.webmail_account_id = ? AND \"Mailbox\".address = ?", claims.LinkedAccountsOwner(), req.From).First(&linked).Error; err == nil {
 			senderMailbox = linked.Mailbox
 			authorized = true
 		}
@@ -956,7 +957,7 @@ func (h *MessageHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1005,7 +1006,7 @@ func (h *MessageHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1059,7 +1060,7 @@ func (h *MessageHandler) RenameFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1100,7 +1101,7 @@ func (h *MessageHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1155,7 +1156,7 @@ func (h *MessageHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1179,16 +1180,17 @@ func (h *MessageHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 }
 
 // resolveSenderMailbox verifies the given from address belongs to the
-// authenticated user (via primary or linked mailbox) and returns the mailbox.
-func (h *MessageHandler) resolveSenderMailbox(from string, webmailAccountID uint) (*models.Mailbox, error) {
+// authenticated user (via primary or linked mailbox; an app password has no
+// linked ones) and returns the mailbox.
+func (h *MessageHandler) resolveSenderMailbox(from string, claims *auth.Claims) (*models.Mailbox, error) {
 	var account models.WebmailAccount
-	if err := h.db.Preload("PrimaryMailbox").First(&account, webmailAccountID).Error; err == nil {
+	if err := h.db.Preload("PrimaryMailbox").First(&account, claims.WebmailAccountID).Error; err == nil {
 		if account.PrimaryMailbox.Address == from {
 			return &account.PrimaryMailbox, nil
 		}
 	}
 	var linked models.LinkedAccount
-	if err := h.db.Joins("Mailbox").Where("linked_accounts.webmail_account_id = ? AND \"Mailbox\".address = ?", webmailAccountID, from).First(&linked).Error; err == nil {
+	if err := h.db.Joins("Mailbox").Where("linked_accounts.webmail_account_id = ? AND \"Mailbox\".address = ?", claims.LinkedAccountsOwner(), from).First(&linked).Error; err == nil {
 		return &linked.Mailbox, nil
 	}
 	return nil, fmt.Errorf("sender not authorized")
@@ -1220,7 +1222,7 @@ func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 
 	var mailboxID uint
 	if req.From != "" {
-		mb, err := h.resolveSenderMailbox(req.From, claims.WebmailAccountID)
+		mb, err := h.resolveSenderMailbox(req.From, claims)
 		if err != nil {
 			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 			return
@@ -1428,7 +1430,7 @@ func (h *MessageHandler) GetThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1652,7 +1654,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Verify sender belongs to authenticated user
-	senderMailbox, err := h.resolveSenderMailbox(req.From, claims.WebmailAccountID)
+	senderMailbox, err := h.resolveSenderMailbox(req.From, claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		return
@@ -1814,9 +1816,9 @@ func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.R
 			return true
 		}
 	}
-	// Check linked accounts
+	// Check linked accounts (none for an app password: LinkedAccountsOwner is 0)
 	var linked []models.LinkedAccount
-	h.db.Where("webmail_account_id = ?", claims.WebmailAccountID).Find(&linked)
+	h.db.Where("webmail_account_id = ?", claims.LinkedAccountsOwner()).Find(&linked)
 	for _, la := range linked {
 		if msg.MailboxID == la.MailboxID {
 			return true
@@ -2342,8 +2344,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	return &msg, nil
 }
 
-func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
-	return resolveAccountMailbox(h.db, accountID, webmailAccountID)
+func (h *MessageHandler) resolveAccountMailbox(accountID uint, claims *auth.Claims) (uint, error) {
+	return resolveAccountMailbox(h.db, accountID, claims)
 }
 
 // ListCalendarEvents returns calendar event versions for a mailbox,
@@ -2362,7 +2364,7 @@ func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return

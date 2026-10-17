@@ -686,7 +686,7 @@ func (h *PipelineHandler) resolveMailboxID(r *http.Request, accountIDStr string)
 	if err != nil {
 		return 0, err
 	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
+	return resolveAccountMailbox(h.db, uint(accountID), claims)
 }
 
 func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request) {
