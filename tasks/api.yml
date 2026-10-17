@@ -35,6 +35,7 @@ vars:
   API_DB_PASS: '{{.API_DB_PASS | default "restmail"}}'
   API_JWT_SECRET: '{{.API_JWT_SECRET | default "dev-secret-change-in-production"}}'
   API_MASTER_KEY: '{{.API_MASTER_KEY | default "dev-master-key-change-in-production"}}'
+  API_JS_FILTER_TOKEN: '{{.API_JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
   API_LOG_LEVEL: '{{.API_LOG_LEVEL | default "debug"}}'
   API_ENVIRONMENT: '{{.API_ENVIRONMENT | default "development"}}'
   API_MAILNET_ONLY: '{{.API_MAILNET_ONLY | default "false"}}'
@@ -109,8 +110,8 @@ tasks:
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --pids-limit 1024 --memory 2g --cpus 2"
-        # Secrets (DB_PASS/JWT_SECRET/MASTER_KEY) are handed to the container via
-        # a 0600 env-file rather than -e flags, so they never sit on the
+        # Secrets (DB_PASS/JWT_SECRET/MASTER_KEY/JS_FILTER_TOKEN) are handed to
+        # the container via a 0600 env-file rather than -e flags, so they never sit on the
         # `docker run` command line (host process list, shell history, CI logs)
         # or on disk world-readably. The file is removed once docker has read it.
         SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.API_CONTAINER_NAME}}.secrets.env"
@@ -122,6 +123,7 @@ tasks:
         printf 'DB_PASS=%s\n'    "{{.API_DB_PASS}}"    >  "$SECRETS_ENV"
         printf 'JWT_SECRET=%s\n' "{{.API_JWT_SECRET}}" >> "$SECRETS_ENV"
         printf 'MASTER_KEY=%s\n' "{{.API_MASTER_KEY}}" >> "$SECRETS_ENV"
+        printf 'JS_FILTER_TOKEN=%s\n' "{{.API_JS_FILTER_TOKEN}}" >> "$SECRETS_ENV"
         docker run -d --name {{.API_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \

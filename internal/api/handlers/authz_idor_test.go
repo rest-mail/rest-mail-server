@@ -12,6 +12,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 
@@ -202,7 +203,7 @@ func TestQuarantineIDOR_OwnershipEnforced(t *testing.T) {
 		t.Fatalf("seed quarantine: %v", err)
 	}
 
-	h := NewPipelineHandler(tx, nil)
+	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	ownerAcct := map[string]string{"id": uintToStr(fx.ownerAccount.ID)}
 
 	// Owner LIST → 200 with the one row.

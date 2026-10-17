@@ -54,9 +54,10 @@ config/*/dkim.conf
 # Docker volumes (local dev)
 postgres-data/
 
-# Node modules (webmail)
+# Node modules (webmail, js-filter sidecar)
 webmail/node_modules/
 webmail/dist/
+projects/js-filter-sidecar/node_modules/
 
 # Generated certs (local)
 certs/

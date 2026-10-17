@@ -224,6 +224,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	scannerSecret := cfg.ScannerHMACSecret()
 	pipeline.DefaultRegistry.Register("rspamd", filters.NewRspamdWithSecret(scannerSecret))
 	pipeline.DefaultRegistry.Register("clamav", filters.NewClamAVWithSecret(scannerSecret))
+	// #160: javascript filters run on the deployment's sidecar, authenticated
+	// with its token; a pipeline's config cannot point them elsewhere.
+	jsSidecar := filters.JSSidecar{URL: cfg.JSFilterURL(), Token: cfg.JSFilterToken()}
+	pipeline.DefaultRegistry.Register("javascript", filters.NewJavaScriptWithSidecar(jsSidecar))
 
 	// The message-processing engine carries the metrics observer so real
 	// inbound/outbound message flow emits pipeline metrics. The pipeline
@@ -277,7 +281,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		messageH.SetNewMailNotifier(pushSvc.dispatcher)
 		authH.SetPushDevices(pushSvc.store)
 	}
-	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
+	pipelineH := handlers.NewPipelineHandler(db, previewEngine, jsSidecar)
 	restmailDeliverAuth := cfg.RestmailDeliverAuth()
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder, handlers.RestmailTarpitConfig{
 		Enabled: cfg.RestmailTarpitEnabled,

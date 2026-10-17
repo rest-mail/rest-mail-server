@@ -2949,7 +2949,9 @@ paths:
         "422":
           $ref: "#/components/responses/ValidationError"
         "503":
-          description: JS filter sidecar unavailable
+          description: >-
+            JS filter sidecar unavailable, or it refused the API's token
+            (JS_FILTER_TOKEN differs between the API and the sidecar)
           content:
             application/json:
               schema:
@@ -3061,7 +3063,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
-          description: JS filter sidecar unavailable
+          description: >-
+            JS filter sidecar unavailable, or it refused the API's token
+            (JS_FILTER_TOKEN differs between the API and the sidecar)
           content:
             application/json:
               schema:

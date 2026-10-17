@@ -111,6 +111,9 @@ includes:
       JS_FILTER_IP: '{{.RESTMAIL_JS_FILTER_IP}}'
       JS_FILTER_IMAGE_TAG: '{{.RESTMAIL_IMAGE_TAG}}'
       JS_FILTER_REGISTRY: '{{.RESTMAIL_REGISTRY}}'
+      # Shared with the API (API_JS_FILTER_TOKEN below): the sidecar runs a
+      # script only for a request carrying it (#160).
+      JS_FILTER_TOKEN: '{{.RESTMAIL_JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
 
   api:
     taskfile: ./tasks/api.yml
@@ -130,6 +133,7 @@ includes:
       API_DB_PASS: '{{.RESTMAIL_DB_PASS | default "restmail"}}'
       API_JWT_SECRET: '{{.RESTMAIL_JWT_SECRET | default "dev-secret-change-in-production"}}'
       API_MASTER_KEY: '{{.RESTMAIL_MASTER_KEY | default "dev-master-key-change-in-production"}}'
+      API_JS_FILTER_TOKEN: '{{.RESTMAIL_JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
       API_LOG_LEVEL: '{{.RESTMAIL_LOG_LEVEL}}'
       API_ENVIRONMENT: '{{.RESTMAIL_ENVIRONMENT}}'
       API_MAILNET_ONLY: '{{.RESTMAIL_MAILNET_ONLY}}'

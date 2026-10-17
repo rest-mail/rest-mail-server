@@ -188,6 +188,28 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set webmail.enabled=fals
 assert_absent   "webmail off"            "$tmp/admin-only.yaml" 'restmail-webmail'
 assert_contains "admin stays"            "$tmp/admin-only.yaml" 'host: "admin.example.com"'
 
+echo "== the JS filter sidecar: only the API, with the token (#160) =="
+doc "$tmp/prod.yaml" Deployment    restmail-api       > "$tmp/api-deploy.yaml"
+doc "$tmp/prod.yaml" Deployment    restmail-js-filter > "$tmp/jsf-deploy.yaml"
+doc "$tmp/prod.yaml" NetworkPolicy restmail-js-filter > "$tmp/jsf-np.yaml"
+doc "$tmp/prod.yaml" Secret        restmail-api       > "$tmp/api-secret.yaml"
+assert_contains "the API Secret holds the token"     "$tmp/api-secret.yaml" 'JS_FILTER_TOKEN:'
+assert_contains "the API sends the token"            "$tmp/api-deploy.yaml" 'key: JS_FILTER_TOKEN'
+assert_contains "to the sidecar's Service"           "$tmp/api-deploy.yaml" 'value: "http://restmail-js-filter:3100"'
+assert_contains "the sidecar checks it"              "$tmp/jsf-deploy.yaml" 'key: JS_FILTER_TOKEN'
+assert_absent   "and gets no other secret"           "$tmp/jsf-deploy.yaml" 'key: JWT_SECRET'
+assert_absent   "nor the master key"                 "$tmp/jsf-deploy.yaml" 'key: MASTER_KEY'
+# Exactly one peer may reach it: the API's pods.
+[ "$(grep -c -- '- podSelector:' "$tmp/jsf-np.yaml")" = 1 ] || fail "the sidecar's NetworkPolicy admits more than one peer"
+grep -A4 -- '- podSelector:' "$tmp/jsf-np.yaml" | grep -q 'app.kubernetes.io/component: api$' ||
+  fail "the sidecar's NetworkPolicy does not admit the API"
+pass "only the API may reach the sidecar"
+assert_absent   "the sidecar opens no egress"        "$tmp/jsf-np.yaml"     'Egress'
+# A managed Secret is used as is, and must hold the token.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.existingSecret=my-api > "$tmp/existing.yaml"
+doc "$tmp/existing.yaml" Deployment restmail-js-filter > "$tmp/jsf-existing.yaml"
+assert_contains "the sidecar reads a managed Secret" "$tmp/jsf-existing.yaml" 'name: my-api'
+
 echo "== owner keys reach the API =="
 KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOwnerKeyForTheRenderTestOnlyxxxxxxxxxxxxxx owner@laptop'
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.ownerKeys="$KEY" > "$tmp/owner.yaml"

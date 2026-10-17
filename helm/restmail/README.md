@@ -7,7 +7,9 @@ Helm chart for the rest-mail "mail3" stack.
 - `postgres` — single-replica StatefulSet running PostgreSQL 16, backing the
   REST API and protocol gateways. Persistent storage via PVC.
 - `api` — the Go REST API.
-- `js-filter` — the JavaScript filter sidecar consumed by the API.
+- `js-filter` — the JavaScript filter sidecar consumed by the API. It runs
+  each script in its own QuickJS WebAssembly sandbox, only for the API (by
+  NetworkPolicy, and with `JS_FILTER_TOKEN` from the API Secret).
 - `smtp-gateway` — SMTP listener on 25 (inbound, STARTTLS) and 465
   (submission, implicit TLS).
 - `imap-gateway` — IMAP listener on 993 (implicit TLS).
@@ -149,7 +151,8 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
 3. **External credentials Secrets.**
    - `restmail-postgres` — keys `POSTGRES_USER`, `POSTGRES_PASSWORD`,
      `POSTGRES_DB`.
-   - `restmail-api` — keys `JWT_SECRET`, `MASTER_KEY`.
+   - `restmail-api` — keys `JWT_SECRET`, `MASTER_KEY`, `JS_FILTER_TOKEN`
+     (what the API authenticates to the JS filter sidecar with).
 4. **LoadBalancer support** for SMTP/IMAP/POP3 Services — typically a cloud
    LB (AWS NLB, GCE LB, MetalLB on bare metal). For kind/k3s without a LB
    driver, override `*.service.type` to `NodePort` (the dev values file
@@ -224,7 +227,8 @@ first alone.
    # API credentials.
    kubectl create secret generic restmail-api \
      --from-literal=JWT_SECRET="$(openssl rand -base64 64)" \
-     --from-literal=MASTER_KEY="$(openssl rand -base64 32)"
+     --from-literal=MASTER_KEY="$(openssl rand -base64 32)" \
+     --from-literal=JS_FILTER_TOKEN="$(openssl rand -base64 32)"
    ```
 
 2. Install:
