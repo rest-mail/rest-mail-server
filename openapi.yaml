@@ -3988,8 +3988,9 @@ paths:
       description: >-
         The same rules as granting: a 2FA session, and the caller must hold
         everything the grant gives, where it gives it. The last grant of `*`
-        at `*`, active or eligible, held by an active admin cannot be removed
-        (`409 last_superadmin`). An activation of the grant still running ends
+        at `*` held by an active admin who can use it (active, or eligible with
+        an authenticator to switch it on) cannot be removed (`409
+        last_superadmin`). An activation of the grant still running ends
         with it (`grants.deactivate`). The change and its audit entries
         (`grants.delete`) commit together.
       responses:

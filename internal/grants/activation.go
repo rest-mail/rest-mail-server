@@ -107,10 +107,11 @@ func Deactivate(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) (*models.
 }
 
 // MakeEligible turns the active grant g eligible, recording it in the audit
-// log, in tx: from then on it gives nothing until switched on. It takes no
-// access away for good, as its holder can switch it on whenever they need it,
-// so it does not change who holds what. The caller holds Lock, and has checked
-// that whoever acts holds g and has just proven a second factor.
+// log, in tx: from then on it gives nothing until switched on. It narrows
+// what its holder holds day to day without taking the grant away, so the last
+// superadmin may do it too. The caller holds Lock, and has checked that
+// whoever acts holds g and has just proven a second factor, so can switch it
+// on again.
 func MakeEligible(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 	if g.Mode == models.GrantEligible {
 		return ErrAlreadyEligible

@@ -26,9 +26,10 @@ var (
 	// ErrExists: the holder already holds the role at that scope.
 	ErrExists = errors.New("the holder already holds this role at this scope")
 	// ErrLastSuperadmin: the change would leave no active admin holding every
-	// capability at "*", active or eligible, and nobody could ever grant
-	// anything again. An eligible grant counts: its holder can switch it on.
-	ErrLastSuperadmin = errors.New("this is the last grant of every capability at \"*\", active or eligible, held by an active admin")
+	// capability at "*", and nobody could ever grant anything again. An
+	// eligible grant counts when its holder has an authenticator to switch it
+	// on with.
+	ErrLastSuperadmin = errors.New("this is the last grant of every capability at \"*\" held by an active admin who can use it")
 )
 
 // changeLockKey serialises grant changes, so that two at once cannot each
@@ -79,10 +80,10 @@ func Add(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 }
 
 // Remove deletes g and writes the audit entry recording it, in tx, unless it
-// is the last grant of every capability at "*", active or eligible, held by an
-// active admin (ErrLastSuperadmin). An activation of g still running ends with
-// it, and is recorded as switched off by the same actor. The caller holds Lock
-// and has checked Authorize.
+// is the last grant of every capability at "*" held by an active admin who can
+// use it (ErrLastSuperadmin, usableSuperadmin). An activation of g still
+// running ends with it, and is recorded as switched off by the same actor. The
+// caller holds Lock and has checked Authorize.
 func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 	now := time.Now()
 	live, err := liveActivation(tx, g.ID, now)
@@ -101,8 +102,8 @@ func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 		Joins("JOIN admin_roles_capabilities rc ON rc.role_id = g.role_id").
 		Joins("JOIN admin_capabilities c ON c.id = rc.capability_id").
 		Joins("JOIN admin_users u ON u.id = g.holder_id").
-		Where("g.holder_kind = ? AND g.scope = ? AND g.mode IN ? AND c.name = ? AND u.active",
-			models.GrantHolderAdmin, All, []string{models.GrantActive, models.GrantEligible}, Wildcard).
+		Where("g.holder_kind = ? AND g.scope = ? AND c.name = ? AND u.active", models.GrantHolderAdmin, All, Wildcard).
+		Where("g.mode = ? OR (g.mode = ? AND "+canSwitchOn+")", models.GrantActive, models.GrantEligible, models.TwoFactorUserTypeAdmin).
 		Where("g.expires_at IS NULL OR g.expires_at > ?", now).
 		Count(&remaining).Error
 	if err != nil {
@@ -123,16 +124,34 @@ func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 	return appendChange(tx, g, entry)
 }
 
+// canSwitchOn is the condition that the admin holding grant g has a confirmed
+// authenticator: switching an eligible grant on needs a code from one.
+const canSwitchOn = "EXISTS (SELECT 1 FROM two_factor tf WHERE tf.user_type = ? AND tf.subject_id = g.holder_id AND tf.confirmed)"
+
 // wasSuperadmin reports whether g, just deleted, was a grant of every
-// capability at "*", active or eligible, held by an active admin.
+// capability at "*" held by an active admin who could use it: active, or
+// eligible with an authenticator to switch it on with.
 func wasSuperadmin(tx *gorm.DB, g *models.Grant) bool {
 	if g.Scope != All || g.HolderKind != models.GrantHolderAdmin {
 		return false
 	}
-	if g.Mode != models.GrantActive && g.Mode != models.GrantEligible {
+	if g.ExpiresAt != nil && !g.ExpiresAt.After(time.Now()) {
 		return false
 	}
-	if g.ExpiresAt != nil && !g.ExpiresAt.After(time.Now()) {
+	switch g.Mode {
+	case models.GrantActive:
+	case models.GrantEligible:
+		var n int64
+		err := tx.Table("two_factor").
+			Where("user_type = ? AND subject_id = ? AND confirmed", models.TwoFactorUserTypeAdmin, g.HolderID).
+			Count(&n).Error
+		if err != nil {
+			return true // cannot tell: refuse, keep the grant
+		}
+		if n == 0 {
+			return false
+		}
+	default:
 		return false
 	}
 	var active []bool

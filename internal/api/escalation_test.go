@@ -515,6 +515,28 @@ func TestEscalation_TheLastSuperadminCountsEligibleOnes(t *testing.T) {
 	}
 }
 
+// An eligible superadmin counts as one that remains only if its holder has an
+// authenticator to switch it on with.
+func TestEscalation_AnEligibleSuperadminCountsOnlyWithAnAuthenticator(t *testing.T) {
+	f := newGrantsFixture(t, legacyAdmin{name: "waiting"})
+	f.eligible(t, "waiting", "superadmin")
+	owner := f.token(t, "owner")
+	for _, name := range []string{"root", "fresh"} {
+		path := "/api/v1/admin/admin-users/" + strconv.FormatUint(uint64(f.admins[name].user.ID), 10)
+		if rr := doRequest(f.router, http.MethodPut, path, owner, `{"role_ids":[]}`); rr.Code != http.StatusOK {
+			t.Fatalf("taking superadmin from %s = %d %s", name, rr.Code, rr.Body.String())
+		}
+	}
+	ownerSuper := "/api/v1/admin/grants/" + strconv.FormatUint(uint64(f.grantOf(t, "owner", "superadmin")), 10)
+	if rr := doRequest(f.router, http.MethodDelete, ownerSuper, owner, ""); grantErrorCode(rr) != "last_superadmin" {
+		t.Fatalf("removing the last usable superadmin = %d %s, want last_superadmin: waiting has no authenticator", rr.Code, rr.Body.String())
+	}
+	enrollTOTP(t, f.db, f.admins["waiting"].user.ID)
+	if rr := doRequest(f.router, http.MethodDelete, ownerSuper, owner, ""); rr.Code != http.StatusNoContent {
+		t.Fatalf("removing the owner's superadmin once waiting can switch its own on = %d %s", rr.Code, rr.Body.String())
+	}
+}
+
 // A step whose transaction rolls back leaves neither an activation nor an
 // entry.
 func TestEscalation_ARolledBackActivationLeavesNothing(t *testing.T) {
