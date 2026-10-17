@@ -512,4 +512,52 @@ fi
 pass "guard rejects secure sslMode against a non-TLS bundled Postgres"
 
 echo
+echo "== private S3 attachments and retained migration volume =="
+cat > "$tmp/s3-values.yaml" <<'YAML'
+api:
+  attachments:
+    storageType: s3
+    s3:
+      endpoint: http://garage-s3.garage.svc:3900
+      region: garage
+      bucket: mail-attachments
+      accessKeyId: fixture-key-id
+      secretAccessKey: fixture-private-secret
+      networkPolicy:
+        port: 3900
+        to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: garage
+            podSelector:
+              matchLabels:
+                app: garage
+YAML
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" > "$tmp/s3.yaml"
+assert_contains "S3 driver is configured" "$tmp/s3.yaml" 'ATTACHMENT_STORAGE_TYPE: "s3"'
+assert_contains "S3 credentials use a Secret" "$tmp/s3.yaml" 'name: restmail-api-attachments-s3'
+yq 'select(.kind == "ConfigMap")' "$tmp/s3.yaml" > "$tmp/s3-configmaps.yaml"
+assert_absent "S3 credential never enters a ConfigMap" "$tmp/s3-configmaps.yaml" 'fixture-private-secret'
+assert_contains "old attachment PVC remains during migration" "$tmp/s3.yaml" 'mountPath: /attachments'
+yq 'select(.kind == "NetworkPolicy" and .metadata.name == "restmail-api") | .spec.egress[] | select(.ports[0].port == 3900) | .to' "$tmp/s3.yaml" > "$tmp/s3-egress.yaml"
+assert_contains "Garage egress selects its namespace" "$tmp/s3-egress.yaml" 'kubernetes.io/metadata.name: garage'
+assert_contains "Garage egress selects its pods" "$tmp/s3-egress.yaml" 'app: garage'
+
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" \
+  --set api.attachments.persistence.enabled=false \
+  --set api.attachments.s3.existingSecret=my-s3-secret \
+  --set api.attachments.s3.accessKeyId= --set api.attachments.s3.secretAccessKey= > "$tmp/s3-no-pvc.yaml"
+assert_contains "external S3 Secret is referenced" "$tmp/s3-no-pvc.yaml" 'name: my-s3-secret'
+assert_absent "S3 after migration has no attachment mount" "$tmp/s3-no-pvc.yaml" 'mountPath: /attachments'
+assert_absent "external S3 Secret creates no inline credentials" "$tmp/s3-no-pvc.yaml" 'fixture-private-secret'
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.attachments.storageType=s3 > /dev/null 2>&1; then
+  fail "S3 without bucket and credentials was accepted"
+fi
+pass "incomplete S3 configuration is refused"
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" \
+  --set api.attachments.s3.existingSecret=my-s3-secret > /dev/null 2>&1; then
+  fail "conflicting S3 credential sources were accepted"
+fi
+pass "conflicting S3 credential sources are refused"
+
 echo "All chart render tests passed."

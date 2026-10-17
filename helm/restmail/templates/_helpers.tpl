@@ -234,6 +234,22 @@ dnsConfig:
 Validate required production values.
 */}}
 {{- define "restmail.validate" -}}
+{{- $attachments := .Values.api.attachments -}}
+{{- if not (has $attachments.storageType (list "filesystem" "s3")) -}}
+{{- fail "api.attachments.storageType must be filesystem or s3" -}}
+{{- end -}}
+{{- if eq $attachments.storageType "s3" -}}
+{{- if not (and $attachments.s3.bucket $attachments.s3.region) -}}
+{{- fail "S3 attachments require api.attachments.s3.bucket and region" -}}
+{{- end -}}
+{{- if $attachments.s3.existingSecret -}}
+{{- if or $attachments.s3.accessKeyId $attachments.s3.secretAccessKey -}}
+{{- fail "use api.attachments.s3.existingSecret or inline S3 credentials, not both" -}}
+{{- end -}}
+{{- else if not (and $attachments.s3.accessKeyId $attachments.s3.secretAccessKey) -}}
+{{- fail "S3 attachments require api.attachments.s3.existingSecret or both accessKeyId and secretAccessKey" -}}
+{{- end -}}
+{{- end -}}
 {{- if not .Values.mailserver.hostname -}}
 {{- fail "mailserver.hostname is required (the public FQDN gateways announce)" -}}
 {{- end -}}

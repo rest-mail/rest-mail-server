@@ -12,6 +12,7 @@ import (
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/attachmentstore"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
@@ -165,7 +166,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	eventH := handlers.NewEventHandler(db, broker, jwtService, sessionCurrent)
 	accountH := handlers.NewAccountHandler(db, grantCache, cfg.MasterKey)
 	searchH := handlers.NewSearchHandler(db)
-	attachmentH := handlers.NewAttachmentHandler(db)
+	attachmentStore := attachmentstore.NewS3(cfg.Attachments)
+	attachmentH := handlers.NewAttachmentHandler(db, attachmentStore)
 	contactH := handlers.NewContactHandler(db)
 	vacationH := handlers.NewVacationHandler(db)
 	sieveH := handlers.NewSieveHandler(db)
@@ -208,6 +210,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	credentialH := handlers.NewCredentialHandler(db)
 
 	// Register DB-backed filters that need a database connection.
+	pipeline.DefaultRegistry.Register("extract_attachments", filters.NewExtractAttachmentsWithS3(attachmentStore))
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
 	pipeline.DefaultRegistry.Register("vacation", filters.NewVacation(db))
 	pipeline.DefaultRegistry.Register("domain_allowlist", filters.NewDomainAllowlist(db))

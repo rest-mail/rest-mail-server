@@ -80,6 +80,13 @@ const operatorUsage = `restmail-api operator commands
       Revoke a recovery key immediately on every API replica.
       Output: {"fingerprint": ..., "revoked": true}
 
+  restmail-api check-attachment-storage
+      Verify the configured private S3 store with a random put/get/range/delete.
+
+  restmail-api migrate-attachments
+      Copy existing filesystem attachments to S3, verify bytes, then update
+      their references. Resumable; source files are retained.
+
 Results are one JSON object on stdout. Errors: {"error": {"code": ...,
 "message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_account) or
 1 (anything else). Nothing else is written to either;
@@ -115,6 +122,11 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 		return dnsRecords(args[1:], stdout, stderr)
 	case "owner-key":
 		return ownerKeyCommand(args[1:], os.Stdin, stdout, stderr)
+
+	case "check-attachment-storage":
+		return checkAttachmentStorage(args[1:], stdout, stderr)
+	case "migrate-attachments":
+		return migrateAttachments(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		_, _ = io.WriteString(stdout, operatorUsage)
 		return exitOK
