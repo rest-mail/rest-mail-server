@@ -72,10 +72,10 @@ func TestEngine_ErroredFilter_DefaultDefers(t *testing.T) {
 	}
 }
 
-// TestEngine_UnknownFilter_ContinueRestoresFailOpen proves the config override
-// (ActionContinue) restores the legacy fail-open behavior: the unknown filter is
-// skipped and the pipeline continues.
-func TestEngine_UnknownFilter_ContinueRestoresFailOpen(t *testing.T) {
+// TestEngine_UnknownFilter_ContinueFailsOpen proves the config override
+// (ActionContinue) fails open: the unknown filter is skipped and the pipeline
+// continues.
+func TestEngine_UnknownFilter_ContinueFailsOpen(t *testing.T) {
 	eng := NewEngine(NewRegistry(), nil)
 	eng.SetFilterErrorAction(ActionContinue)
 

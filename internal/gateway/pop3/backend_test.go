@@ -117,7 +117,7 @@ func TestRawMessage_FallsBackWhenNoStoredRaw(t *testing.T) {
 
 // TestMessages_SizePrefersRawSizeWithSizeBytesFallback proves the maildrop
 // listing (which drives POP3 STAT/LIST octet counts) reports the exact
-// stored-raw size when the server recorded one, and falls back to the legacy
+// stored-raw size when the server recorded one, and falls back to the
 // size_bytes for messages without a stored raw.
 func TestMessages_SizePrefersRawSizeWithSizeBytesFallback(t *testing.T) {
 	mux := http.NewServeMux()

@@ -22,8 +22,8 @@ import (
 // redirect — the secure default — so a mailbox owner (or an attacker abusing a
 // script) cannot silently exfiltrate mail to an arbitrary domain.
 type SieveRedirectPolicy struct {
-	// AllowExternal permits redirect to any domain (legacy behavior); the
-	// redirect is still logged. Default false.
+	// AllowExternal permits redirect to any domain; the redirect is still
+	// logged. Default false.
 	AllowExternal bool
 	// AllowedDomains are external domains explicitly permitted as redirect
 	// targets even when AllowExternal is false (exact, case-insensitive match).
@@ -40,8 +40,8 @@ var defaultSieveRedirectPolicy = SieveRedirectPolicy{}
 // ScriptHash/MailboxID are populated when the config carries a per-mailbox
 // script that was validated at install time (see models.SieveScript): ScriptHash
 // is the sha256 hex recorded then, MailboxID identifies the owner for logging.
-// Both are optional — a domain-level or legacy config omits them and skips the
-// delivery-time trust check (parse-only, the pre-existing behavior).
+// Both are optional — a domain-level config omits them and skips the
+// delivery-time trust check (parse-only).
 type sieveConfig struct {
 	Script     string `json:"script"`
 	ScriptHash string `json:"script_hash,omitempty"`
@@ -95,8 +95,8 @@ func newSieveFilter(config []byte, policy SieveRedirectPolicy) (pipeline.Filter,
 	// (edited/corrupted/tampered) and was never re-validated. Fail closed — as an
 	// unparseable script already does — but log a clear WARNING naming the mailbox
 	// so an operator sees WHY the mailbox's mail is deferring, rather than a silent
-	// defer. An empty ScriptHash means "no validated marker" (legacy/domain-level
-	// config): skip the check and parse as before.
+	// defer. An empty ScriptHash means "no validated marker" (a domain-level
+	// config): skip the check and parse.
 	if cfg.ScriptHash != "" {
 		if actual := HashSieveScript(cfg.Script); actual != cfg.ScriptHash {
 			slog.Warn("sieve: stored script no longer matches its validated hash; failing closed",

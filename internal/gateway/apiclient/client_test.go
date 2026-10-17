@@ -1177,7 +1177,7 @@ func TestMessageSummary_WireSize_PrefersRawSize(t *testing.T) {
 }
 
 // TestMessageSummary_WireSize_FallsBackToSizeBytes proves messages without a
-// stored raw form (raw_size 0) keep reporting the legacy size_bytes value.
+// stored raw form (raw_size 0) report the size_bytes approximation.
 func TestMessageSummary_WireSize_FallsBackToSizeBytes(t *testing.T) {
 	m := MessageSummary{SizeBytes: 120, RawSize: 0}
 	if got := m.WireSize(); got != 120 {

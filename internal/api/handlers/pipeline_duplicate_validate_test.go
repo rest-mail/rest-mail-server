@@ -1,15 +1,9 @@
 package handlers
 
-// Item 2 (issue #201): the `duplicate` filter's queue_recipient records
-// duplicate_queue_recipient metadata that NO delivery consumer ever reads, so a
-// pipeline configured with it silently fails to duplicate. Reject it at
-// admin-pipeline SAVE time (fail-fast, HTTP 400) rather than store a config we
-// won't honour. The webhook fork DOES work, so a webhook-only duplicate filter
-// stays valid.
-//
-// The reject is at the config-save layer (not filter construction): erroring in
-// NewDuplicate would make the engine's fail-closed policy DEFER live mail for a
-// legacy stored config, which is worse than the benign no-op.
+// Issue #201: the `duplicate` filter forks only to a webhook; it has no
+// queue_recipient. A pipeline asking for one is rejected at admin-pipeline SAVE
+// time (fail-fast, HTTP 400) rather than stored and silently ignored. A
+// webhook-only duplicate filter stays valid.
 
 import (
 	"encoding/json"

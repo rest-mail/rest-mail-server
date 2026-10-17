@@ -175,9 +175,8 @@ func TestSieveDelivery_HashMismatchFailsClosed(t *testing.T) {
 	}
 }
 
-// TestSieveDelivery_NoHashSkipsCheck proves a legacy/domain-level config (empty
-// script_hash) is unaffected: it parses and runs exactly as before, so existing
-// scripts keep working with no backfill.
+// TestSieveDelivery_NoHashSkipsCheck proves a domain-level config (empty
+// script_hash) is unaffected: it parses and runs without a hash check.
 func TestSieveDelivery_NoHashSkipsCheck(t *testing.T) {
 	cfg := sieveConfig{Script: `keep;`} // no ScriptHash
 	f, err := newSieveFromConfig(t, cfg)

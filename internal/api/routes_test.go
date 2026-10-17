@@ -109,11 +109,11 @@ func mailboxToken(t *testing.T, jwtSvc *auth.JWTService) string {
 	return pair.AccessToken
 }
 
-// legacyAdminMailboxToken forges a mailbox access token that still carries a
-// stale is_admin payload, as tokens issued before OSI-14 did. The JWTService no
-// longer mints such a token, so it is signed directly with the router test
-// secret to prove the admin surface refuses it.
-func legacyAdminMailboxToken(t *testing.T) string {
+// isAdminMailboxToken signs a mailbox access token whose payload claims
+// is_admin, a field the server does not read (OSI-14). The JWTService never
+// mints such a token, so it is signed directly with the router test secret to
+// prove the admin surface refuses it.
+func isAdminMailboxToken(t *testing.T) string {
 	t.Helper()
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":        "mailbox:10",
@@ -127,7 +127,7 @@ func legacyAdminMailboxToken(t *testing.T) string {
 	})
 	s, err := tok.SignedString([]byte(routerTestSecret))
 	if err != nil {
-		t.Fatalf("failed to sign legacy admin mailbox token: %v", err)
+		t.Fatalf("failed to sign the is_admin mailbox token: %v", err)
 	}
 	return s
 }
@@ -247,7 +247,6 @@ func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 		{http.MethodGet, "/api/v1/admin/bans"},
 		{http.MethodPost, "/api/v1/admin/bans"},
 		{http.MethodGet, "/api/v1/admin/logs/delivery"},
-		{http.MethodGet, "/api/v1/admin/logs/activity"},
 		{http.MethodGet, "/api/v1/admin/audit"},
 		{http.MethodGet, "/api/v1/admin/audit/verify"},
 		{http.MethodPost, "/api/v1/admin/test/send"},
@@ -375,7 +374,6 @@ func TestAdminRoutes_ReadonlyRoleAllowedOnReads(t *testing.T) {
 		"/api/v1/admin/certificates",
 		"/api/v1/admin/bans",
 		"/api/v1/admin/logs/delivery",
-		"/api/v1/admin/logs/activity",
 	}
 
 	for _, path := range paths {
@@ -440,12 +438,11 @@ func TestAdminRoutes_SuperadminWildcardAllowedEverywhere(t *testing.T) {
 	}
 }
 
-func TestAdminRoutes_LegacyIsAdminMailboxDenied(t *testing.T) {
-	// OSI-14: the deprecated mailbox is_admin escalation is removed. A mailbox
-	// token still carrying a stale is_admin payload must now be REFUSED on the
-	// admin surface (previously it retained full admin access).
+func TestAdminRoutes_IsAdminMailboxDenied(t *testing.T) {
+	// OSI-14: a mailbox token whose payload claims is_admin is REFUSED on the
+	// admin surface.
 	router, _ := newTestRouter(t)
-	token := legacyAdminMailboxToken(t)
+	token := isAdminMailboxToken(t)
 
 	routes := []struct {
 		method, path, body string

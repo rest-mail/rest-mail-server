@@ -9,7 +9,7 @@ import (
 
 // TestRenderMatchesCommittedConfig is the drift guard: the real mail3.test
 // manifest must render byte-for-byte to the committed config.env. If someone
-// edits the manifest without re-running `task instance:render` (or edits the
+// edits the manifest without re-running `chore config:render` (or edits the
 // generated config.env by hand), this fails — which is the whole point.
 func TestRenderMatchesCommittedConfig(t *testing.T) {
 	// Hermetic fixture (a committed copy), so this doesn't depend on any live
@@ -34,7 +34,7 @@ func TestRenderMatchesCommittedConfig(t *testing.T) {
 		t.Fatalf("read config.env: %v", err)
 	}
 	if string(got) != string(want) {
-		t.Errorf("rendered config.env is stale — re-run `task instance:render`.\n--- got ---\n%s\n--- committed ---\n%s", got, want)
+		t.Errorf("rendered config.env is stale — re-run `chore config:render`.\n--- got ---\n%s\n--- committed ---\n%s", got, want)
 	}
 }
 
@@ -184,8 +184,8 @@ func TestRenderMultiDomainMatchesGolden(t *testing.T) {
 		t.Errorf("rendered config_multidomain.env is stale — re-run render.\n--- got ---\n%s\n--- committed ---\n%s", got, want)
 	}
 	for _, want := range []string{
-		"RESTMAIL_SERVED_HOSTNAMES=mail3.test,shop.test,legacy.test\n",
-		"RESTMAIL_SEED_SERVED_DOMAINS=shop.test:restmail,legacy.test:traditional\n",
+		"RESTMAIL_SERVED_HOSTNAMES=mail3.test,shop.test,traditional.test\n",
+		"RESTMAIL_SEED_SERVED_DOMAINS=shop.test:restmail,traditional.test:traditional\n",
 	} {
 		if !bytes.Contains(got, []byte(want)) {
 			t.Errorf("multi-domain output missing %q", want)
@@ -272,11 +272,11 @@ func TestServedDomainsResolvesDefaults(t *testing.T) {
 }
 
 func TestParseSeedServedDomainsRoundTrip(t *testing.T) {
-	got, err := ParseSeedServedDomains("shop.test:restmail,legacy.test:traditional")
+	got, err := ParseSeedServedDomains("shop.test:restmail,traditional.test:traditional")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(got) != 2 || got[0] != (SeedServedDomain{"shop.test", "restmail"}) || got[1] != (SeedServedDomain{"legacy.test", "traditional"}) {
+	if len(got) != 2 || got[0] != (SeedServedDomain{"shop.test", "restmail"}) || got[1] != (SeedServedDomain{"traditional.test", "traditional"}) {
 		t.Fatalf("round-trip mismatch: %+v", got)
 	}
 	// Empty → no entries (single-domain instances seed unchanged).

@@ -44,7 +44,7 @@ func openRotateTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Skipf("rotate-key test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.TwoFactor{}, &models.Certificate{}, &models.DKIMKey{}); err != nil {
+	if err := gdb.AutoMigrate(&models.Domain{}, &models.TwoFactor{}, &models.Certificate{}); err != nil {
 		t.Skipf("rotate-key test skipped: migrate failed (%v)", err)
 	}
 	return gdb
@@ -52,9 +52,9 @@ func openRotateTestDB(t *testing.T) *gorm.DB {
 
 // TestRotate_ReEncryptsDKIMAndTwoFactor is the regression guard for #165: a
 // rotation must re-encrypt the columns the running server actually reads —
-// domains.dkim_private_key and two_factor.encrypted_secret — not just the
-// unused dkim_keys table. After rotating from oldKey to newKey, both secrets
-// must decrypt under newKey and no longer under oldKey.
+// domains.dkim_private_key and two_factor.encrypted_secret. After rotating from
+// oldKey to newKey, both secrets must decrypt under newKey and no longer under
+// oldKey.
 //
 // The whole test runs inside a transaction that is rolled back, so it never
 // mutates the shared test database (rotate() scans every row, but any change is

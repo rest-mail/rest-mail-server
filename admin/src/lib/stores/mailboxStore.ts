@@ -42,9 +42,8 @@ interface MailboxState {
   selectedDomain: string | null
 
   // Actions
-  fetchMailboxes: (token: string) => Promise<void>
+  fetchMailboxes: () => Promise<void>
   createMailbox: (
-    token: string,
     data: {
       email: string
       password: string
@@ -53,7 +52,6 @@ interface MailboxState {
     }
   ) => Promise<void>
   updateMailbox: (
-    token: string,
     id: number,
     data: {
       display_name?: string
@@ -62,7 +60,7 @@ interface MailboxState {
       password?: string
     }
   ) => Promise<void>
-  deleteMailbox: (token: string, id: number) => Promise<void>
+  deleteMailbox: (id: number) => Promise<void>
   setSelectedDomain: (domain: string | null) => void
   clearError: () => void
 }
@@ -73,11 +71,11 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
   error: null,
   selectedDomain: null,
 
-  fetchMailboxes: async (token: string) => {
+  fetchMailboxes: async () => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request('/admin/mailboxes', { method: 'GET' }, token)
+      const response = await apiV1.request('/admin/mailboxes', { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -99,7 +97,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     }
   },
 
-  createMailbox: async (token: string, data) => {
+  createMailbox: async (data) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -108,8 +106,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify(data),
-        },
-        token
+        }
       )
 
       if (!response.ok) {
@@ -118,7 +115,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
       }
 
       // Refresh the list
-      await get().fetchMailboxes(token)
+      await get().fetchMailboxes()
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to create mailbox',
@@ -128,7 +125,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     }
   },
 
-  updateMailbox: async (token: string, id: number, data) => {
+  updateMailbox: async (id: number, data) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -137,8 +134,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
         {
           method: 'PUT',
           body: JSON.stringify(data),
-        },
-        token
+        }
       )
 
       if (!response.ok) {
@@ -147,7 +143,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
       }
 
       // Refresh the list
-      await get().fetchMailboxes(token)
+      await get().fetchMailboxes()
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to update mailbox',
@@ -157,11 +153,11 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
     }
   },
 
-  deleteMailbox: async (token: string, id: number) => {
+  deleteMailbox: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/mailboxes/${id}`, { method: 'DELETE' }, token)
+      const response = await apiV1.request(`/admin/mailboxes/${id}`, { method: 'DELETE' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -169,7 +165,7 @@ export const useMailboxStore = create<MailboxState>((set, get) => ({
       }
 
       // Refresh the list
-      await get().fetchMailboxes(token)
+      await get().fetchMailboxes()
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to delete mailbox',

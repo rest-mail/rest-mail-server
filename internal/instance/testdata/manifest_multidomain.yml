@@ -39,7 +39,7 @@ domains:
   - name: shop.test
     server_type: restmail
     dkim: { selector: shop2026, bits: 2048 }
-  - name: legacy.test
+  - name: traditional.test
     server_type: traditional   # a traditional (non-restmail) served domain
     # no dkim block → provisioned with the default selector
 

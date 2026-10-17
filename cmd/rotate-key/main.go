@@ -2,12 +2,9 @@
 // master key. It MUST cover the complete set of encrypted columns the running
 // server actually reads, or a "successful" rotation silently breaks signing/login:
 //
-//   - domains.dkim_private_key   — the live DKIM/ARC signing keys (dkim:v1: form)
+//   - domains.dkim_private_key   — the live DKIM signing keys (dkim:v1: form)
 //   - two_factor.encrypted_secret — enrolled TOTP secrets
 //   - certificates.key_pem        — ACME/TLS private keys
-//   - dkim_keys.private_key_pem   — legacy table kept only for migration; no
-//     runtime path reads it, but it is rotated too so a partially-migrated
-//     database is not left with a mix of old- and new-key ciphertext.
 package main
 
 import (
@@ -24,30 +21,21 @@ import (
 )
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage: %s <old-key> <new-key>\n", os.Args[0])
-	fmt.Fprintf(os.Stderr, "   or: ROTATE_OLD_MASTER_KEY=… ROTATE_NEW_MASTER_KEY=… %s\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "Usage: ROTATE_OLD_MASTER_KEY=… ROTATE_NEW_MASTER_KEY=… %s\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "\nRe-encrypts all at-rest secrets (DKIM signing keys, TOTP 2FA secrets,\n")
 	fmt.Fprintf(os.Stderr, "and TLS/ACME private keys) in the database under the new master key.\n")
-	fmt.Fprintf(os.Stderr, "\nPrefer the environment variables: keys passed as arguments are visible in\n")
-	fmt.Fprintf(os.Stderr, "ps(1) output and shell history.\n")
+	fmt.Fprintf(os.Stderr, "\nThe keys are read only from the environment, never from arguments, which\n")
+	fmt.Fprintf(os.Stderr, "ps(1) output and shell history would show.\n")
 	fmt.Fprintf(os.Stderr, "\nDatabase environment variables: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS\n")
 }
 
-// readKeys resolves the old and new master keys, preferring the environment
-// (ROTATE_OLD_MASTER_KEY / ROTATE_NEW_MASTER_KEY) over argv so the secrets are
-// not exposed in ps(1) output or shell history. argv remains supported for
-// backward compatibility.
+// readKeys reads the old and new master keys from the environment
+// (ROTATE_OLD_MASTER_KEY / ROTATE_NEW_MASTER_KEY), so the secrets are never
+// exposed in ps(1) output or shell history.
 func readKeys() (oldKey, newKey string, ok bool) {
 	oldKey = os.Getenv("ROTATE_OLD_MASTER_KEY")
 	newKey = os.Getenv("ROTATE_NEW_MASTER_KEY")
-	if oldKey != "" && newKey != "" {
-		return oldKey, newKey, true
-	}
-	if len(os.Args) == 3 {
-		fmt.Fprintf(os.Stderr, "warning: master keys passed as command-line arguments are visible in ps(1) and shell history; prefer ROTATE_OLD_MASTER_KEY / ROTATE_NEW_MASTER_KEY\n")
-		return os.Args[1], os.Args[2], true
-	}
-	return "", "", false
+	return oldKey, newKey, oldKey != "" && newKey != "" && len(os.Args) == 1
 }
 
 func main() {
@@ -76,8 +64,8 @@ func main() {
 	}
 
 	fmt.Printf("\nMaster key rotation complete: %d domain DKIM keys, %d 2FA secrets, "+
-		"%d certificates, %d legacy DKIM keys processed.\n",
-		summary.DomainDKIM, summary.TwoFactor, summary.Certificates, summary.LegacyDKIM)
+		"%d certificates processed.\n",
+		summary.DomainDKIM, summary.TwoFactor, summary.Certificates)
 	if summary.Failures > 0 {
 		fmt.Printf("WARNING: %d secrets could not be decrypted with the old key and were left "+
 			"untouched (see warnings above).\n", summary.Failures)
@@ -90,7 +78,6 @@ type rotateSummary struct {
 	DomainDKIM   int
 	TwoFactor    int
 	Certificates int
-	LegacyDKIM   int
 	Failures     int
 }
 
@@ -118,18 +105,12 @@ func rotate(database *gorm.DB, oldKey, newKey string) (rotateSummary, error) {
 	}
 	s.Failures += failures
 
-	if s.LegacyDKIM, failures, err = rotateLegacyDKIMKeys(database, oldKey, newKey); err != nil {
-		return s, err
-	}
-	s.Failures += failures
-
 	return s, nil
 }
 
-// rotateDomainDKIM re-encrypts domains.dkim_private_key — the live DKIM/ARC
-// signing keys read by the signing path. It decrypts with the old key (handling
-// the dkim:v1: prefix, legacy bare-base64 ciphertext, and plaintext PEM) and
-// re-encrypts with the new key, preserving the versioned at-rest form.
+// rotateDomainDKIM re-encrypts domains.dkim_private_key — the live DKIM signing
+// keys read by the signing path. It decrypts the dkim:v1: form with the old key
+// and re-encrypts with the new key, preserving the versioned at-rest form.
 func rotateDomainDKIM(database *gorm.DB, oldKey, newKey string) (processed, failures int, err error) {
 	var domains []models.Domain
 	if err := database.Find(&domains).Error; err != nil {
@@ -216,39 +197,6 @@ func rotateCertificates(database *gorm.DB, oldKey, newKey string) (processed, fa
 		}
 		processed++
 		log.Printf("rotated certificate key (id=%d, issuer=%s)", cert.ID, cert.Issuer)
-	}
-	return processed, failures, nil
-}
-
-// rotateLegacyDKIMKeys re-encrypts the legacy dkim_keys.private_key_pem column.
-// No runtime path reads this table (the live signing keys are on domains), but it
-// is rotated so a database that still carries legacy rows is not left with a mix
-// of old- and new-key ciphertext.
-func rotateLegacyDKIMKeys(database *gorm.DB, oldKey, newKey string) (processed, failures int, err error) {
-	var dkimKeys []models.DKIMKey
-	if err := database.Find(&dkimKeys).Error; err != nil {
-		return 0, 0, fmt.Errorf("query dkim_keys: %w", err)
-	}
-	for i := range dkimKeys {
-		dk := &dkimKeys[i]
-		if dk.PrivateKeyPEM == "" {
-			continue
-		}
-		plain, derr := crypto.DecryptString(dk.PrivateKeyPEM, oldKey)
-		if derr != nil {
-			log.Printf("WARN: failed to decrypt legacy DKIM key (id=%d, selector=%s): %v", dk.ID, dk.Selector, derr)
-			failures++
-			continue
-		}
-		enc, eerr := crypto.EncryptString(plain, newKey)
-		if eerr != nil {
-			return processed, failures, fmt.Errorf("re-encrypt legacy DKIM key id=%d: %w", dk.ID, eerr)
-		}
-		if uerr := database.Model(dk).Update("private_key_pem", enc).Error; uerr != nil {
-			return processed, failures, fmt.Errorf("update legacy DKIM key id=%d: %w", dk.ID, uerr)
-		}
-		processed++
-		log.Printf("rotated legacy DKIM key (id=%d, selector=%s)", dk.ID, dk.Selector)
 	}
 	return processed, failures, nil
 }

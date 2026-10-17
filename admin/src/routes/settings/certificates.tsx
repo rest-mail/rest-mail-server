@@ -32,8 +32,8 @@ function CertificatesPage() {
     }
 
     if (accessToken) {
-      fetchCertificates(accessToken).catch(console.error)
-      fetchDomains(accessToken).catch(console.error)
+      fetchCertificates().catch(console.error)
+      fetchDomains().catch(console.error)
     }
   }, [isAuthenticated, accessToken])
 
@@ -41,9 +41,9 @@ function CertificatesPage() {
     if (!accessToken) return
 
     try {
-      await deleteCertificate(id, accessToken)
+      await deleteCertificate(id)
       setDeleteConfirm(null)
-      await fetchCertificates(accessToken)
+      await fetchCertificates()
     } catch (err) {
       console.error('Failed to delete certificate:', err)
     }
@@ -291,7 +291,7 @@ function CertificatesPage() {
           onSuccess={async () => {
             setShowUploadModal(false)
             if (accessToken) {
-              await fetchCertificates(accessToken)
+              await fetchCertificates()
             }
           }}
         />
@@ -325,8 +325,7 @@ function CertificateUploadModal({ domains, onClose, onSuccess }: CertificateUplo
           cert_pem: certPem,
           key_pem: keyPem,
           auto_renew: autoRenew,
-        },
-        accessToken
+        }
       )
       onSuccess()
     } catch (err) {

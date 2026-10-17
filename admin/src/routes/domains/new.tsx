@@ -47,7 +47,7 @@ function NewDomainPage() {
     }
 
     try {
-      await createDomain(formData, accessToken)
+      await createDomain(formData)
       navigate({ to: '/domains' })
     } catch (err) {
       console.error('Failed to create domain:', err)

@@ -648,10 +648,10 @@ func TestUnitHeaderCleanup_LogDetail(t *testing.T) {
 // ═════════════════════════════════════════════════════════════════════
 
 func TestUnitDuplicate_RequiresConfig(t *testing.T) {
-	// No config at all should fail (need at least webhook_url or queue_recipient).
+	// No config at all should fail (webhook_url is required).
 	_, err := NewDuplicate(nil)
 	if err == nil {
-		t.Error("expected error when neither webhook_url nor queue_recipient is set")
+		t.Error("expected error when webhook_url is not set")
 	}
 }
 
@@ -662,52 +662,16 @@ func TestUnitDuplicate_EmptyConfigFails(t *testing.T) {
 	}
 }
 
+func TestUnitDuplicate_QueueRecipientIsNotAnOption(t *testing.T) {
+	if _, err := NewDuplicate([]byte(`{"queue_recipient": "archive@example.com"}`)); err == nil {
+		t.Error("expected error: queue_recipient is not a duplicate option, and no webhook_url is set")
+	}
+}
+
 func TestUnitDuplicate_InvalidJSON(t *testing.T) {
 	_, err := NewDuplicate([]byte(`{bad json}`))
 	if err == nil {
 		t.Error("expected error for invalid JSON")
-	}
-}
-
-func TestUnitDuplicate_QueueRecipient_SetsMetadata(t *testing.T) {
-	cfg := json.RawMessage(`{"queue_recipient": "archive@example.com"}`)
-	f, err := NewDuplicate(cfg)
-	if err != nil {
-		t.Fatalf("NewDuplicate: %v", err)
-	}
-
-	email := unitEmail()
-	result, err := f.Execute(context.Background(), email)
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if result.Action != pipeline.ActionContinue {
-		t.Errorf("expected ActionContinue, got %q", result.Action)
-	}
-
-	// The filter should set metadata on the email for queue processing.
-	if email.Metadata == nil {
-		t.Fatal("expected Metadata to be set on email")
-	}
-	if email.Metadata["duplicate_queue_recipient"] != "archive@example.com" {
-		t.Errorf("expected duplicate_queue_recipient='archive@example.com', got %q",
-			email.Metadata["duplicate_queue_recipient"])
-	}
-}
-
-func TestUnitDuplicate_QueueRecipient_LogsDestination(t *testing.T) {
-	cfg := json.RawMessage(`{"queue_recipient": "copy@example.com"}`)
-	f, err := NewDuplicate(cfg)
-	if err != nil {
-		t.Fatalf("NewDuplicate: %v", err)
-	}
-
-	result, err := f.Execute(context.Background(), unitEmail())
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if !strings.Contains(result.Log.Detail, "queue:copy@example.com") {
-		t.Errorf("expected log detail to contain queue destination, got %q", result.Log.Detail)
 	}
 }
 
@@ -732,37 +696,8 @@ func TestUnitDuplicate_WebhookOnly_LogsWebhookDestination(t *testing.T) {
 	}
 }
 
-func TestUnitDuplicate_BothWebhookAndQueue(t *testing.T) {
-	cfg := json.RawMessage(`{
-		"webhook_url": "http://192.0.2.1:9999/hook",
-		"queue_recipient": "backup@example.com"
-	}`)
-	f, err := NewDuplicate(cfg)
-	if err != nil {
-		t.Fatalf("NewDuplicate: %v", err)
-	}
-
-	email := unitEmail()
-	result, err := f.Execute(context.Background(), email)
-	if err != nil {
-		t.Fatalf("Execute: %v", err)
-	}
-	if result.Action != pipeline.ActionContinue {
-		t.Errorf("expected ActionContinue, got %q", result.Action)
-	}
-	if !strings.Contains(result.Log.Detail, "webhook:") {
-		t.Errorf("expected webhook in log detail, got %q", result.Log.Detail)
-	}
-	if !strings.Contains(result.Log.Detail, "queue:") {
-		t.Errorf("expected queue in log detail, got %q", result.Log.Detail)
-	}
-	if email.Metadata["duplicate_queue_recipient"] != "backup@example.com" {
-		t.Errorf("expected metadata set for queue recipient")
-	}
-}
-
 func TestUnitDuplicate_NameAndType(t *testing.T) {
-	cfg := json.RawMessage(`{"queue_recipient": "x@y.com"}`)
+	cfg := json.RawMessage(`{"webhook_url": "http://192.0.2.1:9999/hook"}`)
 	f, err := NewDuplicate(cfg)
 	if err != nil {
 		t.Fatalf("NewDuplicate: %v", err)

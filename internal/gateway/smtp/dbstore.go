@@ -18,7 +18,7 @@ import (
 type dbStore struct {
 	db *gorm.DB
 	// masterKey decrypts a domain's at-rest DKIM key, as the queue worker's
-	// does (Worker.SetMasterKey). Empty when keys are stored as plaintext.
+	// does (Worker.SetMasterKey). Empty only when encryption is disabled (dev).
 	masterKey string
 }
 

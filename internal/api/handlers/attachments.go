@@ -111,8 +111,7 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 		Joins("JOIN mailboxes ON mailboxes.id = messages.mailbox_id")
 
 	// Mailbox-scoped: restrict to the authenticated account's mailboxes. There is
-	// no cross-mailbox admin bypass — the deprecated IsAdmin claim was removed
-	// (OSI-14).
+	// no cross-mailbox admin bypass (OSI-14).
 	mailboxIDs := h.getUserMailboxIDs(claims)
 	if len(mailboxIDs) == 0 {
 		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
@@ -183,8 +182,7 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	// Mailbox-scoped: the message must belong to the authenticated account. No
-	// cross-mailbox admin bypass — the deprecated IsAdmin claim was removed
-	// (OSI-14).
+	// cross-mailbox admin bypass (OSI-14).
 	mailboxIDs := h.getUserMailboxIDs(claims)
 	owned := false
 	for _, mid := range mailboxIDs {

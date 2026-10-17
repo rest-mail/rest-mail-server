@@ -7,8 +7,7 @@ import (
 	"gorm.io/gorm/schema"
 )
 
-// TestMessageTraceTableName pins the physical table (a new table, not an
-// in-place rename of pipeline_logs).
+// TestMessageTraceTableName pins the physical table.
 func TestMessageTraceTableName(t *testing.T) {
 	if got := (MessageTrace{}).TableName(); got != "message_traces" {
 		t.Errorf("TableName = %q, want message_traces", got)

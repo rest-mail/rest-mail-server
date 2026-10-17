@@ -25,7 +25,7 @@ function EditAliasPage() {
 
   useEffect(() => {
     if (accessToken && !alias) {
-      fetchAliases(accessToken)
+      fetchAliases()
     }
   }, [accessToken, alias, fetchAliases])
 
@@ -46,7 +46,7 @@ function EditAliasPage() {
     setIsSubmitting(true)
 
     try {
-      await updateAlias(accessToken, alias.id, formData)
+      await updateAlias(alias.id, formData)
       navigate({ to: '/aliases' })
     } catch (err) {
       console.error('Failed to update alias:', err)

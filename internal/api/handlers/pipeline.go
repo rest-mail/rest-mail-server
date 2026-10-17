@@ -67,17 +67,12 @@ func validateSievePipelineFilters(raw json.RawMessage) error {
 }
 
 // validateDuplicatePipelineFilters rejects a domain pipeline that configures the
-// `duplicate` filter with a queue_recipient. That knob records
-// duplicate_queue_recipient metadata which NO delivery consumer reads, so it
-// silently no-ops (issue #201). Rather than accept a config we won't honour, the
-// admin save is rejected at HTTP 400 with an actionable message; the webhook
-// fork is unaffected and stays configurable.
-//
-// The reject deliberately lives here (config save) rather than in NewDuplicate:
-// erroring at filter construction would make the engine's fail-closed policy
-// DEFER live mail for any already-stored config, which is worse than the benign
-// no-op. Every duplicate block is inspected regardless of its `enabled` flag —
-// a disabled-but-unsupported block would no-op the moment it is enabled.
+// `duplicate` filter with a queue_recipient. The filter only forks to a webhook
+// (issue #201): copying to a mailbox reads like a working option, so a config
+// asking for it is refused at HTTP 400 with an actionable message rather than
+// saved and silently ignored. Every duplicate block is inspected regardless of
+// its `enabled` flag — a disabled block would be ignored the moment it is
+// enabled.
 //
 // Scope mirrors validateSievePipelineFilters: a filter list that does not
 // unmarshal is "nothing to validate" (nil), preserving the existing contract for
@@ -101,7 +96,7 @@ func validateDuplicatePipelineFilters(raw json.RawMessage) error {
 			continue
 		}
 		if strings.TrimSpace(cfg.QueueRecipient) != "" {
-			return fmt.Errorf("the duplicate filter's queue_recipient is not supported (it has no delivery consumer and would silently no-op); use webhook_url to fork a copy")
+			return fmt.Errorf("the duplicate filter's queue_recipient is not supported; use webhook_url to fork a copy")
 		}
 	}
 	return nil
@@ -137,16 +132,11 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	respond.List(w, pipelines, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
-// ListPipelineLogs returns recent per-message pipeline traces, newest first.
-//
-// PR5 repoint: the write path moved to message_traces (PR3), and the legacy
-// pipeline_logs table is no longer written, so this READ now reads
-// message_traces. The response is the richer trace shape (outcome, reason_code,
-// transport, mail_from/rcpt_to/client_ip, stages timeline, duration) rather than
-// the old {steps, action} log. The original pagination and the pipeline_id /
-// direction / action filters are preserved (action now matches the trace's
-// final_action column), and rfc_message_id / outcome / reason_code filters are
-// added to support message-lifecycle drill-down.
+// ListPipelineLogs returns recent per-message pipeline traces, newest first,
+// from message_traces: outcome, reason_code, transport,
+// mail_from/rcpt_to/client_ip, the stages timeline and duration. It filters on
+// pipeline_id, direction, action (the trace's final_action column), and on
+// rfc_message_id / outcome / reason_code for message-lifecycle drill-down.
 func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
@@ -164,8 +154,7 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 	if direction := r.URL.Query().Get("direction"); direction != "" {
 		query = query.Where("direction = ?", direction)
 	}
-	// action filters on the pipeline's final_action (the old PipelineLog.Action
-	// column's successor), preserving the existing query contract.
+	// action filters on the pipeline's final_action.
 	if action := r.URL.Query().Get("action"); action != "" {
 		query = query.Where("final_action = ?", action)
 	}
@@ -240,8 +229,8 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Reject a duplicate filter configured with an unsupported queue_recipient
-	// (issue #201) before persisting, for the same reason: an unhonoured config
-	// silently no-ops at delivery.
+	// (issue #201) before persisting: an unhonoured config would be silently
+	// ignored at delivery.
 	if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
 		respond.Error(w, http.StatusBadRequest, "unsupported_filter", err.Error())
 		return

@@ -25,8 +25,8 @@ function DkimPage() {
     }
 
     if (accessToken) {
-      fetchDkimKeys(accessToken).catch(console.error)
-      fetchDomains(accessToken).catch(console.error)
+      fetchDkimKeys().catch(console.error)
+      fetchDomains().catch(console.error)
     }
   }, [isAuthenticated, accessToken])
 
@@ -34,9 +34,9 @@ function DkimPage() {
     if (!accessToken) return
 
     try {
-      await deleteDkimKey(domainId, accessToken)
+      await deleteDkimKey(domainId)
       setDeleteConfirm(null)
-      await fetchDkimKeys(accessToken)
+      await fetchDkimKeys()
     } catch (err) {
       console.error('Failed to delete DKIM key:', err)
     }
@@ -217,7 +217,7 @@ function DkimPage() {
           onSuccess={async () => {
             setShowCreateModal(false)
             if (accessToken) {
-              await fetchDkimKeys(accessToken)
+              await fetchDkimKeys()
             }
           }}
         />
@@ -244,7 +244,7 @@ function DkimCreateModal({ domains, onClose, onSuccess }: DkimCreateModalProps) 
     if (!accessToken || !domainId) return
 
     try {
-      await setDkimKey(parseInt(domainId), { selector, private_key: privateKey }, accessToken)
+      await setDkimKey(parseInt(domainId), { selector, private_key: privateKey })
       onSuccess()
     } catch (err) {
       console.error('Failed to set DKIM key:', err)

@@ -357,8 +357,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// DKIM, under the selector the domain signs with: domains.dkim_selector is
-	// the only one the signers read (dkim_keys is legacy, read by nothing).
+	// DKIM, under the selector the domain signs with (domains.dkim_selector).
 	if domain.DKIMSelector == "" || domain.DKIMPrivateKey == "" {
 		checks = append(checks, recordCheck{
 			Type: "DKIM", Name: domain.Name, Status: "missing",

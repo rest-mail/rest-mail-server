@@ -63,7 +63,7 @@ func newClamAV(config []byte, hmacSecret string) (pipeline.Filter, error) {
 		TimeoutMS: 30000,
 		// SECURE DEFAULT (OSI-15): defer, not continue. An unreachable or errored
 		// virus scanner temp-fails the message rather than delivering it unscanned.
-		// Restore legacy fail-open with "fallback_action":"continue".
+		// An operator may choose fail-open with "fallback_action":"continue".
 		FallbackAction: "defer",
 	}
 	if len(config) > 0 {

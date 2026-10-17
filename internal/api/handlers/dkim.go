@@ -80,9 +80,9 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 	if h.masterKey == "" {
 		slog.Warn("DKIM private key stored in plaintext: MASTER_KEY not configured")
 	}
-	// OSI-8: encrypt at rest with a version-tagged (dkim:v1:) ciphertext so the
-	// signer can later tell it apart from a legacy plaintext key and fail closed
-	// on an undecryptable one. With no MASTER_KEY (dev) this returns the plaintext.
+	// OSI-8: encrypt at rest with a version-tagged (dkim:v1:) ciphertext, the
+	// only form the signer reads when a MASTER_KEY is set; it fails closed on
+	// anything else. With no MASTER_KEY (dev) this returns the plaintext.
 	keyToStore, err := models.EncryptDKIMPrivateKey(req.PrivateKey, h.masterKey)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to encrypt private key")

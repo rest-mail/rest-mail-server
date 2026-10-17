@@ -13,9 +13,6 @@ import (
 // authentication gate on POST /restmail/messages. routes.go builds it from
 // internal/config.
 type RestmailDeliverAuthConfig struct {
-	// Enabled turns the gate on (default true). When false the endpoint reverts
-	// to legacy behavior (accept any well-formed delivery).
-	Enabled bool
 	// Strict requires EVERY delivery to come from a trusted peer OR carry a DKIM
 	// signature aligned with the From domain. Default false: only deliveries
 	// claiming a locally-hosted From domain must authenticate.
@@ -36,7 +33,6 @@ type RestmailDeliverAuthConfig struct {
 // and it survives the RESTMAIL HTTPS hop because the signature travels in the
 // raw message.
 type restmailDeliverAuth struct {
-	enabled     bool
 	strict      bool
 	trustedNets []*net.IPNet
 }
@@ -45,7 +41,7 @@ type restmailDeliverAuth struct {
 // (bare IPs are accepted as /32 or /128). An unparseable entry is dropped with a
 // warning — a bad allowlist entry must never widen trust.
 func newRestmailDeliverAuth(cfg RestmailDeliverAuthConfig) *restmailDeliverAuth {
-	a := &restmailDeliverAuth{enabled: cfg.Enabled, strict: cfg.Strict}
+	a := &restmailDeliverAuth{strict: cfg.Strict}
 	for _, entry := range cfg.TrustedCIDRs {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
@@ -87,7 +83,6 @@ func (a *restmailDeliverAuth) trusted(clientIP string) bool {
 // whether fromDomain is locally hosted; dkimAligned whether the raw message
 // carries a verified DKIM signature aligned with fromDomain.
 //
-//   - disabled                          -> accept (legacy)
 //   - trusted source network            -> accept
 //   - verified + aligned DKIM           -> accept
 //   - strict mode, neither of the above -> REJECT (closed federation)
@@ -95,9 +90,6 @@ func (a *restmailDeliverAuth) trusted(clientIP string) bool {
 //   - otherwise (external, non-strict)  -> accept (ordinary inbound; the
 //     per-domain pipeline still applies its own SPF/DKIM/DMARC policy)
 func (a *restmailDeliverAuth) authorize(clientIP, fromDomain string, fromLocal, dkimAligned bool) (bool, string) {
-	if !a.enabled {
-		return true, "delivery auth disabled"
-	}
 	if a.trusted(clientIP) {
 		return true, "trusted peer"
 	}

@@ -75,10 +75,8 @@ func GetClaims(r *http.Request) *auth.Claims {
 }
 
 // AdminOnly restricts access to admin users, keyed SOLELY on UserType == "admin"
-// (admin users authenticated via admin login). The deprecated mailbox IsAdmin
-// claim is gone (OSI-14): a mailbox token — even a stale one still carrying an
-// is_admin payload from before the fix — can no longer reach the admin surface,
-// closing the latent self-escalation foot-gun.
+// (admin users authenticated via admin login). A mailbox token never reaches the
+// admin surface, whatever its payload claims (OSI-14).
 func AdminOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims := GetClaims(r)
@@ -122,8 +120,7 @@ type ScopeOf func(r *http.Request) (scope string, found bool, err error)
 // exist exactly as before; anyone else is refused for it.
 //
 // Only admin tokens (UserType == "admin") are eligible. Every mailbox token is
-// denied — the deprecated IsAdmin mailbox-admin path was removed (OSI-14), so a
-// mailbox token can no longer be treated as a wildcard admin.
+// denied, so a mailbox token is never treated as a wildcard admin (OSI-14).
 func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

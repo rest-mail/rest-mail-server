@@ -34,7 +34,7 @@ The application itself is deliberately thin: the protocol engines and email-auth
 **Administration**
 - Domain, mailbox, and alias CRUD via REST API
 - Queue management with retry, bounce, and bulk operations
-- Delivery and activity log queries
+- Delivery log queries and a hash-chained audit log
 - IP ban management
 - OpenAPI 3.1 spec (146 operations) with Swagger UI
 - Console admin tool (bubbletea) with inbox, search, compose, and live status
@@ -92,10 +92,10 @@ chore testbed:init
 chore testbed:up
 
 # 3. Start the restmail.test product stack
-chore dev   # alias for restmail:up (= instance:up)
+chore instance:up   # CONFIG defaults to restmail.test
 ```
 
-`chore dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `chore status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`chores.yml`](chores.yml).
+`chore instance:up` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `chore status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`chores.yml`](chores.yml).
 
 ### Seed Test Data
 
@@ -339,8 +339,6 @@ chore config:render     # manifest.yml → config.env (after editing a manifest)
 chore config:check      # fail if config.env drifted from its manifest
 ```
 
-`restmail:up` / `restmail:down` / `chore dev` are aliases for `instance:up` / `instance:down` with the default config.
-
 ## Development
 
 ### Prerequisites
@@ -404,7 +402,7 @@ The e2e suite runs inside a container attached to the testbed mailnet with the t
 
 ```bash
 # Start the full restmail.test product stack
-chore dev                       # alias for restmail:up
+chore instance:up               # CONFIG defaults to restmail.test
 
 # Drive a single container
 chore api:up                    # build + run the API
@@ -418,7 +416,7 @@ chore api:logs
 chore smtp-gateway:logs
 
 # Tear it all down
-chore restmail:down
+chore instance:down
 ```
 
 Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
@@ -596,7 +594,7 @@ The REST API exposes 146 operations across these resource groups:
 - **Admin: DKIM** -- Key management
 - **Admin: Certificates** -- TLS certificate CRUD
 - **Admin: Bans** -- List, create, delete IP bans
-- **Admin: Logs** -- Delivery and activity log queries
+- **Admin: Logs** -- Delivery log queries
 - **Admin: MTA-STS** -- Policy management per domain
 - **Admin: TLS-RPT** -- View TLS report submissions
 - **SSE** -- Real-time event stream per account
@@ -662,10 +660,8 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 |--------|-------------|
 | `spf_check` | SPF record validation |
 | `dkim_verify` | DKIM signature verification (via `rest-mail/go-dkim`) |
-| `dkim_sign` | DKIM signature generation (via `rest-mail/go-dkim`) |
 | `dmarc_check` | DMARC policy enforcement (via `rest-mail/go-dmarc`) |
 | `arc_verify` | ARC chain verification (via `rest-mail/go-arc`) |
-| `arc_seal` | ARC seal generation (via `rest-mail/go-arc`) |
 | `greylist` | Greylisting with DB-backed tracking |
 | `rate_limit` | Per-sender/domain rate limiting |
 | `size_check` | Message size enforcement |
@@ -679,7 +675,7 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | `vacation` | Auto-reply responder |
 | `sieve` | Sieve script execution (via `rest-mail/go-sieve`) |
 | `webhook` | HTTP webhook notifications |
-| `duplicate` | Fork message to webhook/queue |
+| `duplicate` | Fork a copy of the message to a webhook |
 | `javascript` | Custom JS filter via Node.js sidecar |
 | `rspamd` | Rspamd spam scanning (adapter) |
 | `clamav` | ClamAV virus scanning (adapter) |

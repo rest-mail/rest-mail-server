@@ -188,33 +188,31 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// into a local mailbox (BEC/CEO-fraud). Trusted peers and DKIM-aligned mail
 	// pass; an unauthenticated delivery claiming a locally-hosted From domain
 	// (the internal-spoofing vector) is refused before any pipeline or storage.
-	if h.deliverAuth != nil && h.deliverAuth.enabled {
-		clientIP := restmailClientIP(r)
-		fromDomain := rmail.DomainFromAddress(req.From)
-		fromLocal := false
-		if fromDomain != "" {
-			var d models.Domain
-			if h.db.Where("name = ?", fromDomain).First(&d).Error == nil {
-				fromLocal = true
-			}
+	clientIP := restmailClientIP(r)
+	fromDomain := rmail.DomainFromAddress(req.From)
+	fromLocal := false
+	if fromDomain != "" {
+		var d models.Domain
+		if h.db.Where("name = ?", fromDomain).First(&d).Error == nil {
+			fromLocal = true
 		}
-		// DKIM verification does DNS lookups, so only pay for it when the decision
-		// depends on it: a trusted peer is already accepted, and a non-strict
-		// external sender is accepted regardless of signature.
-		aligned := false
-		if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) {
-			aligned = dkimAlignedWith(r.Context(), req.RawMessage, fromDomain)
-		}
-		if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
-			slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
-				"reason", reason,
-				"from_domain", fromDomain,
-				"client_ip", clientIP,
-				"dkim_aligned", aligned,
-			)
-			respond.Error(w, http.StatusForbidden, "unauthorized", "Delivery not authenticated")
-			return
-		}
+	}
+	// DKIM verification does DNS lookups, so only pay for it when the decision
+	// depends on it: a trusted peer is already accepted, and a non-strict
+	// external sender is accepted regardless of signature.
+	aligned := false
+	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) {
+		aligned = dkimAlignedWith(r.Context(), req.RawMessage, fromDomain)
+	}
+	if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
+		slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
+			"reason", reason,
+			"from_domain", fromDomain,
+			"client_ip", clientIP,
+			"dkim_aligned", aligned,
+		)
+		respond.Error(w, http.StatusForbidden, "unauthorized", "Delivery not authenticated")
+		return
 	}
 
 	var delivered []string

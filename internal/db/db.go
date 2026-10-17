@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/restmail/restmail/internal/config"
@@ -45,19 +44,6 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 
 	return db, nil
 }
-
-// backfillRawSizeSQL populates messages.raw_size for pre-existing rows:
-// the exact octet count of the stored raw message when one exists
-// (octet_length counts bytes, matching len(raw) at write time), else the
-// legacy size_bytes value so gateways report an unchanged size for
-// messages that never had a stored raw. Guarded on raw_size = 0 so the
-// statement is idempotent across restarts and never overwrites a value a
-// writer recorded.
-const backfillRawSizeSQL = `UPDATE messages SET raw_size = CASE
-	WHEN raw_message IS NOT NULL AND raw_message <> '' THEN octet_length(raw_message)
-	ELSE size_bytes
-END
-WHERE raw_size = 0 AND (COALESCE(raw_message, '') <> '' OR size_bytes <> 0)`
 
 // dedupeLinkedAccountsSQL collapses pre-existing duplicate linked_accounts rows,
 // keeping the earliest (lowest id) link per mailbox, so the standalone unique
@@ -149,16 +135,13 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		&models.Message{},
 		&models.QuotaUsage{},
 		&models.Certificate{},
-		&models.DKIMKey{},
 		&models.OutboundQueue{},
 		// Pipeline models
 		&models.Pipeline{},
 		&models.CustomFilter{},
-		&models.PipelineLog{},
-		// Per-message observability trace (PR3): supersedes PipelineLog as the
-		// write target; the composite (outcome, created_at) index is created via
-		// its GORM tags above, alongside standalone indexes for correlation and
-		// PR4 pruning.
+		// Per-message observability trace: the composite (outcome, created_at)
+		// index is created via its GORM tags, alongside standalone indexes for
+		// correlation and pruning.
 		&models.MessageTrace{},
 		// Time-bucketed aggregate rollups (PR4): the rollup worker snapshots the
 		// always-on pipeline counters into these long-lived rows. Separate from
@@ -182,7 +165,6 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		&models.RESTMAILCapability{},
 		// Admin features
 		&models.Ban{},
-		&models.ActivityLog{},
 		// MTA-STS (RFC 8461) policies
 		&models.MTASTSPolicy{},
 		// TLS-RPT (RFC 8460) reports
@@ -223,25 +205,6 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		return err
 	}
 
-	// Backfill messages.raw_size for rows created before the column existed.
-	// octet_length (not length) matches Go's len() over the stored text: it
-	// counts bytes in the database encoding, which is exactly what the writer
-	// would have recorded. Rows without a stored raw fall back to size_bytes so
-	// protocol gateways keep reporting the same size they always did for them.
-	// The raw_size = 0 guard makes the backfill idempotent and cheap on
-	// subsequent startups.
-	if err := db.Exec(backfillRawSizeSQL).Error; err != nil {
-		slog.Warn("failed to backfill messages.raw_size", "error", err)
-	}
-
-	// messages.received_tls / messages.tls_version (inbound transport-security
-	// monitoring) are added by AutoMigrate above and deliberately NOT backfilled:
-	// the true transport security of a message that arrived before the column
-	// existed is genuinely unknown, and received_tls is nullable so NULL encodes
-	// exactly that. Defaulting old rows to false would misreport them as
-	// plaintext inbound-MX arrivals and skew the dashboard aggregate, so they are
-	// left NULL ("not applicable / unknown") — the honest, non-breaking default.
-
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {
 		err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_mailboxes_domain_localpart ON mailboxes(domain_id, local_part)").Error
@@ -280,24 +243,6 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_quarantine_expiry ON quarantine(expires_at) WHERE released = false`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachments_checksum ON attachments(checksum)`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_unique ON vacation_responses(mailbox_id, sender)`)
-
-	// ── OSI-8: encrypt DKIM private keys at rest ──────────────────────────────
-	// Any domains.dkim_private_key stored as legacy plaintext PEM is encrypted in
-	// place with the MASTER_KEY-derived key and tagged with the dkim:v1: version
-	// prefix, so the signer can tell an encrypted key (which MUST decrypt) apart
-	// from a plaintext one and fail closed on an undecryptable key. Idempotent:
-	// already-versioned rows are skipped and legacy bare-base64 ciphertext is only
-	// normalized (prefixed, never re-encrypted), so a re-run never double-encrypts.
-	// A no-op when MASTER_KEY is unset (encryption disabled) or the table is absent.
-	// The key is read from the same MASTER_KEY env var config.Load uses, so every
-	// entrypoint that calls AutoMigrate (api, migrate, seed) runs this transparently.
-	if masterKey := os.Getenv("MASTER_KEY"); masterKey != "" && db.Migrator().HasTable(&models.Domain{}) {
-		if n, err := encryptPlaintextDKIMKeys(db, masterKey); err != nil {
-			slog.Warn("failed to encrypt DKIM keys at rest", "error", err)
-		} else if n > 0 {
-			slog.Info("encrypted plaintext DKIM keys at rest", "count", n)
-		}
-	}
 
 	slog.Info("database migration completed")
 	return nil
@@ -344,37 +289,6 @@ func MigrateAuditLog(db *gorm.DB) error {
 		}
 		return nil
 	})
-}
-
-// encryptPlaintextDKIMKeys migrates any plaintext domains.dkim_private_key rows
-// to the encrypted-at-rest form (OSI-8), returning how many rows were changed.
-// Per-value plaintext/ciphertext detection and idempotency live in
-// models.MigrateDKIMKeyAtRest; a row whose value cannot be interpreted under the
-// current MASTER_KEY is logged and left untouched (fail-closed happens at sign
-// time), so a single bad row never aborts startup migration.
-func encryptPlaintextDKIMKeys(db *gorm.DB, masterKey string) (int, error) {
-	var domains []models.Domain
-	if err := db.Where("dkim_private_key <> ''").Find(&domains).Error; err != nil {
-		return 0, err
-	}
-	migrated := 0
-	for i := range domains {
-		d := domains[i]
-		upgraded, changed, err := models.MigrateDKIMKeyAtRest(d.DKIMPrivateKey, masterKey)
-		if err != nil {
-			slog.Warn("DKIM key at-rest migration skipped a row", "domain", d.Name, "error", err)
-			continue
-		}
-		if !changed {
-			continue
-		}
-		if err := db.Model(&models.Domain{}).Where("id = ?", d.ID).
-			Update("dkim_private_key", upgraded).Error; err != nil {
-			return migrated, err
-		}
-		migrated++
-	}
-	return migrated, nil
 }
 
 // WaitForDB retries connecting to the database until it succeeds or the timeout is reached.

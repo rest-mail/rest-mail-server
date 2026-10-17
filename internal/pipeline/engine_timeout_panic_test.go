@@ -66,7 +66,7 @@ func TestEngine_PanickingFilter_Recovered(t *testing.T) {
 }
 
 // TestEngine_PanickingFilter_ContinueOverride proves a recovered panic is routed
-// through the configured policy: under the legacy fail-open override the
+// through the configured policy: under the fail-open override the
 // panicking filter is skipped and the pipeline continues to the next filter.
 func TestEngine_PanickingFilter_ContinueOverride(t *testing.T) {
 	reg := NewRegistry()

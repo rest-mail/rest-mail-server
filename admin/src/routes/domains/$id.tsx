@@ -30,7 +30,7 @@ function DomainDetailsPage() {
     }
 
     if (accessToken) {
-      fetchDomain(id, accessToken).catch((err) => {
+      fetchDomain(id).catch((err) => {
         console.error('Failed to fetch domain:', err)
       })
     }
@@ -55,7 +55,7 @@ function DomainDetailsPage() {
     if (!accessToken) return
 
     try {
-      await updateDomain(id, formData, accessToken)
+      await updateDomain(id, formData)
       setIsEditing(false)
     } catch (err) {
       console.error('Failed to update domain:', err)
@@ -66,7 +66,7 @@ function DomainDetailsPage() {
     if (!accessToken) return
 
     try {
-      await deleteDomain(id, accessToken)
+      await deleteDomain(id)
       navigate({ to: '/domains' })
     } catch (err) {
       console.error('Failed to delete domain:', err)

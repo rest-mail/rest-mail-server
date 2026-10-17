@@ -29,7 +29,7 @@ function MTASTSPage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch(console.error)
+      fetchDomains().catch(console.error)
     }
   }, [isAuthenticated, accessToken])
 
@@ -52,7 +52,7 @@ function MTASTSPage() {
     if (!accessToken || !selectedDomainId) return
 
     try {
-      await fetchPolicy(parseInt(selectedDomainId), accessToken)
+      await fetchPolicy(parseInt(selectedDomainId))
     } catch {
       // Policy doesn't exist - that's OK, we'll show empty form
       console.log('No policy exists for this domain')
@@ -71,11 +71,10 @@ function MTASTSPage() {
           mx_hosts: mxHosts,
           max_age: parseInt(maxAge),
           active,
-        },
-        accessToken
+        }
       )
       // Reload the policy to show updated data
-      await fetchPolicy(parseInt(selectedDomainId), accessToken)
+      await fetchPolicy(parseInt(selectedDomainId))
     } catch (err) {
       console.error('Failed to save policy:', err)
     }
@@ -85,7 +84,7 @@ function MTASTSPage() {
     if (!accessToken || !selectedDomainId) return
 
     try {
-      await deletePolicy(parseInt(selectedDomainId), accessToken)
+      await deletePolicy(parseInt(selectedDomainId))
       setDeleteConfirm(false)
       // Clear form
       setMode('testing')

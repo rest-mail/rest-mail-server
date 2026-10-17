@@ -33,10 +33,10 @@ function PipelineEditorPage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch((err) => {
+      fetchDomains().catch((err) => {
         console.error('Failed to fetch domains:', err)
       })
-      fetchPipeline(parseInt(id), accessToken).catch((err) => {
+      fetchPipeline(parseInt(id)).catch((err) => {
         console.error('Failed to fetch pipeline:', err)
       })
     }
@@ -62,8 +62,7 @@ function PipelineEditorPage() {
           direction,
           active,
           filters,
-        },
-        accessToken
+        }
       )
       addNotification({
         type: 'success',

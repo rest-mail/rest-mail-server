@@ -88,8 +88,7 @@ func TestSieveRedirect_NonAllowlistedExternalDenied(t *testing.T) {
 	}
 }
 
-// TestSieveRedirect_AllowExternalPermitsAll: AllowExternal restores the legacy
-// permissive behavior.
+// TestSieveRedirect_AllowExternalPermitsAll: AllowExternal permits any target.
 func TestSieveRedirect_AllowExternalPermitsAll(t *testing.T) {
 	policy := SieveRedirectPolicy{AllowExternal: true}
 	got := runSievePolicy(t, policy, "anyone@anywhere.example")

@@ -25,7 +25,7 @@ function MessageTracePage() {
     clearError()
     const messageId = parseInt(id, 10)
     if (accessToken && !Number.isNaN(messageId)) {
-      fetchMessageTrace(messageId, accessToken).catch((err) => {
+      fetchMessageTrace(messageId).catch((err) => {
         console.error('Failed to fetch message trace:', err)
       })
     }

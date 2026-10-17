@@ -38,7 +38,7 @@ function QueueListPage() {
   // Initial fetch
   useEffect(() => {
     if (accessToken) {
-      fetchQueue(accessToken)
+      fetchQueue()
       setLastUpdated(new Date())
     }
   }, [accessToken, filter])
@@ -49,14 +49,14 @@ function QueueListPage() {
 
     const handleVisibilityChange = () => {
       if (!document.hidden && accessToken) {
-        fetchQueue(accessToken)
+        fetchQueue()
         setLastUpdated(new Date())
       }
     }
 
     const intervalId = setInterval(() => {
       if (!document.hidden && accessToken) {
-        fetchQueue(accessToken)
+        fetchQueue()
         setLastUpdated(new Date())
       }
     }, 15000) // 15 seconds
@@ -73,7 +73,7 @@ function QueueListPage() {
     if (!accessToken) return
     setIsRefreshing(true)
     try {
-      await fetchQueue(accessToken)
+      await fetchQueue()
       setLastUpdated(new Date())
     } finally {
       setIsRefreshing(false)
@@ -83,14 +83,14 @@ function QueueListPage() {
   const handleFilterChange = (newFilter: FilterOption) => {
     setFilter(newFilter)
     if (accessToken) {
-      fetchQueue(accessToken, newFilter)
+      fetchQueue(newFilter)
     }
   }
 
   const handleDelete = async (id: string) => {
     if (!accessToken) return
     try {
-      await deleteEntry(id, accessToken)
+      await deleteEntry(id)
       setDeleteConfirm(null)
       addNotification({
         type: 'success',
@@ -108,7 +108,7 @@ function QueueListPage() {
   const handleRetry = async (id: string) => {
     if (!accessToken) return
     try {
-      await retryEntry(id, accessToken)
+      await retryEntry(id)
       addNotification({
         type: 'success',
         message: 'Queue entry retry initiated'
@@ -134,7 +134,7 @@ function QueueListPage() {
     if (!accessToken) return
     const count = selectedIds.length
     try {
-      await retryBulk(selectedIds, accessToken)
+      await retryBulk(selectedIds)
       addNotification({
         type: 'success',
         message: `Successfully retried ${count} queue ${count === 1 ? 'entry' : 'entries'}`
@@ -152,7 +152,7 @@ function QueueListPage() {
     if (!accessToken) return
     const count = selectedIds.length
     try {
-      await deleteBulk(selectedIds, accessToken)
+      await deleteBulk(selectedIds)
       setShowBulkConfirm(false)
       addNotification({
         type: 'success',

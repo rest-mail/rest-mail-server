@@ -32,7 +32,7 @@ function NewPipelinePage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch((err) => {
+      fetchDomains().catch((err) => {
         console.error('Failed to fetch domains:', err)
       })
     }
@@ -48,8 +48,7 @@ function NewPipelinePage() {
           direction,
           active,
           filters,
-        },
-        accessToken
+        }
       )
       addNotification({
         type: 'success',

@@ -154,7 +154,7 @@ func TestResetToken_LocksOutWhoeverHeldTheAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := gdb.Create(&models.RefreshToken{Jti: "agent-session", UserType: "admin", SubjectID: admin.ID,
-		Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}).Error; err != nil {
+		SessionID: "agent-session", Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}
 

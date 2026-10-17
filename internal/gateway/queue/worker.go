@@ -214,7 +214,7 @@ type Worker struct {
 
 	// masterKey decrypts the domain's at-rest DKIM private key when the worker
 	// signs an outbound message that arrived unsigned (SMTP submission, #171).
-	// Empty when DKIM keys are stored as legacy plaintext (encryption disabled).
+	// Empty only when encryption is disabled (dev), where keys are plaintext.
 	masterKey string
 
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
@@ -294,8 +294,9 @@ func (w *Worker) SetAllowPrivateDestinations(allow bool) {
 }
 
 // SetMasterKey provides the key used to decrypt at-rest DKIM private keys so the
-// worker can DKIM-sign outbound messages that arrived unsigned (#171). Pass the
-// empty string when DKIM keys are stored as legacy plaintext.
+// worker can DKIM-sign outbound messages that arrived unsigned (#171). It is
+// the same MASTER_KEY the API encrypts them with; empty only when encryption is
+// disabled (dev).
 func (w *Worker) SetMasterKey(key string) {
 	w.masterKey = key
 }
@@ -307,7 +308,7 @@ func (w *Worker) SetMasterKey(key string) {
 // SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
 // API path applies at submission (#171); the transforms are idempotent, so
 // already-prepared API mail passes through unchanged. It returns an error only
-// when a configured DKIM key cannot be loaded, so the caller fails closed
+// when a configured DKIM key cannot sign, so the caller fails closed
 // (defer/retry) rather than relaying the message unsigned.
 func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
 	return outbound.Prepare(w.db, w.masterKey, rmail.DomainFromAddress(item.Sender), item.RawMessage)

@@ -38,13 +38,13 @@ interface CustomFilterState {
   error: string | null
 
   // Actions
-  fetchFilters: (accessToken: string, domainId?: number) => Promise<void>
-  fetchFilter: (id: number, accessToken: string) => Promise<CustomFilter>
-  createFilter: (data: Partial<CustomFilter>, accessToken: string) => Promise<CustomFilter>
-  updateFilter: (id: number, data: Partial<CustomFilter>, accessToken: string) => Promise<CustomFilter>
-  deleteFilter: (id: number, accessToken: string) => Promise<void>
-  validateScript: (script: string, accessToken: string, email?: unknown) => Promise<ValidationResult>
-  testFilter: (id: number, accessToken: string, email?: unknown) => Promise<FilterTestResult>
+  fetchFilters: (domainId?: number) => Promise<void>
+  fetchFilter: (id: number) => Promise<CustomFilter>
+  createFilter: (data: Partial<CustomFilter>) => Promise<CustomFilter>
+  updateFilter: (id: number, data: Partial<CustomFilter>) => Promise<CustomFilter>
+  deleteFilter: (id: number) => Promise<void>
+  validateScript: (script: string, email?: unknown) => Promise<ValidationResult>
+  testFilter: (id: number, email?: unknown) => Promise<FilterTestResult>
   clearError: () => void
   clearCurrentFilter: () => void
 }
@@ -55,7 +55,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchFilters: async (accessToken: string, domainId?: number) => {
+  fetchFilters: async (domainId?: number) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -63,7 +63,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
         ? `/admin/custom-filters?domain_id=${domainId}`
         : '/admin/custom-filters'
 
-      const response = await apiV1.request(url, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(url, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -86,14 +86,13 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  fetchFilter: async (id: number, accessToken: string) => {
+  fetchFilter: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
       const response = await apiV1.request(
         `/admin/custom-filters/${id}`,
-        { method: 'GET' },
-        accessToken
+        { method: 'GET' }
       )
 
       if (!response.ok) {
@@ -118,7 +117,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  createFilter: async (data: Partial<CustomFilter>, accessToken: string) => {
+  createFilter: async (data: Partial<CustomFilter>) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -127,8 +126,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify(data),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -152,7 +150,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  updateFilter: async (id: number, data: Partial<CustomFilter>, accessToken: string) => {
+  updateFilter: async (id: number, data: Partial<CustomFilter>) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -161,8 +159,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
         {
           method: 'PATCH',
           body: JSON.stringify(data),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -187,14 +184,13 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  deleteFilter: async (id: number, accessToken: string) => {
+  deleteFilter: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
       const response = await apiV1.request(
         `/admin/custom-filters/${id}`,
-        { method: 'DELETE' },
-        accessToken
+        { method: 'DELETE' }
       )
 
       if (!response.ok) {
@@ -216,7 +212,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  validateScript: async (script: string, accessToken: string, email?: unknown) => {
+  validateScript: async (script: string, email?: unknown) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -225,8 +221,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify({ script, email }),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -246,7 +241,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
     }
   },
 
-  testFilter: async (id: number, accessToken: string, email?: unknown) => {
+  testFilter: async (id: number, email?: unknown) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -255,8 +250,7 @@ export const useCustomFilterStore = create<CustomFilterState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify({ email }),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {

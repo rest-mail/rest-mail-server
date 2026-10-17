@@ -34,8 +34,9 @@ type RefreshToken struct {
 	SubjectID uint `gorm:"index:idx_refresh_owner" json:"subject_id"`
 	// SessionID is the token's sid: the same on every row of one session, from
 	// its sign-in through each rotation. The session is alive while one of its
-	// rows is active and unexpired.
-	SessionID string `gorm:"size:64;index" json:"session_id"`
+	// rows is active and unexpired. Every token carries one, so the column
+	// refuses NULL and the empty string alike.
+	SessionID string `gorm:"size:64;not null;index;check:session_id <> ''" json:"session_id"`
 	// Status is one of RefreshToken{Active,Rotated,Revoked}. Only Active is
 	// exchangeable.
 	Status string `gorm:"size:16;not null;index" json:"status"`

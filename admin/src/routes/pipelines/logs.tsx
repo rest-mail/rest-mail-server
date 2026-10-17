@@ -31,7 +31,7 @@ function PipelineLogsPage() {
     }
 
     if (accessToken) {
-      fetchPipelines(accessToken).catch((err) => {
+      fetchPipelines().catch((err) => {
         console.error('Failed to fetch pipelines:', err)
       })
       loadTraces()
@@ -58,7 +58,7 @@ function PipelineLogsPage() {
     if (filterReasonCode.trim()) params.reason_code = filterReasonCode.trim()
     if (filterRfcMessageId.trim()) params.rfc_message_id = filterRfcMessageId.trim()
 
-    fetchTraces(params, accessToken).catch((err) => {
+    fetchTraces(params).catch((err) => {
       console.error('Failed to fetch traces:', err)
     })
   }

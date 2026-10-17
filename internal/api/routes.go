@@ -63,8 +63,8 @@ func (rt *Routers) Close() {
 }
 
 // NewRouter creates and configures the chi router with all API routes and
-// returns the public handler. It is the backward-compatible entry point for
-// callers that do not run a separate internal mTLS listener (tests, tooling).
+// returns the public handler. It is the entry point for callers that do not
+// run a separate internal mTLS listener (tests, tooling).
 // The acmeClient parameter is optional; pass nil when ACME is disabled.
 // adminSessionCheck builds the check that refuses admin tokens from before the
 // account's last credential change. A variable so this package's route tests,
@@ -203,8 +203,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("contact_whitelist", filters.NewContactWhitelist(db))
 	pipeline.DefaultRegistry.Register("recipient_check", filters.NewRecipientCheck(db))
 	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
-	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db, cfg.MasterKey))
-	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
 	// #178: bind dmarc_check to the deployment's trusted-ARC-sealer allowlist,
 	// overriding the empty-allowlist default from init(). A passing ARC chain
 	// overrides a DMARC failure only when its sealing domain is allowlisted; the
@@ -221,8 +219,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// OSI-15: bind the external content-scanner filters to the deployment's shared
 	// HMAC secret so verdicts are authenticated end-to-end (a plain-HTTP verdict
 	// cannot be forged/downgraded). The adapters also default to fail-CLOSED
-	// (defer) when the scanner is unreachable/errors, overriding the legacy
-	// fail-open. No scanner runs by default — these filters are active only when an
+	// (defer) when the scanner is unreachable/errors. No scanner runs by default — these filters are active only when an
 	// operator adds them to a pipeline, so the default pipeline is unaffected.
 	scannerSecret := cfg.ScannerHMACSecret()
 	pipeline.DefaultRegistry.Register("rspamd", filters.NewRspamdWithSecret(scannerSecret))
@@ -236,7 +233,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	previewEngine := pipeline.NewEngine(pipeline.DefaultRegistry, slog.Default())
 	// OSI-18: apply the configured fail-open/closed action for unknown or errored
 	// filters. The engine defaults to fail-closed (defer); this lets an operator
-	// override (e.g. "continue" to restore legacy fail-open).
+	// choose (e.g. "continue" to fail open).
 	filterErrAction := pipeline.Action(cfg.PipelineFilterErrorAction())
 	pipelineEngine.SetFilterErrorAction(filterErrAction)
 	previewEngine.SetFilterErrorAction(filterErrAction)
@@ -287,7 +284,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		Base:    cfg.RestmailTarpitBase,
 		Max:     cfg.RestmailTarpitMax,
 	}, handlers.RestmailDeliverAuthConfig{
-		Enabled:      restmailDeliverAuth.Enabled,
 		Strict:       restmailDeliverAuth.Strict,
 		TrustedCIDRs: restmailDeliverAuth.TrustedCIDRs,
 	})
@@ -801,7 +797,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Logs
 		r.With(needs(middleware.CapMessagesRead)).Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/logs/activity", logH.ActivityLog)
 
 		// Audit log (#343): reading it is itself audited, including a read the
 		// capability check refuses.

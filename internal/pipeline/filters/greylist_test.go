@@ -77,8 +77,7 @@ func uniqueTriple(tag string) (sender, rcpt, ip string) {
 
 // TestGreylist_FirstContactStampsTTL proves ttl_days actually takes effect: a
 // first-contact defer records an entry whose expires_at horizon reflects the
-// configured ttl_days. On the pre-fix code no expires_at was written at all, so
-// this fails (nil horizon) — the dead ttl_days config had no effect.
+// configured ttl_days.
 func TestGreylist_FirstContactStampsTTL(t *testing.T) {
 	db := openGreylistTestDB(t)
 	sender, rcpt, ip := uniqueTriple("ttl")
@@ -95,9 +94,6 @@ func TestGreylist_FirstContactStampsTTL(t *testing.T) {
 
 	e := loadEntry(t, db, sender, rcpt, ip)
 	t.Cleanup(func() { db.Delete(&e) })
-	if e.ExpiresAt == nil {
-		t.Fatal("first-contact entry has no expires_at horizon — ttl_days had no effect")
-	}
 	wantLo := before.Add(2*24*time.Hour - time.Minute)
 	wantHi := time.Now().Add(2*24*time.Hour + time.Minute)
 	if e.ExpiresAt.Before(wantLo) || e.ExpiresAt.After(wantHi) {
@@ -121,7 +117,7 @@ func TestGreylist_ExpiredWhitelistIsReGreylisted(t *testing.T) {
 		FirstSeen:  time.Now().Add(-48 * time.Hour),
 		RetryAfter: time.Now().Add(-47 * time.Hour),
 		Passed:     true,
-		ExpiresAt:  &past,
+		ExpiresAt:  past,
 		CreatedAt:  time.Now().Add(-48 * time.Hour),
 	}
 	if err := db.Create(&seed).Error; err != nil {
@@ -142,7 +138,7 @@ func TestGreylist_ExpiredWhitelistIsReGreylisted(t *testing.T) {
 	if e.Passed {
 		t.Error("expired entry should have been reset to passed=false")
 	}
-	if e.ExpiresAt == nil || !e.ExpiresAt.After(time.Now()) {
+	if !e.ExpiresAt.After(time.Now()) {
 		t.Errorf("re-greylisted entry expires_at = %v, want a future horizon", e.ExpiresAt)
 	}
 }
@@ -162,7 +158,7 @@ func TestGreylist_UnexpiredWhitelistPasses(t *testing.T) {
 		FirstSeen:  time.Now().Add(-1 * time.Hour),
 		RetryAfter: time.Now().Add(-30 * time.Minute),
 		Passed:     true,
-		ExpiresAt:  &future,
+		ExpiresAt:  future,
 		CreatedAt:  time.Now().Add(-1 * time.Hour),
 	}
 	if err := db.Create(&seed).Error; err != nil {
@@ -195,7 +191,7 @@ func TestGreylist_PassAfterDelayRestampsHorizon(t *testing.T) {
 		FirstSeen:  time.Now().Add(-10 * time.Minute),
 		RetryAfter: time.Now().Add(-5 * time.Minute), // delay already satisfied
 		Passed:     false,
-		ExpiresAt:  &future,
+		ExpiresAt:  future,
 		CreatedAt:  time.Now().Add(-10 * time.Minute),
 	}
 	if err := db.Create(&seed).Error; err != nil {
@@ -215,7 +211,7 @@ func TestGreylist_PassAfterDelayRestampsHorizon(t *testing.T) {
 	if !e.Passed {
 		t.Error("entry should be marked passed after delay satisfied")
 	}
-	if e.ExpiresAt == nil || !e.ExpiresAt.After(time.Now().Add(35*24*time.Hour)) {
+	if !e.ExpiresAt.After(time.Now().Add(35 * 24 * time.Hour)) {
 		t.Errorf("passed entry expires_at = %v, want ~now+36d", e.ExpiresAt)
 	}
 }
@@ -237,7 +233,7 @@ func TestGreylist_StrictModeDropsEntry(t *testing.T) {
 		FirstSeen:  time.Now().Add(-10 * time.Minute),
 		RetryAfter: time.Now().Add(-5 * time.Minute),
 		Passed:     false,
-		ExpiresAt:  &future,
+		ExpiresAt:  future,
 		CreatedAt:  time.Now().Add(-10 * time.Minute),
 	}
 	if err := db.Create(&seed).Error; err != nil {

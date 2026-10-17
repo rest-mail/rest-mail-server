@@ -76,7 +76,7 @@ function NewCustomFilterPage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch((err) => {
+      fetchDomains().catch((err) => {
         console.error('Failed to fetch domains:', err)
       })
     }
@@ -103,8 +103,7 @@ function NewCustomFilterPage() {
           config: {
             script,
           },
-        },
-        accessToken
+        }
       )
       addNotification({
         type: 'success',
@@ -135,7 +134,7 @@ function NewCustomFilterPage() {
         return
       }
 
-      const result = await validateScript(script, accessToken, emailObj)
+      const result = await validateScript(script, emailObj)
       setValidationResult(result)
 
       if (result.valid) {

@@ -428,9 +428,9 @@ type MessageSummary struct {
 
 // WireSize returns the octet count a protocol gateway must report for this
 // message (IMAP RFC822.SIZE, POP3 STAT/LIST): the exact size of the stored
-// raw message when the server recorded one (raw_size > 0), else the legacy
-// size_bytes approximation for messages that have no stored raw form and are
-// served via a rebuilt fallback.
+// raw message when the server recorded one (raw_size > 0), else the size_bytes
+// approximation for messages stored without a raw form (sent mail, drafts),
+// which are served rebuilt.
 func (m MessageSummary) WireSize() int {
 	if m.RawSize > 0 {
 		return m.RawSize
