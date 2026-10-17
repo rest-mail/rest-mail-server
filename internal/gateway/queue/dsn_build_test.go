@@ -108,3 +108,19 @@ func TestBuildDSNMessage_EscapesInjection(t *testing.T) {
 		t.Errorf("bounce subject contains a raw line break: %q", dsn.subject)
 	}
 }
+
+// The bounce says why in plain words, from the failure's category, next to the
+// remote's own reply.
+func TestBuildDSNMessage_SaysWhyInPlainWords(t *testing.T) {
+	item := dsnTestItem()
+	item.FailureCategory = models.FailureMailboxFull
+	smtpErr := &SMTPError{Code: 452, Enhanced: "4.2.2", Message: "The recipient's inbox is out of storage space."}
+	now := time.Now()
+	dsn := buildDSNMessage("mail.local.test", item, smtpErr, now, now)
+	if !strings.Contains(dsn.humanPart, "The recipient's mailbox is full.\r\n") {
+		t.Errorf("bounce text gives no reason\n---\n%s", dsn.humanPart)
+	}
+	if !strings.Contains(dsn.humanPart, "Error: smtp; 452 The recipient's inbox is out of storage space.") {
+		t.Errorf("bounce text lost the remote's reply\n---\n%s", dsn.humanPart)
+	}
+}
