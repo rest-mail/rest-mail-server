@@ -16,6 +16,7 @@ import (
 
 	"github.com/rest-mail/go-dmarc"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -96,11 +97,31 @@ func (r *Reporter) reportDomain(domain string, now time.Time) error {
 		return r.db.Model(&models.DMARCAggregateRecord{}).Where("id IN ?", ids).Update("reported", true).Error
 	}
 
-	rua := r.lookupRUA(domain)
-	if rua == "" {
-		// Domain publishes no rua address — nothing to send; mark reported so the
-		// records don't accumulate forever.
+	// A report row must name the IP the mail came from, and BuildReport
+	// refuses one that doesn't: such a row is left out rather than holding
+	// back the domain's report every interval.
+	reportable := make([]models.DMARCAggregateRecord, 0, len(records))
+	for _, rec := range records {
+		if net.ParseIP(rec.SourceIP) != nil {
+			reportable = append(reportable, rec)
+		}
+	}
+	if len(reportable) == 0 {
 		return markReported()
+	}
+
+	// The policy as dmarc_check discovers it, so a subdomain without a record
+	// of its own reports to its Organizational Domain's rua= (RFC 7489
+	// §6.6.3). A DNS failure leaves the rows for the next interval.
+	published, err := dmarc.Discover(domain, r.lookupTXT, mail.OrgDomain)
+	if err != nil {
+		return err
+	}
+	// §7.1: an address outside the policy domain's organization gets reports
+	// only if it published that it wants them.
+	ruas, err := dmarc.AuthorizeReportURIs(published.Domain, "rua", published.Record.RUA, r.lookupTXT, mail.OrgDomain)
+	if err != nil {
+		return err
 	}
 
 	begin := records[0].CreatedAt.Unix()
@@ -112,15 +133,20 @@ func (r *Reporter) reportDomain(domain string, now time.Time) error {
 		ReportID:  reportID,
 		DateRange: dmarc.DateRange{Begin: begin, End: end},
 	}
-	policy := dmarc.PolicyPublished{Domain: domain, ADKIM: "r", ASPF: "r", P: records[0].Policy, PCT: 100}
-
-	xmlBytes, err := dmarc.BuildReport(meta, policy, aggregateRecords(records))
+	xmlBytes, err := dmarc.BuildReport(meta, dmarc.NewPolicyPublished(published), aggregateRecords(reportable))
 	if err != nil {
 		return err
 	}
 	gz, err := dmarc.Gzip(xmlBytes)
 	if err != nil {
 		return err
+	}
+
+	rua := mailtoRUA(ruas, uint64(len(gz)))
+	if rua == "" {
+		// No rua address we may send this report to: nothing to send; mark
+		// reported so the records don't accumulate forever.
+		return markReported()
 	}
 
 	raw := buildReportEmail(meta.Email, rua, domain, r.orgDomain, reportID, begin, end, now, gz)
@@ -166,39 +192,22 @@ func aggregateRecords(records []models.DMARCAggregateRecord) []dmarc.AggregateRe
 				Aligned: r.SPFAligned,
 			}},
 		}
+		if r.OverrideReason != "" {
+			out[i].Reasons = []dmarc.PolicyOverrideReason{{Type: r.OverrideReason, Comment: r.OverrideComment}}
+		}
 	}
 	return out
 }
 
-func (r *Reporter) lookupRUA(domain string) string {
-	txts, err := r.lookupTXT("_dmarc." + domain)
-	if err != nil {
-		return ""
-	}
-	for _, t := range txts {
-		if strings.HasPrefix(t, "v=DMARC1") {
-			return parseRUA(t)
-		}
-	}
-	return ""
-}
-
-// parseRUA extracts the first mailto: address from a DMARC record's rua= tag.
-func parseRUA(record string) string {
-	for _, part := range strings.Split(record, ";") {
-		part = strings.TrimSpace(part)
-		if !strings.HasPrefix(part, "rua=") {
+// mailtoRUA returns the address of the first mailto: URI in ruas that takes a
+// report of size bytes (its "!" limit, RFC 7489 §6.2), or "" if none does.
+func mailtoRUA(ruas []dmarc.ReportURI, size uint64) string {
+	for _, u := range ruas {
+		if len(u.URI) < len("mailto:") || !strings.EqualFold(u.URI[:len("mailto:")], "mailto:") || size > u.MaxSize {
 			continue
 		}
-		for _, u := range strings.Split(strings.TrimPrefix(part, "rua="), ",") {
-			u = strings.TrimSpace(u)
-			if strings.HasPrefix(u, "mailto:") {
-				addr := strings.TrimPrefix(u, "mailto:")
-				if i := strings.IndexByte(addr, '!'); i >= 0 { // strip !size limit
-					addr = addr[:i]
-				}
-				return strings.TrimSpace(addr)
-			}
+		if addr := strings.TrimSpace(u.URI[len("mailto:"):]); addr != "" {
+			return addr
 		}
 	}
 	return ""

@@ -239,7 +239,17 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 	w.sts.FetchPolicy = func(ctx context.Context, url string) ([]byte, error) {
 		return mtasts.HTTPFetch(ctx, url, w.tlsInsecure)
 	}
+	w.sts.RefreshFailed = logSTSRefreshFailed
 	return w
+}
+
+// logSTSRefreshFailed reports a failed MTA-STS policy refresh. Delivery goes
+// on under the cached policy until it expires, so this is the warning RFC
+// 8461 §3.3 and §10.2 ask for: a domain's policy host or TXT record has broken
+// (or is being blocked), and mail to it stops once max_age runs out.
+func logSTSRefreshFailed(domain string, cached *mtasts.Policy, err error) {
+	slog.Warn("mta-sts: policy refresh failed, using the cached policy",
+		"domain", domain, "mode", cached.Mode, "error", err)
 }
 
 // SetTLSInsecure sets whether to skip TLS certificate verification for outbound delivery.

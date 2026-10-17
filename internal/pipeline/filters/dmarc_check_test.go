@@ -2,6 +2,7 @@ package filters
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/restmail/restmail/internal/pipeline"
@@ -25,6 +26,20 @@ func dkimVerdict(result, domain string) pipeline.AuthResult {
 	return pipeline.AuthResult{Method: pipeline.AuthDKIM, Result: result, Property: pipeline.PropHeaderD, Domain: domain}
 }
 
+// stubDMARC makes DMARC discovery see the record publishing(domain) gives for
+// _dmarc.<domain>, "" for none.
+func stubDMARC(t *testing.T, publishing func(domain string) string) {
+	t.Helper()
+	orig := dmarcTXT
+	dmarcTXT = func(name string) ([]string, error) {
+		if rec := publishing(strings.TrimPrefix(name, "_dmarc.")); rec != "" {
+			return []string{rec}, nil
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() { dmarcTXT = orig })
+}
+
 // fromExampleTest is a message From example.test.
 func fromExampleTest() *pipeline.EmailJSON {
 	return &pipeline.EmailJSON{
@@ -33,9 +48,7 @@ func fromExampleTest() *pipeline.EmailJSON {
 }
 
 func TestDMARC_DKIMAlignment(t *testing.T) {
-	orig := lookupDMARC
-	lookupDMARC = func(string) (string, error) { return "v=DMARC1; p=reject", nil }
-	defer func() { lookupDMARC = orig }()
+	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
 
 	f := &dmarcCheckFilter{}
 
@@ -98,9 +111,7 @@ func TestDMARC_DKIMAlignment(t *testing.T) {
 }
 
 func TestDMARC_SPFAlignment(t *testing.T) {
-	orig := lookupDMARC
-	lookupDMARC = func(string) (string, error) { return "v=DMARC1; p=reject", nil }
-	defer func() { lookupDMARC = orig }()
+	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
 
 	f := &dmarcCheckFilter{}
 
@@ -138,8 +149,6 @@ func TestDMARC_SPFAlignment(t *testing.T) {
 // the From domain, for the filters after it and the stored
 // Authentication-Results: pass, fail, or none without a policy.
 func TestDMARC_RecordsVerdict(t *testing.T) {
-	orig := lookupDMARC
-	t.Cleanup(func() { lookupDMARC = orig })
 	f := &dmarcCheckFilter{}
 
 	cases := []struct {
@@ -154,7 +163,7 @@ func TestDMARC_RecordsVerdict(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			lookupDMARC = func(string) (string, error) { return tc.record, nil }
+			stubDMARC(t, func(string) string { return tc.record })
 			ctx := authCtx(tc.verdicts...)
 			if _, err := f.Execute(ctx, fromExampleTest()); err != nil {
 				t.Fatal(err)

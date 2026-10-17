@@ -3,11 +3,11 @@ package filters
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/rest-mail/go-dmarc"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -16,9 +16,16 @@ import (
 // DMARC record is recorded; the reporter aggregates these rows per period. A DB
 // handle is available on the pipeline context; absent one (e.g. the test/preview
 // path), capture is a no-op.
-func captureDMARC(ctx context.Context, email *pipeline.EmailJSON, domain, policy string, spfPass, spfAligned, dkimPass, dkimAligned bool, disposition string) {
+//
+// Mail with no client IP is not recorded: the SMTP gateway leaves it empty for
+// submissions it delivers locally, and an aggregate report row must name the
+// IP the mail came from (BuildReport refuses one that doesn't).
+//
+// override, when set, is why the disposition differs from the requested
+// policy (RFC 7489 Appendix C PolicyOverrideReason).
+func captureDMARC(ctx context.Context, email *pipeline.EmailJSON, domain, policy string, spfPass, spfAligned, dkimPass, dkimAligned bool, disposition string, override *dmarc.PolicyOverrideReason) {
 	db := pipeline.DBFromContext(ctx)
-	if db == nil || email.Envelope.Direction == "outbound" {
+	if db == nil || email.Envelope.Direction == "outbound" || email.Envelope.ClientIP == "" {
 		return
 	}
 	result := func(pass bool) string {
@@ -31,7 +38,7 @@ func captureDMARC(ctx context.Context, email *pipeline.EmailJSON, domain, policy
 	if len(email.Headers.From) > 0 {
 		headerFrom = email.Headers.From[0].Address
 	}
-	_ = db.Create(&models.DMARCAggregateRecord{
+	row := models.DMARCAggregateRecord{
 		Domain:      domain,
 		SourceIP:    email.Envelope.ClientIP,
 		HeaderFrom:  headerFrom,
@@ -41,7 +48,11 @@ func captureDMARC(ctx context.Context, email *pipeline.EmailJSON, domain, policy
 		DKIMAligned: dkimAligned,
 		SPFResult:   result(spfPass),
 		SPFAligned:  spfAligned,
-	}).Error
+	}
+	if override != nil {
+		row.OverrideReason, row.OverrideComment = override.Type, override.Comment
+	}
+	_ = db.Create(&row).Error
 }
 
 // dmarcCheckFilter evaluates DMARC policy using SPF and DKIM results.
@@ -122,9 +133,12 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}
 	domain := parts[1]
 
-	// Look up DMARC record
-	dmarcRecord, err := lookupDMARC(domain)
-	if err != nil || dmarcRecord == "" {
+	// Discover the From domain's policy: its own record, or else its
+	// Organizational Domain's (RFC 7489 §6.6.3). A record with no valid policy
+	// and no valid rua= is no policy; one with a rua= but no valid p= requests
+	// "none" (§6.6.3 step 6).
+	published, err := discoverDMARC(domain)
+	if err != nil || published.Raw == "" {
 		pipeline.AuthResultsFromContext(ctx).Add(pipeline.AuthResult{
 			Method: pipeline.AuthDMARC, Result: "none", Property: pipeline.PropHeaderFrom, Domain: domain,
 		})
@@ -139,15 +153,9 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		}, nil
 	}
 
-	// Parse DMARC policy. A malformed record (bad/duplicate p= tag) has no valid
-	// policy: per RFC 7489 §6.6.3 treat it as if none were published — i.e. no
-	// enforcement — rather than applying an unintended disposition.
-	policy, err := dmarc.ParsePolicy(dmarcRecord)
-	if err != nil {
-		slog.Warn("dmarc_check: malformed DMARC record, treating as no policy",
-			"domain", domain, "error", err)
-		policy = "none"
-	}
+	// The policy for this domain: p=, or sp= (else p=) when the record is its
+	// Organizational Domain's.
+	policy := published.Requested
 
 	// The SPF, DKIM and ARC verdicts come only from what spf_check, dkim_verify
 	// and arc_verify recorded for this run, never from Authentication-Results
@@ -155,13 +163,17 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	// script, a recorded verdict cannot.
 	auth := pipeline.AuthResultsFromContext(ctx)
 
+	// Alignment is in the record's adkim= and aspf= modes, with Organizational
+	// Domains from the Public Suffix List (§3.2), so registrants under a
+	// multi-label suffix such as co.uk do not align with each other.
+	//
 	// SPF: the MAIL FROM identity's result, aligned on the domain it checked
 	// (RFC 7489 §3.1.2). A separate HELO result does not count.
 	spfPass, spfAligned := false, false
 	for _, r := range auth.Find(pipeline.AuthSPF, pipeline.PropMailFrom) {
 		if r.Result == "pass" {
 			spfPass = true
-			if r.Domain != "" && dmarc.Aligned(r.Domain, domain) {
+			if r.Domain != "" && dmarc.AlignedMode(r.Domain, domain, published.Record.ASPF, mail.OrgDomain) {
 				spfAligned = true
 			}
 		}
@@ -174,7 +186,7 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	for _, r := range auth.Find(pipeline.AuthDKIM, pipeline.PropHeaderD) {
 		if r.Result == "pass" {
 			dkimPass = true
-			if r.Domain != "" && dmarc.Aligned(r.Domain, domain) {
+			if r.Domain != "" && dmarc.AlignedMode(r.Domain, domain, published.Record.ADKIM, mail.OrgDomain) {
 				dkimAligned = true
 			}
 		}
@@ -215,7 +227,11 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	if !aligned && !arcOverride && (policy == "reject" || policy == "quarantine") {
 		disposition = policy
 	}
-	captureDMARC(ctx, email, domain, policy, spfPass, spfAligned, dkimPass, dkimAligned, disposition)
+	var override *dmarc.PolicyOverrideReason
+	if !aligned && arcOverride && policy != "none" {
+		override = &dmarc.PolicyOverrideReason{Type: dmarc.PolicyOverrideTrustedForwarder, Comment: "arc=pass from " + arcSealer}
+	}
+	captureDMARC(ctx, email, domain, policy, spfPass, spfAligned, dkimPass, dkimAligned, disposition, override)
 
 	// DMARC requires both pass AND alignment.
 	if aligned {
@@ -278,8 +294,11 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}
 }
 
-// lookupDMARC is a package var so tests can stub DNS. It fetches the domain's
-// DMARC record via the dmarc library using system DNS.
-var lookupDMARC = func(domain string) (string, error) {
-	return dmarc.Lookup(domain, nil)
+// dmarcTXT resolves the _dmarc TXT records DMARC discovery reads; nil uses
+// system DNS. A package var so tests can stub DNS.
+var dmarcTXT dmarc.TXTResolver
+
+// discoverDMARC finds the DMARC policy that applies to domain.
+func discoverDMARC(domain string) (dmarc.Policy, error) {
+	return dmarc.Discover(domain, dmarcTXT, mail.OrgDomain)
 }

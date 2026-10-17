@@ -49,14 +49,12 @@ func TestDMARC_ForgeriesFail(t *testing.T) {
 	}, addr: map[string][]netip.Addr{
 		"smtp.mailfrom=x@victim.example,.attacker.example": {netip.MustParseAddr("127.0.0.2")},
 	}})
-	orig := lookupDMARC
-	lookupDMARC = func(domain string) (string, error) {
+	stubDMARC(t, func(domain string) string {
 		if domain == "victim.example" {
-			return "v=DMARC1; p=reject", nil
+			return "v=DMARC1; p=reject"
 		}
-		return "", nil
-	}
-	t.Cleanup(func() { lookupDMARC = orig })
+		return ""
+	})
 
 	const attackerIP = "192.0.2.1"
 	forged := []string{
@@ -110,9 +108,7 @@ func TestDMARC_ForgeriesFail(t *testing.T) {
 // text put on the pipeline message after parsing, as a script or an earlier
 // filter could, is not read as a verdict either.
 func TestDMARC_ScriptWrittenAuthResultsIgnored(t *testing.T) {
-	orig := lookupDMARC
-	lookupDMARC = func(string) (string, error) { return "v=DMARC1; p=reject", nil }
-	t.Cleanup(func() { lookupDMARC = orig })
+	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
 
 	email := fromExampleTest()
 	email.Headers.Raw = map[string][]string{"Authentication-Results": {
