@@ -266,6 +266,7 @@ jobs:
     name: Web app image (${{ matrix.app }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         app: [webmail, admin]
     steps:
@@ -293,8 +294,10 @@ jobs:
           cmp "$RUNNER_TEMP/index.html" "$RUNNER_TEMP/deep.html"
           asset=$(grep -oE 'src="[^"]+\.js"' "$RUNNER_TEMP/index.html" | head -1 | cut -d '"' -f2)
           test -n "$asset"
-          curl --fail --silent --show-error "$origin/${asset#/}" -o "$RUNNER_TEMP/bundle.js"
-          ! grep -qi '<!doctype html' "$RUNNER_TEMP/bundle.js"
+          curl --fail --silent --show-error -D "$RUNNER_TEMP/asset-headers" \
+            "$origin/${asset#/}" -o "$RUNNER_TEMP/bundle.js"
+          grep -Eqi '^content-type:[[:space:]]*(application|text)/(javascript|ecmascript)' "$RUNNER_TEMP/asset-headers"
+          test -s "$RUNNER_TEMP/bundle.js"
 
   ci:
     name: CI
