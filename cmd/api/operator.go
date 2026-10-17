@@ -131,6 +131,7 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 	if status != exitOK {
 		return status
 	}
+	defer closeDatabase(database)
 
 	token, expires, err := bootstrap.MintResetToken(database, *address, *lifetime)
 	switch {
@@ -149,7 +150,7 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 
 // openDatabase connects with the API's own configuration and brings the schema
 // up to date. On failure it has already written the error and returns its exit
-// status.
+// status; on success the caller closes the database with closeDatabase.
 func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -167,12 +168,23 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	// The same additive steps the server runs at boot, so this works against a
 	// database the server has not started on yet.
 	if err := db.AutoMigrate(database); err != nil {
+		closeDatabase(database)
 		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
 	}
 	if err := bootstrap.EnsureRBAC(database); err != nil {
+		closeDatabase(database)
 		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
 	}
 	return database, cfg, exitOK
+}
+
+// closeDatabase closes the connections openDatabase made. A process that runs
+// one command exits anyway; one that runs several, as the tests do, would
+// otherwise keep a pool open on the database per command.
+func closeDatabase(database *gorm.DB) {
+	if s, err := database.DB(); err == nil {
+		_ = s.Close()
+	}
 }
 
 // resetPassword reads the new password from stdin rather than a flag, so it
@@ -200,6 +212,7 @@ func resetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	if status != exitOK {
 		return status
 	}
+	defer closeDatabase(database)
 	account, err := bootstrap.ResetPassword(database, *address, password)
 	switch {
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
@@ -222,6 +235,7 @@ func revokeSessions(args []string, stdout, stderr io.Writer) int {
 	if status != exitOK {
 		return status
 	}
+	defer closeDatabase(database)
 	revoked, err := bootstrap.RevokeAllSessions(database)
 	if err != nil {
 		return fail(stderr, exitFailed, "revoke_failed", err.Error())
@@ -247,6 +261,7 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	if status != exitOK {
 		return status
 	}
+	defer closeDatabase(database)
 	var domains []models.Domain
 	if err := database.Order("name").Find(&domains).Error; err != nil {
 		return fail(stderr, exitFailed, "database", err.Error())
