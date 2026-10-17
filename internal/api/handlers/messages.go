@@ -87,16 +87,15 @@ func (h *MessageHandler) recordTrace(t models.MessageTrace) {
 
 // signOutboundDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes
 // with the sender domain's key, returning the signed message. DKIM must be
-// signed over what is transmitted — signing a reconstructed EmailJSON produced
-// signatures whose header hash never matched the wire form, so every outbound
-// message failed verification at receivers. If the domain has no key configured
-// (or signing fails), the message is returned unchanged. If the domain HAS a
-// key configured but it cannot be loaded (OSI-8: an encrypted-at-rest key that
-// fails to decrypt), it returns an error so the caller fails closed (temp-fail)
-// rather than sending the message unsigned.
+// signed over what is transmitted, so it runs on the finished message, after the
+// pipeline. If the domain has no key configured the message is returned
+// unchanged. If the domain HAS a key but it cannot sign (OSI-8: an
+// encrypted-at-rest key that fails to decrypt), it returns an error so the
+// caller fails closed (temp-fail) rather than sending the message unsigned.
 //
-// The signing itself lives in internal/outbound.SignDKIM, shared with the queue
-// worker so submitted mail is signed by the same code (#171).
+// The signing itself lives in internal/outbound.SignDKIM, the only DKIM signer,
+// shared with the queue worker so submitted mail is signed by the same code
+// (#171).
 func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, error) {
 	return outbound.SignDKIM(h.db, h.masterKey, senderDomain, raw)
 }
@@ -634,7 +633,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			queuedTrace = &base
 			// Feed pipeline transforms back into req so downstream code
 			// (sent message creation + raw RFC 2822 builder) uses the
-			// pipeline output (e.g. header_cleanup, dkim_sign).
+			// pipeline output (e.g. header_cleanup).
 			if outResult.FinalEmail != nil {
 				req.Subject = outResult.FinalEmail.Headers.Subject
 
@@ -653,7 +652,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 					req.Bcc = nil
 				}
 
-				// Capture extra headers (e.g. DKIM-Signature) for the raw message.
+				// Capture headers a transform added for the raw message.
 				extraHeaders = outResult.FinalEmail.Headers.Extra
 			}
 		}
@@ -1742,7 +1741,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	b.WriteString("--" + boundary + "--\r\n")
 
 	rawMessage := b.String()
-	// OSI-8: fail closed if the DKIM key cannot be loaded (see signOutboundDKIM).
+	// OSI-8: fail closed if the DKIM key cannot sign (see signOutboundDKIM).
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
 		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")

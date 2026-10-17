@@ -371,28 +371,6 @@ export const BUILTIN_FILTERS: FilterDefinition[] = [
     icon: 'Eraser',
     configSchema: {},
   },
-  {
-    name: 'arc_seal',
-    displayName: 'ARC Seal',
-    description: 'Add ARC-Seal headers',
-    type: 'transform',
-    direction: 'outbound',
-    unskippable: false,
-    category: 'authentication',
-    icon: 'Stamp',
-    configSchema: {},
-  },
-  {
-    name: 'dkim_sign',
-    displayName: 'DKIM Signing',
-    description: 'Sign message with DKIM',
-    type: 'transform',
-    direction: 'outbound',
-    unskippable: true,
-    category: 'authentication',
-    icon: 'Key',
-    configSchema: {},
-  },
 ]
 
 // Helper functions

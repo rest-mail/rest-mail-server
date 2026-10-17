@@ -137,16 +137,11 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	respond.List(w, pipelines, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
-// ListPipelineLogs returns recent per-message pipeline traces, newest first.
-//
-// PR5 repoint: the write path moved to message_traces (PR3), and the legacy
-// pipeline_logs table is no longer written, so this READ now reads
-// message_traces. The response is the richer trace shape (outcome, reason_code,
-// transport, mail_from/rcpt_to/client_ip, stages timeline, duration) rather than
-// the old {steps, action} log. The original pagination and the pipeline_id /
-// direction / action filters are preserved (action now matches the trace's
-// final_action column), and rfc_message_id / outcome / reason_code filters are
-// added to support message-lifecycle drill-down.
+// ListPipelineLogs returns recent per-message pipeline traces, newest first,
+// from message_traces: outcome, reason_code, transport,
+// mail_from/rcpt_to/client_ip, the stages timeline and duration. It filters on
+// pipeline_id, direction, action (the trace's final_action column), and on
+// rfc_message_id / outcome / reason_code for message-lifecycle drill-down.
 func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
@@ -164,8 +159,7 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 	if direction := r.URL.Query().Get("direction"); direction != "" {
 		query = query.Where("direction = ?", direction)
 	}
-	// action filters on the pipeline's final_action (the old PipelineLog.Action
-	// column's successor), preserving the existing query contract.
+	// action filters on the pipeline's final_action.
 	if action := r.URL.Query().Get("action"); action != "" {
 		query = query.Where("final_action = ?", action)
 	}

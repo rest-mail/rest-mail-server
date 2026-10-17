@@ -13,6 +13,7 @@
 package outbound
 
 import (
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -34,11 +35,10 @@ import (
 //   - SMTP-submitted mail arrives raw, so Prepare removes any Bcc header and
 //     signs it here.
 //
-// An error is returned ONLY when the domain has a key that cannot be loaded
-// (e.g. an at-rest ciphertext that fails to decrypt); the caller must fail
-// closed (defer/retry) rather than relay the message unsigned. A domain with no
-// key configured is not an error — the message relays unsigned, exactly as
-// before.
+// An error is returned ONLY when the domain has a key that cannot sign (see
+// SignDKIM); the caller must fail closed (defer/retry) rather than relay the
+// message unsigned. A domain with no key configured is not an error — the
+// message relays unsigned.
 func Prepare(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) {
 	raw = StripBcc(raw)
 	if HasDKIMSignature(raw) {
@@ -128,20 +128,13 @@ func HasDKIMSignature(raw string) bool {
 // SignDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes with the
 // sender domain's key, returning the signed message. DKIM must be signed over
 // what is transmitted, so this operates on the raw message directly rather than
-// a reconstructed representation.
+// a reconstructed representation. It is the only DKIM signer: the API send path,
+// SMTP submission and the queue worker all reach it.
 //
-// If the domain has no key configured (or the key parses/signs poorly) the
-// message is returned unchanged.
-//
-// Loading the key fails CLOSED — an error is returned so the caller temp-fails
-// instead of relaying unsigned — with ONE deliberate exception: when this
-// process has no master key configured at all (masterKey == "") it cannot read
-// ANY encrypted-at-rest key, so failing closed would block every message for
-// every domain with an encrypted key. That is a process-wide capability gap, not
-// a per-key fault, and dropping deliverable mail is worse than relaying it
-// unsigned (relaying unsigned is the pre-existing behavior), so it degrades to
-// unsigned instead. A process that DOES have a master key still fails closed on a
-// key it cannot decrypt (wrong key or corrupt ciphertext) — a genuine fault.
+// A domain with no key configured is not an error — the message is returned
+// unchanged. A domain WITH a key either signs or fails CLOSED: a key that cannot
+// be loaded (wrong or missing MASTER_KEY, corrupt ciphertext), parsed or used
+// returns an error, so the caller temp-fails instead of relaying unsigned.
 //
 // A nil db or empty senderDomain returns the message unchanged — there is
 // nothing to look a key up with.
@@ -156,19 +149,13 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 	}
 	keyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, masterKey)
 	if err != nil {
-		if masterKey == "" {
-			// No master key: this process cannot decrypt an at-rest key. Relay
-			// unsigned rather than drop deliverable mail.
-			slog.Warn("outbound dkim sign: no MASTER_KEY configured, relaying unsigned", "domain", senderDomain)
-			return raw, nil
-		}
 		slog.Error("outbound dkim sign: key load failed (fail-closed)", "domain", senderDomain, "error", err)
 		return "", err
 	}
 	priv, err := dkim.ParsePrivateKey(keyPEM)
 	if err != nil {
-		slog.Warn("outbound dkim sign: parse key failed", "domain", senderDomain, "error", err)
-		return raw, nil
+		slog.Error("outbound dkim sign: parse key failed (fail-closed)", "domain", senderDomain, "error", err)
+		return "", fmt.Errorf("dkim: parse the key for %s: %w", senderDomain, err)
 	}
 	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
 		Domain:     senderDomain,
@@ -177,8 +164,8 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 		Time:       time.Now().Unix(),
 	})
 	if err != nil {
-		slog.Warn("outbound dkim sign failed", "domain", senderDomain, "error", err)
-		return raw, nil
+		slog.Error("outbound dkim sign failed (fail-closed)", "domain", senderDomain, "error", err)
+		return "", fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
 	}
 	return "DKIM-Signature: " + val + "\r\n" + raw, nil
 }

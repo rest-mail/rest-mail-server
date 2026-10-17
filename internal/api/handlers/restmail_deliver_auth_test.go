@@ -17,17 +17,8 @@ func TestRestmailDeliverAuth_Authorize(t *testing.T) {
 		wantAccepted bool
 	}{
 		{
-			name:         "disabled accepts spoofed local sender",
-			cfg:          RestmailDeliverAuthConfig{Enabled: false},
-			clientIP:     "203.0.113.9",
-			fromDomain:   localFrom,
-			fromLocal:    true,
-			dkimAligned:  false,
-			wantAccepted: true,
-		},
-		{
 			name:         "trusted peer bypasses DKIM even for local sender",
-			cfg:          RestmailDeliverAuthConfig{Enabled: true, TrustedCIDRs: []string{"203.0.113.0/24"}},
+			cfg:          RestmailDeliverAuthConfig{TrustedCIDRs: []string{"203.0.113.0/24"}},
 			clientIP:     "203.0.113.9",
 			fromDomain:   localFrom,
 			fromLocal:    true,
@@ -36,7 +27,7 @@ func TestRestmailDeliverAuth_Authorize(t *testing.T) {
 		},
 		{
 			name:         "aligned DKIM accepts local sender",
-			cfg:          RestmailDeliverAuthConfig{Enabled: true},
+			cfg:          RestmailDeliverAuthConfig{},
 			clientIP:     "203.0.113.9",
 			fromDomain:   localFrom,
 			fromLocal:    true,
@@ -45,7 +36,7 @@ func TestRestmailDeliverAuth_Authorize(t *testing.T) {
 		},
 		{
 			name:         "unauthenticated local sender rejected (BEC)",
-			cfg:          RestmailDeliverAuthConfig{Enabled: true},
+			cfg:          RestmailDeliverAuthConfig{},
 			clientIP:     "203.0.113.9",
 			fromDomain:   localFrom,
 			fromLocal:    true,
@@ -54,7 +45,7 @@ func TestRestmailDeliverAuth_Authorize(t *testing.T) {
 		},
 		{
 			name:         "external unsigned sender accepted in non-strict",
-			cfg:          RestmailDeliverAuthConfig{Enabled: true},
+			cfg:          RestmailDeliverAuthConfig{},
 			clientIP:     "203.0.113.9",
 			fromDomain:   "sender.net",
 			fromLocal:    false,
@@ -63,7 +54,7 @@ func TestRestmailDeliverAuth_Authorize(t *testing.T) {
 		},
 		{
 			name:         "strict rejects external unsigned untrusted sender",
-			cfg:          RestmailDeliverAuthConfig{Enabled: true, Strict: true},
+			cfg:          RestmailDeliverAuthConfig{Strict: true},
 			clientIP:     "203.0.113.9",
 			fromDomain:   "sender.net",
 			fromLocal:    false,
@@ -72,7 +63,7 @@ func TestRestmailDeliverAuth_Authorize(t *testing.T) {
 		},
 		{
 			name:         "strict accepts aligned external sender",
-			cfg:          RestmailDeliverAuthConfig{Enabled: true, Strict: true},
+			cfg:          RestmailDeliverAuthConfig{Strict: true},
 			clientIP:     "203.0.113.9",
 			fromDomain:   "sender.net",
 			fromLocal:    false,
@@ -96,7 +87,6 @@ func TestRestmailDeliverAuth_Authorize(t *testing.T) {
 // including that an invalid entry is dropped (never widens trust).
 func TestRestmailDeliverAuth_Trusted(t *testing.T) {
 	a := newRestmailDeliverAuth(RestmailDeliverAuthConfig{
-		Enabled: true,
 		TrustedCIDRs: []string{
 			"10.0.0.0/8",
 			"192.168.1.5", // bare IPv4 -> /32

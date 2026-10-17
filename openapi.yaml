@@ -177,7 +177,7 @@ tags:
   - name: "Admin: Bans"
     description: IP ban management (JWT + admin)
   - name: "Admin: Logs"
-    description: Delivery and activity logs (JWT + admin)
+    description: Delivery log (JWT + admin)
   - name: "Admin: Stats"
     description: Dashboard statistics (JWT + admin; admin role only, no capability)
   - name: "Admin: Users & Roles"
@@ -2804,9 +2804,8 @@ paths:
       x-required-capability: pipelines:read
       summary: List recent per-message pipeline traces
       description: >-
-        Newest-first list of per-message pipeline traces. The read source moved from
-        the legacy pipeline_logs table to message_traces, so each row is the richer
-        MessageTrace shape (outcome, reason_code, transport, envelope, stage timeline,
+        Newest-first list of per-message pipeline traces. Each row is a
+        MessageTrace (outcome, reason_code, transport, envelope, stage timeline,
         duration). The `action` filter matches the trace's final_action.
       parameters:
         - name: pipeline_id
@@ -3740,61 +3739,6 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/OutboundQueue"
-                  pagination:
-                    $ref: "#/components/schemas/Pagination"
-
-  /api/v1/admin/logs/activity:
-    get:
-      operationId: getActivityLogs
-      tags: ["Admin: Logs"]
-      x-required-capability: users:read
-      summary: Query activity audit log
-      parameters:
-        - name: actor
-          in: query
-          schema:
-            type: string
-        - name: action
-          in: query
-          schema:
-            type: string
-        - name: resource_type
-          in: query
-          schema:
-            type: string
-        - name: since
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: until
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 50
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
-      responses:
-        "200":
-          description: Activity log entries
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/ActivityLog"
                   pagination:
                     $ref: "#/components/schemas/Pagination"
 
@@ -6780,30 +6724,6 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Activity Log
     # ─────────────────────────────────────────────────────────────
-    ActivityLog:
-      type: object
-      required: [id, actor, action, resource_type, created_at]
-      properties:
-        id:
-          type: integer
-        actor:
-          type: string
-        action:
-          type: string
-        resource_type:
-          type: string
-        resource_id:
-          type: [integer, "null"]
-        detail:
-          type: string
-        metadata:
-          type: [object, "null"]
-        ip:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-
     AuditEntry:
       type: object
       description: >-

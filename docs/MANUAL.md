@@ -8,7 +8,7 @@ The original plan and stage documents have since been retired — completed work
 
 ## 1. Overview
 
-RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, and a pluggable pipeline engine (23 built-in filters, including JavaScript and Sieve custom-script filters). Email authentication and policy — DKIM, ARC, DMARC, MTA-STS, and Sieve — are provided by the extracted libraries `rest-mail/{dkim,arc,dmarc,mtasts,sieve}`. The standalone mail-server auditing CLI (Instant Mail Check) now lives in its own repository (see §4.5).
+RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, and a pluggable pipeline engine (21 built-in filters, including JavaScript and Sieve custom-script filters). Email authentication and policy — DKIM, ARC, DMARC, MTA-STS, and Sieve — are provided by the extracted libraries `rest-mail/{dkim,arc,dmarc,mtasts,sieve}`. The standalone mail-server auditing CLI (Instant Mail Check) now lives in its own repository (see §4.5).
 
 The development testbed simulates parallel mail domains: reference `mail1.test` and `mail2.test` run traditional Postfix + Dovecot (from the separate `rest-mail/reference-mailserver` project), while `restmail.test` routes through the RESTMAIL gateways. They exist to verify cross-domain delivery, anti-spoofing, and protocol compatibility in a realistic environment.
 
@@ -239,16 +239,14 @@ Per-domain, per-direction (inbound / outbound) filter chains. Configured via `/a
 
 Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defer`. SMTP gateway maps these to reply codes 250 / 550 / silent discard / 200 / 451 respectively.
 
-#### Built-in filters (23)
+#### Built-in filters (21)
 
 | Filter | Type | Notes |
 |--------|------|-------|
 | `spf_check` | Check | SPF record validation |
 | `dkim_verify` | Check | Verify incoming signatures |
-| `dkim_sign` | Transform | Sign outbound with active DKIM key |
 | `dmarc_check` | Check | DMARC policy enforcement |
 | `arc_verify` | Check | ARC chain verification |
-| `arc_seal` | Transform | ARC seal generation |
 | `rate_limit` | Check | Per-sender/domain |
 | `size_check` | Check | Message size ceiling |
 | `header_validate` | Check | Require From/Date/Message-ID; reject header-injection attempts |
@@ -267,7 +265,9 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum |
 | `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected |
 
-Filters that need runtime dependencies — the DB-backed ones (greylist, vacation, domain_allowlist, contact_whitelist, recipient_check, sender_verify) and the signing filters that read keys and require the master key (dkim_sign, arc_seal) — are explicitly `pipeline.DefaultRegistry.Register()`'d in [internal/api/routes.go](../internal/api/routes.go). The remaining built-ins self-register via `init()` in [internal/pipeline/filters/](../internal/pipeline/filters/) on blank import.
+Filters that need runtime dependencies — the DB-backed ones (greylist, vacation, domain_allowlist, contact_whitelist, recipient_check, sender_verify) — are explicitly `pipeline.DefaultRegistry.Register()`'d in [internal/api/routes.go](../internal/api/routes.go). The remaining built-ins self-register via `init()` in [internal/pipeline/filters/](../internal/pipeline/filters/) on blank import.
+
+DKIM signing is not a filter. Every outbound message — sent through the API, submitted over SMTP, or relayed by the queue worker — is signed once, over its finished wire bytes, by [internal/outbound](../internal/outbound/prepare.go) (`SignDKIM`, via go-dkim). A domain with a key either signs or the message waits: a key that cannot sign fails closed.
 
 #### Pipeline DB context
 Pipeline context carries `*gorm.DB` via `context.WithValue()`; filters access via `pipeline.DBFromContext()`. This lets filters query tables (e.g. `extract_attachments` checks the `attachments.checksum` index to dedup).

@@ -48,7 +48,7 @@ type Store interface {
 	// PrepareSubmitted applies the outbound transforms (outbound.Prepare) to
 	// an authenticated submission before a local mailbox receives it: the Bcc
 	// header stripped, and the message DKIM-signed with the sender domain's
-	// key. An error means a configured key could not be loaded; the caller
+	// key. An error means a configured key could not sign; the caller
 	// defers rather than deliver the message unsigned.
 	PrepareSubmitted(sender, raw string) (string, error)
 }

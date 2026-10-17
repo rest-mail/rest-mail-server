@@ -38,33 +38,9 @@ type CustomFilter struct {
 
 func (CustomFilter) TableName() string { return "custom_filters" }
 
-// PipelineLog recorded the execution of a pipeline on a message.
-//
-// DEAD as of PR5: PR3 moved the WRITE path to MessageTrace and PR5 repointed the
-// last READER (ListPipelineLogs) to message_traces, so this table now has no
-// writer and no reader. It is intentionally LEFT in place (still AutoMigrated)
-// rather than dropped in this PR to avoid migration risk on existing databases;
-// a later cleanup PR can drop the pipeline_logs table and this model together.
-type PipelineLog struct {
-	ID         uint            `gorm:"primaryKey" json:"id"`
-	PipelineID uint            `gorm:"index" json:"pipeline_id"`
-	MessageID  *uint           `gorm:"index" json:"message_id"`
-	Direction  string          `gorm:"size:20" json:"direction"`
-	Action     string          `gorm:"size:20" json:"action"` // "continue", "reject", "quarantine", "discard"
-	Steps      json.RawMessage `gorm:"type:jsonb" json:"steps"`
-	DurationMS int64           `json:"duration_ms"`
-	CreatedAt  time.Time       `json:"created_at"`
-}
-
-func (PipelineLog) TableName() string { return "pipeline_logs" }
-
 // MessageTrace is the durable per-message observability record: exactly one row
 // per message that traversed a pipeline, recording what happened to THIS
-// message. It supersedes PipelineLog as the write target (PR3); PipelineLog is
-// retained only for the legacy read handler until PR5 repoints it here. A new
-// table (message_traces) rather than an in-place rename because the schema is a
-// near-total superset with renamed columns and the old rows carry no true trace
-// (no backfill — their real forensic detail is unknown).
+// message.
 //
 // Trace-only raw PII (mail_from, rcpt_to, client_ip) is stored raw by resolved
 // decision: full forensics while a row is hot, pruned at the retention horizon

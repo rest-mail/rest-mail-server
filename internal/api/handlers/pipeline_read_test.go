@@ -129,7 +129,7 @@ func TestListPipelineLogs_TraceFilters(t *testing.T) {
 		t.Errorf("delivered MessageID = %v, want 1001", del[0].MessageID)
 	}
 
-	// action (=final_action) filter preserved from the legacy contract.
+	// action filters on final_action.
 	if got := listTraces(t, h, "action=continue"); len(got) != 1 || got[0].Outcome != outcomeDelivered {
 		t.Fatalf("action=continue → %+v, want the delivered (continue) trace", got)
 	}

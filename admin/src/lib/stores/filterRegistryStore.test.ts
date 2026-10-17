@@ -16,13 +16,13 @@ describe('getFiltersByDirection', () => {
     expect(inbound.length).toBeGreaterThan(0)
     expect(inbound.every((f) => f.direction === 'inbound' || f.direction === 'both')).toBe(true)
     expect(names(inbound)).toContain('spf_check')
-    expect(names(inbound)).not.toContain('dkim_sign') // outbound-only
+    expect(names(inbound)).not.toContain('header_cleanup') // outbound-only
   })
 
   it('returns only outbound-or-both filters for outbound', () => {
     const outbound = getFiltersByDirection('outbound')
     expect(outbound.every((f) => f.direction === 'outbound' || f.direction === 'both')).toBe(true)
-    expect(names(outbound)).toContain('dkim_sign')
+    expect(names(outbound)).toContain('header_cleanup')
     expect(names(outbound)).not.toContain('size_check') // inbound-only
   })
 })
@@ -34,7 +34,7 @@ describe('getFiltersByType', () => {
     expect(actions.every((f) => f.type === 'action')).toBe(true)
     expect(transforms.every((f) => f.type === 'transform')).toBe(true)
     expect(names(actions)).toContain('size_check')
-    expect(names(transforms)).toContain('dkim_sign')
+    expect(names(transforms)).toContain('header_cleanup')
     // Every builtin lands in exactly one of the two partitions.
     expect(actions.length + transforms.length).toBe(BUILTIN_FILTERS.length)
   })
@@ -45,7 +45,7 @@ describe('getFiltersByCategory', () => {
     const auth = getFiltersByCategory('authentication')
     expect(auth.length).toBeGreaterThan(0)
     expect(auth.every((f) => f.category === 'authentication')).toBe(true)
-    expect(names(auth)).toContain('dkim_sign')
+    expect(names(auth)).toContain('dkim_verify')
   })
 
   it('returns an empty array for a category with no members', () => {
@@ -56,9 +56,9 @@ describe('getFiltersByCategory', () => {
 
 describe('getFilterDefinition', () => {
   it('looks a filter up by name', () => {
-    const def = getFilterDefinition('dkim_sign')
+    const def = getFilterDefinition('header_cleanup')
     expect(def).toBeDefined()
-    expect(def?.name).toBe('dkim_sign')
+    expect(def?.name).toBe('header_cleanup')
     expect(def?.type).toBe('transform')
     expect(def?.direction).toBe('outbound')
   })
@@ -77,6 +77,6 @@ describe('getFiltersByDirectionAndType', () => {
         (f) => (f.direction === 'outbound' || f.direction === 'both') && f.type === 'transform'
       )
     ).toBe(true)
-    expect(names(outboundTransforms)).toContain('dkim_sign')
+    expect(names(outboundTransforms)).toContain('header_cleanup')
   })
 })

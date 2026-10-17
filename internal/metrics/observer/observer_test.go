@@ -57,8 +57,8 @@ func TestAuthMechanism(t *testing.T) {
 			t.Errorf("authMechanism(%q) = %q,%v want %q,true", name, mech, ok, wantMech)
 		}
 	}
-	// Signing/sealing and non-auth filters are not verdicts.
-	for _, name := range []string{"dkim_sign", "arc_seal", "greylist", ""} {
+	// Non-auth filters are not verdicts.
+	for _, name := range []string{"header_cleanup", "greylist", ""} {
 		if _, ok := authMechanism(name); ok {
 			t.Errorf("authMechanism(%q) unexpectedly reported an auth verdict", name)
 		}
@@ -306,16 +306,16 @@ func TestObserver_RejectReason_ContinueNoIncrement(t *testing.T) {
 // An outbound continue must record a terminal "queued" outcome.
 func TestObserver_OutboundQueued(t *testing.T) {
 	reg := pipeline.NewRegistry()
-	register(reg, fakeFilter{name: "dkim_sign", action: pipeline.ActionContinue, logFilter: "dkim_sign", logResult: "signed"})
+	register(reg, fakeFilter{name: "header_cleanup", action: pipeline.ActionContinue, logFilter: "header_cleanup", logResult: "cleaned"})
 
 	eng := pipeline.NewEngine(reg, nil, New())
 	cfg := &pipeline.PipelineConfig{
 		Direction: "outbound",
-		Filters:   []pipeline.FilterConfig{{Name: "dkim_sign", Enabled: true}},
+		Filters:   []pipeline.FilterConfig{{Name: "header_cleanup", Enabled: true}},
 	}
 
 	beforeQueued := counter(t, metrics.PipelineTerminal, "outbound", "queued")
-	// dkim_sign is not a verdict filter; auth_verdict must NOT move.
+	// header_cleanup is not a verdict filter; auth_verdict must NOT move.
 	beforeVerdict := counter(t, metrics.AuthVerdict, "dkim", "other")
 
 	if _, err := eng.Execute(context.Background(), cfg, &pipeline.EmailJSON{}); err != nil {
@@ -326,6 +326,6 @@ func TestObserver_OutboundQueued(t *testing.T) {
 		t.Errorf("terminal{outbound,queued} delta = %v, want 1", got)
 	}
 	if got := counter(t, metrics.AuthVerdict, "dkim", "other") - beforeVerdict; got != 0 {
-		t.Errorf("auth_verdict moved for signing filter: delta = %v, want 0", got)
+		t.Errorf("auth_verdict moved for a non-verdict filter: delta = %v, want 0", got)
 	}
 }

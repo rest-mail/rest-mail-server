@@ -986,9 +986,6 @@ const DefaultPipelineFilterTimeoutSeconds = 60
 // it any host can inject a spoofed-From message into a local mailbox
 // (BEC/CEO-fraud). See RestmailDeliverAuth for the field semantics.
 type RestmailDeliverAuthSettings struct {
-	// Enabled turns the delivery-auth gate on (default true). When false the
-	// endpoint reverts to legacy behavior (accept any well-formed delivery).
-	Enabled bool
 	// Strict requires EVERY delivery to originate from a trusted peer OR carry a
 	// DKIM signature that verifies and aligns with the From domain. Default false
 	// (open federation): only deliveries claiming a LOCALLY-hosted From domain
@@ -1001,13 +998,11 @@ type RestmailDeliverAuthSettings struct {
 	TrustedCIDRs []string
 }
 
-// RestmailDeliverAuth returns the OSI-3 delivery-authentication settings.
-// RESTMAIL_DELIVER_AUTH_ENABLED (default true), RESTMAIL_DELIVER_STRICT
-// (default false), RESTMAIL_DELIVER_TRUSTED_CIDRS (comma-separated, default
-// none).
+// RestmailDeliverAuth returns the OSI-3 delivery-authentication settings:
+// RESTMAIL_DELIVER_STRICT (default false), RESTMAIL_DELIVER_TRUSTED_CIDRS
+// (comma-separated, default none). The gate itself is always on.
 func (c *Config) RestmailDeliverAuth() RestmailDeliverAuthSettings {
 	return RestmailDeliverAuthSettings{
-		Enabled:      getEnvBool("RESTMAIL_DELIVER_AUTH_ENABLED", true),
 		Strict:       getEnvBool("RESTMAIL_DELIVER_STRICT", false),
 		TrustedCIDRs: getEnvSlice("RESTMAIL_DELIVER_TRUSTED_CIDRS", nil),
 	}

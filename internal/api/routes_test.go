@@ -247,7 +247,6 @@ func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 		{http.MethodGet, "/api/v1/admin/bans"},
 		{http.MethodPost, "/api/v1/admin/bans"},
 		{http.MethodGet, "/api/v1/admin/logs/delivery"},
-		{http.MethodGet, "/api/v1/admin/logs/activity"},
 		{http.MethodGet, "/api/v1/admin/audit"},
 		{http.MethodGet, "/api/v1/admin/audit/verify"},
 		{http.MethodPost, "/api/v1/admin/test/send"},
@@ -375,7 +374,6 @@ func TestAdminRoutes_ReadonlyRoleAllowedOnReads(t *testing.T) {
 		"/api/v1/admin/certificates",
 		"/api/v1/admin/bans",
 		"/api/v1/admin/logs/delivery",
-		"/api/v1/admin/logs/activity",
 	}
 
 	for _, path := range paths {

@@ -203,8 +203,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	pipeline.DefaultRegistry.Register("contact_whitelist", filters.NewContactWhitelist(db))
 	pipeline.DefaultRegistry.Register("recipient_check", filters.NewRecipientCheck(db))
 	pipeline.DefaultRegistry.Register("sender_verify", filters.NewSenderVerify(db))
-	pipeline.DefaultRegistry.Register("dkim_sign", filters.NewDKIMSign(db, cfg.MasterKey))
-	pipeline.DefaultRegistry.Register("arc_seal", filters.NewARCSeal(db, cfg.MasterKey))
 	// #178: bind dmarc_check to the deployment's trusted-ARC-sealer allowlist,
 	// overriding the empty-allowlist default from init(). A passing ARC chain
 	// overrides a DMARC failure only when its sealing domain is allowlisted; the
@@ -287,7 +285,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		Base:    cfg.RestmailTarpitBase,
 		Max:     cfg.RestmailTarpitMax,
 	}, handlers.RestmailDeliverAuthConfig{
-		Enabled:      restmailDeliverAuth.Enabled,
 		Strict:       restmailDeliverAuth.Strict,
 		TrustedCIDRs: restmailDeliverAuth.TrustedCIDRs,
 	})
@@ -801,7 +798,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Logs
 		r.With(needs(middleware.CapMessagesRead)).Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/logs/activity", logH.ActivityLog)
 
 		// Audit log (#343): reading it is itself audited, including a read the
 		// capability check refuses.

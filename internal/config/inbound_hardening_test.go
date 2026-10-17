@@ -11,9 +11,6 @@ func TestRestmailDeliverAuth_Defaults(t *testing.T) {
 	c := &Config{}
 
 	got := c.RestmailDeliverAuth()
-	if !got.Enabled {
-		t.Errorf("default Enabled = false, want true (gate on by default)")
-	}
 	if got.Strict {
 		t.Errorf("default Strict = true, want false")
 	}
@@ -21,13 +18,9 @@ func TestRestmailDeliverAuth_Defaults(t *testing.T) {
 		t.Errorf("default TrustedCIDRs = %v, want nil", got.TrustedCIDRs)
 	}
 
-	t.Setenv("RESTMAIL_DELIVER_AUTH_ENABLED", "false")
 	t.Setenv("RESTMAIL_DELIVER_STRICT", "true")
 	t.Setenv("RESTMAIL_DELIVER_TRUSTED_CIDRS", "10.0.0.0/8, 192.168.1.1")
 	got = c.RestmailDeliverAuth()
-	if got.Enabled {
-		t.Errorf("Enabled override not applied")
-	}
 	if !got.Strict {
 		t.Errorf("Strict override not applied")
 	}

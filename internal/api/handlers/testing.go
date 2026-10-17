@@ -281,9 +281,8 @@ func (h *TestHandler) ResetTestData(w http.ResponseWriter, r *http.Request) {
 			"quarantines", "vacation_configs", "vacation_responses",
 			"contacts", "sieve_scripts", "quota_usages",
 			"credentials", "linked_accounts", "webmail_accounts",
-			"aliases", "pipeline_logs", "message_traces", "pipelines", "custom_filters",
-			"bans", "activity_logs", "restmail_capabilities",
-			"dkim_keys", "certificates",
+			"aliases", "message_traces", "pipelines", "custom_filters",
+			"bans", "restmail_capabilities", "certificates",
 			"sender_rules", "greylist_entries",
 			"mailboxes", "domains",
 		}
@@ -403,9 +402,8 @@ func (h *TestHandler) RestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 			"quarantines", "vacation_configs", "vacation_responses",
 			"contacts", "sieve_scripts", "quota_usages",
 			"credentials", "linked_accounts", "webmail_accounts",
-			"aliases", "pipeline_logs", "message_traces", "pipelines", "custom_filters",
-			"bans", "activity_logs", "restmail_capabilities",
-			"dkim_keys", "certificates",
+			"aliases", "message_traces", "pipelines", "custom_filters",
+			"bans", "restmail_capabilities", "certificates",
 			"sender_rules", "greylist_entries",
 			"mailboxes", "domains",
 		}

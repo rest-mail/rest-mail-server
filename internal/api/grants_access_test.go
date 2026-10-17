@@ -317,7 +317,6 @@ func accessRoutes(domainID, mailboxID uint) []accessRoute {
 		{"DELETE", "/api/v1/admin/bans/999999", "", "bans:delete"},
 		{"GET", "/api/v1/admin/dkim", "", "domains:read"},
 		{"GET", "/api/v1/admin/logs/delivery", "", "messages:read"},
-		{"GET", "/api/v1/admin/logs/activity", "", "users:read"},
 		{"GET", "/api/v1/admin/audit", "", "audit:read"},
 		{"GET", "/api/v1/admin/audit/verify", "", "audit:read"},
 	}
