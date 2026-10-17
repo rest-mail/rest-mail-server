@@ -41,9 +41,8 @@ export function setOnUnauthorized(handler: () => void) {
 }
 
 // request answers with the parsed body. A 401 is an expired session, so it
-// signs the user out, unless domainUnauthorized says the endpoint's 401 is a
-// domain error — a wrong password for another account — instead.
-async function request<T>(path: string, options: RequestInit = {}, domainUnauthorized = false): Promise<T> {
+// signs the user out.
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -56,7 +55,7 @@ async function request<T>(path: string, options: RequestInit = {}, domainUnautho
   // cookie) with the request; the token itself is never touched by JS.
   const res = await fetch(path, { ...options, headers, credentials: 'include' });
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized && !domainUnauthorized) {
+    if (res.status === 401 && onUnauthorized) {
       onUnauthorized();
     }
     const body = await res.text();
@@ -215,9 +214,10 @@ export async function listAccounts(): Promise<{ data: Account[] }> {
 
 /**
  * Link an existing account by proving one of its passwords — and its 2FA
- * code when it has one (an ApiError with code "totp_required" says so). The
- * session's account becomes its owner. A 401 here is a wrong password, not an
- * expired session.
+ * code when it has one. The session's account becomes its owner. A refused
+ * link is a 403 ApiError, never a 401, so the session is untouched: its code
+ * is "invalid_credentials" for a wrong address or password, "totp_required"
+ * when the account's code is needed, and "invalid_totp" when it is wrong.
  */
 export async function linkAccount(data: {
   address: string;
@@ -228,7 +228,7 @@ export async function linkAccount(data: {
   return request(`${BASE}/accounts/link`, {
     method: 'POST',
     body: JSON.stringify(data),
-  }, true);
+  });
 }
 
 /**

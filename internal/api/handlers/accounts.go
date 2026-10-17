@@ -287,6 +287,10 @@ type linkAccountRequest struct {
 // account, by proving one of its passwords, and its second factor when it has
 // one: the same proof as signing in to it. Throttled like sign-in, and
 // audited. display_name, when the account has none, becomes its name.
+//
+// A refused proof is 403, never 401: the secrets are the other account's, and
+// the session that sent them is still good. A client that read 401 would
+// renew that session and send the guess again (#385).
 // POST /api/v1/accounts/link {"address", "password", "display_name"?}
 func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
@@ -322,7 +326,7 @@ func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if lookupErr != nil || cred == nil || !account.Active {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
+		respond.Error(w, http.StatusForbidden, "invalid_credentials", "Invalid email or password")
 		return
 	}
 	// The password is proven; what follows may say why it is not enough.
@@ -334,9 +338,9 @@ func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 	if _, err := tf.GetActive(account.ID); err == nil {
 		if !verifyTOTPOrRecovery(tf, h.masterKey, account.ID, req.TOTPCode, req.RecoveryCode) {
 			if req.TOTPCode == "" && req.RecoveryCode == "" {
-				respond.Error(w, http.StatusUnauthorized, "totp_required", "That account has two-factor authentication: send its code too")
+				respond.Error(w, http.StatusForbidden, "totp_required", "That account has two-factor authentication: send its code too")
 			} else {
-				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid two-factor authentication code")
+				respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
 			}
 			return
 		}

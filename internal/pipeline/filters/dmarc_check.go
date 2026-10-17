@@ -125,6 +125,9 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	// Look up DMARC record
 	dmarcRecord, err := lookupDMARC(domain)
 	if err != nil || dmarcRecord == "" {
+		pipeline.AuthResultsFromContext(ctx).Add(pipeline.AuthResult{
+			Method: pipeline.AuthDMARC, Result: "none", Property: pipeline.PropHeaderFrom, Domain: domain,
+		})
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
 			Action: pipeline.ActionContinue,
@@ -146,60 +149,43 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		policy = "none"
 	}
 
-	// Check Authentication-Results from both Extra and Raw maps
-	authResults := ""
-	if email.Headers.Extra != nil {
-		authResults = email.Headers.Extra["Authentication-Results"]
-	}
-	// Also check Raw headers for results added by SPF/DKIM filters
-	if email.Headers.Raw != nil {
-		for _, ar := range email.Headers.Raw["Authentication-Results"] {
-			if authResults != "" {
-				authResults += "; "
+	// The SPF, DKIM and ARC verdicts come only from what spf_check, dkim_verify
+	// and arc_verify recorded for this run, never from Authentication-Results
+	// text: a header can be forged by the sender, a local-part, a record or a
+	// script, a recorded verdict cannot.
+	auth := pipeline.AuthResultsFromContext(ctx)
+
+	// SPF: the MAIL FROM identity's result, aligned on the domain it checked
+	// (RFC 7489 §3.1.2). A separate HELO result does not count.
+	spfPass, spfAligned := false, false
+	for _, r := range auth.Find(pipeline.AuthSPF, pipeline.PropMailFrom) {
+		if r.Result == "pass" {
+			spfPass = true
+			if r.Domain != "" && dmarc.Aligned(r.Domain, domain) {
+				spfAligned = true
 			}
-			authResults += ar
 		}
 	}
 
-	spfPass := strings.Contains(authResults, "spf=pass")
-	dkimPass := strings.Contains(authResults, "dkim=pass")
-
-	// Extract SPF authenticated domain from auth-results
-	spfAligned := false
-	if spfPass {
-		// Look for smtp.mailfrom= in auth results
-		spfDomain := extractAuthDomain(authResults, "smtp.mailfrom=")
-		if spfDomain != "" {
-			spfAligned = dmarc.Aligned(spfDomain, domain)
-		}
-	}
-
-	// DMARC DKIM alignment: the signature's d= domain (recorded as header.d= in
-	// Authentication-Results by dkim_verify) must match — or organizationally
-	// align with — the From domain. A DKIM pass with no identifiable signing
-	// domain does NOT establish alignment: assuming it would let a signature
-	// valid for an unrelated domain satisfy DMARC for this one. The real verifier
-	// always emits header.d= on pass, so this never rejects legitimately-aligned
-	// mail; it only removes the old stub-era "assume aligned" shortcut.
-	dkimAligned := false
-	if dkimPass {
-		if dkimDomain := extractAuthDomain(authResults, "header.d="); dkimDomain != "" {
-			dkimAligned = dmarc.Aligned(dkimDomain, domain)
+	// DKIM: any passing signature whose d= aligns with the From domain. A pass
+	// with no signing domain does NOT establish alignment: assuming it would let
+	// a signature valid for an unrelated domain satisfy DMARC for this one.
+	dkimPass, dkimAligned := false, false
+	for _, r := range auth.Find(pipeline.AuthDKIM, pipeline.PropHeaderD) {
+		if r.Result == "pass" {
+			dkimPass = true
+			if r.Domain != "" && dmarc.Aligned(r.Domain, domain) {
+				dkimAligned = true
+			}
 		}
 	}
 
 	// ARC override status: a valid ARC chain lets us honor the original
 	// authentication on forwarded mail (RFC 8617 §5.2). The verdict and the
-	// sealing domain are taken ONLY from the arc_status / arc_sealer metadata
-	// written by the local arc_verify filter — never from an "arc=pass" substring
-	// in Authentication-Results, which on an inbound message is attacker-controlled
-	// and was a second DMARC-bypass vector (any message merely containing
-	// "arc=pass" would trigger the override even when arc_verify never ran).
-	arcStatus := ""
-	arcSealer := ""
-	if email.Metadata != nil {
-		arcStatus = email.Metadata["arc_status"]
-		arcSealer = email.Metadata["arc_sealer"]
+	// sealing domain (the d= of the most recent ARC-Seal) are arc_verify's.
+	arcStatus, arcSealer := "", ""
+	for _, r := range auth.Find(pipeline.AuthARC, "") {
+		arcStatus, arcSealer = r.Result, r.Domain
 	}
 
 	// An ARC "pass" may override a DMARC failure ONLY when the sealing domain (the
@@ -212,6 +198,15 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	arcOverride := arcStatus == "pass" && f.sealerTrusted(arcSealer)
 
 	aligned := spfAligned || dkimAligned
+
+	// DMARC's own verdict, for the filters after this one and the stored
+	// Authentication-Results. It is DMARC's evaluation alone: a trusted ARC
+	// override changes the disposition, not the result (RFC 8617 §7.2).
+	verdict := "fail"
+	if aligned {
+		verdict = "pass"
+	}
+	auth.Add(pipeline.AuthResult{Method: pipeline.AuthDMARC, Result: verdict, Property: pipeline.PropHeaderFrom, Domain: domain})
 
 	// Disposition actually applied to this message, for aggregate (rua) reports:
 	// "none" when DMARC passes or a trusted-sealer ARC override applies, else the
@@ -287,24 +282,4 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 // DMARC record via the dmarc library using system DNS.
 var lookupDMARC = func(domain string) (string, error) {
 	return dmarc.Lookup(domain, nil)
-}
-
-// extractAuthDomain extracts a domain from Authentication-Results for a given key.
-// e.g., for key "smtp.mailfrom=", extracts the domain from "spf=pass (matched ...) smtp.mailfrom=user@example.com"
-func extractAuthDomain(authResults, key string) string {
-	idx := strings.Index(authResults, key)
-	if idx < 0 {
-		return ""
-	}
-	rest := authResults[idx+len(key):]
-	// Extract until space, semicolon, or end
-	end := strings.IndexAny(rest, " ;,")
-	if end >= 0 {
-		rest = rest[:end]
-	}
-	// If it's an email address, extract the domain
-	if atIdx := strings.LastIndex(rest, "@"); atIdx >= 0 {
-		return rest[atIdx+1:]
-	}
-	return rest
 }

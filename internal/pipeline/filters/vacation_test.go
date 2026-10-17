@@ -5,10 +5,11 @@ package filters
 //       the two exact strings auto-replied / auto-generated;
 //   (b) sanitize the Message-ID before it flows into In-Reply-To / References so
 //       a CRLF in it cannot inject headers into the outbound reply;
-//   (c) suppress replies to SPF/DMARC-failing senders (backscatter) when that
-//       signal is present in the message's Authentication-Results.
+//   (c) suppress replies to SPF/DMARC-failing senders (backscatter) when
+//       spf_check or dmarc_check recorded that verdict.
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -40,14 +41,14 @@ func TestVacationSuppress_AutoSubmittedVariants(t *testing.T) {
 	}
 	for _, v := range suppressed {
 		email := emailWithRaw("Auto-Submitted", v)
-		if reason := f.shouldSuppress("real@sender.example", email); reason == "" {
+		if reason := f.shouldSuppress(context.Background(), "real@sender.example", email); reason == "" {
 			t.Errorf("Auto-Submitted: %q should be suppressed, was not", v)
 		}
 	}
 
 	// "no" must NOT suppress — it is an ordinary human-originated message.
 	email := emailWithRaw("Auto-Submitted", "no")
-	if reason := f.shouldSuppress("real@sender.example", email); reason != "" {
+	if reason := f.shouldSuppress(context.Background(), "real@sender.example", email); reason != "" {
 		t.Errorf("Auto-Submitted: no should NOT be suppressed, got %q", reason)
 	}
 }
@@ -78,18 +79,40 @@ func TestBuildVacationReply_SanitizesMessageID(t *testing.T) {
 func TestVacationSuppress_AuthFailingSender(t *testing.T) {
 	f := vacFilter()
 
-	cases := map[string]bool{ // authResults → wantSuppressed
-		"spf=fail (bad) smtp.mailfrom=x@y": true,
-		"spf=softfail smtp.mailfrom=x@y":   true,
-		"dmarc=fail policy=reject":         true,
-		"spf=pass; dkim=pass; dmarc=pass":  false,
-		"spf=none":                         false,
+	spfMailFrom := func(result string) pipeline.AuthResult {
+		return pipeline.AuthResult{Method: pipeline.AuthSPF, Result: result, Property: pipeline.PropMailFrom, Domain: "y.example"}
 	}
-	for ar, want := range cases {
-		email := emailWithRaw("Authentication-Results", ar)
-		got := f.shouldSuppress("real@sender.example", email) != ""
-		if got != want {
-			t.Errorf("AR %q: suppressed=%v, want %v", ar, got, want)
+	spfHelo := func(result string) pipeline.AuthResult {
+		return pipeline.AuthResult{Method: pipeline.AuthSPF, Result: result, Property: pipeline.PropHelo, Domain: "mx.y.example"}
+	}
+	dkim := pipeline.AuthResult{Method: pipeline.AuthDKIM, Result: "pass", Property: pipeline.PropHeaderD, Domain: "y.example"}
+	dmarc := func(result string) pipeline.AuthResult {
+		return pipeline.AuthResult{Method: pipeline.AuthDMARC, Result: result, Property: pipeline.PropHeaderFrom, Domain: "y.example"}
+	}
+	cases := []struct {
+		name     string
+		verdicts []pipeline.AuthResult
+		want     bool // suppressed
+	}{
+		{"spf fail", []pipeline.AuthResult{spfMailFrom("fail")}, true},
+		{"spf softfail", []pipeline.AuthResult{spfMailFrom("softfail")}, true},
+		{"helo fail", []pipeline.AuthResult{spfHelo("fail"), spfMailFrom("pass")}, true},
+		{"dmarc fail", []pipeline.AuthResult{spfMailFrom("pass"), dmarc("fail")}, true},
+		{"all pass", []pipeline.AuthResult{spfMailFrom("pass"), dkim, dmarc("pass")}, false},
+		{"spf none", []pipeline.AuthResult{spfMailFrom("none")}, false},
+		{"no verdicts", nil, false},
+	}
+	for _, c := range cases {
+		got := f.shouldSuppress(authCtx(c.verdicts...), "real@sender.example", &pipeline.EmailJSON{}) != ""
+		if got != c.want {
+			t.Errorf("%s: suppressed=%v, want %v", c.name, got, c.want)
 		}
+	}
+
+	// A failure written only as Authentication-Results text, by the sender or a
+	// script, is not a verdict: the reply is not held for it.
+	email := emailWithRaw("Authentication-Results", "restmail; spf=fail smtp.mailfrom=y.example; dmarc=fail")
+	if reason := f.shouldSuppress(authCtx(spfMailFrom("pass")), "real@sender.example", email); reason != "" {
+		t.Errorf("Authentication-Results text suppressed the reply: %s", reason)
 	}
 }

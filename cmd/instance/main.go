@@ -26,6 +26,7 @@ import (
 	"github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/fleet"
 	"github.com/restmail/restmail/internal/instance"
+	"github.com/restmail/restmail/internal/outbound"
 )
 
 func main() {
@@ -362,6 +363,11 @@ func dkimKeygenCmd(args []string) {
 	if err != nil {
 		fatal("dkim-keygen: %v", err)
 	}
+	// The selector, and the key with it, as PUT /api/v1/admin/dkim/{id} checks
+	// them: printing a record for a selector the server refuses helps no one.
+	if err := outbound.CheckDKIMKey(domain, *selector, priv); err != nil {
+		fatal("dkim-keygen: %v", err)
+	}
 	rec, err := dkim.RecordValue(pub)
 	if err != nil {
 		fatal("dkim-keygen: %v", err)
@@ -394,6 +400,15 @@ func dkimProvisionCmd(args []string) {
 		fatal("dkim-provision: --domain, --admin-address and --admin-pass are required")
 	}
 
+	priv, pub, err := dkim.GenerateKey(*bits)
+	if err != nil {
+		fatal("dkim-provision: keygen: %v", err)
+	}
+	// The server checks the key and selector again before storing them; this
+	// says what it would refuse before signing in to it.
+	if err := outbound.CheckDKIMKey(*domain, *selector, priv); err != nil {
+		fatal("dkim-provision: %v", err)
+	}
 	token, err := apiLogin(*api, *user, *pass)
 	if err != nil {
 		fatal("dkim-provision: login: %v", err)
@@ -401,10 +416,6 @@ func dkimProvisionCmd(args []string) {
 	id, err := apiDomainID(*api, token, *domain)
 	if err != nil {
 		fatal("dkim-provision: find domain %q: %v", *domain, err)
-	}
-	priv, pub, err := dkim.GenerateKey(*bits)
-	if err != nil {
-		fatal("dkim-provision: keygen: %v", err)
 	}
 	if err := apiInstallDKIM(*api, token, id, *selector, priv); err != nil {
 		fatal("dkim-provision: install key: %v", err)

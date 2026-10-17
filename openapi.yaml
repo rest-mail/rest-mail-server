@@ -758,13 +758,18 @@ paths:
       summary: Link an existing account by proving its password
       description: >
         Grants the session's account the `owner` role on an existing account,
-        by proving one of its passwords — and a code from its authenticator
-        when it has one (`401 totp_required` without), the same proof as
-        signing in to it. A wrong password, an unknown address and an account
-        with no password are the same `401`. An account still in setup cannot
-        be linked (`403 setup_required`). `display_name`, when the account has
-        none, becomes its name. Throttled with login (a wrong guess spends the
-        same budget), and audited (`accounts.link`, and the grant's
+        by proving one of its passwords — and a code from its authenticator, or
+        one of its recovery codes, when it has one — the same proof as signing
+        in to it. A refused proof is `403`, never `401`: the secrets are the
+        other account's, and the session that sent them is still good, so a
+        client must not renew it or send them again. A wrong password, an
+        unknown address and an account with no password are the same
+        `403 invalid_credentials`; an account with two-factor authentication
+        answers `403 totp_required` without a code and `403 invalid_totp` for a
+        wrong one. An account still in setup cannot be linked
+        (`403 setup_required`). `display_name`, when the account has none,
+        becomes its name. Throttled with login (a wrong guess spends the same
+        budget), and audited (`accounts.link`, and the grant's
         `grants.create`). Unlinking is removing that grant:
         `DELETE /api/v1/accounts/{id}`.
       requestBody:
@@ -785,9 +790,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/Account"
         "401":
-          description: Wrong address or password (`unauthorized`), or its code is needed (`totp_required`)
+          description: The session itself is missing or has ended; never a refused link
         "403":
-          description: The account is still in setup
+          description: >
+            The link is refused: a wrong address or password
+            (`invalid_credentials`), its code is needed (`totp_required`), its
+            code is wrong (`invalid_totp`), or the account is still in setup
+            (`setup_required`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: Already linked, or the session's own account
         "422":
@@ -3484,6 +3497,16 @@ paths:
       tags: ["Admin: DKIM"]
       x-required-capability: domains:write
       summary: Set or replace DKIM key for a domain
+      description: >
+        The key and selector are checked before they are stored, so a domain is
+        never left with a key its outbound mail cannot be signed with (signing
+        fails closed and defers the mail). The selector must be a DNS name: up
+        to 63 characters, labels of letters, digits and hyphens joined by dots,
+        none starting or ending with a hyphen. The key must be an RSA key of at
+        least 2048 bits (PKCS#1 or PKCS#8 PEM) or an Ed25519 key (PKCS#8 PEM),
+        and must sign a test message whose signature verifies against the
+        key's own DNS record. Ed25519 is import-only: the server's own key
+        generation makes RSA keys.
       requestBody:
         required: true
         content:
@@ -3501,6 +3524,22 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMEntry"
+        "400":
+          description: The body is not JSON, or lacks `selector` or `private_key` (`bad_request`)
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: >
+            `validation_failed`: the domain could not sign with this key and
+            selector. `details.fields.selector` when the selector is not a DNS
+            name; `details.fields.private_key` when the key is not a PEM
+            private key, is neither RSA nor Ed25519, is an RSA key under 2048
+            bits, or does not make a signature that verifies. `message` says
+            which check failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
@@ -5528,6 +5567,12 @@ components:
           format: password
         display_name:
           type: string
+        totp_code:
+          type: string
+          description: A code from the account's authenticator, when it has two-factor authentication
+        recovery_code:
+          type: string
+          description: One of the account's recovery codes, instead of totp_code; it is spent
 
     # ─────────────────────────────────────────────────────────────
     # Folder
@@ -6381,6 +6426,34 @@ components:
         final_email:
           type: object
           description: The email after all transformations
+        auth_results:
+          type: array
+          description: >-
+            The verdicts the authentication filters (spf_check, dkim_verify,
+            arc_verify, dmarc_check) recorded, in order. A delivered message's
+            Authentication-Results header is written from these.
+          items:
+            $ref: "#/components/schemas/AuthResult"
+
+    AuthResult:
+      type: object
+      required: [method, result]
+      properties:
+        method:
+          type: string
+          enum: [spf, dkim, arc, dmarc]
+        result:
+          type: string
+          description: The RFC 8601 result, such as pass, fail, softfail, neutral, none, temperror or permerror
+        property:
+          type: string
+          enum: [smtp.mailfrom, smtp.helo, header.d, header.from]
+          description: The identity checked. Absent for arc.
+        domain:
+          type: string
+          description: >-
+            The domain checked. For dkim, the signature's d=; for arc, the most
+            recent ARC-Seal's d=.
 
     FilterResult:
       type: object
@@ -6635,9 +6708,13 @@ components:
       properties:
         selector:
           type: string
+          maxLength: 63
+          description: A DNS name; the key's record is `<selector>._domainkey.<domain>`
         private_key:
           type: string
-          description: PEM-encoded RSA private key
+          description: >
+            PEM-encoded private key: RSA of at least 2048 bits (PKCS#1 or
+            PKCS#8), or Ed25519 (PKCS#8)
 
     # ─────────────────────────────────────────────────────────────
     # Certificate

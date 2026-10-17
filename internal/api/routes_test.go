@@ -786,7 +786,7 @@ func TestPipelineTestRoutes_ThrottleDisabled(t *testing.T) {
 // ── Password-verification oracle: linking an account ──────────────────
 
 // verifyOracleRoutes are the two authenticated endpoints that verify a supplied
-// address+password against a mailbox and reveal correctness (200 vs 401). Both
+// address+password against a mailbox and reveal correctness (201 vs 403). Both
 // must sit behind the same per-client-IP auth throttle as /auth/login, so a
 // holder of a valid low-privilege token cannot use them as an unthrottled
 // online password-guessing oracle that bypasses the login rate limit.

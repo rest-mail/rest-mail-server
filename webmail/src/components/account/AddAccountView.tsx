@@ -42,9 +42,17 @@ export function AddAccountView() {
       await loadAccounts();
       setView('mail');
     } catch (err) {
-      if (err instanceof api.ApiError && err.code === 'totp_required') {
+      // A refused link is a 403 with its reason; this session is still good.
+      const reason = err instanceof api.ApiError ? err.code : '';
+      if (reason === 'totp_required') {
         setNeedsCode(true);
         toast.message('That account has two-factor authentication: enter its code');
+      } else if (reason === 'invalid_totp') {
+        setNeedsCode(true);
+        setCode('');
+        toast.error('That code is not right: enter the current one from that account\'s authenticator');
+      } else if (reason === 'invalid_credentials') {
+        toast.error('That address and password do not match an account');
       } else {
         toast.error(err instanceof Error ? err.message : 'Failed to link account');
       }

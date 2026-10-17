@@ -2,6 +2,8 @@ package filters
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net"
 	"net/netip"
 	"strings"
@@ -12,10 +14,25 @@ import (
 )
 
 // spfCheckFilter checks the sending host against the SPF policy (RFC 7208) of
-// the message's MAIL FROM identity, using github.com/rest-mail/go-spf, and
-// records the result in Authentication-Results for dmarc_check and the other
-// filters that read it. SPF alone never rejects: DMARC decides.
-type spfCheckFilter struct{}
+// the message's HELO and MAIL FROM identities, using
+// github.com/rest-mail/go-spf. It records each result as an AuthResult for
+// dmarc_check and the other filters that act on it, and writes the matching
+// Authentication-Results entry for downstream scripts. By default SPF alone
+// never rejects and DMARC decides; fail_action can make an SPF fail of the MAIL
+// FROM identity reject or quarantine the message.
+type spfCheckFilter struct {
+	// failAction is what an SPF fail of the MAIL FROM identity does: continue
+	// ("tag", the default), reject or quarantine.
+	failAction pipeline.Action
+}
+
+// spfCheckConfig is the filter's configuration.
+type spfCheckConfig struct {
+	// FailAction is "tag" (or empty), "reject" or "quarantine". Only a fail
+	// result acts: softfail, neutral and the error results always continue
+	// (RFC 7208 §8.5–8.7).
+	FailAction string `json:"fail_action"`
+}
 
 // spfTimeout bounds one SPF evaluation, DNS included, so a slow or hostile
 // authoritative server cannot stall the pipeline. It is a package var so tests
@@ -30,8 +47,24 @@ func init() {
 	pipeline.DefaultRegistry.Register("spf_check", NewSPFCheck)
 }
 
-func NewSPFCheck(_ []byte) (pipeline.Filter, error) {
-	return &spfCheckFilter{}, nil
+func NewSPFCheck(config []byte) (pipeline.Filter, error) {
+	var cfg spfCheckConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, err
+		}
+	}
+	f := &spfCheckFilter{failAction: pipeline.ActionContinue}
+	switch cfg.FailAction {
+	case "", "tag":
+	case "reject":
+		f.failAction = pipeline.ActionReject
+	case "quarantine":
+		f.failAction = pipeline.ActionQuarantine
+	default:
+		return nil, fmt.Errorf("spf_check: fail_action %q is not tag, reject or quarantine", cfg.FailAction)
+	}
+	return f, nil
 }
 
 func (f *spfCheckFilter) Name() string              { return "spf_check" }
@@ -54,36 +87,56 @@ func (f *spfCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 	// An unparseable address is the zero netip.Addr, which go-spf answers with
 	// permerror.
 	ip, _ := netip.ParseAddr(clientIP)
-	resp := spf.CheckMailFrom(ctx, ip, mailFrom, helo, &spf.Options{Resolver: spfResolver, Timeout: spfTimeout})
+	opts := &spf.Options{Resolver: spfResolver, Timeout: spfTimeout}
 
-	authResult := "restmail; spf=" + string(resp.Result)
-	if domain := spfAuthDomain(mailFrom, helo); domain != "" {
-		authResult += " smtp.mailfrom=" + domain
+	// The HELO identity is checked on its own as well (RFC 7208 §2.3) when it is
+	// a host name: go-spf answers anything else, an address literal for
+	// instance, with none. For the null reverse-path the MAIL FROM check below
+	// already is a check of the HELO identity, so it is not repeated.
+	var results []pipeline.AuthResult
+	detail := ""
+	if mailFrom != "" && pipeline.IsHostName(helo) {
+		hr := spf.CheckHELO(ctx, ip, helo, opts)
+		results = append(results, pipeline.AuthResult{
+			Method: pipeline.AuthSPF, Result: string(hr.Result), Property: pipeline.PropHelo, Domain: helo,
+		})
+		detail = fmt.Sprintf("; HELO %s: %s (%s)", helo, hr.Result, hr.Reason)
 	}
 
-	// Write Authentication-Results header for downstream filters (DMARC).
+	resp := spf.CheckMailFrom(ctx, ip, mailFrom, helo, opts)
+	domain := spfAuthDomain(mailFrom, helo)
+	results = append(results, pipeline.AuthResult{
+		Method: pipeline.AuthSPF, Result: string(resp.Result), Property: pipeline.PropMailFrom, Domain: domain,
+	})
+	detail = resp.Reason + detail
+
+	pipeline.AuthResultsFromContext(ctx).Add(results...)
+
+	// The same verdicts as an Authentication-Results entry, for downstream
+	// scripts (Sieve, JavaScript, webhooks). No filter reads it back.
 	if email.Headers.Raw == nil {
 		email.Headers.Raw = make(map[string][]string)
 	}
 	email.Headers.Raw["Authentication-Results"] = append(
 		email.Headers.Raw["Authentication-Results"],
-		authResult,
+		pipeline.AuthResultsValue(results),
 	)
 
-	if email.Headers.Extra == nil {
-		email.Headers.Extra = make(map[string]string)
+	res := spfContinue(resp.Result, detail)
+	if resp.Result == spf.ResultFail && f.failAction != pipeline.ActionContinue {
+		res.Action = f.failAction
+		if f.failAction == pipeline.ActionReject {
+			res.RejectMsg = "550 5.7.23 SPF check failed"
+			if domain != "" {
+				res.RejectMsg += " for " + domain
+			}
+		}
 	}
-	if existing := email.Headers.Extra["Authentication-Results"]; existing != "" {
-		email.Headers.Extra["Authentication-Results"] = existing + "; " + authResult
-	} else {
-		email.Headers.Extra["Authentication-Results"] = authResult
-	}
-
-	return spfContinue(resp.Result, resp.Reason), nil
+	return res, nil
 }
 
-// spfContinue is the filter's only outcome: the message continues, with the SPF
-// result and how it was reached in the log.
+// spfContinue is the filter's outcome unless fail_action acts: the message
+// continues, with the MAIL FROM result and how it was reached in the log.
 func spfContinue(result spf.Result, detail string) *pipeline.FilterResult {
 	return &pipeline.FilterResult{
 		Type:   pipeline.FilterTypeAction,
@@ -92,42 +145,17 @@ func spfContinue(result spf.Result, detail string) *pipeline.FilterResult {
 	}
 }
 
-// spfAuthDomain returns the smtp.mailfrom value to record: the domain SPF
-// checked, which is the MAIL FROM domain or, for the null reverse-path, the
-// HELO name. RFC 8601 lets the local-part be left out, and it is: dmarc_check
-// and senderAuthenticated read SPF verdicts by scanning Authentication-Results
-// text, so a local-part such as "spf=pass" would read as a pass on a message
-// that failed. For the same reason the domain is recorded only when it is a
-// plain host name ("victim.example;x.attacker.example" can pass SPF on the
-// attacker's DNS and would read as victim.example), and go-spf's Reason, which
-// quotes the record, goes to the log rather than the header.
+// spfAuthDomain returns the domain SPF checked, which is the MAIL FROM domain
+// or, for the null reverse-path, the HELO name. It is recorded only when it is a
+// plain host name: "victim.example;x.attacker.example" can pass SPF on the
+// attacker's DNS, and is not victim.example's to claim.
 func spfAuthDomain(mailFrom, helo string) string {
 	domain := helo
 	if mailFrom != "" {
 		domain = mailFrom[strings.LastIndexByte(mailFrom, '@')+1:]
 	}
-	if !isHostName(domain) {
+	if !pipeline.IsHostName(domain) {
 		return ""
 	}
 	return domain
-}
-
-// isHostName reports whether name is dot-separated labels of ASCII letters,
-// digits and hyphens.
-func isHostName(name string) bool {
-	if name == "" || len(name) > 253 {
-		return false
-	}
-	for _, label := range strings.Split(name, ".") {
-		if label == "" || len(label) > 63 {
-			return false
-		}
-		for i := 0; i < len(label); i++ {
-			c := label[i]
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
-				return false
-			}
-		}
-	}
-	return true
 }

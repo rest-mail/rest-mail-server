@@ -84,6 +84,10 @@ type ExecutionResult struct {
 	Steps       []StepResult  `json:"steps"`
 	RejectMsg   string        `json:"reject_message,omitempty"`
 	Duration    time.Duration `json:"duration_ms"`
+	// Auth holds the verdicts the authentication filters recorded, in order. The
+	// delivery handlers write the stored message's Authentication-Results from
+	// it (AuthResultsHeader).
+	Auth []AuthResult `json:"auth_results,omitempty"`
 }
 
 // StepResult records what happened at each pipeline step.
@@ -106,6 +110,11 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 		FinalAction: ActionContinue,
 		FinalEmail:  email,
 	}
+
+	// Every run starts with no verdicts: the authentication filters record theirs
+	// here, and the filters that act on them read only this.
+	auth := &AuthResults{}
+	ctx = WithAuthResults(ctx, auth)
 
 	// Build the list of active filters
 	skipSet := make(map[string]bool)
@@ -225,6 +234,7 @@ Loop:
 	}
 
 	result.Duration = time.Since(start)
+	result.Auth = auth.List()
 	// One terminal observation per message, once the final action is known. A
 	// non-continue outcome breaks the loop immediately after recording its step,
 	// so the last recorded step IS the terminal step — hand it to the observer so
