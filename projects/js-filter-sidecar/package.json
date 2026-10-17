@@ -2,13 +2,17 @@
   "name": "restmail-js-filter",
   "version": "1.0.0",
   "private": true,
-  "description": "Sandboxed JavaScript filter execution for restmail pipeline",
+  "description": "Runs REST Mail JavaScript filters, each in its own QuickJS WebAssembly sandbox",
   "main": "server.js",
   "scripts": {
     "test": "node --test test/*.test.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
+    "quickjs-emscripten-core": "0.32.0"
+  },
+  "license": "MIT"
 }

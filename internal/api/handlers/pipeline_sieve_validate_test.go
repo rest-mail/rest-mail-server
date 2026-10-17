@@ -84,11 +84,11 @@ func TestValidateSievePipelineFilters_ValidAccepted(t *testing.T) {
 // rejects a genuinely broken embedded Sieve script.
 func TestValidateSievePipelineFilters_NothingToValidateAccepted(t *testing.T) {
 	cases := map[string]string{
-		"nil":              "",
-		"empty array":      `[]`,
-		"no sieve":         `[{"name":"header_validate","type":"action","enabled":true,"config":{}}]`,
-		"empty sieve cfg":  `[{"name":"sieve","type":"transform","enabled":true,"config":{}}]`,
-		"sieve empty str":  `[{"name":"sieve","type":"transform","enabled":true,"config":{"script":""}}]`,
+		"nil":               "",
+		"empty array":       `[]`,
+		"no sieve":          `[{"name":"header_validate","type":"action","enabled":true,"config":{}}]`,
+		"empty sieve cfg":   `[{"name":"sieve","type":"transform","enabled":true,"config":{}}]`,
+		"sieve empty str":   `[{"name":"sieve","type":"transform","enabled":true,"config":{"script":""}}]`,
 		"malformed filters": `{"not":"an array"}`,
 	}
 	for name, raw := range cases {
@@ -153,7 +153,7 @@ func TestPipelineCreate_InvalidSieveRejected(t *testing.T) {
 		t.Fatalf("create domain: %v", err)
 	}
 
-	h := NewPipelineHandler(tx, nil)
+	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	body := `{"domain_id":` + uintToStr(dom.ID) + `,"direction":"inbound","active":true,"filters":` + missingRequireFilters + `}`
 
 	rr := httptest.NewRecorder()
@@ -181,7 +181,7 @@ func TestPipelineCreate_ValidSievePersisted(t *testing.T) {
 		t.Fatalf("create domain: %v", err)
 	}
 
-	h := NewPipelineHandler(tx, nil)
+	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	body := `{"domain_id":` + uintToStr(dom.ID) + `,"direction":"inbound","active":true,"filters":` + validSieveFilters + `}`
 
 	rr := httptest.NewRecorder()
@@ -218,7 +218,7 @@ func TestPipelineUpdate_InvalidSieveRejected(t *testing.T) {
 		t.Fatalf("seed pipeline: %v", err)
 	}
 
-	h := NewPipelineHandler(tx, nil)
+	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	params := map[string]string{"id": uintToStr(seed.ID)}
 	body := `{"filters":` + missingRequireFilters + `}`
 

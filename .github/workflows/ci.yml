@@ -225,6 +225,47 @@ jobs:
   # This job always runs and fails only if a job that actually ran did not
   # succeed, so a skipped job is not a block. Requiring it — and nothing else
   # from this workflow — makes the 13 job names above free to change.
+  js-filter:
+    name: JS Filter
+    # The sidecar that runs javascript filters: its own tests (the sandbox
+    # escapes of #160 among them), then the API's filter against it, end to end.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/js-filter-sidecar
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # The image's Node (Dockerfile: node:22-alpine).
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Test
+        run: npm test
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: The API's javascript filter against the sidecar
+        working-directory: .
+        run: |
+          set -euo pipefail
+          go test -count=1 -v -run 'TestJSFilter' ./internal/pipeline/filters/ | tee "$RUNNER_TEMP/jsfilter.log"
+          # The end-to-end test skips without node or npm ci; here it must run.
+          if grep -q -- '--- SKIP: TestJSFilter_RealSidecar' "$RUNNER_TEMP/jsfilter.log"; then
+            echo "::error::TestJSFilter_RealSidecar was skipped" >&2
+            exit 1
+          fi
+
   first-start:
     name: First start
     # Proves, against the real image, the path a fresh install takes: the
@@ -264,7 +305,7 @@ jobs:
 
   ci:
     name: CI
-    needs: [lint, test, build, helm, webmail, admin, first-start]
+    needs: [lint, test, build, helm, webmail, admin, js-filter, first-start]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -277,6 +318,7 @@ jobs:
             helm=${{ needs.helm.result }}
             webmail=${{ needs.webmail.result }}
             admin=${{ needs.admin.result }}
+            js-filter=${{ needs.js-filter.result }}
             first-start=${{ needs.first-start.result }}
         run: |
           set -euo pipefail

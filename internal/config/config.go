@@ -1096,6 +1096,33 @@ func (c *Config) ScannerHMACSecret() string {
 // ══════════════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════════
+// BEGIN JS filter sidecar (#160)
+//
+// Where the API finds the sidecar that runs javascript filter scripts, and the
+// token it authenticates to it with. Read lazily like the scanner secret above.
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultJSFilterURL is the JS filter sidecar's address unless JS_FILTER_URL
+// says otherwise: its name on the testbed network.
+const DefaultJSFilterURL = "http://js-filter:3100"
+
+// JSFilterURL returns the base URL of the JS filter sidecar (JS_FILTER_URL).
+func (c *Config) JSFilterURL() string {
+	return getEnv("JS_FILTER_URL", DefaultJSFilterURL)
+}
+
+// JSFilterToken returns the token the API sends the JS filter sidecar
+// (JS_FILTER_TOKEN). The sidecar runs a script only for a request carrying the
+// token it was started with, and does not start without one. Empty here means
+// every javascript filter fails, with its failure_action (defer by default).
+func (c *Config) JSFilterToken() string {
+	return getEnv("JS_FILTER_TOKEN", "")
+}
+
+// END JS filter sidecar
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
 // BEGIN metrics network-gate (OSI-12)
 //
 // One contiguous, append-only block so it merges cleanly alongside concurrent
