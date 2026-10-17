@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/rest-mail/go-dmarc"
+	"github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -13,8 +14,9 @@ import (
 // identity whose domain aligns with domain, or a DKIM pass whose signing (d=)
 // domain aligns with domain. It reads only the verdicts spf_check and
 // dkim_verify recorded for this run, never Authentication-Results text; with
-// none recorded the sender is unauthenticated. Alignment uses the same relaxed
-// organizational-domain rule (dmarc.Aligned) the dmarc_check filter applies.
+// none recorded the sender is unauthenticated. Alignment is relaxed, on
+// Organizational Domains from the Public Suffix List (mail.OrgDomain), as
+// dmarc_check applies it by default.
 //
 // This is the gate an allow/blocklist or contact-whitelist match must pass
 // before it may skip spam/greylist scanning. Without it a spoofed sender who
@@ -29,7 +31,7 @@ func senderAuthenticated(ctx context.Context, domain string) bool {
 	auth := pipeline.AuthResultsFromContext(ctx)
 	verdicts := append(auth.Find(pipeline.AuthSPF, pipeline.PropMailFrom), auth.Find(pipeline.AuthDKIM, pipeline.PropHeaderD)...)
 	for _, r := range verdicts {
-		if r.Result == "pass" && r.Domain != "" && dmarc.Aligned(r.Domain, domain) {
+		if r.Result == "pass" && r.Domain != "" && dmarc.AlignedOrg(r.Domain, domain, mail.OrgDomain) {
 			return true
 		}
 	}
