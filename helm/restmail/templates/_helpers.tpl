@@ -114,6 +114,16 @@ Usage: {{ include "restmail.imageTag" (list . .Values.api.image.tag) }}
 {{- end -}}
 
 {{/*
+A web app's public host: <app>.ingress.host, or <app>.<mailserver.domain>.
+Usage: {{ include "restmail.webappHost" (list . "webmail") }}
+*/}}
+{{- define "restmail.webappHost" -}}
+{{- $root := index . 0 -}}
+{{- $app := index . 1 -}}
+{{- default (printf "%s.%s" $app $root.Values.mailserver.domain) (index $root.Values $app).ingress.host -}}
+{{- end -}}
+
+{{/*
 Postgres host = Service DNS name of the embedded postgres.
 */}}
 {{- define "restmail.postgres.host" -}}
@@ -263,7 +273,8 @@ a non-root UID and still bind those ports (Kubernetes does not yet populate the
 ambient capability set from securityContext.capabilities). They therefore keep
 runAsNonRoot unset here and rely on the container-level "drop ALL, add only
 NET_BIND_SERVICE" posture below. The API, js-filter and Postgres images ship a
-non-root user, so they run fully non-root.
+non-root user, so they run fully non-root, and so do the web apps, whose
+unprivileged nginx image runs as uid 101 on port 8080.
 
 Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
 */}}
@@ -281,6 +292,8 @@ Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "fsGroup" 10001) -}}
 {{- else if eq $comp "postgres" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 70 "runAsGroup" 70 "fsGroup" 70) -}}
+{{- else if or (eq $comp "webmail") (eq $comp "admin") -}}
+{{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 101 "runAsGroup" 101 "fsGroup" 101) -}}
 {{- end -}}
 {{- $merged := merge (deepCopy $root.Values.podSecurityContext) $base -}}
 {{- toYaml $merged -}}
@@ -297,7 +310,8 @@ queue is DB-backed and the CA-trust entrypoint only writes when /certs/ca.crt is
 present (the chart projects tls.crt/tls.key only). API: read-only rootfs is off
 because its entrypoint may run update-ca-certificates. js-filter: read-only rootfs
 on (its image is built for it). Postgres: read-only rootfs off (writes PGDATA,
-sockets, runtime config).
+sockets, runtime config). Web apps: read-only rootfs on; nginx writes only the
+config its entrypoint makes (conf.d) and /tmp, both emptyDirs.
 
 Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 */}}
@@ -313,6 +327,8 @@ Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 {{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- else if eq $comp "postgres" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" false "capabilities" (dict "drop" (list "ALL"))) -}}
+{{- else if or (eq $comp "webmail") (eq $comp "admin") -}}
+{{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- end -}}
 {{- $merged := merge (deepCopy $root.Values.securityContext) $base -}}
 {{- toYaml $merged -}}

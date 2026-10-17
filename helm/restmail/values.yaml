@@ -347,6 +347,74 @@ pop3Gateway:
       cpu: 1000m
       memory: 512Mi
 
+# ── Web apps: webmail and the admin webmail ───────────────────────────────
+# Each is served at the root of a host of its own, and that host's Ingress
+# also sends /api to the API: the apps sign in with SameSite=Strict cookies and
+# their CSP allows connect-src 'self' only, so the API has to be on the app's
+# own origin. There is no CORS to configure. A cookie belongs to the host that
+# set it, so signing in on one app does not sign you in on the other.
+#
+# The host defaults to webmail.<mailserver.domain> / admin.<mailserver.domain>.
+# Turning an app off removes its Deployment, Service, Ingress and
+# NetworkPolicy. The image tag follows appVersion, like every other image.
+webmail:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rest-mail/webmail
+    tag: ""        # falls back to .Chart.AppVersion when empty
+    pullPolicy: ""
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    className: ""
+    annotations: {}
+    # Empty: webmail.<mailserver.domain>.
+    host: ""
+    tls:
+      enabled: false
+      # Empty: <release>-webmail-tls.
+      secretName: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
+
+admin:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/rest-mail/admin
+    tag: ""        # falls back to .Chart.AppVersion when empty
+    pullPolicy: ""
+  service:
+    type: ClusterIP
+    port: 8080
+  ingress:
+    className: ""
+    # Also where a source-address restriction goes, in your ingress
+    # controller's own terms (a Traefik ipAllowList middleware, ingress-nginx's
+    # whitelist-source-range). The chart has no controller-neutral way to say
+    # it, and the API stays reachable on its own host either way.
+    annotations: {}
+    # Empty: admin.<mailserver.domain>.
+    host: ""
+    tls:
+      enabled: false
+      # Empty: <release>-admin-tls.
+      secretName: ""
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
+
 # ── Pod-level extras (security, scheduling) ───────────────────────────────
 # Every workload already gets a hardened per-component securityContext by
 # default (runAsNonRoot where the image supports it, seccompProfile

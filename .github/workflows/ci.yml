@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/0.12]
   pull_request:
-    branches: [main]
+    branches: [main, release/0.12]
 
 permissions:
   contents: read
@@ -262,9 +262,43 @@ jobs:
           EXPECT_VERSION: 0.0.0-first-start
         run: tests/first-start/agent-e2e.sh
 
+  webapp-images:
+    name: Web app image (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [webmail, admin]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Build and serve with the chart's security settings
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          docker build --target prod -t "restmail-$APP:smoke" "$APP"
+          container=$(docker run -d --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --user 101:101 \
+            --tmpfs /etc/nginx/conf.d:rw,uid=101,gid=101 \
+            --tmpfs /tmp:rw,uid=101,gid=101 \
+            -e NGINX_BASE_PATH=/ -p 127.0.0.1::8080 "restmail-$APP:smoke")
+          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
+          origin="http://$(docker port "$container" 8080/tcp)"
+          curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 \
+            -D "$RUNNER_TEMP/headers" "$origin/" -o "$RUNNER_TEMP/index.html"
+          grep -q '<base href="/">' "$RUNNER_TEMP/index.html"
+          grep -qi "connect-src 'self'" "$RUNNER_TEMP/headers"
+          curl --fail --silent --show-error "$origin/login" -o "$RUNNER_TEMP/deep.html"
+          cmp "$RUNNER_TEMP/index.html" "$RUNNER_TEMP/deep.html"
+          asset=$(grep -oE 'src="[^"]+\.js"' "$RUNNER_TEMP/index.html" | head -1 | cut -d '"' -f2)
+          test -n "$asset"
+          curl --fail --silent --show-error "$origin/${asset#/}" -o "$RUNNER_TEMP/bundle.js"
+          ! grep -qi '<!doctype html' "$RUNNER_TEMP/bundle.js"
+
   ci:
     name: CI
-    needs: [lint, test, build, helm, webmail, admin, first-start]
+    needs: [lint, test, build, helm, webmail, admin, first-start, webapp-images]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -278,6 +312,7 @@ jobs:
             webmail=${{ needs.webmail.result }}
             admin=${{ needs.admin.result }}
             first-start=${{ needs.first-start.result }}
+            webapp-images=${{ needs.webapp-images.result }}
         run: |
           set -euo pipefail
           # `needs.build.result` covers the whole matrix: it is `success` only

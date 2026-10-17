@@ -21,9 +21,9 @@ name: E2E
 #                  the required context is satisfied on every PR — code or docs.
 on:
   push:
-    branches: [main]
+    branches: [main, release/0.12]
   pull_request:
-    branches: [main]
+    branches: [main, release/0.12]
   workflow_dispatch:
 
 # e2e is expensive — supersede in-flight runs for the same ref.

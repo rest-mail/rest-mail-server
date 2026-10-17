@@ -1,0 +1,89 @@
+{{- /*
+The two web apps, webmail and the admin webmail: the same unprivileged nginx
+image shape (webmail/, admin/), each serving its own bundle. One definition, so
+the two cannot drift apart.
+*/ -}}
+{{- range $app := list "webmail" "admin" }}
+{{- $v := index $.Values $app }}
+{{- if $v.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "restmail.componentName" (list $ $app) }}
+  labels:
+    {{- include "restmail.componentLabels" (list $ $app) | nindent 4 }}
+spec:
+  replicas: {{ $v.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list $ $app) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "restmail.componentSelectorLabels" (list $ $app) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "restmail.serviceAccountName" $ }}
+      automountServiceAccountToken: {{ $.Values.serviceAccount.automountServiceAccountToken }}
+      {{- include "restmail.dnsSpec" $ | nindent 6 }}
+      {{- with $.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "restmail.podSecurityContext" (list $ $app) | nindent 8 }}
+      containers:
+        - name: {{ $app }}
+          image: "{{ $v.image.repository }}:{{ include "restmail.imageTag" (list $ $v.image.tag) }}"
+          imagePullPolicy: {{ include "restmail.imagePullPolicy" (list $ $v.image.pullPolicy) }}
+          securityContext:
+            {{- include "restmail.containerSecurityContext" (list $ $app) | nindent 12 }}
+          env:
+            # At the root of its own host. The image takes its base path when
+            # it starts, not when it is built (docker-entrypoint.sh).
+            - name: NGINX_BASE_PATH
+              value: "/"
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            # The entrypoint writes nginx's config here, and nginx its pid and
+            # temporary files to /tmp: the rest of the filesystem is read-only.
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+      volumes:
+        - name: nginx-conf
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}
