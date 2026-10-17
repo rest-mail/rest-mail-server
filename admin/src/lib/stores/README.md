@@ -277,7 +277,7 @@ const { accessToken } = useAuthStore.getState()
 - `domainStore.ts` - Domain management (WIP)
 - `mailboxStore.ts` - Mailbox management (WIP)
 - `queueStore.ts` - Queue management (WIP)
-- `adminUserStore.ts` - Admin user management (WIP)
+- `grantStore.ts` - Grants: which account holds which role at which scope
 - `uiStore.ts` - UI state (sidebar, modals, notifications) (WIP)
 
 ## Benefits

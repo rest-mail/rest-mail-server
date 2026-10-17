@@ -84,7 +84,8 @@ if [ -z "$password" ]; then
   ok "skipped: the install carries no admin password to try"
 else
   headers=$(private_tmp)
-  body=$(jq -nc --arg p "$password" '{username: "admin", password: $p}' |
+  domain=$(release_values | jq -r '.mailserver.domain // empty')
+  body=$(jq -nc --arg e "admin@$domain" --arg p "$password" '{email: $e, password: $p}' |
     curl -sS --max-time 10 -D "$headers" -H 'Content-Type: application/json' --data @- "$api/api/v1/auth/login")
   code=$(awk 'NR == 1 { print $2 }' "$headers")
   case "$code:$(jq -r '.error.code // empty' <<<"$body" 2>/dev/null)" in

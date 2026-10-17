@@ -14,7 +14,7 @@ import (
 // the middleware will accept.
 func mintAccessCookie(t *testing.T, jwtSvc *auth.JWTService) *http.Cookie {
 	t.Helper()
-	pair, err := jwtSvc.GenerateTokenPair(42, "user@example.com", 7)
+	pair, err := jwtSvc.GenerateSession(42, "user@example.com", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatalf("generate token pair: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestJWTMiddleware_CookieAuth(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("cookie auth: expected 200, got %d", rr.Code)
 	}
-	if captured == nil || captured.MailboxID != 42 {
+	if captured == nil || captured.AccountID != 42 {
 		t.Fatalf("cookie auth did not populate claims: %+v", captured)
 	}
 }

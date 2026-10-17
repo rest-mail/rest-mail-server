@@ -8,8 +8,8 @@ import "github.com/restmail/restmail/internal/gateway/apiclient"
 // The concrete *apiclient.Client satisfies this interface structurally, so the
 // production wiring keeps passing the real client unchanged.
 type Backend interface {
-	// SignIn authenticates a mailbox user (submission AUTH), with the mailbox's
-	// password or an app password (apiclient.Client.SignIn).
+	// SignIn authenticates an account (submission AUTH), with one of its
+	// passwords or an app password (apiclient.Client.SignIn).
 	SignIn(email, password, protocol string) (*apiclient.LoginResponse, error)
 	// CheckMailbox verifies a recipient address exists locally.
 	CheckMailbox(address string) (*apiclient.MailboxCheckResponse, error)
@@ -20,15 +20,16 @@ type Backend interface {
 // Store abstracts the two direct-database reaches the SMTP session makes, so the
 // session depends on neither gorm nor the DB models:
 //
-//   - sender authorization on the submission path (linked_accounts -> mailboxes),
+//   - sender authorization on the submission path (the account's grants),
 //   - outbound queueing of messages bound for remote recipients.
 //
 // The production implementation is dbStore (see dbstore.go), wired in
 // cmd/smtp-gateway. Tests substitute an in-memory Store.
 type Store interface {
-	// SenderAuthorized reports whether the authenticated webmail account may send
-	// as the given MAIL FROM address (i.e. it owns a linked mailbox with that
-	// address). An error is treated by the caller as "not authorized".
+	// SenderAuthorized reports whether the authenticated account may send as
+	// the given MAIL FROM address, another account's: whether it holds
+	// mail:send on that account (it owns or has linked it). An error is
+	// treated by the caller as "not authorized".
 	SenderAuthorized(accountID uint, from string) (bool, error)
 	// PersistSubmittedMessage records an authenticated submission as a message
 	// row owned by the sender's mailbox and returns its id. The returned id is

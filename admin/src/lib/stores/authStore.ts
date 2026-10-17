@@ -4,7 +4,8 @@ import { apiV1 } from '../api'
 import type { SecondFactor } from '../twoFactor'
 
 interface User {
-  username: string
+  // The account's address: an admin is an account holding admin grants.
+  email: string
   capabilities: string[]
 }
 
@@ -28,7 +29,7 @@ interface AuthState {
   error: string | null
 
   // Actions
-  login: (username: string, password: string, second?: SecondFactor) => Promise<void>
+  login: (email: string, password: string, second?: SecondFactor) => Promise<void>
   logout: () => void
   checkSession: () => Promise<void>
   setUser: (user: User | null) => void
@@ -48,7 +49,7 @@ export const useAuthStore = create<AuthState>()(
       totpRequired: false,
       error: null,
 
-      login: async (username: string, password: string, second?: SecondFactor) => {
+      login: async (email: string, password: string, second?: SecondFactor) => {
         set({ isLoading: true, error: null })
 
         try {
@@ -59,7 +60,7 @@ export const useAuthStore = create<AuthState>()(
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              username,
+              email,
               password,
               ...second,
             }),
@@ -83,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
           // The access token was set as an httpOnly cookie by the API; the body
           // carries only identity + capabilities, never the token.
           const user: User = {
-            username,
+            email: data.user?.email || email,
             capabilities: data.capabilities || [],
           }
 
@@ -122,7 +123,7 @@ export const useAuthStore = create<AuthState>()(
             const data = body.data || body
             set({
               user: {
-                username: data.user?.email || data.user?.display_name || '',
+                email: data.user?.email || '',
                 capabilities: data.capabilities || [],
               },
               accessToken: COOKIE_SESSION,

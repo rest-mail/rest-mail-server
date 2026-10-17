@@ -67,7 +67,7 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 	if err := db.Create(&dom).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
-	sender := models.Mailbox{DomainID: dom.ID, LocalPart: "alice", Address: senderAddr, Password: "x", Active: true, QuotaBytes: 1 << 30}
+	sender := models.Mailbox{DomainID: dom.ID, LocalPart: "alice", Address: senderAddr, Active: true, QuotaBytes: 1 << 30}
 	if err := db.Create(&sender).Error; err != nil {
 		t.Fatalf("create sender mailbox: %v", err)
 	}

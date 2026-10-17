@@ -118,11 +118,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 	if err != nil {
 		t.Skipf("push DB test skipped: no database reachable (%v)", err)
 	}
-	if err := db.AutoMigrate(
-		&models.Domain{}, &models.Mailbox{}, &models.WebmailAccount{}, &models.LinkedAccount{},
-		&models.QuotaUsage{}, &models.Message{}, &models.Attachment{}, &models.RefreshToken{},
-		&models.TwoFactor{}, &models.TwoFactorRecoveryCode{}, &models.PushDevice{},
-	); err != nil {
+	if err := db.AutoMigrate(append(accountModels, &models.Message{}, &models.Attachment{}, &models.PushDevice{})...); err != nil {
 		t.Skipf("push DB test skipped: migrate failed (%v)", err)
 	}
 	// Device changes are audited, and the log cannot be emptied: everything
@@ -183,7 +179,7 @@ func newPushEnv(t *testing.T) *pushEnv {
 type pushSessionT struct {
 	access, refresh string
 	sid             string
-	account         uint // the webmail account: the primary's id in GET /accounts
+	account         uint // the account: its id in GET /accounts, the mailbox's
 }
 
 // signIn signs mb in as the app does, with its password, for body tokens.
@@ -412,7 +408,7 @@ func TestDevicesRegisterListRemove(t *testing.T) {
 	first := registered[0]
 	if first.Outcome != models.AuditOutcomeSuccess || first.Target["device_id"] != id ||
 		first.Target["platform"] != "apns" || first.Target["environment"] != "production" ||
-		first.ActorKind != models.AuditActorMailbox || first.ActorName != mb.Address {
+		first.ActorKind != models.AuditActorAccount || first.ActorName != mb.Address {
 		t.Errorf("devices.register entry = %+v", first)
 	}
 	removedEntries := e.auditEntries(t, push.ActionDeviceRemove)
@@ -522,21 +518,15 @@ func TestDevicesTokenWithoutSidIsRefused(t *testing.T) {
 	e.refreshSession(t, s)
 }
 
-// TestDevicesAdminSessionHasNoPlatform: an administrator's session has no
-// mailbox to be told about: it is offered no platform and cannot register.
-func TestDevicesAdminSessionHasNoPlatform(t *testing.T) {
+// TestDevicesEveryAccountIsOfferedPush: every account is a mailbox, so an
+// admin's session, like any other, has mail to be told about and is offered
+// the platform.
+func TestDevicesEveryAccountIsOfferedPush(t *testing.T) {
 	e := newPushEnv(t)
-	pair, err := e.jwt.GenerateAdminSession(1, "push-admin", 0, []string{auth.AMRPassword})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if platforms, ids := e.devices(t, pushSessionT{access: pair.AccessToken}); len(platforms) != 0 || len(ids) != 0 {
-		t.Fatalf("GET for an admin = platforms %v devices %v; want none of either", platforms, ids)
-	}
-	status, body := e.call(t, http.MethodPost, "/api/v1/devices", pair.AccessToken,
-		`{"platform":"apns","token":"`+pushTestToken(1)+`"}`)
-	if status != http.StatusUnprocessableEntity || !strings.Contains(string(body), `"platform"`) {
-		t.Fatalf("POST for an admin = %d %s; want 422 validation_failed on platform", status, body)
+	admin := seedMailbox(t, e.tx, "push-admin")
+	s := e.signIn(t, admin)
+	if platforms, _ := e.devices(t, s); len(platforms) != 1 || platforms[0] != models.PushPlatformAPNs {
+		t.Fatalf("GET = platforms %v; want apns", platforms)
 	}
 }
 
@@ -637,10 +627,23 @@ func TestPushCoalescesPerDeviceAndAccount(t *testing.T) {
 	tablet := e.signIn(t, mb)
 	phoneID := e.register(t, phone, pushTestToken(1))
 	tabletID := e.register(t, tablet, pushTestToken(2))
-	link := models.LinkedAccount{WebmailAccountID: phone.account, MailboxID: linked.ID}
-	if err := e.tx.Create(&link).Error; err != nil {
+	// mb owns linked: GET /accounts lists it, by its own id.
+	var owner models.Role
+	if err := e.tx.Where("name = ?", models.RoleOwner).FirstOrCreate(&owner, models.Role{Name: models.RoleOwner}).Error; err != nil {
 		t.Fatal(err)
 	}
+	var capID uint
+	var mailRead models.Capability
+	if err := e.tx.Where("name = ?", models.CapMailRead).FirstOrCreate(&mailRead, models.Capability{Name: models.CapMailRead}).Error; err != nil {
+		t.Fatal(err)
+	}
+	capID = mailRead.ID
+	e.tx.Where("role_id = ? AND capability_id = ?", owner.ID, capID).FirstOrCreate(&models.RoleCapability{RoleID: owner.ID, CapabilityID: capID})
+	if err := e.tx.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: mb.ID, RoleID: owner.ID,
+		Scope: "mailbox:" + linked.Address, Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	link := struct{ ID uint }{ID: linked.ID}
 
 	ctx := context.Background()
 	t0 := time.Now()
@@ -676,14 +679,14 @@ func TestPushCoalescesPerDeviceAndAccount(t *testing.T) {
 		t.Fatalf("%d pushes inside the window, want none", len(pushes))
 	}
 
-	// The linked mailbox is another account of both sessions: the account
-	// links it, so each lists it, and it is not held back by the window of
+	// The owned mailbox is another account of both sessions: the account
+	// owns it, so each lists it, and it is not held back by the window of
 	// the mailbox's own.
 	e.newMail(t, linked, "INBOX")
 	e.dispatcher.Step(ctx, t0.Add(3*time.Second))
 	got = byDevice(e.apns.take())
 	if len(got) != 2 || got[phoneID+"/"+fmt.Sprint(link.ID)].Unread != 1 || got[tabletID+"/"+fmt.Sprint(link.ID)].Unread != 1 {
-		t.Fatalf("linked mailbox pushed %v; want one push to each device for linked account %d, unread 1", got, link.ID)
+		t.Fatalf("owned mailbox pushed %v; want one push to each device for account %d, unread 1", got, link.ID)
 	}
 
 	e.dispatcher.Step(ctx, t0.Add(5*time.Second))
@@ -811,7 +814,7 @@ func TestPushDevicesGoWhenTheSessionEnds(t *testing.T) {
 	// Revocation: a password change, or a disabled mailbox.
 	revoked := e.signIn(t, other)
 	revokedID := e.register(t, revoked, pushTestToken(5))
-	if err := repositories.NewRefreshTokenRepository(e.tx).RevokeAllForSubject("mailbox", other.ID); err != nil {
+	if err := repositories.NewRefreshTokenRepository(e.tx).RevokeAllForAccount(other.ID); err != nil {
 		t.Fatal(err)
 	}
 

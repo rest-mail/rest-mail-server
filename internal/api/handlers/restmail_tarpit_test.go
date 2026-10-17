@@ -196,7 +196,7 @@ func TestCheckMailboxTarpitsNegativeButNotPositive(t *testing.T) {
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatalf("seed domain: %v", err)
 	}
-	mbox := models.Mailbox{DomainID: domain.ID, LocalPart: "real", Address: realAddr, Password: "x", Active: true}
+	mbox := models.Mailbox{DomainID: domain.ID, LocalPart: "real", Address: realAddr, Active: true}
 	if err := db.Create(&mbox).Error; err != nil {
 		t.Fatalf("seed mailbox: %v", err)
 	}

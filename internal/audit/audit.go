@@ -154,19 +154,14 @@ func Append(db *gorm.DB, e *models.AuditEntry) error {
 	})
 }
 
-// ActorID finds the id of the account a sign-in named: an admin by username,
-// a mailbox by address. Nil when there is none.
+// ActorID finds the id of the account a sign-in named, by its address. Nil
+// when there is none.
 func ActorID(db *gorm.DB, kind, name string) (*uint, error) {
-	var row struct{ ID uint }
-	var err error
-	switch kind {
-	case models.AuditActorAdmin:
-		err = db.Model(&models.AdminUser{}).Select("id").Where("username = ?", name).Take(&row).Error
-	case models.AuditActorMailbox:
-		err = db.Model(&models.Mailbox{}).Select("id").Where("address = ?", name).Take(&row).Error
-	default:
+	if kind != models.AuditActorAccount {
 		return nil, nil
 	}
+	var row struct{ ID uint }
+	err := db.Model(&models.Mailbox{}).Select("id").Where("address = ?", name).Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

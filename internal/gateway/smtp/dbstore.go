@@ -6,6 +6,7 @@ import (
 
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
@@ -27,16 +28,18 @@ func NewStore(db *gorm.DB, masterKey string) Store {
 	return &dbStore{db: db, masterKey: masterKey}
 }
 
-// SenderAuthorized runs the same linked_accounts -> mailboxes lookup the session
-// used to perform inline: the account is authorized for the address when it owns
-// a linked mailbox with that address.
+// SenderAuthorized reads the account's grants, as the API's send path does:
+// the account may send as from when from is an account it holds mail:send on.
 func (s *dbStore) SenderAuthorized(accountID uint, from string) (bool, error) {
 	var count int64
-	err := s.db.Table("linked_accounts").
-		Joins("JOIN mailboxes ON mailboxes.id = linked_accounts.mailbox_id").
-		Where("linked_accounts.webmail_account_id = ? AND mailboxes.address = ?", accountID, from).
-		Count(&count).Error
-	return count > 0, err
+	if err := s.db.Model(&models.Mailbox{}).Where("address = ?", from).Count(&count).Error; err != nil || count == 0 {
+		return false, err
+	}
+	held, err := grants.Load(s.db, accountID, time.Now())
+	if err != nil {
+		return false, err
+	}
+	return held.Allows(models.CapMailSend, grants.Mailbox(from)), nil
 }
 
 // PersistSubmittedMessage records an authenticated submission as a message row
@@ -89,7 +92,7 @@ func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 }
 
 // CredentialUsable checks the credentials table directly, as SenderAuthorized
-// checks linked accounts.
+// reads grants.
 func (s *dbStore) CredentialUsable(credentialID uint) (bool, error) {
 	return repositories.NewCredentialRepository(s.db).Usable(credentialID, time.Now())
 }

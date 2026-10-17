@@ -93,12 +93,15 @@ reaches the API through the Ingress.
 
 ## The first admin
 
-The first admin comes from the password you install with,
-`api.bootstrapAdminPassword` (16 characters or more; the chart will not render
-without one). `chore install:helm` and `chore install:pulumi` make it and show
-it once. Sign in to the rest-mail app as `admin` with it: you choose your own
-password and enroll an authenticator straight away, after which it stops
-working. It also expires 72 hours after the server first takes it.
+The first admin is the account `admin@<mailserver.domain>`, made from the
+password you install with, `api.bootstrapAdminPassword` (16 characters or
+more; the chart will not render without one). It is a mailbox like any other,
+holding the admin role, and superadmin to switch on when needed.
+`chore install:helm` and `chore install:pulumi` make the password and show it
+once. Sign in to the rest-mail app as `admin@<mailserver.domain>` with it: you
+choose your own password and enroll an authenticator straight away, after
+which it stops working. It also expires 72 hours after the server first takes
+it.
 
 A server with no admin and no bootstrap password refuses to start: nobody could
 ever sign in to it.

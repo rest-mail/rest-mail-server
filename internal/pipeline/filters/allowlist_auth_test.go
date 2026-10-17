@@ -176,7 +176,6 @@ func TestContactWhitelist_SkipRequiresAuthenticatedSender(t *testing.T) {
 		DomainID:  dom.ID,
 		LocalPart: "bob",
 		Address:   "bob@" + rcptDomainName,
-		Password:  "x",
 		Active:    true,
 	}
 	if err := db.Create(&mb).Error; err != nil {

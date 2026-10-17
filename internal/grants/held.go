@@ -18,9 +18,10 @@ type Entry struct {
 	Capability string
 }
 
-// Held is what a holder holds right now: a capability at a scope for each
+// Held is what an account holds right now: a capability at a scope for each
 // capability of each of its unexpired grants that is active, or eligible and
-// switched on (Activate). The zero Held holds nothing.
+// switched on (Activate), and the owner's capabilities on its own mailbox.
+// The zero Held holds nothing.
 type Held struct {
 	entries []Entry
 }
@@ -83,17 +84,20 @@ func (h Held) Capabilities() []string {
 	return out
 }
 
-// Load reads what a holder holds now, straight from its grants: in a
-// transaction, as of that transaction.
-func Load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, error) {
-	held, _, err := load(db, holderKind, holderID, now)
+// Load reads what an account holds at now: its active, unexpired grants, and
+// the owner's capabilities (models.OwnerCapabilities) on its own mailbox,
+// which every active account holds without a grant. An inactive or missing
+// account holds nothing on its own mailbox, but its grants are still read:
+// whoever acts for it is refused elsewhere.
+func Load(db *gorm.DB, accountID uint, now time.Time) (Held, error) {
+	held, _, err := load(db, accountID, now)
 	return held, err
 }
 
 // load is Load, and also the earliest time one of the grants or activations
 // it read expires (zero when none does), after which what it read is out of
 // date.
-func load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, time.Time, error) {
+func load(db *gorm.DB, accountID uint, now time.Time) (Held, time.Time, error) {
 	var rows []struct {
 		Scope               string
 		Capability          string
@@ -102,10 +106,10 @@ func load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, t
 	}
 	err := db.Table("grants AS g").
 		Select("g.scope, c.name AS capability, g.expires_at, a.expires_at AS activation_expires_at").
-		Joins("JOIN admin_roles_capabilities rc ON rc.role_id = g.role_id").
-		Joins("JOIN admin_capabilities c ON c.id = rc.capability_id").
+		Joins("JOIN role_capabilities rc ON rc.role_id = g.role_id").
+		Joins("JOIN capabilities c ON c.id = rc.capability_id").
 		Joins("LEFT JOIN grant_activations a ON a.grant_id = g.id AND a.ended_at IS NULL AND a.expires_at > ?", now).
-		Where("g.holder_kind = ? AND g.holder_id = ?", holderKind, holderID).
+		Where("g.holder_kind = ? AND g.holder_id = ?", models.GrantHolderAccount, accountID).
 		Where("g.mode = ? OR (g.mode = ? AND a.id IS NOT NULL)", models.GrantActive, models.GrantEligible).
 		Where("g.expires_at IS NULL OR g.expires_at > ?", now).
 		Order("g.scope, c.name").
@@ -114,6 +118,15 @@ func load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, t
 		return Held{}, time.Time{}, err
 	}
 	var held Held
+	var own []string
+	if err := db.Model(&models.Mailbox{}).Where("id = ? AND active", accountID).Pluck("address", &own).Error; err != nil {
+		return Held{}, time.Time{}, err
+	}
+	if len(own) == 1 {
+		for _, c := range models.OwnerCapabilities {
+			held.entries = append(held.entries, Entry{Scope: Mailbox(own[0]), Capability: c})
+		}
+	}
 	var expires time.Time
 	for _, r := range rows {
 		held.entries = append(held.entries, Entry{Scope: r.Scope, Capability: r.Capability})
@@ -129,9 +142,9 @@ func load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, t
 // RoleCapabilities lists the capabilities of the role with id roleID.
 func RoleCapabilities(db *gorm.DB, roleID uint) ([]string, error) {
 	var names []string
-	err := db.Table("admin_roles_capabilities rc").
+	err := db.Table("role_capabilities rc").
 		Select("c.name").
-		Joins("JOIN admin_capabilities c ON c.id = rc.capability_id").
+		Joins("JOIN capabilities c ON c.id = rc.capability_id").
 		Where("rc.role_id = ?", roleID).
 		Order("c.name").
 		Pluck("c.name", &names).Error
@@ -155,12 +168,7 @@ type Cache struct {
 
 	mu      sync.Mutex
 	gen     uint64
-	entries map[holderKey]cachedHeld
-}
-
-type holderKey struct {
-	kind string
-	id   uint
+	entries map[uint]cachedHeld
 }
 
 type cachedHeld struct {
@@ -170,13 +178,13 @@ type cachedHeld struct {
 
 // NewCache is a Cache over db keeping entries for ttl.
 func NewCache(db *gorm.DB, ttl time.Duration) *Cache {
-	return &Cache{db: db, ttl: ttl, now: time.Now, entries: map[holderKey]cachedHeld{}}
+	return &Cache{db: db, ttl: ttl, now: time.Now, entries: map[uint]cachedHeld{}}
 }
 
 // Held is what the holder holds now, from the cache or, when it has nothing
 // current, from the database.
-func (c *Cache) Held(holderKind string, holderID uint) (Held, error) {
-	key := holderKey{holderKind, holderID}
+func (c *Cache) Held(accountID uint) (Held, error) {
+	key := accountID
 	now := c.now()
 	c.mu.Lock()
 	cached, ok := c.entries[key]
@@ -186,7 +194,7 @@ func (c *Cache) Held(holderKind string, holderID uint) (Held, error) {
 		return cached.held, nil
 	}
 
-	held, expires, err := load(c.db, holderKind, holderID, now)
+	held, expires, err := load(c.db, accountID, now)
 	if err != nil {
 		return Held{}, err
 	}
@@ -199,7 +207,7 @@ func (c *Cache) Held(holderKind string, holderID uint) (Held, error) {
 	// nothing has been invalidated in the meantime.
 	if c.gen == gen {
 		if len(c.entries) >= maxCached {
-			c.entries = map[holderKey]cachedHeld{}
+			c.entries = map[uint]cachedHeld{}
 		}
 		c.entries[key] = cachedHeld{held: held, until: until}
 	}
@@ -212,6 +220,6 @@ func (c *Cache) Held(holderKind string, holderID uint) (Held, error) {
 func (c *Cache) Invalidate() {
 	c.mu.Lock()
 	c.gen++
-	c.entries = map[holderKey]cachedHeld{}
+	c.entries = map[uint]cachedHeld{}
 	c.mu.Unlock()
 }

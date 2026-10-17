@@ -44,13 +44,14 @@ The application itself is deliberately thin: the protocol engines and email-auth
 
 ## The Library Family
 
-RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is seven focused libraries, all MIT-licensed and each usable entirely on its own:
+RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is eight focused libraries, all MIT-licensed and each usable entirely on its own:
 
 | Library | What it is |
 |---------|------------|
 | [`rest-mail/go-pop3`](https://github.com/rest-mail/go-pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
 | [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap) | IMAP server engine with the same bring-a-`Backend` design |
 | [`rest-mail/go-dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
+| [`rest-mail/go-spf`](https://github.com/rest-mail/go-spf) | RFC 7208 SPF evaluation, zero external deps |
 | [`rest-mail/go-arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
 | [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
 | [`rest-mail/go-mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
@@ -141,12 +142,12 @@ task -d .workspace/reference-mailserver up CONFIG=mail1
 
 After seeding, the following accounts are available:
 
-**Admin User (for Console tool):**
-- Username: `admin`
+**The admin (for the console and the admin webmail):**
+- Address: `admin@restmail.test` (an account like the others, signing in by its address)
 - Password: `admin123!@`
-- Role: `superadmin` (full access)
+- Role: `superadmin` at `*` (full access)
 
-**restmail.test Mailboxes:**
+**restmail.test accounts:**
 | Email | Password | Display Name |
 |-------|----------|--------------|
 | `eve@restmail.test` | `password123` | Eve Wilson |
@@ -155,13 +156,13 @@ After seeding, the following accounts are available:
 
 **restmail.test Aliases:**
 - `info@restmail.test` → `eve@restmail.test`
-- `admin@restmail.test` → `eve@restmail.test`
 
 **RBAC System:**
-The seed command also creates a complete Role-Based Access Control system:
-- **Roles**: `superadmin`, `admin`, `readonly`
-- **Capabilities**: 20 permissions covering domains, mailboxes, users, pipelines, messages, queue, and bans — enforced per-route on the admin API
-- See [cmd/seed/main.go](cmd/seed/main.go) for the complete capability list
+The server creates its roles on start, and every account's access is a grant
+of one of them at a scope (`*`, `domain:<name>` or `mailbox:<address>`):
+- **Roles**: `superadmin`, `admin`, `readonly`, and `owner` (read, write and send mail on one account, and manage it)
+- **Capabilities**: permissions covering domains, mailboxes, users, pipelines, messages, queue, bans and mail — enforced per route
+- See [internal/bootstrap/bootstrap.go](internal/bootstrap/bootstrap.go) for the complete capability list
 
 ## Admin Tools
 
@@ -183,7 +184,7 @@ chore run:console
 - Queue operations
 - Live status monitoring
 
-**Authentication:** Uses the admin credentials (username/password) seeded by `chore db:seed`.
+**Authentication:** Signs in as the admin account seeded by `chore db:seed` (`admin@<domain>`), by its address and password.
 
 ### Instant Mail Check
 
@@ -283,7 +284,7 @@ cmd/
   migrate/          Database migration runner
   certgen/          TLS/DKIM certificate generator
   rotate-key/       MASTER_KEY rotation tool
-  seed/             Test data and RBAC seeder (domains, mailboxes, admin user)
+  seed/             Test data seeder (domain, accounts, the admin account)
   website/          Project website server
 internal/
   acme/             ACME (Let's Encrypt) certificate auto-provisioning
@@ -581,7 +582,7 @@ this repo); its `configs/restmail/manifest.yml` should also carry
 The REST API exposes 146 operations across these resource groups:
 
 - **Auth** -- Login, logout, token refresh
-- **Accounts** -- Link/unlink mail accounts, test connections, app passwords
+- **Accounts** -- List the accounts a session reaches, create one, link one by its password, unlink, app passwords
 - **Messages** -- List, read, send, reply, forward, delete, search, thread
 - **Folders** -- Create, rename, delete, list
 - **Drafts** -- Save, update, send
@@ -607,7 +608,7 @@ The REST API exposes 146 operations across these resource groups:
 - **Health** -- `GET /api/health`
 - **Metrics** -- `GET /metrics` (Prometheus)
 
-Admin routes are guarded by capability-based RBAC — each route requires the matching capability (e.g. `domains:write`) on the caller's role.
+Every route is guarded by capability-based RBAC — each requires the matching capability (e.g. `domains:write`) from the caller's grants, at a scope covering what it acts on.
 
 ### Documentation
 
@@ -627,18 +628,44 @@ curl http://localhost:8080/api/v1/accounts \
   -H "Authorization: Bearer <access_token>"
 ```
 
+### Accounts
+
+An account is a mailbox: its address is what signs in, and its id is the
+`{id}` of every `/api/v1/accounts/{id}/…` route. It has 0..n passwords, an
+authenticator if it enrolled one, and app passwords. What else a session
+reaches comes from grants: `GET /api/v1/accounts` lists its own account first,
+then every account it holds a mail grant on.
+
+```bash
+# Make an account (needs mailboxes:write on its domain). The creator owns it:
+# reads, writes and sends its mail, and manages it. With no password, nothing
+# can sign in to it until one is set or an app password is made for it.
+curl -X POST http://localhost:8080/api/v1/accounts \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"address": "chris@restmail.test", "display_name": "Chris"}'
+
+# Link an account someone else made, by proving its password (and its 2FA code,
+# as totp_code, if it has 2FA): the session's account becomes an owner of it
+curl -X POST http://localhost:8080/api/v1/accounts/link \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"address": "frank@restmail.test", "password": "password123"}'
+
+# Unlink it: removes the session's own grants on it
+curl -X DELETE http://localhost:8080/api/v1/accounts/<account id> -H "Authorization: Bearer <access_token>"
+```
+
 ### App passwords
 
-A mailbox can give each mail client or automation an app password of its own:
+An account can give each mail client or automation an app password of its own:
 `rm_<public id>_<secret>`, 59 letters, digits and underscores. It is shown once,
 when it is made; the server keeps only a SHA-256 of the secret.
 
 ```bash
-# Make one, signed in with the mailbox's password (and its 2FA code, if it has 2FA),
-# entering the mailbox's current password again
+# Make one, signed in with a password (and a 2FA code, if the account has 2FA),
+# entering that password again: for the session's own account, or one it owns
 curl -X POST http://localhost:8080/api/v1/accounts/<account id>/credentials \
   -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
-  -d '{"name": "Thunderbird", "expires_at": "2027-01-01T00:00:00Z", "password": "<mailbox password>"}'
+  -d '{"name": "Thunderbird", "expires_at": "2027-01-01T00:00:00Z", "password": "<your password>"}'
 
 # Use it as the password in a mail client (IMAP, POP3, SMTP), or with HTTP Basic
 curl -u 'eve@restmail.test:rm_…' http://localhost:8080/api/v1/accounts/<account id>/folders
@@ -648,11 +675,13 @@ curl http://localhost:8080/api/v1/accounts/<account id>/credentials -H "Authoriz
 curl -X DELETE http://localhost:8080/api/v1/accounts/<account id>/credentials/<id> -H "Authorization: Bearer <access_token>"
 ```
 
-An app password reaches only its own mailbox, to read, change and send mail. It
+An app password reaches only its own account, to read, change and send mail. It
 cannot sign in at `/api/v1/auth/login` (the app and the webmail), change a
-password or 2FA, link a mailbox, or list, make or revoke app passwords. A new
-password for the mailbox revokes all of them, as it ends every session. Making
-one takes the mailbox's current password, entered again (`401 reauth_required`
+password or 2FA, link an account, or list, make or revoke app passwords. An
+account with 2FA signs mail clients in with app passwords only: its password
+alone is refused over IMAP, POP3 and SMTP. A new
+password for the account revokes all of them, as it ends every session. Making
+one takes the session's own current password, entered again (`401 reauth_required`
 without it, `401 invalid_password` when it is wrong), so a session from before
 a new password, still valid until its access token expires, can't make one
 that outlives the change. Each creation, refused creation, revocation, refused
@@ -664,7 +693,7 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 
 | Filter | Description |
 |--------|-------------|
-| `spf_check` | SPF record validation |
+| `spf_check` | SPF verification (via `rest-mail/go-spf`) |
 | `dkim_verify` | DKIM signature verification (via `rest-mail/go-dkim`) |
 | `dmarc_check` | DMARC policy enforcement (via `rest-mail/go-dmarc`) |
 | `arc_verify` | ARC chain verification (via `rest-mail/go-arc`) |

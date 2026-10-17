@@ -87,12 +87,12 @@ func TestStatus_EverythingElseIsRefused(t *testing.T) {
 	// Purpose separation: a signature made to reset an admin does not read
 	// the status, though the owner's key may read it.
 	t.Run("an owner's reset-admin signature", func(t *testing.T) {
-		if err := check(askStatus(t, owner, "reset-admin", "admin"), now); !errors.Is(err, ErrNotStatusKey) {
+		if err := check(askStatus(t, owner, "reset-admin", adminAddr), now); !errors.Is(err, ErrNotStatusKey) {
 			t.Errorf("err = %v, want ErrNotStatusKey", err)
 		}
 	})
-	t.Run("a status signature with a username", func(t *testing.T) {
-		if err := check(askStatus(t, deployer, StatusPurpose, "admin"), now); !errors.Is(err, ErrNotStatusKey) {
+	t.Run("a status signature with an address", func(t *testing.T) {
+		if err := check(askStatus(t, deployer, StatusPurpose, adminAddr), now); !errors.Is(err, ErrNotStatusKey) {
 			t.Errorf("err = %v, want ErrNotStatusKey", err)
 		}
 	})
@@ -129,16 +129,16 @@ func TestStatus_AStatusKeyCannotResetAnAdmin(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
-	newAdmin(t, gdb, "admin", "the first admin's password")
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 	deployer, owner := newSigner(t), newSigner(t)
 	ownerKeys, _ := ParseOwnerKeys(authorized(owner))
 
-	if _, _, err := MintForOwner(gdb, ownerKeys, challengeKey, signed(t, deployer, "reset-admin", "admin"), time.Now()); !errors.Is(err, ErrNotOwner) {
+	if _, _, err := MintForOwner(gdb, ownerKeys, challengeKey, signed(t, deployer, "reset-admin", adminAddr), time.Now()); !errors.Is(err, ErrNotOwner) {
 		t.Errorf("a status key signing reset-admin: err = %v, want ErrNotOwner", err)
 	}
 	// Nor can an owner's status signature be presented as a reset.
 	req := signed(t, owner, StatusPurpose, "")
-	req.Purpose, req.Username = "reset-admin", "admin"
+	req.Purpose, req.Address = "reset-admin", adminAddr
 	if _, _, err := MintForOwner(gdb, ownerKeys, challengeKey, req, time.Now()); !errors.Is(err, ErrNotOwner) {
 		t.Errorf("a status signature presented as reset-admin: err = %v, want ErrNotOwner", err)
 	}
@@ -171,7 +171,7 @@ func TestStatus_AChallengeIsAnsweredOnce(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
-	newAdmin(t, gdb, "admin", "the first admin's password")
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 	owner := newSigner(t)
 	ownerKeys, _ := ParseOwnerKeys(authorized(owner))
 	req := askStatus(t, owner, StatusPurpose, "")
@@ -179,9 +179,9 @@ func TestStatus_AChallengeIsAnsweredOnce(t *testing.T) {
 	if err := CheckStatus(gdb, nil, ownerKeys, challengeKey, req, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	sig, _ := owner.Sign(rand.Reader, OwnerMessage(req.Challenge, "reset-admin", "admin"))
+	sig, _ := owner.Sign(rand.Reader, OwnerMessage(req.Challenge, "reset-admin", adminAddr))
 	reset := OwnerRequest{Challenge: req.Challenge, PublicKey: req.PublicKey, Signature: ssh.Marshal(sig),
-		Purpose: "reset-admin", Username: "admin"}
+		Purpose: "reset-admin", Address: adminAddr}
 	if _, _, err := MintForOwner(gdb, ownerKeys, challengeKey, reset, time.Now()); !errors.Is(err, ErrChallengeInvalid) {
 		t.Errorf("the same challenge answered again for a reset: err = %v, want ErrChallengeInvalid", err)
 	}

@@ -57,8 +57,8 @@ port-forward locally:
 
 Sign in:
   Open the rest-mail app, add this server, and sign in as
-  "{{ .Values.api.bootstrapAdminUsername | default "admin" }}" with the admin
-  password this install was given. You will have to choose your own password
+  "admin@{{ .Values.mailserver.domain }}" with the admin password this install
+  was given. You will have to choose your own password
   and enroll an authenticator before anything else works, after which that
   password is of no further use.
 

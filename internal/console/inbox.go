@@ -38,7 +38,7 @@ type inboxActionMsg struct {
 // InboxModel handles browsing a user's inbox.
 type InboxModel struct {
 	api        *apiclient.Client
-	adminToken string // admin token for browsing any mailbox
+	adminToken string // the signed-in admin's token: it reads the mail its grants allow (superadmin, or a mail grant on the account)
 
 	// User selection
 	selectingUser bool

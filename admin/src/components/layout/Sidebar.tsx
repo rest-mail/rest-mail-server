@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
   { to: '/queue', icon: Inbox, label: 'Queue' },
   { to: '/pipelines', icon: Filter, label: 'Pipelines' },
   { to: '/custom-filters', icon: Code, label: 'Custom Filters' },
-  { to: '/admin-users', icon: Users, label: 'Admin Users' },
+  { to: '/grants', icon: Users, label: 'Grants' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 

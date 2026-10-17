@@ -1410,7 +1410,7 @@ tasks:
     vars:
       FRAG_VOL: '{{.DNSMASQ_FRAGMENTS_VOLUME | default "testbed_dnsmasq_fragments"}}'
       DNSMASQ_CONTAINER: '{{.DNSMASQ_CONTAINER | default "testbed-dnsmasq"}}'
-      ADMIN_USER: '{{.ADMIN_USER | default "admin"}}'
+      ADMIN_ADDRESS: '{{.ADMIN_ADDRESS | default (printf "admin@%s" .RESTMAIL_HOSTNAME)}}'
       ADMIN_PASS: '{{.ADMIN_PASS | default "admin123!@"}}'
     cmds:
       - |
@@ -1429,7 +1429,7 @@ tasks:
         docker exec {{.RESTMAIL_PROJECT}}-api \
           go run ./cmd/instance dkim-provision \
             --domain {{.RESTMAIL_HOSTNAME}} \
-            --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
+            --admin-address "{{.ADMIN_ADDRESS}}" --admin-pass "{{.ADMIN_PASS}}" \
             {{if .RESTMAIL_DKIM_SELECTOR}}--selector {{.RESTMAIL_DKIM_SELECTOR}}{{end}} \
             {{if .RESTMAIL_DKIM_BITS}}-bits {{.RESTMAIL_DKIM_BITS}}{{end}} \
           2>/dev/null | tail -1 > "{{.CONFIG_DIR}}/dkim.conf"
@@ -1463,7 +1463,7 @@ tasks:
           docker exec {{.RESTMAIL_PROJECT}}-api \
             go run ./cmd/instance dkim-provision \
               --domain "$name" \
-              --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
+              --admin-address "{{.ADMIN_ADDRESS}}" --admin-pass "{{.ADMIN_PASS}}" \
               ${sel:+--selector "$sel"} ${bits:+-bits "$bits"} \
             2>/dev/null | tail -1 > "{{.CONFIG_DIR}}/dkim.conf"
           docker run --rm \
@@ -1478,7 +1478,7 @@ tasks:
   instance:dkim:check:
     desc: "Assert the DB DKIM selector for each served domain matches CONFIG's manifest (drift detection); needs the stack up"
     vars:
-      ADMIN_USER: '{{.ADMIN_USER | default "admin"}}'
+      ADMIN_ADDRESS: '{{.ADMIN_ADDRESS | default (printf "admin@%s" .RESTMAIL_HOSTNAME)}}'
       ADMIN_PASS: '{{.ADMIN_PASS | default "admin123!@"}}'
     cmds:
       # Run inside the api container so the API is reachable at localhost:8080
@@ -1487,7 +1487,7 @@ tasks:
       - |
         docker exec {{.RESTMAIL_PROJECT}}-api \
           go run ./cmd/instance dkim-check \
-            --admin-user "{{.ADMIN_USER}}" --admin-pass "{{.ADMIN_PASS}}" \
+            --admin-address "{{.ADMIN_ADDRESS}}" --admin-pass "{{.ADMIN_PASS}}" \
             {{.CONFIG_DIR}}/manifest.yml
 
   # ── Bring-up ──
@@ -1703,7 +1703,7 @@ tasks:
   run:console:
     desc: Run the console admin tool inside the api container
     cmds:
-      - docker exec -it -e RESTMAIL_ADMIN_USERNAME=${RESTMAIL_ADMIN_USERNAME:-admin} -e RESTMAIL_ADMIN_PASSWORD=${RESTMAIL_ADMIN_PASSWORD:-admin123!@} {{.RESTMAIL_PROJECT}}-api go run ./cmd/console --api http://localhost:{{.RESTMAIL_API_PORT}}
+      - docker exec -it -e RESTMAIL_ADMIN_ADDRESS=${RESTMAIL_ADMIN_ADDRESS:-admin@{{.RESTMAIL_HOSTNAME}}} -e RESTMAIL_ADMIN_PASSWORD=${RESTMAIL_ADMIN_PASSWORD:-admin123!@} {{.RESTMAIL_PROJECT}}-api go run ./cmd/console --api http://localhost:{{.RESTMAIL_API_PORT}}
 
   setup:
     desc: Install dependencies, build all binaries, verify toolchain

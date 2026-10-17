@@ -19,93 +19,94 @@ import (
 
 // fakeTwoFactorStore is an in-memory twoFactorStore for driving the 2FA handler
 // and login-enforcement state machine without a database. It mirrors the real
-// repository's semantics: at most one enrollment per owner, confirm flips
-// active, GetActive hides pending rows, recovery codes are bcrypt-checked and
-// single-use.
+// repository's semantics over credentials: enrolling revokes what the account
+// had, confirm makes a TOTP credential count, GetActive hides pending ones,
+// recovery codes are bcrypt-checked and single-use.
 type fakeTwoFactorStore struct {
-	nextID   uint
-	rows     []*models.TwoFactor
-	recovery map[uint][]*models.TwoFactorRecoveryCode // by TwoFactorID
+	nextID uint
+	creds  []*models.Credential
 }
 
 func newFakeStore() *fakeTwoFactorStore {
-	return &fakeTwoFactorStore{nextID: 1, recovery: map[uint][]*models.TwoFactorRecoveryCode{}}
+	return &fakeTwoFactorStore{nextID: 1}
 }
 
-func (f *fakeTwoFactorStore) find(userType string, subjectID uint) *models.TwoFactor {
-	for _, r := range f.rows {
-		if r.UserType == userType && r.SubjectID == subjectID {
-			return r
+func (f *fakeTwoFactorStore) live(accountID uint, kind string) []*models.Credential {
+	var out []*models.Credential
+	for _, c := range f.creds {
+		if c.AccountID == accountID && c.Kind == kind && c.RevokedAt == nil {
+			out = append(out, c)
 		}
 	}
-	return nil
+	return out
 }
 
-func (f *fakeTwoFactorStore) Get(userType string, subjectID uint) (*models.TwoFactor, error) {
-	if r := f.find(userType, subjectID); r != nil {
-		return r, nil
+func (f *fakeTwoFactorStore) Get(accountID uint) (*models.Credential, error) {
+	if live := f.live(accountID, models.CredentialKindTOTP); len(live) > 0 {
+		return live[len(live)-1], nil
 	}
 	return nil, repositories.ErrTwoFactorNotFound
 }
 
-func (f *fakeTwoFactorStore) GetActive(userType string, subjectID uint) (*models.TwoFactor, error) {
-	if r := f.find(userType, subjectID); r != nil && r.Confirmed {
-		return r, nil
+func (f *fakeTwoFactorStore) GetActive(accountID uint) (*models.Credential, error) {
+	active, _ := f.Active(accountID)
+	if len(active) > 0 {
+		return &active[len(active)-1], nil
 	}
 	return nil, repositories.ErrTwoFactorNotFound
 }
 
-func (f *fakeTwoFactorStore) Enroll(userType string, subjectID uint, encryptedSecret string, recoveryHashes []string) (*models.TwoFactor, error) {
-	// Replace any prior enrollment for this owner.
-	kept := f.rows[:0]
-	for _, r := range f.rows {
-		if r.UserType == userType && r.SubjectID == subjectID {
-			delete(f.recovery, r.ID)
-			continue
+func (f *fakeTwoFactorStore) Active(accountID uint) ([]models.Credential, error) {
+	var out []models.Credential
+	for _, c := range f.live(accountID, models.CredentialKindTOTP) {
+		if c.ConfirmedAt != nil {
+			out = append(out, *c)
 		}
-		kept = append(kept, r)
 	}
-	f.rows = kept
+	return out, nil
+}
 
-	row := &models.TwoFactor{ID: f.nextID, UserType: userType, SubjectID: subjectID, EncryptedSecret: encryptedSecret}
-	f.nextID++
-	f.rows = append(f.rows, row)
+func (f *fakeTwoFactorStore) Enroll(accountID uint, encryptedSecret string, recoveryHashes []string) (*models.Credential, error) {
+	_ = f.Delete(accountID)
+	add := func(kind, secret, hash string) *models.Credential {
+		c := &models.Credential{ID: f.nextID, AccountID: accountID, Kind: kind, EncryptedSecret: secret, SecretHash: hash}
+		f.nextID++
+		f.creds = append(f.creds, c)
+		return c
+	}
+	totp := add(models.CredentialKindTOTP, encryptedSecret, "")
 	for _, h := range recoveryHashes {
-		f.recovery[row.ID] = append(f.recovery[row.ID], &models.TwoFactorRecoveryCode{TwoFactorID: row.ID, CodeHash: h})
+		add(models.CredentialKindRecoveryCode, "", h)
 	}
-	return row, nil
+	return totp, nil
 }
 
 func (f *fakeTwoFactorStore) Confirm(id uint) error {
-	for _, r := range f.rows {
-		if r.ID == id && !r.Confirmed {
-			r.Confirmed = true
+	for _, c := range f.creds {
+		if c.ID == id && c.Kind == models.CredentialKindTOTP && c.ConfirmedAt == nil && c.RevokedAt == nil {
 			now := time.Now()
-			r.ConfirmedAt = &now
+			c.ConfirmedAt = &now
 			return nil
 		}
 	}
 	return repositories.ErrTwoFactorNotFound
 }
 
-func (f *fakeTwoFactorStore) Delete(userType string, subjectID uint) error {
-	kept := f.rows[:0]
-	for _, r := range f.rows {
-		if r.UserType == userType && r.SubjectID == subjectID {
-			delete(f.recovery, r.ID)
-			continue
+func (f *fakeTwoFactorStore) Delete(accountID uint) error {
+	now := time.Now()
+	for _, kind := range []string{models.CredentialKindTOTP, models.CredentialKindRecoveryCode} {
+		for _, c := range f.live(accountID, kind) {
+			c.RevokedAt = &now
 		}
-		kept = append(kept, r)
 	}
-	f.rows = kept
 	return nil
 }
 
-func (f *fakeTwoFactorStore) ConsumeRecoveryCode(twoFactorID uint, plaintext string) (bool, error) {
-	for _, rc := range f.recovery[twoFactorID] {
-		if rc.UsedAt == nil && auth.CheckRecoveryCode(plaintext, rc.CodeHash) {
+func (f *fakeTwoFactorStore) ConsumeRecoveryCode(accountID uint, plaintext string) (bool, error) {
+	for _, c := range f.live(accountID, models.CredentialKindRecoveryCode) {
+		if auth.CheckRecoveryCode(plaintext, c.SecretHash) {
 			now := time.Now()
-			rc.UsedAt = &now
+			c.RevokedAt = &now
 			return true, nil
 		}
 	}
@@ -115,7 +116,7 @@ func (f *fakeTwoFactorStore) ConsumeRecoveryCode(twoFactorID uint, plaintext str
 const testMasterKey = "test-master-key-0123456789abcdef"
 
 func mailboxClaims(id uint, email string) *auth.Claims {
-	return &auth.Claims{UserType: "mailbox", MailboxID: id, Email: email}
+	return &auth.Claims{AccountID: id, Address: email}
 }
 
 func withClaims(r *http.Request, c *auth.Claims) *http.Request {
@@ -167,11 +168,11 @@ func TestEnrollReturnsSecretAndRecoveryCodesButStaysPending(t *testing.T) {
 		t.Errorf("got %d recovery codes, want %d", len(resp.RecoveryCodes), auth.RecoveryCodeCount)
 	}
 	// Not active yet: GetActive must miss.
-	if _, err := store.GetActive("mailbox", 1); err == nil {
+	if _, err := store.GetActive(1); err == nil {
 		t.Error("2FA became active before confirmation")
 	}
 	// Stored secret is encrypted at rest (ciphertext != plaintext, decrypts back).
-	row, _ := store.Get("mailbox", 1)
+	row, _ := store.Get(1)
 	if row.EncryptedSecret == resp.Secret {
 		t.Error("secret stored in plaintext")
 	}
@@ -193,7 +194,7 @@ func TestConfirmActivatesWithValidCodeRejectsBad(t *testing.T) {
 	if bad.Code != http.StatusUnauthorized {
 		t.Fatalf("confirm(bad): status %d, want 401", bad.Code)
 	}
-	if _, err := store.GetActive("mailbox", 1); err == nil {
+	if _, err := store.GetActive(1); err == nil {
 		t.Error("2FA active after a rejected confirm")
 	}
 
@@ -203,7 +204,7 @@ func TestConfirmActivatesWithValidCodeRejectsBad(t *testing.T) {
 	if ok.Code != http.StatusNoContent {
 		t.Fatalf("confirm(valid): status %d (%s), want 204", ok.Code, ok.Body.String())
 	}
-	if _, err := store.GetActive("mailbox", 1); err != nil {
+	if _, err := store.GetActive(1); err != nil {
 		t.Errorf("2FA not active after valid confirm: %v", err)
 	}
 }
@@ -241,7 +242,7 @@ func TestDisableRequiresValidSecondFactor(t *testing.T) {
 	if bad.Code != http.StatusUnauthorized {
 		t.Fatalf("disable(bad): status %d, want 401", bad.Code)
 	}
-	if _, err := store.GetActive("mailbox", 1); err != nil {
+	if _, err := store.GetActive(1); err != nil {
 		t.Error("2FA disabled by an invalid code")
 	}
 
@@ -250,7 +251,7 @@ func TestDisableRequiresValidSecondFactor(t *testing.T) {
 	if ok.Code != http.StatusNoContent {
 		t.Fatalf("disable(recovery): status %d (%s), want 204", ok.Code, ok.Body.String())
 	}
-	if _, err := store.GetActive("mailbox", 1); err == nil {
+	if _, err := store.GetActive(1); err == nil {
 		t.Error("2FA still active after a valid disable")
 	}
 }
@@ -264,12 +265,11 @@ func TestRecoveryCodeSingleUse(t *testing.T) {
 	code, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
 	postCode(t, h.Confirm, c, codeRequest{Code: code})
 
-	row, _ := store.Get("mailbox", 1)
 	rc := resp.RecoveryCodes[0]
-	if used, _ := store.ConsumeRecoveryCode(row.ID, rc); !used {
+	if used, _ := store.ConsumeRecoveryCode(1, rc); !used {
 		t.Fatal("first recovery-code use failed")
 	}
-	if used, _ := store.ConsumeRecoveryCode(row.ID, rc); used {
+	if used, _ := store.ConsumeRecoveryCode(1, rc); used {
 		t.Error("recovery code reusable — not single-use")
 	}
 }
@@ -297,14 +297,14 @@ func TestEnrollRefusedWhenDisabledOrNoMasterKey(t *testing.T) {
 
 // --- login enforcement (AuthHandler.enforce2FA) ---
 
-func enforce(h *AuthHandler, userType string, subjectID uint, req loginRequest) (bool, *httptest.ResponseRecorder) {
-	ok, _, rr := enforceVerified(h, userType, subjectID, req)
+func enforce(h *AuthHandler, accountID uint, req loginRequest) (bool, *httptest.ResponseRecorder) {
+	ok, _, rr := enforceVerified(h, accountID, req)
 	return ok, rr
 }
 
-func enforceVerified(h *AuthHandler, userType string, subjectID uint, req loginRequest) (bool, bool, *httptest.ResponseRecorder) {
+func enforceVerified(h *AuthHandler, accountID uint, req loginRequest) (bool, bool, *httptest.ResponseRecorder) {
 	rr := httptest.NewRecorder()
-	ok, verified := h.enforce2FA(rr, userType, subjectID, req)
+	ok, verified := h.enforce2FA(rr, accountID, req)
 	return ok, verified, rr
 }
 
@@ -313,7 +313,7 @@ func enforceVerified(h *AuthHandler, userType string, subjectID uint, req loginR
 // password alone.
 func TestLoginEnforcement_NoTwoFactorProceeds(t *testing.T) {
 	h := &AuthHandler{twoFactorStore: newFakeStore(), masterKey: testMasterKey}
-	ok, verified, _ := enforceVerified(h, "mailbox", 99, loginRequest{})
+	ok, verified, _ := enforceVerified(h, 99, loginRequest{})
 	if !ok {
 		t.Error("account without 2FA was blocked at login")
 	}
@@ -336,7 +336,7 @@ func TestLoginEnforcement_ActiveRequiresCode(t *testing.T) {
 	h := &AuthHandler{twoFactorStore: store, masterKey: testMasterKey}
 
 	// Missing code -> blocked with a totp_required challenge.
-	ok, rr := enforce(h, "mailbox", 7, loginRequest{})
+	ok, rr := enforce(h, 7, loginRequest{})
 	if ok {
 		t.Error("login proceeded with no second factor")
 	}
@@ -345,23 +345,23 @@ func TestLoginEnforcement_ActiveRequiresCode(t *testing.T) {
 	}
 
 	// Wrong code -> blocked.
-	if ok, _ := enforce(h, "mailbox", 7, loginRequest{TOTPCode: "000000"}); ok {
+	if ok, _ := enforce(h, 7, loginRequest{TOTPCode: "000000"}); ok {
 		t.Error("login proceeded with a wrong code")
 	}
 
 	// Valid current code -> proceeds, and the session records the second factor.
 	withOTP := []string{auth.AMRPassword, auth.AMROTP}
 	valid, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
-	if ok, verified, _ := enforceVerified(h, "mailbox", 7, loginRequest{TOTPCode: valid}); !ok || !reflect.DeepEqual(signInMethods(verified), withOTP) {
+	if ok, verified, _ := enforceVerified(h, 7, loginRequest{TOTPCode: valid}); !ok || !reflect.DeepEqual(signInMethods(verified), withOTP) {
 		t.Errorf("valid code: ok=%v verified=%v, want a session with %v", ok, verified, withOTP)
 	}
 
 	// Recovery code -> proceeds as a second factor (and is consumed: a second
 	// use fails).
-	if ok, verified, _ := enforceVerified(h, "mailbox", 7, loginRequest{RecoveryCode: resp.RecoveryCodes[0]}); !ok || !reflect.DeepEqual(signInMethods(verified), withOTP) {
+	if ok, verified, _ := enforceVerified(h, 7, loginRequest{RecoveryCode: resp.RecoveryCodes[0]}); !ok || !reflect.DeepEqual(signInMethods(verified), withOTP) {
 		t.Errorf("recovery code: ok=%v verified=%v, want a session with %v", ok, verified, withOTP)
 	}
-	if ok, _ := enforce(h, "mailbox", 7, loginRequest{RecoveryCode: resp.RecoveryCodes[0]}); ok {
+	if ok, _ := enforce(h, 7, loginRequest{RecoveryCode: resp.RecoveryCodes[0]}); ok {
 		t.Error("recovery code reusable at login")
 	}
 }

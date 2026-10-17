@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -20,8 +22,7 @@ const chosenPassword = "a passphrase only the owner knows"
 
 func migrateTokens(t *testing.T, gdb *gorm.DB) {
 	t.Helper()
-	if err := gdb.AutoMigrate(&models.OneTimeToken{}, &models.TwoFactor{},
-		&models.TwoFactorRecoveryCode{}, &models.RefreshToken{}); err != nil {
+	if err := gdb.AutoMigrate(&models.OneTimeToken{}, &models.Credential{}, &models.RefreshToken{}); err != nil {
 		t.Skipf("token DB test skipped: migrate failed (%v)", err)
 	}
 	if err := gdb.Exec("TRUNCATE one_time_tokens RESTART IDENTITY").Error; err != nil {
@@ -29,9 +30,9 @@ func migrateTokens(t *testing.T, gdb *gorm.DB) {
 	}
 }
 
-// newAdmin makes an admin the way a server has one: superadmin at "*", and an
-// authenticator still owed.
-func newAdmin(t *testing.T, gdb *gorm.DB, username, password string) *models.AdminUser {
+// newAdmin makes an admin the way a server has one: an account at address,
+// with its password, superadmin at "*", and an authenticator still owed.
+func newAdmin(t *testing.T, gdb *gorm.DB, address, password string) *models.Mailbox {
 	t.Helper()
 	hash, err := auth.HashPassword(password)
 	if err != nil {
@@ -41,12 +42,20 @@ func newAdmin(t *testing.T, gdb *gorm.DB, username, password string) *models.Adm
 	if err := gdb.Where("name = ?", "superadmin").First(&superadmin).Error; err != nil {
 		t.Fatalf("superadmin role: %v", err)
 	}
-	admin := models.AdminUser{Username: username, PasswordHash: hash, Active: true, TwoFactorRequired: true}
+	local, domainName, _ := strings.Cut(address, "@")
+	domain, err := ensureDomain(gdb, domainName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := models.Mailbox{DomainID: domain.ID, LocalPart: local, Address: address, Active: true, TwoFactorRequired: true}
 	if err := gdb.Create(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
+	if _, err := repositories.NewCredentialRepository(gdb).SetPassword(admin.ID, hash, nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	if err := gdb.Create(&models.Grant{
-		HolderKind: models.GrantHolderAdmin, HolderID: admin.ID, RoleID: superadmin.ID,
+		HolderKind: models.GrantHolderAccount, HolderID: admin.ID, RoleID: superadmin.ID,
 		Scope: "*", Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now(),
 	}).Error; err != nil {
 		t.Fatal(err)
@@ -59,8 +68,8 @@ func newAdmin(t *testing.T, gdb *gorm.DB, username, password string) *models.Adm
 func TestResetToken_RacingRedemptionsHaveOneWinner(t *testing.T) {
 	gdb := openScratchDatabase(t)
 	mustRBAC(t, gdb)
-	newAdmin(t, gdb, "admin", "the first admin's password")
-	token, _, err := MintResetToken(gdb, "admin", 0)
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
+	token, _, err := MintResetToken(gdb, adminAddr, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,9 +105,9 @@ func TestResetToken_RefusesExpiredTokensAndBadInput(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
-	newAdmin(t, gdb, "admin", "the first admin's password")
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 
-	expired, _, err := MintResetToken(gdb, "admin", time.Nanosecond)
+	expired, _, err := MintResetToken(gdb, adminAddr, time.Nanosecond)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +117,7 @@ func TestResetToken_RefusesExpiredTokensAndBadInput(t *testing.T) {
 	}
 
 	// Refused input leaves the token unspent: the owner fixes the password and tries again.
-	token, expires, _ := MintResetToken(gdb, "admin", 0)
+	token, expires, _ := MintResetToken(gdb, adminAddr, 0)
 	if until := time.Until(expires); until <= 0 || until > DefaultTokenLifetime {
 		t.Errorf("expires in %v, want within %v", until, DefaultTokenLifetime)
 	}
@@ -120,15 +129,14 @@ func TestResetToken_RefusesExpiredTokensAndBadInput(t *testing.T) {
 	}
 }
 
-// Servers before 0.7 stored tokens that claimed a server with no admin. One
-// left behind in the table is no way in.
-func TestResetToken_AnOldSetupTokenIsNoWayIn(t *testing.T) {
+// A one-time token of any purpose but reset_admin is no way in.
+func TestResetToken_AnotherPurposeIsNoWayIn(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
-	newAdmin(t, gdb, "admin", "the first admin's password")
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 	for _, purpose := range []string{"setup", "setup_code"} {
-		token := "left-behind-" + purpose
+		token := "other-purpose-" + purpose
 		if err := gdb.Create(&models.OneTimeToken{Purpose: purpose, TokenHash: hashToken(token),
 			ExpiresAt: time.Now().Add(time.Hour)}).Error; err != nil {
 			t.Fatal(err)
@@ -147,21 +155,25 @@ func TestResetToken_LocksOutWhoeverHeldTheAccount(t *testing.T) {
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
 
-	admin := newAdmin(t, gdb, "admin", "the agent's password 123")
-	// What the agent holds: an authenticator and a live session.
-	if err := gdb.Create(&models.TwoFactor{UserType: models.TwoFactorUserTypeAdmin, SubjectID: admin.ID,
-		EncryptedSecret: "x", Confirmed: true}).Error; err != nil {
+	admin := newAdmin(t, gdb, adminAddr, "the agent's password 123")
+	// What the agent holds: an authenticator, an app password and a live
+	// session.
+	if _, err := repositories.NewTwoFactorRepository(gdb).Enroll(admin.ID, "x", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := gdb.Create(&models.RefreshToken{Jti: "agent-session", UserType: "admin", SubjectID: admin.ID,
+	gdb.Model(&models.Credential{}).Where("account_id = ? AND kind = ?", admin.ID, models.CredentialKindTOTP).Update("confirmed_at", time.Now())
+	if _, _, err := repositories.NewCredentialRepository(gdb).CreateAppPassword(admin.ID, admin.ID, "agent", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := gdb.Create(&models.RefreshToken{Jti: "agent-session", AccountID: admin.ID,
 		SessionID: "agent-session", Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := MintResetToken(gdb, "nobody", 0); !errors.Is(err, ErrNoSuchAdmin) {
+	if _, _, err := MintResetToken(gdb, "nobody@example.com", 0); !errors.Is(err, ErrNoSuchAdmin) {
 		t.Errorf("reset for an unknown admin: err = %v, want ErrNoSuchAdmin", err)
 	}
-	reset, _, err := MintResetToken(gdb, "admin", 0)
+	reset, _, err := MintResetToken(gdb, adminAddr, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,18 +181,19 @@ func TestResetToken_LocksOutWhoeverHeldTheAccount(t *testing.T) {
 		t.Fatalf("reset: %v", err)
 	}
 
-	var after models.AdminUser
+	var after models.Mailbox
 	gdb.First(&after, admin.ID)
-	if auth.CheckPassword("the agent's password 123", after.PasswordHash) == nil {
+	if auth.CheckPassword("the agent's password 123", passwordOf(t, gdb, admin.ID)) == nil {
 		t.Error("the old password still works")
 	}
-	if auth.CheckPassword(chosenPassword, after.PasswordHash) != nil {
+	if auth.CheckPassword(chosenPassword, passwordOf(t, gdb, admin.ID)) != nil {
 		t.Error("the owner's password does not")
 	}
-	var enrollments int64
-	gdb.Model(&models.TwoFactor{}).Where("user_type = ? AND subject_id = ?", models.TwoFactorUserTypeAdmin, admin.ID).Count(&enrollments)
-	if enrollments != 0 {
-		t.Error("the old authenticator survived the reset")
+	var live int64
+	gdb.Model(&models.Credential{}).Where("account_id = ? AND kind IN ? AND revoked_at IS NULL", admin.ID,
+		[]string{models.CredentialKindTOTP, models.CredentialKindAppPassword}).Count(&live)
+	if live != 0 {
+		t.Error("the old authenticator or app password survived the reset")
 	}
 	if !after.TwoFactorRequired {
 		t.Error("the owner is not made to enroll their own authenticator")
@@ -199,8 +212,8 @@ func TestTokens_StoredOnlyAsHashes(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
-	newAdmin(t, gdb, "admin", "the first admin's password")
-	token, _, _ := MintResetToken(gdb, "admin", 0)
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
+	token, _, _ := MintResetToken(gdb, adminAddr, 0)
 
 	var row models.OneTimeToken
 	gdb.First(&row)
@@ -245,9 +258,9 @@ func openScratchDatabase(t *testing.T) *gorm.DB {
 			_ = sqlDB.Close()
 		}
 	})
-	if err := scratch.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.TwoFactor{},
-		&models.TwoFactorRecoveryCode{}, &models.RefreshToken{}); err != nil {
+	if err := scratch.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Role{}, &models.Capability{},
+		&models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.OneTimeToken{}, &models.Credential{},
+		&models.RefreshToken{}); err != nil {
 		t.Fatalf("migrate scratch database: %v", err)
 	}
 	if err := rmdb.MigrateAuditLog(scratch); err != nil {

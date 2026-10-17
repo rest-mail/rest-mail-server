@@ -71,12 +71,13 @@ export interface CalendarEvent {
   dtstamp?: string;
 }
 
+// An account is a mailbox: id is the mailbox's, the {id} of every
+// /accounts/{id}/… route. is_primary marks the session's own.
 export interface Account {
   id: number;
   address: string;
   display_name: string;
   is_primary: boolean;
-  mailbox_id: number;
 }
 
 export interface Attachment {

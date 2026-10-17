@@ -72,7 +72,7 @@ h install "$NAME" "$CHART" --version "$VERSION" --create-namespace \
 
 if [ -n "$generated" ]; then
   printf '\n  Your rest-mail admin password — this is the only time it is shown.\n'
-  show_sign_in "https://$HOST" admin "$PASSWORD"
+  show_sign_in "https://$HOST" "admin@$DOMAIN" "$PASSWORD"
   cat <<EOF
   Sign in to the rest-mail app with it. You will choose your own password and
   enroll an authenticator before anything else works. It stops working 72

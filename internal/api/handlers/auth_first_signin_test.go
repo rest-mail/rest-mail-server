@@ -49,8 +49,7 @@ type firstSignIn struct {
 func newFirstSignIn(t *testing.T) *firstSignIn {
 	t.Helper()
 	base := openLoginTestDB(t)
-	if err := base.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
+	if err := base.AutoMigrate(append(accountModels, &models.Pipeline{})...); err != nil {
 		t.Skipf("first sign-in DB test skipped: migrate failed (%v)", err)
 	}
 	// The bootstrap admin's grants are recorded in the audit log.
@@ -59,9 +58,11 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 	}
 	gdb := base.Begin()
 	t.Cleanup(func() { gdb.Rollback() })
+	// Grants only: "an admin exists" is any grant at "*", and the roles and
+	// capabilities are made again below.
 	tables := strings.Join([]string{
-		models.Grant{}.TableName(), models.UserRole{}.TableName(), models.RoleCapability{}.TableName(),
-		models.AdminUser{}.TableName(), models.Role{}.TableName(), models.Capability{}.TableName(),
+		models.Grant{}.TableName(), models.GrantActivation{}.TableName(), models.RoleCapability{}.TableName(),
+		models.Role{}.TableName(), models.Capability{}.TableName(),
 	}, ", ")
 	if err := gdb.Exec("TRUNCATE " + tables + " RESTART IDENTITY CASCADE").Error; err != nil {
 		t.Fatalf("empty RBAC tables: %v", err)
@@ -70,7 +71,7 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 	if err := bootstrap.EnsureRBAC(gdb); err != nil {
 		t.Fatal(err)
 	}
-	name := "boot-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	name := "admin@boot-" + strconv.FormatInt(time.Now().UnixNano(), 36) + ".test"
 	if outcome, err := bootstrap.EnsureFirstAdmin(gdb, name, bootstrapPassword, true, time.Now()); err != nil || outcome != bootstrap.FirstAdminCreated {
 		t.Fatalf("bootstrap admin: outcome=%v err=%v", outcome, err)
 	}
@@ -101,7 +102,7 @@ func sessionFrom(rr *httptest.ResponseRecorder) nativeSession {
 }
 
 func (f *firstSignIn) login(password, totp string) (*httptest.ResponseRecorder, nativeSession) {
-	body := map[string]string{"username": f.name, "password": password, "client": "native"}
+	body := map[string]string{"email": f.name, "password": password, "client": "native"}
 	if totp != "" {
 		body["totp_code"] = totp
 	}
@@ -127,16 +128,17 @@ func (f *firstSignIn) call(token string, handler http.Handler, body any) *httpte
 	rr := httptest.NewRecorder()
 	// The chain the routes put every authenticated call through.
 	middleware.JWTMiddleware(f.jwt)(
-		middleware.RejectStaleAdminSessions(AdminSessionCurrent(f.db))(handler),
+		middleware.RejectStaleSessions(SessionCurrent(f.db))(handler),
 	).ServeHTTP(rr, req)
 	return rr
 }
 
 var reached = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
 
-// adminAPI is any admin route, including one that checks no capability.
+// adminAPI is any route past setup: an admin route, the mail routes, or
+// creating an account.
 func (f *firstSignIn) adminAPI(token string) *httptest.ResponseRecorder {
-	return f.call(token, middleware.AdminOnly(reached), nil)
+	return f.call(token, middleware.SetupDone(reached), nil)
 }
 
 func (f *firstSignIn) changePassword(token, current, next string) *httptest.ResponseRecorder {
@@ -300,14 +302,15 @@ func TestChangePassword_RefusesBadRequests(t *testing.T) {
 	}
 }
 
-func TestChangePassword_MailboxSessionsAreRefused(t *testing.T) {
+// A session whose account is gone changes nothing.
+func TestChangePassword_NoSuchAccountIsRefused(t *testing.T) {
 	f := newFirstSignIn(t)
-	pair, err := f.jwt.GenerateTokenPair(1, "someone@example.test", 0)
+	pair, err := f.jwt.GenerateSession(1<<30, "someone@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := f.changePassword(pair.AccessToken, "x", "y-long-enough-pass"); got.Code != http.StatusForbidden {
-		t.Errorf("mailbox session = %d, want 403", got.Code)
+	if got := f.changePassword(pair.AccessToken, "x", "y-long-enough-pass"); got.Code != http.StatusUnauthorized {
+		t.Errorf("no such account = %d, want 401", got.Code)
 	}
 }
 
@@ -315,7 +318,7 @@ func TestChangePassword_MailboxSessionsAreRefused(t *testing.T) {
 // nobody finishing the install would.
 func (f *firstSignIn) expire(t *testing.T) {
 	t.Helper()
-	if err := f.db.Model(&models.AdminUser{}).Where("username = ?", f.name).
+	if err := f.db.Model(&models.Mailbox{}).Where("address = ?", f.name).
 		Update("bootstrap_expires_at", time.Now().Add(-time.Minute)).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -361,8 +364,8 @@ func TestFirstSignIn_ChoosingAPasswordEndsTheDeadline(t *testing.T) {
 		t.Fatalf("change password = %d %s", rr.Code, rr.Body)
 	}
 
-	var user models.AdminUser
-	if err := f.db.Where("username = ?", f.name).First(&user).Error; err != nil {
+	var user models.Mailbox
+	if err := f.db.Where("address = ?", f.name).First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
 	if user.BootstrapExpiresAt != nil {

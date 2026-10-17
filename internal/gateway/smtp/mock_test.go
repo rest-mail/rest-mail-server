@@ -84,10 +84,13 @@ func (m *mockBackend) SignIn(email, password, _ string) (*apiclient.LoginRespons
 	resp := &apiclient.LoginResponse{}
 	switch {
 	case email == m.user && password == m.pass:
+		// The account's password: a credential too, of the kind that may send
+		// as the accounts it owns.
 		resp.Data.AccessToken = m.token
+		resp.Data.CredentialID, resp.Data.CredentialKind = 1, "password"
 	case email == m.user && appPassword != "" && password == appPassword:
 		resp.Data.AccessToken = "Basic app-password"
-		resp.Data.CredentialID = credentialID
+		resp.Data.CredentialID, resp.Data.CredentialKind = credentialID, "app_password"
 	default:
 		return nil, &apiclient.APIError{StatusCode: 401, Body: "invalid credentials"}
 	}

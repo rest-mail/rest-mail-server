@@ -34,17 +34,11 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve mailbox (reuse message handler's logic)
-	var account models.WebmailAccount
-	if err := h.db.First(&account, accountID).Error; err != nil {
+	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, models.CapMailRead)
+	if err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Account not found")
 		return
 	}
-	if account.ID != claims.WebmailAccountID {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-	mailboxID := account.PrimaryMailboxID
 
 	query := h.db.Model(&models.Message{}).Where("mailbox_id = ? AND is_deleted = false", mailboxID)
 

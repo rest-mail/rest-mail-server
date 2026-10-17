@@ -79,7 +79,7 @@ func (f *grantsFixture) mine(t *testing.T, token string) []escalationGrant {
 func (f *grantsFixture) grantOf(t *testing.T, name, role string) uint {
 	t.Helper()
 	var g models.Grant
-	err := f.db.Joins("JOIN admin_roles r ON r.id = grants.role_id").
+	err := f.db.Joins("JOIN roles r ON r.id = grants.role_id").
 		Where("grants.holder_id = ? AND r.name = ? AND grants.scope = '*'", f.admins[name].user.ID, role).First(&g).Error
 	if err != nil {
 		t.Fatalf("%s's %s grant: %v", name, role, err)
@@ -99,7 +99,7 @@ func (f *grantsFixture) eligible(t *testing.T, name, role string) uint {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
-		g := &models.Grant{HolderKind: models.GrantHolderAdmin, HolderID: f.admins[name].user.ID, RoleID: r.ID,
+		g := &models.Grant{HolderKind: models.GrantHolderAccount, HolderID: f.admins[name].user.ID, RoleID: r.ID,
 			Scope: grants.All, Mode: models.GrantEligible, GrantedByKind: models.AuditActorSystem}
 		err := grants.Add(tx, g, models.AuditEntry{ActorKind: models.AuditActorSystem, ActorName: "system"})
 		id = g.ID
@@ -133,16 +133,16 @@ func (f *grantsFixture) count(t *testing.T, action string) int64 {
 	return n
 }
 
-// What only "*" reaches among the routes: creating an admin user wants
-// users:write, which the admin role does not hold.
-const superadminOnlyRoute = "/api/v1/admin/admin-users"
+// What only "*" reaches among the routes: granting wants users:write, which
+// the admin role does not hold.
+const superadminOnlyRoute = "/api/v1/admin/grants"
 
 func (f *grantsFixture) reachesSuperadminOnly(token string) bool {
 	return !refusedForAccess(doRequest(f.router, http.MethodPost, superadminOnlyRoute, token, `{}`))
 }
 
 func TestEscalation_EligibleGrantGivesNothingUntilSwitchedOn(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
+	f := newGrantsFixture(t, fixtureAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
 	super := f.eligible(t, "climber", "superadmin")
 
 	s := f.admins["climber"].login(t, f.router)
@@ -233,7 +233,7 @@ func TestEscalation_EligibleGrantGivesNothingUntilSwitchedOn(t *testing.T) {
 			t.Fatalf("no %s entry: %v", action, err)
 		}
 		climber := f.admins["climber"].user.ID
-		if e.ActorKind != models.AuditActorAdmin || e.ActorID == nil || *e.ActorID != climber || e.SessionID == "" ||
+		if e.ActorKind != models.AuditActorAccount || e.ActorID == nil || *e.ActorID != climber || e.SessionID == "" ||
 			e.Target["grant_id"] != strconv.FormatUint(uint64(super), 10) || e.Target["role"] != "superadmin" ||
 			e.Target["reason"] != "rotate the DKIM keys" || e.Target["started_at"] == "" || e.Target["ends_at"] == "" ||
 			(e.Target["ended_at"] != "") != ended || e.Outcome != models.AuditOutcomeSuccess {
@@ -246,7 +246,7 @@ func TestEscalation_EligibleGrantGivesNothingUntilSwitchedOn(t *testing.T) {
 }
 
 func TestEscalation_StopsWhenItRunsOutAndTheExpiryIsRecorded(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
+	f := newGrantsFixture(t, fixtureAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
 	super := f.eligible(t, "climber", "superadmin")
 	climber := f.admins["climber"].user.ID
 	tok := f.token(t, "climber")
@@ -259,11 +259,11 @@ func TestEscalation_StopsWhenItRunsOutAndTheExpiryIsRecorded(t *testing.T) {
 	}
 
 	// What the grants give, read just before and just after it runs out.
-	before, err := grants.Load(f.db, models.GrantHolderAdmin, climber, a.ExpiresAt.Add(-time.Second))
+	before, err := grants.Load(f.db, climber, a.ExpiresAt.Add(-time.Second))
 	if err != nil || !before.Allows("users:write", grants.All) {
 		t.Fatalf("a second before it runs out: users:write=%v (%v)", before.Allows("users:write", grants.All), err)
 	}
-	after, err := grants.Load(f.db, models.GrantHolderAdmin, climber, a.ExpiresAt)
+	after, err := grants.Load(f.db, climber, a.ExpiresAt)
 	if err != nil || after.Allows("users:write", grants.All) || !after.Allows("domains:write", grants.All) {
 		t.Fatalf("once it runs out: %v (%v), want the admin role's alone", after.Capabilities(), err)
 	}
@@ -314,7 +314,7 @@ func TestEscalation_StopsWhenItRunsOutAndTheExpiryIsRecorded(t *testing.T) {
 }
 
 func TestEscalation_OnlyTheHolderSwitchesItOn(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
+	f := newGrantsFixture(t, fixtureAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
 	super := f.eligible(t, "climber", "superadmin")
 	rootReadonly := f.eligible(t, "root", "readonly")
 	owner := f.token(t, "owner")
@@ -345,24 +345,22 @@ func TestEscalation_OnlyTheHolderSwitchesItOn(t *testing.T) {
 		t.Errorf("root without 2FA = %d %s, want 403 two_factor_required", rr.Code, rr.Body.String())
 	}
 
-	// Mailbox sessions never reach any of it.
-	pair, err := auth.NewJWTService("grants-access-secret", 15*time.Minute, 24*time.Hour).GenerateTokenPair(f.ma.ID, f.ma.Address, 0)
+	// An account holding no grant has none to list, and switches on no one
+	// else's.
+	pair, err := auth.NewJWTService("grants-access-secret", 15*time.Minute, 24*time.Hour).GenerateSession(f.ma.ID, f.ma.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/api/v1/admin/grants/mine", escalationPath(super, "activate")} {
-		method := http.MethodGet
-		if strings.HasSuffix(path, "activate") {
-			method = http.MethodPost
-		}
-		if rr := doRequest(f.router, method, path, pair.AccessToken, `{}`); rr.Code != http.StatusForbidden || !refusedForAccess(rr) {
-			t.Errorf("a mailbox session on %s = %d %s, want refused", path, rr.Code, rr.Body.String())
-		}
+	if rr := doRequest(f.router, http.MethodGet, "/api/v1/admin/grants/mine", pair.AccessToken, ""); rr.Code != http.StatusOK || strings.TrimSpace(rr.Body.String()) != `{"data":[]}` {
+		t.Errorf("grants/mine for an account holding none = %d %s", rr.Code, rr.Body.String())
+	}
+	if rr := doRequest(f.router, http.MethodPost, escalationPath(super, "activate"), pair.AccessToken, activateBody("not mine", 60, "123456")); rr.Code != http.StatusForbidden && rr.Code != http.StatusNotFound {
+		t.Errorf("another's grant switched on by an account holding none = %d %s, want refused", rr.Code, rr.Body.String())
 	}
 }
 
 func TestEscalation_ARecoveryCodeWorksOnceAndARefusalLeavesItUnused(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
+	f := newGrantsFixture(t, fixtureAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
 	super := f.eligible(t, "climber", "superadmin")
 	readonly := f.eligible(t, "climber", "readonly")
 	codes := addRecoveryCodes(t, f.db, f.admins["climber"].user.ID)
@@ -397,16 +395,17 @@ func addRecoveryCodes(t *testing.T, db *gorm.DB, adminID uint) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tf, err := repositories.NewTwoFactorRepository(db).GetActive(models.TwoFactorUserTypeAdmin, adminID)
-	if err != nil {
+	if _, err := repositories.NewTwoFactorRepository(db).GetActive(adminID); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range codes {
+	for i, c := range codes {
 		hash, err := bcrypt.GenerateFromPassword([]byte(auth.NormalizeRecoveryCode(c)), bcrypt.MinCost)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Create(&models.TwoFactorRecoveryCode{TwoFactorID: tf.ID, CodeHash: "{BLF-CRYPT}" + string(hash)}).Error; err != nil {
+		if err := db.Create(&models.Credential{AccountID: adminID, Kind: models.CredentialKindRecoveryCode, Name: "Recovery code",
+			PublicID: fmt.Sprintf("rc%d-%d", adminID, i), SecretHash: "{BLF-CRYPT}" + string(hash),
+			Scope: models.CredentialScope{MailboxID: adminID}}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -416,7 +415,7 @@ func addRecoveryCodes(t *testing.T, db *gorm.DB, adminID uint) []string {
 // The owner of a server set up before escalation holds superadmin active, and
 // keeps it until they choose otherwise: make-eligible, with a fresh code.
 func TestEscalation_TheOwnerOptsIn(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
+	f := newGrantsFixture(t, fixtureAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
 	owner := f.token(t, "owner")
 	super := f.grantOf(t, "owner", "superadmin")
 	path := escalationPath(super, "make-eligible")
@@ -466,7 +465,7 @@ func TestEscalation_TheOwnerOptsIn(t *testing.T) {
 // the last one cannot. Removing a grant that is switched on ends its
 // activation, recorded.
 func TestEscalation_TheLastSuperadminCountsEligibleOnes(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
+	f := newGrantsFixture(t, fixtureAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
 	owner := f.token(t, "owner")
 	ownerSuper := f.grantOf(t, "owner", "superadmin")
 	if rr := doRequest(f.router, http.MethodPost, escalationPath(ownerSuper, "make-eligible"), owner,
@@ -503,8 +502,8 @@ func TestEscalation_TheLastSuperadminCountsEligibleOnes(t *testing.T) {
 	// root's and fresh's active superadmins can go: the owner's eligible one
 	// remains. The owner's own cannot.
 	for _, name := range []string{"root", "fresh"} {
-		path := "/api/v1/admin/admin-users/" + strconv.FormatUint(uint64(f.admins[name].user.ID), 10)
-		if rr := doRequest(f.router, http.MethodPut, path, owner, `{"role_ids":[]}`); rr.Code != http.StatusOK {
+		path := "/api/v1/admin/grants/" + strconv.FormatUint(uint64(f.grantOf(t, name, "superadmin")), 10)
+		if rr := doRequest(f.router, http.MethodDelete, path, owner, ""); rr.Code != http.StatusNoContent {
 			t.Fatalf("taking superadmin from %s = %d %s", name, rr.Code, rr.Body.String())
 		}
 	}
@@ -523,12 +522,12 @@ func TestEscalation_TheLastSuperadminCountsEligibleOnes(t *testing.T) {
 // An eligible superadmin counts as one that remains only if its holder has an
 // authenticator to switch it on with.
 func TestEscalation_AnEligibleSuperadminCountsOnlyWithAnAuthenticator(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "waiting"})
+	f := newGrantsFixture(t, fixtureAdmin{name: "waiting"})
 	f.eligible(t, "waiting", "superadmin")
 	owner := f.token(t, "owner")
 	for _, name := range []string{"root", "fresh"} {
-		path := "/api/v1/admin/admin-users/" + strconv.FormatUint(uint64(f.admins[name].user.ID), 10)
-		if rr := doRequest(f.router, http.MethodPut, path, owner, `{"role_ids":[]}`); rr.Code != http.StatusOK {
+		path := "/api/v1/admin/grants/" + strconv.FormatUint(uint64(f.grantOf(t, name, "superadmin")), 10)
+		if rr := doRequest(f.router, http.MethodDelete, path, owner, ""); rr.Code != http.StatusNoContent {
 			t.Fatalf("taking superadmin from %s = %d %s", name, rr.Code, rr.Body.String())
 		}
 	}
@@ -545,7 +544,7 @@ func TestEscalation_AnEligibleSuperadminCountsOnlyWithAnAuthenticator(t *testing
 // A step whose transaction rolls back leaves neither an activation nor an
 // entry.
 func TestEscalation_ARolledBackActivationLeavesNothing(t *testing.T) {
-	f := newGrantsFixture(t, legacyAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
+	f := newGrantsFixture(t, fixtureAdmin{name: "climber", roles: []string{"admin"}, twoFactor: true})
 	super := f.eligible(t, "climber", "superadmin")
 	var entries int64
 	f.db.Model(&models.AuditEntry{}).Count(&entries)
@@ -595,22 +594,18 @@ func probeAccess(t *testing.T, router http.Handler, a *seededAdmin, routes []acc
 	return p
 }
 
-// TestEscalation_NobodyLosesAccess is the proof that this release changes
-// nobody's access: each admin of the scoped-grants release (#345), signed in
-// before and after this one starts, gets the same sign-in, is shown the same
-// capabilities, and gets the same answer from every route; and that answer is
-// still what its roles allowed before grants. Starting this release changes
-// no grant: the owner's superadmin stays active.
+// TestEscalation_NobodyLosesAccess is the proof that starting the server
+// changes nobody's access: each admin, signed in before and after a start,
+// gets the same sign-in, is shown the same capabilities, and gets the same
+// answer from every route, which is what its roles hold. A start changes no
+// grant: an owner's active superadmin stays active.
 func TestEscalation_NobodyLosesAccess(t *testing.T) {
 	db := openAccessDB(t)
 	domain, mailbox := seedDomain(t, db, "a.test")
-	admins := seedLegacyAdmins(t, db, legacyAdmins)
-	legacy := map[string][]string{}
+	admins := seedAdmins(t, db, fixtureAdmins)
+	held := map[string][]string{}
 	for name, a := range admins {
-		legacy[name] = legacyCapabilities(t, db, a.user.ID)
-	}
-	if _, err := grants.Migrate(db); err != nil {
-		t.Fatal(err)
+		held[name] = roleCapabilities(t, db, a.user.ID)
 	}
 	type grantRow struct {
 		ID, HolderID, RoleID uint
@@ -627,31 +622,28 @@ func TestEscalation_NobodyLosesAccess(t *testing.T) {
 	}
 	routes := append(accessRoutes(domain.ID, mailbox.ID), accessRoute{"GET", "/api/v1/admin/grants", "", "users:read"})
 
-	// Before: as the scoped-grants release left the database.
+	// Before: as the last start left the database.
 	grantsBefore := readGrants()
 	before := map[string]accessProbe{}
 	router := accessRouter(t, db)
-	for _, a := range legacyAdmins {
+	for _, a := range fixtureAdmins {
 		before[a.name] = probeAccess(t, router, admins[a.name], routes)
 	}
 
-	// This release starts: the migration again, the bootstrap admin (fresh,
-	// still in setup, its password still deployed), and a sweep.
-	if copied, err := grants.Migrate(db); err != nil || copied != 0 {
-		t.Fatalf("migration on start copied %d (%v), want 0", copied, err)
-	}
-	if outcome, err := bootstrap.EnsureFirstAdmin(db, "fresh", accessPassword, true, time.Now()); err != nil || outcome != bootstrap.FirstAdminUnchanged {
+	// The server starts again: the bootstrap account (fresh, still in setup,
+	// its password still deployed), and a sweep.
+	if outcome, err := bootstrap.EnsureFirstAdmin(db, "fresh@access.test", accessPassword, true, time.Now()); err != nil || outcome != bootstrap.FirstAdminUnchanged {
 		t.Fatalf("bootstrap admin on start: %v %v, want unchanged", outcome, err)
 	}
 	if _, err := grants.EndExpired(db, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if after := readGrants(); !reflect.DeepEqual(after, grantsBefore) {
-		t.Fatalf("starting this release changed grants:\nbefore %+v\nafter  %+v", grantsBefore, after)
+		t.Fatalf("starting changed grants:\nbefore %+v\nafter  %+v", grantsBefore, after)
 	}
 
 	router = accessRouter(t, db)
-	for _, a := range legacyAdmins {
+	for _, a := range fixtureAdmins {
 		a := admins[a.name]
 		t.Run(a.name, func(t *testing.T) {
 			after := probeAccess(t, router, a, routes)
@@ -661,19 +653,19 @@ func TestEscalation_NobodyLosesAccess(t *testing.T) {
 			if strings.Join(after.routes, "\n") != strings.Join(before[a.name].routes, "\n") {
 				t.Errorf("routes answered\n%s\nbefore\n%s", strings.Join(after.routes, "\n"), strings.Join(before[a.name].routes, "\n"))
 			}
-			// And still what the roles allowed before grants.
+			// And what the roles hold.
 			if a.inactive || a.setup {
 				return
 			}
-			if !displayEqual(legacy[a.name], after.capabilities) {
-				t.Errorf("capabilities %v, before grants %v", after.capabilities, legacy[a.name])
+			if !displayEqual(held[a.name], after.capabilities) {
+				t.Errorf("capabilities %v, its roles hold %v", after.capabilities, held[a.name])
 			}
 			s := a.login(t, router)
 			for _, rt := range routes {
 				rr := doRequest(router, rt.method, rt.path, s.AccessToken, rt.body)
-				want := legacyAllows(legacy[a.name], rt.need)
+				want := rolesAllow(held[a.name], rt.need)
 				if reached := !refusedForAccess(rr); reached != want {
-					t.Errorf("%s %s: reached=%v (%d), before grants %v", rt.method, rt.path, reached, rr.Code, want)
+					t.Errorf("%s %s: reached=%v (%d), its roles say %v", rt.method, rt.path, reached, rr.Code, want)
 				}
 			}
 		})

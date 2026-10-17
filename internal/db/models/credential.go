@@ -7,48 +7,63 @@ import (
 	"time"
 )
 
-// Credential kinds. App passwords come first (#344); the mailbox's own
-// password, TOTP, OAuth client secrets and public keys follow (#341).
-const CredentialKindAppPassword = "app_password"
-
-// Who a credential belongs to, and who created it. Mailboxes only, for now.
-const CredentialOwnerMailbox = "mailbox"
-
-// The capabilities a credential's scope holds on its mailbox.
+// Credential kinds: everything an account signs in with (#341, Decided 4).
 const (
-	CredentialCapRead  = "mail:read"
-	CredentialCapWrite = "mail:write"
-	CredentialCapSend  = "mail:send"
+	// CredentialKindPassword is a password the account signs in with
+	// interactively, and through the protocol gateways when it has no TOTP.
+	// SecretHash is its {BLF-CRYPT} bcrypt hash.
+	CredentialKindPassword = "password"
+	// CredentialKindTOTP is an authenticator (RFC 6238). EncryptedSecret is its
+	// base32 secret, encrypted with MASTER_KEY; it counts once ConfirmedAt is
+	// set, after a first valid code.
+	CredentialKindTOTP = "totp"
+	// CredentialKindRecoveryCode is a one-time code that stands in for a TOTP
+	// code. SecretHash is its bcrypt hash; using it revokes it.
+	CredentialKindRecoveryCode = "recovery_code"
+	// CredentialKindAppPassword is a named password for a mail client or an
+	// automation (#344), never taken at the interactive sign-in. SecretHash is
+	// the hex SHA-256 of its secret.
+	CredentialKindAppPassword = "app_password"
 )
 
-// Credential is one way of proving to be an account: 0..n per mailbox, each
-// named and revoked on its own. Revoking one keeps its row, for the audit
-// trail; nothing deletes credentials.
+// The capabilities an app password's scope holds on its account's mailbox.
+const (
+	CredentialCapRead  = CapMailRead
+	CredentialCapWrite = CapMailWrite
+	CredentialCapSend  = CapMailSend
+)
+
+// Credential is one way of proving to be an account: 0..n per account, each
+// revoked on its own. Revoking one keeps its row, for the audit trail; nothing
+// deletes credentials.
 //
-// The secret is never stored: SecretHash is the hex SHA-256 of an app
-// password's secret (auth.HashAppPasswordSecret), and PublicID, the part of
-// the app password before the secret, is how a sign-in finds the row.
+// No secret is stored in the clear: SecretHash is a hash (bcrypt for
+// passwords and recovery codes, SHA-256 for app passwords), and a TOTP secret
+// is encrypted. PublicID names the credential without revealing it; for an app
+// password it is the part before the secret, and how a sign-in finds the row.
 type Credential struct {
 	ID uint `gorm:"primaryKey" json:"id"`
-	// OwnerKind and OwnerID are the account the credential proves: a mailbox.
-	OwnerKind string `gorm:"size:16;not null;index:idx_credentials_owner" json:"owner_kind"`
-	OwnerID   uint   `gorm:"not null;index:idx_credentials_owner" json:"owner_id"`
+	// AccountID is the account (mailbox) the credential proves.
+	AccountID uint `gorm:"not null;index" json:"account_id"`
 	// Kind is one of the CredentialKind* kinds.
-	Kind string `gorm:"size:32;not null" json:"kind"`
+	Kind string `gorm:"size:32;not null;index" json:"kind"`
 	// Name is what the owner calls it: "iPhone Mail", "n8n invoices".
-	Name       string `gorm:"size:100;not null" json:"name"`
-	PublicID   string `gorm:"size:32;not null;uniqueIndex" json:"public_id"`
-	SecretHash string `gorm:"size:64;not null" json:"-"`
-	// Scope is what the credential may reach. For an app password, for now,
-	// always its own mailbox with read, write and send.
+	Name            string `gorm:"size:100;not null" json:"name"`
+	PublicID        string `gorm:"size:32;not null;uniqueIndex" json:"public_id"`
+	SecretHash      string `gorm:"type:text;not null;default:''" json:"-"`
+	EncryptedSecret string `gorm:"type:text;not null;default:''" json:"-"`
+	// Scope is what an app password may reach: for now, always its own
+	// account's mailbox with read, write and send. The interactive kinds prove
+	// the account itself, and their scope names only it.
 	Scope CredentialScope `gorm:"type:jsonb;not null" json:"scope"`
-	// CreatedByKind and CreatedByID are the account that made it.
-	CreatedByKind string     `gorm:"size:16;not null" json:"created_by_kind"`
-	CreatedByID   uint       `gorm:"not null" json:"created_by_id"`
-	CreatedAt     time.Time  `json:"created_at"`
-	LastUsedAt    *time.Time `json:"last_used_at"`
-	ExpiresAt     *time.Time `json:"expires_at"`
-	RevokedAt     *time.Time `gorm:"index" json:"revoked_at"`
+	// CreatedByID is the account that made it; nil for the system (the
+	// bootstrap account's password).
+	CreatedByID *uint      `json:"created_by_id"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ConfirmedAt *time.Time `json:"confirmed_at"`
+	LastUsedAt  *time.Time `json:"last_used_at"`
+	ExpiresAt   *time.Time `json:"expires_at"`
+	RevokedAt   *time.Time `gorm:"index" json:"revoked_at"`
 }
 
 func (Credential) TableName() string { return "credentials" }

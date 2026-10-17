@@ -77,7 +77,7 @@ func askAsOwner(t *testing.T, h *OwnerHandler, s ssh.Signer, purpose, username s
 		"public_key": string(ssh.MarshalAuthorizedKey(s.PublicKey())),
 		"signature":  base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
 		"purpose":    purpose,
-		"username":   username,
+		"address":    username,
 	})
 	rr = httptest.NewRecorder()
 	h.Token(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b)))
@@ -90,8 +90,8 @@ func TestOwner_SignedChallengeLetsAnAdminBackIn(t *testing.T) {
 	owner := ownerKey(t)
 	h := ownerHandler(t, f, owner)
 
-	if rr := askAsOwner(t, h, owner, "reset-admin", "nobody"); rr.Code != http.StatusNotFound || errorCodeOf(rr) != "no_such_admin" {
-		t.Errorf("reset for nobody = %d %s, want 404 no_such_admin", rr.Code, rr.Body)
+	if rr := askAsOwner(t, h, owner, "reset-admin", "nobody@example.test"); rr.Code != http.StatusNotFound || errorCodeOf(rr) != "no_such_account" {
+		t.Errorf("reset for nobody = %d %s, want 404 no_such_account", rr.Code, rr.Body)
 	}
 	rr := askAsOwner(t, h, owner, "reset-admin", f.name)
 	if rr.Code != http.StatusOK {
@@ -108,8 +108,8 @@ func TestOwner_SignedChallengeLetsAnAdminBackIn(t *testing.T) {
 	}
 }
 
-// Before 0.7 an owner key could also claim a server. Nothing claims one now:
-// its first admin is the bootstrap one.
+// An owner key resets an account, and claims nothing: a server's first admin
+// is the bootstrap account.
 func TestOwner_NothingToClaim(t *testing.T) {
 	f := newInstalledServer(t)
 	owner := ownerKey(t)
@@ -133,6 +133,6 @@ func TestOwner_Refusals(t *testing.T) {
 		t.Errorf("an unknown purpose = %d %s, want a validation error", rr.Code, rr.Body)
 	}
 	if rr := askAsOwner(t, ownerHandler(t, f, owner), owner, "reset-admin", ""); rr.Code != http.StatusUnprocessableEntity && rr.Code != http.StatusBadRequest {
-		t.Errorf("reset without a username = %d %s, want a validation error", rr.Code, rr.Body)
+		t.Errorf("reset without an address = %d %s, want a validation error", rr.Code, rr.Body)
 	}
 }

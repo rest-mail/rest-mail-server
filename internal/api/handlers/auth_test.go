@@ -32,19 +32,15 @@ func refreshWith(t *testing.T, jwt *auth.JWTService, refreshToken string) *auth.
 	return claims
 }
 
-func TestRefresh_PreservesAdminSession(t *testing.T) {
+func TestRefresh_PreservesTheSession(t *testing.T) {
 	jwt := auth.NewJWTService("test-secret", 15*time.Minute, 7*24*time.Hour)
-	pair, err := jwt.GenerateAdminSession(7, "root", 0, []string{auth.AMRPassword, auth.AMROTP})
+	pair, err := jwt.GenerateSession(7, "root@example.test", 0, []string{auth.AMRPassword, auth.AMROTP}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	claims := refreshWith(t, jwt, pair.RefreshToken)
-	// The bug: refresh reissued a MAILBOX token, locking admins out.
-	if claims.UserType != "admin" {
-		t.Errorf("refreshed admin session has UserType=%q, want %q", claims.UserType, "admin")
-	}
-	if claims.AdminUserID != 7 {
-		t.Errorf("AdminUserID=%d, want 7", claims.AdminUserID)
+	if claims.AccountID != 7 || claims.Address != "root@example.test" {
+		t.Errorf("account %d %q, want 7 root@example.test", claims.AccountID, claims.Address)
 	}
 	// How the session signed in is kept: a refresh is not a new sign-in.
 	if !claims.HasAMR(auth.AMROTP) || !claims.HasAMR(auth.AMRPassword) {
@@ -52,17 +48,14 @@ func TestRefresh_PreservesAdminSession(t *testing.T) {
 	}
 }
 
-func TestRefresh_PreservesMailboxSession(t *testing.T) {
+func TestRefresh_PreservesAPasswordOnlySession(t *testing.T) {
 	jwt := auth.NewJWTService("test-secret", 15*time.Minute, 7*24*time.Hour)
-	pair, err := jwt.GenerateTokenPair(42, "user@example.test", 3)
+	pair, err := jwt.GenerateSession(42, "user@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	claims := refreshWith(t, jwt, pair.RefreshToken)
-	if claims.UserType == "admin" {
-		t.Error("mailbox refresh must not yield an admin token")
-	}
-	if claims.MailboxID != 42 {
-		t.Errorf("MailboxID=%d, want 42", claims.MailboxID)
+	if claims.AccountID != 42 || claims.TwoFactor || claims.HasAMR(auth.AMROTP) {
+		t.Errorf("claims = %+v, want account 42 without a second factor", claims)
 	}
 }

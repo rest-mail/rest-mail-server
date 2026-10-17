@@ -171,7 +171,7 @@ func TestRESTMAILDeliver_SieveRedirect(t *testing.T) {
 			t.Fatalf("create domain: %v", err)
 		}
 		addr := localPart + "@" + domainName
-		mb := models.Mailbox{DomainID: dom.ID, LocalPart: localPart, Address: addr, Password: "x", Active: true, QuotaBytes: 1 << 30}
+		mb := models.Mailbox{DomainID: dom.ID, LocalPart: localPart, Address: addr, Active: true, QuotaBytes: 1 << 30}
 		if err := db.Create(&mb).Error; err != nil {
 			t.Fatalf("create mailbox: %v", err)
 		}

@@ -55,7 +55,7 @@ export function Header({ title, backLink }: HeaderProps) {
           <div className="flex items-center gap-2">
             <div className="text-right">
               <p className="text-sm font-medium text-[var(--black-soft)]">
-                {user.username}
+                {user.email}
               </p>
             </div>
           </div>

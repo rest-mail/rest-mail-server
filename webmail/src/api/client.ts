@@ -40,7 +40,10 @@ export function setOnUnauthorized(handler: () => void) {
   onUnauthorized = handler;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// request answers with the parsed body. A 401 is an expired session, so it
+// signs the user out, unless domainUnauthorized says the endpoint's 401 is a
+// domain error — a wrong password for another account — instead.
+async function request<T>(path: string, options: RequestInit = {}, domainUnauthorized = false): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -53,7 +56,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // cookie) with the request; the token itself is never touched by JS.
   const res = await fetch(path, { ...options, headers, credentials: 'include' });
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized) {
+    if (res.status === 401 && onUnauthorized && !domainUnauthorized) {
       onUnauthorized();
     }
     const body = await res.text();
@@ -210,19 +213,36 @@ export async function listAccounts(): Promise<{ data: Account[] }> {
   return request(`${BASE}/accounts`);
 }
 
-export async function testConnection(data: { address: string; password: string }): Promise<{ data: { status: string; address: string; display_name: string } }> {
-  return request(`${BASE}/accounts/test-connection`, {
+/**
+ * Link an existing account by proving one of its passwords — and its 2FA
+ * code when it has one (an ApiError with code "totp_required" says so). The
+ * session's account becomes its owner. A 401 here is a wrong password, not an
+ * expired session.
+ */
+export async function linkAccount(data: {
+  address: string;
+  password: string;
+  display_name: string;
+  totp_code?: string;
+}): Promise<{ data: Account }> {
+  return request(`${BASE}/accounts/link`, {
     method: 'POST',
     body: JSON.stringify(data),
-  });
+  }, true);
 }
 
-export async function linkAccount(data: { address: string; password: string; display_name: string }): Promise<{ data: Account }> {
+/**
+ * Create an account, owned by this one. Needs mailboxes:write on its domain.
+ * Without a password it can't be signed in to, and is reached only through
+ * its owners.
+ */
+export async function createAccount(data: { address: string; display_name?: string; password?: string }): Promise<{ data: Account }> {
   return request(`${BASE}/accounts`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
+
 
 // Folders
 export async function listFolders(accountId: number): Promise<{ data: Folder[] }> {
@@ -385,8 +405,9 @@ export async function getThread(accountId: number, threadId: string): Promise<{ 
 }
 
 // Account management
+/** Give up access to an account this one owns or linked (204). */
 export async function deleteAccount(accountId: number): Promise<void> {
-  await request(`${BASE}/accounts/${accountId}`, { method: 'DELETE' });
+  await requestNoContent(`${BASE}/accounts/${accountId}`, { method: 'DELETE' });
 }
 
 // Vacation

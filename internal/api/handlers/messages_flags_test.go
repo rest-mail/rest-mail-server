@@ -33,7 +33,7 @@ func TestUpdateMessage_DraftFlagPersists(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := authzRequest(http.MethodPatch,
 		"/api/v1/messages/"+idStr,
-		fx.account.ID, map[string]string{"id": idStr}, `{"is_draft":true}`)
+		fx.mailbox.ID, map[string]string{"id": idStr}, `{"is_draft":true}`)
 	h.UpdateMessage(rr, req)
 
 	if rr.Code != http.StatusOK {
@@ -72,7 +72,7 @@ func TestUpdateMessage_DraftFlagClears(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := authzRequest(http.MethodPatch,
 		"/api/v1/messages/"+idStr,
-		fx.account.ID, map[string]string{"id": idStr}, `{"is_draft":false}`)
+		fx.mailbox.ID, map[string]string{"id": idStr}, `{"is_draft":false}`)
 	h.UpdateMessage(rr, req)
 
 	if rr.Code != http.StatusOK {

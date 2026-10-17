@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 )
 
 // TestMailboxUpdate_IgnoresNonAllowlistedColumns proves the mailbox update
@@ -41,7 +42,6 @@ func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
 		DomainID:    owner.ID,
 		LocalPart:   "victim",
 		Address:     "victim@massassign.test",
-		Password:    "hash",
 		DisplayName: "Original",
 		QuotaBytes:  1000,
 		Active:      true,
@@ -50,7 +50,7 @@ func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
 		t.Fatalf("create mailbox: %v", err)
 	}
 
-	h := NewMailboxHandler(tx)
+	h := NewMailboxHandler(tx, grants.NewCache(tx, grants.CacheTTL))
 
 	// One allowlisted field (display_name) mixed with columns the caller must
 	// never control. domain_id/address/local_part/quota_used_bytes are not part

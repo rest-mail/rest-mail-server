@@ -19,7 +19,7 @@ func signIn(t *testing.T, columns int, password string, args ...string) (int, st
 	terminalColumns = func(io.Writer) int { return columns }
 	t.Cleanup(func() { terminalColumns = saved })
 	var out, errOut bytes.Buffer
-	status := runSignInLink(append([]string{"--server", "https://mail.example.com"}, args...),
+	status := runSignInLink(append([]string{"--server", "https://mail.example.com", "--address", "admin@example.com"}, args...),
 		strings.NewReader(password), &out, &errOut)
 	return status, out.String(), errOut.String()
 }
@@ -51,8 +51,8 @@ func TestSignInLink_TheTextIsAlwaysThere(t *testing.T) {
 			if got := lineValue(t, out, "Password"); got != signInPassword {
 				t.Errorf("Password: %q", got)
 			}
-			if got := lineValue(t, out, "Username"); got != "admin" {
-				t.Errorf("Username: %q", got)
+			if got := lineValue(t, out, "Address"); got != "admin@example.com" {
+				t.Errorf("Address: %q", got)
 			}
 			if got := lineValue(t, out, "Server"); got != "https://mail.example.com" {
 				t.Errorf("Server: %q", got)
@@ -63,7 +63,7 @@ func TestSignInLink_TheTextIsAlwaysThere(t *testing.T) {
 			}
 			carried, _ := url.ParseQuery(link.EscapedFragment())
 			if link.Host != "rest-mail.com" || link.Path != "/setup" || carried.Get("password") != signInPassword ||
-				carried.Get("server") != "https://mail.example.com" || carried.Get("username") != "admin" {
+				carried.Get("server") != "https://mail.example.com" || carried.Get("address") != "admin@example.com" {
 				t.Errorf("Link: %v", link)
 			}
 		})
@@ -89,12 +89,12 @@ func TestSignInLink_TheQRCodeOnlyWhereItFits(t *testing.T) {
 
 // What `printf '%s'` sends, and what `echo` sends.
 func TestSignInLink_ThePasswordComesOnStdin(t *testing.T) {
-	_, out, _ := signIn(t, 0, signInPassword+"\n", "--username", "owner")
+	_, out, _ := signIn(t, 0, signInPassword+"\n", "--address", "Owner@Example.com")
 	if got := lineValue(t, out, "Password"); got != signInPassword {
 		t.Errorf("a trailing newline was kept: %q", got)
 	}
-	if got := lineValue(t, out, "Username"); got != "owner" {
-		t.Errorf("Username: %q", got)
+	if got := lineValue(t, out, "Address"); got != "owner@example.com" {
+		t.Errorf("Address: %q", got)
 	}
 }
 
@@ -120,7 +120,8 @@ func TestSignInLink_ExitStatuses(t *testing.T) {
 	}{
 		{"no password on stdin", "", nil, "no_password"},
 		{"never on the command line", signInPassword, []string{"--password", signInPassword}, "bad_flag"},
-		{"no username", signInPassword, []string{"--username", " "}, "bad_flag"},
+		{"no address", signInPassword, []string{"--address", " "}, "bad_flag"},
+		{"not an address", signInPassword, []string{"--address", "admin"}, "bad_flag"},
 		{"plain http to another host", signInPassword, []string{"--server", "http://mail.example.com"}, "bad_flag"},
 	}
 	for _, c := range cases {

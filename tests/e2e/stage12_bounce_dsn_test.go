@@ -10,25 +10,20 @@ import (
 
 func testStage12BounceDSN(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
 	// Ensure domain and mailboxes exist
 	createDomain(t, adminClient, "restmail.test", "restmail")
-	createMailbox(t, adminClient, "bounce-sender@restmail.test", "password123", "Bounce Sender")
+	createMailbox(t, adminClient, "bounce-sender@restmail.test", accountPassword, "Bounce Sender")
 
 	t.Run("BounceAfterMaxRetries", func(t *testing.T) {
 		// Send a message to an unresolvable domain, then force-bounce it
 		// via the admin API to simulate max retries exhausted. Verify the
 		// sender's INBOX receives a DSN (bounce) notification.
 		senderClient := newAPIClient()
-		requireNoError(t, senderClient.login("bounce-sender@restmail.test", "password123"))
-
-		// Link account
-		_, _ = senderClient.post("/api/v1/accounts", map[string]string{
-			"address": "bounce-sender@restmail.test", "password": "password123",
-		})
+		requireNoError(t, senderClient.login("bounce-sender@restmail.test", accountPassword))
 
 		// Get account ID
 		resp, err := senderClient.get("/api/v1/accounts")
@@ -49,7 +44,7 @@ func testStage12BounceDSN(t *testing.T) {
 			}
 		}
 		if senderAccountID == 0 {
-			t.Fatal("could not find linked account for bounce-sender@restmail.test")
+			t.Fatal("could not find the account bounce-sender@restmail.test")
 		}
 
 		subject := fmt.Sprintf("E2E-bounce-%d", time.Now().UnixNano())
@@ -158,7 +153,7 @@ func testStage12BounceDSN(t *testing.T) {
 		// test, or we check if the queue worker has already bounced something.
 
 		senderClient := newAPIClient()
-		requireNoError(t, senderClient.login("bounce-sender@restmail.test", "password123"))
+		requireNoError(t, senderClient.login("bounce-sender@restmail.test", accountPassword))
 
 		resp, err := senderClient.get("/api/v1/accounts")
 		requireNoError(t, err)

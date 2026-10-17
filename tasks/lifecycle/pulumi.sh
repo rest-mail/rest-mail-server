@@ -153,7 +153,7 @@ install() {
   # Shown the moment it exists, whatever happens next.
   if [ -n "$generated" ]; then
     printf '\n  Your rest-mail admin password — this is the only time it is shown.\n'
-    show_sign_in "https://$HOST" admin "$password"
+    show_sign_in "https://$HOST" "admin@$DOMAIN" "$password"
     cat <<EOF
   Sign in to the rest-mail app with it, once the server is deployed: you will
   choose your own and enroll an authenticator. It stops working 72 hours after
@@ -216,7 +216,7 @@ verify_public() {
     refuse "https://$HOST answered, but not as rest-mail:" "$(head -c 200 <<<"$server")"
   say "ok   rest-mail $(jq -r '.data.version' <<<"$server") answers at https://$HOST"
   [ -n "$password" ] || { say "ok   skipped signing in: the password was not made here"; return; }
-  code=$(jq -nc --arg p "$password" '{username: "admin", password: $p, client: "native"}' |
+  code=$(jq -nc --arg e "admin@$DOMAIN" --arg p "$password" '{email: $e, password: $p, client: "native"}' |
     curl -sS -o "$resp" -w '%{http_code}' --max-time 15 -H 'Content-Type: application/json' \
       --data @- "https://$HOST/api/v1/auth/login")
   case $code in
