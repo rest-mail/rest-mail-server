@@ -156,11 +156,12 @@ func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(
 
 // SessionCurrent reports whether an access token minted at credential epoch
 // epoch is still good for accountID: the account exists, is active, and has
-// not changed its credentials since.
+// not ended its sessions since (a new password, a reset, 2FA turned off, an
+// admin ending them, a disable).
 type SessionCurrent func(accountID uint, epoch int) (bool, error)
 
-// RejectStaleSessions refuses access tokens minted before the account last
-// changed its credentials (they carry an older credential epoch), or whose
+// RejectStaleSessions refuses access tokens minted before the account's
+// sessions last ended (they carry an older credential epoch), or whose
 // account is gone or disabled. Access tokens are stateless and live for
 // minutes; without this, one taken before a password change or a reset keeps
 // working until it expires — long enough, after a reset has wiped the
@@ -181,7 +182,7 @@ func RejectStaleSessions(current SessionCurrent) func(http.Handler) http.Handler
 				return
 			}
 			if !ok {
-				writeError(w, http.StatusUnauthorized, "unauthorized", "This session ended when the account's credentials changed; sign in again")
+				writeError(w, http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
 				return
 			}
 			next.ServeHTTP(w, r)

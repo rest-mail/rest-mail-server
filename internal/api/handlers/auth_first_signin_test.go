@@ -79,8 +79,8 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 	return &firstSignIn{
 		db:    gdb,
 		jwt:   jwt,
-		auth:  NewAuthHandler(gdb, jwt, firstSignInKey),
-		twofa: NewTwoFactorHandler(gdb, firstSignInKey, true),
+		auth:  NewAuthHandler(gdb, jwt, firstSignInKey, nil),
+		twofa: NewTwoFactorHandler(gdb, firstSignInKey, true, nil),
 		name:  name,
 	}
 }

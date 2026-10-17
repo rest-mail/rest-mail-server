@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -26,23 +25,13 @@ type MailboxHandler struct {
 	// cache is the grants cache RequireCapability reads; deleting an account
 	// removes grants, and empties it.
 	cache *grants.Cache
+	// sessions is the cache RejectStaleSessions reads; a new password, a
+	// disable, a delete or ending the sessions empties the account's entry.
+	sessions *SessionCache
 }
 
-func NewMailboxHandler(db *gorm.DB, cache *grants.Cache) *MailboxHandler {
-	return &MailboxHandler{db: db, cache: cache}
-}
-
-// revokeSessions best-effort invalidates every live session for an account
-// after a security-relevant change (disable), so an existing refresh token can
-// no longer be exchanged for fresh access tokens. Failures are logged, not
-// fatal: the primary mutation has already succeeded.
-func (h *MailboxHandler) revokeSessions(accountID uint) {
-	if h.db == nil {
-		return
-	}
-	if err := repositories.NewRefreshTokenRepository(h.db).RevokeAllForAccount(accountID); err != nil {
-		slog.Warn("failed to revoke an account's sessions", "account_id", accountID, "error", err)
-	}
+func NewMailboxHandler(db *gorm.DB, cache *grants.Cache, sessions *SessionCache) *MailboxHandler {
+	return &MailboxHandler{db: db, cache: cache, sessions: sessions}
 }
 
 func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -157,12 +146,8 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 			}
 			// A new password replaces every password the account had, revokes
 			// every app password made under the old one and ends every session,
-			// in this transaction: none may outlive it. Its tokens die with a
-			// new credential epoch.
+			// in this transaction: none may outlive it.
 			if hashed != "" {
-				if err := tx.Model(&mailbox).Update("credential_epoch", gorm.Expr("credential_epoch + 1")).Error; err != nil {
-					return err
-				}
 				var setBy *uint
 				if claims := middleware.GetClaims(r); claims != nil {
 					id := claims.AccountID
@@ -170,18 +155,20 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 				}
 				return setAccountPassword(tx, r, mailbox.ID, hashed, setBy, time.Now())
 			}
+			// A disable ends every session too, so enabling the account again
+			// brings none of them back.
+			if req.Active != nil && !*req.Active {
+				return endSessions(tx, mailbox.ID)
+			}
 			return nil
 		})
 		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
 			return
 		}
-	}
-
-	// A disable must not leave live sessions behind: revoke every refresh token
-	// of the account so it re-authenticates. (A new password already has.)
-	if req.Active != nil && !*req.Active {
-		h.revokeSessions(mailbox.ID)
+		if hashed != "" || req.Active != nil {
+			h.sessions.Forget(mailbox.ID)
+		}
 	}
 
 	h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id)
@@ -248,6 +235,32 @@ func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cache.Invalidate()
+	h.sessions.Forget(mailbox.ID)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// EndSessions signs an account out everywhere: every refresh token it holds is
+// revoked and its credential epoch moves on, so each access token it was
+// issued is refused at its next request, on the event stream and at refresh.
+// Its passwords and app passwords stay: a mail client signed in with an app
+// password keeps working, and is revoked on its own.
+// DELETE /api/v1/admin/mailboxes/{id}/sessions
+func (h *MailboxHandler) EndSessions(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
+		return
+	}
+	var mailbox models.Mailbox
+	if err := h.db.Select("id").First(&mailbox, id).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
+		return
+	}
+	if err := h.db.Transaction(func(tx *gorm.DB) error { return endSessions(tx, mailbox.ID) }); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to end the sessions")
+		return
+	}
+	h.sessions.Forget(mailbox.ID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

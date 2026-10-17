@@ -39,14 +39,17 @@ type TwoFactorHandler struct {
 	// refused (the feature is turned off for this deployment); it does NOT
 	// weaken verification for already-active enrollments — see the config note.
 	enabled bool
+	// sessions is the cache RejectStaleSessions reads; turning 2FA off ends
+	// the account's sessions, and empties its entry.
+	sessions *SessionCache
 }
 
-func NewTwoFactorHandler(db *gorm.DB, masterKey string, enabled bool) *TwoFactorHandler {
+func NewTwoFactorHandler(db *gorm.DB, masterKey string, enabled bool, sessions *SessionCache) *TwoFactorHandler {
 	var store twoFactorStore
 	if db != nil {
 		store = repositories.NewTwoFactorRepository(db)
 	}
-	return &TwoFactorHandler{db: db, store: store, masterKey: masterKey, enabled: enabled}
+	return &TwoFactorHandler{db: db, store: store, masterKey: masterKey, enabled: enabled, sessions: sessions}
 }
 
 // twoFactorOwner is the account a session's 2FA requests act on: its own, and
@@ -274,11 +277,29 @@ func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := h.store.Delete(accountID); err != nil {
+	if err := h.disable(accountID); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to disable 2FA")
 		return
 	}
+	h.sessions.Forget(accountID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// disable revokes the account's authenticator and recovery codes and, in the
+// same transaction, ends every session of the account, this one included: a
+// session the second factor vouched for must not outlive it. Its app
+// passwords are credentials of their own, and stay. Without a database (unit
+// tests on a fake store) there are no sessions to end.
+func (h *TwoFactorHandler) disable(accountID uint) error {
+	if h.db == nil {
+		return h.store.Delete(accountID)
+	}
+	return h.db.Transaction(func(tx *gorm.DB) error {
+		if err := repositories.NewTwoFactorRepository(tx).Delete(accountID); err != nil {
+			return err
+		}
+		return endSessions(tx, accountID)
+	})
 }
 
 // verifySecondFactor checks a TOTP code or a recovery code for the account.

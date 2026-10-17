@@ -124,10 +124,10 @@ type SessionsRevoked struct {
 // RevokeAllSessions signs everybody out: every refresh token, every account's
 // access tokens.
 //
-// The order is the point. Refresh tokens go first, so nothing can be minted
-// behind the sweep; bumping the accounts' epochs first would send each
-// client to refresh, and the refresh would re-mint at the new epoch and let
-// them straight back in.
+// Refresh tokens go first, so nothing can be minted behind the sweep; a
+// refresh also refuses a token from before its account's epoch moved on, so
+// none minted earlier gets back in either way. A running API sees the new
+// epochs within its session cache's lifetime (handlers.SessionCacheTTL).
 func RevokeAllSessions(database *gorm.DB) (SessionsRevoked, error) {
 	var out SessionsRevoked
 	err := database.Transaction(func(tx *gorm.DB) error {
