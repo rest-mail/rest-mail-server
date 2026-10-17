@@ -25,7 +25,7 @@ func testStage14AppPasswords(t *testing.T) {
 	// Making one takes the mailbox's current password, entered again.
 	resp, err := client.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", accountID), map[string]string{"name": "e2e Thunderbird"})
 	requireNoError(t, err)
-	requireStatus(t, resp, http.StatusUnauthorized)
+	requireStatus(t, resp, http.StatusForbidden)
 	resp.Body.Close()
 	resp, err = client.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", accountID),
 		map[string]string{"name": "e2e Thunderbird", "password": accountPassword})
