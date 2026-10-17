@@ -94,6 +94,14 @@ exclude-operation-id:
   # Replacing the password makes every session from before it stale, the run's
   # own included, so everything after it would answer 401.
   - changeOwnPassword
+  # Needs a pending enrollment (POST /api/v1/auth/2fa/enroll, which the spec
+  # does not document) and a current code from its new authenticator; the
+  # fixture admin has neither.
+  - confirmTwoFactor
+  # Needs two-factor authentication on, and a code from its authenticator or a
+  # recovery code; the fixture admin has none. Turning it off would also end
+  # every session, the run's own included, as changeOwnPassword does.
+  - disableTwoFactor
   # Need a session that signed in with a second factor, or a fresh code from an
   # authenticator; the fixture admin has none.
   - createGrant
