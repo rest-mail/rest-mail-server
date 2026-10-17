@@ -70,6 +70,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "bans:write", Description: "Create/update IP bans", Resource: "bans", Action: "write"},
 		{Name: "bans:delete", Description: "Delete IP bans", Resource: "bans", Action: "delete"},
 		{Name: "observability:read", Description: "View pipeline analytics funnel and per-message traces", Resource: "observability", Action: "read"},
+		{Name: "audit:read", Description: "Read the audit log and verify its chain", Resource: "audit", Action: "read"},
 	}
 
 	for i := range capabilities {
@@ -123,6 +124,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		"queue:read", "queue:manage",
 		"bans:read", "bans:write", "bans:delete",
 		"observability:read",
+		"audit:read",
 	}
 	for _, capName := range adminCaps {
 		var cap models.Capability

@@ -12,9 +12,11 @@ import (
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/config"
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
 	"github.com/restmail/restmail/internal/metrics"
 	pipelineobs "github.com/restmail/restmail/internal/metrics/observer"
@@ -146,6 +148,19 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	mtastsH := handlers.NewMTASTSHandler(db)
 	tlsrptH := handlers.NewTLSReportHandler(db)
 	statsH := handlers.NewStatsHandler(db)
+	auditH := handlers.NewAuditHandler(db)
+
+	// The audit log (#343): sign-ins and every administrative change are
+	// recorded at the edge, by middleware on the routes below. Each Audit sits
+	// after the JWT middleware, to see who is acting, and after the rate limit
+	// of a route anyone may call, so nobody can write to the log faster than
+	// that limit allows.
+	auditor := middleware.NewAuditor(
+		func(e *models.AuditEntry) error { return audit.Append(db, e) },
+		func(kind, name string) (*uint, error) { return audit.ActorID(db, kind, name) },
+		jwtService,
+	)
+	auditLog := auditor.Audit
 
 	// Register DB-backed filters that need a database connection.
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
@@ -321,13 +336,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Burst: cfg.AuthRateLimitBurst,
 		})
 	}
-	r.With(authThrottle).Post("/api/v1/auth/login", authH.Login)
-	r.Post("/api/v1/auth/logout", authH.Logout)
-	r.With(authThrottle).Post("/api/v1/auth/refresh", authH.Refresh)
+	r.With(authThrottle, auditLog("auth.sign_in", middleware.AuditSignIn())).Post("/api/v1/auth/login", authH.Login)
+	// Unthrottled, so only a logout that names a session is recorded.
+	r.With(auditLog("auth.sign_out", middleware.AuditRefreshToken(), middleware.AuditIdentifiedOnly())).Post("/api/v1/auth/logout", authH.Logout)
+	r.With(authThrottle, auditLog("auth.refresh", middleware.AuditRefreshToken(), middleware.AuditFailuresOnly())).Post("/api/v1/auth/refresh", authH.Refresh)
 	// Redeem a single-use token minted by the operator command (restmail-api
 	// mint-token) or for an owner key: reset an admin who has lost every way
 	// in. Throttled like login: it guesses at a secret.
-	r.With(authThrottle).Post("/api/v1/auth/reset", authH.Reset)
+	r.With(authThrottle, auditLog("auth.reset", middleware.AuditStartedSession())).Post("/api/v1/auth/reset", authH.Reset)
 	// Owners prove themselves with a key listed in RESTMAIL_OWNER_KEYS: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
@@ -344,11 +360,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	statusKeys, _ := bootstrap.ParseStatusKeys(cfg.StatusKeys)
 	ownerH := handlers.NewOwnerHandler(db, ownerKeys, statusKeys, cfg.JWTSecret)
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
-	r.With(ownerThrottle).Post("/api/v1/auth/owner/token", ownerH.Token)
+	r.With(ownerThrottle, auditLog("auth.owner_token", middleware.AuditSignIn())).Post("/api/v1/auth/owner/token", ownerH.Token)
 	// The same challenge, signed for "status" with a key in
 	// RESTMAIL_STATUS_KEYS (or an owner key), reads the version, commit, build
 	// and start time: a deploy confirmed from outside. Same bucket.
-	r.With(ownerThrottle).Post("/api/v1/auth/owner/status", ownerH.Status)
+	r.With(ownerThrottle, auditLog("auth.owner_status")).Post("/api/v1/auth/owner/status", ownerH.Status)
 
 	// What this server is, for anyone who can reach it: how `restmail status`
 	// and the app confirm what is running. Shares the owner endpoints' bucket,
@@ -441,10 +457,10 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// An admin replaces their own password; the only call a session flagged
 		// password_change_required can make. Throttled like login: it checks a
 		// password.
-		r.With(authThrottle).Post("/api/v1/auth/password", authH.ChangePassword)
-		r.With(authThrottle).Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
-		r.With(authThrottle).Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
-		r.With(authThrottle).Post("/api/v1/auth/2fa/disable", twofaH.Disable)
+		r.With(authThrottle, auditLog("auth.password_change")).Post("/api/v1/auth/password", authH.ChangePassword)
+		r.With(authThrottle, auditLog("auth.2fa_enroll")).Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
+		r.With(authThrottle, auditLog("auth.2fa_confirm")).Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
+		r.With(authThrottle, auditLog("auth.2fa_disable")).Post("/api/v1/auth/2fa/disable", twofaH.Disable)
 
 		// Linked accounts.
 		//
@@ -458,9 +474,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// to sidestep it. The read/list/unlink routes carry no such risk.
 		r.Get("/api/v1/accounts", accountH.ListAccounts)
 		r.Get("/api/v1/accounts/{id}", accountH.GetAccount)
-		r.With(authThrottle).Post("/api/v1/accounts", accountH.LinkAccount)
-		r.Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
-		r.With(authThrottle).Post("/api/v1/accounts/test-connection", accountH.TestConnection)
+		r.With(authThrottle, auditLog("accounts.link", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts", accountH.LinkAccount)
+		r.With(auditLog("accounts.unlink")).Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
+		r.With(authThrottle, auditLog("accounts.test_connection", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts/test-connection", accountH.TestConnection)
 
 		// Folders
 		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
@@ -536,6 +552,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTMiddleware(jwtService))
+		// Every change through the admin API is recorded, including those the
+		// checks below refuse; reads are not, except of the audit log itself.
+		r.Use(auditLog("admin.change", middleware.AuditWritesOnly()))
 		// An admin token minted before the account's last credential change is dead.
 		r.Use(middleware.RejectStaleAdminSessions(adminSessionCheck(db)))
 		r.Use(middleware.AdminOnly)
@@ -663,6 +682,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// Logs
 		r.With(needs(middleware.CapMessagesRead)).Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/logs/activity", logH.ActivityLog)
+
+		// Audit log (#343): reading it is itself audited, including a read the
+		// capability check refuses.
+		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit", auditH.List)
+		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit/verify", auditH.Verify)
 
 		// Test endpoints (non-production only)
 		r.Post("/api/v1/admin/test/send", testH.SendTestEmail)

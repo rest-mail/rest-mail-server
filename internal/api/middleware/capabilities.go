@@ -32,6 +32,7 @@ package middleware
 //	bans:*       IP ban listing/creation/removal
 //	messages:read delivery log (read)
 //	observability:read  pipeline analytics funnel + per-message trace read
+//	audit:read   the audit log and its verification (read)
 //
 // The dashboard stats endpoint and the non-production test endpoints remain
 // behind AdminOnly without a finer capability: every admin role may see the
@@ -69,4 +70,9 @@ const (
 	// — which exposes per-message forensic detail including trace-only PII — can be
 	// granted or withheld independently of pipeline configuration access.
 	CapObservabilityRead = "observability:read"
+
+	// CapAuditRead gates reading the audit log (GET /admin/audit) and checking
+	// its chain (GET /admin/audit/verify). Seeded into the admin role, not
+	// readonly; superadmin's "*" satisfies it. Reading is itself audited.
+	CapAuditRead = "audit:read"
 )

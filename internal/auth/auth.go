@@ -96,13 +96,19 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 
 // GenerateTokenPair creates both access and refresh tokens for a mailbox user.
 // The refresh token carries a freshly minted jti (RegisteredClaims.ID) so the
-// caller can persist a rotation/revocation ledger row for it.
+// caller can persist a rotation/revocation ledger row for it. The access token
+// carries one of its own, which the audit log records as the session.
 func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAccountID uint) (*TokenPair, error) {
 	now := time.Now()
 
 	// Access token
+	accessJTI, err := newJTI()
+	if err != nil {
+		return nil, err
+	}
 	accessClaims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        accessJTI,
 			Subject:   fmt.Sprintf("mailbox:%d", mailboxID),
 			Issuer:    s.issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -180,8 +186,13 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, c
 	now := time.Now()
 
 	// Access token
+	accessJTI, err := newJTI()
+	if err != nil {
+		return nil, err
+	}
 	accessClaims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        accessJTI,
 			Subject:   fmt.Sprintf("admin:%d", adminUserID),
 			Issuer:    s.issuer,
 			IssuedAt:  jwt.NewNumericDate(now),

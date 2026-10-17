@@ -373,6 +373,31 @@ func TestRefreshToken_HasUniqueRoundTrippingJTI(t *testing.T) {
 	}
 }
 
+// Access tokens carry a jti of their own, which the audit log records as the
+// session: unique per token, and never the refresh token's.
+func TestAccessToken_HasItsOwnJTI(t *testing.T) {
+	svc := newTestService()
+	mailbox, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	if err != nil {
+		t.Fatalf("GenerateTokenPair: %v", err)
+	}
+	admin, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	if err != nil {
+		t.Fatalf("GenerateAdminTokenPair: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, pair := range []*TokenPair{mailbox, admin} {
+		claims, err := svc.ValidateAccessToken(pair.AccessToken)
+		if err != nil {
+			t.Fatalf("ValidateAccessToken: %v", err)
+		}
+		if claims.ID == "" || claims.ID == pair.RefreshJTI || seen[claims.ID] {
+			t.Errorf("access jti %q: want one of its own (refresh jti %q)", claims.ID, pair.RefreshJTI)
+		}
+		seen[claims.ID] = true
+	}
+}
+
 func TestDummyPasswordHash_ValidAndNeverMatches(t *testing.T) {
 	// The dummy hash must be a well-formed {BLF-CRYPT} bcrypt hash so the login
 	// not-found branch runs a real bcrypt comparison against it (the OSI-24

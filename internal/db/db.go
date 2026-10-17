@@ -211,6 +211,12 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		return fmt.Errorf("auto-migration failed: %w", err)
 	}
 
+	// The audit log, and what makes it append-only. Unlike the indexes below, a
+	// failure here stops the server: the table must never exist unguarded.
+	if err := MigrateAuditLog(db); err != nil {
+		return err
+	}
+
 	// Backfill messages.raw_size for rows created before the column existed.
 	// octet_length (not length) matches Go's len() over the stored text: it
 	// counts bytes in the database encoding, which is exactly what the writer
@@ -289,6 +295,49 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 
 	slog.Info("database migration completed")
 	return nil
+}
+
+// auditLogAppendOnlySQL makes audit_log append-only: a row trigger refuses
+// UPDATE and DELETE, a statement trigger refuses TRUNCATE, and both raise the
+// same error. CREATE OR REPLACE (Postgres 14 and later) keeps it idempotent.
+var auditLogAppendOnlySQL = []string{
+	`CREATE OR REPLACE FUNCTION audit_log_append_only() RETURNS trigger
+	LANGUAGE plpgsql AS $$
+	BEGIN
+		RAISE EXCEPTION 'audit_log is append-only';
+	END
+	$$`,
+	`CREATE OR REPLACE TRIGGER audit_log_no_update_or_delete
+	BEFORE UPDATE OR DELETE ON audit_log
+	FOR EACH ROW EXECUTE FUNCTION audit_log_append_only()`,
+	`CREATE OR REPLACE TRIGGER audit_log_no_truncate
+	BEFORE TRUNCATE ON audit_log
+	FOR EACH STATEMENT EXECUTE FUNCTION audit_log_append_only()`,
+}
+
+// auditLogMigrateLockKey serialises MigrateAuditLog across replicas starting
+// at once, which would otherwise race replacing the same function and
+// triggers: "auditmig".
+const auditLogMigrateLockKey int64 = 0x61756469746d6967
+
+// MigrateAuditLog creates the audit_log table (models.AuditEntry) and installs
+// the triggers that make it append-only, in one transaction. Idempotent;
+// AutoMigrate runs it on every start.
+func MigrateAuditLog(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", auditLogMigrateLockKey).Error; err != nil {
+			return fmt.Errorf("audit log migration failed: %w", err)
+		}
+		if err := tx.AutoMigrate(&models.AuditEntry{}); err != nil {
+			return fmt.Errorf("audit log migration failed: %w", err)
+		}
+		for _, stmt := range auditLogAppendOnlySQL {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("audit log append-only guard failed: %w", err)
+			}
+		}
+		return nil
+	})
 }
 
 // encryptPlaintextDKIMKeys migrates any plaintext domains.dkim_private_key rows
