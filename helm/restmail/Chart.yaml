@@ -10,10 +10,10 @@ description: |
   by an external operator (e.g. cert-manager). For local kind/k3s development
   against the rest-mail/testbed substrate, see values-dev.yaml.
 type: application
-version: 0.20.1
+version: 0.21.0
 # The product release this deploys: the v-less SemVer of the v* tag that built
 # the images (docker.yml).
-appVersion: "0.13.1"
+appVersion: "0.14.0"
 keywords:
   - mail
   - smtp
