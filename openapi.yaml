@@ -11,8 +11,9 @@ info:
     ## Authentication & authorization
 
 
-    The API uses seven distinct auth modes; each operation's `security` block and,
-    for admin routes, its `x-required-capability` field state which applies.
+    The API uses seven distinct auth modes; each operation's `security` block
+    states which apply, and the capability it needs as the requirement's roles
+    (OpenAPI 3.1), for example `security: [{BearerAuth: [domains:read]}]`.
 
 
     * **Session cookie** (`CookieAuth`) — the default for browser clients. Login
@@ -61,10 +62,12 @@ info:
       a change takes effect at once. An account holds the owner role's
       capabilities (`mail:read`, `mail:write`, `mail:send`, `mailbox:manage`)
       on its own mailbox without a grant, and on every account it created or
-      linked through an `owner` grant. Admin operations are gated by a named
-      capability, given per operation as `x-required-capability` (e.g.
-      `domains:read`, `queue:manage`); the superadmin wildcard `*` satisfies
-      every one. A caller missing it gets `403`.
+      linked through an `owner` grant. Every operation that needs a
+      capability names it as the roles of its `security` requirements (e.g.
+      `domains:read`, `queue:manage`, `mail:read`); the superadmin wildcard
+      `*` satisfies every one. A caller missing it gets `403` on an admin
+      operation, and `404` on a mail operation for an account it may not act
+      on, as for one that does not exist.
 
       An operation on the domain or mailbox named by its `{id}`
       (`/api/v1/admin/domains/{id}` and everything under it,
@@ -214,8 +217,8 @@ tags:
 # Authorization: Bearer header (programmatic clients). Each entry is an
 # alternative, so presenting either satisfies auth. Cookie-authenticated,
 # state-changing requests additionally require the X-CSRF-Token header (see the
-# CSRFToken parameter). Operations override with `security: []` (no auth) and
-# admin operations additionally carry an `x-required-capability`.
+# CSRFToken parameter). Operations override with `security: []` (no auth), or
+# with requirements whose roles name the capability they need.
 security:
   - CookieAuth: []
   - BearerAuth: []
@@ -804,6 +807,87 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Account"
+          links:
+            getAccount:
+              operationId: getAccount
+              parameters:
+                id: '$response.body#/data/0/id'
+            listCredentials:
+              operationId: listCredentials
+              parameters:
+                id: '$response.body#/data/0/id'
+            createAppPassword:
+              operationId: createAppPassword
+              parameters:
+                id: '$response.body#/data/0/id'
+            listFolders:
+              operationId: listFolders
+              parameters:
+                id: '$response.body#/data/0/id'
+            createFolder:
+              operationId: createFolder
+              parameters:
+                id: '$response.body#/data/0/id'
+            listMessages:
+              operationId: listMessages
+              parameters:
+                id: '$response.body#/data/0/id'
+            getQuota:
+              operationId: getQuota
+              parameters:
+                id: '$response.body#/data/0/id'
+            searchMessages:
+              operationId: searchMessages
+              parameters:
+                id: '$response.body#/data/0/id'
+            listContacts:
+              operationId: listContacts
+              parameters:
+                id: '$response.body#/data/0/id'
+            createContact:
+              operationId: createContact
+              parameters:
+                id: '$response.body#/data/0/id'
+            blockSender:
+              operationId: blockSender
+              parameters:
+                id: '$response.body#/data/0/id'
+            importContacts:
+              operationId: importContacts
+              parameters:
+                id: '$response.body#/data/0/id'
+            suggestContacts:
+              operationId: suggestContacts
+              parameters:
+                id: '$response.body#/data/0/id'
+            getVacation:
+              operationId: getVacation
+              parameters:
+                id: '$response.body#/data/0/id'
+            setVacation:
+              operationId: setVacation
+              parameters:
+                id: '$response.body#/data/0/id'
+            disableVacation:
+              operationId: disableVacation
+              parameters:
+                id: '$response.body#/data/0/id'
+            putSieveScript:
+              operationId: putSieveScript
+              parameters:
+                id: '$response.body#/data/0/id'
+            validateSieveScript:
+              operationId: validateSieveScript
+              parameters:
+                id: '$response.body#/data/0/id'
+            listQuarantine:
+              operationId: listQuarantine
+              parameters:
+                id: '$response.body#/data/0/id'
+            listCalendarEvents:
+              operationId: listCalendarEvents
+              parameters:
+                id: '$response.body#/data/0/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
     post:
@@ -829,6 +913,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateAccountRequest"
+            example:
+              address: new-account@restmail.test
+              display_name: New Account
+              password: correct-horse-battery
       responses:
         "201":
           description: Created
@@ -840,6 +928,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+          links:
+            getMailbox:
+              operationId: getMailbox
+              parameters:
+                id: '$response.body#/data/id'
+            updateMailbox:
+              operationId: updateMailbox
+              parameters:
+                id: '$response.body#/data/id'
+            deleteMailbox:
+              operationId: deleteMailbox
+              parameters:
+                id: '$response.body#/data/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -887,6 +988,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+          links:
+            unlinkAccount:
+              operationId: unlinkAccount
+              parameters:
+                id: '$response.body#/data/id'
         "401":
           description: The session itself is missing or has ended; never a refused link
         "403":
@@ -1037,6 +1143,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CreatedAppPassword"
+          links:
+            revokeCredential:
+              operationId: revokeCredential
+              parameters:
+                id: '$request.path.id'
+                credential_id: '$response.body#/data/id'
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1244,6 +1356,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateFolderRequest"
+            example:
+              name: Receipts
       responses:
         "201":
           description: Folder created
@@ -1255,6 +1369,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+          links:
+            renameFolder:
+              operationId: renameFolder
+              parameters:
+                id: '$request.path.id'
+                folder: '$response.body#/data/name'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1276,6 +1396,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RenameFolderRequest"
+            example:
+              name: Paid receipts
       responses:
         "200":
           description: Folder renamed
@@ -1287,6 +1409,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+          links:
+            deleteFolder:
+              operationId: deleteFolder
+              parameters:
+                id: '$request.path.id'
+                folder: '$response.body#/data/name'
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -1366,6 +1494,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            getThread:
+              operationId: getThread
+              parameters:
+                id: '$response.body#/data/mailbox_id'
+                threadID: '$response.body#/data/thread_id'
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -1382,6 +1516,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateMessageRequest"
+            example:
+              is_read: true
+              is_flagged: true
       responses:
         "200":
           description: Message updated
@@ -1424,6 +1561,11 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SendMessageRequest"
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test, someone@unreachable.test]
+              subject: Hello
+              body_text: Sent through the REST API.
       responses:
         "201":
           description: Message sent
@@ -1435,6 +1577,31 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            getMessage:
+              operationId: getMessage
+              parameters:
+                id: '$response.body#/data/id'
+            updateMessage:
+              operationId: updateMessage
+              parameters:
+                id: '$response.body#/data/id'
+            getRawMessage:
+              operationId: getRawMessage
+              parameters:
+                id: '$response.body#/data/id'
+            forwardMessage:
+              operationId: forwardMessage
+              parameters:
+                id: '$response.body#/data/id'
+            listAttachments:
+              operationId: listAttachments
+              parameters:
+                id: '$response.body#/data/id'
+            getMessageTrace:
+              operationId: getMessageTrace
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1456,6 +1623,11 @@ paths:
             text/plain:
               schema:
                 type: string
+          links:
+            deleteMessage:
+              operationId: deleteMessage
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1476,6 +1648,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ForwardMessageRequest"
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test]
+              body_text: See below.
       responses:
         "201":
           description: Message forwarded
@@ -1508,6 +1684,11 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/DraftRequest"
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test]
+              subject: Draft
+              body_text: Not sent yet.
       responses:
         "201":
           description: Draft saved
@@ -1519,6 +1700,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            updateDraft:
+              operationId: updateDraft
+              parameters:
+                id: '$response.body#/data/id'
 
   /api/v1/messages/draft/{id}:
     parameters:
@@ -1537,6 +1723,11 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateDraftRequest"
+            example:
+              from: admin@restmail.test
+              to: [admin@restmail.test]
+              subject: Draft, edited
+              body_text: Ready to send.
       responses:
         "200":
           description: Draft updated
@@ -1548,6 +1739,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+          links:
+            sendDraft:
+              operationId: sendDraft
+              parameters:
+                id: '$response.body#/data/id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1829,6 +2025,17 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Contact"
+          links:
+            updateContact:
+              operationId: updateContact
+              parameters:
+                id: '$request.path.id'
+                cid: '$response.body#/data/id'
+            deleteContact:
+              operationId: deleteContact
+              parameters:
+                id: '$request.path.id'
+                cid: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -1905,6 +2112,8 @@ paths:
                 email:
                   type: string
                   format: email
+            example:
+              email: spam@example.org
       responses:
         "200":
           description: Sender blocked
@@ -1934,6 +2143,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ImportContactsRequest"
+            example:
+              contacts:
+                - email: carol@example.org
+                  name: Carol
       responses:
         "200":
           description: Import result
@@ -2069,6 +2282,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/SieveScript"
+          links:
+            deleteSieveScript:
+              operationId: deleteSieveScript
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -2085,6 +2303,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PutSieveRequest"
+            example:
+              script: |
+                require ["fileinto"];
+                if header :contains "subject" "invoice" {
+                  fileinto "Invoices";
+                }
+              active: true
       responses:
         "200":
           description: Sieve script saved
@@ -2096,6 +2321,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/SieveScript"
+          links:
+            getSieveScript:
+              operationId: getSieveScript
+              parameters:
+                id: '$request.path.id'
     delete:
       operationId: deleteSieveScript
       tags: [Sieve]
@@ -2142,6 +2372,12 @@ paths:
               properties:
                 script:
                   type: string
+            example:
+              script: |
+                require ["fileinto"];
+                if header :contains "subject" "invoice" {
+                  fileinto "Invoices";
+                }
       responses:
         "200":
           description: Validation result
@@ -2482,6 +2718,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateDomainRequest"
+            example:
+              name: example.org
+              server_type: restmail
       responses:
         "201":
           description: Domain created, not yet live
@@ -2493,6 +2732,43 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Domain"
+          links:
+            getDomain:
+              operationId: getDomain
+              parameters:
+                id: '$response.body#/data/id'
+            updateDomain:
+              operationId: updateDomain
+              parameters:
+                id: '$response.body#/data/id'
+            listAllowlist:
+              operationId: listAllowlist
+              parameters:
+                id: '$response.body#/data/id'
+            addToAllowlist:
+              operationId: addToAllowlist
+              parameters:
+                id: '$response.body#/data/id'
+            listBlocklist:
+              operationId: listBlocklist
+              parameters:
+                id: '$response.body#/data/id'
+            addToBlocklist:
+              operationId: addToBlocklist
+              parameters:
+                id: '$response.body#/data/id'
+            setDKIMKey:
+              operationId: setDKIMKey
+              parameters:
+                id: '$response.body#/data/id'
+            domainDNSCheck:
+              operationId: domainDNSCheck
+              parameters:
+                id: '$response.body#/data/id'
+            setMtaStsPolicy:
+              operationId: setMtaStsPolicy
+              parameters:
+                id: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
@@ -2744,6 +3020,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateAliasRequest"
+            example:
+              source_address: sales@restmail.test
+              destination_address: admin@restmail.test
       responses:
         "201":
           description: Alias created
@@ -2755,6 +3034,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Alias"
+          links:
+            getAlias:
+              operationId: getAlias
+              parameters:
+                id: '$response.body#/data/id'
+            updateAlias:
+              operationId: updateAlias
+              parameters:
+                id: '$response.body#/data/id'
+            deleteAlias:
+              operationId: deleteAlias
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -2873,6 +3165,15 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Pipeline"
+          links:
+            updatePipeline:
+              operationId: updatePipeline
+              parameters:
+                id: '$response.body#/data/id'
+            deletePipeline:
+              operationId: deletePipeline
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -3103,6 +3404,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CustomFilter"
+          links:
+            getCustomFilter:
+              operationId: getCustomFilter
+              parameters:
+                id: '$response.body#/data/id'
+            updateCustomFilter:
+              operationId: updateCustomFilter
+              parameters:
+                id: '$response.body#/data/id'
+            testCustomFilter:
+              operationId: testCustomFilter
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -3254,6 +3568,11 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+          links:
+            deleteCustomFilter:
+              operationId: deleteCustomFilter
+              parameters:
+                id: '$request.path.id'
         "400":
           description: Filter config contains no script, or invalid request
           content:
@@ -3329,6 +3648,19 @@ paths:
                     type: integer
                   offset:
                     type: integer
+          links:
+            getQueueEntry:
+              operationId: getQueueEntry
+              parameters:
+                id: '$response.body#/items/0/id'
+            retryQueueEntry:
+              operationId: retryQueueEntry
+              parameters:
+                id: '$response.body#/items/0/id'
+            bounceQueueEntry:
+              operationId: bounceQueueEntry
+              parameters:
+                id: '$response.body#/items/0/id'
 
   /api/v1/admin/queue/stats:
     get:
@@ -3364,6 +3696,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
+            example:
+              ids: [987654]
       responses:
         "200":
           description: Bulk retry result
@@ -3390,6 +3724,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
+            example:
+              ids: [987654]
       responses:
         "200":
           description: Bulk bounce result
@@ -3416,6 +3752,8 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
+            example:
+              ids: [987654]
       responses:
         "200":
           description: Bulk delete result
@@ -3519,6 +3857,11 @@ paths:
                       status:
                         type: string
                         example: bounced
+          links:
+            deleteQueueEntry:
+              operationId: deleteQueueEntry
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -3572,6 +3915,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+          links:
+            removeFromAllowlist:
+              operationId: removeFromAllowlist
+              parameters:
+                id: '$request.path.id'
+                eid: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
 
@@ -3645,6 +3994,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+          links:
+            removeFromBlocklist:
+              operationId: removeFromBlocklist
+              parameters:
+                id: '$request.path.id'
+                eid: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
 
@@ -3733,6 +4088,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMEntry"
+          links:
+            deleteDKIMKey:
+              operationId: deleteDKIMKey
+              parameters:
+                id: '$request.path.id'
         "400":
           description: The body is not JSON, or lacks `selector` or `private_key` (`bad_request`)
         "404":
@@ -3810,6 +4170,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Certificate"
+          links:
+            getCertificate:
+              operationId: getCertificate
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -3834,6 +4199,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CertificateDetail"
+          links:
+            deleteCertificate:
+              operationId: deleteCertificate
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -3912,6 +4282,12 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateBanRequest"
+            example:
+              ip: 192.0.2.10
+              reason: Repeated failed sign-ins
+              protocol: all
+              duration: 1h
+              created_by: admin@restmail.test
       responses:
         "201":
           description: Ban created
@@ -3923,6 +4299,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Ban"
+          links:
+            deleteBan:
+              operationId: deleteBan
+              parameters:
+                id: '$response.body#/data/id'
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -4990,6 +5371,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
+          links:
+            deleteMtaStsPolicy:
+              operationId: deleteMtaStsPolicy
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -5005,9 +5391,14 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SetMTASTSPolicyRequest"
+            example:
+              mode: testing
+              mx_hosts: mail.example.org
+              max_age: 86400
+              active: true
       responses:
-        "200":
-          description: Policy updated
+        "201":
+          description: Policy created
           content:
             application/json:
               schema:
@@ -5016,8 +5407,13 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
-        "201":
-          description: Policy created
+          links:
+            getMtaStsPolicy:
+              operationId: getMtaStsPolicy
+              parameters:
+                id: '$request.path.id'
+        "200":
+          description: Policy updated
           content:
             application/json:
               schema:
@@ -5040,6 +5436,11 @@ paths:
       responses:
         "204":
           description: Policy deleted
+          links:
+            deleteDomain:
+              operationId: deleteDomain
+              parameters:
+                id: '$request.path.id'
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -5188,6 +5589,11 @@ paths:
                   type: string
                 body:
                   type: string
+            example:
+              from: postmaster@restmail.test
+              to: admin@restmail.test
+              subject: Test
+              body: A test message.
       responses:
         "201":
           description: Test message created

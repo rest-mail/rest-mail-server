@@ -1,8 +1,10 @@
 """vertrag hooks for the contract tests (#376).
 
 Only what the spec cannot hold: the fixture's passwords, which no spec example
-should carry, and the refresh token a sign-in hands out. Every identifier the
-run needs comes from the spec's own links instead.
+should carry; the refresh token a sign-in hands out; a fresh key pair; and the
+id of the domain the run created, where a request carries it in its body
+rather than its path (links fill only parameters). Every other identifier the
+run needs comes from the spec's own links.
 
 The principals are the E2E fixture's (tests/e2e/contract_principals_test.go),
 read from the file it writes.
@@ -10,11 +12,16 @@ read from the file it writes.
 import base64
 import json
 import os
+import subprocess
+import tempfile
 
 import vertrag_hooks as hooks
 
 ADMIN = "admin@restmail.test"
 ADMIN_PASSWORD = "admin123!@"
+# A seeded account that nobody owns, to link (cmd/seed's fixture password).
+LINKABLE = "eve@restmail.test"
+LINKABLE_PASSWORD = "password123"
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
 
@@ -67,9 +74,67 @@ def confirm_with_the_admin_password(transaction):
 
 
 @hooks.before("linkAccount")
-def link_the_ordinary_account(transaction):
-    ordinary = principals()["ordinary"]
-    hooks.set_json(transaction, {"address": ordinary["address"], "password": ordinary["password"]})
+def link_a_seeded_account(transaction):
+    hooks.set_json(transaction, {"address": LINKABLE, "password": LINKABLE_PASSWORD})
+
+
+@hooks.after("createDomain")
+def keep_the_created_domain(transaction):
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    hooks.stash["domain_id"] = data.get("id")
+    hooks.stash["domain"] = data.get("name")
+
+
+def on_the_created_domain(transaction, **fields):
+    body = hooks.get_json(transaction)
+    body["domain_id"] = hooks.stash.get("domain_id")
+    body.update(fields)
+    hooks.set_json(transaction, body)
+
+
+@hooks.before("createPipeline")
+def a_pipeline_on_the_created_domain(transaction):
+    on_the_created_domain(transaction, direction="inbound", active=False,
+                          filters=[{"name": "header_validate", "config": {}}])
+
+
+@hooks.after("createPipeline")
+def keep_the_created_pipeline(transaction):
+    hooks.stash["pipeline_id"] = (hooks.get_json(transaction, "real").get("data") or {}).get("id")
+
+
+@hooks.before("testPipeline")
+def test_the_created_pipeline(transaction):
+    hooks.set_json(transaction, {"pipeline_id": hooks.stash.get("pipeline_id"), "email": {}})
+
+
+@hooks.before("createCustomFilter")
+def a_custom_filter_on_the_created_domain(transaction):
+    on_the_created_domain(transaction)
+
+
+def openssl(*args):
+    subprocess.run(["openssl"] + list(args), check=True, capture_output=True)
+
+
+@hooks.before("setDKIMKey")
+def a_fresh_signing_key(transaction):
+    with tempfile.TemporaryDirectory() as d:
+        key = os.path.join(d, "dkim.key")
+        openssl("genrsa", "-out", key, "2048")
+        hooks.set_json(transaction, {"selector": "contract", "private_key": open(key).read()})
+
+
+@hooks.before("createCertificate")
+def a_self_signed_certificate(transaction):
+    name = hooks.stash.get("domain") or "example.org"
+    with tempfile.TemporaryDirectory() as d:
+        key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
+        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
+                "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
+                "-keyout", key, "-out", cert)
+        on_the_created_domain(transaction, cert_pem=open(cert).read(), key_pem=open(key).read(),
+                              auto_renew=False)
 
 
 @hooks.before("RestMail API > /api/v1/auth/protocol-sign-in > * > 200 > application/json")
