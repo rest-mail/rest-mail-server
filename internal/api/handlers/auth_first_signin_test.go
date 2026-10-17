@@ -163,7 +163,7 @@ func (f *firstSignIn) enrollTOTP(t *testing.T, token string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rr := f.call(token, http.HandlerFunc(f.twofa.Confirm), map[string]string{"code": code}); rr.Code != http.StatusNoContent {
+	if rr := f.call(token, http.HandlerFunc(f.twofa.Confirm), map[string]string{"totp_code": code}); rr.Code != http.StatusNoContent {
 		t.Fatalf("2fa confirm = %d %s", rr.Code, rr.Body)
 	}
 	return env.Data.Secret
@@ -271,7 +271,7 @@ func TestFirstSignIn_PasswordAndAuthenticatorUnlockTheAccount(t *testing.T) {
 	}
 
 	// And 2FA stays: a required authenticator cannot be switched off.
-	if rr := f.call(done.AccessToken, http.HandlerFunc(f.twofa.Disable), map[string]string{"code": totpNow(t, secret)}); rr.Code != http.StatusForbidden {
+	if rr := f.call(done.AccessToken, http.HandlerFunc(f.twofa.Disable), map[string]string{"totp_code": totpNow(t, secret)}); rr.Code != http.StatusForbidden {
 		t.Errorf("disable required 2FA = %d %s, want 403", rr.Code, rr.Body)
 	}
 }
@@ -285,7 +285,8 @@ func TestChangePassword_RefusesBadRequests(t *testing.T) {
 		want                int
 	}{
 		// A stolen access token alone must not be enough to take the account.
-		{"wrong current password", "not-the-password-at-all", "a-brand-new-passphrase", http.StatusUnauthorized},
+		// 403, never 401: the session is still good (#392).
+		{"wrong current password", "not-the-password-at-all", "a-brand-new-passphrase", http.StatusForbidden},
 		{"too short", bootstrapPassword, "short", http.StatusUnprocessableEntity},
 		{"unchanged", bootstrapPassword, bootstrapPassword, http.StatusUnprocessableEntity},
 		{"missing new", bootstrapPassword, "", http.StatusUnprocessableEntity},

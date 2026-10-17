@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -406,8 +407,8 @@ func TestAccountPasswordChangeRevokesSessions(t *testing.T) {
 		h.ChangePassword(rr, req)
 		return rr
 	}
-	if rr := change("wrong", "a brand new passphrase"); rr.Code != http.StatusUnauthorized {
-		t.Fatalf("wrong current password: %d", rr.Code)
+	if rr := change("wrong", "a brand new passphrase"); rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"code":"invalid_password"`) {
+		t.Fatalf("wrong current password: %d %s", rr.Code, rr.Body.String())
 	}
 	if rr := change("password123", "a brand new passphrase"); rr.Code != http.StatusOK {
 		t.Fatalf("change: %d %s", rr.Code, rr.Body.String())

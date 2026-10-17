@@ -164,7 +164,7 @@ func TestEscalation_EligibleGrantGivesNothingUntilSwitchedOn(t *testing.T) {
 		body, status, code string
 	}{
 		{`{"reason":"rotate the DKIM keys"}`, "403", "totp_required"},
-		{activateBody("rotate the DKIM keys", 60, "not-a-code"), "403", "totp_invalid"},
+		{activateBody("rotate the DKIM keys", 60, "not-a-code"), "403", "invalid_totp"},
 		{activateBody("  ", 60, f.code(t, "climber")), "422", "validation_failed"},
 		{activateBody("rotate the DKIM keys", 241, f.code(t, "climber")), "422", "validation_failed"},
 		{activateBody("rotate the DKIM keys", 0, f.code(t, "climber")), "422", "validation_failed"},
@@ -373,8 +373,8 @@ func TestEscalation_ARecoveryCodeWorksOnceAndARefusalLeavesItUnused(t *testing.T
 	if rr := f.activate(tok, super, withRecovery("lost my phone", codes[0])); rr.Code != http.StatusCreated {
 		t.Fatalf("activate with a recovery code = %d %s", rr.Code, rr.Body.String())
 	}
-	if rr := f.activate(tok, readonly, withRecovery("again", codes[0])); grantErrorCode(rr) != "totp_invalid" {
-		t.Errorf("the same recovery code again = %d %s, want totp_invalid", rr.Code, rr.Body.String())
+	if rr := f.activate(tok, readonly, withRecovery("again", codes[0])); grantErrorCode(rr) != "invalid_totp" {
+		t.Errorf("the same recovery code again = %d %s, want invalid_totp", rr.Code, rr.Body.String())
 	}
 	// Refused after the code was checked: the code is still there to use.
 	if rr := f.activate(tok, super, withRecovery("twice", codes[1])); grantErrorCode(rr) != "already_active" {

@@ -222,7 +222,7 @@ func TestFreshInstall_EndToEnd(t *testing.T) {
 		}
 		return c
 	}
-	f.expect(f.do(http.MethodPost, "/api/v1/auth/2fa/confirm", setup.bearer(), fmt.Sprintf(`{"code":%q}`, code())), http.StatusNoContent, "confirm", nil)
+	f.expect(f.do(http.MethodPost, "/api/v1/auth/2fa/confirm", setup.bearer(), fmt.Sprintf(`{"totp_code":%q}`, code())), http.StatusNoContent, "confirm", nil)
 	f.expect(f.login(freshAdmin, freshAdminPW, ""), http.StatusUnauthorized, "signing in without the code", nil)
 	adminS := f.signIn(freshAdmin, freshAdminPW, code())
 	if len(adminS.SetupRequired) != 0 {

@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import {
+  ApiError,
   getTwoFactorStatus,
   enrollTwoFactor,
   confirmTwoFactor,
@@ -13,6 +14,19 @@ import {
   type TwoFactorStatus,
   type TwoFactorEnrollment,
 } from '@/api/client';
+
+// refusalMessage says which code was wrong. A refused code is a 403 with its
+// reason, and this session is still good; anything else shows the API's own
+// message.
+function refusalMessage(e: unknown): string {
+  if (e instanceof ApiError && e.code === 'invalid_totp') {
+    return 'That code is not right: enter the current one from your authenticator';
+  }
+  if (e instanceof ApiError && e.code === 'invalid_recovery_code') {
+    return 'That recovery code is not right, or has been used already';
+  }
+  return e instanceof Error ? e.message : 'Invalid code';
+}
 
 /**
  * TwoFactorView surfaces the server's TOTP 2FA (two_factor.go) for the signed-in
@@ -78,7 +92,7 @@ export function TwoFactorView() {
       setConfirmCode('');
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Invalid code');
+      setError(refusalMessage(e));
     } finally {
       setBusy(false);
     }
@@ -102,7 +116,7 @@ export function TwoFactorView() {
       setDisableUseRecovery(false);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Invalid code');
+      setError(refusalMessage(e));
     } finally {
       setBusy(false);
     }
