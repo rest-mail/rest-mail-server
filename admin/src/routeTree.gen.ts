@@ -19,7 +19,7 @@ import { Route as DomainsIndexRouteImport } from './routes/domains/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CustomFiltersIndexRouteImport } from './routes/custom-filters/index'
 import { Route as AliasesIndexRouteImport } from './routes/aliases/index'
-import { Route as AdminUsersIndexRouteImport } from './routes/admin-users/index'
+import { Route as GrantsIndexRouteImport } from './routes/grants/index'
 import { Route as SettingsTwoFactorRouteImport } from './routes/settings/two-factor'
 import { Route as SettingsTlsReportsRouteImport } from './routes/settings/tls-reports'
 import { Route as SettingsMtaStsRouteImport } from './routes/settings/mta-sts'
@@ -38,8 +38,6 @@ import { Route as CustomFiltersNewRouteImport } from './routes/custom-filters/ne
 import { Route as CustomFiltersIdRouteImport } from './routes/custom-filters/$id'
 import { Route as AliasesNewRouteImport } from './routes/aliases/new'
 import { Route as AliasesIdRouteImport } from './routes/aliases/$id'
-import { Route as AdminUsersNewRouteImport } from './routes/admin-users/new'
-import { Route as AdminUsersIdRouteImport } from './routes/admin-users/$id'
 import { Route as MessagesIdTraceRouteImport } from './routes/messages/$id/trace'
 
 const LoginRoute = LoginRouteImport.update({
@@ -92,9 +90,9 @@ const AliasesIndexRoute = AliasesIndexRouteImport.update({
   path: '/aliases/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminUsersIndexRoute = AdminUsersIndexRouteImport.update({
-  id: '/admin-users/',
-  path: '/admin-users/',
+const GrantsIndexRoute = GrantsIndexRouteImport.update({
+  id: '/grants/',
+  path: '/grants/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsTwoFactorRoute = SettingsTwoFactorRouteImport.update({
@@ -187,16 +185,6 @@ const AliasesIdRoute = AliasesIdRouteImport.update({
   path: '/aliases/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminUsersNewRoute = AdminUsersNewRouteImport.update({
-  id: '/admin-users/new',
-  path: '/admin-users/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AdminUsersIdRoute = AdminUsersIdRouteImport.update({
-  id: '/admin-users/$id',
-  path: '/admin-users/$id',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const MessagesIdTraceRoute = MessagesIdTraceRouteImport.update({
   id: '/messages/$id/trace',
   path: '/messages/$id/trace',
@@ -206,8 +194,6 @@ const MessagesIdTraceRoute = MessagesIdTraceRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/admin-users/$id': typeof AdminUsersIdRoute
-  '/admin-users/new': typeof AdminUsersNewRoute
   '/aliases/$id': typeof AliasesIdRoute
   '/aliases/new': typeof AliasesNewRoute
   '/custom-filters/$id': typeof CustomFiltersIdRoute
@@ -226,7 +212,7 @@ export interface FileRoutesByFullPath {
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
-  '/admin-users/': typeof AdminUsersIndexRoute
+  '/grants/': typeof GrantsIndexRoute
   '/aliases/': typeof AliasesIndexRoute
   '/custom-filters/': typeof CustomFiltersIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -240,8 +226,6 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/admin-users/$id': typeof AdminUsersIdRoute
-  '/admin-users/new': typeof AdminUsersNewRoute
   '/aliases/$id': typeof AliasesIdRoute
   '/aliases/new': typeof AliasesNewRoute
   '/custom-filters/$id': typeof CustomFiltersIdRoute
@@ -260,7 +244,7 @@ export interface FileRoutesByTo {
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
-  '/admin-users': typeof AdminUsersIndexRoute
+  '/grants': typeof GrantsIndexRoute
   '/aliases': typeof AliasesIndexRoute
   '/custom-filters': typeof CustomFiltersIndexRoute
   '/dashboard': typeof DashboardIndexRoute
@@ -275,8 +259,6 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
-  '/admin-users/$id': typeof AdminUsersIdRoute
-  '/admin-users/new': typeof AdminUsersNewRoute
   '/aliases/$id': typeof AliasesIdRoute
   '/aliases/new': typeof AliasesNewRoute
   '/custom-filters/$id': typeof CustomFiltersIdRoute
@@ -295,7 +277,7 @@ export interface FileRoutesById {
   '/settings/mta-sts': typeof SettingsMtaStsRoute
   '/settings/tls-reports': typeof SettingsTlsReportsRoute
   '/settings/two-factor': typeof SettingsTwoFactorRoute
-  '/admin-users/': typeof AdminUsersIndexRoute
+  '/grants/': typeof GrantsIndexRoute
   '/aliases/': typeof AliasesIndexRoute
   '/custom-filters/': typeof CustomFiltersIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
@@ -311,8 +293,6 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
-    | '/admin-users/$id'
-    | '/admin-users/new'
     | '/aliases/$id'
     | '/aliases/new'
     | '/custom-filters/$id'
@@ -331,7 +311,7 @@ export interface FileRouteTypes {
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
-    | '/admin-users/'
+    | '/grants/'
     | '/aliases/'
     | '/custom-filters/'
     | '/dashboard/'
@@ -345,8 +325,6 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
-    | '/admin-users/$id'
-    | '/admin-users/new'
     | '/aliases/$id'
     | '/aliases/new'
     | '/custom-filters/$id'
@@ -365,7 +343,7 @@ export interface FileRouteTypes {
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
-    | '/admin-users'
+    | '/grants'
     | '/aliases'
     | '/custom-filters'
     | '/dashboard'
@@ -379,8 +357,6 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
-    | '/admin-users/$id'
-    | '/admin-users/new'
     | '/aliases/$id'
     | '/aliases/new'
     | '/custom-filters/$id'
@@ -399,7 +375,7 @@ export interface FileRouteTypes {
     | '/settings/mta-sts'
     | '/settings/tls-reports'
     | '/settings/two-factor'
-    | '/admin-users/'
+    | '/grants/'
     | '/aliases/'
     | '/custom-filters/'
     | '/dashboard/'
@@ -414,8 +390,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
-  AdminUsersIdRoute: typeof AdminUsersIdRoute
-  AdminUsersNewRoute: typeof AdminUsersNewRoute
   AliasesIdRoute: typeof AliasesIdRoute
   AliasesNewRoute: typeof AliasesNewRoute
   CustomFiltersIdRoute: typeof CustomFiltersIdRoute
@@ -434,7 +408,7 @@ export interface RootRouteChildren {
   SettingsMtaStsRoute: typeof SettingsMtaStsRoute
   SettingsTlsReportsRoute: typeof SettingsTlsReportsRoute
   SettingsTwoFactorRoute: typeof SettingsTwoFactorRoute
-  AdminUsersIndexRoute: typeof AdminUsersIndexRoute
+  GrantsIndexRoute: typeof GrantsIndexRoute
   AliasesIndexRoute: typeof AliasesIndexRoute
   CustomFiltersIndexRoute: typeof CustomFiltersIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
@@ -518,11 +492,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AliasesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin-users/': {
-      id: '/admin-users/'
-      path: '/admin-users'
-      fullPath: '/admin-users/'
-      preLoaderRoute: typeof AdminUsersIndexRouteImport
+    '/grants/': {
+      id: '/grants/'
+      path: '/grants'
+      fullPath: '/grants/'
+      preLoaderRoute: typeof GrantsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/two-factor': {
@@ -651,20 +625,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AliasesIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin-users/new': {
-      id: '/admin-users/new'
-      path: '/admin-users/new'
-      fullPath: '/admin-users/new'
-      preLoaderRoute: typeof AdminUsersNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/admin-users/$id': {
-      id: '/admin-users/$id'
-      path: '/admin-users/$id'
-      fullPath: '/admin-users/$id'
-      preLoaderRoute: typeof AdminUsersIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/messages/$id/trace': {
       id: '/messages/$id/trace'
       path: '/messages/$id/trace'
@@ -678,8 +638,6 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
-  AdminUsersIdRoute: AdminUsersIdRoute,
-  AdminUsersNewRoute: AdminUsersNewRoute,
   AliasesIdRoute: AliasesIdRoute,
   AliasesNewRoute: AliasesNewRoute,
   CustomFiltersIdRoute: CustomFiltersIdRoute,
@@ -698,7 +656,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsMtaStsRoute: SettingsMtaStsRoute,
   SettingsTlsReportsRoute: SettingsTlsReportsRoute,
   SettingsTwoFactorRoute: SettingsTwoFactorRoute,
-  AdminUsersIndexRoute: AdminUsersIndexRoute,
+  GrantsIndexRoute: GrantsIndexRoute,
   AliasesIndexRoute: AliasesIndexRoute,
   CustomFiltersIndexRoute: CustomFiltersIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,

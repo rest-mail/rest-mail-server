@@ -39,8 +39,9 @@ func main() {
 
 	showVersion := flag.Bool("version", false, "Print the version and exit")
 	apiURL := flag.String("api", "http://localhost:8080", "REST API base URL")
-	adminUser := flag.String("user", "", "Admin username for login (or set RESTMAIL_ADMIN_USERNAME)")
-	adminPass := flag.String("pass", "", "Admin password (or set RESTMAIL_ADMIN_PASSWORD)")
+	adminUser := flag.String("user", "", "The admin account's address, to sign in with (or set RESTMAIL_ADMIN_ADDRESS)")
+	adminPass := flag.String("pass", "", "Its password (or set RESTMAIL_ADMIN_PASSWORD)")
+	adminCode := flag.String("code", "", "A current code from its authenticator, if it has 2FA (or set RESTMAIL_ADMIN_CODE)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("restmail", version)
@@ -48,13 +49,17 @@ func main() {
 	}
 
 	// Prefer flags, fall back to env vars
-	username := *adminUser
-	if username == "" {
-		username = os.Getenv("RESTMAIL_ADMIN_USERNAME")
+	address := *adminUser
+	if address == "" {
+		address = os.Getenv("RESTMAIL_ADMIN_ADDRESS")
 	}
 	pass := *adminPass
 	if pass == "" {
 		pass = os.Getenv("RESTMAIL_ADMIN_PASSWORD")
+	}
+	code := *adminCode
+	if code == "" {
+		code = os.Getenv("RESTMAIL_ADMIN_CODE")
 	}
 
 	client := apiclient.New(*apiURL)
@@ -62,8 +67,8 @@ func main() {
 	// Login as admin to get a token for API calls
 	token := ""
 	var capabilities []string
-	if username != "" && pass != "" {
-		loginResp, err := client.LoginAdmin(username, pass)
+	if address != "" && pass != "" {
+		loginResp, err := client.Login(address, pass, code)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: admin login failed: %v\n", err)
 		} else {
@@ -71,7 +76,7 @@ func main() {
 			capabilities = loginResp.Data.Capabilities
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "hint: set -user/-pass flags or RESTMAIL_ADMIN_USERNAME/RESTMAIL_ADMIN_PASSWORD env vars for admin access")
+		fmt.Fprintln(os.Stderr, "hint: set -user/-pass (and -code) flags or RESTMAIL_ADMIN_ADDRESS/RESTMAIL_ADMIN_PASSWORD env vars for admin access")
 	}
 
 	model := console.NewModel(client, token, capabilities)

@@ -12,7 +12,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 	// domain management, user CRUD, inbox browsing, and compose/send.
 
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
@@ -47,7 +47,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 
 	t.Run("ConsoleUserCreation", func(t *testing.T) {
 		// Create a user
-		mb := createMailbox(t, adminClient, "consoleuser@restmail.test", adminPassword, "Console User")
+		mb := createMailbox(t, adminClient, "consoleuser@restmail.test", accountPassword, "Console User")
 		t.Logf("Created mailbox: %+v", mb)
 
 		// Verify it shows in list
@@ -97,7 +97,7 @@ func testStage8ConsoleFlows(t *testing.T) {
 
 	t.Run("ConsoleInboxBrowsing", func(t *testing.T) {
 		// Login as a seeded product user and browse inbox (same API the console
-		// uses). restmailInbox resolves the webmail-account id.
+		// uses). restmailInbox finds the account id.
 		client, acctID := restmailInbox(t, "eve@restmail.test", "password123")
 
 		// List folders

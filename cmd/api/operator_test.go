@@ -95,11 +95,11 @@ func TestMintToken_LetsAnAdminBackIn(t *testing.T) {
 		t.Errorf("setup mint: status %d, stdout %q, stderr %s; want %d bad_flag", status, out, errOut, exitUsage)
 	}
 
-	status, _, errOut = run("mint-token", "--purpose", "reset-admin", "--username", "nobody")
-	if status != exitNoSuchAdmin || errorCodeIn(t, errOut) != "no_such_admin" {
+	status, _, errOut = run("mint-token", "--purpose", "reset-admin", "--address", "nobody@example.com")
+	if status != exitNoSuchAccount || errorCodeIn(t, errOut) != "no_such_account" {
 		t.Errorf("reset for nobody: status %d, stderr %s", status, errOut)
 	}
-	status, out, errOut = run("mint-token", "--purpose", "reset-admin", "--username", "admin", "--lifetime", "5m")
+	status, out, errOut = run("mint-token", "--purpose", "reset-admin", "--address", adminAddress, "--lifetime", "5m")
 	if status != exitOK {
 		t.Fatalf("reset mint: status %d, stderr %s", status, errOut)
 	}
@@ -119,7 +119,7 @@ func TestMintToken_LetsAnAdminBackIn(t *testing.T) {
 // token's JSON and nothing else, whatever the server code logs.
 func TestMintToken_StdoutIsOnlyTheResult(t *testing.T) {
 	bootstrapAdmin(t, scratchDatabase(t))
-	status, out, _ := run("mint-token", "--purpose", "reset-admin", "--username", "admin")
+	status, out, _ := run("mint-token", "--purpose", "reset-admin", "--address", adminAddress)
 	if status != exitOK {
 		t.Fatalf("status %d", status)
 	}
@@ -135,7 +135,7 @@ func TestOperator_UsageErrorsAreJSONWithStatus2(t *testing.T) {
 		{"mint-token", "--purpose", "everything"},
 		{"mint-token", "--purpose", "setup"},
 		{"mint-token", "--purpose", "reset-admin"},
-		{"mint-token", "--purpose", "reset-admin", "--username", "admin", "--lifetime", "48h"},
+		{"mint-token", "--purpose", "reset-admin", "--address", adminAddress, "--lifetime", "48h"},
 		{"mint-token", "--unknown-flag"},
 	} {
 		status, out, errOut := run(args...)
@@ -156,10 +156,10 @@ func TestOperator_UsageErrorsAreJSONWithStatus2(t *testing.T) {
 func TestOperator_StderrIsOnlyTheError(t *testing.T) {
 	bootstrapAdmin(t, scratchDatabase(t))
 	t.Setenv("JWT_SECRET", "") // the development default: config.Load warns about it
-	if status, _, _ := run("mint-token", "--purpose", "reset-admin", "--username", "admin"); status != exitOK {
+	if status, _, _ := run("mint-token", "--purpose", "reset-admin", "--address", adminAddress); status != exitOK {
 		t.Fatal("first mint failed")
 	}
-	_, _, errOut := run("mint-token", "--purpose", "reset-admin", "--username", "nobody")
+	_, _, errOut := run("mint-token", "--purpose", "reset-admin", "--address", "nobody@example.com")
 	if bytes.Count([]byte(errOut), []byte("\n")) != 1 {
 		t.Errorf("stderr has more than the one error line: %q", errOut)
 	}
@@ -178,7 +178,7 @@ func TestMintToken_NothingElseOnTheRealStdout(t *testing.T) {
 	bootstrapAdmin(t, scratchDatabase(t))
 
 	cmd := exec.Command(os.Args[0], "-test.run=^TestMintToken_NothingElseOnTheRealStdout$",
-		"--", "mint-token", "--purpose", "reset-admin", "--username", "admin")
+		"--", "mint-token", "--purpose", "reset-admin", "--address", adminAddress)
 	cmd.Env = append(os.Environ(), "RESTMAIL_OPERATOR_SUBPROCESS=1", "ENVIRONMENT=development")
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut

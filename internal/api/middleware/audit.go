@@ -79,15 +79,15 @@ func AuditWritesOnly() AuditOption { return func(c *auditConfig) { c.writesOnly 
 // AuditFailuresOnly records only requests that do not succeed.
 func AuditFailuresOnly() AuditOption { return func(c *auditConfig) { c.failuresOnly = true } }
 
-// AuditSignIn takes the actor from the body's username (an admin) or email (a
-// mailbox), and nothing else from it; on success it looks up the account's id.
+// AuditSignIn takes the actor from the body's email (the account's address),
+// and nothing else from it; on success it looks up the account's id.
 func AuditSignIn() AuditOption { return func(c *auditConfig) { c.signIn = true } }
 
 // AuditRefreshToken takes the actor from the refresh token presented, in the
 // restmail_refresh cookie or the body's refresh_token.
 func AuditRefreshToken() AuditOption { return func(c *auditConfig) { c.refreshToken = true } }
 
-// AuditStartedSession takes the actor, on success, from the admin session the
+// AuditStartedSession takes the actor, on success, from the session the
 // response started (a reset names no account until it succeeds).
 func AuditStartedSession() AuditOption { return func(c *auditConfig) { c.startedSession = true } }
 
@@ -193,15 +193,11 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 	switch {
 	case cfg.signIn:
 		var who struct {
-			Email    string `json:"email"`
-			Username string `json:"username"`
+			Email string `json:"email"`
 		}
 		decodeFirst(body, &who)
-		// The username wins, as it does at login.
-		if who.Username != "" {
-			a.namedActor(e, models.AuditActorAdmin, who.Username)
-		} else if who.Email != "" {
-			a.namedActor(e, models.AuditActorMailbox, who.Email)
+		if who.Email != "" {
+			a.namedActor(e, models.AuditActorAccount, who.Email)
 		}
 	case cfg.refreshToken:
 		if claims := a.refreshClaims(r, body); claims != nil {
@@ -212,12 +208,12 @@ func (a *Auditor) record(action string, cfg *auditConfig, r *http.Request, statu
 			var session struct {
 				Data struct {
 					User struct {
-						Email string `json:"email"` // an admin's username
+						Email string `json:"email"`
 					} `json:"user"`
 				} `json:"data"`
 			}
 			if json.Unmarshal(resp, &session) == nil && session.Data.User.Email != "" {
-				a.namedActor(e, models.AuditActorAdmin, session.Data.User.Email)
+				a.namedActor(e, models.AuditActorAccount, session.Data.User.Email)
 			}
 		}
 	}
@@ -266,14 +262,14 @@ func (a *Auditor) write(e *models.AuditEntry) {
 	}
 }
 
-// AppPasswordRefused records an app password AppPasswords refused, as one
-// auth.app_password entry: the address given, why it was refused, the public
-// id presented, and the credential when its secret matched. It never records
-// the password.
-func (a *Auditor) AppPasswordRefused(r *http.Request, address string, refusal *auth.AppPasswordRefusal) {
-	e := newEntry(AuditActionAppPassword, r, http.StatusUnauthorized, time.Now())
+// BasicRefused records a credential BasicCredentials refused, as one
+// auth.basic entry: the address given, why it was refused, the public id
+// presented, and the credential when its secret matched. It never records the
+// password.
+func (a *Auditor) BasicRefused(r *http.Request, address string, refusal *auth.CredentialRefusal) {
+	e := newEntry(AuditActionBasicRefused, r, http.StatusUnauthorized, time.Now())
 	e.ErrorCode = "unauthorized"
-	e.ActorKind, e.ActorName = models.AuditActorMailbox, address
+	e.ActorKind, e.ActorName = models.AuditActorAccount, address
 	e.CredentialID = refusal.CredentialID
 	e.Target["reason"] = refusal.Reason
 	if refusal.PublicID != "" {
@@ -282,8 +278,9 @@ func (a *Auditor) AppPasswordRefused(r *http.Request, address string, refusal *a
 	a.write(e)
 }
 
-// AuditActionAppPassword is the action of a refused app password.
-const AuditActionAppPassword = "auth.app_password"
+// AuditActionBasicRefused is the action of a credential refused over HTTP
+// Basic: an app password, or an account's password from a protocol gateway.
+const AuditActionBasicRefused = "auth.basic"
 
 // AuditActionCredentialsRevoke is the action of a revoked credential: one its
 // owner revoked, or one revoked with a reason, such as a change of password.
@@ -315,12 +312,8 @@ func RequestEntry(r *http.Request, action string, status int) models.AuditEntry 
 
 // actorFromClaims makes the token's account the actor, and its jti the session.
 func actorFromClaims(e *models.AuditEntry, claims *auth.Claims) {
-	var id uint
-	if claims.UserType == "admin" {
-		e.ActorKind, e.ActorName, id = models.AuditActorAdmin, claims.Username, claims.AdminUserID
-	} else {
-		e.ActorKind, e.ActorName, id = models.AuditActorMailbox, claims.Email, claims.MailboxID
-	}
+	id := claims.AccountID
+	e.ActorKind, e.ActorName = models.AuditActorAccount, claims.Address
 	e.ActorID = &id
 	e.SessionID = claims.ID
 	if claims.CredentialID != 0 {

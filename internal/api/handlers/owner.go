@@ -62,7 +62,7 @@ type ownerTokenRequest struct {
 	PublicKey       string `json:"public_key"`
 	Signature       string `json:"signature"` // base64 of the ssh wire-format signature
 	Purpose         string `json:"purpose"`   // reset-admin, the only one
-	Username        string `json:"username,omitempty"`
+	Address         string `json:"address,omitempty"`
 	LifetimeSeconds int    `json:"lifetime_seconds,omitempty"`
 }
 
@@ -78,8 +78,8 @@ func (h *OwnerHandler) Token(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"purpose": `must be "reset-admin"`})
 		return
 	}
-	if req.Username == "" {
-		respond.ValidationError(w, map[string]string{"username": "required for reset-admin"})
+	if req.Address == "" {
+		respond.ValidationError(w, map[string]string{"address": "required for reset-admin: the account to reset"})
 		return
 	}
 	lifetime := time.Duration(req.LifetimeSeconds) * time.Second
@@ -97,7 +97,7 @@ func (h *OwnerHandler) Token(w http.ResponseWriter, r *http.Request) {
 		PublicKey: req.PublicKey,
 		Signature: sig,
 		Purpose:   req.Purpose,
-		Username:  req.Username,
+		Address:   req.Address,
 		Lifetime:  lifetime,
 	}, time.Now())
 	switch {
@@ -108,7 +108,7 @@ func (h *OwnerHandler) Token(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, bootstrap.ErrNotOwner):
 		respond.Error(w, http.StatusForbidden, "not_owner", err.Error())
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
-		respond.Error(w, http.StatusNotFound, "no_such_admin", err.Error())
+		respond.Error(w, http.StatusNotFound, "no_such_account", err.Error())
 	case err != nil:
 		slog.Error("minting a token for an owner failed", "error", err)
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to mint the token")

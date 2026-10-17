@@ -119,13 +119,7 @@ func main() {
 	// never issues destructive DML at startup, so a rolling deploy cannot have
 	// whichever version boots first silently rewrite data. Destructive one-time
 	// upgrades are the migrate tool's job (issue #196).
-	if err := db.AutoMigrate(database, false); err != nil {
-		slog.Error("failed to run database migration", "error", err)
-		os.Exit(1)
-	}
-	// Role assignments become grants, once; nobody may come up without the
-	// access they had, so a failure stops the server.
-	if _, err := grants.Migrate(database); err != nil {
+	if err := db.AutoMigrate(database); err != nil {
 		slog.Error("failed to run database migration", "error", err)
 		os.Exit(1)
 	}
@@ -147,8 +141,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// A fresh install has no admin and no roles, and the production image carries
-	// no seed tool, so nobody could ever sign in. Both steps are no-ops once done.
+	// A fresh install has no account and no roles, and the production image
+	// carries no seed tool, so nobody could ever sign in. Both steps are no-ops
+	// once done: the bootstrap account is admin@<mail domain>.
 	if err := bootstrap.EnsureRBAC(database); err != nil {
 		slog.Error("failed to create the built-in roles", "error", err)
 		os.Exit(1)
@@ -158,8 +153,8 @@ func main() {
 		slog.Error("invalid bootstrap admin password", "error", err)
 		os.Exit(1)
 	}
-	if _, err := bootstrap.EnsureFirstAdminWith(database, cfg.BootstrapAdminUsername, credential, cfg.TOTP2FAEnabled, time.Now()); err != nil {
-		slog.Error("failed to create the bootstrap admin", "error", err)
+	if _, err := bootstrap.EnsureFirstAdminWith(database, cfg.BootstrapAdminAddress, credential, cfg.TOTP2FAEnabled, time.Now()); err != nil {
+		slog.Error("failed to create the bootstrap account", "error", err)
 		os.Exit(1)
 	}
 	// Still no admin: nobody could ever sign in. The installer chooses the first

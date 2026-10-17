@@ -62,6 +62,8 @@ assert_contains "default-deny NetworkPolicy"             "$tmp/prod.yaml" 'kind:
 assert_contains "NetworkPolicy default-deny name"        "$tmp/prod.yaml" 'restmail-default-deny'
 # A fresh install can create its first admin, from an optional Secret key.
 assert_contains "bootstrap admin env"                    "$tmp/prod.yaml" 'RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD'
+assert_contains "bootstrap account is admin@ the domain" "$tmp/prod.yaml" 'value: "admin@example.com"'
+assert_absent   "no bootstrap username"                  "$tmp/prod.yaml" 'RESTMAIL_BOOTSTRAP_ADMIN_USERNAME'
 assert_contains "bootstrap key is optional"              "$tmp/prod.yaml" 'optional: true'
 
 echo "== development assertions =="

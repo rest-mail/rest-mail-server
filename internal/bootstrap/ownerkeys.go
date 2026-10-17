@@ -133,8 +133,8 @@ func checkChallenge(key []byte, challenge string, now time.Time) error {
 
 // OwnerMessage is what an owner signs: the challenge, bound to what it is asking
 // for, so a signature for one request cannot be presented for another.
-func OwnerMessage(challenge, purpose, username string) []byte {
-	return []byte("restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge)
+func OwnerMessage(challenge, purpose, address string) []byte {
+	return []byte("restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge)
 }
 
 // OwnerRequest is a signed request for a reset-admin token.
@@ -143,7 +143,7 @@ type OwnerRequest struct {
 	PublicKey string // authorized_keys format
 	Signature []byte // ssh wire-format signature over OwnerMessage
 	Purpose   string // "reset-admin", the only one; it is part of what is signed
-	Username  string // the admin to reset (reset-admin)
+	Address   string // the account to reset (reset-admin)
 	Lifetime  time.Duration
 }
 
@@ -155,7 +155,7 @@ func MintForOwner(database *gorm.DB, keys *OwnerKeys, challengeKey []byte, req O
 		return "", time.Time{}, ErrNoOwnerKeys
 	}
 	if err := verifySigned(challengeKey, req.Challenge, req.PublicKey, req.Signature,
-		OwnerMessage(req.Challenge, req.Purpose, req.Username), keys.has, ErrNotOwner, now); err != nil {
+		OwnerMessage(req.Challenge, req.Purpose, req.Address), keys.has, ErrNotOwner, now); err != nil {
 		return "", time.Time{}, err
 	}
 	if err := spendChallenge(database, req.Challenge, now); err != nil {
@@ -165,7 +165,7 @@ func MintForOwner(database *gorm.DB, keys *OwnerKeys, challengeKey []byte, req O
 	if req.Purpose != "reset-admin" {
 		return "", time.Time{}, fmt.Errorf("purpose must be reset-admin, got %q", req.Purpose)
 	}
-	return MintResetToken(database, req.Username, req.Lifetime)
+	return MintResetToken(database, req.Address, req.Lifetime)
 }
 
 // verifySigned checks a signed answer to a challenge: the challenge is this

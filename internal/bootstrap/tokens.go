@@ -7,11 +7,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
-	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -19,8 +19,8 @@ import (
 // run on the server, or a request signed with an owner key — and are redeemed
 // once over the public API. Possession of one therefore proves the redeemer was
 // handed it by whoever controls the deployment, which is what "owning this
-// server" means. The only one there is lets an admin back in (reset_admin): the
-// first admin comes from the bootstrap password the installer chose.
+// server" means. The only one there is lets an account back in (reset_admin):
+// the first account comes from the bootstrap password the installer chose.
 
 // DefaultTokenLifetime is how long a minted token can be redeemed. Long enough
 // to scan a QR code or for an agent to finish a plan; short enough that a token
@@ -28,13 +28,13 @@ import (
 const DefaultTokenLifetime = 15 * time.Minute
 
 // MinChosenPasswordLength is the shortest password a person may choose for an
-// admin account. Long enough that a passphrase clears it and a short dictionary
+// account. Long enough that a passphrase clears it and a short dictionary
 // word does not.
 const MinChosenPasswordLength = 12
 
 var (
 	// ErrNoSuchAdmin: reset-admin named an account that does not exist.
-	ErrNoSuchAdmin = errors.New("no such admin")
+	ErrNoSuchAdmin = errors.New("no such account")
 	// ErrTokenInvalid covers unknown, used, expired and wrong-purpose tokens
 	// alike, so the answer reveals nothing about which.
 	ErrTokenInvalid = errors.New("the token is not valid: unknown, already used, or expired")
@@ -42,20 +42,21 @@ var (
 	ErrPasswordTooShort = fmt.Errorf("the password must be at least %d characters", MinChosenPasswordLength)
 )
 
-// MintResetToken mints a token that lets the named admin choose a new password
-// and enroll a new authenticator: the way back in when every other is lost.
-func MintResetToken(database *gorm.DB, username string, lifetime time.Duration) (string, time.Time, error) {
-	var admin models.AdminUser
-	if err := database.Where("username = ?", username).First(&admin).Error; err != nil {
+// MintResetToken mints a token that lets the account at address choose a new
+// password and enroll a new authenticator: the way back in when every other is
+// lost.
+func MintResetToken(database *gorm.DB, address string, lifetime time.Duration) (string, time.Time, error) {
+	var account models.Mailbox
+	if err := database.Where("address = ?", strings.ToLower(strings.TrimSpace(address))).First(&account).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", time.Time{}, ErrNoSuchAdmin
 		}
 		return "", time.Time{}, err
 	}
-	return mint(database, models.OneTimeTokenResetAdmin, &admin.ID, lifetime)
+	return mint(database, models.OneTimeTokenResetAdmin, &account.ID, lifetime)
 }
 
-func mint(database *gorm.DB, purpose string, adminID *uint, lifetime time.Duration) (string, time.Time, error) {
+func mint(database *gorm.DB, purpose string, accountID *uint, lifetime time.Duration) (string, time.Time, error) {
 	if lifetime <= 0 {
 		lifetime = DefaultTokenLifetime
 	}
@@ -66,10 +67,10 @@ func mint(database *gorm.DB, purpose string, adminID *uint, lifetime time.Durati
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	expires := time.Now().Add(lifetime)
 	row := models.OneTimeToken{
-		Purpose:     purpose,
-		TokenHash:   hashToken(token),
-		AdminUserID: adminID,
-		ExpiresAt:   expires,
+		Purpose:   purpose,
+		TokenHash: hashToken(token),
+		AccountID: accountID,
+		ExpiresAt: expires,
 	}
 	if err := database.Create(&row).Error; err != nil {
 		return "", time.Time{}, err
@@ -104,10 +105,11 @@ func redeem(tx *gorm.DB, token, purpose string) (*models.OneTimeToken, error) {
 	return &row, nil
 }
 
-// ResetAdmin spends a reset_admin token: the admin it names gets the password
-// the redeemer chose, loses its authenticator (the case this exists for is
-// having lost it) and must enroll a new one, and every session it had ends.
-func ResetAdmin(database *gorm.DB, token, password string) (*models.AdminUser, error) {
+// ResetAdmin spends a reset_admin token: the account it names gets the
+// password the redeemer chose, loses its authenticator (the case this exists
+// for is having lost it) and must enroll a new one, and every session and app
+// password it had ends.
+func ResetAdmin(database *gorm.DB, token, password string) (*models.Mailbox, error) {
 	if len(password) < MinChosenPasswordLength {
 		return nil, ErrPasswordTooShort
 	}
@@ -115,44 +117,38 @@ func ResetAdmin(database *gorm.DB, token, password string) (*models.AdminUser, e
 	if err != nil {
 		return nil, err
 	}
-	var admin models.AdminUser
+	var account models.Mailbox
 	err = database.Transaction(func(tx *gorm.DB) error {
 		row, err := redeem(tx, token, models.OneTimeTokenResetAdmin)
 		if err != nil {
 			return err
 		}
-		if row.AdminUserID == nil {
+		if row.AccountID == nil {
 			return ErrTokenInvalid
 		}
-		if err := tx.First(&admin, *row.AdminUserID).Error; err != nil {
+		if err := tx.First(&account, *row.AccountID).Error; err != nil {
 			return ErrNoSuchAdmin
 		}
 		now := time.Now()
-		if err := tx.Model(&admin).Updates(map[string]any{
-			"password_hash":            hash,
+		if err := tx.Model(&account).Updates(map[string]any{
 			"password_change_required": false,
 			"two_factor_required":      true,
+			"bootstrap_expires_at":     nil,
 			"active":                   true,
 			"last_password_change":     now,
-			// Every token the account was issued is dead from now.
+			// Every token of the account is dead from now, the redeemer's
+			// own new session aside.
 			"credential_epoch": gorm.Expr("credential_epoch + 1"),
 		}).Error; err != nil {
 			return err
 		}
-		// Read back what the database now holds — the bumped epoch above all —
-		// or the session minted next would carry the old one and be refused.
-		if err := tx.First(&admin, admin.ID).Error; err != nil {
+		if err := resetCredentials(tx, account.ID, hash, now); err != nil {
 			return err
 		}
-		if err := repositories.NewTwoFactorRepository(tx).Delete(models.TwoFactorUserTypeAdmin, admin.ID); err != nil {
-			return err
-		}
-		return tx.Model(&models.RefreshToken{}).
-			Where("user_type = ? AND subject_id = ? AND status = ?", "admin", admin.ID, models.RefreshTokenActive).
-			Updates(map[string]any{"status": models.RefreshTokenRevoked, "updated_at": now}).Error
+		return tx.First(&account, account.ID).Error
 	})
 	if err != nil {
 		return nil, err
 	}
-	return &admin, nil
+	return &account, nil
 }

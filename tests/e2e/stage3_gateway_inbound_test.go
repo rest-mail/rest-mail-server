@@ -13,7 +13,7 @@ import (
 
 func testStage3GatewayInbound(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
@@ -21,7 +21,7 @@ func testStage3GatewayInbound(t *testing.T) {
 	// inbound pipeline to the instant-greylist e2e configuration (greylisting
 	// stays active; only its retry window collapses to zero).
 	createDomain(t, adminClient, "restmail.test", "restmail")
-	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
+	createMailbox(t, adminClient, "testuser@restmail.test", accountPassword, "GW Test User")
 	ensureE2EPipeline(t, adminClient)
 
 	t.Run("Mail1_to_Mail3_SmtpDelivery", func(t *testing.T) {
@@ -30,7 +30,7 @@ func testStage3GatewayInbound(t *testing.T) {
 			"alice@mail1.test", "testuser@restmail.test",
 			subject, "Hello restmail from mail1 via SMTP gateway!")
 
-		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", accountPassword)
 		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Message delivered via gateway: id=%d", msgID)
 	})
@@ -41,7 +41,7 @@ func testStage3GatewayInbound(t *testing.T) {
 			"bob@mail2.test", "testuser@restmail.test",
 			subject, "Hello restmail from mail2 via SMTP gateway!")
 
-		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", accountPassword)
 		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Message delivered via gateway: id=%d", msgID)
 	})
@@ -72,7 +72,7 @@ func testStage3GatewayInbound(t *testing.T) {
 			"alice@mail1.test", "testuser@restmail.test",
 			subject, body)
 
-		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", accountPassword)
 		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 
 		// Fetch full message detail
@@ -118,7 +118,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		// Authenticated submission relays OUTBOUND to an external recipient (the
 		// real submission use case) — verified on the mail1 reference server.
 		// Stage 14 sends to a local mailbox.
-		sc.authPlain(t, "testuser@restmail.test", adminPassword)
+		sc.authPlain(t, "testuser@restmail.test", accountPassword)
 		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "RCPT TO:<alice@mail1.test>", "250")
 		sc.sendExpect(t, "DATA", "354")
@@ -154,7 +154,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "testuser@restmail.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", accountPassword)
 
 		result, lines := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -187,7 +187,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		defer pc.close()
 
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
-		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
+		pc.sendExpect(t, "PASS "+accountPassword, "+OK")
 
 		statResp := pc.stat(t)
 		t.Logf("POP3 STAT: %s", statResp)
@@ -207,7 +207,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "testuser@restmail.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", accountPassword)
 
 		// Send GETQUOTAROOT INBOX command
 		result, lines := ic.command(t, "GETQUOTAROOT INBOX")
@@ -311,7 +311,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		sendRawMailViaSMTP(t, mail1SMTPAddr, "sender@mail1.test", "testuser@restmail.test", mimeBody.String())
 
 		// Wait for delivery via API
-		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		gwClient, gwClientAcct := restmailInbox(t, "testuser@restmail.test", accountPassword)
 		msgID := waitForMessage(t, gwClient, gwClientAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Attachment message delivered: id=%d", msgID)
 
@@ -366,7 +366,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		ic := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic.close()
 
-		ic.login(t, "testuser@restmail.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", accountPassword)
 
 		result, lines := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -407,7 +407,7 @@ func testStage3GatewayInbound(t *testing.T) {
 		defer pc.close()
 
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
-		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
+		pc.sendExpect(t, "PASS "+accountPassword, "+OK")
 
 		// STAT — should return message count and total size
 		statResp := pc.stat(t)

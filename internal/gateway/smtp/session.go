@@ -57,10 +57,12 @@ type session struct {
 	authenticated bool
 	authEmail     string
 	accountID     uint
-	// credentialID is the app password the session signed in with, or 0 for
-	// the mailbox's own password. An app password's scope is its own mailbox:
-	// it sends as that address only, never a linked one.
-	credentialID uint
+	// credentialID and credentialKind are the credential the session signed
+	// in with: one of the account's passwords, or an app password. It is
+	// checked again before each MAIL FROM. An app password's scope is its own
+	// mailbox: it sends as that address only, never as another account's.
+	credentialID   uint
+	credentialKind string
 
 	// Current transaction.
 	mailFrom string
@@ -312,16 +314,17 @@ func (s *session) login(username, password string) error {
 	s.authEmail = username
 	s.accountID = resp.Data.User.ID
 	s.credentialID = resp.Data.CredentialID
+	s.credentialKind = resp.Data.CredentialKind
 
 	slog.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
 	return nil
 }
 
 // rateLimitKey identifies the account a submission is charged against for the
-// per-account rate limit. Linked accounts share one webmail account id, so a
-// compromised credential is capped as a single principal regardless of which of
-// its authorized From addresses it sends as. It falls back to the authenticated
-// login when no account id is set.
+// per-account rate limit: the account signed in, so a compromised credential
+// is capped as a single principal regardless of which of its authorized From
+// addresses it sends as. It falls back to the authenticated login when no
+// account id is set.
 func (s *session) rateLimitKey() string {
 	if s.accountID != 0 {
 		return fmt.Sprintf("acct:%d", s.accountID)
@@ -330,8 +333,8 @@ func (s *session) rateLimitKey() string {
 }
 
 // Mail starts a transaction. On submission ports it requires authentication
-// and verifies the sender is either the authenticated user or one of its
-// linked accounts.
+// and verifies the sender is either the account signed in or one it may send
+// as (a mail:send grant on it).
 func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	// Port 25 takes mail in the clear. RFC 3207 §4: "A publicly-referenced SMTP server
 	// MUST NOT require use of the STARTTLS extension in order to deliver mail locally."
@@ -366,7 +369,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	if s.isSubmission && s.authenticated && s.credentialID != 0 {
 		usable, err := s.store.CredentialUsable(s.credentialID)
 		if err != nil {
-			slog.Error("smtp: could not check the app password", "user", maskEmail(s.authEmail), "error", err)
+			slog.Error("smtp: could not check the credential", "user", maskEmail(s.authEmail), "error", err)
 			return &gosmtp.SMTPError{
 				Code:         451,
 				EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
@@ -374,8 +377,8 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 			}
 		}
 		if !usable {
-			slog.Warn("smtp: app password no longer usable", "user", maskEmail(s.authEmail), "event", "smtp_credential_unusable")
-			s.authenticated, s.authEmail, s.accountID, s.credentialID = false, "", 0, 0
+			slog.Warn("smtp: credential no longer usable", "user", maskEmail(s.authEmail), "event", "smtp_credential_unusable")
+			s.authenticated, s.authEmail, s.accountID, s.credentialID, s.credentialKind = false, "", 0, 0, ""
 			return &gosmtp.SMTPError{
 				Code:         530,
 				EnhancedCode: gosmtp.EnhancedCode{5, 7, 0},
@@ -385,8 +388,8 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	}
 
 	if s.isSubmission && s.authenticated && from != s.authEmail {
-		// Check linked accounts. A lookup error is treated as "not authorized",
-		// matching the prior behavior (which left the count at zero).
+		// Another account it may send as. A lookup error is treated as "not
+		// authorized".
 		authorized, err := s.mayAlsoSendAs(from)
 		if err != nil || !authorized {
 			// OSI-5: mask the addresses — a mismatching MAIL FROM is a spoofing
@@ -413,8 +416,8 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 
 // authorizeFromHeader enforces that an authenticated submitter's message From:
 // header address is one the account is authorized to send as: its own login
-// identity, or a linked address (the same linked_accounts -> mailboxes lookup as
-// the MAIL FROM check). A From header for an address the account does not own —
+// identity, or an account it may send as (the same grants check as the MAIL
+// FROM check). A From header for an address the account does not own —
 // or a missing/unparseable From — is rejected 550, preventing header-level
 // spoofing (#181). Like Mail(), a store lookup error is treated as "not
 // authorized"; both the authenticated user and the offending From are masked in
@@ -445,10 +448,10 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 }
 
 // mayAlsoSendAs reports whether the account may send as addr, an address other
-// than the one it signed in as: a linked mailbox's. A session signed in with an
-// app password never may.
+// than the one it signed in as: an account it owns or has linked. A session
+// signed in with an app password never may.
 func (s *session) mayAlsoSendAs(addr string) (bool, error) {
-	if s.credentialID != 0 {
+	if s.credentialKind != "password" {
 		return false, nil
 	}
 	return s.store.SenderAuthorized(s.accountID, addr)

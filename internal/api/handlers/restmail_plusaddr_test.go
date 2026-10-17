@@ -73,7 +73,7 @@ func TestRESTMAILDeliver_Subaddressing(t *testing.T) {
 	if err := db.Create(&dom).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
-	base := models.Mailbox{DomainID: dom.ID, LocalPart: "user", Address: baseAddr, Password: "x", Active: true, QuotaBytes: 1 << 30}
+	base := models.Mailbox{DomainID: dom.ID, LocalPart: "user", Address: baseAddr, Active: true, QuotaBytes: 1 << 30}
 	if err := db.Create(&base).Error; err != nil {
 		t.Fatalf("create base mailbox: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestRESTMAILDeliver_Subaddressing(t *testing.T) {
 	// delivery would strip to this base mailbox — so the alias-wins case is only
 	// meaningful because this mailbox is here to (not) receive it.
 	claimedAddr := "claimed@" + domainName
-	claimedBox := models.Mailbox{DomainID: dom.ID, LocalPart: "claimed", Address: claimedAddr, Password: "x", Active: true, QuotaBytes: 1 << 30}
+	claimedBox := models.Mailbox{DomainID: dom.ID, LocalPart: "claimed", Address: claimedAddr, Active: true, QuotaBytes: 1 << 30}
 	if err := db.Create(&claimedBox).Error; err != nil {
 		t.Fatalf("create claimed mailbox: %v", err)
 	}

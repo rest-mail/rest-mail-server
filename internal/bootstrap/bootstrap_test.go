@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -35,8 +36,9 @@ func openBootstrapTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Skipf("bootstrap DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.RefreshToken{}); err != nil {
+	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Credential{},
+		&models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{},
+		&models.RefreshToken{}); err != nil {
 		t.Skipf("bootstrap DB test skipped: migrate failed (%v)", err)
 	}
 	// Grants made at bootstrap are recorded in the audit log.
@@ -51,8 +53,9 @@ func openBootstrapTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() { gdb.Rollback() })
 	// Named by the models, not by hand: a wrong name fails the TRUNCATE.
 	tables := strings.Join([]string{
-		models.Grant{}.TableName(), models.UserRole{}.TableName(), models.RoleCapability{}.TableName(),
-		models.AdminUser{}.TableName(), models.Role{}.TableName(), models.Capability{}.TableName(),
+		models.Grant{}.TableName(), models.GrantActivation{}.TableName(), models.RoleCapability{}.TableName(),
+		models.Role{}.TableName(), models.Capability{}.TableName(), models.Credential{}.TableName(),
+		models.Mailbox{}.TableName(), models.Pipeline{}.TableName(), "domains",
 	}, ", ")
 	if err := gdb.Exec("TRUNCATE " + tables + " RESTART IDENTITY CASCADE").Error; err != nil {
 		t.Fatalf("empty RBAC tables: %v", err)
@@ -67,10 +70,13 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
+// adminAddr is the deployment's bootstrap account, admin@<mail domain>.
+const adminAddr = "admin@example.com"
+
 func countAdmins(t *testing.T, gdb *gorm.DB) int64 {
 	t.Helper()
 	var n int64
-	if err := gdb.Model(&models.AdminUser{}).Count(&n).Error; err != nil {
+	if err := gdb.Model(&models.Mailbox{}).Count(&n).Error; err != nil {
 		t.Fatal(err)
 	}
 	return n
@@ -79,13 +85,31 @@ func countAdmins(t *testing.T, gdb *gorm.DB) int64 {
 // t0 is when the server first starts, in every test that cares about time.
 var t0 = time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 
-func adminNamed(t *testing.T, gdb *gorm.DB, username string) models.AdminUser {
+func adminNamed(t *testing.T, gdb *gorm.DB, address string) models.Mailbox {
 	t.Helper()
-	var user models.AdminUser
-	if err := gdb.Where("username = ?", username).First(&user).Error; err != nil {
+	var account models.Mailbox
+	if err := gdb.Where("address = ?", address).First(&account).Error; err != nil {
 		t.Fatal(err)
 	}
-	return user
+	return account
+}
+
+// passwordOf is the hash of the account's one usable password, or "".
+func passwordOf(t *testing.T, gdb *gorm.DB, accountID uint) string {
+	t.Helper()
+	var hashes []string
+	if err := gdb.Model(&models.Credential{}).
+		Where("account_id = ? AND kind = ? AND revoked_at IS NULL", accountID, models.CredentialKindPassword).
+		Pluck("secret_hash", &hashes).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(hashes) > 1 {
+		t.Fatalf("account %d has %d usable passwords, want at most 1", accountID, len(hashes))
+	}
+	if len(hashes) == 0 {
+		return ""
+	}
+	return hashes[0]
 }
 
 func mustRBAC(t *testing.T, gdb *gorm.DB) {
@@ -113,8 +137,16 @@ func TestEnsureRBAC_IdempotentAndSuperadminHasWildcard(t *testing.T) {
 	if roles != roles2 || caps != caps2 || links != links2 {
 		t.Fatalf("second run changed rows: roles %d→%d caps %d→%d links %d→%d", roles, roles2, caps, caps2, links, links2)
 	}
-	if roles != 3 {
-		t.Errorf("roles = %d, want 3 (superadmin, admin, readonly)", roles)
+	if roles != 4 {
+		t.Errorf("roles = %d, want 4 (superadmin, admin, readonly, owner)", roles)
+	}
+	var owner models.Role
+	gdb.Where("name = ?", models.RoleOwner).First(&owner)
+	var ownerCaps []string
+	gdb.Table("role_capabilities rc").Joins("JOIN capabilities c ON c.id = rc.capability_id").
+		Where("rc.role_id = ?", owner.ID).Order("c.name").Pluck("c.name", &ownerCaps)
+	if want := []string{"mail:read", "mail:send", "mail:write", "mailbox:manage"}; !reflect.DeepEqual(ownerCaps, want) {
+		t.Errorf("owner capabilities = %v, want %v", ownerCaps, want)
 	}
 
 	var wildcard int64
@@ -134,7 +166,7 @@ func TestEnsureFirstAdmin_NoPasswordDoesNothing(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	outcome, err := EnsureFirstAdmin(gdb, "admin", "", true, t0)
+	outcome, err := EnsureFirstAdmin(gdb, adminAddr, "", true, t0)
 	if err != nil || outcome != FirstAdminUnchanged {
 		t.Fatalf("outcome=%v err=%v, want no admin and no error", outcome, err)
 	}
@@ -151,7 +183,7 @@ func TestRequireAdmin_NoAdminIsNoWayIn(t *testing.T) {
 	if err := RequireAdmin(gdb); !errors.Is(err, ErrNoAdmin) {
 		t.Fatalf("no admin: err = %v, want ErrNoAdmin", err)
 	}
-	if _, err := EnsureFirstAdmin(gdb, "admin", "a-bootstrap-password-of-length", true, time.Now()); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, "a-bootstrap-password-of-length", true, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if err := RequireAdmin(gdb); err != nil {
@@ -163,7 +195,7 @@ func TestEnsureFirstAdmin_RefusesShortPassword(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	_, err := EnsureFirstAdmin(gdb, "admin", "changeme", true, t0)
+	_, err := EnsureFirstAdmin(gdb, adminAddr, "changeme", true, t0)
 	if err == nil || !strings.Contains(err.Error(), "at least") {
 		t.Fatalf("err = %v, want a too-short refusal", err)
 	}
@@ -176,14 +208,25 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	outcome, err := EnsureFirstAdmin(gdb, "", strongPassword, true, t0)
+	if _, err := EnsureFirstAdmin(gdb, "", strongPassword, true, t0); err == nil {
+		t.Fatal("made a bootstrap account with no address")
+	}
+	outcome, err := EnsureFirstAdmin(gdb, "Admin@Example.com", strongPassword, true, t0)
 	if err != nil || outcome != FirstAdminCreated {
 		t.Fatalf("outcome=%v err=%v, want a new admin", outcome, err)
 	}
 
-	var user models.AdminUser
-	if err := gdb.Where("username = ?", "admin").First(&user).Error; err != nil {
-		t.Fatalf("empty username should default to admin: %v", err)
+	user := adminNamed(t, gdb, adminAddr)
+	// The account is a mailbox of its domain, which a fresh install did not
+	// host yet: made, not live, with its pipelines.
+	var domain models.Domain
+	if err := gdb.First(&domain, user.DomainID).Error; err != nil || domain.Name != "example.com" || domain.Active {
+		t.Errorf("domain = %+v (%v), want example.com, not live", domain, err)
+	}
+	var pipelines int64
+	gdb.Model(&models.Pipeline{}).Where("domain_id = ?", domain.ID).Count(&pipelines)
+	if pipelines != 2 {
+		t.Errorf("pipelines of the new domain = %d, want 2", pipelines)
 	}
 	if !user.Active {
 		t.Error("bootstrap admin is not active")
@@ -194,15 +237,15 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 	if !user.TwoFactorRequired {
 		t.Error("bootstrap admin may skip 2FA; it must be forced to enroll an authenticator")
 	}
-	if err := auth.CheckPassword(strongPassword, user.PasswordHash); err != nil {
+	if err := auth.CheckPassword(strongPassword, passwordOf(t, gdb, user.ID)); err != nil {
 		t.Errorf("stored hash does not verify the bootstrap password: %v", err)
 	}
 	// Admin at "*", active, to work with; superadmin at "*", eligible, to
 	// switch on when needed (#346).
 	var held []struct{ Name, Scope, Mode string }
 	if err := gdb.Table("grants g").Select("r.name, g.scope, g.mode").
-		Joins("JOIN admin_roles r ON r.id = g.role_id").
-		Where("g.holder_kind = ? AND g.holder_id = ?", models.GrantHolderAdmin, user.ID).
+		Joins("JOIN roles r ON r.id = g.role_id").
+		Where("g.holder_kind = ? AND g.holder_id = ?", models.GrantHolderAccount, user.ID).
 		Order("r.name").Scan(&held).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -231,15 +274,15 @@ func TestEnsureFirstAdmin_RestartDoesNotExtendTheDeadline(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0); err != nil {
 		t.Fatal(err)
 	}
-	before := adminNamed(t, gdb, "admin")
-	outcome, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0.Add(48*time.Hour))
+	before := adminNamed(t, gdb, adminAddr)
+	outcome, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0.Add(48*time.Hour))
 	if err != nil || outcome != FirstAdminUnchanged {
 		t.Fatalf("restart: outcome=%v err=%v, want a no-op", outcome, err)
 	}
-	after := adminNamed(t, gdb, "admin")
+	after := adminNamed(t, gdb, adminAddr)
 	if !after.BootstrapExpiresAt.Equal(*before.BootstrapExpiresAt) || after.CredentialEpoch != before.CredentialEpoch {
 		t.Errorf("restart moved the deadline %v -> %v or the epoch %d -> %d",
 			before.BootstrapExpiresAt, after.BootstrapExpiresAt, before.CredentialEpoch, after.CredentialEpoch)
@@ -254,18 +297,18 @@ func TestEnsureFirstAdmin_LeavesAnOwnersActiveSuperadminAlone(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0); err != nil {
 		t.Fatal(err)
 	}
-	owner := adminNamed(t, gdb, "admin")
+	owner := adminNamed(t, gdb, adminAddr)
 	// As the release before this one left it.
-	if err := gdb.Exec(`UPDATE grants SET mode = ? WHERE holder_id = ? AND role_id = (SELECT id FROM admin_roles WHERE name = 'superadmin')`,
+	if err := gdb.Exec(`UPDATE grants SET mode = ? WHERE holder_id = ? AND role_id = (SELECT id FROM roles WHERE name = 'superadmin')`,
 		models.GrantActive, owner.ID).Error; err != nil {
 		t.Fatal(err)
 	}
 	modes := func() []string {
 		var out []string
-		if err := gdb.Table("grants g").Joins("JOIN admin_roles r ON r.id = g.role_id").
+		if err := gdb.Table("grants g").Joins("JOIN roles r ON r.id = g.role_id").
 			Where("g.holder_id = ?", owner.ID).Order("r.name").
 			Pluck("r.name || ' ' || g.mode", &out).Error; err != nil {
 			t.Fatal(err)
@@ -274,24 +317,24 @@ func TestEnsureFirstAdmin_LeavesAnOwnersActiveSuperadminAlone(t *testing.T) {
 	}
 	want := []string{"admin active", "superadmin active"}
 
-	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0.Add(time.Hour)); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if got := modes(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("after a restart: %v, want %v", got, want)
 	}
-	if outcome, err := EnsureFirstAdmin(gdb, "admin", "a-different-password-entirely", true, t0.Add(2*time.Hour)); err != nil || outcome != FirstAdminRearmed {
+	if outcome, err := EnsureFirstAdmin(gdb, adminAddr, "a-different-password-entirely", true, t0.Add(2*time.Hour)); err != nil || outcome != FirstAdminRearmed {
 		t.Fatalf("re-arm: outcome=%v err=%v", outcome, err)
 	}
 	if got := modes(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("after a re-arm: %v, want %v", got, want)
 	}
-	if err := gdb.Model(&models.AdminUser{}).Where("id = ?", owner.ID).Updates(map[string]interface{}{
+	if err := gdb.Model(&models.Mailbox{}).Where("id = ?", owner.ID).Updates(map[string]interface{}{
 		"password_change_required": false, "bootstrap_expires_at": nil,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := EnsureFirstAdmin(gdb, "admin", "yet-another-password-entirely", true, t0.Add(3*time.Hour)); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, "yet-another-password-entirely", true, t0.Add(3*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if got := modes(); !reflect.DeepEqual(got, want) {
@@ -306,26 +349,26 @@ func TestEnsureFirstAdmin_NewPasswordRearmsAnUnfinishedAdmin(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0); err != nil {
 		t.Fatal(err)
 	}
-	before := adminNamed(t, gdb, "admin")
-	session := models.RefreshToken{Jti: "rearm-" + strconv.FormatInt(time.Now().UnixNano(), 36), UserType: "admin",
-		SubjectID: before.ID, SessionID: "rearm-session", Status: models.RefreshTokenActive, ExpiresAt: t0.Add(24 * time.Hour)}
+	before := adminNamed(t, gdb, adminAddr)
+	session := models.RefreshToken{Jti: "rearm-" + strconv.FormatInt(time.Now().UnixNano(), 36),
+		AccountID: before.ID, SessionID: "rearm-session", Status: models.RefreshTokenActive, ExpiresAt: t0.Add(24 * time.Hour)}
 	if err := gdb.Create(&session).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	later := t0.Add(100 * time.Hour) // after the first password expired
-	outcome, err := EnsureFirstAdmin(gdb, "admin", "a-different-password-entirely", true, later)
+	outcome, err := EnsureFirstAdmin(gdb, adminAddr, "a-different-password-entirely", true, later)
 	if err != nil || outcome != FirstAdminRearmed {
 		t.Fatalf("outcome=%v err=%v, want rearmed", outcome, err)
 	}
-	after := adminNamed(t, gdb, "admin")
-	if auth.CheckPassword("a-different-password-entirely", after.PasswordHash) != nil {
+	after := adminNamed(t, gdb, adminAddr)
+	if auth.CheckPassword("a-different-password-entirely", passwordOf(t, gdb, after.ID)) != nil {
 		t.Error("the new password does not work")
 	}
-	if auth.CheckPassword(strongPassword, after.PasswordHash) == nil {
+	if auth.CheckPassword(strongPassword, passwordOf(t, gdb, after.ID)) == nil {
 		t.Error("the old password still works")
 	}
 	if want := later.Add(BootstrapPasswordLifetime); after.BootstrapExpiresAt == nil || !after.BootstrapExpiresAt.Equal(want) {
@@ -359,12 +402,12 @@ func TestEnsureFirstAdminWith_AHash(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outcome, err := EnsureFirstAdminWith(gdb, "admin", credential, true, t0)
+	outcome, err := EnsureFirstAdminWith(gdb, adminAddr, credential, true, t0)
 	if err != nil || outcome != FirstAdminCreated {
 		t.Fatalf("outcome=%v err=%v, want created", outcome, err)
 	}
-	admin := adminNamed(t, gdb, "admin")
-	if auth.CheckPassword(strongPassword, admin.PasswordHash) != nil {
+	admin := adminNamed(t, gdb, adminAddr)
+	if auth.CheckPassword(strongPassword, passwordOf(t, gdb, admin.ID)) != nil {
 		t.Error("the installer's password does not sign in")
 	}
 	if !admin.PasswordChangeRequired || !admin.TwoFactorRequired || admin.BootstrapExpiresAt == nil {
@@ -372,16 +415,16 @@ func TestEnsureFirstAdminWith_AHash(t *testing.T) {
 	}
 
 	// The same hash again, as every restart gives it: nothing changes.
-	if outcome, err := EnsureFirstAdminWith(gdb, "admin", credential, true, t0.Add(time.Hour)); err != nil || outcome != FirstAdminUnchanged {
+	if outcome, err := EnsureFirstAdminWith(gdb, adminAddr, credential, true, t0.Add(time.Hour)); err != nil || outcome != FirstAdminUnchanged {
 		t.Errorf("restart: outcome=%v err=%v, want unchanged", outcome, err)
 	}
 	// A new deployment's hash re-arms it, as a new password does.
 	next, _ := BootstrapPasswordHash(hashOf(t, "a-different-password-entirely", 10))
-	if outcome, err := EnsureFirstAdminWith(gdb, "admin", next, true, t0.Add(100*time.Hour)); err != nil || outcome != FirstAdminRearmed {
+	if outcome, err := EnsureFirstAdminWith(gdb, adminAddr, next, true, t0.Add(100*time.Hour)); err != nil || outcome != FirstAdminRearmed {
 		t.Fatalf("new hash: outcome=%v err=%v, want rearmed", outcome, err)
 	}
-	after := adminNamed(t, gdb, "admin")
-	if auth.CheckPassword("a-different-password-entirely", after.PasswordHash) != nil || auth.CheckPassword(strongPassword, after.PasswordHash) == nil {
+	after := adminNamed(t, gdb, adminAddr)
+	if auth.CheckPassword("a-different-password-entirely", passwordOf(t, gdb, after.ID)) != nil || auth.CheckPassword(strongPassword, passwordOf(t, gdb, after.ID)) == nil {
 		t.Error("after re-arming, the new password should work and the old should not")
 	}
 }
@@ -390,7 +433,7 @@ func TestEnsureFirstAdmin_NeverActsOnceTheAdminHasChosenAPassword(t *testing.T) 
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0); err != nil {
 		t.Fatal(err)
 	}
 	chosen, err := auth.HashPassword("the-admins-own-password")
@@ -398,21 +441,25 @@ func TestEnsureFirstAdmin_NeverActsOnceTheAdminHasChosenAPassword(t *testing.T) 
 		t.Fatal(err)
 	}
 	// What POST /auth/password does.
-	if err := gdb.Model(&models.AdminUser{}).Where("username = ?", "admin").Updates(map[string]interface{}{
-		"password_hash": chosen, "password_change_required": false, "bootstrap_expires_at": nil,
+	account := adminNamed(t, gdb, adminAddr)
+	if err := gdb.Model(&models.Mailbox{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
+		"password_change_required": false, "bootstrap_expires_at": nil,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if _, err := repositories.NewCredentialRepository(gdb).SetPassword(account.ID, chosen, &account.ID, t0); err != nil {
+		t.Fatal(err)
+	}
 
-	outcome, err := EnsureFirstAdmin(gdb, "admin", "a-different-password-entirely", true, t0.Add(time.Hour))
+	outcome, err := EnsureFirstAdmin(gdb, adminAddr, "a-different-password-entirely", true, t0.Add(time.Hour))
 	if err != nil || outcome != FirstAdminUnchanged {
 		t.Fatalf("outcome=%v err=%v, want a no-op", outcome, err)
 	}
-	if auth.CheckPassword("the-admins-own-password", adminNamed(t, gdb, "admin").PasswordHash) != nil {
+	if auth.CheckPassword("the-admins-own-password", passwordOf(t, gdb, account.ID)) != nil {
 		t.Error("the deployment's password replaced one the admin chose")
 	}
 
-	if outcome, _ := EnsureFirstAdmin(gdb, "someone-else", strongPassword, true, t0); outcome != FirstAdminUnchanged {
+	if outcome, _ := EnsureFirstAdmin(gdb, "someone-else@example.com", strongPassword, true, t0); outcome != FirstAdminUnchanged {
 		t.Error("created a second admin while one already existed")
 	}
 	if n := countAdmins(t, gdb); n != 1 {
@@ -420,20 +467,20 @@ func TestEnsureFirstAdmin_NeverActsOnceTheAdminHasChosenAPassword(t *testing.T) 
 	}
 }
 
-// A different username is a different account, not the bootstrap admin: it is
-// neither created alongside nor re-armed.
-func TestEnsureFirstAdmin_OnlyRearmsTheBootstrapUsername(t *testing.T) {
+// A different address is a different account, not the bootstrap account: it
+// is neither created alongside nor re-armed.
+func TestEnsureFirstAdmin_OnlyRearmsTheBootstrapAddress(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0); err != nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0); err != nil {
 		t.Fatal(err)
 	}
-	if outcome, err := EnsureFirstAdmin(gdb, "someone-else", "a-different-password-entirely", true, t0); err != nil || outcome != FirstAdminUnchanged {
+	if outcome, err := EnsureFirstAdmin(gdb, "someone-else@example.com", "a-different-password-entirely", true, t0); err != nil || outcome != FirstAdminUnchanged {
 		t.Fatalf("outcome=%v err=%v, want a no-op", outcome, err)
 	}
-	if auth.CheckPassword(strongPassword, adminNamed(t, gdb, "admin").PasswordHash) != nil {
-		t.Error("another username's password replaced the bootstrap admin's")
+	if auth.CheckPassword(strongPassword, passwordOf(t, gdb, adminNamed(t, gdb, adminAddr).ID)) != nil {
+		t.Error("another address's password replaced the bootstrap account's")
 	}
 	if n := countAdmins(t, gdb); n != 1 {
 		t.Fatalf("admins = %d, want 1", n)
@@ -443,7 +490,7 @@ func TestEnsureFirstAdmin_OnlyRearmsTheBootstrapUsername(t *testing.T) {
 func TestEnsureFirstAdmin_NeedsRolesFirst(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 
-	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0); err == nil {
+	if _, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, true, t0); err == nil {
 		t.Fatal("created an admin with no superadmin role to give it")
 	}
 	if n := countAdmins(t, gdb); n != 0 {
@@ -457,7 +504,7 @@ func TestEnsureFirstAdmin_RefusesWhenTwoFactorIsOff(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	mustRBAC(t, gdb)
 
-	_, err := EnsureFirstAdmin(gdb, "admin", strongPassword, false, t0)
+	_, err := EnsureFirstAdmin(gdb, adminAddr, strongPassword, false, t0)
 	if err == nil || !strings.Contains(err.Error(), "TOTP_2FA_ENABLED") {
 		t.Fatalf("err = %v, want a refusal naming TOTP_2FA_ENABLED", err)
 	}

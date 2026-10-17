@@ -14,9 +14,8 @@ import (
 
 // Audit actions of grant changes.
 const (
-	ActionCreate  = "grants.create"
-	ActionDelete  = "grants.delete"
-	ActionMigrate = "grants.migrate"
+	ActionCreate = "grants.create"
+	ActionDelete = "grants.delete"
 )
 
 var (
@@ -29,7 +28,7 @@ var (
 	// capability at "*", and nobody could ever grant anything again. An
 	// eligible grant counts when its holder has an authenticator to switch it
 	// on with.
-	ErrLastSuperadmin = errors.New("this is the last grant of every capability at \"*\" held by an active admin who can use it")
+	ErrLastSuperadmin = errors.New("this is the last grant of every capability at \"*\" held by an active account that can use it")
 )
 
 // changeLockKey serialises grant changes, so that two at once cannot each
@@ -45,8 +44,8 @@ func Lock(tx *gorm.DB) error {
 // Authorize checks, in tx, that the granter may grant or remove a grant of
 // roleID at scope: it must hold every capability of the role at a scope
 // covering scope, now. ErrExceedsHeld when it does not.
-func Authorize(tx *gorm.DB, granterKind string, granterID uint, roleID uint, scope string) error {
-	held, err := Load(tx, granterKind, granterID, time.Now())
+func Authorize(tx *gorm.DB, granterID uint, roleID uint, scope string) error {
+	held, err := Load(tx, granterID, time.Now())
 	if err != nil {
 		return err
 	}
@@ -80,8 +79,8 @@ func Add(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 }
 
 // Remove deletes g and writes the audit entry recording it, in tx, unless it
-// is the last grant of every capability at "*" held by an active admin who can
-// use it (ErrLastSuperadmin, usableSuperadmin). An activation of g still
+// is the last grant of every capability at "*" held by an active account that
+// can use it (ErrLastSuperadmin, usableSuperadmin). An activation of g still
 // running ends with it, and is recorded as switched off by the same actor. The
 // caller holds Lock and has checked Authorize.
 func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
@@ -99,11 +98,11 @@ func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 	}
 	var remaining int64
 	err = tx.Table("grants AS g").
-		Joins("JOIN admin_roles_capabilities rc ON rc.role_id = g.role_id").
-		Joins("JOIN admin_capabilities c ON c.id = rc.capability_id").
-		Joins("JOIN admin_users u ON u.id = g.holder_id").
-		Where("g.holder_kind = ? AND g.scope = ? AND c.name = ? AND u.active", models.GrantHolderAdmin, All, Wildcard).
-		Where("g.mode = ? OR (g.mode = ? AND "+canSwitchOn+")", models.GrantActive, models.GrantEligible, models.TwoFactorUserTypeAdmin).
+		Joins("JOIN role_capabilities rc ON rc.role_id = g.role_id").
+		Joins("JOIN capabilities c ON c.id = rc.capability_id").
+		Joins("JOIN mailboxes u ON u.id = g.holder_id").
+		Where("g.holder_kind = ? AND g.scope = ? AND c.name = ? AND u.active", models.GrantHolderAccount, All, Wildcard).
+		Where("g.mode = ? OR (g.mode = ? AND "+canSwitchOn+")", models.GrantActive, models.GrantEligible, models.CredentialKindTOTP).
 		Where("g.expires_at IS NULL OR g.expires_at > ?", now).
 		Count(&remaining).Error
 	if err != nil {
@@ -124,15 +123,15 @@ func Remove(tx *gorm.DB, g *models.Grant, entry models.AuditEntry) error {
 	return appendChange(tx, g, entry)
 }
 
-// canSwitchOn is the condition that the admin holding grant g has a confirmed
-// authenticator: switching an eligible grant on needs a code from one.
-const canSwitchOn = "EXISTS (SELECT 1 FROM two_factor tf WHERE tf.user_type = ? AND tf.subject_id = g.holder_id AND tf.confirmed)"
+// canSwitchOn is the condition that the account holding grant g has a
+// confirmed authenticator: switching an eligible grant on needs a code from one.
+const canSwitchOn = "EXISTS (SELECT 1 FROM credentials tf WHERE tf.kind = ? AND tf.account_id = g.holder_id AND tf.confirmed_at IS NOT NULL AND tf.revoked_at IS NULL)"
 
 // wasSuperadmin reports whether g, just deleted, was a grant of every
-// capability at "*" held by an active admin who could use it: active, or
+// capability at "*" held by an active account that could use it: active, or
 // eligible with an authenticator to switch it on with.
 func wasSuperadmin(tx *gorm.DB, g *models.Grant) bool {
-	if g.Scope != All || g.HolderKind != models.GrantHolderAdmin {
+	if g.Scope != All || g.HolderKind != models.GrantHolderAccount {
 		return false
 	}
 	if g.ExpiresAt != nil && !g.ExpiresAt.After(time.Now()) {
@@ -142,8 +141,8 @@ func wasSuperadmin(tx *gorm.DB, g *models.Grant) bool {
 	case models.GrantActive:
 	case models.GrantEligible:
 		var n int64
-		err := tx.Table("two_factor").
-			Where("user_type = ? AND subject_id = ? AND confirmed", models.TwoFactorUserTypeAdmin, g.HolderID).
+		err := tx.Model(&models.Credential{}).
+			Where("kind = ? AND account_id = ? AND confirmed_at IS NOT NULL AND revoked_at IS NULL", models.CredentialKindTOTP, g.HolderID).
 			Count(&n).Error
 		if err != nil {
 			return true // cannot tell: refuse, keep the grant
@@ -155,7 +154,7 @@ func wasSuperadmin(tx *gorm.DB, g *models.Grant) bool {
 		return false
 	}
 	var active []bool
-	if err := tx.Model(&models.AdminUser{}).Where("id = ?", g.HolderID).Pluck("active", &active).Error; err != nil {
+	if err := tx.Model(&models.Mailbox{}).Where("id = ?", g.HolderID).Pluck("active", &active).Error; err != nil {
 		return true // cannot tell: refuse, keep the grant
 	}
 	if len(active) == 0 || !active[0] {
@@ -174,13 +173,13 @@ func wasSuperadmin(tx *gorm.DB, g *models.Grant) bool {
 }
 
 // EnsureSystem gives the holder the role at scope in mode, as the system (the
-// bootstrap admin, the seed), recording it in the audit log in the same
+// bootstrap account, the seed), recording it in the audit log in the same
 // transaction. Nothing changes, and nothing is recorded, if the holder already
 // holds the role at that scope.
-func EnsureSystem(tx *gorm.DB, holderKind string, holderID, roleID uint, scope, mode string) (bool, error) {
+func EnsureSystem(tx *gorm.DB, accountID, roleID uint, scope, mode string) (bool, error) {
 	g := &models.Grant{
-		HolderKind:    holderKind,
-		HolderID:      holderID,
+		HolderKind:    models.GrantHolderAccount,
+		HolderID:      accountID,
 		RoleID:        roleID,
 		Scope:         scope,
 		Mode:          mode,

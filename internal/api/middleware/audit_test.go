@@ -77,7 +77,7 @@ func TestAudit_FailedSignInRecordsTheIdentifierAndNoPassword(t *testing.T) {
 		errorWith(http.StatusUnauthorized, "unauthorized")(w, r)
 	})
 
-	body := `{"username":"admin","password":"hunter2-correct-horse","totp_code":"123456"}`
+	body := `{"email":"admin@example.com","password":"hunter2-correct-horse","totp_code":"123456"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
 	req.Header.Set("User-Agent", "restmail-cli/1.0")
 	req.RemoteAddr = "198.51.100.7:51000"
@@ -90,8 +90,8 @@ func TestAudit_FailedSignInRecordsTheIdentifierAndNoPassword(t *testing.T) {
 	if e.Action != "auth.sign_in" || e.Outcome != models.AuditOutcomeDenied || e.Status != http.StatusUnauthorized || e.ErrorCode != "unauthorized" {
 		t.Errorf("entry: %+v", e)
 	}
-	if e.ActorKind != models.AuditActorAdmin || e.ActorName != "admin" || e.ActorID != nil {
-		t.Errorf("actor = %s/%v/%q, want admin, no id, \"admin\"", e.ActorKind, e.ActorID, e.ActorName)
+	if e.ActorKind != models.AuditActorAccount || e.ActorName != "admin@example.com" || e.ActorID != nil {
+		t.Errorf("actor = %s/%v/%q, want account, no id, \"admin@example.com\"", e.ActorKind, e.ActorID, e.ActorName)
 	}
 	if len(sink.lookups) != 0 {
 		t.Errorf("a failed sign-in looked up %v", sink.lookups)
@@ -103,7 +103,7 @@ func TestAudit_FailedSignInRecordsTheIdentifierAndNoPassword(t *testing.T) {
 	assertNoSecret(t, e, "hunter2-correct-horse", "123456")
 }
 
-func TestAudit_SuccessfulSignInLooksUpTheMailbox(t *testing.T) {
+func TestAudit_SuccessfulSignInLooksUpTheAccount(t *testing.T) {
 	sink := &auditSink{}
 	h := sink.auditor(nil).Audit("auth.sign_in", AuditSignIn())(okHandler)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
@@ -111,11 +111,11 @@ func TestAudit_SuccessfulSignInLooksUpTheMailbox(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	e := sink.only(t)
-	if e.Outcome != models.AuditOutcomeSuccess || e.ActorKind != models.AuditActorMailbox ||
+	if e.Outcome != models.AuditOutcomeSuccess || e.ActorKind != models.AuditActorAccount ||
 		e.ActorName != "chris@example.com" || e.ActorID == nil || *e.ActorID != 42 {
 		t.Errorf("entry: %+v", e)
 	}
-	if len(sink.lookups) != 1 || sink.lookups[0] != "mailbox:chris@example.com" {
+	if len(sink.lookups) != 1 || sink.lookups[0] != "account:chris@example.com" {
 		t.Errorf("lookups = %v", sink.lookups)
 	}
 	assertNoSecret(t, e, "secret-pass")
@@ -140,7 +140,7 @@ func newAdminGroup(sink *auditSink, jwtSvc *auth.JWTService) http.Handler {
 
 func TestAudit_AdminChangeRecordsRouteParamsAndOutcome(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateAdminTokenPair(3, "ops")
+	pair, err := jwtSvc.GenerateSession(3, "ops@example.com", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestAudit_AdminChangeRecordsRouteParamsAndOutcome(t *testing.T) {
 	if e.Outcome != models.AuditOutcomeSuccess || e.Status != http.StatusNoContent || e.ErrorCode != "" {
 		t.Errorf("outcome %s, status %d, error %q", e.Outcome, e.Status, e.ErrorCode)
 	}
-	if e.ActorKind != models.AuditActorAdmin || e.ActorID == nil || *e.ActorID != 3 || e.ActorName != "ops" {
+	if e.ActorKind != models.AuditActorAccount || e.ActorID == nil || *e.ActorID != 3 || e.ActorName != "ops@example.com" {
 		t.Errorf("actor = %s/%v/%q", e.ActorKind, e.ActorID, e.ActorName)
 	}
 	if claims.ID == "" || e.SessionID != claims.ID {
@@ -186,7 +186,7 @@ func TestAudit_AdminChangeRecordsRouteParamsAndOutcome(t *testing.T) {
 
 func TestAudit_AdminGetIsNotRecorded(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateAdminTokenPair(3, "ops")
+	pair, err := jwtSvc.GenerateSession(3, "ops@example.com", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestAudit_AdminGetIsNotRecorded(t *testing.T) {
 
 func TestAudit_LogoutAndRefreshIdentifyTheRefreshToken(t *testing.T) {
 	jwtSvc := newTestJWTService(5 * time.Minute)
-	pair, err := jwtSvc.GenerateTokenPair(12, "chris@example.com", 4)
+	pair, err := jwtSvc.GenerateSession(12, "chris@example.com", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestAudit_LogoutAndRefreshIdentifyTheRefreshToken(t *testing.T) {
 		strings.NewReader(`{"refresh_token":"`+pair.RefreshToken+`"}`))
 	logout.ServeHTTP(httptest.NewRecorder(), req)
 	e := sink.only(t)
-	if e.ActorKind != models.AuditActorMailbox || e.ActorID == nil || *e.ActorID != 12 ||
+	if e.ActorKind != models.AuditActorAccount || e.ActorID == nil || *e.ActorID != 12 ||
 		e.ActorName != "chris@example.com" || e.SessionID != pair.RefreshJTI {
 		t.Errorf("logout entry: %+v", e)
 	}

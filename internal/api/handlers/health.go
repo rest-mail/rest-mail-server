@@ -5,9 +5,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -52,7 +54,8 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	respond.Data(w, http.StatusOK, result)
 }
 
-// isAdmin reports whether the request carries a valid admin access token. It is
+// isAdmin reports whether the request carries a current access token of an
+// account holding domains:read at "*", which certificates come under. It is
 // deliberately non-fatal: a missing, malformed, or invalid token simply means
 // "not an admin" and yields the liveness-only response, so /api/health stays a
 // public probe that never 401s.
@@ -65,10 +68,15 @@ func (h *HealthHandler) isAdmin(r *http.Request) bool {
 		return false
 	}
 	claims, err := h.jwt.ValidateAccessToken(parts[1])
-	if err != nil {
+	if err != nil || claims.SetupPending || h.db == nil {
 		return false
 	}
-	return claims.UserType == "admin"
+	current, err := SessionCurrent(h.db)(claims.AccountID, claims.CredentialEpoch)
+	if err != nil || !current {
+		return false
+	}
+	held, err := grants.Load(h.db, claims.AccountID, time.Now())
+	return err == nil && held.Allows(middleware.CapDomainsRead, grants.All)
 }
 
 // checkCertExpiry returns warnings for certificates expiring within 30 days.

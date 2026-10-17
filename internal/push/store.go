@@ -131,27 +131,34 @@ type target struct {
 	DeviceID    uint
 	Token       string
 	Environment string
-	// Account is the mailbox's id in GET /api/v1/accounts for the session:
-	// its webmail account for its own mailbox, the linked account for a
-	// linked one.
+	// Account is the mailbox's id in GET /api/v1/accounts: the mailbox's own,
+	// since an account is a mailbox.
 	Account uint
 }
 
-// targets is every APNs device of a live session that lists mailboxID: as
-// its own mailbox, or one it has linked.
+// targets is every APNs device of a live session that lists mailboxID, as
+// GET /api/v1/accounts does: its own account, or one it holds an active mail
+// grant on at that account's own scope (it owns or has linked it).
 func (s *Store) targets(mailboxID uint, now time.Time) ([]target, error) {
 	var out []target
 	err := s.db.Raw(`
-SELECT d.id AS device_id, d.token, d.environment, wa.id AS account
+SELECT d.id AS device_id, d.token, d.environment, d.mailbox_id AS account
 FROM push_devices d
-JOIN webmail_accounts wa ON wa.id = d.webmail_account_id
-WHERE wa.primary_mailbox_id = @mailbox AND d.platform = @platform AND `+liveSession+`
-UNION ALL
-SELECT d.id AS device_id, d.token, d.environment, la.id AS account
+WHERE d.mailbox_id = @mailbox AND d.platform = @platform AND `+liveSession+`
+UNION
+SELECT d.id AS device_id, d.token, d.environment, m.id AS account
 FROM push_devices d
-JOIN linked_accounts la ON la.webmail_account_id = d.webmail_account_id
-WHERE la.mailbox_id = @mailbox AND d.platform = @platform AND `+liveSession,
-		map[string]any{"mailbox": mailboxID, "platform": models.PushPlatformAPNs, "now": now}).
+JOIN grants g ON g.holder_kind = @holder AND g.holder_id = d.mailbox_id AND g.mode = @active
+	AND (g.expires_at IS NULL OR g.expires_at > @now)
+JOIN role_capabilities rc ON rc.role_id = g.role_id
+JOIN capabilities c ON c.id = rc.capability_id AND c.name IN @mail
+JOIN mailboxes m ON m.id = @mailbox AND g.scope = 'mailbox:' || lower(m.address)
+WHERE d.mailbox_id <> @mailbox AND d.platform = @platform AND `+liveSession,
+		map[string]any{
+			"mailbox": mailboxID, "platform": models.PushPlatformAPNs, "now": now,
+			"holder": models.GrantHolderAccount, "active": models.GrantActive,
+			"mail": []string{models.CapMailRead, models.CapMailWrite, models.CapMailSend, "*"},
+		}).
 		Scan(&out).Error
 	return out, err
 }
@@ -234,7 +241,7 @@ RETURNING d.id, d.mailbox_id, d.platform`,
 }
 
 // Sweep deletes the devices of every session that has ended: revoked (a
-// password change, a disabled mailbox, RevokeAllForSubject), or expired. New
+// password change, a disabled mailbox, RevokeAllForAccount), or expired. New
 // mail goes only to live sessions' devices whatever the sweep has done, so it
 // tidies rather than protects. A session refreshed in the last sweepGrace is
 // left for the next sweep.

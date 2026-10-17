@@ -41,7 +41,7 @@ const (
 )
 
 // GenerateTOTPSecret mints a fresh random TOTP secret bound to accountName
-// (e.g. the mailbox address or admin username) under issuer. The returned
+// (the account's address) under issuer. The returned
 // *otp.Key exposes both Secret() (the base32 secret to persist, encrypted at
 // rest) and URL() (the otpauth:// provisioning URI / QR payload handed to the
 // user's authenticator app).
