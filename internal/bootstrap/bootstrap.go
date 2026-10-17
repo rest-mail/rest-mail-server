@@ -254,15 +254,15 @@ func EnsureFirstAdminWith(database *gorm.DB, username string, credential Bootstr
 		}
 		created = res.RowsAffected > 0
 		// The admin role at "*" to work with day to day, and superadmin at "*"
-		// to escalate to. Superadmin is meant to be eligible, switched on only
-		// when needed; until escalation exists (#346) it is active, or the
-		// owner could never use it.
-		for _, role := range []uint{admin.ID, superadmin.ID} {
-			if _, err := grants.EnsureSystem(tx, models.GrantHolderAdmin, user.ID, role, grants.All, models.GrantActive); err != nil {
-				return err
-			}
+		// to escalate to: eligible, switched on with a fresh code and a reason
+		// only when needed (#346), so a stolen phone or session never carries
+		// it. Only a new admin gets these: one that already holds either role
+		// keeps it as it is.
+		if _, err := grants.EnsureSystem(tx, models.GrantHolderAdmin, user.ID, admin.ID, grants.All, models.GrantActive); err != nil {
+			return err
 		}
-		return nil
+		_, err := grants.EnsureSystem(tx, models.GrantHolderAdmin, user.ID, superadmin.ID, grants.All, models.GrantEligible)
+		return err
 	})
 	if err != nil {
 		return FirstAdminUnchanged, err

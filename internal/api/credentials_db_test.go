@@ -268,11 +268,17 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 	t.Run("reaches no admin route", func(t *testing.T) {
 		// The admin routes take a session's token alone: Basic is refused
 		// before AdminOnly, so an app password never has its grants read
-		// (#345) and can change none, nor its own mailbox's password.
+		// (#345) and can change none, nor switch one on (#346), nor its own
+		// mailbox's password.
 		mailbox := fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID)
 		for _, rt := range []struct{ method, path, body string }{
 			{http.MethodGet, "/api/v1/admin/grants", ""},
 			{http.MethodPost, "/api/v1/admin/grants", `{"holder":{"kind":"admin","id":1},"role":"superadmin","scope":"*","mode":"active"}`},
+			{http.MethodDelete, "/api/v1/admin/grants/1", ""},
+			{http.MethodGet, "/api/v1/admin/grants/mine", ""},
+			{http.MethodPost, "/api/v1/admin/grants/1/activate", `{"reason":"r","minutes":60,"totp_code":"000000"}`},
+			{http.MethodPost, "/api/v1/admin/grants/1/deactivate", ""},
+			{http.MethodPost, "/api/v1/admin/grants/1/make-eligible", `{"totp_code":"000000"}`},
 			{http.MethodGet, mailbox, ""},
 			{http.MethodPatch, mailbox, `{"password":"a-new-password-456"}`},
 			{http.MethodGet, "/api/v1/admin/domains", ""},

@@ -8,7 +8,7 @@ import "time"
 const GrantHolderAdmin = "admin"
 
 // A grant's mode. An active grant is in force; an eligible one does nothing
-// until it is switched on (#346).
+// until its holder switches it on for a while (GrantActivation, #346).
 const (
 	GrantActive   = "active"
 	GrantEligible = "eligible"
