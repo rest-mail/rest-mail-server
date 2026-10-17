@@ -139,6 +139,17 @@ def ask_for_the_created_domains_policy(transaction):
     transaction["request"]["headers"]["Host"] = "mta-sts." + (hooks.stash.get("domain") or "")
 
 
+@hooks.before("listQueue")
+def list_the_sent_messages_queue_entry(transaction):
+    # The example asks for status=pending (the enum's first value), and the
+    # queue worker takes the entry sendMessage queued within a second: the
+    # list came back empty, and its links had no id. Ask by the example's
+    # recipient instead, whatever the entry's status. Only the example: the
+    # probes keep their own queries.
+    if transaction.get("fullPath", "").endswith("/api/v1/admin/queue?status=pending"):
+        transaction["fullPath"] = "/api/v1/admin/queue?recipient=someone%40imap.restmail.test"
+
+
 @hooks.before("getMessageTrace")
 def wait_for_the_trace(transaction):
     # Traces are written in the background, a batch every 500 ms
