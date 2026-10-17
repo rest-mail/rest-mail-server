@@ -28,6 +28,8 @@ set -uo pipefail
 here=$(dirname "$0")
 # shellcheck source=lib.sh
 . "$here/lib.sh"
+# shellcheck source=owner-key.sh
+. "$here/owner-key.sh"
 
 need pulumi jq helm
 mode=${1:-}
@@ -106,7 +108,8 @@ password_hash() {
 }
 
 install() {
-  local urn version password generated='' hash='' found
+  local urn version password generated='' hash='' found owner_key
+  owner_key=$(read_owner_key) || exit $?
   if [ -n "$stack" ]; then
     urn=$(stack_release_urn)
     [ -n "$urn" ] && refuse "Mail server \"$NAME\" is already deployed in stack $stack." \
@@ -140,6 +143,7 @@ install() {
     config_set namespace "$NAMESPACE"
     config_set chartVersion "$version"
     [ -n "$hash" ] && config_set adminPasswordHash "$hash"
+    [ -n "$owner_key" ] && config_set ownerKeys "$owner_key"
     say "Stack $stack config is set: $NAME:hostname=$HOST, domain=$DOMAIN, namespace=$NAMESPACE, chartVersion=$version" \
       "and $NAME:adminPasswordHash, a bcrypt hash of the admin password." ""
   else
@@ -148,7 +152,14 @@ install() {
       "with the code below:" ""
     printf "  %s:hostname: %s\n  %s:domain: %s\n  %s:namespace: %s\n  %s:chartVersion: \"%s\"\n  %s:adminPasswordHash: '%s'\n" \
       "$NAME" "$HOST" "$NAME" "$DOMAIN" "$NAME" "$NAMESPACE" "$NAME" "$version" "$NAME" "$hash"
+    if [ -n "$owner_key" ]; then
+      printf '  %s:ownerKeys: %s\n' "$NAME" "$(jq -rn --arg key "$owner_key" '$key | @json')"
+    fi
   fi
+  if [ -z "$owner_key" ] && [ -n "$stack" ] && config_has ownerKeys; then
+    owner_key=$(config_get ownerKeys)
+  fi
+  owner_key_guidance "$owner_key"
 
   # Shown the moment it exists, whatever happens next.
   if [ -n "$generated" ]; then
@@ -165,7 +176,7 @@ EOF
 
   if [ -z "$stack" ]; then
     say "The code:" ""
-    RUNTIME=$(runtime) NAME=$NAME CHART=$CHART "$here/pulumi-code.sh"
+    RUNTIME=$(runtime) NAME=$NAME CHART=$CHART OWNER_KEYS_CONFIGURED=${owner_key:+1} "$here/pulumi-code.sh"
     say ""
     yes_no "Committed, and has your pipeline deployed it?" || {
       say "" "When it has, check it from anywhere: restmail status --server https://$HOST"
@@ -179,7 +190,7 @@ EOF
   found=$(preview_release) || preview_failed
   if [ -z "$found" ]; then
     say "" "It does not yet." ""
-    RUNTIME=$(runtime) NAME=$NAME CHART=$CHART "$here/pulumi-code.sh"
+    RUNTIME=$(runtime) NAME=$NAME CHART=$CHART OWNER_KEYS_CONFIGURED=${owner_key:+1} "$here/pulumi-code.sh"
     say ""
     yes_no "Added it to your program?" || {
       say "" "When you have, run this again: the config is set, so it goes straight to the preview."

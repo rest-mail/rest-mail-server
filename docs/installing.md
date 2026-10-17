@@ -62,6 +62,41 @@ further use — and it **expires 72 hours after the server first takes it**, so
 an abandoned install does not sit on the internet waiting for whoever finds
 the password. Lost or expired? `chore password:reset`.
 
+## Owner recovery key
+
+Register a public SSH key during installation so losing the administrator
+password does not remove your independent recovery path:
+
+```bash
+chore install:helm mail.example.com --owner-key ~/.ssh/restmail_owner.pub
+chore install:pulumi ~/infra mail.example.com --owner-key ~/.ssh/restmail_owner.pub
+```
+
+Select a key whose private half you control on your own machine. The installer
+validates the public file and shows its SHA-256 fingerprint, then registers it
+as Helm `api.ownerKeys` or Pulumi `<name>:ownerKeys`. Generated Pulumi programs
+pass that value to the chart. It does not choose a key from your SSH agent,
+generate one, upload a private key, or promote a read-only status key. If no
+owner key is selected, it says recovery will require cluster administrator
+access; existing configured owner keys are preserved.
+
+To recover later, load the corresponding private key into `ssh-agent` and run:
+
+```bash
+restmail reset-admin --server https://mail.example.com --address admin@example.com
+```
+
+The server verifies a fresh signed challenge against its registered owner
+public keys before issuing a short-lived, single-use reset token. Password
+changes do not remove this recovery authority. Keep a secure backup of the
+private key. If the password and every owner key are lost, the CLI cannot
+recover the account without trusted deployment administration access.
+
+For an existing installation, update `api.ownerKeys` in the managed Helm
+values or `<name>:ownerKeys` in its Pulumi configuration and deploy normally;
+do not rerun the installer over a live release. Register additional owner keys
+or remove an old one through that same trusted configuration path.
+
 ## Helm
 
 ```bash
@@ -78,7 +113,7 @@ installs, waits for the pods, and runs `server:verify`.
 - `--values FILE` — everything else the chart takes: an ingress, a storage
   class, resources. Upgrades keep it.
 - `--version` — a chart version; the newest otherwise
-- `--password`, `--name`, `--namespace`
+- `--password`, `--owner-key FILE.pub`, `--name`, `--namespace`
 
 It installs once. If rest-mail is already there it says so and points you at
 `upgrade:helm` — an install over the top would put back its own defaults.
