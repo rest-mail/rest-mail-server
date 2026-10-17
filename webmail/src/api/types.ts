@@ -258,7 +258,7 @@ export interface paths {
         put?: never;
         /**
          * Link an existing account by proving its password
-         * @description Grants the session's account the `owner` role on an existing account, by proving one of its passwords — and a code from its authenticator when it has one (`401 totp_required` without), the same proof as signing in to it. A wrong password, an unknown address and an account with no password are the same `401`. An account still in setup cannot be linked (`403 setup_required`). `display_name`, when the account has none, becomes its name. Throttled with login (a wrong guess spends the same budget), and audited (`accounts.link`, and the grant's `grants.create`). Unlinking is removing that grant: `DELETE /api/v1/accounts/{id}`.
+         * @description Grants the session's account the `owner` role on an existing account, by proving one of its passwords — and a code from its authenticator, or one of its recovery codes, when it has one — the same proof as signing in to it. A refused proof is `403`, never `401`: the secrets are the other account's, and the session that sent them is still good, so a client must not renew it or send them again. A wrong password, an unknown address and an account with no password are the same `403 invalid_credentials`; an account with two-factor authentication answers `403 totp_required` without a code and `403 invalid_totp` for a wrong one. An account still in setup cannot be linked (`403 setup_required`). `display_name`, when the account has none, becomes its name. Throttled with login (a wrong guess spends the same budget), and audited (`accounts.link`, and the grant's `grants.create`). Unlinking is removing that grant: `DELETE /api/v1/accounts/{id}`.
          */
         post: operations["linkAccount"];
         delete?: never;
@@ -2583,6 +2583,10 @@ export interface components {
             /** Format: password */
             password: string;
             display_name?: string;
+            /** @description A code from the account's authenticator, when it has two-factor authentication */
+            totp_code?: string;
+            /** @description One of the account's recovery codes, instead of totp_code; it is spent */
+            recovery_code?: string;
         };
         Folder: {
             name: string;
@@ -4152,19 +4156,21 @@ export interface operations {
                     };
                 };
             };
-            /** @description Wrong address or password (`unauthorized`), or its code is needed (`totp_required`) */
+            /** @description The session itself is missing or has ended; never a refused link */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description The account is still in setup */
+            /** @description The link is refused: a wrong address or password (`invalid_credentials`), its code is needed (`totp_required`), its code is wrong (`invalid_totp`), or the account is still in setup (`setup_required`) */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Already linked, or the session's own account */
             409: {
