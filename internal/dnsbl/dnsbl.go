@@ -2,9 +2,10 @@
 // IP-address DNS blocklist (RFC 5782) and reports what the answer means.
 //
 // It is read-only and opt-in: nothing here queries anything until a caller
-// supplies an IP, a Provider and a Resolver. There are no built-in providers,
-// no default resolver, no scheduling and no state. Scheduling, listing-event
-// persistence and alerting are later slices of #148.
+// supplies an IP, a Provider and a Resolver. There are no built-in providers
+// and no default resolver. A Monitor checks the IPs and providers it is given
+// on a schedule and keeps the listing state in memory only; durable listing
+// events, metrics and alerting are later slices of #148.
 //
 // An A answer is not taken to mean "listed". RFC 5782 §2.3 only says list
 // values SHOULD be in 127.0.0.0/8, and providers use parts of that range for
