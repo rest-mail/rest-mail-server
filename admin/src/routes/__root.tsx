@@ -1,4 +1,4 @@
-import { Outlet, createRootRoute, useNavigate } from '@tanstack/react-router'
+import { Link, Outlet, createRootRoute, useNavigate } from '@tanstack/react-router'
 import { lazy, Suspense, useEffect } from 'react'
 import { setUnauthorizedHandler } from '../lib/api'
 import { useAuthStore } from '../lib/stores/authStore'
@@ -26,13 +26,13 @@ export const Route = createRootRoute({
         <p className="text-lg mb-4" style={{ color: 'var(--gray-secondary)' }}>
           Page not found
         </p>
-        <a
-          href="/admin"
+        <Link
+          to="/dashboard"
           className="text-sm"
           style={{ color: 'var(--red-primary)' }}
         >
           Go to Dashboard
-        </a>
+        </Link>
       </div>
     </div>
   ),

@@ -12,12 +12,14 @@ Helm chart for the rest-mail "mail3" stack.
   (submission, implicit TLS).
 - `imap-gateway` — IMAP listener on 993 (implicit TLS).
 - `pop3-gateway` — POP3 listener on 995 (implicit TLS).
+- `webmail` — the mail client in the browser, at `webmail.<mailserver.domain>`.
+- `admin` — the admin webmail, at `admin.<mailserver.domain>`.
 
 The gateways are how any ordinary mail client reads and sends mail. There are
 no cleartext client ports: 587, 143 and 110 do not exist, and a gateway refuses
 to start in production if asked for one.
-- A ServiceAccount, a ConfigMap for non-secret API config, and an optional
-  Ingress for the API.
+- A ServiceAccount, a ConfigMap for non-secret API config, an Ingress for each
+  web app, and an optional Ingress for the API.
 
 This chart deploys **only** the rest-mail product surface. It does **not** include:
 
@@ -25,7 +27,7 @@ This chart deploys **only** the rest-mail product surface. It does **not** inclu
   stack — see `rest-mail/reference-mailserver`).
 - DNS (dnsmasq), TLS issuance (cert-manager / certgen), mail-internet
   simulation (`rest-mail/testbed`).
-- The webmail front-end or the marketing website.
+- The marketing website.
 
 ## Deploying the API without the gateways
 
@@ -44,6 +46,48 @@ helm install restmail helm/restmail \
 That leaves the API, the JS filter and Postgres, and drops each disabled
 gateway's Deployment, Service and NetworkPolicy. All three default to `true`,
 so an existing install renders exactly as it did before.
+
+## The web apps
+
+The webmail and the admin webmail are each served at the root of a host of
+their own, `webmail.<mailserver.domain>` and `admin.<mailserver.domain>` unless
+`webmail.ingress.host` / `admin.ingress.host` say otherwise. Each host's Ingress
+sends `/` to the app and `/api` to the API. That is not a convenience: the apps
+sign in with `SameSite=Strict` cookies and their CSP allows `connect-src 'self'`
+only, so the API has to be on the app's own origin. There is no CORS to set up,
+and nothing in either image names a host.
+
+A cookie belongs to the host that set it, so signing in on `admin.` does not
+sign you in on `webmail.`. That is intended.
+
+TLS is set per app, the same way as the API's (`webmail.ingress.tls.enabled`,
+`.secretName`, default `<release>-webmail-tls`), with the ingress class and
+annotations alongside. One certificate can cover every host: name the same
+Secret in all three.
+
+```sh
+helm upgrade restmail helm/restmail --reuse-values \
+  --set webmail.ingress.className=traefik \
+  --set webmail.ingress.tls.enabled=true \
+  --set webmail.ingress.tls.secretName=restmail-tls \
+  --set admin.ingress.className=traefik \
+  --set admin.ingress.tls.enabled=true \
+  --set admin.ingress.tls.secretName=restmail-tls
+```
+
+Both are on by default. `webmail.enabled=false` or `admin.enabled=false` drops
+that app's Deployment, Service, Ingress and NetworkPolicy, and nothing else.
+
+To let only some addresses reach `admin.`, use your ingress controller's own
+mechanism through `admin.ingress.annotations` (a Traefik `ipAllowList`
+middleware, ingress-nginx's `whitelist-source-range`). The chart has no
+controller-neutral way to say it, and the API is reachable on its own host
+either way: the admin API is guarded by sign-in and capabilities, not by
+where the request comes from.
+
+The pods run the unprivileged nginx image as uid 101 on a read-only root
+filesystem, with all capabilities dropped. They talk to nothing; the browser
+reaches the API through the Ingress.
 
 ## The first admin
 
@@ -123,7 +167,8 @@ The chart is hardened by default and is deployable in its declared
   ServiceAccount and every pod (no workload uses the Kubernetes API).
 - **Default-deny NetworkPolicies.** Ingress and egress are denied by default,
   then re-opened least-privilege: DNS, API↔DB, gateway↔API/DB, public
-  mail/API ingress, and SMTP outbound delivery (25/465/587) + MTA-STS (443).
+  mail/API/web app ingress, and SMTP outbound delivery (25/465/587) + MTA-STS
+  (443). The web apps get no egress beyond DNS.
 
 ## Where the chart is published
 
@@ -261,6 +306,12 @@ The most common knobs at install time:
 | `postgres.tls.enabled` | `true` | Bundled Postgres serves TLS so `require` connects |
 | `api.tlsTerminatedByProxy` | `true` | Acknowledge a TLS-terminating front proxy |
 | `networkPolicy.enabled` | `true` | Default-deny + least-privilege policies |
+| `webmail.enabled` | `true` | The webmail, with its Ingress |
+| `webmail.ingress.host` | `webmail.<mailserver.domain>` | `/` is the app, `/api` the API |
+| `webmail.ingress.tls.enabled` | `false` | Secret `<release>-webmail-tls` unless named |
+| `admin.enabled` | `true` | The admin webmail, with its Ingress |
+| `admin.ingress.host` | `admin.<mailserver.domain>` | `/` is the app, `/api` the API |
+| `admin.ingress.tls.enabled` | `false` | Secret `<release>-admin-tls` unless named |
 | `serviceAccount.automountServiceAccountToken` | `false` | No workload uses the K8s API |
 
 To verify the chart renders and stays hardened, run the infra test:
@@ -271,10 +322,6 @@ helm/restmail/tests/render-test.sh
 
 ## What is intentionally not in this chart
 
-- **Webmail front-end.** `ghcr.io/rest-mail/webmail` is published now, multi-arch,
-  from this repo's `webmail/` directory, so the reason this chart skipped it has
-  gone. Adding it means a `webmail-deployment.yaml` template and a `webmail.*`
-  block in values. Nothing blocks it; nobody has needed it yet.
 - **Project website.** Tracked separately (Phase 6 of the decomposition).
 - **Reference mail daemons.** Postfix/Dovecot/rspamd live in
   `rest-mail/reference-mailserver`. They are not part of the rest-mail

@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-17 — The webmail and the admin webmail deploy with the chart
+The Helm chart now runs both web apps, each at the root of a host of its own: `webmail.<domain>` and `admin.<domain>` by default (`webmail.ingress.host`, `admin.ingress.host`). Each host's Ingress sends `/api` to the API, so the apps keep their same-origin cookies and `connect-src 'self'` CSP with no CORS; a sign-in on one host is not a sign-in on the other. Either app turns off with `webmail.enabled` / `admin.enabled`. The `admin` image is now published beside `webmail`, both versioned like the rest, and both serve from a read-only root filesystem as uid 101. [§4.6](#46-webmail-react--vite--tailwind--shadcn), [§4.7](#47-admin-ui-react--tanstack-router--zustand--tailwind-v4).
+
 ### 2026-10-17 — App passwords
 A mailbox can give each mail client or automation a named, revocable app password (`rm_<public id>_<secret>`), shown once and stored only as a SHA-256 of its secret. It signs in over IMAP, POP3 and SMTP, and with HTTP Basic on the mail routes of the REST API, reaching only its own mailbox; it never signs in at `POST /api/v1/auth/login` and never manages credentials, passwords or 2FA. Making one takes the mailbox's current password, entered again. Revoking one stops it at the next request, and a new password for the mailbox revokes them all. Creation, revocation, refusals and protocol sign-ins go into the audit log. [§3.3](#33-auth).
 
@@ -342,12 +345,16 @@ Install via Homebrew, Go, or pre-built binary — see https://github.com/rest-ma
 
 Located at [webmail/](../webmail/). Features: rich text editor, contacts, drafts, threads, attachments, SSE live updates, vacation settings. Served on `:3000` (production build) or `:3001` (Vite HMR dev).
 
+Deployed by the Helm chart at `webmail.<domain>` (`webmail.*` in [helm/restmail/values.yaml](../helm/restmail/values.yaml)), whose Ingress also sends `/api` to the API: the app calls the API at the root-relative `/api/v1` on its own origin, which its CSP (`connect-src 'self'`) and `SameSite=Strict` cookies require. The image (`ghcr.io/rest-mail/webmail`) takes the path it is served under when it starts (`NGINX_BASE_PATH`, default `/`) and names it in the page's `<base>`; the chart serves it at `/`.
+
 #### SSE reconnect strategy
 [webmail/src/hooks/useSSE.ts](../webmail/src/hooks/useSSE.ts) — manual reconnect with exponential backoff (1 s → 2× → 30 s max, reset on successful open). Events handled: `message.new`, `message.updated`, `message.deleted`, `message_sent`, `folder.updated`.
 
 ### 4.7 Admin UI (React / TanStack Router / Zustand / Tailwind v4)
 
 Located at [admin/](../admin/). Served on `:3002` or through `/admin` on the reverse proxy.
+
+Deployed by the Helm chart at `admin.<domain>` (`admin.*` in [helm/restmail/values.yaml](../helm/restmail/values.yaml)), with `/api` to the API on the same host, exactly as the webmail is (§4.6). The image (`ghcr.io/rest-mail/admin`) takes its path from `NGINX_BASE_PATH` when it starts and names it in the page's `<base>`, which is where the router reads its basepath; the chart serves it at `/`. Restricting `admin.` by source address is left to the ingress controller, through `admin.ingress.annotations`.
 
 #### Tech stack (actual, not as PLAN.md originally described)
 - TanStack Router (React 19), not TanStack Start

@@ -16,7 +16,9 @@ if [ "$BASE_NOSLASH" = "" ]; then
   BASE_NOSLASH="/__never_match_root__"
 fi
 
+# The template lives outside conf.d, so conf.d can be an empty writable volume
+# under a read-only root filesystem (the Helm chart mounts one there).
 sed \
   -e "s|__BASE_PATH_NOSLASH__|${BASE_NOSLASH}|g" \
   -e "s|__BASE_PATH__|${BASE}|g" \
-  /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf
+  /etc/nginx/restmail/default.conf.template > /etc/nginx/conf.d/default.conf
