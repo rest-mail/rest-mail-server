@@ -1296,7 +1296,10 @@ export interface paths {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -3795,9 +3798,10 @@ export interface components {
         UpdateCustomFilterRequest: {
             name?: string;
             description?: string;
-            filter_type?: string;
             /** @enum {string} */
-            direction?: "inbound" | "outbound";
+            filter_type?: "action" | "transform";
+            /** @enum {string} */
+            direction?: "inbound" | "outbound" | "both";
             /** @description Filter configuration (opaque JSON) */
             config?: Record<string, never>;
             enabled?: boolean;
@@ -6300,13 +6304,13 @@ export interface operations {
             content: {
                 /**
                  * @example {
-                 *       "from": "someone@example.com",
+                 *       "from": "someone@ext-contract.test",
                  *       "to": [
                  *         "eve@restmail.test"
                  *       ],
                  *       "subject": "Delivered over RESTMAIL",
                  *       "body_text": "Hello, Eve.",
-                 *       "message_id": "<restmail-delivery@example.com>"
+                 *       "message_id": "<restmail-delivery@ext-contract.test>"
                  *     }
                  */
                 "application/json": components["schemas"]["RestmailDeliverRequest"];
@@ -6616,7 +6620,10 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Resource ID */
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
                 id: components["parameters"]["ResourceId"];
             };
             cookie?: never;
@@ -7196,6 +7203,15 @@ export interface operations {
         };
         requestBody: {
             content: {
+                /**
+                 * @example {
+                 *       "description": "Tags mail about invoices and receipts",
+                 *       "config": {
+                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
+                 *       },
+                 *       "enabled": true
+                 *     }
+                 */
                 "application/json": components["schemas"]["UpdateCustomFilterRequest"];
             };
         };
@@ -7212,6 +7228,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     testCustomFilter: {
