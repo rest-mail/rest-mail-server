@@ -30,9 +30,9 @@ const maxCredentialNameLength = 100
 // mail clients and automations use instead of the mailbox's own password.
 //
 // Listing, creating and revoking need a session from signing in with the
-// mailbox's password, and creating also its second factor when the mailbox has
-// 2FA: the routes accept no app password, so an app password can never mint or
-// revoke one.
+// mailbox's password: the routes accept no app password, so an app password
+// can never mint or revoke one. Creating also needs the mailbox's current
+// password, entered again, and its second factor when the mailbox has 2FA.
 type CredentialHandler struct {
 	db        *gorm.DB
 	repo      *repositories.CredentialRepository
@@ -129,6 +129,9 @@ func (h *CredentialHandler) List(w http.ResponseWriter, r *http.Request) {
 type createCredentialRequest struct {
 	Name      string     `json:"name"`
 	ExpiresAt *time.Time `json:"expires_at"`
+	// Password is the mailbox's current password, entered again. It is
+	// checked and never stored, logged or answered with.
+	Password string `json:"password"`
 }
 
 // Create makes an app password and answers with it, once.
@@ -160,8 +163,16 @@ func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Creating a credential needs a person: a session whose sign-in took the
-	// mailbox's second factor, when the mailbox has one.
+	// Creating a credential needs a person who knows the mailbox's password
+	// now. A session outlives a change of password by up to its access token's
+	// lifetime, and an app password made in that window, by whoever learnt the
+	// old password, would outlive the change.
+	if !h.checkCurrentPassword(w, claims.MailboxID, req.Password) {
+		return
+	}
+
+	// It also needs a session whose sign-in took the mailbox's second factor,
+	// when the mailbox has one.
 	_, err := h.twoFactor.GetActive(models.TwoFactorUserTypeMailbox, claims.MailboxID)
 	switch {
 	case err == nil && !claims.TwoFactor:
@@ -180,6 +191,33 @@ func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.Data(w, http.StatusCreated, createdAppPassword{credentialResponse: toCredentialResponse(cred), Password: password})
+}
+
+// checkCurrentPassword checks password against the mailbox's password hash
+// as it is now, with the same bcrypt comparison as signing in. A mailbox that
+// is gone or disabled is compared against a dummy hash, so it costs the same,
+// and refused. It writes the error and returns false unless password matches.
+func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, mailboxID uint, password string) bool {
+	if password == "" {
+		respond.Error(w, http.StatusUnauthorized, "reauth_required",
+			"Enter the mailbox's current password to create an app password")
+		return false
+	}
+	var mailbox models.Mailbox
+	err := h.db.Select("password").Where("id = ? AND active = ?", mailboxID, true).Take(&mailbox).Error
+	passwordHash := auth.DummyPasswordHash
+	switch {
+	case err == nil:
+		passwordHash = mailbox.Password
+	case !errors.Is(err, gorm.ErrRecordNotFound):
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
+		return false
+	}
+	if auth.CheckPassword(password, passwordHash) != nil || err != nil {
+		respond.Error(w, http.StatusUnauthorized, "invalid_password", "The password is incorrect")
+		return false
+	}
+	return true
 }
 
 // Revoke revokes one of the mailbox's app passwords. Its row stays, revoked,

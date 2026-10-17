@@ -83,6 +83,7 @@ type credentialFixture struct {
 	router    http.Handler
 	jwt       *auth.JWTService
 	address   string
+	password  string // the mailbox's password now, which creating an app password takes
 	mailboxID uint
 	accountID uint
 	session   string // the mailbox's access token, from signing in with its password
@@ -92,11 +93,16 @@ const credentialTestPassword = "mailbox-password-123"
 
 func newCredentialFixture(t *testing.T) *credentialFixture {
 	t.Helper()
+	return newCredentialFixtureWith(t, &config.Config{Environment: "test"})
+}
+
+func newCredentialFixtureWith(t *testing.T, cfg *config.Config) *credentialFixture {
+	t.Helper()
 	db := openCredentialScratchDB(t)
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
-	routers := NewRouters(db, jwtSvc, &config.Config{Environment: "test"}, nil)
+	routers := NewRouters(db, jwtSvc, cfg, nil)
 	t.Cleanup(routers.Close)
-	f := &credentialFixture{t: t, db: db, router: routers.Public, jwt: jwtSvc}
+	f := &credentialFixture{t: t, db: db, router: routers.Public, jwt: jwtSvc, password: credentialTestPassword}
 
 	domain := models.Domain{Name: "example.test", Active: true}
 	if err := db.Create(&domain).Error; err != nil {
@@ -164,7 +170,7 @@ type createdCredential struct {
 
 func (f *credentialFixture) createAppPassword(name string) createdCredential {
 	f.t.Helper()
-	rr := f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID), f.session, fmt.Sprintf(`{"name":%q}`, name))
+	rr := f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID), f.session, fmt.Sprintf(`{"name":%q,"password":%q}`, name, f.password))
 	if rr.Code != http.StatusCreated {
 		f.t.Fatalf("create an app password: %d %s", rr.Code, rr.Body.String())
 	}
@@ -240,7 +246,7 @@ func TestAppPasswords_EndToEnd(t *testing.T) {
 	t.Run("cannot manage credentials or 2FA", func(t *testing.T) {
 		before := f.credentialCount()
 		for _, rt := range []struct{ method, path, body string }{
-			{http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID), `{"name":"another"}`},
+			{http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID), fmt.Sprintf(`{"name":"another","password":%q}`, credentialTestPassword)},
 			{http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID), ""},
 			{http.MethodDelete, fmt.Sprintf("/api/v1/accounts/%d/credentials/%d", f.accountID, created.ID), ""},
 			{http.MethodPost, "/api/v1/auth/2fa/enroll", `{}`},
@@ -359,11 +365,11 @@ func TestAppPasswords_Expiry(t *testing.T) {
 	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
 
 	past := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
-	if rr := f.do(http.MethodPost, path, f.session, fmt.Sprintf(`{"name":"n8n","expires_at":%q}`, past)); rr.Code != http.StatusUnprocessableEntity {
+	if rr := f.do(http.MethodPost, path, f.session, fmt.Sprintf(`{"name":"n8n","expires_at":%q,"password":%q}`, past, f.password)); rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("an expiry in the past: %d %s", rr.Code, rr.Body.String())
 	}
 	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-	rr := f.do(http.MethodPost, path, f.session, fmt.Sprintf(`{"name":"n8n","expires_at":%q}`, future))
+	rr := f.do(http.MethodPost, path, f.session, fmt.Sprintf(`{"name":"n8n","expires_at":%q,"password":%q}`, future, f.password))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", rr.Code, rr.Body.String())
 	}
@@ -400,9 +406,11 @@ func TestAppPasswords_CreatingNeedsTheSecondFactor(t *testing.T) {
 		t.Fatalf("seed 2FA: %v", err)
 	}
 	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
+	body := fmt.Sprintf(`{"name":"iPhone Mail","password":%q}`, f.password)
 
-	// The fixture's session signed in before 2FA was on: password only.
-	rr := f.do(http.MethodPost, path, f.session, `{"name":"iPhone Mail"}`)
+	// The fixture's session signed in before 2FA was on: password only. The
+	// password entered again is no second factor.
+	rr := f.do(http.MethodPost, path, f.session, body)
 	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "two_factor_required") {
 		t.Fatalf("without a second factor: %d %s", rr.Code, rr.Body.String())
 	}
@@ -410,8 +418,129 @@ func TestAppPasswords_CreatingNeedsTheSecondFactor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rr := f.do(http.MethodPost, path, "Bearer "+pair.AccessToken, `{"name":"iPhone Mail"}`); rr.Code != http.StatusCreated {
+	if rr := f.do(http.MethodPost, path, "Bearer "+pair.AccessToken, body); rr.Code != http.StatusCreated {
 		t.Fatalf("with a second factor: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+// Creating an app password takes the mailbox's current password, entered
+// again, as Gmail and GitHub ask for it. A session outlives a change of
+// password by up to its access token's lifetime, and an app password made in
+// that window, by whoever learnt the old password, would outlive the change.
+func TestAppPasswords_CreatingNeedsTheCurrentPassword(t *testing.T) {
+	f := newCredentialFixture(t)
+	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
+	const wrongPassword = "not-the-mailbox-password"
+	refused := func(t *testing.T, session, body, code string) {
+		t.Helper()
+		before := f.credentialCount()
+		rr := f.do(http.MethodPost, path, session, body)
+		if rr.Code != http.StatusUnauthorized || !strings.Contains(rr.Body.String(), `"code":"`+code+`"`) {
+			t.Fatalf("create with %s: %d %s", body, rr.Code, rr.Body.String())
+		}
+		if strings.Contains(rr.Body.String(), "rm_") || strings.Contains(rr.Body.String(), wrongPassword) {
+			t.Errorf("the refusal answered with a secret: %s", rr.Body.String())
+		}
+		if f.credentialCount() != before {
+			t.Error("a refused attempt made a credential")
+		}
+	}
+
+	t.Run("without it, refused", func(t *testing.T) {
+		refused(t, f.session, `{"name":"stolen"}`, "reauth_required")
+		refused(t, f.session, `{"name":"stolen","password":""}`, "reauth_required")
+	})
+
+	t.Run("with a wrong one, refused", func(t *testing.T) {
+		refused(t, f.session, fmt.Sprintf(`{"name":"stolen","password":%q}`, wrongPassword), "invalid_password")
+	})
+
+	t.Run("with the right one, made", func(t *testing.T) {
+		created := f.createAppPassword("Thunderbird")
+		if rr := f.do(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID), basic(f.address, created.Password), ""); rr.Code != http.StatusOK {
+			t.Errorf("folders with the app password: %d %s", rr.Code, rr.Body.String())
+		}
+	})
+
+	t.Run("refusals are recorded as refused, never with the password", func(t *testing.T) {
+		es := f.entries("credentials.create")
+		if len(es) != 4 {
+			t.Fatalf("%d creation entries, want 4: %+v", len(es), es)
+		}
+		for i, code := range []string{"reauth_required", "reauth_required", "invalid_password"} {
+			if e := es[i]; e.Outcome != models.AuditOutcomeDenied || e.Status != http.StatusUnauthorized ||
+				e.ErrorCode != code || e.Target["name"] != "stolen" || e.Target["credential_id"] != "" ||
+				e.ActorKind != models.AuditActorMailbox || e.ActorID == nil || *e.ActorID != f.mailboxID {
+				t.Errorf("refusal %d: %+v", i, e)
+			}
+		}
+		if es[3].Outcome != models.AuditOutcomeSuccess {
+			t.Errorf("the creation: %+v", es[3])
+		}
+		var all []models.AuditEntry
+		f.db.Order("seq ASC").Find(&all)
+		for _, e := range all {
+			if b, _ := json.Marshal(e); strings.Contains(string(b), wrongPassword) || strings.Contains(string(b), credentialTestPassword) {
+				t.Errorf("entry %d holds a password: %s", e.Seq, b)
+			}
+		}
+	})
+}
+
+// After a new password, the access token signed in with the old one still
+// works until it expires, but the old password makes no app password with it.
+func TestAppPasswords_OldPasswordRefusedAfterAChange(t *testing.T) {
+	f := newCredentialFixture(t)
+	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
+	admin := adminToken(t, f.jwt, []string{middleware.CapMailboxesWrite})
+	const newPassword = "a-new-password-456"
+	if rr := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID), "Bearer "+admin,
+		fmt.Sprintf(`{"password":%q}`, newPassword)); rr.Code != http.StatusOK {
+		t.Fatalf("set a new password: %d %s", rr.Code, rr.Body.String())
+	}
+	// The session from before the change is still valid.
+	if rr := f.do(http.MethodGet, fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID), f.session, ""); rr.Code != http.StatusOK {
+		t.Fatalf("the old session after the change: %d %s", rr.Code, rr.Body.String())
+	}
+
+	before := f.credentialCount()
+	rr := f.do(http.MethodPost, path, f.session, fmt.Sprintf(`{"name":"stolen","password":%q}`, credentialTestPassword))
+	if rr.Code != http.StatusUnauthorized || !strings.Contains(rr.Body.String(), `"code":"invalid_password"`) {
+		t.Fatalf("create with the old password: %d %s", rr.Code, rr.Body.String())
+	}
+	if f.credentialCount() != before {
+		t.Fatal("the old password made a credential")
+	}
+
+	// Whoever knows the new password is the mailbox's owner now.
+	f.password = newPassword
+	f.createAppPassword("Thunderbird")
+}
+
+// A refused attempt to create one spends login's budget, from the same
+// limiter, so checking the password here guesses no faster than login does.
+func TestAppPasswords_CreatingIsThrottledLikeLogin(t *testing.T) {
+	f := newCredentialFixtureWith(t, &config.Config{
+		Environment:          "test",
+		AuthRateLimitEnabled: true,
+		// No refill during the test; the fixture's sign-in spends the first.
+		AuthRateLimitRPS:   0.0001,
+		AuthRateLimitBurst: 3,
+	})
+	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
+	guess := `{"name":"stolen","password":"guess"}`
+	for i := 0; i < 2; i++ {
+		if rr := f.do(http.MethodPost, path, f.session, guess); rr.Code != http.StatusUnauthorized {
+			t.Fatalf("guess %d: %d %s", i, rr.Code, rr.Body.String())
+		}
+	}
+	rr := f.do(http.MethodPost, path, f.session, guess)
+	if rr.Code != http.StatusTooManyRequests || rr.Header().Get("Retry-After") == "" {
+		t.Fatalf("a guess past the budget: %d %s", rr.Code, rr.Body.String())
+	}
+	rr = f.do(http.MethodPost, "/api/v1/auth/login", "", fmt.Sprintf(`{"email":%q,"password":%q,"client":"native"}`, f.address, credentialTestPassword))
+	if rr.Code != http.StatusTooManyRequests {
+		t.Errorf("a sign-in after the guesses: %d, want 429 from the shared budget", rr.Code)
 	}
 }
 
@@ -442,7 +571,7 @@ func TestAppPasswords_ReachOnlyTheirOwnMailbox(t *testing.T) {
 		t.Errorf("sending as a linked mailbox with the app password: %d %s", rr.Code, rr.Body.String())
 	}
 	// Only a mailbox makes credentials for itself, never for one it has linked.
-	rr = f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", receiptsAccount.ID), f.session, `{"name":"x"}`)
+	rr = f.do(http.MethodPost, fmt.Sprintf("/api/v1/accounts/%d/credentials", receiptsAccount.ID), f.session, fmt.Sprintf(`{"name":"x","password":%q}`, credentialTestPassword))
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("creating a credential for a linked mailbox: %d %s", rr.Code, rr.Body.String())
 	}
@@ -646,7 +775,7 @@ func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
 			} `json:"data"`
 		}
 		decodeInto(t, rr, &login)
-		f.session = "Bearer " + login.Data.AccessToken
+		f.session, f.password = "Bearer "+login.Data.AccessToken, "a-new-password-456"
 		works(t, f.createAppPassword("Thunderbird again"))
 	})
 }

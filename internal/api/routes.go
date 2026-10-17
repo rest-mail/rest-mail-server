@@ -491,9 +491,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(authThrottle, auditLog("accounts.test_connection", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts/test-connection", accountH.TestConnection)
 
 		// Credentials (#344): a mailbox's app passwords. The secret is in the
-		// answer to creating one, once, and never in the audit log.
+		// answer to creating one, once, and never in the audit log. Creating
+		// one takes the mailbox's current password, so it is throttled like
+		// login, with the same limiter: a wrong one spends login's budget.
 		r.Get("/api/v1/accounts/{id}/credentials", credentialH.List)
-		r.With(auditLog("credentials.create", middleware.AuditBodyFields("name"),
+		r.With(authThrottle, auditLog("credentials.create", middleware.AuditBodyFields("name"),
 			middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
 			Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
 		r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)

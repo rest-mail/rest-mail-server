@@ -769,15 +769,21 @@ paths:
         of its secret. Its scope is the mailbox, with mail:read, mail:write and
         mail:send. Needs a session from signing in with the mailbox's password,
         and, when the mailbox has 2FA, with its code too (`403
-        two_factor_required` otherwise). Recorded in the audit log as
-        `credentials.create`, with the name, id and public id.
+        two_factor_required` otherwise). It also needs the mailbox's current
+        password, entered again in `password`, as Gmail and GitHub ask for it:
+        a session from before a change of password works until its access
+        token expires, and must not make an app password that outlives the
+        change. Throttled like login, with the same budget. Recorded in the
+        audit log as `credentials.create`, with the name, id and public id; a
+        refused attempt is recorded as denied, with its error code. The
+        password is never stored, recorded or answered with.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [name, password]
               properties:
                 name:
                   type: string
@@ -787,6 +793,11 @@ paths:
                   type: string
                   format: date-time
                   description: When it stops working; in the future. Omit for never.
+                password:
+                  type: string
+                  format: password
+                  writeOnly: true
+                  description: The mailbox's current password, entered again.
       responses:
         "201":
           description: Made; `password` is shown this once
@@ -799,7 +810,13 @@ paths:
                   data:
                     $ref: "#/components/schemas/CreatedAppPassword"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: >
+            No valid session, or the mailbox's current password was not given
+            (`reauth_required`) or is wrong (`invalid_password`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: >
             Not a mailbox session, or the mailbox has 2FA and the session's
@@ -808,6 +825,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           description: name missing or longer than 100 characters, or expires_at not in the future
+        "429":
+          description: Too many attempts from this client; shares login's budget
 
   /api/v1/accounts/{id}/credentials/{credential_id}:
     parameters:

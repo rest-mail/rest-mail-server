@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// testStage14AppPasswords: an app password (#344) signs a mail client in over
-// IMAPS and SMTPS, is refused by the interactive sign-in, and stops working
-// the moment it is revoked.
+// testStage14AppPasswords: an app password (#344), made with the mailbox's
+// current password, signs a mail client in over IMAPS and SMTPS, is refused by
+// the interactive sign-in, and stops working the moment it is revoked.
 func testStage14AppPasswords(t *testing.T) {
 	adminClient := newAPIClient()
 	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
@@ -22,7 +22,13 @@ func testStage14AppPasswords(t *testing.T) {
 	createMailbox(t, adminClient, user, "password123", "App Password User")
 	client, accountID := restmailInbox(t, user, "password123")
 
+	// Making one takes the mailbox's current password, entered again.
 	resp, err := client.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", accountID), map[string]string{"name": "e2e Thunderbird"})
+	requireNoError(t, err)
+	requireStatus(t, resp, http.StatusUnauthorized)
+	resp.Body.Close()
+	resp, err = client.post(fmt.Sprintf("/api/v1/accounts/%d/credentials", accountID),
+		map[string]string{"name": "e2e Thunderbird", "password": "password123"})
 	requireNoError(t, err)
 	requireStatus(t, resp, http.StatusCreated)
 	var created struct {
