@@ -1700,10 +1700,10 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -1724,10 +1724,10 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
                 /**
                  * @description Sender rule entry ID
                  * @example 1
@@ -1752,10 +1752,10 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -1776,10 +1776,10 @@ export interface paths {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
                 /**
                  * @description Sender rule entry ID
                  * @example 1
@@ -7705,10 +7705,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -7733,10 +7733,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -7772,10 +7772,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
                 /**
                  * @description Sender rule entry ID
                  * @example 1
@@ -7802,10 +7802,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -7830,10 +7830,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
             };
             cookie?: never;
         };
@@ -7869,10 +7869,10 @@ export interface operations {
             header?: never;
             path: {
                 /**
-                 * @description Resource ID
+                 * @description Domain ID
                  * @example 1
                  */
-                id: components["parameters"]["ResourceId"];
+                id: components["parameters"]["DomainId"];
                 /**
                  * @description Sender rule entry ID
                  * @example 1
