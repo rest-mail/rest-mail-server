@@ -20,6 +20,7 @@ The application itself is deliberately thin: the protocol engines and email-auth
 - MTA-STS and TLS-RPT (RFC 8460/8461), including outbound MTA-STS policy enforcement
 - ACME/Let's Encrypt auto-renewal
 - JWT authentication with bcrypt passwords (Dovecot-compatible `{BLF-CRYPT}` format)
+- App passwords: named, revocable passwords for mail clients and automations, over IMAP, POP3, SMTP and the REST API
 - Capability-based RBAC enforced on every admin route
 - PROXY protocol support for reverse proxies (HAProxy, nginx)
 - Connection rate limiting, auth ban tracking, fail2ban integration
@@ -308,7 +309,7 @@ projects/           Dockerfiles for the gateways, js-filter sidecar, dnsmasq fra
 helm/               Helm chart for restmail
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
 tasks/              Per-service task files (one per container) included from root chores.yml
-tests/e2e/          End-to-end test suite (13 stages)
+tests/e2e/          End-to-end test suite (14 stages)
 .workspace/         Sibling repos cloned on demand (testbed, reference-mailserver, website) — gitignored
 ```
 
@@ -397,7 +398,7 @@ chore test:e2e
 chore test:all
 ```
 
-The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 13 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, and IMAP IDLE.
+The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 14 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, IMAP IDLE, and app passwords.
 
 ### Local Development
 
@@ -576,7 +577,7 @@ this repo); its `configs/restmail/manifest.yml` should also carry
 The REST API exposes 146 operations across these resource groups:
 
 - **Auth** -- Login, logout, token refresh
-- **Accounts** -- Link/unlink mail accounts, test connections
+- **Accounts** -- Link/unlink mail accounts, test connections, app passwords
 - **Messages** -- List, read, send, reply, forward, delete, search, thread
 - **Folders** -- Create, rename, delete, list
 - **Drafts** -- Save, update, send
@@ -621,6 +622,37 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 curl http://localhost:8080/api/v1/accounts \
   -H "Authorization: Bearer <access_token>"
 ```
+
+### App passwords
+
+A mailbox can give each mail client or automation an app password of its own:
+`rm_<public id>_<secret>`, 59 letters, digits and underscores. It is shown once,
+when it is made; the server keeps only a SHA-256 of the secret.
+
+```bash
+# Make one, signed in with the mailbox's password (and its 2FA code, if it has 2FA),
+# entering the mailbox's current password again
+curl -X POST http://localhost:8080/api/v1/accounts/<account id>/credentials \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"name": "Thunderbird", "expires_at": "2027-01-01T00:00:00Z", "password": "<mailbox password>"}'
+
+# Use it as the password in a mail client (IMAP, POP3, SMTP), or with HTTP Basic
+curl -u 'eve@restmail.test:rm_…' http://localhost:8080/api/v1/accounts/<account id>/folders
+
+# List them (never the secret), and revoke one: the next request made with it is refused
+curl http://localhost:8080/api/v1/accounts/<account id>/credentials -H "Authorization: Bearer <access_token>"
+curl -X DELETE http://localhost:8080/api/v1/accounts/<account id>/credentials/<id> -H "Authorization: Bearer <access_token>"
+```
+
+An app password reaches only its own mailbox, to read, change and send mail. It
+cannot sign in at `/api/v1/auth/login` (the app and the webmail), change a
+password or 2FA, link a mailbox, or list, make or revoke app passwords. A new
+password for the mailbox revokes all of them, as it ends every session. Making
+one takes the mailbox's current password, entered again (`401 reauth_required`
+without it, `401 invalid_password` when it is wrong), so a session from before
+a new password, still valid until its access token expires, can't make one
+that outlives the change. Each creation, refused creation, revocation, refused
+app password and sign-in over IMAP, POP3 or SMTP is recorded in the audit log.
 
 ## Pipeline Filters
 

@@ -2,7 +2,7 @@ name: E2E
 
 # Full end-to-end suite: stands up the whole simulated-internet topology
 # (testbed dnsmasq + certs, reference mail1/mail2, the restmail.test product
-# stack) and runs the 13 staged tests in tests/e2e/ from a golang container on
+# stack) and runs the 14 staged tests in tests/e2e/ from a golang container on
 # the mailnet. Heavy (~20 min), so it lives in its own workflow rather than
 # bloating ci.yml.
 #
@@ -226,7 +226,7 @@ jobs:
       - name: Assert stages executed (guard against silent skips)
         # Belt-and-suspenders on top of E2E_REQUIRE_STACK: a green e2e must mean
         # the stages actually RAN. Fail if any top-level stage skipped, or if
-        # fewer than all 13 stages reached PASS.
+        # fewer than all 14 stages reached PASS.
         run: |
           log="$RUNNER_TEMP/e2e.log"
           skipped=$(grep -cE -- '--- SKIP: TestStages/Stage[0-9]+_[A-Za-z]+ \(' "$log" || true)
@@ -237,11 +237,11 @@ jobs:
             grep -E -- '--- SKIP: TestStages/Stage' "$log" || true
             exit 1
           fi
-          if [ "$passed" -lt 13 ]; then
-            echo "::error::expected all 13 e2e stages to PASS, only $passed did"
+          if [ "$passed" -lt 14 ]; then
+            echo "::error::expected all 14 e2e stages to PASS, only $passed did"
             exit 1
           fi
-          echo "all 13 e2e stages executed and passed"
+          echo "all 14 e2e stages executed and passed"
 
       - name: Collect container logs
         if: always()

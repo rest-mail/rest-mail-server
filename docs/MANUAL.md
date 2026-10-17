@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-17 — App passwords
+A mailbox can give each mail client or automation a named, revocable app password (`rm_<public id>_<secret>`), shown once and stored only as a SHA-256 of its secret. It signs in over IMAP, POP3 and SMTP, and with HTTP Basic on the mail routes of the REST API, reaching only its own mailbox; it never signs in at `POST /api/v1/auth/login` and never manages credentials, passwords or 2FA. Making one takes the mailbox's current password, entered again. Revoking one stops it at the next request, and a new password for the mailbox revokes them all. Creation, revocation, refusals and protocol sign-ins go into the audit log. [§3.3](#33-auth).
+
 ### 2026-10-15 — The installer shows the admin password as a QR code
 `restmail sign-in-link` draws the link that opens the rest-mail app signed in — `https://rest-mail.com/setup#server=…&username=…&password=…` — as a QR code a phone's camera opens, and always prints the link, server, username and password as text too. `chore install:helm`, `install:pulumi` and `password:reset` show the password they made that way. [§7.9](#79-first-start-of-a-production-install).
 
@@ -112,6 +115,7 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 - `aliases` — domain_id, source_address, destination_address, active
 - `webmail_accounts` — primary_mailbox_id
 - `linked_accounts` — webmail_account_id, mailbox_id
+- `credentials` — owner_kind + owner_id (a mailbox), kind (`app_password`), name, public_id (unique), secret_hash (SHA-256), scope (JSONB), created_by_kind + created_by_id, created_at, last_used_at, expires_at, revoked_at. Never deleted: a revoked one stays for the audit trail.
 - `messages` — mailbox_id, folder, message_id, subject, body_text, body_html, sender, recipients_to/cc (JSONB), size_bytes, is_read / is_flagged / is_starred / is_draft / is_deleted, received_at, date_header, thread_id, in_reply_to, references
 - `quota_usage` — mailbox_id, subject_bytes, body_bytes, attachment_bytes, total_bytes (GENERATED), message_count
 - `attachments` — message_id, filename, content_type, size, checksum (indexed for dedup), storage_type, storage_ref, is_inline
@@ -124,6 +128,7 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 - JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. Claims: `sub`, `email`, `webmail_account_id`, `iss=restmail`, `iat`, `exp`, `capabilities[]`.
 - Refresh flow: axios response interceptor in admin / webmail detects 401 → `POST /api/v1/auth/refresh` → retry request → logout on refresh failure.
 - RBAC: JWT carries `capabilities[]`. Wildcard `*` = superadmin. Capabilities use `resource:action` format (e.g. `domains:write`, `users:delete`). Server enforces; client-side checks are UX only.
+- App passwords: `POST /api/v1/accounts/{id}/credentials` (a session from a password sign-in, with its 2FA code when the mailbox has 2FA, and the mailbox's current password entered again in `password`: `401 reauth_required` without it, `401 invalid_password` when it is wrong, checked with bcrypt against the hash as it is now and throttled with login's budget) makes one and shows it once; `GET` lists them, `DELETE …/{credential_id}` revokes one. A new password for the mailbox (`PATCH /api/v1/admin/mailboxes/{id}` with `password`) revokes all of them, in the transaction that sets it, with a `credentials.revoke` audit entry for each, `reason` `password_changed`. The mail routes take one with HTTP Basic (`address:app_password`), checked on every request; the gateways sign a client in with one through `POST /api/v1/auth/protocol-sign-in` and send it with each request, so a revoked one stops at the client's next command, and SMTP rechecks it before each message. Its scope is its own mailbox (read, write, send): never a linked one. Refusals are throttled at login's rate, per client IP for guesses and per credential for one whose secret matched. Implementation at [internal/api/middleware/app_password.go](../internal/api/middleware/app_password.go) and [internal/db/repositories/credential.go](../internal/db/repositories/credential.go).
 - Account setup: an admin flagged `password_change_required`, or `two_factor_required` without a confirmed authenticator, is *in setup*. Its sessions carry the `setup` claim and no capabilities; `AdminOnly` answers `403 setup_required` on every admin route, and refresh re-derives the state from the database so it is no way out. Login reports what is owed in `setup_required`. The roles and the first admin of a fresh install come from [internal/bootstrap](../internal/bootstrap/bootstrap.go) at every API start — see [§7.9](#79-first-start-of-a-production-install).
 
 ### 3.4 Web framework & runtime
@@ -153,6 +158,8 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - `POST /api/v1/auth/login` — returns access token + sets refresh cookie
 - `POST /api/v1/auth/logout` — revoke session
 - `POST /api/v1/auth/refresh` — rotate access token
+- `POST /api/v1/auth/protocol-sign-in` — a gateway signs a mail client in with an app password (HTTP Basic)
+- `GET|POST /api/v1/accounts/:id/credentials`, `DELETE /api/v1/accounts/:id/credentials/:credential_id` — app passwords
 
 #### User-level mail (authenticated)
 - `GET /api/v1/accounts` — list linked mailboxes
@@ -264,6 +271,8 @@ Implementations at [internal/gateway/smtp/](../internal/gateway/smtp/), [interna
 - **SMTP**: inbound (25), submission (587), implicit TLS (465). Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+72h`, `MaxRetries: 30`.
 - **IMAP**: 143 / 993. A thin `Backend` adapter over the `rest-mail/imap` server library; the library handles the IMAP protocol (SELECT/FETCH/SEARCH/EXPUNGE/CREATE etc.) and the gateway serves mailbox data from the REST/DB layer.
 - **POP3**: 110 / 995. A thin `Backend` adapter over the `rest-mail/pop3` server library (STAT/LIST/RETR/DELE/QUIT).
+
+All three sign a client in through the API: the mailbox's own password through `POST /api/v1/auth/login`, an app password (recognised by its format) through `POST /api/v1/auth/protocol-sign-in`, after which every API call carries it with HTTP Basic.
 
 #### Outbound queue worker
 At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Polls `outbound_queue`, attempts delivery, parses SMTP errors via `SMTPError{Code, Enhanced, Message}` + `parseSMTPError()`, and:

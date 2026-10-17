@@ -58,7 +58,11 @@ func (h *AccountHandler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 		IsPrimary:   true,
 	})
 
-	// Linked accounts
+	// Linked accounts: none for an app password, which reaches only its own
+	// mailbox.
+	if claims.LinkedAccountsOwner() == 0 {
+		account.LinkedAccounts = nil
+	}
 	for _, la := range account.LinkedAccounts {
 		displayName := la.DisplayName
 		if displayName == "" {
@@ -108,7 +112,7 @@ func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
 
 	// Check linked accounts
 	var linked models.LinkedAccount
-	if err := h.db.Preload("Mailbox").Where("webmail_account_id = ? AND id = ?", claims.WebmailAccountID, id).First(&linked).Error; err == nil {
+	if err := h.db.Preload("Mailbox").Where("webmail_account_id = ? AND id = ?", claims.LinkedAccountsOwner(), id).First(&linked).Error; err == nil {
 		displayName := linked.DisplayName
 		if displayName == "" {
 			displayName = linked.Mailbox.DisplayName

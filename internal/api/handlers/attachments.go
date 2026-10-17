@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -112,7 +113,7 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 	// Mailbox-scoped: restrict to the authenticated account's mailboxes. There is
 	// no cross-mailbox admin bypass — the deprecated IsAdmin claim was removed
 	// (OSI-14).
-	mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
+	mailboxIDs := h.getUserMailboxIDs(claims)
 	if len(mailboxIDs) == 0 {
 		respond.Error(w, http.StatusNotFound, "not_found", "Attachment not found")
 		return
@@ -184,7 +185,7 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 	// Mailbox-scoped: the message must belong to the authenticated account. No
 	// cross-mailbox admin bypass — the deprecated IsAdmin claim was removed
 	// (OSI-14).
-	mailboxIDs := h.getUserMailboxIDs(claims.WebmailAccountID)
+	mailboxIDs := h.getUserMailboxIDs(claims)
 	owned := false
 	for _, mid := range mailboxIDs {
 		if msg.MailboxID == mid {
@@ -203,15 +204,16 @@ func (h *AttachmentHandler) ListAttachments(w http.ResponseWriter, r *http.Reque
 	respond.List(w, attachments, nil)
 }
 
-// getUserMailboxIDs returns all mailbox IDs the user has access to (primary + linked).
-func (h *AttachmentHandler) getUserMailboxIDs(webmailAccountID uint) []uint {
+// getUserMailboxIDs returns all mailbox IDs the user has access to (primary +
+// linked; an app password has no linked ones).
+func (h *AttachmentHandler) getUserMailboxIDs(claims *auth.Claims) []uint {
 	var ids []uint
 	var account models.WebmailAccount
-	if err := h.db.First(&account, webmailAccountID).Error; err == nil {
+	if err := h.db.First(&account, claims.WebmailAccountID).Error; err == nil {
 		ids = append(ids, account.PrimaryMailboxID)
 	}
 	var linked []models.LinkedAccount
-	h.db.Where("webmail_account_id = ?", webmailAccountID).Find(&linked)
+	h.db.Where("webmail_account_id = ?", claims.LinkedAccountsOwner()).Find(&linked)
 	for _, la := range linked {
 		ids = append(ids, la.MailboxID)
 	}
