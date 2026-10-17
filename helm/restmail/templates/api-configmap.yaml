@@ -18,9 +18,8 @@ data:
   INTERNAL_ROUTES_ALLOW_PUBLIC: "true"
   {{- end }}
   {{- with .Values.api.ownerKeys }}
-  # Public keys of whoever owns this server, in authorized_keys format. Holding
-  # a matching private key is what lets `restmail reset-admin` let an admin
-  # back in, over the public API.
+  # Trusted initial public keys, imported into PostgreSQL only while its owner
+  # registry is empty. Recovery reads the database, not this ConfigMap.
   RESTMAIL_OWNER_KEYS: {{ . | quote }}
   {{- end }}
   {{- with .Values.api.statusKeys }}

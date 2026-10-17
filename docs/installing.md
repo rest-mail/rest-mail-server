@@ -83,8 +83,11 @@ operation runs on your machine; the private key is never uploaded.
 
 Select a key whose private half you control on your own machine. The installer
 validates the public file and shows its SHA-256 fingerprint, then registers it
-as Helm `api.ownerKeys` or Pulumi `<name>:ownerKeys`. Generated Pulumi programs
-pass that value to the chart. It does not choose a key from your SSH agent
+as initial Helm `api.ownerKeys` or Pulumi `<name>:ownerKeys`. The API imports
+these public keys into PostgreSQL only while its owner registry is empty.
+After enrollment the database is authoritative: recovery works after removing
+that configuration or moving the database to another deployment platform.
+Generated Pulumi programs pass the initial value to the chart. The installer does not choose a key from your SSH agent
 or promote a read-only status key. Pipelines do not prompt or create keys;
 use `--owner-key FILE.pub` or managed owner-key configuration. If no
 owner key is selected, it says recovery will require cluster administrator
@@ -103,10 +106,27 @@ changes do not remove this recovery authority. Keep a secure backup of the
 private key. If the password and every owner key are lost, the CLI cannot
 recover the account without trusted deployment administration access.
 
-For an existing installation, update `api.ownerKeys` in the managed Helm
-values or `<name>:ownerKeys` in its Pulumi configuration and deploy normally;
-do not rerun the installer over a live release. Register additional owner keys
-or remove an old one through that same trusted configuration path.
+An existing deployment upgrading to the database registry imports its current
+configured owner keys once. After that, changing initial configuration cannot
+replace owners or restore a revoked key. The registry is included in database
+backups; private keys remain on the owner machine.
+
+For an existing installation, use the API's trusted operator command with its
+normal database configuration, however it runs:
+
+```bash
+restmail-api owner-key add < ./new-owner.pub
+restmail-api owner-key list
+restmail-api owner-key revoke --fingerprint SHA256:...
+```
+
+These maintenance commands require control of the installation; no public API
+lets an anonymous visitor register an owner. Normal recovery still uses only
+the HTTPS API and the owner's private key, never Kubernetes or Docker access.
+Revocation is effective on every API replica at the next request. Revoked rows
+are retained, so a restart does not silently enroll the old key again. An
+explicit `owner-key add` can restore a revoked key. Do not rerun the installer
+over a live release.
 
 ## Helm
 

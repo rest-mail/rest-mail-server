@@ -130,7 +130,8 @@ type Config struct {
 	BootstrapAdminPassword     string
 	BootstrapAdminPasswordHash string
 
-	// OwnerKeys lists, in authorized_keys format, the public keys whose holders
+	// OwnerKeys seeds PostgreSQL's initial registry, in authorized_keys format.
+	// After enrollment the database is authoritative. The public keys' holders
 	// can reset its admins over the public API (internal/bootstrap/ownerkeys.go).
 	// Not a secret.
 	OwnerKeys string

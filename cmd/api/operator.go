@@ -68,6 +68,18 @@ const operatorUsage = `restmail-api operator commands
       domain has a key. ADDRESS adds the mail host's A record and the PTR.
       Output: {"domains": [{"domain": ..., "records": [...]}]}
 
+  restmail-api owner-key add < owner.pub
+      Register public recovery keys in PostgreSQL. Private keys are refused.
+      Output: {"fingerprints": [...]}
+
+  restmail-api owner-key list
+      List registered public owner keys, including revoked keys.
+      Output: {"keys": [...]}
+
+  restmail-api owner-key revoke --fingerprint SHA256:...
+      Revoke a recovery key immediately on every API replica.
+      Output: {"fingerprint": ..., "revoked": true}
+
 Results are one JSON object on stdout. Errors: {"error": {"code": ...,
 "message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_account) or
 1 (anything else). Nothing else is written to either;
@@ -101,6 +113,8 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 		return revokeSessions(args[1:], stdout, stderr)
 	case "dns-records":
 		return dnsRecords(args[1:], stdout, stderr)
+	case "owner-key":
+		return ownerKeyCommand(args[1:], os.Stdin, stdout, stderr)
 	case "help", "-h", "--help":
 		_, _ = io.WriteString(stdout, operatorUsage)
 		return exitOK
