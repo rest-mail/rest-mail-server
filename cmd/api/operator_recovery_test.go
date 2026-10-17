@@ -54,9 +54,11 @@ func passwordOf(t *testing.T, gdb *gorm.DB, accountID uint) string {
 func migrate(t *testing.T) {
 	t.Helper()
 	var errOut strings.Builder
-	if _, _, status := openDatabase(&errOut); status != exitOK {
+	database, _, status := openDatabase(&errOut)
+	if status != exitOK {
 		t.Fatalf("migrate: %s", errOut.String())
 	}
+	closeDatabase(database)
 }
 
 func resetWith(args []string, password string) (int, string, string) {
