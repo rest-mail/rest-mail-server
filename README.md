@@ -4,6 +4,44 @@ A full-featured mail server platform that exposes email functionality through a 
 
 The application itself is deliberately thin: the protocol engines and email-authentication logic live in a family of focused, standalone Go libraries (published under the [`rest-mail`](https://github.com/rest-mail) org), and this repo composes them — implementing each library's `Backend` interface on top of the REST API.
 
+## The REST Mail constellation
+
+Every repository in the [`rest-mail`](https://github.com/rest-mail) organization
+belongs to the same project family: the server and web apps, mobile client,
+website, protocol libraries, reference images, testbed, deployment and distribution.
+[`constellation.json`](constellation.json) records the membership rule and each
+repository's role. New organization repositories are included automatically in
+live inventories, even before their role is recorded in the manifest.
+
+```bash
+# Offline repository snapshot; Python 3 is the only dependency.
+python3 scripts/constellation.py repos
+
+# Current membership and the full open-issue queue; requires authenticated gh.
+python3 scripts/constellation.py repos --live
+python3 scripts/constellation.py issues --include-related --json
+```
+
+Both repository and issue queries follow all GitHub pages. A failed query exits
+nonzero instead of reporting an incomplete inventory as an empty queue. Archived
+repositories remain visible and are marked in JSON output.
+
+Related projects have explicit limits. Vertrag contributes only its registered
+REST Mail contract-testing issues (#71, #73 and #74). The infrastructure repository
+records only REST Mail deployment, DNS and certificate work; the current web-app
+rollout is tracked in [server #365](https://github.com/rest-mail/rest-mail-server/issues/365).
+Its Gitea issue tracker is not queried by this GitHub inventory. Adding a related
+repository requires a scope description and specific issue numbers; it does not
+add that repository's entire backlog. `repos --include-related --json` includes
+these scope descriptions.
+
+Agents should select one bounded issue from this queue, check dependencies and
+existing worktrees, and verify its done conditions before closing it. Membership
+does not authorize spawning workers, changing credentials or deploying services;
+the owner's current agent and timebox instructions still apply. Work across
+repositories uses separate worktrees and records any library release or downstream
+version bump needed by the server or clients.
+
 ## Features
 
 **Core Email**
