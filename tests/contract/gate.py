@@ -20,6 +20,7 @@ Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
        gate.py --failing-probes <openapi.yaml> <junit.xml>
            prints the operations with a failing probe, in baseline form.
 """
+import os
 import re
 import sys
 import xml.etree.ElementTree as ET
@@ -126,6 +127,9 @@ def gate(spec_path, config_path, report_path, baseline_path):
         print("the coverage baseline lists these twice: " + ", ".join(duplicated))
         ok = False
 
+    if not os.path.exists(report_path):
+        print("no report at %s: vertrag judged nothing (see its log)" % report_path)
+        return 1
     examples, probed, probes_failed = results(report_path, ops)
     required = sorted(all_ids - set(excluded))
     passing = [op for op in required if examples.get(op) and set(examples[op]) == {"passed"}]
