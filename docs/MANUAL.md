@@ -159,7 +159,7 @@ A shared **testbed** (the `mailnet` network, the certs volume, and the dnsmasq f
 Optional add-on:
 - `chore monitoring:up` — Prometheus + Grafana + postgres-exporter.
 
-Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence uses named volumes (per-service data/logs volumes plus the shared `testbed_certs`).
+Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence uses named volumes (per-service data/logs volumes plus the shared `testbed_certs`). Certificates are issued into `testbed_certs` and `<project>-internal-mtls`, which also hold the CAs' private keys, so no service mounts either: each one gets `<container>-certs`, holding copies of only its own files, made right before it starts. The gateways run as uid 10001 with every capability dropped.
 
 ---
 
@@ -250,7 +250,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 
 | Filter | Type | Notes |
 |--------|------|-------|
-| `spf_check` | Check | SPF record validation |
+| `spf_check` | Check | SPF verification (via go-spf); records the result, DMARC decides |
 | `dkim_verify` | Check | Verify incoming signatures |
 | `dmarc_check` | Check | DMARC policy enforcement |
 | `arc_verify` | Check | ARC chain verification |

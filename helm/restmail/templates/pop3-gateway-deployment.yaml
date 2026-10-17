@@ -33,7 +33,7 @@ spec:
             {{- include "restmail.containerSecurityContext" (list . "pop3-gateway") | nindent 12 }}
           ports:
             - name: pop3s
-              containerPort: {{ .Values.pop3Gateway.ports.tls }}
+              containerPort: {{ .Values.pop3Gateway.containerPorts.tls }}
               protocol: TCP
           env:
             - name: GATEWAY_HOSTNAME
@@ -41,7 +41,7 @@ spec:
             - name: API_BASE_URL
               value: {{ include "restmail.api.url" . | quote }}
             - name: POP3_TLS_PORT
-              value: {{ .Values.pop3Gateway.ports.tls | quote }}
+              value: {{ .Values.pop3Gateway.containerPorts.tls | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.pop3Gateway.logLevel | quote }}
             - name: ENVIRONMENT
