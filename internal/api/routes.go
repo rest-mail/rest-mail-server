@@ -397,7 +397,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// mint-token) or for an owner key: reset an admin who has lost every way
 	// in. Throttled like login: it guesses at a secret.
 	r.With(authThrottle, auditLog("auth.reset", middleware.AuditStartedSession())).Post("/api/v1/auth/reset", authH.Reset)
-	// Owners prove themselves with a key listed in RESTMAIL_OWNER_KEYS: sign a
+	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
 	// up the budget the owner then needs to sign in. main has already refused
@@ -409,9 +409,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Burst: cfg.AuthRateLimitBurst,
 		})
 	}
-	ownerKeys, _ := bootstrap.ParseOwnerKeys(cfg.OwnerKeys)
 	statusKeys, _ := bootstrap.ParseStatusKeys(cfg.StatusKeys)
-	ownerH := handlers.NewOwnerHandler(db, ownerKeys, statusKeys, cfg.JWTSecret)
+	ownerH := handlers.NewOwnerHandler(db, statusKeys, cfg.JWTSecret)
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
 	r.With(ownerThrottle, auditLog("auth.owner_token", middleware.AuditSignIn())).Post("/api/v1/auth/owner/token", ownerH.Token)
 	// The same challenge, signed for "status" with a key in

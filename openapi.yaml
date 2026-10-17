@@ -431,8 +431,8 @@ paths:
       tags: [Auth]
       summary: A challenge for an owner key to sign
       description: >
-        The first half of proving ownership of the server with a key listed in
-        RESTMAIL_OWNER_KEYS (what `restmail reset-admin` does), or of reading
+        The first half of proving ownership of the server with a public key registered in
+        PostgreSQL (what `restmail reset-admin` does), or of reading
         its status with a key listed in RESTMAIL_STATUS_KEYS (what
         `restmail status --key` does). The challenge is stateless, valid two minutes, and answered once.
         Throttled like login.
@@ -465,7 +465,7 @@ paths:
         half of `public_key` over the bytes
         `"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge`,
         so a signature for one request cannot be presented for another. `public_key` must be listed in
-        RESTMAIL_OWNER_KEYS; a status key (RESTMAIL_STATUS_KEYS) is refused.
+        the PostgreSQL owner-key registry; a status key (RESTMAIL_STATUS_KEYS) is refused.
         Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
         accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at
         `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
@@ -524,7 +524,7 @@ paths:
         the owner scheme with the purpose `status` and no address, so a
         signature made to reset an admin does not read the status, nor the
         other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or
-        RESTMAIL_OWNER_KEYS. A status key reads this and can do nothing else.
+        the PostgreSQL owner-key registry. A status key reads this and can do nothing else.
         The challenge is spent, so an answer works once. Keys and signatures as
         for `/api/v1/auth/owner/token`. Throttled with the owner endpoints.
       security: []

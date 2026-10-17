@@ -17,7 +17,7 @@ import (
 // OwnerHandler lets whoever holds one of the server's owner keys ask for a
 // reset-admin token over the public API, the way back in for an admin who has
 // lost every other: the server issues a challenge, the owner signs it, the
-// server checks the signature against RESTMAIL_OWNER_KEYS. Works the same
+// server checks the signature against its PostgreSQL owner registry. Works the same
 // however the server is deployed.
 //
 // The same challenge, signed for the purpose "status" by a key listed in
@@ -25,21 +25,34 @@ import (
 // runs.
 type OwnerHandler struct {
 	db           *gorm.DB
-	keys         *bootstrap.OwnerKeys
 	statusKeys   *bootstrap.StatusKeys
 	challengeKey []byte
 }
 
-// NewOwnerHandler builds the handler from the configured keys and a server
-// secret the challenge key is derived from.
-func NewOwnerHandler(db *gorm.DB, keys *bootstrap.OwnerKeys, statusKeys *bootstrap.StatusKeys, serverSecret string) *OwnerHandler {
-	return &OwnerHandler{db: db, keys: keys, statusKeys: statusKeys, challengeKey: bootstrap.ChallengeKey(serverSecret)}
+// NewOwnerHandler uses the database's current owners, the configured read-only
+// status keys, and a server secret the challenge key is derived from.
+func NewOwnerHandler(db *gorm.DB, statusKeys *bootstrap.StatusKeys, serverSecret string) *OwnerHandler {
+	return &OwnerHandler{db: db, statusKeys: statusKeys, challengeKey: bootstrap.ChallengeKey(serverSecret)}
 }
 
-// Challenge issues a challenge to sign. Stateless: asking costs the server
-// nothing but a hash.
-func (h *OwnerHandler) Challenge(w http.ResponseWriter, _ *http.Request) {
-	if h.keys.Len() == 0 && h.statusKeys.Len() == 0 {
+func (h *OwnerHandler) ownerKeys(w http.ResponseWriter, r *http.Request) (*bootstrap.OwnerKeys, bool) {
+	keys, err := bootstrap.LoadOwnerKeys(h.db.WithContext(r.Context()))
+	if err != nil {
+		slog.Error("reading owner key registry failed", "error", err)
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read owner key registry")
+		return nil, false
+	}
+	return keys, true
+}
+
+// Challenge checks the current registry and issues a challenge to sign. Issuing
+// the challenge stores nothing; only a verified answer spends it.
+func (h *OwnerHandler) Challenge(w http.ResponseWriter, r *http.Request) {
+	keys, ok := h.ownerKeys(w, r)
+	if !ok {
+		return
+	}
+	if keys.Len() == 0 && h.statusKeys.Len() == 0 {
 		// no_owner_keys still, though status keys would do: it is the code a
 		// reset-admin from before status keys knows.
 		respond.Error(w, http.StatusConflict, "no_owner_keys", bootstrap.ErrNoStatusKeys.Error())
@@ -92,7 +105,11 @@ func (h *OwnerHandler) Token(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"signature": "must be base64"})
 		return
 	}
-	token, expires, err := bootstrap.MintForOwner(h.db, h.keys, h.challengeKey, bootstrap.OwnerRequest{
+	keys, ok := h.ownerKeys(w, r)
+	if !ok {
+		return
+	}
+	token, expires, err := bootstrap.MintForOwner(h.db, keys, h.challengeKey, bootstrap.OwnerRequest{
 		Challenge: req.Challenge,
 		PublicKey: req.PublicKey,
 		Signature: sig,
@@ -152,7 +169,11 @@ func (h *OwnerHandler) Status(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"signature": "must be base64"})
 		return
 	}
-	err = bootstrap.CheckStatus(h.db, h.statusKeys, h.keys, h.challengeKey, bootstrap.StatusRequest{
+	keys, ok := h.ownerKeys(w, r)
+	if !ok {
+		return
+	}
+	err = bootstrap.CheckStatus(h.db, h.statusKeys, keys, h.challengeKey, bootstrap.StatusRequest{
 		Challenge: req.Challenge,
 		PublicKey: req.PublicKey,
 		Signature: sig,

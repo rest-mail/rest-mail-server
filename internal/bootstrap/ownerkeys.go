@@ -19,14 +19,13 @@ import (
 
 // Owner keys prove ownership of a server over its public API, whatever runs it.
 //
-// The deployment lists the owner's public keys (RESTMAIL_OWNER_KEYS, the
-// format of an authorized_keys file). Whoever holds a matching private key can
+// PostgreSQL holds the owner's public keys, seeded once from trusted installer
+// input (RESTMAIL_OWNER_KEYS, authorized_keys format). A matching private key can
 // ask the server for a reset-admin token, the way back in for an admin who has
 // lost every other: it signs a challenge the server issued, and the server
-// checks the signature against the list. No
-// secret is configured anywhere — the key that proves ownership never leaves
-// the machine holding it — and nothing about how the server is deployed is
-// assumed: an environment variable is something every platform can set.
+// checks the signature against the current registry. The private key never
+// leaves its owner's machine. Recovery needs HTTPS and the database, with no
+// dependency on Kubernetes, Docker or a mounted key file.
 
 // ChallengeLifetime is how long an owner challenge can be answered.
 const ChallengeLifetime = 2 * time.Minute
@@ -38,7 +37,7 @@ const ownerChallengePurpose = "owner_challenge"
 var (
 	// ErrNoOwnerKeys: the server lists no owner keys, so ownership cannot be
 	// proved this way.
-	ErrNoOwnerKeys = errors.New("this server lists no owner keys (RESTMAIL_OWNER_KEYS)")
+	ErrNoOwnerKeys = errors.New("this server has no registered owner keys")
 	// ErrNotOwner covers an unlisted key and a bad signature alike.
 	ErrNotOwner = errors.New("that key is not one of this server's owner keys, or the signature does not match")
 	// ErrChallengeInvalid covers forged, expired and already-answered challenges.
