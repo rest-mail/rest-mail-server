@@ -15,7 +15,13 @@ import { routeTree } from './routeTree.gen'
 
 const router = createRouter({
   routeTree,
-  basepath: '/admin',
+  // Where the app is served, which only the deployment knows: at / on
+  // admin.<domain>, or under /admin behind a shared proxy. The image's nginx
+  // names it in the page's <base> (NGINX_BASE_PATH); the Vite dev server, which
+  // adds none, serves at its own base.
+  basepath: document.querySelector('base')
+    ? new URL(document.baseURI).pathname
+    : import.meta.env.BASE_URL,
   defaultPreload: 'intent',
   scrollRestoration: true,
 })

@@ -2,7 +2,8 @@ apiVersion: v2
 name: restmail
 description: |
   Helm chart for the rest-mail "mail3" stack — Go REST API plus SMTP, IMAP and
-  POP3 protocol gateways, the JS filter sidecar, and a PostgreSQL database.
+  POP3 protocol gateways, the JS filter sidecar, a PostgreSQL database, and the
+  webmail and admin webmail apps.
 
   The chart deploys only the rest-mail product surface. It assumes the cluster
   already provides DNS, ingress (or LoadBalancer), and a TLS Secret populated

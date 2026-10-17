@@ -123,6 +123,71 @@ assert_contains "Postgres survives"       "$tmp/api-only.yaml" 'restmail-postgre
 assert_contains "JS filter survives"      "$tmp/api-only.yaml" 'restmail-js-filter'
 assert_contains "default-deny survives"   "$tmp/api-only.yaml" 'restmail-default-deny'
 
+echo "== the web apps: each on a host of its own, with the API on it =="
+# One object's document: doc <file> <kind> <name>.
+doc() {
+  awk -v k="kind: $2" -v n="  name: $3" 'BEGIN{RS="\n---\n"} index($0, "\n"k"\n") && index($0, "\n"n"\n") {print}' "$1"
+}
+app_version=$(sed -n 's/^appVersion: "\(.*\)"$/\1/p' "$CHART_DIR/Chart.yaml")
+for app in webmail admin; do
+  doc "$tmp/prod.yaml" Deployment    "restmail-$app" > "$tmp/$app-deploy.yaml"
+  doc "$tmp/prod.yaml" Service       "restmail-$app" > "$tmp/$app-svc.yaml"
+  doc "$tmp/prod.yaml" Ingress       "restmail-$app" > "$tmp/$app-ing.yaml"
+  doc "$tmp/prod.yaml" NetworkPolicy "restmail-$app" > "$tmp/$app-np.yaml"
+  assert_contains "$app is deployed by default"     "$tmp/$app-deploy.yaml" 'kind: Deployment'
+  assert_contains "$app has a Service"              "$tmp/$app-svc.yaml"    'kind: Service'
+  assert_contains "$app has an Ingress"             "$tmp/$app-ing.yaml"    'kind: Ingress'
+  assert_contains "$app has a NetworkPolicy"        "$tmp/$app-np.yaml"     'kind: NetworkPolicy'
+  # The host comes from mailserver.domain (example.com in PROD_ARGS).
+  assert_contains "$app is at $app.example.com"     "$tmp/$app-ing.yaml"    "host: \"$app.example.com\""
+  # /api goes to the API, so the app reaches it on its own origin: no CORS.
+  grep -A4 -- '- path: /api$' "$tmp/$app-ing.yaml" | grep -q 'name: restmail-api$' ||
+    fail "$app's host does not send /api to the API"
+  pass "$app's host sends /api to the API"
+  grep -A4 -- '- path: /$' "$tmp/$app-ing.yaml" | grep -q "name: restmail-$app\$" ||
+    fail "$app's host does not send / to the app"
+  pass "and / to the app"
+  assert_absent   "no TLS unless asked for"         "$tmp/$app-ing.yaml"    'tls:'
+  # The images follow appVersion, like every other image.
+  assert_contains "$app's image is appVersion"      "$tmp/$app-deploy.yaml" "image: \"ghcr.io/rest-mail/$app:$app_version\""
+  assert_contains "served at the root of its host"  "$tmp/$app-deploy.yaml" 'value: "/"'
+  assert_contains "$app runs as nginx's uid"        "$tmp/$app-deploy.yaml" 'runAsUser: 101'
+  assert_contains "on a read-only root filesystem"  "$tmp/$app-deploy.yaml" 'readOnlyRootFilesystem: true'
+  assert_contains "$app is probed over HTTP"        "$tmp/$app-deploy.yaml" 'httpGet:'
+done
+
+# Another domain moves both hosts; a host that is given wins.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set mailserver.domain=example.org \
+  --set admin.ingress.host=console.example.net > "$tmp/hosts.yaml"
+assert_contains "webmail follows mailserver.domain" "$tmp/hosts.yaml" 'host: "webmail.example.org"'
+assert_contains "a given admin host wins"           "$tmp/hosts.yaml" 'host: "console.example.net"'
+assert_absent   "and replaces the default"          "$tmp/hosts.yaml" 'host: "admin.example.org"'
+
+# TLS through values, as the API ingress does.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set webmail.ingress.tls.enabled=true \
+  --set admin.ingress.tls.enabled=true --set admin.ingress.tls.secretName=admin-cert \
+  --set webmail.ingress.className=traefik > "$tmp/apps-tls.yaml"
+doc "$tmp/apps-tls.yaml" Ingress restmail-webmail > "$tmp/webmail-tls.yaml"
+doc "$tmp/apps-tls.yaml" Ingress restmail-admin   > "$tmp/admin-tls.yaml"
+assert_contains "webmail's TLS is for its host"      "$tmp/webmail-tls.yaml" '- "webmail.example.com"'
+assert_contains "in a Secret of its own by default"  "$tmp/webmail-tls.yaml" 'secretName: "restmail-webmail-tls"'
+assert_contains "or the one given"                   "$tmp/admin-tls.yaml"   'secretName: "admin-cert"'
+assert_contains "the ingress class is passed on"     "$tmp/webmail-tls.yaml" 'ingressClassName: "traefik"'
+
+# Both off: nothing of either is left, and nothing else goes with them.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+  --set webmail.enabled=false --set admin.enabled=false > "$tmp/no-apps.yaml"
+assert_absent   "webmail gone"           "$tmp/no-apps.yaml" 'restmail-webmail'
+assert_absent   "admin gone"             "$tmp/no-apps.yaml" 'restmail-admin'
+assert_absent   "no web app Ingress"     "$tmp/no-apps.yaml" 'kind: Ingress'
+assert_contains "API survives"           "$tmp/no-apps.yaml" 'name: restmail-api'
+assert_contains "default-deny survives"  "$tmp/no-apps.yaml" 'restmail-default-deny'
+# One off leaves the other.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set webmail.enabled=false > "$tmp/admin-only.yaml"
+assert_absent   "webmail off"            "$tmp/admin-only.yaml" 'restmail-webmail'
+assert_contains "admin stays"            "$tmp/admin-only.yaml" 'host: "admin.example.com"'
+
 echo "== owner keys reach the API =="
 KEY='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOwnerKeyForTheRenderTestOnlyxxxxxxxxxxxxxx owner@laptop'
 helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set-string api.ownerKeys="$KEY" > "$tmp/owner.yaml"
