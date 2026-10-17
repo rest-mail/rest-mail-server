@@ -250,6 +250,21 @@ fail rendering early with an actionable message instead of shipping a crash-loop
 {{- if and (eq .Values.api.environment "production") (not .Values.internalMtls.enabled) (not .Values.api.internalRoutesAllowPublic) -}}
 {{- fail "internalMtls.enabled=false requires api.internalRoutesAllowPublic=true in production: the API refuses to serve its gateway-facing routes unauthenticated unless you acknowledge an out-of-band network trust boundary (NetworkPolicy/firewall). Enable internalMtls (recommended), or set api.internalRoutesAllowPublic=true." -}}
 {{- end -}}
+{{- /*
+Push through APNs needs its key from a Secret, never from values, and the ids
+that go with it. Without them the API would start with push off and say so only
+in its log.
+*/ -}}
+{{- with .Values.api.push.apns -}}
+{{- if .enabled -}}
+{{- if not .existingSecret -}}
+{{- fail "api.push.apns.enabled needs api.push.apns.existingSecret: a Secret holding the APNs .p8 key, which never goes in values (kubectl create secret generic restmail-apns --from-file=AuthKey.p8=AuthKey_XXXXXXXXXX.p8)" -}}
+{{- end -}}
+{{- if or (not .keyId) (not .teamId) -}}
+{{- fail "api.push.apns.enabled needs api.push.apns.keyId and api.push.apns.teamId, from the Apple Developer portal" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*

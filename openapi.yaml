@@ -115,6 +115,11 @@ tags:
     description: Linked mailbox accounts (JWT)
   - name: Credentials
     description: A mailbox's app passwords (JWT from a password sign-in; never an app password)
+  - name: Push devices
+    description: >
+      Phones a session registers for push notifications (JWT from a password
+      sign-in). Only when the server has APNs credentials; otherwise every
+      route here answers 404.
   - name: Folders
     description: Mailbox folders (JWT)
   - name: Messages
@@ -274,7 +279,9 @@ paths:
       description: >
         Revokes the refresh token server-side and expires the restmail_access,
         restmail_refresh and restmail_csrf cookies. The refresh token is the
-        restmail_refresh cookie, or for a native client the request body.
+        restmail_refresh cookie, or for a native client the request body. When
+        that ends the session, the phones it registered for push
+        (`/api/v1/devices`) are removed with it.
       security: []
       requestBody:
         required: false
@@ -296,7 +303,9 @@ paths:
         is no cookie from the request body. The replacement pair goes back on
         the same channel: cookies for a cookie request, body fields for a body
         request. A request carrying the cookie is always answered with cookies,
-        whatever its body says.
+        whatever its body says. The new tokens have a new `jti` but stay in the
+        same session: the `sid` claim minted at sign-in. A refresh token
+        without a `sid` is refused with 401, and the client signs in again.
       security: []
       requestBody:
         required: false
@@ -871,6 +880,123 @@ paths:
           description: Not a mailbox session
         "404":
           description: No such app password of this mailbox, or already revoked
+
+  # ═══════════════════════════════════════════════════════════════
+  # Push devices (#363)
+  # ═══════════════════════════════════════════════════════════════
+  /api/v1/devices:
+    get:
+      operationId: listPushDevices
+      tags: [Push devices]
+      summary: The push services the server can use, and this session's devices
+      description: >
+        Answers 404 when the server has no push credentials configured, which
+        a client reads as "no push here". `platforms` lists the services this
+        session can register a device with: empty for an administrator's
+        session, which has no mailbox. A device's token is never returned.
+      responses:
+        "200":
+          description: The services and the devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PushDevices"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Push is not configured on this server
+    post:
+      operationId: registerPushDevice
+      tags: [Push devices]
+      summary: Register this phone with this session
+      description: >
+        The device belongs to the session that registers it and is removed
+        when the session ends: at logout, when it is revoked (a password
+        change, a disabled mailbox), or when its refresh token expires. From
+        then on new mail into the INBOX of any mailbox the session lists in
+        `GET /api/v1/accounts` sends it a background push (APNs
+        `content-available`, priority 5, an hour's expiry, at most one per
+        device and account every 5 seconds) whose whole payload is
+        `{"aps":{"content-available":1},"restmail":{"v":1,"device":"<id>","account":<id in GET /accounts>,"unread":<INBOX unread>}}`:
+        never a sender, a subject, an address, a message id or any text. A
+        device APNs says is gone (410, `BadDeviceToken`,
+        `DeviceTokenNotForTopic`) is removed. Registering a token the session
+        has already registered answers 200 with that device; the key is
+        (session, token). Recorded in the audit log as `devices.register`,
+        without the token. 404 when push is not configured.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterPushDeviceRequest"
+      responses:
+        "200":
+          description: The session had already registered this token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PushDevice"
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PushDevice"
+        "400":
+          description: The body is not JSON (`bad_request`)
+        "422":
+          description: >
+            `validation_failed`, with `details.fields.platform` when the
+            platform is not configured here or the session is an
+            administrator's, which has no mailbox, and `fields.token`,
+            `fields.environment` or `fields.app_id` for a bad value. Also
+            `fields.token` when the session already has 10 devices.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+        "401":
+          description: Not signed in, or the session has ended (its access token outlived it)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Push is not configured on this server
+
+  /api/v1/devices/{device_id}:
+    parameters:
+      - name: device_id
+        in: path
+        required: true
+        description: The device's `id`
+        schema:
+          type: string
+    delete:
+      operationId: removePushDevice
+      tags: [Push devices]
+      summary: Stop pushes to a device this session registered
+      description: >
+        Recorded in the audit log as `devices.remove`. A device the server
+        removes itself (its session ended, or APNs said it is gone) is
+        recorded the same way, by the system, with the reason.
+      responses:
+        "204":
+          description: Removed
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Not one of this session's devices, or push is not configured
 
   # ═══════════════════════════════════════════════════════════════
   # Folders
@@ -5376,6 +5502,63 @@ components:
               description: >
                 The app password, shown this once. Use it with the mailbox's
                 address as the password of a mail client, or with HTTP Basic.
+
+    PushDevices:
+      type: object
+      required: [platforms, devices]
+      properties:
+        platforms:
+          type: array
+          description: The push services this session can register a device with
+          items:
+            type: string
+            enum: [apns]
+        devices:
+          type: array
+          items:
+            $ref: "#/components/schemas/PushDevice"
+
+    PushDevice:
+      type: object
+      description: A phone registered for push by a session. Never its token.
+      required: [id, platform, environment, created_at]
+      properties:
+        id:
+          type: string
+          description: Opaque; the `device` of the pushes it gets
+          example: "12"
+        platform:
+          type: string
+          enum: [apns]
+        environment:
+          type: string
+          enum: [production, sandbox]
+        created_at:
+          type: string
+          format: date-time
+
+    RegisterPushDeviceRequest:
+      type: object
+      required: [platform, token]
+      properties:
+        platform:
+          type: string
+          enum: [apns]
+        token:
+          type: string
+          description: The APNs device token, lowercase hex
+          pattern: "^[0-9a-f]{64,200}$"
+        environment:
+          type: string
+          enum: [production, sandbox]
+          default: production
+          description: >
+            production for App Store and TestFlight builds, sandbox for builds
+            run from Xcode: which APNs host the pushes go to.
+        app_id:
+          type: string
+          description: The app's bundle id; must be the server's APNs topic when given
+          example: com.antimatterstudios.restmail
 
     LinkAccountRequest:
       type: object

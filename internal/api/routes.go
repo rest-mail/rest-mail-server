@@ -24,6 +24,7 @@ import (
 	"github.com/restmail/restmail/internal/netallow"
 	"github.com/restmail/restmail/internal/pipeline"
 	"github.com/restmail/restmail/internal/pipeline/filters" // register built-in filters via init() + DB-backed factories
+	"github.com/restmail/restmail/internal/push"
 	"github.com/restmail/restmail/internal/ratelimit"
 	"github.com/restmail/restmail/internal/trace"
 	"github.com/restmail/restmail/internal/version"
@@ -44,6 +45,10 @@ type Routers struct {
 	// handlers. It owns a background goroutine; callers that manage a server
 	// lifecycle (cmd/api) must call Routers.Close on shutdown to flush it.
 	Recorder *trace.Recorder
+
+	// push is push notifications, when configured; its dispatcher owns a
+	// goroutine that Routers.Close stops.
+	push *pushService
 }
 
 // Close releases background resources owned by the routers — currently the trace
@@ -53,6 +58,7 @@ func (rt *Routers) Close() {
 	if rt == nil {
 		return
 	}
+	rt.push.close()
 	rt.Recorder.Shutdown()
 }
 
@@ -266,6 +272,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		cfg.APIMaxRecipientsPerMessage,
 		ratelimit.NewSubmissionLimiter(cfg.APISendRateLimitPerMinute, cfg.APISendRateLimitPerHour),
 	)
+	// Push notifications (#363): off, with no devices routes, unless APNs is
+	// configured. New mail in an INBOX goes to the phones of the sessions that
+	// list the mailbox, and a logout takes its session's phones with it.
+	pushSvc := newPushService(db, cfg)
+	if pushSvc != nil {
+		messageH.SetNewMailNotifier(pushSvc.dispatcher)
+		authH.SetPushDevices(pushSvc.store)
+	}
 	pipelineH := handlers.NewPipelineHandler(db, previewEngine)
 	restmailDeliverAuth := cfg.RestmailDeliverAuth()
 	restmailH := handlers.NewRestmailHandler(db, pipelineEngine, traceRecorder, handlers.RestmailTarpitConfig{
@@ -516,6 +530,16 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
 			Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
 		r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
+
+		// Push devices (#363): the phones this session registers, only when
+		// push is configured; otherwise there are no such routes, and the 404
+		// tells the app push is off. Never the token in the audit log.
+		if pushSvc != nil {
+			r.Get("/api/v1/devices", pushSvc.devices.List)
+			r.With(auditLog(push.ActionDeviceRegister, middleware.AuditBodyFields("platform", "environment"),
+				middleware.AuditResponseField("id", "device_id"))).Post("/api/v1/devices", pushSvc.devices.Register)
+			r.With(auditLog(push.ActionDeviceRemove)).Delete("/api/v1/devices/{device_id}", pushSvc.devices.Remove)
+		}
 	})
 
 	// ═══════════════════════════════════════════════════════════════
@@ -794,7 +818,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
 	})
 
-	routers := &Routers{Public: r, Recorder: traceRecorder}
+	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc}
 
 	// Dedicated internal mTLS handler. Only built when enabled; served on a
 	// separate listener whose TLS layer requires a verified gateway client

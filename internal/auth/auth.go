@@ -70,7 +70,13 @@ type Claims struct {
 	CredentialEpoch int `json:"cep,omitempty"`
 	// TwoFactor marks a mailbox session whose sign-in took a second factor as
 	// well as the password. A refresh keeps it.
-	TwoFactor bool   `json:"mfa,omitempty"`
+	TwoFactor bool `json:"mfa,omitempty"`
+	// SessionID is the session the token belongs to: minted at sign-in, in
+	// both tokens, and carried unchanged by every refresh, which gives each
+	// token a new jti. What lives as long as a session, such as a phone
+	// registered for push, is keyed on it. Every token has one: ValidateToken
+	// refuses a token without it.
+	SessionID string `json:"sid,omitempty"`
 	TokenType string `json:"token_type"`
 
 	// CredentialID is the credential a request was made with: an app password,
@@ -113,6 +119,40 @@ type TokenPair struct {
 	// RefreshExpiresAt is the refresh token's absolute expiry, surfaced so the
 	// ledger row can carry the same horizon for pruning. Not serialized.
 	RefreshExpiresAt time.Time `json:"-"`
+	// SessionID is the sid both tokens carry, for the ledger row. Not
+	// serialized: the client has it inside its tokens.
+	SessionID string `json:"-"`
+}
+
+// TokenOption adjusts the tokens a Generate method mints.
+type TokenOption func(*tokenOptions)
+
+type tokenOptions struct {
+	sessionID string
+	continued bool
+}
+
+// ContinueSession makes the tokens part of session sid, as a refresh does,
+// instead of a new session.
+func ContinueSession(sid string) TokenOption {
+	return func(o *tokenOptions) { o.sessionID, o.continued = sid, true }
+}
+
+// sessionFor is the sid the tokens get: the one ContinueSession names, or a
+// new one, as at sign-in. Continuing a session without a sid is an error: a
+// sid is only ever minted at sign-in.
+func sessionFor(opts []TokenOption) (string, error) {
+	var o tokenOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if !o.continued {
+		return newSessionID()
+	}
+	if o.sessionID == "" {
+		return "", errors.New("cannot continue a session without a sid")
+	}
+	return o.sessionID, nil
 }
 
 // JWTService handles JWT token creation and validation.
@@ -145,9 +185,14 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 
 // GenerateMailboxSession is GenerateTokenPair for a sign-in that may have taken
 // a second factor: twoFactor marks both tokens, so the session can do what
-// needs one, such as creating an app password.
-func (s *JWTService) GenerateMailboxSession(mailboxID uint, email string, webmailAccountID uint, twoFactor bool) (*TokenPair, error) {
+// needs one, such as creating an app password. Both tokens carry a new sid,
+// or the one ContinueSession names.
+func (s *JWTService) GenerateMailboxSession(mailboxID uint, email string, webmailAccountID uint, twoFactor bool, opts ...TokenOption) (*TokenPair, error) {
 	now := time.Now()
+	sid, err := sessionFor(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	// Access token
 	accessJTI, err := newJTI()
@@ -167,6 +212,7 @@ func (s *JWTService) GenerateMailboxSession(mailboxID uint, email string, webmai
 		MailboxID:        mailboxID,
 		UserType:         "mailbox",
 		TwoFactor:        twoFactor,
+		SessionID:        sid,
 		TokenType:        "access",
 	}
 
@@ -195,6 +241,7 @@ func (s *JWTService) GenerateMailboxSession(mailboxID uint, email string, webmai
 		MailboxID:        mailboxID,
 		UserType:         "mailbox",
 		TwoFactor:        twoFactor,
+		SessionID:        sid,
 		TokenType:        "refresh",
 	}
 
@@ -210,31 +257,36 @@ func (s *JWTService) GenerateMailboxSession(mailboxID uint, email string, webmai
 		ExpiresIn:        int(s.accessExpiry.Seconds()),
 		RefreshJTI:       jti,
 		RefreshExpiresAt: refreshExpiry,
+		SessionID:        sid,
 	}, nil
 }
 
 // GenerateAdminTokenPair creates both access and refresh tokens for an admin
 // user, at credential epoch 0, signed in with a password.
 func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, []string{AMRPassword}, false, 0)
+	return s.generateAdminTokenPair(adminUserID, username, []string{AMRPassword}, false, 0, nil)
 }
 
 // GenerateAdminSession creates the tokens for an admin's session at the
 // account's current credential epoch, so that a later reset or password change
 // ends it at once. amr is how it signed in.
-func (s *JWTService) GenerateAdminSession(adminUserID uint, username string, epoch int, amr []string) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, amr, false, epoch)
+func (s *JWTService) GenerateAdminSession(adminUserID uint, username string, epoch int, amr []string, opts ...TokenOption) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, amr, false, epoch, opts)
 }
 
 // GenerateSetupTokenPair creates tokens for an admin whose account is still in
 // setup: the setup claim on both tokens, so neither the access token nor
 // anything refreshed from it reaches the admin API.
-func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string, epoch int, amr []string) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, amr, true, epoch)
+func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string, epoch int, amr []string, opts ...TokenOption) (*TokenPair, error) {
+	return s.generateAdminTokenPair(adminUserID, username, amr, true, epoch, opts)
 }
 
-func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, amr []string, setupPending bool, epoch int) (*TokenPair, error) {
+func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, amr []string, setupPending bool, epoch int, opts []TokenOption) (*TokenPair, error) {
 	now := time.Now()
+	sid, err := sessionFor(opts)
+	if err != nil {
+		return nil, err
+	}
 
 	// Access token
 	accessJTI, err := newJTI()
@@ -255,6 +307,7 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, a
 		AMR:             amr,
 		SetupPending:    setupPending,
 		CredentialEpoch: epoch,
+		SessionID:       sid,
 		TokenType:       "access",
 	}
 
@@ -284,6 +337,7 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, a
 		AMR:             amr,
 		SetupPending:    setupPending,
 		CredentialEpoch: epoch,
+		SessionID:       sid,
 		TokenType:       "refresh",
 	}
 
@@ -299,6 +353,7 @@ func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, a
 		ExpiresIn:        int(s.accessExpiry.Seconds()),
 		RefreshJTI:       jti,
 		RefreshExpiresAt: refreshExpiry,
+		SessionID:        sid,
 	}, nil
 }
 
@@ -313,7 +368,18 @@ func newJTI() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ValidateToken parses and validates a JWT token string.
+// newSessionID returns a new sid: 128 random bits, hex-encoded, like a jti. A
+// sid is minted only at sign-in, so no two sessions share one.
+func newSessionID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate session id: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// ValidateToken parses and validates a JWT token string. A token without a
+// sid belongs to no session, and is invalid.
 func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -334,7 +400,7 @@ func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 	}
 
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.SessionID == "" {
 		return nil, ErrInvalidToken
 	}
 

@@ -141,6 +141,21 @@ type AuthHandler struct {
 	// per-account secret. A nil store (no DB, some unit tests) disables the check.
 	twoFactorStore twoFactorStore
 	masterKey      string
+	// pushDevices ends the push devices of a session a logout ends (#363).
+	// Nil when push is off.
+	pushDevices sessionDevices
+}
+
+// sessionDevices is what a logout needs of the push device store: to delete
+// the devices of a session once it has ended.
+type sessionDevices interface {
+	SessionEnded(sid string, now time.Time) (int, error)
+}
+
+// SetPushDevices makes a logout delete the push devices of the session it
+// ends. Call before the router serves traffic.
+func (h *AuthHandler) SetPushDevices(devices sessionDevices) {
+	h.pushDevices = devices
 }
 
 // NewAuthHandler wires the auth handler. masterKey is the MASTER_KEY used to
@@ -171,6 +186,7 @@ func (h *AuthHandler) persistRefreshToken(tokens *auth.TokenPair, userType strin
 		Jti:       tokens.RefreshJTI,
 		UserType:  userType,
 		SubjectID: subjectID,
+		SessionID: tokens.SessionID,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: tokens.RefreshExpiresAt,
 	})
@@ -545,6 +561,12 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if token, _ := presentedRefreshToken(r); token != "" && h.refreshStore != nil {
 		if claims, err := h.jwtService.ValidateRefreshToken(token); err == nil && claims.ID != "" {
 			_ = h.refreshStore.Revoke(claims.ID)
+			// The phones the session registered for push go with it.
+			if h.pushDevices != nil {
+				if _, err := h.pushDevices.SessionEnded(claims.SessionID, time.Now()); err != nil {
+					slog.Warn("failed to remove the push devices of a session that signed out", "error", err)
+				}
+			}
 		}
 	}
 
@@ -639,20 +661,23 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// produced a mailbox access token (UserType="mailbox", no capabilities,
 	// MailboxID=0) — every admin route then 403'd and the admin was locked out
 	// until a full re-login.
+	//
+	// The new tokens stay in the session: the same sid.
+	session := auth.ContinueSession(claims.SessionID)
 	var tokens *auth.TokenPair
 	var userType string
 	var subjectID uint
 	if claims.UserType == "admin" && setupPending {
 		capabilities = nil
-		tokens, err = h.jwtService.GenerateSetupTokenPair(claims.AdminUserID, claims.Username, epoch, claims.AMR)
+		tokens, err = h.jwtService.GenerateSetupTokenPair(claims.AdminUserID, claims.Username, epoch, claims.AMR, session)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else if claims.UserType == "admin" {
 		// A refresh keeps the session's sign-in methods: finishing 2FA setup
 		// and refreshing is not signing in with 2FA.
-		tokens, err = h.jwtService.GenerateAdminSession(claims.AdminUserID, claims.Username, epoch, claims.AMR)
+		tokens, err = h.jwtService.GenerateAdminSession(claims.AdminUserID, claims.Username, epoch, claims.AMR, session)
 		userType, subjectID = "admin", claims.AdminUserID
 	} else {
-		tokens, err = h.jwtService.GenerateMailboxSession(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.TwoFactor)
+		tokens, err = h.jwtService.GenerateMailboxSession(claims.MailboxID, claims.Email, claims.WebmailAccountID, claims.TwoFactor, session)
 		userType, subjectID = "mailbox", claims.MailboxID
 	}
 	if err != nil {

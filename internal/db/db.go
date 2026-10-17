@@ -207,6 +207,9 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		// Credentials (#344): app passwords, 0..n per mailbox, kept after
 		// revocation for the audit trail.
 		&models.Credential{},
+		// Phones registered for push (#363), each by the session that
+		// registered it, gone when it ends.
+		&models.PushDevice{},
 		// DMARC aggregate (rua) reporting
 		&models.DMARCAggregateRecord{},
 	)

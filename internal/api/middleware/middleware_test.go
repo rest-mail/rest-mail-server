@@ -39,6 +39,7 @@ func legacyIsAdminMailboxClaims() jwt.MapClaims {
 		"token_type": "access",
 		"is_admin":   true,
 		"mailbox_id": 10,
+		"sid":        "0123456789abcdef0123456789abcdef",
 	}
 }
 
@@ -168,6 +169,35 @@ func TestJWTMiddleware_InvalidToken(t *testing.T) {
 	}
 	if errResp.Error.Message != "Invalid or expired token" {
 		t.Errorf("expected message %q, got %q", "Invalid or expired token", errResp.Error.Message)
+	}
+}
+
+// TestJWTMiddleware_TokenWithoutSessionIDRejected: every session has a sid,
+// so a well-signed access token without one is refused like any invalid token.
+func TestJWTMiddleware_TokenWithoutSessionIDRejected(t *testing.T) {
+	const secret = "test-secret-key-for-middleware"
+	jwtSvc := auth.NewJWTService(secret, 5*time.Minute, 24*time.Hour)
+	raw := signRawToken(t, secret, jwt.MapClaims{
+		"sub":                "mailbox:10",
+		"iss":                auth.TokenIssuer,
+		"exp":                time.Now().Add(5 * time.Minute).Unix(),
+		"user_type":          "mailbox",
+		"token_type":         "access",
+		"mailbox_id":         10,
+		"webmail_account_id": 3,
+		"email":              "user@example.com",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+raw)
+	rr := httptest.NewRecorder()
+	JWTMiddleware(jwtSvc)(okHandler).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("a token without a sid: expected status 401, got %d", rr.Code)
+	}
+	if msg := parseErrorResponse(t, rr).Error.Message; msg != "Invalid or expired token" {
+		t.Errorf("expected message %q, got %q", "Invalid or expired token", msg)
 	}
 }
 
@@ -393,6 +423,7 @@ func TestRequireCapability_TokenCapabilitiesIgnored(t *testing.T) {
 		"admin_user_id": 7,
 		"username":      "old-token",
 		"capabilities":  []string{"*"},
+		"sid":           "0123456789abcdef0123456789abcdef",
 	})
 	held := heldBy(map[uint][]grants.Entry{7: atAll("domains:read")})
 

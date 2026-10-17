@@ -65,6 +65,24 @@ in `api.ownerKeys`.
 when the server was built and started. It signs with a key listed in
 `api.statusKeys`, which can read that and nothing else, or in `api.ownerKeys`.
 
+## Push notifications
+
+Off by default. To have the server tell the REST Mail iPhone app that mail has
+arrived, put the APNs auth key from the Apple Developer account that ships the
+app in a Secret, and name it with the key's ids:
+
+```sh
+kubectl create secret generic restmail-apns --from-file=AuthKey.p8=AuthKey_ABC123DEFG.p8
+helm upgrade restmail ... \
+  --set api.push.apns.enabled=true \
+  --set api.push.apns.existingSecret=restmail-apns \
+  --set api.push.apns.keyId=ABC123DEFG \
+  --set api.push.apns.teamId=43UMKXZ8P4
+```
+
+The key is mounted from the Secret and never goes in values. A push carries
+only the account and its unread count; the app fetches the mail itself.
+
 Or, without the CLI: add a
 `BOOTSTRAP_ADMIN_PASSWORD` key (16+ bytes, generated at deploy time) to the
 Secret named by `api.existingSecret`, and the API creates a superadmin from it
@@ -262,6 +280,10 @@ The most common knobs at install time:
 | `api.tlsTerminatedByProxy` | `true` | Acknowledge a TLS-terminating front proxy |
 | `networkPolicy.enabled` | `true` | Default-deny + least-privilege policies |
 | `serviceAccount.automountServiceAccountToken` | `false` | No workload uses the K8s API |
+| `api.push.apns.enabled` | `false` | Push notifications to the iPhone app; needs the three below |
+| `api.push.apns.existingSecret` | _(empty)_ | Secret holding the APNs `.p8` key, under `api.push.apns.secretKey` (`AuthKey.p8`) |
+| `api.push.apns.keyId` / `teamId` | _(empty)_ | The key's id and its developer team, from the Apple Developer portal |
+| `api.push.apns.topic` | `com.antimatterstudios.restmail` | The app's bundle id |
 
 To verify the chart renders and stays hardened, run the infra test:
 

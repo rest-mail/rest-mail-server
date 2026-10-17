@@ -103,6 +103,11 @@ spec:
             - name: attachments
               mountPath: /attachments
             {{- end }}
+            {{- if .Values.api.push.apns.enabled }}
+            - name: apns-key
+              mountPath: /etc/restmail/apns
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /api/health
@@ -130,6 +135,17 @@ spec:
         - name: attachments
           persistentVolumeClaim:
             claimName: {{ include "restmail.componentName" (list . "api-attachments") }}
+        {{- end }}
+        {{- with .Values.api.push.apns }}
+        {{- if .enabled }}
+        # The APNs auth key, from a Secret the chart never makes.
+        - name: apns-key
+          secret:
+            secretName: {{ .existingSecret }}
+            items:
+              - key: {{ .secretKey }}
+                path: AuthKey.p8
+        {{- end }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

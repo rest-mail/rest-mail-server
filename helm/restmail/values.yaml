@@ -197,6 +197,27 @@ api:
   # (`restmail status --key`): how a deploy is confirmed from outside. They can
   # do nothing else; owner keys can read it too. Not secret.
   statusKeys: ""
+  # Push notifications to the REST Mail iPhone app. Off by default. When on, the
+  # server tells a signed-in phone that mail has reached an inbox, with the
+  # account and its unread count and nothing of the mail: the app fetches that
+  # from the server itself, so none of it passes through Apple.
+  push:
+    apns:
+      enabled: false
+      # The APNs auth key (.p8) comes from a Secret you make; it never goes in
+      # these values. For example:
+      #   kubectl create secret generic restmail-apns \
+      #     --from-file=AuthKey.p8=AuthKey_ABC123DEFG.p8
+      existingSecret: ""
+      # The key in that Secret the .p8 is under.
+      secretKey: AuthKey.p8
+      # Shown with the key in the Apple Developer portal (Keys). Not secret.
+      keyId: ""
+      # The developer team the key belongs to (Membership details). Not secret.
+      teamId: ""
+      # The app's bundle id. One key serves App Store, TestFlight and Xcode
+      # builds alike.
+      topic: com.antimatterstudios.restmail
   service:
     type: ClusterIP
     port: 8080
