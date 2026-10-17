@@ -60,11 +60,6 @@ def keep_the_refreshed_token(transaction):
         hooks.stash["refresh_token"] = data["refresh_token"]
 
 
-@hooks.before("logout")
-def sign_out_the_refreshed_session(transaction):
-    hooks.set_json(transaction, {"refresh_token": hooks.stash.get("refresh_token", "")})
-
-
 @hooks.before("createAppPassword")
 def confirm_with_the_admin_password(transaction):
     body = hooks.get_json(transaction)
@@ -137,7 +132,7 @@ def a_self_signed_certificate(transaction):
                               auto_renew=False)
 
 
-@hooks.before("RestMail API > /api/v1/auth/protocol-sign-in > * > 200 > application/json")
+@hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
 def sign_in_a_mail_client(transaction):
     app = principals()["app_password"]
     transaction["request"]["headers"]["Authorization"] = basic(app["address"], app["secret"])

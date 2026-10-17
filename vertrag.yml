@@ -27,19 +27,39 @@ auth:
   # the two operations that take a credential other than the session's (the
   # hooks give them theirs).
   except:
-    - 'RestMail API > /api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
-    - 'RestMail API > /api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
-    - 'RestMail API > /api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401'
-    - 'RestMail API > /api/v1/accounts > List the accounts this one reaches > 401 > application/json'
-    - 'RestMail API > /api/v1/accounts > Create an account > 401 > application/json'
-    - 'RestMail API > /api/v1/accounts/link > Link an existing account by proving its password > 401'
-    - 'RestMail API > /api/v1/accounts/{id}/credentials > List an account''s app passwords > 401 > application/json'
-    - 'RestMail API > /api/v1/accounts/{id}/credentials > Make an app password > 401 > application/json'
-    - 'RestMail API > /api/v1/accounts/{id}/credentials/{credential_id} > Revoke an app password > 401 > application/json'
-    - 'RestMail API > /api/v1/admin/audit > Read the audit log, newest first > 401 > application/json'
-    - 'RestMail API > /api/v1/admin/audit/verify > Check the audit log''s hash chain > 401 > application/json'
-    - 'RestMail API > /api/v1/admin/grants > List grants, oldest first > 401 > application/json'
-    - 'RestMail API > /api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
+    - '/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
+    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
+    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401'
+    - '/api/v1/accounts > List the accounts this one reaches > 401 > application/json'
+    - '/api/v1/accounts > Create an account > 401 > application/json'
+    - '/api/v1/accounts/link > Link an existing account by proving its password > 401'
+    - '/api/v1/accounts/{id}/credentials > List an account''s app passwords > 401 > application/json'
+    - '/api/v1/accounts/{id}/credentials > Make an app password > 401 > application/json'
+    - '/api/v1/accounts/{id}/credentials/{credential_id} > Revoke an app password > 401 > application/json'
+    - '/api/v1/admin/audit > Read the audit log, newest first > 401 > application/json'
+    - '/api/v1/admin/audit/verify > Check the audit log''s hash chain > 401 > application/json'
+    - '/api/v1/admin/grants > List grants, oldest first > 401 > application/json'
+    - '/api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
+    # Operations that take no credential, sent without one: holding the
+    # admin's, vertrag's ignored-auth check would send each again bare and report
+    # it for answering, though the spec says (security: []) that it should.
+    - '/api/health > Health check > 200 > application/json'
+    - '/api/v1/auth/login > Sign an account in with its address and password > 200 > application/json'
+    - '/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
+    - '/api/v1/auth/refresh > Refresh the session (cookie, or body token for native clients) > 200 > application/json'
+    - '/api/v1/server > What this server is > 200 > application/json'
+    - '/restmail/capabilities > Get RESTMAIL server capabilities > 200 > application/json'
+    - '/restmail/mailboxes > Check if a recipient mailbox exists > 200 > application/json'
+    - '/restmail/messages > Deliver a message via RESTMAIL protocol > 201 > application/json'
+    - '/api > API discovery — name, version and key links > 200 > application/json'
+    - '/api/docs > Swagger UI documentation page > 200 > text/html'
+    - '/api/docs/openapi.yaml > This OpenAPI specification document > 200 > application/yaml'
+    - '/metrics > Prometheus metrics exposition > 200 > text/plain'
+    - '/mail/config-v1.1.xml > Mozilla/Thunderbird autoconfiguration > 200 > application/xml'
+    - '/.well-known/autoconfig/mail/config-v1.1.xml > Mozilla/Thunderbird autoconfiguration (well-known path) > 200 > application/xml'
+    - '/autodiscover/autodiscover.xml > Microsoft Outlook autodiscover > 200 > application/xml'
+    - '/.well-known/mta-sts.txt > MTA-STS policy file (RFC 8461) > 200 > text/plain'
+    - '/.well-known/smtp-tlsrpt > TLS-RPT report ingestion (RFC 8460) > 201 > application/json'
 
 checks:
   # The "no credentials" principal, for every operation: each authenticated
@@ -98,10 +118,11 @@ exclude-matching:
   # authorization phase (antimatter-studios/vertrag#71), not the admin's run.
   - '> 403( >|$)'
   # Each needs a request of its own that provokes it (a named request example
-  # paired with a named response example), which the spec does not have yet.
+  # paired with a named response example), which the spec does not have yet:
+  # #386.
   - '> (400|404|409|422)( >|$)'
-  # A 401 for a wrong credential on an operation that takes none.
-  - '^RestMail API > /api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
+  # A 401 for a wrong credential on an operation that takes none (#386).
+  - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
   - '> (429|503)( >|$)'
 

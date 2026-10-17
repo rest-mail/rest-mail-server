@@ -44,7 +44,6 @@ def exclusions(config_path):
 def main():
     spec_path, config_path, report_path = sys.argv[1:4]
     spec = yaml.safe_load(open(spec_path))
-    title = spec["info"]["title"]
 
     operations = {}  # (path, summary) -> operationId
     for path, item in spec["paths"].items():
@@ -65,9 +64,11 @@ def main():
         if case.find("failure") is not None or case.find("error") is not None or case.find("skipped") is not None:
             continue
         parts = case.get("name").split(" > ")
-        if parts[0] != title or len(parts) < 4:
+        # Probes ("coverage: …") and link checks ("links: …") are not the
+        # examples phase.
+        if len(parts) < 3 or ":" in parts[0].split("/")[0]:
             continue
-        op = operations.get((parts[1], parts[2]))
+        op = operations.get((parts[0], parts[1]))
         if op:
             passed.add(op)
 
