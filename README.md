@@ -355,7 +355,7 @@ chore config:check      # fail if config.env drifted from its manifest
 chore setup
 ```
 
-TLS certificates are provisioned per config into the shared `testbed_certs` volume (`chore instance:certs:issue`, run automatically by `instance:new`). To pull the dev CA out of the testbed for browser/IMAP-client trust:
+TLS certificates are provisioned per config into the shared `testbed_certs` volume (`chore instance:certs:issue`, run automatically by `instance:new`), and the internal mTLS ones into `<project>-internal-mtls` (`chore instance:mtls:issue`). Both hold a CA's private key, so no service mounts them: each service's `up` copies the files that service needs into a volume of its own, `<container>-certs` ([tasks/stage-certs.sh](tasks/stage-certs.sh)). To pull the dev CA out of the testbed for browser/IMAP-client trust:
 
 ```bash
 cd .workspace/testbed && chore ca:fetch    # writes ./ca.crt
@@ -546,9 +546,15 @@ the in-repo certgen — idempotent and CA-preserving (it re-mints the server lea
 if the requested SANs drift, e.g. the api IP changes on a persistent volume):
 
 ```
-go run ./cmd/certgen --internal-mtls --out /certs \
+go run ./cmd/certgen --internal-mtls --out /internal-mtls \
   --server-ip 127.0.0.1,<api-ip> --server-dns api,localhost,<hostname>
 ```
+
+That directory then holds the internal CA's private key, so mount it into
+nothing that serves: give the API the CA certificate and its server keypair,
+and each gateway the CA certificate and the client keypair. `chore
+instance:mtls:issue` does exactly that with its own volume, and the Helm chart
+keeps no CA key at all.
 
 When enabled, set the gateways' `API_INTERNAL_BASE_URL` to the https internal
 listener (e.g. `https://<api-host>:8443`) and leave `API_BASE_URL` on the public

@@ -134,9 +134,17 @@ spec:
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
       volumes:
+        # Only the CA certificate, for the API to trust the peers it issued
+        # (TRUSTED_CA_CERT reads /certs/ca.crt). The API serves no mail TLS, so
+        # it gets neither the gateways' key nor anything else the Secret holds;
+        # a Secret with no ca.crt leaves the directory empty.
         - name: tls
           secret:
             secretName: {{ .Values.tls.secretName }}
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
         {{- if .Values.internalMtls.enabled }}
         {{- include "restmail.internalMtls.volume" (list . "server") | nindent 8 }}
         {{- end }}

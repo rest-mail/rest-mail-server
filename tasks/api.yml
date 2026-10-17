@@ -18,7 +18,11 @@ silent: true
 vars:
   API_PROJECT: '{{.API_PROJECT | default "rest-mail"}}'
   API_NETWORK: '{{.API_NETWORK | default "testbed_mailnet"}}'
+  # Where certificates are issued: the testbed's volume, which also holds its CA
+  # key, and the internal mTLS volume, which holds the internal CA's. The API
+  # mounts neither (#193); `up` copies what it needs into API_OWN_CERTS_VOLUME.
   API_CERTS_VOLUME: '{{.API_CERTS_VOLUME | default "testbed_certs"}}'
+  API_INTERNAL_MTLS_VOLUME: '{{.API_INTERNAL_MTLS_VOLUME | default "rest-mail-internal-mtls"}}'
   API_DNS_IP: '{{.API_DNS_IP | default "10.99.0.10"}}'
   API_IP: '{{.API_IP | default "10.99.0.20"}}'
   API_PORT: '{{.API_PORT | default "8080"}}'
@@ -28,6 +32,7 @@ vars:
   API_IMAGE: '{{.API_REGISTRY}}/api:{{.API_IMAGE_TAG}}'
   API_CONTAINER_NAME: '{{.API_PROJECT}}-api'
   API_ATTACHMENTS_VOLUME: '{{.API_PROJECT}}-attachments'
+  API_OWN_CERTS_VOLUME: '{{.API_CONTAINER_NAME}}-certs'
   API_DB_HOST: '{{.API_DB_HOST | default "10.99.0.43"}}'
   API_DB_PORT: '{{.API_DB_PORT | default "5432"}}'
   API_DB_NAME: '{{.API_DB_NAME | default "restmail"}}'
@@ -42,8 +47,8 @@ vars:
   API_PROXY_HOST: '{{.API_PROXY_HOST | default "restmail.localhost"}}'
   # Internal mTLS (gateway → API). Off by default; when "true" the API serves
   # the gateway-facing routes on API_INTERNAL_MTLS_PORT requiring a client cert
-  # from the internal CA. Certs are provisioned into the certs volume by
-  # `chore instance:mtls:issue` at the fixed /certs/internal-* paths.
+  # from the internal CA. `chore instance:mtls:issue` issues them into
+  # API_INTERNAL_MTLS_VOLUME; `up` copies the API's to /certs/internal-*.
   API_INTERNAL_MTLS: '{{.API_INTERNAL_MTLS | default "false"}}'
   API_INTERNAL_MTLS_PORT: '{{.API_INTERNAL_MTLS_PORT | default "8443"}}'
 
@@ -110,6 +115,19 @@ tasks:
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --pids-limit 1024 --memory 2g --cpus 2"
+        # Its certificates: the testbed CA certificate to trust peers with and,
+        # with internal mTLS on, the internal CA certificate and the API's server
+        # keypair. Copied into a volume of its own, owned by the user it runs as
+        # (root in the dev image, 10001 in the prod one), so it never mounts a CA
+        # key (#193).
+        INTERNAL=""
+        if [ "{{.API_INTERNAL_MTLS}}" = "true" ]; then
+          INTERNAL="{{.API_INTERNAL_MTLS_VOLUME}}:internal-ca.crt,internal-server.crt,internal-server.key"
+        fi
+        OWNER=0:0
+        if [ "{{.API_MODE}}" = "prod" ]; then OWNER=10001:10001; fi
+        "{{.TASKFILE_DIR}}/stage-certs.sh" {{.API_OWN_CERTS_VOLUME}} "$OWNER" \
+          "{{.API_CERTS_VOLUME}}:ca.crt?" $INTERNAL || exit 1
         # Secrets (DB_PASS/JWT_SECRET/MASTER_KEY/JS_FILTER_TOKEN) are handed to
         # the container via a 0600 env-file rather than -e flags, so they never sit on the
         # `docker run` command line (host process list, shell history, CI logs)
@@ -131,7 +149,7 @@ tasks:
           --ip {{.API_IP}} \
           -v {{.ROOT_DIR}}/.cache/testbed-resolv.conf:/etc/resolv.conf:ro \
           $PUBLISH \
-          -v {{.API_CERTS_VOLUME}}:/certs:ro \
+          -v {{.API_OWN_CERTS_VOLUME}}:/certs:ro \
           -v {{.API_ATTACHMENTS_VOLUME}}:/attachments \
           $DEV_MOUNTS \
           -l docker-proxy.api.host={{.API_PROXY_HOST}} \

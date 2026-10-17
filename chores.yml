@@ -121,6 +121,7 @@ includes:
       API_PROJECT: '{{.RESTMAIL_PROJECT}}'
       API_NETWORK: '{{.RESTMAIL_NETWORK}}'
       API_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      API_INTERNAL_MTLS_VOLUME: '{{.RESTMAIL_PROJECT}}-internal-mtls'
       API_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
       API_IP: '{{.RESTMAIL_API_IP}}'
       API_PORT: '{{.RESTMAIL_API_PORT}}'
@@ -148,6 +149,7 @@ includes:
       SMTP_GATEWAY_PROJECT: '{{.RESTMAIL_PROJECT}}'
       SMTP_GATEWAY_NETWORK: '{{.RESTMAIL_NETWORK}}'
       SMTP_GATEWAY_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      SMTP_GATEWAY_INTERNAL_MTLS_VOLUME: '{{.RESTMAIL_PROJECT}}-internal-mtls'
       SMTP_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
       SMTP_GATEWAY_IP: '{{.RESTMAIL_SMTP_IP}}'
       SMTP_GATEWAY_RESTMAIL_HOSTNAME: '{{.RESTMAIL_HOSTNAME}}'
@@ -193,6 +195,7 @@ includes:
       IMAP_GATEWAY_PROJECT: '{{.RESTMAIL_PROJECT}}'
       IMAP_GATEWAY_NETWORK: '{{.RESTMAIL_NETWORK}}'
       IMAP_GATEWAY_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      IMAP_GATEWAY_INTERNAL_MTLS_VOLUME: '{{.RESTMAIL_PROJECT}}-internal-mtls'
       IMAP_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
       IMAP_GATEWAY_IP: '{{.RESTMAIL_IMAP_IP}}'
       IMAP_GATEWAY_RESTMAIL_HOSTNAME: '{{.RESTMAIL_HOSTNAME}}'
@@ -221,6 +224,7 @@ includes:
       POP3_GATEWAY_PROJECT: '{{.RESTMAIL_PROJECT}}'
       POP3_GATEWAY_NETWORK: '{{.RESTMAIL_NETWORK}}'
       POP3_GATEWAY_CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME}}'
+      POP3_GATEWAY_INTERNAL_MTLS_VOLUME: '{{.RESTMAIL_PROJECT}}-internal-mtls'
       POP3_GATEWAY_DNS_IP: '{{.RESTMAIL_TESTBED_DNS_IP}}'
       POP3_GATEWAY_IP: '{{.RESTMAIL_POP3_IP}}'
       POP3_GATEWAY_RESTMAIL_HOSTNAME: '{{.RESTMAIL_HOSTNAME}}'
@@ -1271,9 +1275,13 @@ tasks:
         esac
 
   instance:mtls:issue:
-    desc: "Provision internal-mTLS certs for CONFIG into the certs volume (source = tls.internal.ca_source: testbed-certgen | manual)"
+    desc: "Provision internal-mTLS certs for CONFIG into <project>-internal-mtls (source = tls.internal.ca_source: testbed-certgen | manual)"
     vars:
-      CERTS_VOLUME: '{{.RESTMAIL_CERTS_VOLUME | default "testbed_certs"}}'
+      # A volume of their own, not the testbed's certs volume: it holds the
+      # internal CA's key, and the reference servers mount testbed_certs whole.
+      # Only certgen mounts it read-write; each service's `up` copies out the
+      # files that service needs (tasks/stage-certs.sh), so none mounts it (#193).
+      INTERNAL_MTLS_VOLUME: '{{.RESTMAIL_PROJECT}}-internal-mtls'
       # tls.internal.ca_source (render.go → RESTMAIL_INTERNAL_CA_SOURCE) selects
       # the provisioning branch. Rendered only when NON-default, so an absent var
       # means the testbed default — byte-identical to before.
@@ -1284,34 +1292,36 @@ tasks:
           testbed-certgen)
             # Default (testbed): mint a DEDICATED internal CA + an API server cert
             # (SANs cover the api container IP + localhost + the instance hostname)
-            # + a gateway client cert into /certs, using the in-repo certgen (built
-            # inside a golang container so it is arch-correct for the volume).
-            # Idempotent: an existing internal CA is reused and leaves already
-            # present are skipped, so it is safe to re-run and safe to run even when
-            # the instance has not enabled internal mTLS (the certs simply go unused).
+            # + a gateway client cert into the internal mTLS volume, using the
+            # in-repo certgen (built inside a golang container so it is arch-correct
+            # for the volume). Idempotent: an existing internal CA is reused and
+            # leaves already present are skipped, so it is safe to re-run and safe to
+            # run even when the instance has not enabled internal mTLS (the certs
+            # simply go unused).
             docker run --rm \
-              -v "{{.CERTS_VOLUME}}:/certs" \
+              -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls" \
               -v "{{.ROOT_DIR}}:/src" -w /src \
               -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.25 \
-              go run ./cmd/certgen --internal-mtls --out /certs \
+              go run ./cmd/certgen --internal-mtls --out /internal-mtls \
                 --server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
                 --server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}
             ;;
           manual)
             # The deployer provisions the internal trust domain out of band (their
-            # own CA/PKI) and drops the material into the certs volume; we ONLY
-            # validate presence and never issue. The five files are the internal CA
-            # + the API server keypair + the gateway client keypair, at the fixed
-            # /certs/internal-* paths the api/gateway task env vars point at
-            # (INTERNAL_MTLS_CA_CERT / _SERVER_* / _CLIENT_*).
-            docker run --rm -v "{{.CERTS_VOLUME}}:/certs:ro" alpine:3 sh -euc '
+            # own CA/PKI) and drops the material into the internal mTLS volume; we
+            # ONLY validate presence and never issue. The five files are the
+            # internal CA certificate + the API server keypair + the gateway client
+            # keypair, which each service's `up` copies to the /certs/internal-*
+            # paths its env vars point at (INTERNAL_MTLS_CA_CERT / _SERVER_* /
+            # _CLIENT_*). The CA's key is not one of them, and is best kept out.
+            docker run --rm -v "{{.INTERNAL_MTLS_VOLUME}}:/internal-mtls:ro" alpine:3 sh -euc '
               missing=0
               for f in internal-ca.crt internal-server.crt internal-server.key internal-client.crt internal-client.key; do
-                if [ ! -f "/certs/$f" ]; then
-                  echo "ca_source=manual: MISSING /certs/$f — drop the internal CA + server/client cert material into volume {{.CERTS_VOLUME}}" >&2
+                if [ ! -f "/internal-mtls/$f" ]; then
+                  echo "ca_source=manual: MISSING $f — drop the internal CA certificate + server/client cert material into volume {{.INTERNAL_MTLS_VOLUME}}" >&2
                   missing=1
                 fi
               done
