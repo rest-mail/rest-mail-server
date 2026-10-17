@@ -250,7 +250,7 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 
 | Filter | Type | Notes |
 |--------|------|-------|
-| `spf_check` | Check | SPF record validation |
+| `spf_check` | Check | SPF verification (via go-spf); records the result, DMARC decides |
 | `dkim_verify` | Check | Verify incoming signatures |
 | `dmarc_check` | Check | DMARC policy enforcement |
 | `arc_verify` | Check | ARC chain verification |

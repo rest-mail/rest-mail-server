@@ -44,13 +44,14 @@ The application itself is deliberately thin: the protocol engines and email-auth
 
 ## The Library Family
 
-RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is seven focused libraries, all MIT-licensed and each usable entirely on its own:
+RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is eight focused libraries, all MIT-licensed and each usable entirely on its own:
 
 | Library | What it is |
 |---------|------------|
 | [`rest-mail/go-pop3`](https://github.com/rest-mail/go-pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
 | [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap) | IMAP server engine with the same bring-a-`Backend` design |
 | [`rest-mail/go-dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
+| [`rest-mail/go-spf`](https://github.com/rest-mail/go-spf) | RFC 7208 SPF evaluation, zero external deps |
 | [`rest-mail/go-arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
 | [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
 | [`rest-mail/go-mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
@@ -686,7 +687,7 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 
 | Filter | Description |
 |--------|-------------|
-| `spf_check` | SPF record validation |
+| `spf_check` | SPF verification (via `rest-mail/go-spf`) |
 | `dkim_verify` | DKIM signature verification (via `rest-mail/go-dkim`) |
 | `dmarc_check` | DMARC policy enforcement (via `rest-mail/go-dmarc`) |
 | `arc_verify` | ARC chain verification (via `rest-mail/go-arc`) |
