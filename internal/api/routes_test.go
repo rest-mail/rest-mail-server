@@ -123,6 +123,7 @@ func legacyAdminMailboxToken(t *testing.T) string {
 		"token_type": "access",
 		"is_admin":   true,
 		"mailbox_id": 10,
+		"sid":        "0123456789abcdef0123456789abcdef",
 	})
 	s, err := tok.SignedString([]byte(routerTestSecret))
 	if err != nil {

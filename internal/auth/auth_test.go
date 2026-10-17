@@ -201,6 +201,7 @@ func TestValidateToken_IssuerValidated(t *testing.T) {
 			},
 			MailboxID: testMailboxID,
 			UserType:  "mailbox",
+			SessionID: "0123456789abcdef0123456789abcdef",
 			TokenType: "access",
 		}
 	}
@@ -431,7 +432,8 @@ func TestCheckPassword_NoPrefixHash(t *testing.T) {
 
 // TestSessionIDIsMintedAtSignInAndCarriedByRefresh: both tokens of a sign-in
 // carry one new sid; a second sign-in gets another; tokens minted to continue
-// a session keep its sid under a new jti, and a session without one gets one.
+// a session keep its sid under a new jti, and there is no continuing a session
+// without a sid.
 func TestSessionIDIsMintedAtSignInAndCarriedByRefresh(t *testing.T) {
 	svc := NewJWTService("sid-secret", 15*time.Minute, 7*24*time.Hour)
 	sids := func(p *TokenPair) (access, refresh *Claims) {
@@ -477,12 +479,8 @@ func TestSessionIDIsMintedAtSignInAndCarriedByRefresh(t *testing.T) {
 		t.Fatal("a refresh kept the refresh token's jti; it must rotate")
 	}
 
-	legacy, err := svc.GenerateMailboxSession(7, "u@example.com", 3, false, ContinueSession(""))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if legacy.SessionID == "" || legacy.SessionID == signIn.SessionID || legacy.SessionID == again.SessionID {
-		t.Fatalf("continuing a session without a sid gave %q; want a new sid", legacy.SessionID)
+	if pair, err := svc.GenerateMailboxSession(7, "u@example.com", 3, false, ContinueSession("")); err == nil {
+		t.Fatalf("continuing a session without a sid minted tokens with sid %q; want an error", pair.SessionID)
 	}
 
 	admin, err := svc.GenerateAdminSession(1, "admin", 0, []string{AMRPassword})
@@ -496,5 +494,32 @@ func TestSessionIDIsMintedAtSignInAndCarriedByRefresh(t *testing.T) {
 	}
 	if adminAccess.SessionID == "" || setup.SessionID != adminAccess.SessionID {
 		t.Fatalf("admin sids %q then %q; want one sid carried", adminAccess.SessionID, setup.SessionID)
+	}
+}
+
+// TestTokenWithoutSessionIDIsInvalid: every session has a sid, so an access or
+// refresh token without one, however well signed, is refused.
+func TestTokenWithoutSessionIDIsInvalid(t *testing.T) {
+	svc := newTestService()
+	now := time.Now()
+	for _, tokenType := range []string{"access", "refresh"} {
+		raw := signRawClaims(t, Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				ID:        "no-sid-" + tokenType,
+				Subject:   fmt.Sprintf("mailbox:%d", testMailboxID),
+				Issuer:    TokenIssuer,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+			},
+			MailboxID: testMailboxID,
+			UserType:  "mailbox",
+			TokenType: tokenType,
+		})
+		if _, err := svc.ValidateAccessToken(raw); !errors.Is(err, ErrInvalidToken) {
+			t.Errorf("%s token without a sid: ValidateAccessToken err = %v; want %v", tokenType, err, ErrInvalidToken)
+		}
+		if _, err := svc.ValidateRefreshToken(raw); !errors.Is(err, ErrInvalidToken) {
+			t.Errorf("%s token without a sid: ValidateRefreshToken err = %v; want %v", tokenType, err, ErrInvalidToken)
+		}
 	}
 }

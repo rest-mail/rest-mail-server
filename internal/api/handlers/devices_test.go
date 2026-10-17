@@ -452,8 +452,8 @@ func TestDevicesRegisterValidates(t *testing.T) {
 			} `json:"error"`
 		}
 		_ = json.Unmarshal(body, &resp)
-		if status != http.StatusBadRequest || resp.Error.Code != "validation_failed" || resp.Error.Details.Fields[c.field] == "" {
-			t.Errorf("POST %s = %d %s; want 400 validation_failed on %s", c.body, status, body, c.field)
+		if status != http.StatusUnprocessableEntity || resp.Error.Code != "validation_failed" || resp.Error.Details.Fields[c.field] == "" {
+			t.Errorf("POST %s = %d %s; want 422 validation_failed on %s", c.body, status, body, c.field)
 		}
 	}
 
@@ -471,71 +471,73 @@ func TestDevicesRegisterValidates(t *testing.T) {
 	for i := 4; i < 4+push.MaxDevicesPerSession-2; i++ {
 		e.register(t, s, pushTestToken(i))
 	}
-	status, _ = e.call(t, http.MethodPost, "/api/v1/devices", s.access, `{"platform":"apns","token":"`+pushTestToken(99)+`"}`)
-	if status != http.StatusBadRequest {
-		t.Errorf("registering past %d devices = %d, want 400", push.MaxDevicesPerSession, status)
+	status, body = e.call(t, http.MethodPost, "/api/v1/devices", s.access, `{"platform":"apns","token":"`+pushTestToken(99)+`"}`)
+	if status != http.StatusUnprocessableEntity || !strings.Contains(string(body), `"token"`) {
+		t.Errorf("registering past %d devices = %d %s, want 422 on token", push.MaxDevicesPerSession, status, body)
 	}
 }
 
-// TestDevicesSessionWithoutSid: a token from before sessions had a sid is
-// offered no push service and cannot register, so the app treats push as
-// off; its next refresh gives the session a sid, which the one after keeps.
-func TestDevicesSessionWithoutSid(t *testing.T) {
+// TestDevicesTokenWithoutSidIsRefused: every session has a sid, so a token
+// without one is refused: an access token on each devices route, and a
+// refresh token at refresh, which sends the client back to sign in. The
+// tokens differ from the session's own only in the missing sid, and those
+// still work.
+func TestDevicesTokenWithoutSidIsRefused(t *testing.T) {
 	e := newPushEnv(t)
-	mb := seedMailbox(t, e.tx, "push-legacy")
-	var account models.WebmailAccount
-	if err := e.tx.Create(&models.WebmailAccount{PrimaryMailboxID: mb.ID}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := e.tx.Where("primary_mailbox_id = ?", mb.ID).First(&account).Error; err != nil {
-		t.Fatal(err)
-	}
-
-	legacy := func(tokenType, jti string) string {
-		claims := auth.Claims{
-			RegisteredClaims: jwt.RegisteredClaims{
-				ID: jti, Subject: fmt.Sprintf("mailbox:%d", mb.ID), Issuer: auth.TokenIssuer,
-				IssuedAt: jwt.NewNumericDate(time.Now()), ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
-			},
-			Email: mb.Address, WebmailAccountID: account.ID, MailboxID: mb.ID, UserType: "mailbox", TokenType: tokenType,
+	s := e.signIn(t, seedMailbox(t, e.tx, "push-nosid"))
+	withoutSid := func(token string, validate func(string) (*auth.Claims, error)) string {
+		t.Helper()
+		claims, err := validate(token)
+		if err != nil {
+			t.Fatal(err)
 		}
+		claims.SessionID = ""
 		signed, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(pushTestSecret))
 		if err != nil {
 			t.Fatal(err)
 		}
 		return signed
 	}
-	old := pushSessionT{access: legacy("access", "legacy-access-"+revUniq()), refresh: legacy("refresh", "legacy-refresh-"+revUniq())}
-	oldClaims, err := e.jwt.ValidateRefreshToken(old.refresh)
+	access := withoutSid(s.access, e.jwt.ValidateAccessToken)
+	refresh := withoutSid(s.refresh, e.jwt.ValidateRefreshToken)
+
+	for _, c := range []struct{ method, path, body string }{
+		{http.MethodGet, "/api/v1/devices", ""},
+		{http.MethodPost, "/api/v1/devices", `{"platform":"apns","token":"` + pushTestToken(1) + `"}`},
+		{http.MethodDelete, "/api/v1/devices/1", ""},
+	} {
+		if status, body := e.call(t, c.method, c.path, access, c.body); status != http.StatusUnauthorized {
+			t.Errorf("%s %s with an access token without a sid = %d %s; want 401", c.method, c.path, status, body)
+		}
+	}
+
+	rr := httptest.NewRecorder()
+	e.authH.Refresh(rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh",
+		strings.NewReader(fmt.Sprintf(`{"refresh_token":%q}`, refresh))))
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("refresh with a refresh token without a sid = %d %s; want 401", rr.Code, rr.Body.String())
+	}
+
+	e.register(t, s, pushTestToken(1))
+	e.refreshSession(t, s)
+}
+
+// TestDevicesAdminSessionHasNoPlatform: an administrator's session has no
+// mailbox to be told about: it is offered no platform and cannot register.
+func TestDevicesAdminSessionHasNoPlatform(t *testing.T) {
+	e := newPushEnv(t)
+	pair, err := e.jwt.GenerateAdminSession(1, "push-admin", 0, []string{auth.AMRPassword})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.tx.Create(&models.RefreshToken{Jti: oldClaims.ID, UserType: "mailbox", SubjectID: mb.ID,
-		Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)}).Error; err != nil {
-		t.Fatal(err)
+	if platforms, ids := e.devices(t, pushSessionT{access: pair.AccessToken}); len(platforms) != 0 || len(ids) != 0 {
+		t.Fatalf("GET for an admin = platforms %v devices %v; want none of either", platforms, ids)
 	}
-
-	if platforms, ids := e.devices(t, old); len(platforms) != 0 || len(ids) != 0 {
-		t.Fatalf("GET with a token without a sid = platforms %v devices %v; want none of either", platforms, ids)
+	status, body := e.call(t, http.MethodPost, "/api/v1/devices", pair.AccessToken,
+		`{"platform":"apns","token":"`+pushTestToken(1)+`"}`)
+	if status != http.StatusUnprocessableEntity || !strings.Contains(string(body), `"platform"`) {
+		t.Fatalf("POST for an admin = %d %s; want 422 validation_failed on platform", status, body)
 	}
-	status, body := e.call(t, http.MethodPost, "/api/v1/devices", old.access, `{"platform":"apns","token":"`+pushTestToken(1)+`"}`)
-	if status != http.StatusBadRequest || !strings.Contains(string(body), `"platform"`) {
-		t.Fatalf("POST with a token without a sid = %d %s; want 400 validation_failed on platform", status, body)
-	}
-
-	refreshed := e.refreshSession(t, old)
-	if refreshed.sid == "" {
-		t.Fatal("refreshing a session without a sid gave it none")
-	}
-	var row models.RefreshToken
-	claims, _ := e.jwt.ValidateRefreshToken(refreshed.refresh)
-	if err := e.tx.Where("jti = ?", claims.ID).First(&row).Error; err != nil || row.SessionID != refreshed.sid {
-		t.Fatalf("the new ledger row's session_id = %q (%v), want %q", row.SessionID, err, refreshed.sid)
-	}
-	if again := e.refreshSession(t, refreshed); again.sid != refreshed.sid {
-		t.Fatalf("the next refresh changed the sid from %q to %q", refreshed.sid, again.sid)
-	}
-	e.register(t, refreshed, pushTestToken(1))
 }
 
 // TestPushDeliveryCarriesNoMessageContent: new mail in the INBOX sends the

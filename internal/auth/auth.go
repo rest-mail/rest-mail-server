@@ -74,8 +74,8 @@ type Claims struct {
 	// SessionID is the session the token belongs to: minted at sign-in, in
 	// both tokens, and carried unchanged by every refresh, which gives each
 	// token a new jti. What lives as long as a session, such as a phone
-	// registered for push, is keyed on it. Empty in a token from before it
-	// existed.
+	// registered for push, is keyed on it. Every token has one: ValidateToken
+	// refuses a token without it.
 	SessionID string `json:"sid,omitempty"`
 	TokenType string `json:"token_type"`
 
@@ -129,27 +129,30 @@ type TokenOption func(*tokenOptions)
 
 type tokenOptions struct {
 	sessionID string
+	continued bool
 }
 
 // ContinueSession makes the tokens part of session sid, as a refresh does,
-// instead of a new session. An empty sid, from a token minted before sessions
-// had one, starts a new session: the chain of refreshes gets its sid at its
-// first refresh from then on.
+// instead of a new session.
 func ContinueSession(sid string) TokenOption {
-	return func(o *tokenOptions) { o.sessionID = sid }
+	return func(o *tokenOptions) { o.sessionID, o.continued = sid, true }
 }
 
 // sessionFor is the sid the tokens get: the one ContinueSession names, or a
-// new one, as at sign-in.
+// new one, as at sign-in. Continuing a session without a sid is an error: a
+// sid is only ever minted at sign-in.
 func sessionFor(opts []TokenOption) (string, error) {
 	var o tokenOptions
 	for _, opt := range opts {
 		opt(&o)
 	}
-	if o.sessionID != "" {
-		return o.sessionID, nil
+	if !o.continued {
+		return newSessionID()
 	}
-	return newSessionID()
+	if o.sessionID == "" {
+		return "", errors.New("cannot continue a session without a sid")
+	}
+	return o.sessionID, nil
 }
 
 // JWTService handles JWT token creation and validation.
@@ -375,7 +378,8 @@ func newSessionID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ValidateToken parses and validates a JWT token string.
+// ValidateToken parses and validates a JWT token string. A token without a
+// sid belongs to no session, and is invalid.
 func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -396,7 +400,7 @@ func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 	}
 
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.SessionID == "" {
 		return nil, ErrInvalidToken
 	}
 

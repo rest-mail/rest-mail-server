@@ -562,7 +562,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		if claims, err := h.jwtService.ValidateRefreshToken(token); err == nil && claims.ID != "" {
 			_ = h.refreshStore.Revoke(claims.ID)
 			// The phones the session registered for push go with it.
-			if h.pushDevices != nil && claims.SessionID != "" {
+			if h.pushDevices != nil {
 				if _, err := h.pushDevices.SessionEnded(claims.SessionID, time.Now()); err != nil {
 					slog.Warn("failed to remove the push devices of a session that signed out", "error", err)
 				}
@@ -662,8 +662,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// MailboxID=0) — every admin route then 403'd and the admin was locked out
 	// until a full re-login.
 	//
-	// The new tokens stay in the session: the same sid, which a token from
-	// before sessions had one gets here.
+	// The new tokens stay in the session: the same sid.
 	session := auth.ContinueSession(claims.SessionID)
 	var tokens *auth.TokenPair
 	var userType string

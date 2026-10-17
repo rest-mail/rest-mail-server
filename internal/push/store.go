@@ -64,9 +64,6 @@ const liveSession = `EXISTS (SELECT 1 FROM refresh_tokens rt
 // session it was minted for by up to its own lifetime; a device registered
 // with one after a logout would belong to nothing.
 func (s *Store) SessionAlive(sid string, now time.Time) (bool, error) {
-	if sid == "" {
-		return false, nil
-	}
 	var n int64
 	err := s.db.Model(&models.RefreshToken{}).
 		Where("session_id = ? AND status = ? AND expires_at > ?", sid, models.RefreshTokenActive, now).
@@ -124,9 +121,6 @@ func (s *Store) Register(d *models.PushDevice) (device *models.PushDevice, creat
 // Remove deletes device id if session sid registered it, and reports whether
 // it did.
 func (s *Store) Remove(sid string, id uint) (bool, error) {
-	if sid == "" {
-		return false, nil
-	}
 	res := s.db.Where("id = ? AND session_id = ?", id, sid).Delete(&models.PushDevice{})
 	return res.RowsAffected > 0, res.Error
 }
@@ -233,9 +227,6 @@ func (s *Store) RemoveGone(id uint, apnsReason string, now time.Time) error {
 // logout with an old, already rotated refresh token leaves the session, and
 // its devices, alive.
 func (s *Store) SessionEnded(sid string, now time.Time) (int, error) {
-	if sid == "" {
-		return 0, nil
-	}
 	return s.removeAudited(RemovedSessionEnded, "", now,
 		`DELETE FROM push_devices d WHERE d.session_id = @sid AND NOT `+liveSession+`
 RETURNING d.id, d.mailbox_id, d.platform`,

@@ -50,15 +50,14 @@ func deviceJSON(d *models.PushDevice) deviceResponse {
 }
 
 // pushSession says whether a session can have devices: a mailbox's, signed
-// in with a password, with a sid. A token from before sessions had a sid
-// gets one at its next refresh; an admin has no mailbox to be told about.
+// in with a password. An admin has no mailbox to be told about.
 func pushSession(claims *auth.Claims) bool {
-	return claims.UserType == "mailbox" && claims.CredentialID == 0 && claims.SessionID != ""
+	return claims.UserType == "mailbox" && claims.CredentialID == 0
 }
 
 // List answers which push services the server can use for this session, and
 // the session's devices. A session that cannot have devices is offered no
-// service, which the app reads as "off".
+// service, which the app reads as "off", and has none.
 // GET /api/v1/devices
 func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
@@ -67,17 +66,17 @@ func (h *DeviceHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	platforms := []string{}
-	devices := []deviceResponse{}
 	if pushSession(claims) {
 		platforms = append(platforms, models.PushPlatformAPNs)
-		registered, err := h.store.List(claims.SessionID)
-		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list devices")
-			return
-		}
-		for i := range registered {
-			devices = append(devices, deviceJSON(&registered[i]))
-		}
+	}
+	registered, err := h.store.List(claims.SessionID)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list devices")
+		return
+	}
+	devices := make([]deviceResponse, 0, len(registered))
+	for i := range registered {
+		devices = append(devices, deviceJSON(&registered[i]))
 	}
 	respond.Data(w, http.StatusOK, map[string]any{"platforms": platforms, "devices": devices})
 }
@@ -87,17 +86,6 @@ type registerDeviceRequest struct {
 	Token       string `json:"token"`
 	Environment string `json:"environment"`
 	AppID       string `json:"app_id"`
-}
-
-// deviceValidationError answers 400 validation_failed with the fields that
-// failed, as the app's contract has it (rest-mail-mobile#8): the app reads
-// one on platform as "push is off here".
-func deviceValidationError(w http.ResponseWriter, fields map[string]string) {
-	respond.JSON(w, http.StatusBadRequest, respond.ErrorResponse{Error: respond.ErrorBody{
-		Code:    "validation_failed",
-		Message: "Request body failed validation",
-		Details: map[string]any{"fields": fields},
-	}})
 }
 
 // Register registers this phone with this session: 201 with the new device,
@@ -116,10 +104,8 @@ func (h *DeviceHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	fields := map[string]string{}
 	switch {
-	case !pushSession(claims) && claims.UserType != "mailbox":
-		fields["platform"] = "an administrator's session has no mailbox to be told about"
 	case !pushSession(claims):
-		fields["platform"] = "this session is from before push; sign in again to register a device"
+		fields["platform"] = "an administrator's session has no mailbox to be told about"
 	case req.Platform != models.PushPlatformAPNs:
 		fields["platform"] = "not configured on this server"
 	}
@@ -136,7 +122,7 @@ func (h *DeviceHandler) Register(w http.ResponseWriter, r *http.Request) {
 		fields["app_id"] = "this server pushes to " + h.topic + " only"
 	}
 	if len(fields) > 0 {
-		deviceValidationError(w, fields)
+		respond.ValidationError(w, fields)
 		return
 	}
 
@@ -159,7 +145,7 @@ func (h *DeviceHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Environment:      req.Environment,
 	})
 	if errors.Is(err, push.ErrTooManyDevices) {
-		deviceValidationError(w, map[string]string{
+		respond.ValidationError(w, map[string]string{
 			"token": "this session has registered " + strconv.Itoa(push.MaxDevicesPerSession) + " devices, the most it may; remove one first",
 		})
 		return
@@ -185,7 +171,7 @@ func (h *DeviceHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := strconv.ParseUint(chi.URLParam(r, "device_id"), 10, 32)
-	if err != nil || !pushSession(claims) {
+	if err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Device not found")
 		return
 	}

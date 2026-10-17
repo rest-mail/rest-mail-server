@@ -298,8 +298,8 @@ paths:
         the same channel: cookies for a cookie request, body fields for a body
         request. A request carrying the cookie is always answered with cookies,
         whatever its body says. The new tokens have a new `jti` but stay in the
-        same session: the `sid` claim minted at sign-in, which a token from
-        before sessions had one gets at this refresh.
+        same session: the `sid` claim minted at sign-in. A refresh token
+        without a `sid` is refused with 401, and the client signs in again.
       security: []
       requestBody:
         required: false
@@ -887,9 +887,7 @@ paths:
         Answers 404 when the server has no push credentials configured, which
         a client reads as "no push here". `platforms` lists the services this
         session can register a device with: empty for an administrator's
-        session, which has no mailbox, and for a session whose tokens are from
-        before sessions had an id (`sid`), until its next refresh. A device's
-        token is never returned.
+        session, which has no mailbox. A device's token is never returned.
       responses:
         "200":
           description: The services and the devices
@@ -949,13 +947,14 @@ paths:
                   data:
                     $ref: "#/components/schemas/PushDevice"
         "400":
+          description: The body is not JSON (`bad_request`)
+        "422":
           description: >
             `validation_failed`, with `details.fields.platform` when the
-            platform is not configured here or this session cannot register a
-            device (an administrator's, or one from before sessions had an
-            id), and `fields.token`, `fields.environment` or `fields.app_id`
-            for a bad value. Also `fields.token` when the session already has
-            10 devices.
+            platform is not configured here or the session is an
+            administrator's, which has no mailbox, and `fields.token`,
+            `fields.environment` or `fields.app_id` for a bad value. Also
+            `fields.token` when the session already has 10 devices.
           content:
             application/json:
               schema:
