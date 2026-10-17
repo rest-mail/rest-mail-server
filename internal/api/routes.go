@@ -183,7 +183,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// What each admin may do is read from its grants on every request, through
 	// a cache that every grant change made here empties at once (#345).
 	grantCache := grants.NewCache(db, grants.CacheTTL)
-	grantH := handlers.NewGrantHandler(db, grantCache)
+	grantH := handlers.NewGrantHandler(db, grantCache, cfg.MasterKey)
 
 	// App passwords (#344): the mail routes below also take one, sent with HTTP
 	// Basic as address:app_password and checked on every request, so a revoked
@@ -689,6 +689,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/grants", grantH.List)
 		r.With(needs(middleware.CapUsersWrite)).Post("/api/v1/admin/grants", grantH.Create)
 		r.With(needs(middleware.CapUsersWrite)).Delete("/api/v1/admin/grants/{id}", grantH.Delete)
+
+		// Escalation (#346): every admin sees its own grants, and switches its
+		// own eligible ones on for a while. Holding the eligible grant is what
+		// allows it, so no capability is checked here; the handler answers 404
+		// for anyone else's grant. Switching on, and making a grant eligible,
+		// check a fresh second factor in the body, so they share login's
+		// throttle: they are a way to guess codes too.
+		r.Get("/api/v1/admin/grants/mine", grantH.Mine)
+		r.With(authThrottle).Post("/api/v1/admin/grants/{id}/activate", grantH.Activate)
+		r.Post("/api/v1/admin/grants/{id}/deactivate", grantH.Deactivate)
+		r.With(authThrottle).Post("/api/v1/admin/grants/{id}/make-eligible", grantH.MakeEligible)
 
 		// Domains
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains", domainH.List)

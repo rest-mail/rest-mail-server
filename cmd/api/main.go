@@ -270,6 +270,11 @@ func main() {
 	domainWatcher := domainstate.NewWatcher(database, domainstate.DefaultInterval)
 	domainWatcher.Start()
 
+	// Record escalations that ran out (#346). What they gave stops at once
+	// regardless; this writes the expiry into the audit log.
+	grantSweeper := grants.NewSweeper(database, grants.SweepInterval)
+	grantSweeper.Start()
+
 	// Start quarantine digest worker
 	digestInterval := 24 * time.Hour
 	if cfg.Environment == "development" {
@@ -372,6 +377,7 @@ func main() {
 		acmeManager.Shutdown()
 	}
 	domainWatcher.Shutdown()
+	grantSweeper.Shutdown()
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()
 	// Stop the rollup worker (takes a final snapshot to capture the partial

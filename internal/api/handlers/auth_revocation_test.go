@@ -51,6 +51,8 @@ func openRevocationTestDB(t *testing.T) *gorm.DB {
 		&models.UserRole{},
 		&models.RoleCapability{},
 		&models.Grant{},
+		&models.GrantActivation{},
+		&models.TwoFactor{},
 		// A mailbox's new password revokes its app passwords.
 		&models.Credential{},
 	); err != nil {

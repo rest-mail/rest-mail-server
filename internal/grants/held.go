@@ -19,8 +19,8 @@ type Entry struct {
 }
 
 // Held is what a holder holds right now: a capability at a scope for each
-// capability of each of its active, unexpired grants. The zero Held holds
-// nothing.
+// capability of each of its unexpired grants that is active, or eligible and
+// switched on (Activate). The zero Held holds nothing.
 type Held struct {
 	entries []Entry
 }
@@ -90,19 +90,23 @@ func Load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, e
 	return held, err
 }
 
-// load is Load, and also the earliest time one of the grants it read expires
-// (zero when none does), after which what it read is out of date.
+// load is Load, and also the earliest time one of the grants or activations
+// it read expires (zero when none does), after which what it read is out of
+// date.
 func load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, time.Time, error) {
 	var rows []struct {
-		Scope      string
-		Capability string
-		ExpiresAt  *time.Time
+		Scope               string
+		Capability          string
+		ExpiresAt           *time.Time
+		ActivationExpiresAt *time.Time
 	}
 	err := db.Table("grants AS g").
-		Select("g.scope, c.name AS capability, g.expires_at").
+		Select("g.scope, c.name AS capability, g.expires_at, a.expires_at AS activation_expires_at").
 		Joins("JOIN admin_roles_capabilities rc ON rc.role_id = g.role_id").
 		Joins("JOIN admin_capabilities c ON c.id = rc.capability_id").
-		Where("g.holder_kind = ? AND g.holder_id = ? AND g.mode = ?", holderKind, holderID, models.GrantActive).
+		Joins("LEFT JOIN grant_activations a ON a.grant_id = g.id AND a.ended_at IS NULL AND a.expires_at > ?", now).
+		Where("g.holder_kind = ? AND g.holder_id = ?", holderKind, holderID).
+		Where("g.mode = ? OR (g.mode = ? AND a.id IS NOT NULL)", models.GrantActive, models.GrantEligible).
 		Where("g.expires_at IS NULL OR g.expires_at > ?", now).
 		Order("g.scope, c.name").
 		Scan(&rows).Error
@@ -113,8 +117,10 @@ func load(db *gorm.DB, holderKind string, holderID uint, now time.Time) (Held, t
 	var expires time.Time
 	for _, r := range rows {
 		held.entries = append(held.entries, Entry{Scope: r.Scope, Capability: r.Capability})
-		if r.ExpiresAt != nil && (expires.IsZero() || r.ExpiresAt.Before(expires)) {
-			expires = *r.ExpiresAt
+		for _, at := range []*time.Time{r.ExpiresAt, r.ActivationExpiresAt} {
+			if at != nil && (expires.IsZero() || at.Before(expires)) {
+				expires = *at
+			}
 		}
 	}
 	return held, expires, nil

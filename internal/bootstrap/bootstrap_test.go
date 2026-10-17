@@ -36,7 +36,7 @@ func openBootstrapTestDB(t *testing.T) *gorm.DB {
 		t.Skipf("bootstrap DB test skipped: no database reachable (%v)", err)
 	}
 	if err := gdb.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.RefreshToken{}); err != nil {
+		&models.UserRole{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{}, &models.RefreshToken{}); err != nil {
 		t.Skipf("bootstrap DB test skipped: migrate failed (%v)", err)
 	}
 	// Grants made at bootstrap are recorded in the audit log.
@@ -197,8 +197,8 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 	if err := auth.CheckPassword(strongPassword, user.PasswordHash); err != nil {
 		t.Errorf("stored hash does not verify the bootstrap password: %v", err)
 	}
-	// Superadmin and admin, both at "*" and both active: superadmin becomes
-	// eligible only once it can be switched on (#346).
+	// Admin at "*", active, to work with; superadmin at "*", eligible, to
+	// switch on when needed (#346).
 	var held []struct{ Name, Scope, Mode string }
 	if err := gdb.Table("grants g").Select("r.name, g.scope, g.mode").
 		Joins("JOIN admin_roles r ON r.id = g.role_id").
@@ -206,7 +206,7 @@ func TestEnsureFirstAdmin_CreatesSuperadminOnFreshInstall(t *testing.T) {
 		Order("r.name").Scan(&held).Error; err != nil {
 		t.Fatal(err)
 	}
-	want := []struct{ Name, Scope, Mode string }{{"admin", "*", "active"}, {"superadmin", "*", "active"}}
+	want := []struct{ Name, Scope, Mode string }{{"admin", "*", "active"}, {"superadmin", "*", "eligible"}}
 	if !reflect.DeepEqual(held, want) {
 		t.Errorf("grants = %+v, want %+v", held, want)
 	}
@@ -243,6 +243,59 @@ func TestEnsureFirstAdmin_RestartDoesNotExtendTheDeadline(t *testing.T) {
 	if !after.BootstrapExpiresAt.Equal(*before.BootstrapExpiresAt) || after.CredentialEpoch != before.CredentialEpoch {
 		t.Errorf("restart moved the deadline %v -> %v or the epoch %d -> %d",
 			before.BootstrapExpiresAt, after.BootstrapExpiresAt, before.CredentialEpoch, after.CredentialEpoch)
+	}
+}
+
+// An owner whose bootstrap admin was made before escalation (#346) holds
+// superadmin active. Nothing at start-up makes it eligible: not a restart, not
+// a re-arm, not once the owner has finished setting up. Only the owner can,
+// through the API.
+func TestEnsureFirstAdmin_LeavesAnOwnersActiveSuperadminAlone(t *testing.T) {
+	gdb := openBootstrapTestDB(t)
+	mustRBAC(t, gdb)
+
+	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0); err != nil {
+		t.Fatal(err)
+	}
+	owner := adminNamed(t, gdb, "admin")
+	// As the release before this one left it.
+	if err := gdb.Exec(`UPDATE grants SET mode = ? WHERE holder_id = ? AND role_id = (SELECT id FROM admin_roles WHERE name = 'superadmin')`,
+		models.GrantActive, owner.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	modes := func() []string {
+		var out []string
+		if err := gdb.Table("grants g").Joins("JOIN admin_roles r ON r.id = g.role_id").
+			Where("g.holder_id = ?", owner.ID).Order("r.name").
+			Pluck("r.name || ' ' || g.mode", &out).Error; err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	want := []string{"admin active", "superadmin active"}
+
+	if _, err := EnsureFirstAdmin(gdb, "admin", strongPassword, true, t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := modes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("after a restart: %v, want %v", got, want)
+	}
+	if outcome, err := EnsureFirstAdmin(gdb, "admin", "a-different-password-entirely", true, t0.Add(2*time.Hour)); err != nil || outcome != FirstAdminRearmed {
+		t.Fatalf("re-arm: outcome=%v err=%v", outcome, err)
+	}
+	if got := modes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("after a re-arm: %v, want %v", got, want)
+	}
+	if err := gdb.Model(&models.AdminUser{}).Where("id = ?", owner.ID).Updates(map[string]interface{}{
+		"password_change_required": false, "bootstrap_expires_at": nil,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnsureFirstAdmin(gdb, "admin", "yet-another-password-entirely", true, t0.Add(3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := modes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("once set up: %v, want %v", got, want)
 	}
 }
 

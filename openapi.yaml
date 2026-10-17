@@ -58,6 +58,11 @@ info:
       covering that domain or mailbox; every other operation needs it at `*`.
       See `/api/v1/admin/grants`.
 
+      A grant is **active** (always in force) or **eligible**: it gives nothing
+      until its holder switches it on for a while, with a fresh code from their
+      authenticator and a reason (`POST /api/v1/admin/grants/{id}/activate`). A
+      new server's first admin holds `admin` active and `superadmin` eligible.
+
     * **Internal mTLS** — the machine-to-machine gateway routes (`GET /api/mailboxes`,
       `POST /api/v1/messages/deliver`), marked `x-internal-mtls`. When internal mTLS
       is enabled (server `InternalMTLSEnabled`) these are withheld from the public
@@ -90,8 +95,9 @@ info:
     recorded. Admins holding `audit:read` read it at `GET /api/v1/admin/audit` and
     check the chain at `GET /api/v1/admin/audit/verify`; both reads are themselves
     recorded. Each grant change is also recorded as its own entry
-    (`grants.create`, `grants.delete`), written in the same transaction as the
-    change.
+    (`grants.create`, `grants.delete`, `grants.make_eligible`), and so is each
+    step of an escalation (`grants.activate`, `grants.deactivate`,
+    `grants.expire`), written in the same transaction as the change.
   license:
     name: MIT
     identifier: MIT
@@ -4485,10 +4491,12 @@ paths:
       summary: Remove a grant
       description: >-
         The same rules as granting: a 2FA session, and the caller must hold
-        everything the grant gives, where it gives it. The last active grant
-        of `*` at `*` held by an active admin cannot be removed (`409
-        last_superadmin`). The change and its audit entry (`grants.delete`)
-        commit together.
+        everything the grant gives, where it gives it. The last grant of `*`
+        at `*` held by an active admin who can use it (active, or eligible with
+        an authenticator to switch it on) cannot be removed (`409
+        last_superadmin`). An activation of the grant still running ends
+        with it (`grants.deactivate`). The change and its audit entries
+        (`grants.delete`) commit together.
       responses:
         "204":
           description: Removed
@@ -4504,6 +4512,219 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           description: The last superadmin grant (last_superadmin)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/admin/grants/mine:
+    get:
+      operationId: listMyGrants
+      tags: ["Admin: Users & Roles"]
+      summary: The caller's own grants
+      description: >-
+        Every grant the signed-in admin holds, active and eligible, each with
+        any activation running now and its time left: what a client needs to
+        offer an "Escalate" button. Any admin may read its own; no capability
+        is needed. Activations that ran out are recorded as expired
+        (`grants.expire`) when this is read.
+      responses:
+        "200":
+          description: The caller's grants, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Grant"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not an admin, or an account still in setup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/admin/grants/{id}/activate:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: activateGrant
+      tags: ["Admin: Users & Roles"]
+      summary: Switch one of your eligible grants on for a while
+      description: >-
+        Escalation (#346). The grant must be the caller's own (`404`
+        otherwise) and eligible (`409 not_eligible` for an active one). It
+        needs a fresh second factor in the body, a current `totp_code` or an
+        unused `recovery_code`: a session that signed in with 2FA is not
+        enough. No authenticator enrolled is `403 two_factor_required`; no
+        code `403 totp_required`; a wrong one `403 totp_invalid` (403, not
+        401: the session is still good). While switched on, the grant gives
+        what an active one would, until `expires_at` (never past the grant's
+        own expiry) or until switched off; a grant is switched on at most once
+        at a time (`409 already_active`). The activation and its audit entry
+        (`grants.activate`: who, which grant, the reason, start and end)
+        commit together; a refused activation leaves a recovery code it was
+        given unused. Throttled like sign-in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivateGrantRequest"
+      responses:
+        "201":
+          description: Switched on
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/GrantEscalation"
+        "400":
+          description: Not a grant id (invalid_id), or a body that is not JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >-
+            Not an admin; no authenticator (two_factor_required); no code
+            (totp_required); or a wrong one (totp_invalid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Active, not eligible (not_eligible); already switched on (already_active); or the grant itself expired (grant_expired)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Too many tries from this address; the same limit as sign-in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/admin/grants/{id}/deactivate:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: deactivateGrant
+      tags: ["Admin: Users & Roles"]
+      summary: Switch one of your grants off before it runs out
+      description: >-
+        Ends the caller's own activation of the grant now (`404` for anyone
+        else's grant, `409 not_active` when it is not switched on). Needs no
+        second factor: it only takes access away. The end and its audit entry
+        (`grants.deactivate`) commit together.
+      responses:
+        "200":
+          description: Switched off
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/GrantEscalation"
+        "400":
+          description: Not a grant id (invalid_id), or a body that is not JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not an admin, or an account still in setup
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Not switched on (not_active)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/admin/grants/{id}/make-eligible:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    post:
+      operationId: makeGrantEligible
+      tags: ["Admin: Users & Roles"]
+      summary: Hold one of your active grants only when you switch it on
+      description: >-
+        Turns the caller's own active grant eligible: from then on it gives
+        nothing until switched on. This is how the owner of a server set up
+        before escalation, who holds `superadmin` always, chooses to hold it
+        only when needed. Like activating, it needs a fresh `totp_code` or
+        `recovery_code` (the same 403 codes), so nobody makes a grant eligible
+        without being able to switch it on again. There is no way back to
+        active for your own grant: that would be escalating for good. The
+        change and its audit entry (`grants.make_eligible`) commit together.
+        Throttled like sign-in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FreshSecondFactor"
+      responses:
+        "200":
+          description: Now eligible
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/GrantEscalation"
+        "400":
+          description: Not a grant id (invalid_id), or a body that is not JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not an admin, or the second factor is missing or wrong (see activateGrant)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Eligible already (already_eligible)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many tries from this address; the same limit as sign-in
           content:
             application/json:
               schema:
@@ -5157,8 +5378,9 @@ components:
         capabilities:
           type: array
           description: >-
-            Admin users only: the capabilities the admin's active grants give at
-            `*`, sorted, or `["*"]` alone for a superadmin; for showing what the
+            Admin users only: the capabilities the admin's grants in force
+            (active ones, and eligible ones while switched on) give at `*`,
+            sorted, or `["*"]` alone for a superadmin; for showing what the
             session can do. They authorise nothing: the admin API reads the
             grants on every request, and the token carries none. Capabilities
             held only on a domain or mailbox are not listed. Empty while
@@ -6868,6 +7090,69 @@ components:
         expires_at:
           type: [string, "null"]
           format: date-time
+        activation:
+          description: The activation running now, of an eligible grant switched on; null otherwise.
+          oneOf:
+            - $ref: "#/components/schemas/GrantActivation"
+            - type: "null"
+
+    GrantActivation:
+      type: object
+      required: [id, activated_at, expires_at, reason, seconds_left]
+      properties:
+        id:
+          type: integer
+        activated_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        seconds_left:
+          type: integer
+
+    GrantEscalation:
+      type: object
+      required: [grant, capabilities]
+      properties:
+        grant:
+          $ref: "#/components/schemas/Grant"
+        capabilities:
+          type: array
+          description: What the caller now holds at `*`, as sign-in lists it.
+          items:
+            type: string
+
+    FreshSecondFactor:
+      type: object
+      description: One of the two, given just now.
+      properties:
+        totp_code:
+          type: string
+          description: A current code from the caller's authenticator
+          example: "123456"
+        recovery_code:
+          type: string
+          description: An unused recovery code, used up if it works
+
+    ActivateGrantRequest:
+      allOf:
+        - $ref: "#/components/schemas/FreshSecondFactor"
+        - type: object
+          required: [reason]
+          properties:
+            reason:
+              type: string
+              maxLength: 500
+              description: Why you are switching it on; recorded in the audit log
+              example: Add an admin for the new office
+            minutes:
+              type: integer
+              minimum: 1
+              maximum: 240
+              default: 60
 
     CreateGrantRequest:
       type: object
