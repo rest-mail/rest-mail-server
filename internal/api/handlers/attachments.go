@@ -152,7 +152,11 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set("Content-Type", att.ContentType)
+	// Always bytes to save, never the type the sender claimed: an HTML or SVG
+	// attachment must not render as a page on the API's origin, even in a
+	// client that ignores Content-Disposition. Its claimed type is in the
+	// attachment's metadata (listAttachments' content_type).
+	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", contentDispositionAttachment(att.Filename))
 	w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
 

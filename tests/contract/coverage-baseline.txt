@@ -1,0 +1,79 @@
+# The coverage ratchet's baseline (tests/contract/gate.py): the operations
+# whose boundary probes still fail, one operationId a line. Each is a value
+# outside its schema the server accepts (a missing validation), or a schema
+# looser or stricter than its handler: rest-mail/rest-mail-server#388.
+#
+# The gate fails on a failing probe for any operation not listed here, and on
+# an operation listed here whose probes all pass: take it out in the change
+# that fixes it. Nothing is ever added.
+#
+# Regenerate the list (to shrink it) from a run's report:
+#   python3 tests/contract/gate.py --failing-probes openapi.yaml .cache/contract/examples.xml
+bulkBounceQueue
+bulkDeleteQueue
+bulkRetryQueue
+createAccount
+createBan
+createContact
+createDomain
+createFolder
+deleteAlias
+deleteBan
+deleteCustomFilter
+deleteDomain
+deleteMailbox
+deleteMessage
+deletePipeline
+deleteQueueEntry
+deleteSieveScript
+disableVacation
+forwardMessage
+getAccount
+getAlias
+getAttachment
+getDeliveryLogs
+getDomain
+getMailbox
+getMessage
+getQueueEntry
+getQuota
+getRawMessage
+getSieveScript
+getThread
+getVacation
+importContacts
+listAliases
+listAllowlist
+listAttachments
+listAuditEntries
+listBans
+listBlocklist
+listContacts
+listCredentials
+listCustomFilters
+listFolders
+listGrants
+listMailboxes
+listMessages
+listPipelineLogs
+listPipelines
+listQuarantine
+listQueue
+listTlsReports
+logout
+probeServices
+protocolSignIn
+putSieveScript
+saveDraft
+searchMessages
+sendMessage
+sendTestEmail
+setVacation
+suggestContacts
+unlinkAccount
+updateAlias
+updateDomain
+updateMessage
+updatePipeline
+validateSieveScript
+verifyDelivery

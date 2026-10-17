@@ -132,6 +132,12 @@ def a_self_signed_certificate(transaction):
                               auto_renew=False)
 
 
+@hooks.before("mtaStsPolicyFile")
+def ask_for_the_created_domains_policy(transaction):
+    # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
+    transaction["request"]["headers"]["Host"] = "mta-sts." + (hooks.stash.get("domain") or "")
+
+
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
 def sign_in_a_mail_client(transaction):
     app = principals()["app_password"]

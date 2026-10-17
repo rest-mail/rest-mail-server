@@ -190,22 +190,31 @@ jobs:
         # (--sequence) so each read, update and delete addresses what its create
         # made. The examples phase checks each documented answer; the coverage
         # phase sends every boundary each schema implies and requires a 4xx for
-        # each one outside it. Both are deterministic, so both gate. See
-        # vertrag.yml and tests/contract/.
+        # each one outside it. Both are deterministic, so both gate, in the
+        # step after this one. See vertrag.yml and tests/contract/.
         id: contract
         if: inputs.contract-phases == 'gate'
         run: |
           set -o pipefail
-          tests/contract/spec.sh
-          vertrag run --sequence --phases coverage 2>&1 | tee "$RUNNER_TEMP/contract.log"
+          # 1 is a failed transaction and 2 a failed boundary probe: findings,
+          # which the gate below judges from the report. Anything else means
+          # vertrag could not run at all.
+          code=0
+          vertrag run --sequence --phases coverage 2>&1 | tee "$RUNNER_TEMP/contract.log" || code=$?
+          echo "vertrag exited $code"
+          if [ "$code" -gt 2 ]; then exit "$code"; fi
 
-      - name: Every operation exercised (gate)
-        # TODO(antimatter-studios/vertrag#70): `vertrag run --require-surface`
-        # once vertrag reports surface coverage itself.
+      - name: Contract gate (every operation passes; the coverage baseline only shrinks)
+        # Examples: every operation not excluded in vertrag.yml passes. Coverage:
+        # no failing probe outside tests/contract/coverage-baseline.txt, and no
+        # operation left in it once its probes pass.
+        # TODO(antimatter-studios/vertrag#70): `vertrag run --require-surface 100`
+        # for the examples half, once vertrag reports surface coverage itself.
         if: always() && steps.contract.outcome != 'skipped'
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          python3 tests/contract/coverage.py openapi.yaml vertrag.yml .cache/contract/examples.xml
+          python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
+            tests/contract/coverage-baseline.txt
 
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed
@@ -213,7 +222,6 @@ jobs:
         # findings exit 2, and its report is uploaded with the logs below.
         if: inputs.contract-phases == 'fuzz'
         run: |
-          tests/contract/spec.sh
           vertrag run --sequence --phases fuzz --output .cache/contract/fuzz.xml --reporter junit \
             > "$RUNNER_TEMP/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
           cat "$RUNNER_TEMP/contract-fuzz.log"

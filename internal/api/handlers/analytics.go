@@ -237,7 +237,15 @@ func gatheredSeries(g prometheus.Gatherer) ([]seriesSum, error) {
 // Pure (no I/O) so it is unit-testable without a database, and deterministic:
 // every slice is sorted so equal inputs render identically (stable API + tests).
 func buildFunnel(series []seriesSum) PipelineFunnel {
-	var f PipelineFunnel
+	// Every list is empty rather than nil, so a stage with no counts in the
+	// window renders as [] (the spec's array), never null.
+	f := PipelineFunnel{
+		Received:         []TransportCount{},
+		AuthVerdicts:     []AuthVerdictCount{},
+		StageDecisions:   []StageDecisionCount{},
+		TerminalOutcomes: []TerminalCount{},
+		TopRejectReasons: []RejectReasonCount{},
+	}
 	for _, s := range series {
 		switch s.metric {
 		case metricMessagesReceived:

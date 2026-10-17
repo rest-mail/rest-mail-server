@@ -109,6 +109,9 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 	result := &ExecutionResult{
 		FinalAction: ActionContinue,
 		FinalEmail:  email,
+		// Empty rather than nil: a pipeline with no enabled filters reports
+		// steps as [] (the API's array), never null.
+		Steps: []StepResult{},
 	}
 
 	// Every run starts with no verdicts: the authentication filters record theirs

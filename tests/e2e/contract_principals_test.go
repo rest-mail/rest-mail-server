@@ -26,9 +26,10 @@ const (
 )
 
 // contractPrincipalsFile is where the principals are written, under the
-// repository root the suite runs in (mounted at /src by `chore test:e2e`), for
-// tests/contract/hooks.py to read.
-var contractPrincipalsFile = envOr("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
+// repository root (mounted at /src by `chore test:e2e`), for
+// tests/contract/hooks.py to read. go test runs in the package's directory,
+// tests/e2e, so the root is two levels up.
+var contractPrincipalsFile = envOr("CONTRACT_PRINCIPALS", "../../.cache/contract-principals.json")
 
 type contractPrincipal struct {
 	Address  string `json:"address,omitempty"`
@@ -46,7 +47,6 @@ type contractPrincipal struct {
 //	app password (Basic)      401           200           403
 //	owned, no password        cannot sign in
 //	no credentials            401           401           401
-//
 func TestContractPrincipals(t *testing.T) {
 	waitForAPI(t, 60*time.Second)
 

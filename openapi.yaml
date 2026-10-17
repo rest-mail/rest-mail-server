@@ -1875,7 +1875,7 @@ paths:
             type: string
             format: date-time
           description: Messages before this date
-        - name: "has:attachment"
+        - name: has_attachment
           in: query
           schema:
             type: boolean
@@ -1927,7 +1927,9 @@ paths:
       summary: Download an attachment
       responses:
         "200":
-          description: Attachment binary
+          description: >-
+            The attachment's bytes, always as application/octet-stream; the
+            type its sender gave it is listAttachments' content_type.
           content:
             application/octet-stream:
               schema:
@@ -2113,8 +2115,19 @@ paths:
             example:
               email: spam@example.org
       responses:
+        # 201 first: the run blocks a new sender, then the same one again.
+        "201":
+          description: Sender blocked, as a new contact
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Contact"
         "200":
-          description: Sender blocked
+          description: Sender blocked; the contact already existed
           content:
             application/json:
               schema:
@@ -2309,8 +2322,19 @@ paths:
                 }
               active: true
       responses:
+        # 201 first: the run creates the script, then replaces it.
+        "201":
+          description: Sieve script created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/SieveScript"
         "200":
-          description: Sieve script saved
+          description: Sieve script replaced
           content:
             application/json:
               schema:
@@ -2661,6 +2685,12 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RestmailDeliverRequest"
+            example:
+              from: someone@example.com
+              to: [eve@restmail.test]
+              subject: Delivered over RESTMAIL
+              body_text: Hello, Eve.
+              message_id: <restmail-delivery@example.com>
       responses:
         "201":
           description: Delivery result
@@ -2919,6 +2949,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateMailboxRequest"
+            example:
+              display_name: Contract Test
+              quota_bytes: 1073741824
+              active: true
       responses:
         "200":
           description: Mailbox updated
@@ -3268,6 +3302,22 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TestFilterRequest"
+            example:
+              filter_name: header_validate
+              config: {}
+              email:
+                envelope:
+                  mail_from: someone@example.com
+                  rcpt_to: [eve@restmail.test]
+                headers:
+                  from: [{name: Someone, address: someone@example.com}]
+                  to: [{address: eve@restmail.test}]
+                  subject: A filter test
+                  message-id: <filter-test@example.com>
+                  date: "Sat, 17 Oct 2026 12:00:00 +0000"
+                body:
+                  content_type: text/plain
+                  content: Hello.
       responses:
         "200":
           description: Filter execution result
@@ -3391,6 +3441,17 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateCustomFilterRequest"
+            example:
+              name: tag-invoices
+              description: Tags mail about invoices
+              filter_type: action
+              direction: inbound
+              config:
+                script: |
+                  function filter(email) {
+                    return { action: "continue" };
+                  }
+              enabled: false
       responses:
         "201":
           description: Custom filter created
@@ -3440,6 +3501,11 @@ paths:
                 email:
                   type: object
                   description: Optional sample email passed through to the sidecar
+            example:
+              script: |
+                function filter(email) {
+                  return { action: "continue" };
+                }
       responses:
         "200":
           description: >-
@@ -3634,31 +3700,35 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, total, limit, offset]
+                required: [data]
                 properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/OutboundQueue"
-                  total:
-                    type: integer
-                  limit:
-                    type: integer
-                  offset:
-                    type: integer
+                  data:
+                    type: object
+                    required: [items, total, limit, offset]
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OutboundQueue"
+                      total:
+                        type: integer
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
           links:
             getQueueEntry:
               operationId: getQueueEntry
               parameters:
-                id: '$response.body#/items/0/id'
+                id: '$response.body#/data/items/0/id'
             retryQueueEntry:
               operationId: retryQueueEntry
               parameters:
-                id: '$response.body#/items/0/id'
+                id: '$response.body#/data/items/0/id'
             bounceQueueEntry:
               operationId: bounceQueueEntry
               parameters:
-                id: '$response.body#/items/0/id'
+                id: '$response.body#/data/items/0/id'
 
   /api/v1/admin/queue/stats:
     get:
@@ -3902,6 +3972,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateSenderRuleRequest"
+            example:
+              pattern: "@partner.example.com"
+              reason: A trusted partner
       responses:
         "201":
           description: Entry added
@@ -3981,6 +4054,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateSenderRuleRequest"
+            example:
+              pattern: spam@spammer.example.com
+              reason: Sends spam
       responses:
         "201":
           description: Entry added
@@ -4671,6 +4747,14 @@ paths:
           application/xml:
             schema:
               type: string
+            example: |
+              <?xml version="1.0" encoding="utf-8"?>
+              <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
+                <Request>
+                  <EMailAddress>eve@restmail.test</EMailAddress>
+                  <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
+                </Request>
+              </Autodiscover>
       responses:
         "200":
           description: Autodiscover XML response
@@ -4709,6 +4793,27 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TLSRPTReport"
+            example:
+              organization-name: Example Reporter
+              contact-info: tlsrpt@reporter.example.com
+              report-id: 2026-10-17T00:00:00Z_restmail.test
+              date-range:
+                start-datetime: "2026-10-16T00:00:00Z"
+                end-datetime: "2026-10-16T23:59:59Z"
+              policies:
+                - policy:
+                    policy-type: sts
+                    policy-string: ["version: STSv1", "mode: testing", "mx: mail.restmail.test", "max_age: 86400"]
+                    policy-domain: restmail.test
+                    mx-host: [mail.restmail.test]
+                  summary:
+                    total-successful-session-count: 12
+                    total-failure-session-count: 1
+                  failure-details:
+                    - result-type: certificate-expired
+                      sending-mta-ip: 192.0.2.1
+                      receiving-mx-hostname: mail.restmail.test
+                      failed-session-count: 1
       responses:
         "201":
           description: Report stored
@@ -5410,6 +5515,10 @@ paths:
               operationId: getMtaStsPolicy
               parameters:
                 id: '$request.path.id'
+            # Order only: the policy file is served once a policy exists. The
+            # domain arrives in the Host header (tests/contract/hooks.py).
+            mtaStsPolicyFile:
+              operationId: mtaStsPolicyFile
         "200":
           description: Policy updated
           content:
@@ -6322,28 +6431,18 @@ components:
         sender_name:
           type: string
         recipients_to:
-          description: JSON array of recipient objects
+          description: The recipients' addresses.
           oneOf:
             - type: array
               items:
-                type: object
-                properties:
-                  address:
-                    type: string
-                  name:
-                    type: string
+                type: string
             - type: "null"
         recipients_cc:
-          description: JSON array of CC recipient objects
+          description: The CC recipients' addresses.
           oneOf:
             - type: array
               items:
-                type: object
-                properties:
-                  address:
-                    type: string
-                  name:
-                    type: string
+                type: string
             - type: "null"
         subject:
           type: string
@@ -6352,9 +6451,18 @@ components:
         body_html:
           type: string
         headers:
-          description: Raw email headers as JSON
+          description: >-
+            The message's header fields as it arrived, each name with its
+            values; an empty array when none were recorded (mail sent from
+            here, drafts).
           oneOf:
             - type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            - type: array
+              maxItems: 0
             - type: "null"
         size_bytes:
           type: integer
@@ -7747,7 +7855,8 @@ components:
           properties:
             kind:
               type: string
-              enum: [admin, system]
+              enum: [account, system]
+              description: An account's grant names the account that made it; the bootstrap admin's is the system's.
             id:
               type: [integer, "null"]
         granted_at:

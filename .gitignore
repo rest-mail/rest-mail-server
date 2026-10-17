@@ -79,3 +79,6 @@ __pycache__/
 
 # GoReleaser output (.goreleaser.yaml)
 /dist/
+
+# Python bytecode (tests/contract)
+__pycache__/
