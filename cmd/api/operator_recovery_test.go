@@ -28,7 +28,7 @@ func bootstrapAdmin(t *testing.T, gdb *gorm.DB) models.AdminUser {
 		t.Fatal(err)
 	}
 	gdb.Create(&models.TwoFactor{UserType: models.TwoFactorUserTypeAdmin, SubjectID: admin.ID, EncryptedSecret: "x", Confirmed: true})
-	gdb.Create(&models.RefreshToken{Jti: "admin-session", UserType: "admin", SubjectID: admin.ID, Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)})
+	gdb.Create(&models.RefreshToken{Jti: "admin-session", UserType: "admin", SubjectID: admin.ID, SessionID: "admin-session", Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)})
 	return admin
 }
 
@@ -114,8 +114,8 @@ func TestResetPassword_Refusals(t *testing.T) {
 func TestRevokeSessions_EndsEveryRefreshTokenAndAdminEpoch(t *testing.T) {
 	gdb := scratchDatabase(t)
 	admin := bootstrapAdmin(t, gdb)
-	gdb.Create(&models.RefreshToken{Jti: "mailbox-session", UserType: "mailbox", SubjectID: 7, Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)})
-	gdb.Create(&models.RefreshToken{Jti: "spent", UserType: "mailbox", SubjectID: 7, Status: models.RefreshTokenRotated, ExpiresAt: time.Now().Add(time.Hour)})
+	gdb.Create(&models.RefreshToken{Jti: "mailbox-session", UserType: "mailbox", SubjectID: 7, SessionID: "mailbox-session", Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)})
+	gdb.Create(&models.RefreshToken{Jti: "spent", UserType: "mailbox", SubjectID: 7, SessionID: "mailbox-session", Status: models.RefreshTokenRotated, ExpiresAt: time.Now().Add(time.Hour)})
 
 	status, out, errOut := run("revoke-sessions")
 	if status != exitOK {

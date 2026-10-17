@@ -311,7 +311,7 @@ func TestEnsureFirstAdmin_NewPasswordRearmsAnUnfinishedAdmin(t *testing.T) {
 	}
 	before := adminNamed(t, gdb, "admin")
 	session := models.RefreshToken{Jti: "rearm-" + strconv.FormatInt(time.Now().UnixNano(), 36), UserType: "admin",
-		SubjectID: before.ID, Status: models.RefreshTokenActive, ExpiresAt: t0.Add(24 * time.Hour)}
+		SubjectID: before.ID, SessionID: "rearm-session", Status: models.RefreshTokenActive, ExpiresAt: t0.Add(24 * time.Hour)}
 	if err := gdb.Create(&session).Error; err != nil {
 		t.Fatal(err)
 	}

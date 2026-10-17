@@ -116,6 +116,7 @@ func seedActive(store *fakeRefreshStore, pair *auth.TokenPair, userType string, 
 		Jti:       pair.RefreshJTI,
 		UserType:  userType,
 		SubjectID: subjectID,
+		SessionID: pair.SessionID,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: pair.RefreshExpiresAt,
 	})

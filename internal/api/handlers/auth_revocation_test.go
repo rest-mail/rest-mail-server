@@ -142,6 +142,7 @@ func seedLedger(t *testing.T, db *gorm.DB, pair *auth.TokenPair, userType string
 		Jti:       pair.RefreshJTI,
 		UserType:  userType,
 		SubjectID: subjectID,
+		SessionID: pair.SessionID,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: pair.RefreshExpiresAt,
 	}); err != nil {

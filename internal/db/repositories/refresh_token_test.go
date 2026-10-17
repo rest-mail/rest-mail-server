@@ -57,10 +57,38 @@ func saveActive(t *testing.T, r *RefreshTokenRepository, jti, userType string, s
 		Jti:       jti,
 		UserType:  userType,
 		SubjectID: subject,
+		SessionID: "sid-" + jti,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: time.Now().Add(time.Hour),
 	}); err != nil {
 		t.Fatalf("Save: %v", err)
+	}
+}
+
+// TestRefreshTokenRepository_SessionIDRequired: every refresh token belongs to
+// a session (#367 refuses a token without a sid), so the ledger refuses a row
+// whose session_id is empty or NULL.
+func TestRefreshTokenRepository_SessionIDRequired(t *testing.T) {
+	gdb := openRefreshTokenTestDB(t)
+	r := NewRefreshTokenRepository(gdb)
+	jti := "nosid-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	t.Cleanup(func() { gdb.Where("jti LIKE ?", jti+"%").Delete(&models.RefreshToken{}) })
+
+	if err := r.Save(&models.RefreshToken{
+		Jti: jti, UserType: "mailbox", SubjectID: 1,
+		Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour),
+	}); err == nil {
+		t.Error("saved a refresh token with an empty session_id")
+	}
+	if err := gdb.Exec(`INSERT INTO refresh_tokens (jti, user_type, subject_id, session_id, status, expires_at, created_at, updated_at)
+		VALUES (?, 'mailbox', 1, NULL, 'active', now(), now(), now())`, jti+"-null").Error; err == nil {
+		t.Error("stored a refresh token with a NULL session_id")
+	}
+	if err := r.Save(&models.RefreshToken{
+		Jti: jti + "-ok", UserType: "mailbox", SubjectID: 1, SessionID: "sid-" + jti,
+		Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Errorf("a refresh token with a session_id was refused: %v", err)
 	}
 }
 
