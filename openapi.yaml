@@ -2759,9 +2759,16 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateDomainRequest"
-            example:
-              name: example.org
-              server_type: restmail
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  name: example.org
+                  server_type: restmail
+              # No name: refused before anything is stored.
+              name_missing:
+                value: {}
       responses:
         "201":
           description: Domain created, not yet live
@@ -2773,6 +2780,17 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Domain"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      name: example.org
+                      server_type: restmail
+                      active: false
+                      default_quota_bytes: 0
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             getDomain:
               operationId: getDomain
@@ -2817,7 +2835,20 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                name_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
 
   /api/v1/admin/domains/{id}:
     parameters:
