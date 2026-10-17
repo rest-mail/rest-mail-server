@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -217,7 +218,18 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(cols) > 0 {
-		if err := h.db.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
+		err := h.db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&mailbox).Select(cols).Updates(updates).Error; err != nil {
+				return err
+			}
+			// A new password revokes every app password made under the old
+			// one, in this transaction: none may outlive it.
+			if req.Password != nil {
+				return revokeAppPasswordsForNewPassword(tx, r, mailbox.ID, time.Now())
+			}
+			return nil
+		})
+		if err != nil {
 			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
 			return
 		}

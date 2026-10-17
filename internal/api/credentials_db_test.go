@@ -11,14 +11,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/handlers"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	imapgw "github.com/restmail/restmail/internal/gateway/imap"
 	pop3gw "github.com/restmail/restmail/internal/gateway/pop3"
+	smtpgw "github.com/restmail/restmail/internal/gateway/smtp"
 	"gorm.io/gorm"
 )
 
@@ -490,5 +494,194 @@ func TestAppPasswords_GatewaySignIn(t *testing.T) {
 	}
 	if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, created.Password); !apiclient.IsAuthRejection(err) {
 		t.Errorf("IMAP sign-in after revoking = %v, want a rejection", err)
+	}
+}
+
+// A new password for a mailbox revokes every app password it has, in the
+// transaction that sets it: whoever learnt the old password could have made
+// one, and it must not outlive the password, as no session does (#164). The
+// gateway sessions open with them stop at their next command, each revocation
+// is recorded with its reason, and another mailbox's app passwords go on
+// working.
+func TestAppPasswords_RevokedByANewPassword(t *testing.T) {
+	f := newCredentialFixture(t)
+	srv := httptest.NewServer(f.router)
+	t.Cleanup(srv.Close)
+	api := apiclient.New(srv.URL)
+	admin := adminToken(t, f.jwt, []string{middleware.CapMailboxesWrite})
+	mailboxPath := fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID)
+	folders := fmt.Sprintf("/api/v1/accounts/%d/folders", f.accountID)
+
+	thunderbird, n8n := f.createAppPassword("Thunderbird"), f.createAppPassword("n8n")
+	works := func(t *testing.T, created createdCredential) {
+		t.Helper()
+		if rr := f.do(http.MethodGet, folders, basic(f.address, created.Password), ""); rr.Code != http.StatusOK {
+			t.Errorf("folders with %d: %d %s", created.ID, rr.Code, rr.Body.String())
+		}
+	}
+
+	// Another mailbox, with an app password of its own.
+	var domain models.Domain
+	f.db.First(&domain)
+	danaID := f.seedMailbox(domain.ID, "dana")
+	danaAccount := models.WebmailAccount{PrimaryMailboxID: danaID}
+	f.db.Create(&danaAccount)
+	dana, danaPassword, err := repositories.NewCredentialRepository(f.db).CreateAppPassword(danaID, "Dana's phone", nil)
+	if err != nil {
+		t.Fatalf("an app password for dana@: %v", err)
+	}
+	danaFolders := fmt.Sprintf("/api/v1/accounts/%d/folders", danaAccount.ID)
+
+	// An IMAP and a POP3 session, open before the change.
+	imapMailbox, err := imapgw.NewBackend(api, nil).Authenticate(f.address, thunderbird.Password)
+	if err != nil {
+		t.Fatalf("IMAP sign-in with the app password: %v", err)
+	}
+	pop3Mailbox, err := pop3gw.NewBackend(api, nil).Authenticate(f.address, n8n.Password)
+	if err != nil {
+		t.Fatalf("POP3 sign-in with the app password: %v", err)
+	}
+
+	t.Run("a change that sets no password leaves them", func(t *testing.T) {
+		if rr := f.do(http.MethodPatch, mailboxPath, "Bearer "+admin, `{"display_name":"Chris"}`); rr.Code != http.StatusOK {
+			t.Fatalf("PATCH display_name: %d %s", rr.Code, rr.Body.String())
+		}
+		if rr := f.do(http.MethodPatch, mailboxPath, "Bearer "+admin, `{"password":"short"}`); rr.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("PATCH a password too short: %d %s", rr.Code, rr.Body.String())
+		}
+		works(t, thunderbird)
+		works(t, n8n)
+		if es := f.entries(middleware.AuditActionCredentialsRevoke); len(es) != 0 {
+			t.Errorf("revocations recorded: %+v", es)
+		}
+	})
+
+	// The console's reset (restmail console, users, r) is this same PATCH.
+	if err := api.ResetPassword(admin, f.mailboxID, "a-new-password-456"); err != nil {
+		t.Fatalf("set a new password: %v", err)
+	}
+
+	t.Run("they stop at the next request", func(t *testing.T) {
+		for _, created := range []createdCredential{thunderbird, n8n} {
+			if rr := f.do(http.MethodGet, folders, basic(f.address, created.Password), ""); rr.Code != http.StatusUnauthorized {
+				t.Errorf("folders with %d after a new password: %d", created.ID, rr.Code)
+			}
+		}
+		es := f.entries(middleware.AuditActionAppPassword)
+		if len(es) == 0 || es[len(es)-1].Target["reason"] != auth.AppPasswordRevoked {
+			t.Errorf("refusals after a new password: %+v", es)
+		}
+	})
+
+	t.Run("open gateway sessions stop at their next command", func(t *testing.T) {
+		if _, err := imapMailbox.Folders(); !apiclient.IsAuthRejection(err) {
+			t.Errorf("IMAP LIST after a new password = %v, want a rejection", err)
+		}
+		if _, err := pop3Mailbox.Messages(); !apiclient.IsAuthRejection(err) {
+			t.Errorf("POP3 STAT after a new password = %v, want a rejection", err)
+		}
+		// SMTP checks the credential before each MAIL FROM, with this store.
+		if usable, err := smtpgw.NewStore(f.db).CredentialUsable(thunderbird.ID); err != nil || usable {
+			t.Errorf("SMTP's check after a new password = %v, %v", usable, err)
+		}
+		if _, err := imapgw.NewBackend(api, nil).Authenticate(f.address, thunderbird.Password); !apiclient.IsAuthRejection(err) {
+			t.Errorf("IMAP sign-in after a new password = %v, want a rejection", err)
+		}
+	})
+
+	t.Run("their rows stay, revoked", func(t *testing.T) {
+		var creds []models.Credential
+		f.db.Where("owner_kind = ? AND owner_id = ?", models.CredentialOwnerMailbox, f.mailboxID).Find(&creds)
+		if len(creds) != 2 || creds[0].RevokedAt == nil || creds[1].RevokedAt == nil {
+			t.Errorf("chris@'s credentials: %+v", creds)
+		}
+	})
+
+	t.Run("each revocation is recorded with its reason", func(t *testing.T) {
+		es := f.entries(middleware.AuditActionCredentialsRevoke)
+		if len(es) != 2 {
+			t.Fatalf("%d revocations recorded, want 2: %+v", len(es), es)
+		}
+		for i, created := range []createdCredential{thunderbird, n8n} {
+			e := es[i]
+			if e.Target["reason"] != handlers.CredentialRevokedPasswordChanged ||
+				e.Target["credential_id"] != strconv.Itoa(int(created.ID)) || e.Target["public_id"] != created.PublicID ||
+				e.Target["mailbox_id"] != strconv.Itoa(int(f.mailboxID)) ||
+				e.ActorKind != models.AuditActorAdmin || e.ActorID == nil || *e.ActorID != 1 ||
+				e.Outcome != models.AuditOutcomeSuccess || e.Method != http.MethodPatch ||
+				e.Route != "/api/v1/admin/mailboxes/{id}" || e.CredentialID != nil {
+				t.Errorf("revocation %d: %+v", i, e)
+			}
+		}
+		var all []models.AuditEntry
+		f.db.Order("seq ASC").Find(&all)
+		for _, e := range all {
+			if b, _ := json.Marshal(e); strings.Contains(string(b), "a-new-password-456") {
+				t.Errorf("entry %d holds the new password: %s", e.Seq, b)
+			}
+		}
+		if res := audit.Verify(all); !res.OK {
+			t.Errorf("the audit chain is broken: %+v", res)
+		}
+	})
+
+	t.Run("another mailbox's are untouched", func(t *testing.T) {
+		if rr := f.do(http.MethodGet, danaFolders, basic("dana@example.test", danaPassword), ""); rr.Code != http.StatusOK {
+			t.Errorf("dana@'s app password after chris@'s new password: %d %s", rr.Code, rr.Body.String())
+		}
+		var row models.Credential
+		if err := f.db.First(&row, dana.ID).Error; err != nil || row.RevokedAt != nil {
+			t.Errorf("dana@'s credential: %+v, %v", row, err)
+		}
+	})
+
+	t.Run("one made under the new password works", func(t *testing.T) {
+		rr := f.do(http.MethodPost, "/api/v1/auth/login", "", fmt.Sprintf(`{"email":%q,"password":"a-new-password-456","client":"native"}`, f.address))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("sign in with the new password: %d %s", rr.Code, rr.Body.String())
+		}
+		var login struct {
+			Data struct {
+				AccessToken string `json:"access_token"`
+			} `json:"data"`
+		}
+		decodeInto(t, rr, &login)
+		f.session = "Bearer " + login.Data.AccessToken
+		works(t, f.createAppPassword("Thunderbird again"))
+	})
+}
+
+// The new password, the revocations and their audit entries commit together:
+// when a revocation cannot be recorded, the password stays as it was and so do
+// the app passwords.
+func TestAppPasswords_NewPasswordAndItsRevocationsCommitTogether(t *testing.T) {
+	f := newCredentialFixture(t)
+	created := f.createAppPassword("Thunderbird")
+	var before models.Mailbox
+	f.db.First(&before, f.mailboxID)
+
+	// This scratch database's audit log now refuses every entry.
+	if err := f.db.Exec(`CREATE FUNCTION refuse_audit_entries() RETURNS trigger LANGUAGE plpgsql AS
+		$$ BEGIN RAISE EXCEPTION 'audit log unavailable'; END $$`).Error; err != nil {
+		t.Fatalf("create the trigger function: %v", err)
+	}
+	if err := f.db.Exec(`CREATE TRIGGER refuse_audit_entries BEFORE INSERT ON audit_log
+		FOR EACH ROW EXECUTE FUNCTION refuse_audit_entries()`).Error; err != nil {
+		t.Fatalf("create the trigger: %v", err)
+	}
+
+	admin := adminToken(t, f.jwt, []string{middleware.CapMailboxesWrite})
+	rr := f.do(http.MethodPatch, fmt.Sprintf("/api/v1/admin/mailboxes/%d", f.mailboxID), "Bearer "+admin, `{"password":"a-new-password-456"}`)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("a new password with no audit log: %d %s", rr.Code, rr.Body.String())
+	}
+	var after models.Mailbox
+	f.db.First(&after, f.mailboxID)
+	if after.Password != before.Password {
+		t.Error("the password changed although its revocations were not recorded")
+	}
+	var cred models.Credential
+	if err := f.db.First(&cred, created.ID).Error; err != nil || cred.RevokedAt != nil {
+		t.Errorf("the app password: %+v, %v", cred, err)
 	}
 }

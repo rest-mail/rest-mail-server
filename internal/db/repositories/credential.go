@@ -3,12 +3,14 @@ package repositories
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ErrCredentialNotFound is returned when a mailbox has no such credential, or
@@ -101,6 +103,24 @@ func (r *CredentialRepository) Revoke(mailboxID, id uint, now time.Time) error {
 		return ErrCredentialNotFound
 	}
 	return nil
+}
+
+// RevokeAppPasswords revokes, at now, every app password of a mailbox not yet
+// revoked, expired ones included, and returns them, oldest first. Changing the
+// mailbox's password calls it inside the transaction that changes it, so no
+// app password made under the old password outlives it. The rows stay,
+// revoked, for the audit trail.
+func (r *CredentialRepository) RevokeAppPasswords(mailboxID uint, now time.Time) ([]models.Credential, error) {
+	var revoked []models.Credential
+	err := r.db.Model(&revoked).Clauses(clause.Returning{}).
+		Where("owner_kind = ? AND owner_id = ? AND kind = ? AND revoked_at IS NULL",
+			models.CredentialOwnerMailbox, mailboxID, models.CredentialKindAppPassword).
+		Update("revoked_at", now).Error
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(revoked, func(i, j int) bool { return revoked[i].ID < revoked[j].ID })
+	return revoked, nil
 }
 
 // VerifyAppPassword checks an app password presented together with the

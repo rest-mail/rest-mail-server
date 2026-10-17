@@ -496,7 +496,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(auditLog("credentials.create", middleware.AuditBodyFields("name"),
 			middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
 			Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
-		r.With(auditLog("credentials.revoke")).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
+		r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
 	})
 
 	// ═══════════════════════════════════════════════════════════════

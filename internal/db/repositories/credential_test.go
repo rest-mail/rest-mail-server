@@ -246,6 +246,81 @@ func TestCredential_RevokeOnlyYourOwn(t *testing.T) {
 	}
 }
 
+// A new password for a mailbox revokes all its app passwords, expired ones
+// too, and keeps their rows; one already revoked keeps when it was, and
+// another mailbox's are untouched.
+func TestCredential_RevokeAppPasswords(t *testing.T) {
+	gdb := openCredentialTestDB(t)
+	repo := NewCredentialRepository(gdb)
+	mb := seedCredentialMailbox(t, gdb)
+	other := seedCredentialMailbox(t, gdb)
+	now := time.Now()
+
+	phone, phonePassword, err := repo.CreateAppPassword(mb.ID, "iPhone Mail", nil)
+	if err != nil {
+		t.Fatalf("CreateAppPassword: %v", err)
+	}
+	past := now.Add(-time.Hour)
+	expired, _, err := repo.CreateAppPassword(mb.ID, "n8n invoices", &past)
+	if err != nil {
+		t.Fatalf("CreateAppPassword: %v", err)
+	}
+	earlier, _, err := repo.CreateAppPassword(mb.ID, "old laptop", nil)
+	if err != nil {
+		t.Fatalf("CreateAppPassword: %v", err)
+	}
+	earlierAt := now.Add(-24 * time.Hour)
+	if err := repo.Revoke(mb.ID, earlier.ID, earlierAt); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	others, othersPassword, err := repo.CreateAppPassword(other.ID, "Thunderbird", nil)
+	if err != nil {
+		t.Fatalf("CreateAppPassword: %v", err)
+	}
+
+	revoked, err := repo.RevokeAppPasswords(mb.ID, now)
+	if err != nil {
+		t.Fatalf("RevokeAppPasswords: %v", err)
+	}
+	if len(revoked) != 2 || revoked[0].ID != phone.ID || revoked[1].ID != expired.ID ||
+		revoked[0].RevokedAt == nil || revoked[0].PublicID != phone.PublicID || revoked[1].Name != "n8n invoices" {
+		t.Fatalf("revoked %+v, want the phone's and the expired one", revoked)
+	}
+	_, _, err = repo.VerifyAppPassword(mb.Address, phonePassword, now)
+	if refusal := refusalReason(t, err); refusal.Reason != auth.AppPasswordRevoked {
+		t.Errorf("after a new password: reason %q", refusal.Reason)
+	}
+	// The SMTP gateway's check before each message.
+	if usable, err := repo.Usable(phone.ID, now); err != nil || usable {
+		t.Errorf("Usable after a new password = %v, %v", usable, err)
+	}
+	var rows []models.Credential
+	gdb.Where("owner_kind = ? AND owner_id = ?", models.CredentialOwnerMailbox, mb.ID).Order("id").Find(&rows)
+	if len(rows) != 3 {
+		t.Fatalf("%d rows left, want all 3", len(rows))
+	}
+	for _, row := range rows {
+		if row.RevokedAt == nil {
+			t.Errorf("%q is not revoked", row.Name)
+		}
+		if row.ID == earlier.ID && row.RevokedAt.Sub(earlierAt).Abs() > time.Millisecond {
+			t.Errorf("an earlier revocation moved from %v to %v", earlierAt, row.RevokedAt)
+		}
+	}
+
+	if _, _, err := repo.VerifyAppPassword(other.Address, othersPassword, now); err != nil {
+		t.Errorf("another mailbox's app password stopped working: %v", err)
+	}
+	if usable, err := repo.Usable(others.ID, now); err != nil || !usable {
+		t.Errorf("Usable for another mailbox's = %v, %v", usable, err)
+	}
+
+	// Again: nothing left to revoke.
+	if again, err := repo.RevokeAppPasswords(mb.ID, now); err != nil || len(again) != 0 {
+		t.Errorf("revoking again = %+v, %v", again, err)
+	}
+}
+
 func TestCredential_LastUsedAtMostOnceAMinute(t *testing.T) {
 	gdb := openCredentialTestDB(t)
 	repo := NewCredentialRepository(gdb)

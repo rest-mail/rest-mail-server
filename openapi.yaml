@@ -2260,6 +2260,11 @@ paths:
       tags: ["Admin: Mailboxes"]
       x-required-capability: mailboxes:write
       summary: Update a mailbox
+      description: |
+        A new `password` ends every session of the mailbox. It also revokes
+        all the mailbox's app passwords, in the transaction that sets it,
+        recording each in the audit log as `credentials.revoke` with `reason`
+        `password_changed`.
       requestBody:
         required: true
         content:

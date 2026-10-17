@@ -645,7 +645,8 @@ curl -X DELETE http://localhost:8080/api/v1/accounts/<account id>/credentials/<i
 
 An app password reaches only its own mailbox, to read, change and send mail. It
 cannot sign in at `/api/v1/auth/login` (the app and the webmail), change a
-password or 2FA, link a mailbox, or list, make or revoke app passwords. Each
+password or 2FA, link a mailbox, or list, make or revoke app passwords. A new
+password for the mailbox revokes all of them, as it ends every session. Each
 creation, revocation, refused app password and sign-in over IMAP, POP3 or SMTP
 is recorded in the audit log.
 

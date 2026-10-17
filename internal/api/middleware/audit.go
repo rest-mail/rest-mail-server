@@ -285,6 +285,23 @@ func (a *Auditor) AppPasswordRefused(r *http.Request, address string, refusal *a
 // AuditActionAppPassword is the action of a refused app password.
 const AuditActionAppPassword = "auth.app_password"
 
+// AuditActionCredentialsRevoke is the action of a revoked credential: one its
+// owner revoked, or one revoked with a reason, such as a change of password.
+const AuditActionCredentialsRevoke = "credentials.revoke"
+
+// NewAuditEntry starts an entry for a change a handler records itself, with
+// audit.Append inside the transaction that makes the change, so the two commit
+// together: the action, the route and its URL parameters, where the request
+// came from and, from its claims, who made it. It is a success, answered 200,
+// at the given time; the handler adds to the target.
+func NewAuditEntry(action string, r *http.Request, at time.Time) *models.AuditEntry {
+	e := newEntry(action, r, http.StatusOK, at)
+	if claims := GetClaims(r); claims != nil {
+		actorFromClaims(e, claims)
+	}
+	return e
+}
+
 // actorFromClaims makes the token's account the actor, and its jti the session.
 func actorFromClaims(e *models.AuditEntry, claims *auth.Claims) {
 	var id uint

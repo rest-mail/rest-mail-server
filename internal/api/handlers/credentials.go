@@ -16,6 +16,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -204,6 +205,36 @@ func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// CredentialRevokedPasswordChanged is the reason recorded for an app password
+// revoked because its mailbox's password changed.
+const CredentialRevokedPasswordChanged = "password_changed"
+
+// revokeAppPasswordsForNewPassword revokes every app password of a mailbox
+// whose password r changes, in tx, the transaction that changes it. Whoever
+// learnt the old password could have made one, and it must not outlive the
+// password any more than a session does (#164). Each revocation is recorded
+// as a credentials.revoke entry with the reason, in the same transaction, so
+// the new password, the revocations and their entries commit together or not
+// at all.
+func revokeAppPasswordsForNewPassword(tx *gorm.DB, r *http.Request, mailboxID uint, now time.Time) error {
+	revoked, err := repositories.NewCredentialRepository(tx).RevokeAppPasswords(mailboxID, now)
+	if err != nil {
+		return err
+	}
+	for _, cred := range revoked {
+		e := middleware.NewAuditEntry(middleware.AuditActionCredentialsRevoke, r, now)
+		e.Target["mailbox_id"] = strconv.FormatUint(uint64(mailboxID), 10)
+		e.Target["credential_id"] = strconv.FormatUint(uint64(cred.ID), 10)
+		e.Target["public_id"] = cred.PublicID
+		e.Target["name"] = cred.Name
+		e.Target["reason"] = CredentialRevokedPasswordChanged
+		if err := audit.Append(tx, e); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // signInProtocols are the protocols a gateway signs a mail client in over.
