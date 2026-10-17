@@ -31,6 +31,7 @@ forwardMessage
 getAccount
 getAlias
 getAttachment
+getCustomFilter
 getDeliveryLogs
 getDomain
 getMailbox
@@ -62,7 +63,6 @@ listQueue
 listTlsReports
 logout
 probeServices
-protocolSignIn
 putSieveScript
 saveDraft
 searchMessages
@@ -70,9 +70,12 @@ sendMessage
 sendTestEmail
 setVacation
 suggestContacts
+testFilter
 unlinkAccount
 updateAlias
+updateCustomFilter
 updateDomain
+updateMailbox
 updateMessage
 updatePipeline
 validateSieveScript
