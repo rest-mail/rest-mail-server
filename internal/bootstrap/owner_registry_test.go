@@ -101,12 +101,16 @@ func TestOwnerRegistry_AuditFailureRollsBackEnrollment(t *testing.T) {
 	const callback = "owner-registry-test-audit-failure"
 	if err := db.Callback().Create().Before("gorm:create").Register(callback, func(tx *gorm.DB) {
 		if tx.Statement.Table == (models.AuditEntry{}).TableName() {
-			tx.AddError(errors.New("audit unavailable"))
+			_ = tx.AddError(errors.New("audit unavailable"))
 		}
 	}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Callback().Create().Remove(callback) })
+	t.Cleanup(func() {
+		if err := db.Callback().Create().Remove(callback); err != nil {
+			t.Errorf("remove audit-failure callback: %v", err)
+		}
+	})
 	if err := SeedOwnerKeys(db, authorized(newSigner(t))); err == nil {
 		t.Fatal("enrollment succeeded without its audit record")
 	}
