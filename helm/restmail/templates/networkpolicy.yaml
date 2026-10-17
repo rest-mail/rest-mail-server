@@ -178,12 +178,13 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail listeners: inbound 25 and implicit-TLS submission 465.
+    # Public mail listeners: inbound 25 and implicit-TLS submission 465. A
+    # policy sees the port the pod listens on, which the Service maps them to.
     - ports:
         - protocol: TCP
-          port: {{ .Values.smtpGateway.ports.inbound }}
+          port: {{ .Values.smtpGateway.containerPorts.inbound }}
         - protocol: TCP
-          port: {{ .Values.smtpGateway.ports.submissionTLS }}
+          port: {{ .Values.smtpGateway.containerPorts.submissionTLS }}
   egress:
     - to:
         - podSelector:
@@ -236,10 +237,10 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail access: 993, implicit TLS.
+    # Public mail access: 993, implicit TLS, on the port the pod listens on.
     - ports:
         - protocol: TCP
-          port: {{ .Values.imapGateway.ports.tls }}
+          port: {{ .Values.imapGateway.containerPorts.tls }}
   egress:
     - to:
         - podSelector:
@@ -278,10 +279,10 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail access: 995, implicit TLS.
+    # Public mail access: 995, implicit TLS, on the port the pod listens on.
     - ports:
         - protocol: TCP
-          port: {{ .Values.pop3Gateway.ports.tls }}
+          port: {{ .Values.pop3Gateway.containerPorts.tls }}
   egress:
     - to:
         - podSelector:

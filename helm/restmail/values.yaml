@@ -38,7 +38,9 @@ networking:
 # ── TLS ───────────────────────────────────────────────────────────────────
 tls:
   # Name of an existing Kubernetes Secret of type kubernetes.io/tls.
-  # Mounted at /certs/ in every gateway pod.
+  # Each gateway pod mounts its tls.crt and tls.key at /certs/, and nothing
+  # else from it. The API mounts only its ca.crt, if it has one, to trust peers
+  # that certificate's CA issued.
   # Expected keys: tls.crt, tls.key.
   secretName: restmail-tls
   # Mount path inside the pod.
@@ -130,7 +132,11 @@ internalMtls:
   # Bring your own trust material (e.g. cert-manager) via a Secret with keys
   # ca.crt, server.crt, server.key, client.crt, client.key. Empty → the chart
   # mints a self-signed internal CA and server/client certs on first install and
-  # reuses them across upgrades.
+  # reuses them across upgrades. The CA's private key is never stored: it exists
+  # only while the chart renders, so nothing in the cluster can sign another
+  # certificate the API would accept. Each pod mounts the CA certificate and its
+  # own keypair only (the API the server's, the gateways the client's), and
+  # never a key your Secret may also hold.
   existingSecret: ""
 
 # ── REST API ──────────────────────────────────────────────────────────────
@@ -286,6 +292,12 @@ smtpGateway:
   ports:
     inbound: 25
     submissionTLS: 465
+  # What the gateway listens on inside the pod. The Service maps the public
+  # ports above onto these, so the gateway runs as an ordinary user with no
+  # capability at all: binding below 1024 would need NET_BIND_SERVICE.
+  containerPorts:
+    inbound: 10025
+    submissionTLS: 10465
   queueWorkers: 4
   # Max accepted SMTP message size in bytes (drives both the EHLO SIZE
   # advertisement and DATA enforcement). Empty = server default (10 MiB).
@@ -328,6 +340,9 @@ imapGateway:
   # Implicit TLS only; there is no 143.
   ports:
     tls: 993
+  # Listened on inside the pod; the Service maps 993 onto it. See smtpGateway.
+  containerPorts:
+    tls: 10993
   logLevel: info
   environment: production
   service:
@@ -355,6 +370,9 @@ pop3Gateway:
   # Implicit TLS only; there is no 110.
   ports:
     tls: 995
+  # Listened on inside the pod; the Service maps 995 onto it. See smtpGateway.
+  containerPorts:
+    tls: 10995
   logLevel: info
   environment: production
   service:
@@ -440,12 +458,12 @@ admin:
 
 # ── Pod-level extras (security, scheduling) ───────────────────────────────
 # Every workload already gets a hardened per-component securityContext by
-# default (runAsNonRoot where the image supports it, seccompProfile
-# RuntimeDefault, all capabilities dropped, read-only rootfs where feasible).
-# The protocol gateways keep a root UID with only NET_BIND_SERVICE added,
-# because their images bind privileged ports (<1024) and carry no file
-# capabilities. The maps below are deep-merged ON TOP of those defaults (values
-# here win), so set a field only to override the baseline cluster-wide.
+# default (runAsNonRoot, seccompProfile RuntimeDefault, all capabilities
+# dropped, read-only rootfs where feasible). The protocol gateways run as uid
+# 10001 with no capability at all: they listen on unprivileged ports, and their
+# Services map the public mail ports onto them. The maps below are deep-merged
+# ON TOP of those defaults (values here win), so set a field only to override
+# the baseline cluster-wide.
 podSecurityContext: {}
 securityContext: {}
 nodeSelector: {}
