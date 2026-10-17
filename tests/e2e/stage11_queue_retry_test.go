@@ -142,10 +142,11 @@ func testStage11QueueRetry(t *testing.T) {
 		// Verify the backoff formula: 2^attempt minutes, capped at 4 hours.
 		// This is a logic verification test -- does not require network.
 		for attempt := 0; attempt < 64; attempt++ {
-			// Mirror internal/gateway/queue.computeBackoff: the exponent MUST be
-			// guarded — 2^attempt * time.Minute overflows int64 and wraps to a
-			// negative duration (the product bug this stage exists to catch), so
-			// don't reintroduce it in the expectation.
+			// Mirror the connection-failure schedule in internal/gateway/queue
+			// (retry.go): the exponent MUST be guarded — 2^attempt * time.Minute
+			// overflows int64 and wraps to a negative duration (the product bug
+			// this stage exists to catch), so don't reintroduce it in the
+			// expectation.
 			var backoff time.Duration
 			if attempt >= 8 {
 				backoff = 4 * time.Hour

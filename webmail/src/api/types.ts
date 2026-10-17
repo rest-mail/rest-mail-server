@@ -3036,6 +3036,11 @@ export interface components {
             next_attempt: string;
             last_error?: string;
             last_error_code?: number;
+            /**
+             * @description What kind of failure the last attempt was, classified from the remote's reply; empty until an attempt fails. bad_mailbox, bad_domain, policy and other_permanent bounce the message at once. The others are transient: each is retried on a schedule of its own until a maximum age, then the message bounces.
+             * @enum {string}
+             */
+            failure_category?: "" | "bad_mailbox" | "bad_domain" | "policy" | "other_permanent" | "mailbox_full" | "greylisted" | "rate_limited" | "connection" | "tls" | "dns" | "other_transient";
             max_retries: number;
             /** Format: date-time */
             created_at: string;
