@@ -109,6 +109,9 @@ exclude-operation-id:
   # Need a quarantined message.
   - releaseQuarantine
   - deleteQuarantine
+  # Need a suppressed recipient on the created domain; the contract chain
+  # does not send a message that hard-bounces from it.
+  - clearSuppression
 
 # Documented responses the examples phase cannot provoke yet, by pattern. A
 # transaction is named "<title> > <path> > <summary> > <status>[ > <type>]".

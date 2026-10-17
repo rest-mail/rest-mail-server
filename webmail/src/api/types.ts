@@ -2455,6 +2455,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/domains/{id}/suppressions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a domain's suppressed recipients
+         * @description Recipients the domain's mail is no longer sent to, because mail from
+         *     the domain to them bounced as undeliverable: the mailbox, or its
+         *     domain, does not exist. A message to one is bounced at once, with a
+         *     DSN to its sender, until the suppression expires (SUPPRESSION_TTL,
+         *     90 days by default). Expired suppressions are not listed.
+         */
+        get: operations["listSuppressions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/domains/{id}/suppressions/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+                /** @description Suppression ID */
+                sid: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Clear a suppression
+         * @description The domain's mail to the address is tried again.
+         */
+        delete: operations["clearSuppression"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/domains/{id}/mta-sts": {
         parameters: {
             query?: never;
@@ -3356,6 +3414,36 @@ export interface components {
             created_by?: number | null;
             /** Format: date-time */
             created_at: string;
+        };
+        Suppression: {
+            id: number;
+            /** @description The sending domain */
+            domain_id: number;
+            /** @description The suppressed recipient, lower-cased */
+            address: string;
+            /** @enum {string} */
+            reason: "hard_bounce";
+            /**
+             * @description How the bounce that suppressed the address was classified
+             * @enum {string}
+             */
+            failure_category: "bad_mailbox" | "bad_domain";
+            /** @description The failure that suppressed the address, with the remote's reply */
+            last_error?: string;
+            /** @description The sent message whose bounce suppressed the address */
+            message_id?: number | null;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the address last bounced
+             */
+            updated_at: string;
+            /**
+             * Format: date-time
+             * @description When the address stops being suppressed
+             */
+            expires_at: string;
         };
         CreateSenderRuleRequest: {
             /** @description Email address (spam@evil.com) or domain pattern (@evil.com) */
@@ -9042,6 +9130,61 @@ export interface operations {
                         data: components["schemas"]["DNSCheckResult"];
                     };
                 };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSuppressions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suppressions, most recently updated first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["Suppression"][];
+                    };
+                };
+            };
+        };
+    };
+    clearSuppression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+                /** @description Suppression ID */
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Suppression cleared */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             404: components["responses"]["NotFound"];
         };

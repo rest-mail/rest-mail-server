@@ -27,7 +27,7 @@ Then `gate.py` reads vertrag's JUnit report and fails the job unless:
   boundary probes still fail (#388). A failing probe on any other operation
   fails the job, and so does an operation in the baseline whose probes all
   pass now. A fix takes its operation out of the baseline in the same change,
-  so the baseline only shrinks.
+  so the baseline only shrinks after its initial seeding in #376.
 
 The documented error responses other than 401 are excluded by pattern in
 `vertrag.yml`: 403 needs a principal without the capability
@@ -43,8 +43,9 @@ dependency: it needs Go 1.26 and this module is on 1.25.
 - `hooks.py`: only what the spec cannot hold: the fixture's passwords, the
   refresh token a sign-in hands out, a fresh key pair, the created domain's id
   where a request carries it in its body, and its name in the Host header the
-  MTA-STS policy file is served by. Every other id comes from the spec's
-  `links`.
+  MTA-STS policy file is served by, and a fresh source folder for each rename
+  probe (a successful rename consumes the previous one). Every other id comes
+  from the spec's `links`.
 - `gate.py`: the gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.

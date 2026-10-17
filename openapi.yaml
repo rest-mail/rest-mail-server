@@ -2788,6 +2788,10 @@ paths:
               operationId: listBlocklist
               parameters:
                 id: '$response.body#/data/id'
+            listSuppressions:
+              operationId: listSuppressions
+              parameters:
+                id: '$response.body#/data/id'
             addToBlocklist:
               operationId: addToBlocklist
               parameters:
@@ -3002,7 +3006,9 @@ paths:
     delete:
       operationId: endMailboxSessions
       tags: ["Admin: Mailboxes"]
-      x-required-capability: mailboxes:write
+      security:
+        - CookieAuth: [mailboxes:write]
+        - BearerAuth: [mailboxes:write]
       summary: Sign an account out everywhere
       description: >
         Ends every session of the account: its refresh tokens are revoked and
@@ -5425,7 +5431,9 @@ paths:
     get:
       operationId: listSuppressions
       tags: ["Admin: Suppressions"]
-      x-required-capability: domains:read
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
       summary: List a domain's suppressed recipients
       description: |
         Recipients the domain's mail is no longer sent to, because mail from
@@ -5459,7 +5467,9 @@ paths:
     delete:
       operationId: clearSuppression
       tags: ["Admin: Suppressions"]
-      x-required-capability: domains:write
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
       summary: Clear a suppression
       description: The domain's mail to the address is tried again.
       responses:
