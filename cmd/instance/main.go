@@ -349,7 +349,7 @@ func renderCmd(args []string) {
 func dkimKeygenCmd(args []string) {
 	fs := flag.NewFlagSet("dkim-keygen", flag.ExitOnError)
 	selector := fs.String("selector", dkim.DefaultSelector, "DKIM selector")
-	bits := fs.Int("bits", 2048, "RSA key size in bits")
+	bits := fs.Int("bits", 2048, "RSA key size in bits (2048 or more)")
 	_ = fs.Parse(args)
 
 	if fs.NArg() != 1 {
@@ -388,7 +388,7 @@ func dkimProvisionCmd(args []string) {
 	user := fs.String("admin-address", "", "the admin account's address")
 	pass := fs.String("admin-pass", "", "admin password")
 	selector := fs.String("selector", dkim.DefaultSelector, "DKIM selector")
-	bits := fs.Int("bits", 2048, "RSA key size in bits")
+	bits := fs.Int("bits", 2048, "RSA key size in bits (2048 or more)")
 	_ = fs.Parse(args)
 	if *domain == "" || *user == "" || *pass == "" {
 		fatal("dkim-provision: --domain, --admin-address and --admin-pass are required")
