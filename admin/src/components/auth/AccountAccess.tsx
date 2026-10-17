@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { AuthenticatorSetup } from './AuthenticatorSetup'
 
 export type SetupStep = 'password' | 'two_factor'
 export interface SetupSession {
@@ -145,9 +146,8 @@ export function AccountAccess({ children, apiBase, email, steps, onSession, onSi
               setEnrollment(null); setCode(''); setSavedCodes(false)
             })
           }}>
-            <p className="text-sm">Add a time-based account in your authenticator app using this setup key:</p>
-            <code className="block break-all border p-3 select-all">{enrollment.secret}</code>
-            <p className="text-sm">Account: {email || 'REST Mail'}. Type: time-based, 6 digits, 30 seconds.</p>
+            <AuthenticatorSetup secret={enrollment.secret} otpauthUrl={enrollment.otpauth_url} />
+            <p className="text-sm">Account: {email || 'REST Mail'}.</p>
             <p className="text-sm">Save these recovery codes somewhere safe. Each works once if you lose your authenticator.</p>
             <pre className="border p-3 whitespace-pre-wrap select-all">{enrollment.recovery_codes.join('\n')}</pre>
             <label className="block text-sm"><input type="checkbox" checked={savedCodes}
