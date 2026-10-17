@@ -505,7 +505,7 @@ func TestAppPasswords_CreatingNeedsTheCurrentPassword(t *testing.T) {
 		t.Helper()
 		before := f.credentialCount()
 		rr := f.do(http.MethodPost, path, session, body)
-		if rr.Code != http.StatusUnauthorized || !strings.Contains(rr.Body.String(), `"code":"`+code+`"`) {
+		if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"code":"`+code+`"`) {
 			t.Fatalf("create with %s: %d %s", body, rr.Code, rr.Body.String())
 		}
 		if strings.Contains(rr.Body.String(), "rm_") || strings.Contains(rr.Body.String(), wrongPassword) {
@@ -538,7 +538,7 @@ func TestAppPasswords_CreatingNeedsTheCurrentPassword(t *testing.T) {
 			t.Fatalf("%d creation entries, want 4: %+v", len(es), es)
 		}
 		for i, code := range []string{"reauth_required", "reauth_required", "invalid_password"} {
-			if e := es[i]; e.Outcome != models.AuditOutcomeDenied || e.Status != http.StatusUnauthorized ||
+			if e := es[i]; e.Outcome != models.AuditOutcomeDenied || e.Status != http.StatusForbidden ||
 				e.ErrorCode != code || e.Target["name"] != "stolen" || e.Target["credential_id"] != "" ||
 				e.ActorKind != models.AuditActorAccount || e.ActorID == nil || *e.ActorID != f.mailboxID {
 				t.Errorf("refusal %d: %+v", i, e)
@@ -575,7 +575,7 @@ func TestAppPasswords_OldPasswordRefusedAfterAChange(t *testing.T) {
 
 	before := f.credentialCount()
 	rr := f.do(http.MethodPost, path, f.session, fmt.Sprintf(`{"name":"stolen","password":%q}`, credentialTestPassword))
-	if rr.Code != http.StatusUnauthorized || !strings.Contains(rr.Body.String(), `"code":"invalid_password"`) {
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"code":"invalid_password"`) {
 		t.Fatalf("create with the old password: %d %s", rr.Code, rr.Body.String())
 	}
 	if f.credentialCount() != before {
@@ -600,7 +600,7 @@ func TestAppPasswords_CreatingIsThrottledLikeLogin(t *testing.T) {
 	path := fmt.Sprintf("/api/v1/accounts/%d/credentials", f.accountID)
 	guess := `{"name":"stolen","password":"guess"}`
 	for i := 0; i < 2; i++ {
-		if rr := f.do(http.MethodPost, path, f.session, guess); rr.Code != http.StatusUnauthorized {
+		if rr := f.do(http.MethodPost, path, f.session, guess); rr.Code != http.StatusForbidden {
 			t.Fatalf("guess %d: %d %s", i, rr.Code, rr.Body.String())
 		}
 	}

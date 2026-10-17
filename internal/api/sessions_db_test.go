@@ -148,7 +148,7 @@ func (f *epochFixture) enrollTwoFactor(s epochSession) (secret, recovery string)
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	if rr := f.do(http.MethodPost, "/api/v1/auth/2fa/confirm", "Bearer "+s.access, fmt.Sprintf(`{"code":%q}`, code)); rr.Code != http.StatusNoContent {
+	if rr := f.do(http.MethodPost, "/api/v1/auth/2fa/confirm", "Bearer "+s.access, fmt.Sprintf(`{"totp_code":%q}`, code)); rr.Code != http.StatusNoContent {
 		f.t.Fatalf("confirm 2FA: %d %s", rr.Code, rr.Body.String())
 	}
 	return enrolled.Data.Secret, enrolled.Data.RecoveryCodes[0]

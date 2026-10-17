@@ -478,6 +478,7 @@ All configuration is done via environment variables. The API, gateways, and tool
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
 | `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `SUPPRESSION_TTL`             | `2160h` (90 days)  | How long a recipient that hard bounced stays suppressed for the sending domain |
 | `MTASTS_ENFORCE`              | `true`             | Enforce recipient MTA-STS policies on outbound delivery |
 | `CORS_ALLOWED_ORIGINS`        | `http://localhost:3000` | Comma-separated CORS origins |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Trusted front-proxy CIDRs. Also gates HTTP `X-Forwarded-For`: a forwarded client IP is honored only when the direct peer is listed; empty = trust no proxy, use the real socket peer |
@@ -681,8 +682,8 @@ password or 2FA, link an account, or list, make or revoke app passwords. An
 account with 2FA signs mail clients in with app passwords only: its password
 alone is refused over IMAP, POP3 and SMTP. A new
 password for the account revokes all of them, as it ends every session. Making
-one takes the session's own current password, entered again (`401 reauth_required`
-without it, `401 invalid_password` when it is wrong), so a session from before
+one takes the session's own current password, entered again (`403 reauth_required`
+without it, `403 invalid_password` when it is wrong, never `401`), so a session from before
 a new password, still valid until its access token expires, can't make one
 that outlives the change. Each creation, refused creation, revocation, refused
 app password and sign-in over IMAP, POP3 or SMTP is recorded in the audit log.

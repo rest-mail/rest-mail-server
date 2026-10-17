@@ -241,6 +241,7 @@ func TestAdminRoutes_MailboxTokenDenied(t *testing.T) {
 		{http.MethodGet, "/api/v1/admin/queue/stats"},
 		{http.MethodPost, "/api/v1/admin/queue/1/retry"},
 		{http.MethodGet, "/api/v1/admin/domains/1/allowlist"},
+		{http.MethodGet, "/api/v1/admin/domains/1/suppressions"},
 		{http.MethodGet, "/api/v1/admin/domains/1/mta-sts"},
 		{http.MethodGet, "/api/v1/admin/tls-reports"},
 		{http.MethodGet, "/api/v1/admin/dkim"},
@@ -305,6 +306,7 @@ func TestAdminRoutes_ReadonlyRoleDeniedOnWrites(t *testing.T) {
 		{http.MethodPost, "/api/v1/admin/queue/1/retry"},
 		{http.MethodDelete, "/api/v1/admin/queue/1"},
 		{http.MethodPost, "/api/v1/admin/domains/1/allowlist"},
+		{http.MethodDelete, "/api/v1/admin/domains/1/suppressions/1"},
 		{http.MethodPut, "/api/v1/admin/domains/1/mta-sts"},
 		{http.MethodPut, "/api/v1/admin/dkim/1"},
 		{http.MethodPost, "/api/v1/admin/certificates"},
@@ -364,6 +366,7 @@ func TestAdminRoutes_ReadonlyRoleAllowedOnReads(t *testing.T) {
 		"/api/v1/admin/queue",
 		"/api/v1/admin/queue/stats",
 		"/api/v1/admin/domains/1/allowlist",
+		"/api/v1/admin/domains/1/suppressions",
 		"/api/v1/admin/domains/1/mta-sts",
 		"/api/v1/admin/tls-reports",
 		"/api/v1/admin/dkim",
@@ -908,7 +911,7 @@ func TestTwoFactorRoutes_RateLimited(t *testing.T) {
 			passes := 0
 			got429 := false
 			for i := 0; i < 12; i++ {
-				rr := doRequest(router, http.MethodPost, rt.path, token, `{"code":"000000"}`)
+				rr := doRequest(router, http.MethodPost, rt.path, token, `{"totp_code":"000000"}`)
 				if rr.Code == http.StatusTooManyRequests {
 					got429 = true
 					if rr.Header().Get("Retry-After") == "" {
@@ -943,7 +946,7 @@ func TestTwoFactorRoutes_ThrottleDisabled(t *testing.T) {
 	for _, rt := range twoFactorThrottledRoutes {
 		t.Run(rt.name, func(t *testing.T) {
 			for i := 0; i < 30; i++ {
-				rr := doRequest(router, http.MethodPost, rt.path, token, `{"code":"000000"}`)
+				rr := doRequest(router, http.MethodPost, rt.path, token, `{"totp_code":"000000"}`)
 				if rr.Code == http.StatusTooManyRequests {
 					t.Fatalf("request %d got 429 with throttle disabled", i)
 				}

@@ -171,13 +171,16 @@ func (h *TwoFactorHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-type codeRequest struct {
-	Code string `json:"code"`
+// confirmRequest carries the first code from the new authenticator, in the
+// field sign-in takes it in.
+type confirmRequest struct {
+	TOTPCode string `json:"totp_code"`
 }
 
 // Confirm completes enrollment by verifying a first TOTP code against the
 // pending secret, flipping the enrollment active. Until this succeeds, 2FA does
-// not gate login.
+// not gate login. A wrong code is 403 invalid_totp, never 401: the session
+// that sent it is still good (#392).
 // POST /api/v1/auth/2fa/confirm
 func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	if !h.enabled {
@@ -189,13 +192,13 @@ func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 		return
 	}
-	var req codeRequest
+	var req confirmRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
 	}
-	if req.Code == "" {
-		respond.ValidationError(w, map[string]string{"code": "required"})
+	if req.TOTPCode == "" {
+		respond.ValidationError(w, map[string]string{"totp_code": "required"})
 		return
 	}
 
@@ -218,8 +221,8 @@ func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA secret")
 		return
 	}
-	if !auth.ValidateTOTPCode(req.Code, secret) {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid 2FA code")
+	if !auth.ValidateTOTPCode(req.TOTPCode, secret) {
+		respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
 		return
 	}
 	if err := h.store.Confirm(tf.ID); err != nil {
@@ -229,14 +232,17 @@ func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// disableRequest is the second factor, in the fields sign-in takes it in.
 type disableRequest struct {
-	Code         string `json:"code"`
+	TOTPCode     string `json:"totp_code"`
 	RecoveryCode string `json:"recovery_code"`
 }
 
 // Disable turns 2FA off. It requires proof of possession — a valid current TOTP
 // code OR an unused recovery code — so a hijacked-but-2FA-protected session
-// can't strip the protection without the second factor.
+// can't strip the protection without the second factor. A wrong one is 403
+// (invalid_totp, or invalid_recovery_code when only a recovery code was
+// sent), never 401: the session that sent it is still good (#392).
 // POST /api/v1/auth/2fa/disable
 func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
@@ -247,6 +253,10 @@ func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	var req disableRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if req.TOTPCode == "" && req.RecoveryCode == "" {
+		respond.ValidationError(w, map[string]string{"totp_code": "required unless recovery_code is sent"})
 		return
 	}
 
@@ -260,8 +270,12 @@ func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifySecondFactor(accountID, req.Code, req.RecoveryCode) {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid 2FA code")
+	if !h.verifySecondFactor(accountID, req.TOTPCode, req.RecoveryCode) {
+		if req.TOTPCode == "" {
+			respond.Error(w, http.StatusForbidden, "invalid_recovery_code", "Invalid or already used recovery code")
+		} else {
+			respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
+		}
 		return
 	}
 	// Where 2FA is required (the bootstrap admin), turning it off would make the

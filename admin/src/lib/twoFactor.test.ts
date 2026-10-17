@@ -63,7 +63,7 @@ describe('twoFactor client', () => {
     const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE}/auth/2fa/confirm`)
     expect(init.credentials).toBe('include')
-    expect(JSON.parse(init.body as string)).toEqual({ code: '123456' })
+    expect(JSON.parse(init.body as string)).toEqual({ totp_code: '123456' })
     expect(new Headers(init.headers).get('X-CSRF-Token')).toBe('csrf-xyz')
   })
 
@@ -75,8 +75,31 @@ describe('twoFactor client', () => {
     expect(JSON.parse(init.body as string)).toEqual({ recovery_code: 'r-1' })
   })
 
-  it('surfaces the API error message on a failed confirm', async () => {
-    mockFetch(jsonResponse({ error: { code: 'unauthorized', message: 'Invalid 2FA code' } }, { status: 401 }))
-    await expect(confirmTwoFactor('000000')).rejects.toThrow('Invalid 2FA code')
+  it('disableTwoFactor sends an authenticator code as totp_code, as sign-in does', async () => {
+    const fetchFn = mockFetch(noContent())
+    await disableTwoFactor({ totp_code: '123456' })
+    const init = fetchFn.mock.calls[0][1] as RequestInit
+    expect(JSON.parse(init.body as string)).toEqual({ totp_code: '123456' })
+  })
+
+  it('says which code was wrong, and keeps the session, on a 403', async () => {
+    const onUnauthorized = vi.fn()
+    setUnauthorizedHandler(onUnauthorized)
+    mockFetch(jsonResponse({ error: { code: 'invalid_totp', message: 'Invalid two-factor authentication code' } }, { status: 403 }))
+    await expect(confirmTwoFactor('000000')).rejects.toMatchObject({
+      code: 'invalid_totp',
+      message: 'That code is not right: enter the current one from your authenticator',
+    })
+    mockFetch(jsonResponse({ error: { code: 'invalid_recovery_code', message: 'Invalid or already used recovery code' } }, { status: 403 }))
+    await expect(disableTwoFactor({ recovery_code: 'r-1' })).rejects.toMatchObject({
+      code: 'invalid_recovery_code',
+      message: 'That recovery code is not right, or has been used already',
+    })
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
+
+  it('surfaces the API error message for any other refusal', async () => {
+    mockFetch(jsonResponse({ error: { code: 'two_factor_required', message: 'Two-factor authentication is required for this account and cannot be disabled' } }, { status: 403 }))
+    await expect(disableTwoFactor({ totp_code: '123456' })).rejects.toThrow('cannot be disabled')
   })
 })

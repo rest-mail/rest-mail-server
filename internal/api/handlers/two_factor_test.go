@@ -190,9 +190,10 @@ func TestConfirmActivatesWithValidCodeRejectsBad(t *testing.T) {
 	resp := doEnroll(t, h, c)
 
 	// Wrong code: rejected, still pending.
-	bad := postCode(t, h.Confirm, c, codeRequest{Code: "000000"})
-	if bad.Code != http.StatusUnauthorized {
-		t.Fatalf("confirm(bad): status %d, want 401", bad.Code)
+	// 403, never 401: the session is still good (#392).
+	bad := postCode(t, h.Confirm, c, confirmRequest{TOTPCode: "000000"})
+	if bad.Code != http.StatusForbidden || errorCode(bad) != "invalid_totp" {
+		t.Fatalf("confirm(bad): %d %s, want 403 invalid_totp", bad.Code, bad.Body.String())
 	}
 	if _, err := store.GetActive(1); err == nil {
 		t.Error("2FA active after a rejected confirm")
@@ -200,7 +201,7 @@ func TestConfirmActivatesWithValidCodeRejectsBad(t *testing.T) {
 
 	// Valid code: activates.
 	code, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
-	ok := postCode(t, h.Confirm, c, codeRequest{Code: code})
+	ok := postCode(t, h.Confirm, c, confirmRequest{TOTPCode: code})
 	if ok.Code != http.StatusNoContent {
 		t.Fatalf("confirm(valid): status %d (%s), want 204", ok.Code, ok.Body.String())
 	}
@@ -217,7 +218,7 @@ func TestReenrollBlockedWhileActive(t *testing.T) {
 	c := mailboxClaims(1, "user@example.test")
 	resp := doEnroll(t, h, c)
 	code, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
-	postCode(t, h.Confirm, c, codeRequest{Code: code})
+	postCode(t, h.Confirm, c, confirmRequest{TOTPCode: code})
 
 	req := withClaims(httptest.NewRequest(http.MethodPost, "/enroll", nil), c)
 	rr := httptest.NewRecorder()
@@ -235,16 +236,36 @@ func TestDisableRequiresValidSecondFactor(t *testing.T) {
 	c := mailboxClaims(1, "user@example.test")
 	resp := doEnroll(t, h, c)
 	code, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
-	postCode(t, h.Confirm, c, codeRequest{Code: code})
+	postCode(t, h.Confirm, c, confirmRequest{TOTPCode: code})
 
-	// Bad code: refused, still active.
-	bad := postCode(t, h.Disable, c, disableRequest{Code: "000000"})
-	if bad.Code != http.StatusUnauthorized {
-		t.Fatalf("disable(bad): status %d, want 401", bad.Code)
+	// Bad code: refused with 403, never 401 (#392), still active.
+	bad := postCode(t, h.Disable, c, disableRequest{TOTPCode: "000000"})
+	if bad.Code != http.StatusForbidden || errorCode(bad) != "invalid_totp" {
+		t.Fatalf("disable(bad): %d %s, want 403 invalid_totp", bad.Code, bad.Body.String())
+	}
+	badRecovery := postCode(t, h.Disable, c, disableRequest{RecoveryCode: "not-a-recovery-code"})
+	if badRecovery.Code != http.StatusForbidden || errorCode(badRecovery) != "invalid_recovery_code" {
+		t.Fatalf("disable(bad recovery): %d %s, want 403 invalid_recovery_code", badRecovery.Code, badRecovery.Body.String())
+	}
+	if none := postCode(t, h.Disable, c, disableRequest{}); none.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("disable(nothing): %d %s, want 422", none.Code, none.Body.String())
 	}
 	if _, err := store.GetActive(1); err != nil {
 		t.Error("2FA disabled by an invalid code")
 	}
+
+	// The authenticator's current code, in totp_code as sign-in sends it,
+	// turns 2FA off: the web apps' path (#392).
+	totp, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
+	if ok := postCode(t, h.Disable, c, disableRequest{TOTPCode: totp}); ok.Code != http.StatusNoContent {
+		t.Fatalf("disable(totp): status %d (%s), want 204", ok.Code, ok.Body.String())
+	}
+	if _, err := store.GetActive(1); err == nil {
+		t.Fatal("2FA still active after a valid TOTP disable")
+	}
+	resp = doEnroll(t, h, c)
+	code, _ = auth.GenerateTOTPCode(resp.Secret, time.Now())
+	postCode(t, h.Confirm, c, confirmRequest{TOTPCode: code})
 
 	// Recovery code: accepted, disables.
 	ok := postCode(t, h.Disable, c, disableRequest{RecoveryCode: resp.RecoveryCodes[0]})
@@ -263,7 +284,7 @@ func TestRecoveryCodeSingleUse(t *testing.T) {
 	c := mailboxClaims(1, "user@example.test")
 	resp := doEnroll(t, h, c)
 	code, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
-	postCode(t, h.Confirm, c, codeRequest{Code: code})
+	postCode(t, h.Confirm, c, confirmRequest{TOTPCode: code})
 
 	rc := resp.RecoveryCodes[0]
 	if used, _ := store.ConsumeRecoveryCode(1, rc); !used {
@@ -331,7 +352,7 @@ func TestLoginEnforcement_ActiveRequiresCode(t *testing.T) {
 	c := mailboxClaims(7, "u@example.test")
 	resp := doEnroll(t, tfh, c)
 	code, _ := auth.GenerateTOTPCode(resp.Secret, time.Now())
-	postCode(t, tfh.Confirm, c, codeRequest{Code: code})
+	postCode(t, tfh.Confirm, c, confirmRequest{TOTPCode: code})
 
 	h := &AuthHandler{twoFactorStore: store, masterKey: testMasterKey}
 

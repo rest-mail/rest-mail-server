@@ -181,6 +181,10 @@ type Worker struct {
 	bounceMax    int
 	bounceWindow time.Duration
 
+	// suppressionTTL is how long an address stays suppressed after it hard
+	// bounces (#141). See suppression.go.
+	suppressionTTL time.Duration
+
 	// Size-aware delivery timing (OSI-7). sendDeadline maps a message's byte size
 	// to the maximum time a single outbound send attempt (SMTP to a peer MX, or
 	// the RESTMAIL HTTPS hop) may take, so a large-but-permitted message is not
@@ -216,17 +220,18 @@ const (
 // NewWorker creates a new queue worker.
 func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.Duration) *Worker {
 	w := &Worker{
-		db:           db,
-		hostname:     hostname,
-		numWorkers:   numWorkers,
-		pollInterval: pollInterval,
-		tlsInsecure:  false,
-		stsEnforce:   true,
-		shutdown:     make(chan struct{}),
-		bounceMax:    defaultBounceMaxPerRecipient,
-		bounceWindow: defaultBounceWindow,
-		sendDeadline: defaultSendDeadline,
-		reclaim:      staleDeliveringTimeout,
+		db:             db,
+		hostname:       hostname,
+		numWorkers:     numWorkers,
+		pollInterval:   pollInterval,
+		tlsInsecure:    false,
+		stsEnforce:     true,
+		shutdown:       make(chan struct{}),
+		bounceMax:      defaultBounceMaxPerRecipient,
+		bounceWindow:   defaultBounceWindow,
+		sendDeadline:   defaultSendDeadline,
+		suppressionTTL: DefaultSuppressionTTL,
+		reclaim:        staleDeliveringTimeout,
 	}
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
 	// verification tracks the worker's tlsInsecure flag at call time.
@@ -420,6 +425,18 @@ func (w *Worker) processOne(workerID int) {
 		"attempt", item.Attempts, // the claim above counted it already
 	)
 
+	w.process(item, now)
+}
+
+// process sends a claimed message and records how that went.
+func (w *Worker) process(item models.OutboundQueue, now time.Time) {
+	// A recipient that hard bounced from this sending domain isn't tried
+	// again until its suppression expires (#141).
+	if s, ok := w.suppression(item, now); ok {
+		w.bounceSuppressed(item, s)
+		return
+	}
+
 	// Attempt delivery
 	deliveryErr := w.deliver(item)
 
@@ -481,6 +498,9 @@ func (w *Worker) recordFailure(item models.OutboundQueue, deliveryErr error, now
 
 	failed["status"] = "bounced"
 	w.db.Model(&item).Updates(failed)
+	if category.Suppresses() {
+		w.suppress(item, category, deliveryErr.Error(), now)
+	}
 	if category.Permanent() {
 		slog.Warn("queue: permanent failure, bouncing", "id", item.ID, "smtp_code", errorCode, "failure_category", category)
 	} else {
@@ -1064,14 +1084,19 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 	if d := item.FailureCategory.Description(); d != "" {
 		reason = d + "\r\n\r\n"
 	}
+	// A message to a suppressed recipient is bounced without an attempt.
+	attempted := ""
+	if item.Attempts > 0 {
+		attempted = fmt.Sprintf("The delivery has been attempted %d time(s).\r\n\r\n", item.Attempts)
+	}
 	humanPart := fmt.Sprintf(
 		"This is the mail delivery system at %s.\r\n\r\n"+
 			"Your message could not be delivered to the following recipient:\r\n\r\n"+
 			"    %s\r\n\r\n"+
 			"%s"+
-			"The delivery has been attempted %d time(s).\r\n\r\n"+
+			"%s"+
 			"Error: %s\r\n",
-		hostname, recipient, reason, item.Attempts, diagnosticCode,
+		hostname, recipient, reason, attempted, diagnosticCode,
 	)
 
 	// Part 2: Machine-readable DSN (RFC 3464). Remote-MTA is emitted only when the
