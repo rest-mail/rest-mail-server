@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { AppShell } from '../../components/layout/AppShell'
 import { useAuthStore } from '../../lib/stores/authStore'
+import { AuthenticatorSetup } from '../../components/auth/AuthenticatorSetup'
 import {
   getTwoFactorStatus,
   enrollTwoFactor,
@@ -19,8 +20,8 @@ export const Route = createFileRoute('/settings/two-factor')({
  * TwoFactorPage surfaces the server's TOTP 2FA (two_factor.go) for the signed-in
  * admin account: enabled/disabled status plus the enable (enroll → show secret +
  * recovery codes → confirm a code) and disable (prove a code) flows against the
- * /auth/2fa endpoints. A QR image is intentionally omitted; the base32 secret
- * and otpauth URL are shown for manual entry into an authenticator app.
+ * /auth/2fa endpoints. Provisioning is rendered locally as a QR code, with a
+ * manual setup key as a fallback.
  */
 function TwoFactorPage() {
   const navigate = useNavigate()
@@ -213,13 +214,9 @@ function TwoFactorPage() {
             <div className="space-y-5">
               <div className="space-y-2">
                 <p className="text-sm font-medium" style={{ color: 'var(--black-soft)' }}>
-                  1. Add this secret to your authenticator app
+                  1. Add REST Mail to your authenticator app
                 </p>
-                <CopyRow value={enrollment.secret} mono />
-                <p className="text-xs" style={{ color: 'var(--gray-secondary)' }}>
-                  Or use the provisioning URL:
-                </p>
-                <CopyRow value={enrollment.otpauth_url} mono small />
+                <AuthenticatorSetup secret={enrollment.secret} otpauthUrl={enrollment.otpauth_url} />
               </div>
 
               <div className="space-y-2">
