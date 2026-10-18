@@ -250,9 +250,7 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 					if line == ".\r\n" {
 						break
 					}
-					if strings.HasPrefix(line, ".") {
-						line = line[1:]
-					}
+					line = strings.TrimPrefix(line, ".")
 					raw.WriteString(line)
 				}
 				result.data = raw.String()
