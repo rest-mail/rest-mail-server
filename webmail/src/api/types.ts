@@ -7852,12 +7852,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "pattern": "spam@spammer.example.com",
-                 *       "reason": "Sends spam"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -7874,6 +7868,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     removeFromBlocklist: {
