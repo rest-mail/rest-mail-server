@@ -3,16 +3,52 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/acme"
 )
+
+// acmeIssueCmd is the cert_provider: acme branch of `chore instance:certs:issue`:
+// it issues the instance's serving cert by HTTP-01 and writes it into the certs
+// volume. It lives here, beside the rest of the instance tooling, so cmd/certgen
+// stays the testbed's reference CA and nothing more (#149).
+func acmeIssueCmd(args []string) {
+	fs := flag.NewFlagSet("acme-issue", flag.ExitOnError)
+	out := fs.String("out", "", "directory the pair is written to, as <first domain>.{crt,key}")
+	domains := fs.String("domains", "", "comma-separated names the certificate covers; the first names the files")
+	email := fs.String("email", "", "ACME account contact email")
+	directory := fs.String("directory", "", "ACME directory URL (default: Let's Encrypt production)")
+	staging := fs.Bool("staging", false, "use the Let's Encrypt staging directory, overriding -directory")
+	listen := fs.String("listen", ":80", "address to serve HTTP-01 challenges on; the CA connects to port 80")
+	_ = fs.Parse(args)
+
+	if *out == "" || fs.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "instance acme-issue: -out and -domains are required, and nothing else")
+		os.Exit(2)
+	}
+	var names []string
+	for _, d := range strings.Split(*domains, ",") {
+		if d = strings.TrimSpace(d); d != "" {
+			names = append(names, d)
+		}
+	}
+	// Staging overrides the directory, as in acme.NewClient.
+	if *staging {
+		*directory = acme.LetsEncryptStaging
+	}
+	cfg := acme.IssueConfig{Directory: *directory, Email: *email, Domains: names}
+	if err := issueACME(context.Background(), *out, *listen, cfg); err != nil {
+		fatal("acme-issue: %v", err)
+	}
+}
 
 // acmeTimeout bounds one whole issuance: account, order, every HTTP-01
 // validation and finalization.
@@ -25,7 +61,7 @@ const acmeTimeout = 10 * time.Minute
 // written unless issuance succeeds.
 func issueACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConfig) error {
 	if len(cfg.Domains) == 0 {
-		return errors.New("--domains is required with --acme")
+		return errors.New("-domains is required")
 	}
 
 	responder := acme.NewHTTP01Responder()

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -17,8 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/restmail/restmail/internal/acme"
 )
 
 func main() {
@@ -35,11 +32,6 @@ func main() {
 		serverDNS   string
 		serverIPs   string
 		clientCN    string
-		genACME     bool
-		acmeEmail   string
-		acmeDir     string
-		acmeStaging bool
-		acmeListen  string
 	)
 
 	flag.StringVar(&outputDir, "out", "projects/certs/output", "Output directory for certificates")
@@ -51,36 +43,11 @@ func main() {
 	flag.StringVar(&serverDNS, "server-dns", "api,localhost", "Comma-separated DNS SANs for the internal mTLS API server cert")
 	flag.StringVar(&serverIPs, "server-ip", "127.0.0.1", "Comma-separated IP SANs for the internal mTLS API server cert")
 	flag.StringVar(&clientCN, "client-cn", "rest-mail-gateway", "Common Name (machine identity) for the internal mTLS gateway client cert")
-	flag.BoolVar(&genACME, "acme", false, "Issue one certificate covering --domains from an ACME CA by HTTP-01, written to <out>/<first domain>.{crt,key}")
-	flag.StringVar(&acmeEmail, "acme-email", "", "ACME account contact email (with --acme)")
-	flag.StringVar(&acmeDir, "acme-directory", "", "ACME directory URL (with --acme; default Let's Encrypt production)")
-	flag.BoolVar(&acmeStaging, "acme-staging", false, "Use the Let's Encrypt staging directory, overriding --acme-directory (with --acme)")
-	flag.StringVar(&acmeListen, "acme-listen", ":80", "Address to serve HTTP-01 challenges on (with --acme); the CA connects to port 80")
 	flag.Parse()
 
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		slog.Error("failed to create output directory", "error", err)
 		os.Exit(1)
-	}
-
-	if genACME {
-		// --domains has a testbed default; an ACME order must name real hosts.
-		domainsSet := false
-		flag.Visit(func(f *flag.Flag) { domainsSet = domainsSet || f.Name == "domains" })
-		var names []string
-		if domainsSet {
-			names = splitDomains(domains)
-		}
-		// Staging overrides the directory, as in acme.NewClient.
-		if acmeStaging {
-			acmeDir = acme.LetsEncryptStaging
-		}
-		cfg := acme.IssueConfig{Directory: acmeDir, Email: acmeEmail, Domains: names}
-		if err := issueACME(context.Background(), outputDir, acmeListen, cfg); err != nil {
-			slog.Error("ACME issuance failed", "error", err)
-			os.Exit(1)
-		}
-		return
 	}
 
 	if genInternal {
@@ -125,8 +92,6 @@ func main() {
 	fmt.Println("  certgen --dkim --domain=example.test Generate DKIM key pair")
 	fmt.Println("  certgen --internal-mtls --server-ip=10.0.0.20 --out=/certs")
 	fmt.Println("                                       Generate internal-mTLS CA + API server + gateway client certs")
-	fmt.Println("  certgen --acme --domains=mail.example.com,autoconfig.example.com --acme-email=you@example.com --out=/certs")
-	fmt.Println("                                       Issue a public cert by ACME HTTP-01 (serves port 80 meanwhile)")
 	flag.PrintDefaults()
 }
 

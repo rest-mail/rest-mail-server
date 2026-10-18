@@ -506,7 +506,6 @@ tasks:
       - go build -o build/tools/certgen ./cmd/certgen
     sources:
       - cmd/certgen/**/*.go
-      - internal/acme/**/*.go
       - go.mod
       - go.sum
     generates:
@@ -1332,8 +1331,8 @@ tasks:
             ' _ "{{.CERT_SANS}}"
             ;;
           acme|letsencrypt|letsencrypt-http01)
-            # One-shot ACME HTTP-01 issuance (internal/acme.Issue via certgen
-            # --acme): one cert covering every CERT_SANS name, written to
+            # One-shot ACME HTTP-01 issuance (internal/acme.Issue via `instance
+            # acme-issue`): one cert covering every CERT_SANS name, written to
             # <primary>.{crt,key} in the certs volume, exactly where the manual
             # provider expects it, so everything downstream is unchanged. The
             # CA validates each name over http://<name>:80, so every SAN must
@@ -1349,11 +1348,11 @@ tasks:
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.25 \
-              go run ./cmd/certgen --acme --out /certs --acme-listen :80 \
-                --domains "{{.CERT_SANS}}" \
-                --acme-email "{{.RESTMAIL_TLS_ACME_EMAIL | default ""}}" \
-                --acme-directory "{{.RESTMAIL_TLS_ACME_DIRECTORY | default ""}}" \
-                --acme-staging="{{.RESTMAIL_TLS_ACME_STAGING | default "false"}}"
+              go run ./cmd/instance acme-issue -out /certs -listen :80 \
+                -domains "{{.CERT_SANS}}" \
+                -email "{{.RESTMAIL_TLS_ACME_EMAIL | default ""}}" \
+                -directory "{{.RESTMAIL_TLS_ACME_DIRECTORY | default ""}}" \
+                -staging="{{.RESTMAIL_TLS_ACME_STAGING | default "false"}}"
             ;;
           letsencrypt-dns01)
             echo "cert_provider={{.CERT_PROVIDER}}: DNS-01 issuance is not implemented yet; use cert_provider: acme (HTTP-01, needs port 80) or manual." >&2

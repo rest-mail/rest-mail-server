@@ -128,7 +128,7 @@ type Manifest struct {
 //     or DNS provisioning. See CertSANHostnames().
 //   - ACME holds the inputs of the `acme`/`letsencrypt` cert_provider: the
 //     `instance:certs:issue` task issues one cert covering CertSANHostnames()
-//     by ACME HTTP-01 (`certgen --acme`, internal/acme.Issue), with Email as
+//     by ACME HTTP-01 (`instance acme-issue`, internal/acme.Issue), with Email as
 //     the account contact and Staging (Let's Encrypt staging) or Directory as
 //     the CA. DNS-01 (`letsencrypt-dns01`) is not implemented yet.
 type TLS struct {
@@ -560,7 +560,7 @@ func Render(m *Manifest) ([]byte, error) {
 	//     consumes it, falling back to RESTMAIL_HOSTNAME for the single-domain
 	//     default — byte-identical to before.
 	//   - RESTMAIL_TLS_ACME_*           the ACME inputs `task instance:certs:issue`
-	//     passes to `certgen --acme` when cert_provider is acme/letsencrypt.
+	//     passes to `instance acme-issue` when cert_provider is acme/letsencrypt.
 	if len(m.TLS.ExtraHostnames) > 0 {
 		iv("TLS_EXTRA_HOSTNAMES", strings.Join(m.TLS.ExtraHostnames, ","))
 	}
