@@ -3627,11 +3627,18 @@ paths:
                 email:
                   type: object
                   description: Optional sample email passed through to the sidecar
-            example:
-              script: |
-                function filter(email) {
-                  return { action: "continue" };
-                }
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              valid:
+                value:
+                  script: |
+                    function filter(email) {
+                      return { action: "continue" };
+                    }
+              # No script: refused before the sidecar is asked.
+              script_missing:
+                value: {}
       responses:
         "200":
           description: >-
@@ -3642,8 +3649,27 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              examples:
+                # The sidecar's answer for a script that compiles, sent with no
+                # sample email to dry-run it on.
+                valid:
+                  value:
+                    valid: true
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                script_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          script: required
         "503":
           description: >-
             JS filter sidecar unavailable, or it refused the API's token
