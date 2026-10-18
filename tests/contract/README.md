@@ -65,6 +65,11 @@ counted as a failure on an operation the coverage baseline does not list
 off `exclude-matching` once vertrag does not judge valid probes built from a
 documented refusal.
 
+`createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
+JSON but not an object) goes with the `bad_request` the handler answers before
+it reads any field (`contract_domain_body_examples_test.go`, which sends it to
+the real handler with no database). It stays excluded with the other 400s.
+
 vertrag is the released, checksum-pinned binary (v0.27.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
 
