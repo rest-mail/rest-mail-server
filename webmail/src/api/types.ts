@@ -6440,18 +6440,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "from": "someone@ext-contract.test",
-                 *       "to": [
-                 *         "eve@restmail.test"
-                 *       ],
-                 *       "subject": "Delivered over RESTMAIL",
-                 *       "body_text": "Hello, Eve.",
-                 *       "message_id": "<restmail-delivery@ext-contract.test>",
-                 *       "date": "Sat, 17 Oct 2026 12:00:00 +0000"
-                 *     }
-                 */
                 "application/json": components["schemas"]["RestmailDeliverRequest"];
             };
         };
@@ -6467,7 +6455,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     listDomains: {
