@@ -14,20 +14,29 @@ import (
 )
 
 // The contract run (vertrag) pairs a request example with the response example
-// of the same name, so createDomain's named examples say which body produces
-// which answer (#386). TestDomainCreate_DocumentedRefusals holds the refusals
-// to the handler: each request example named on the 422 is sent to the real
-// handler and gets exactly the documented body. The handler has no database,
-// so the refusal is proved to come before anything is stored.
+// of the same name, so a create's named examples say which body produces which
+// answer (#386). Each test here holds an operation's refusals to its handler:
+// each request example named on the 422 is sent to the real handler and gets
+// exactly the documented body. The handler has no database, so the refusal is
+// proved to come before anything is looked up or stored.
 func TestDomainCreate_DocumentedRefusals(t *testing.T) {
-	requests, responses := createDomainExamples(t)
+	documentedRefusals(t, "/api/v1/admin/domains", "createDomain", NewDomainHandler(nil, nil).Create)
+}
+
+func TestAliasCreate_DocumentedRefusals(t *testing.T) {
+	documentedRefusals(t, "/api/v1/admin/aliases", "createAlias", NewAliasHandler(nil).Create)
+}
+
+func documentedRefusals(t *testing.T, path, operationID string, create http.HandlerFunc) {
+	t.Helper()
+	requests, responses := postExamples(t, path, operationID)
 	if len(responses["422"]) == 0 {
-		t.Fatal("createDomain's 422 names no example: the contract run cannot provoke it")
+		t.Fatalf("%s's 422 names no example: the contract run cannot provoke it", operationID)
 	}
 	// A response naming no example pairs with every request, so an unnamed 201
 	// would be expected for the refused requests too.
 	if len(responses["201"]) == 0 {
-		t.Error("createDomain's 201 names no example: it pairs with the refused requests too")
+		t.Errorf("%s's 201 names no example: it pairs with the refused requests too", operationID)
 	}
 
 	for name := range requests {
@@ -52,9 +61,16 @@ func TestDomainCreate_DocumentedRefusals(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/domains", bytes.NewReader(body))
+			req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
 			rr := httptest.NewRecorder()
-			NewDomainHandler(nil, nil).Create(rr, req)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						t.Fatalf("%s reached the database before it was refused: %v", body, r)
+					}
+				}()
+				create(rr, req)
+			}()
 
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("%s: status %d, want 422; body %s", body, rr.Code, rr.Body)
@@ -76,10 +92,10 @@ type namedExamples struct {
 	} `yaml:"examples"`
 }
 
-// createDomainExamples reads createDomain's named application/json examples
+// postExamples reads the named application/json examples of the POST on path
 // from the spec the API serves: the request's by name, and each response's by
 // status and name, as JSON values.
-func createDomainExamples(t *testing.T) (map[string]interface{}, map[string]map[string]interface{}) {
+func postExamples(t *testing.T, path, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
 	t.Helper()
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
@@ -101,9 +117,9 @@ func createDomainExamples(t *testing.T) (map[string]interface{}, map[string]map[
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	op := doc.Paths["/api/v1/admin/domains"].Post
-	if op.OperationID != "createDomain" {
-		t.Fatalf("POST /api/v1/admin/domains is %q, want createDomain", op.OperationID)
+	op := doc.Paths[path].Post
+	if op.OperationID != operationID {
+		t.Fatalf("POST %s is %q, want %s", path, op.OperationID, operationID)
 	}
 
 	requests := map[string]interface{}{}
