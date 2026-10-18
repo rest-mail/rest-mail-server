@@ -109,6 +109,57 @@ chore monitoring:up | :down          # prometheus + grafana + postgres-exporter
 chore website:init | :up | :down     # the marketing website (separate subproject)
 ```
 
+## Edit the extracted website
+
+The website's `master` branch in [rest-mail/website](https://github.com/rest-mail/website)
+is authoritative. The helpers use a separate, gitignored working copy at
+`.workspace/website`; they never commit website source to this server repository.
+Git and Node >=22.12 (with npm) are needed for development.
+
+```sh
+chore website:dev                    # clone master if missing, npm ci, npm run dev
+# Open the URL printed by upstream Vite (normally http://localhost:5173).
+# Ctrl-C stops the foreground dev server.
+EDITOR='code --wait' chore website:edit
+# Prefer a website branch for review before publishing changes:
+git -C .workspace/website switch -c fix/site-copy
+chore website:push --message "fix: clarify the site copy"
+chore website:reset                  # fetch master; refuse to lose edits or local commits
+```
+
+`website:dev` follows the current upstream package lock and live-reload script.
+It runs `npm ci` each time (replacing that working copy's `node_modules`) before
+`npm run dev`. Upstream now uses TanStack/Node, so binding raw source over an
+nginx web root would not serve the current site. Production website tasks,
+images and deployment configuration retain their existing ownership and behavior.
+The helpers do not update an existing working copy on dev/edit; use normal Git
+commands to update or switch it. `VISUAL` takes precedence over `EDITOR`, with
+`vi` as the fallback; editor commands may include flags.
+
+`website:push` stages **all nonignored changes** in the website working copy,
+commits with the supplied message when dirty, and pushes its **current branch**
+to `origin` without force. A clean copy pushes existing commits without needing a
+message. It does not open or merge a PR; use the website repository's review flow.
+Both fetch and push URLs must identify `rest-mail/website`; an unrelated existing
+repository is refused rather than replaced. `WEBSITE_DIR` can select another
+website working copy; it must be a repository root with the same upstream.
+
+To deliberately discard work, inspect that exact copy first:
+
+```sh
+git -C .workspace/website status --short
+git -C .workspace/website log --oneline origin/master..HEAD
+chore website:reset --discard-local-work
+```
+
+The flag explicitly permits resetting the **current branch** to fetched upstream
+`master`, losing local commits and tracked edits, and deleting nonignored untracked
+files/directories (`git clean -fd`). Ignored files such as dependencies are kept
+by the clean step. Without it, dirty work and commits absent from upstream block
+the reset. Save wanted work on another branch or outside the copy first.
+`website:push` and `website:reset` require an existing validated copy; neither
+silently creates one.
+
 ## Full teardown
 
 ```sh
