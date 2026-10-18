@@ -23,7 +23,7 @@ The development testbed simulates parallel mail domains: reference `mail1.test` 
 
 ```
 cmd/                  Go binaries (api, smtp-gateway, imap-gateway, pop3-gateway,
-                      console, migrate, seed, certgen, website)
+                      console, instance, migrate, seed, website)
 internal/             Shared packages (api, auth, config, crypto, db, dns, gateway,
                       mail, metrics, mime, pipeline, console)
 webmail/              React end-user webmail (Vite + TS + Tailwind)
@@ -708,7 +708,7 @@ chore build:api
 chore build:gateways                 # smtp / imap / pop3
 chore build:console                  # auto-detects OS/arch
 chore build:console:all              # cross-compile all platforms
-chore build:tools                    # certgen, migrate, seed, website
+chore build:tools                    # migrate, seed, website
 ```
 (Instant Mail Check is no longer built here — it moved to the `rest-mail/instantmailcheck` repo; see §4.5.)
 

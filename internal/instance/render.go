@@ -158,7 +158,7 @@ type TLS struct {
 //     public listener, tokenless — the pre-mTLS behavior).
 //   - CASource selects the provisioning path `task instance:mtls:issue` takes:
 //     "testbed-certgen" (the default) mints a dedicated internal CA + API server
-//     cert + gateway client cert with the in-repo certgen — what the testbed does
+//     cert + gateway client cert with `instance mtls-issue` — what the testbed does
 //     today; "manual" means the deployer provisions the internal CA + server/
 //     client material out of band into the certs volume and the task only
 //     validates its presence (no issuance).

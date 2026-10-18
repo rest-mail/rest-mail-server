@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/acme"
@@ -18,8 +17,8 @@ import (
 
 // acmeIssueCmd is the cert_provider: acme branch of `chore instance:certs:issue`:
 // it issues the instance's serving cert by HTTP-01 and writes it into the certs
-// volume. It lives here, beside the rest of the instance tooling, so cmd/certgen
-// stays the testbed's reference CA and nothing more (#149).
+// volume. It lives here, beside the rest of the instance tooling, so there is
+// one cert path (#149).
 func acmeIssueCmd(args []string) {
 	fs := flag.NewFlagSet("acme-issue", flag.ExitOnError)
 	out := fs.String("out", "", "directory the pair is written to, as <first domain>.{crt,key}")
@@ -34,12 +33,7 @@ func acmeIssueCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "instance acme-issue: -out and -domains are required, and nothing else")
 		os.Exit(2)
 	}
-	var names []string
-	for _, d := range strings.Split(*domains, ",") {
-		if d = strings.TrimSpace(d); d != "" {
-			names = append(names, d)
-		}
-	}
+	names := splitList(*domains)
 	// Staging overrides the directory, as in acme.NewClient.
 	if *staging {
 		*directory = acme.LetsEncryptStaging

@@ -382,7 +382,7 @@ tasks:
 
   build:
     desc: Build all Go binaries
-    deps: [build:api, build:smtp-gateway, build:imap-gateway, build:pop3-gateway, build:console, build:certgen, build:migrate, build:seed]
+    deps: [build:api, build:smtp-gateway, build:imap-gateway, build:pop3-gateway, build:console, build:migrate, build:seed]
 
   build:api:
     desc: Build the REST API server
@@ -497,19 +497,8 @@ tasks:
     deps: [build:console:darwin-arm64, build:console:darwin-amd64, build:console:linux-arm64, build:console]
 
   build:tools:
-    desc: Build all tool binaries (certgen, migrate, seed, website)
-    deps: [build:certgen, build:migrate, build:seed, build:website]
-
-  build:certgen:
-    desc: Build the certificate generator
-    cmds:
-      - go build -o build/tools/certgen ./cmd/certgen
-    sources:
-      - cmd/certgen/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/certgen
+    desc: Build all tool binaries (migrate, seed, website)
+    deps: [build:migrate, build:seed, build:website]
 
   build:migrate:
     desc: Build the migration runner
@@ -1369,7 +1358,7 @@ tasks:
     vars:
       # A volume of their own, not the testbed's certs volume: it holds the
       # internal CA's key, and the reference servers mount testbed_certs whole.
-      # Only certgen mounts it read-write; each service's `up` copies out the
+      # Only `instance mtls-issue` mounts it read-write; each service's `up` copies out the
       # files that service needs (tasks/stage-certs.sh), so none mounts it (#193).
       INTERNAL_MTLS_VOLUME: '{{.RESTMAIL_PROJECT}}-internal-mtls'
       # tls.internal.ca_source (render.go → RESTMAIL_INTERNAL_CA_SOURCE) selects
@@ -1382,9 +1371,9 @@ tasks:
           testbed-certgen)
             # Default (testbed): mint a DEDICATED internal CA + an API server cert
             # (SANs cover the api container IP + localhost + the instance hostname)
-            # + a gateway client cert into the internal mTLS volume, using the
-            # in-repo certgen (built inside a golang container so it is arch-correct
-            # for the volume). Idempotent: an existing internal CA is reused and
+            # + a gateway client cert into the internal mTLS volume, using
+            # `instance mtls-issue` (built inside a golang container so it is
+            # arch-correct for the volume). Idempotent: an existing internal CA is reused and
             # leaves already present are skipped, so it is safe to re-run and safe to
             # run even when the instance has not enabled internal mTLS (the certs
             # simply go unused).
@@ -1395,9 +1384,9 @@ tasks:
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.25 \
-              go run ./cmd/certgen --internal-mtls --out /internal-mtls \
-                --server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
-                --server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}
+              go run ./cmd/instance mtls-issue -out /internal-mtls \
+                -server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
+                -server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}
             ;;
           manual)
             # The deployer provisions the internal trust domain out of band (their
