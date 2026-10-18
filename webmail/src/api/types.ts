@@ -7215,6 +7215,15 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description `bad_request` when the body does not decode as the request: empty, not JSON, an array, a string, a number or a boolean rather than an object, or a `filter_name` or `email` of the wrong JSON type. It is refused before the required fields are checked and before any filter is made; `{}` and a `null` body decode as empty ones and get a 422 instead. A body that decodes is also refused with a 400, `filter_error`, when the named filter cannot be made from its config or fails on the email. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     listPipelineLogs: {
