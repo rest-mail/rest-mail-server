@@ -506,6 +506,7 @@ tasks:
       - go build -o build/tools/certgen ./cmd/certgen
     sources:
       - cmd/certgen/**/*.go
+      - internal/acme/**/*.go
       - go.mod
       - go.sum
     generates:
@@ -1330,10 +1331,32 @@ tasks:
               done
             ' _ "{{.CERT_SANS}}"
             ;;
-          acme|letsencrypt|letsencrypt-http01|letsencrypt-dns01)
-            echo "cert_provider={{.CERT_PROVIDER}}: ACME/Let's Encrypt issuance is not yet implemented (PR5 wires the tls.acme: manifest fields through; the ACME client is a later PR)." >&2
-            echo "  Use cert_provider: manual (drop cert/key into the certs volume) or testbed-certgen (the testbed reference CA) for now." >&2
-            echo "  Declared SAN set: {{.CERT_SANS}}" >&2
+          acme|letsencrypt|letsencrypt-http01)
+            # One-shot ACME HTTP-01 issuance (internal/acme.Issue via certgen
+            # --acme): one cert covering every CERT_SANS name, written to
+            # <primary>.{crt,key} in the certs volume, exactly where the manual
+            # provider expects it, so everything downstream is unchanged. The
+            # CA validates each name over http://<name>:80, so every SAN must
+            # resolve to this host and port 80 must be free and reachable while
+            # it runs. tls.acme.staging: true uses Let's Encrypt staging (and
+            # overrides tls.acme.directory). Re-running re-issues; renewal is
+            # re-running this task.
+            docker run --rm \
+              -p 80:80 \
+              -v "{{.CERTS_VOLUME}}:/certs" \
+              -v "{{.ROOT_DIR}}:/src" -w /src \
+              -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+              -v rest-mail-e2e-gocache:/root/.cache/go-build \
+              -e GOFLAGS=-buildvcs=false \
+              golang:1.25 \
+              go run ./cmd/certgen --acme --out /certs --acme-listen :80 \
+                --domains "{{.CERT_SANS}}" \
+                --acme-email "{{.RESTMAIL_TLS_ACME_EMAIL | default ""}}" \
+                --acme-directory "{{.RESTMAIL_TLS_ACME_DIRECTORY | default ""}}" \
+                --acme-staging="{{.RESTMAIL_TLS_ACME_STAGING | default "false"}}"
+            ;;
+          letsencrypt-dns01)
+            echo "cert_provider={{.CERT_PROVIDER}}: DNS-01 issuance is not implemented yet; use cert_provider: acme (HTTP-01, needs port 80) or manual." >&2
             exit 2
             ;;
           *)

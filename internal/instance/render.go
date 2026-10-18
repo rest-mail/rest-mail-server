@@ -126,11 +126,11 @@ type Manifest struct {
 //     autoconfig/autodiscover, mta-sts, or a vanity submission host. They are
 //     purely cert SANs: unlike `domains:` entries they get NO DB row, DKIM key
 //     or DNS provisioning. See CertSANHostnames().
-//   - ACME declares how a public CA (Let's Encrypt-style) would issue the cert.
-//     PR5 wires these fields through so they are declarable and the
-//     `cert_provider` seam exists; the ACME client itself is NOT implemented in
-//     this PR (see the `instance:certs:issue` task — the `acme`/`letsencrypt`
-//     providers return a "not yet implemented" error).
+//   - ACME holds the inputs of the `acme`/`letsencrypt` cert_provider: the
+//     `instance:certs:issue` task issues one cert covering CertSANHostnames()
+//     by ACME HTTP-01 (`certgen --acme`, internal/acme.Issue), with Email as
+//     the account contact and Staging (Let's Encrypt staging) or Directory as
+//     the CA. DNS-01 (`letsencrypt-dns01`) is not implemented yet.
 type TLS struct {
 	ExtraHostnames []string `yaml:"extra_hostnames"`
 	ACME           ACME     `yaml:"acme"`
@@ -559,9 +559,8 @@ func Render(m *Manifest) ([]byte, error) {
 	//     (additional domains and/or extra hostnames); `task instance:certs:issue`
 	//     consumes it, falling back to RESTMAIL_HOSTNAME for the single-domain
 	//     default — byte-identical to before.
-	//   - RESTMAIL_TLS_ACME_*           the declarative ACME inputs, wired through so
-	//     the cert_provider seam is complete; the ACME client is not implemented
-	//     in PR5.
+	//   - RESTMAIL_TLS_ACME_*           the ACME inputs `task instance:certs:issue`
+	//     passes to `certgen --acme` when cert_provider is acme/letsencrypt.
 	if len(m.TLS.ExtraHostnames) > 0 {
 		iv("TLS_EXTRA_HOSTNAMES", strings.Join(m.TLS.ExtraHostnames, ","))
 	}
