@@ -214,7 +214,7 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 		DomainID  uint            `json:"domain_id"`
 		Direction string          `json:"direction"`
 		Filters   json.RawMessage `json:"filters"`
-		Active    bool            `json:"active"`
+		Active    *bool           `json:"active"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -246,15 +246,25 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 		DomainID:  req.DomainID,
 		Direction: req.Direction,
 		Filters:   req.Filters,
-		Active:    req.Active,
+		Active:    true,
+	}
+	if req.Active != nil {
+		p.Active = *req.Active
 	}
 
-	if err := h.db.Create(&p).Error; err != nil {
+	// A non-nil pointer keeps GORM from replacing explicit false with the
+	// model's default:true. Overlay it for this single insert only; other
+	// creation paths retain the model default, with no follow-up update needed.
+	row := struct {
+		models.Pipeline
+		Active *bool
+	}{Pipeline: p, Active: &p.Active}
+	if err := h.db.Table(p.TableName()).Create(&row).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create pipeline")
 		return
 	}
 
-	respond.Data(w, http.StatusCreated, p)
+	respond.Data(w, http.StatusCreated, row.Pipeline)
 }
 
 // UpdatePipeline updates a pipeline's configuration.
