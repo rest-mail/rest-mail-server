@@ -15,6 +15,8 @@ import os
 import subprocess
 import tempfile
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 
 import vertrag_hooks as hooks
@@ -175,6 +177,60 @@ def wait_for_the_trace(transaction):
     # (internal/trace/recorder.go); the testbed keeps every one
     # (TRACE_SAMPLE_RATE=1 in tasks/api.yml).
     time.sleep(1)
+
+
+def created_folder_path(transaction):
+    body = hooks.get_json(transaction)
+    name = body.get("name") if isinstance(body, dict) else None
+    if not isinstance(name, str) or not name:
+        return None
+    return transaction["fullPath"].split("?")[0] + "/" + urllib.parse.quote(name, safe="")
+
+
+@hooks.before("createFolder")
+def remove_a_previous_folder_probe(transaction):
+    # Valid probes repeat the example's name. Only reuse destinations that
+    # were absent before this operation tried them, leaving requests untouched:
+    # rewriting its body would make vertrag skip the boundary being tested.
+    path = created_folder_path(transaction)
+    parent = transaction["fullPath"].split("?")[0]
+    account_id = parent.split("/")[-2]
+    if not path or not account_id.isdecimal() or int(account_id) < 1:
+        return
+    created = hooks.stash.get("created_folders", {})
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Authorization": basic(ADMIN, ADMIN_PASSWORD)}
+    if path not in created:
+        # Coverage runs before hooks only. Remember an absent destination
+        # before sending it, rather than relying on an after hook to run.
+        request = urllib.request.Request(origin + parent, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                existing = json.load(response).get("data") or []
+        except urllib.error.HTTPError as error:
+            if error.code in (400, 403, 404):
+                return  # Leave an invalid account ID for the real probe.
+            raise
+        name = hooks.get_json(transaction)["name"]
+        if name in ("INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"):
+            return
+        if any(folder.get("name") == name for folder in existing):
+            return
+        created[path] = True
+        hooks.stash["created_folders"] = created
+        return
+    request = urllib.request.Request(
+        origin + path,
+        headers=headers,
+        method="DELETE",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not remove the previous folder probe")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
 
 
 @hooks.before("renameFolder")
