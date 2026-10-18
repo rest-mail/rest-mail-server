@@ -67,6 +67,10 @@ dependency: it needs Go 1.26 and this module is on 1.25.
 - `gate.py`: the gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
+- `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
+  topology before the contract run. Its next attempt is held for 24 hours so
+  the background worker cannot deliver it before the retry example. This does
+  not change the product's retry rules or any coverage exclusion.
 - `../e2e/contract_principals_test.go`: the principals, written to
   `.cache/contract-principals.json`.
 
@@ -104,6 +108,7 @@ Against a topology that is up (`chore e2e:up`, then `chore test:e2e` for the
 principals):
 
 ```sh
+chore test:contract-fixtures
 vertrag doctor                          # sends nothing: does every setting reach something?
 mkdir -p .cache/contract                # the report's directory; vertrag makes none
 vertrag run --sequence --phases coverage
