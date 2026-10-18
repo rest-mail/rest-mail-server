@@ -184,6 +184,10 @@ jobs:
           rm -rf "$tmp"
           vertrag version
 
+      - name: Prepare stable contract queue state
+        if: inputs.contract-phases == 'gate' || inputs.contract-phases == 'fuzz'
+        run: chore test:contract-fixtures
+
       - name: Contract tests (examples and coverage)
         # Every operation in openapi.yaml, sent as the fixture admin against the
         # topology the stages above just exercised, ordered by the spec's links
