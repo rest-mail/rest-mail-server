@@ -53,10 +53,11 @@ export function Sidebar() {
       {/* Logo/Brand */}
       <div className="h-16 px-6 flex items-center border-b border-[var(--gray-border)]">
         <h1
-          className="text-xl font-bold tracking-tight"
+          className="flex items-center gap-2 text-xl font-bold tracking-tight"
           style={{ fontFamily: "'Space Grotesk', sans-serif" }}
         >
-          RestMail Admin
+          <img src="/favicon.svg" alt="" className="w-7 h-7" />
+          REST Mail Admin
         </h1>
       </div>
 

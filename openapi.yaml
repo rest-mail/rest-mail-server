@@ -3114,6 +3114,10 @@ paths:
               source_missing:
                 value:
                   destination_address: admin@restmail.test
+              # JSON, but an array where the request is an object: refused
+              # when it is read, before any field is looked at.
+              body_array:
+                value: []
       responses:
         "201":
           description: Alias created
@@ -3148,6 +3152,18 @@ paths:
               operationId: deleteAlias
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: The body is not a JSON object of the request's fields (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:
@@ -3268,6 +3284,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePipelineRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  domain_id: 1
+                  direction: inbound
+                  filters:
+                    - name: header_validate
+                      config: {}
+              # No direction: refused before anything is stored.
+              direction_missing:
+                value:
+                  domain_id: 1
+                  filters:
+                    - name: header_validate
+                      config: {}
       responses:
         "201":
           description: Pipeline created
@@ -3279,6 +3312,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Pipeline"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      direction: inbound
+                      filters:
+                        - name: header_validate
+                          config: {}
+                      active: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             updatePipeline:
               operationId: updatePipeline
@@ -3289,7 +3335,20 @@ paths:
               parameters:
                 id: '$response.body#/data/id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                direction_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          direction: must be 'inbound' or 'outbound'
 
   /api/v1/admin/pipelines/{id}:
     parameters:
@@ -3584,11 +3643,22 @@ paths:
                 email:
                   type: object
                   description: Optional sample email passed through to the sidecar
-            example:
-              script: |
-                function filter(email) {
-                  return { action: "continue" };
-                }
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              valid:
+                value:
+                  script: |
+                    function filter(email) {
+                      return { action: "continue" };
+                    }
+              # No script: refused before the sidecar is asked.
+              script_missing:
+                value: {}
+              # Not an object at all: refused before the body is read for a
+              # script.
+              body_array:
+                value: []
       responses:
         "200":
           description: >-
@@ -3599,8 +3669,39 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              examples:
+                # The sidecar's answer for a script that compiles, sent with no
+                # sample email to dry-run it on.
+                valid:
+                  value:
+                    valid: true
+        "400":
+          description: The body is not a JSON object, or a field has the wrong type (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                script_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          script: required
         "503":
           description: >-
             JS filter sidecar unavailable, or it refused the API's token
@@ -4147,9 +4248,17 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateSenderRuleRequest"
-            example:
-              pattern: spam@spammer.example.com
-              reason: Sends spam
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  pattern: spam@spammer.example.com
+                  reason: Sends spam
+              # No pattern: refused before anything is looked up or stored.
+              pattern_missing:
+                value:
+                  reason: Sends spam
       responses:
         "201":
           description: Entry added
@@ -4161,6 +4270,16 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      pattern: spam@spammer.example.com
+                      list_type: block
+                      reason: Sends spam
+                      created_at: "2026-01-01T00:00:00Z"
           links:
             removeFromBlocklist:
               operationId: removeFromBlocklist
@@ -4169,6 +4288,21 @@ paths:
                 eid: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                pattern_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          pattern: required
 
   /api/v1/admin/domains/{id}/blocklist/{eid}:
     parameters:
@@ -4449,12 +4583,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateBanRequest"
-            example:
-              ip: 192.0.2.10
-              reason: Repeated failed sign-ins
-              protocol: all
-              duration: 1h
-              created_by: admin@restmail.test
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  ip: 192.0.2.10
+                  reason: Repeated failed sign-ins
+                  protocol: all
+                  duration: 1h
+                  created_by: admin@restmail.test
+              # No IP: refused before anything is looked up or stored.
+              ip_missing:
+                value:
+                  reason: Repeated failed sign-ins
+                  protocol: all
+                  duration: 1h
+                  created_by: admin@restmail.test
       responses:
         "201":
           description: Ban created
@@ -4466,13 +4611,37 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Ban"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      ip: 192.0.2.10
+                      reason: Repeated failed sign-ins
+                      protocol: all
+                      created_by: admin@restmail.test
+                      expires_at: "2026-01-01T01:00:00Z"
+                      created_at: "2026-01-01T00:00:00Z"
           links:
             deleteBan:
               operationId: deleteBan
               parameters:
                 id: '$response.body#/data/id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                ip_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ip: IP address is required
 
   /api/v1/admin/bans/{id}:
     parameters:

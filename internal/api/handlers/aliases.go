@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -60,6 +61,14 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(errors) > 0 {
 		respond.ValidationError(w, errors)
+		return
+	}
+
+	// The source must be one mail address, as the spec's format: email says,
+	// before its domain is looked up (#388): an "@" alone let "@domain",
+	// "local@", two addresses and CR/LF-injected values through.
+	if rmail.ValidateAddress(req.SourceAddress) != nil {
+		respond.ValidationError(w, map[string]string{"source_address": "must be a valid email address"})
 		return
 	}
 
