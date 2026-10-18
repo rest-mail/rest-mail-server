@@ -1583,6 +1583,12 @@ paths:
         - BearerAuth: [mail:send]
         - BasicAuth: [mail:send]
       summary: Compose and send a new message
+      description: >-
+        The sender domain's `sending_policy` decides whether the message
+        carries `list_unsubscribe`: a `bulk` domain's message without it is
+        refused with 422 `list_unsubscribe_required`, and a `transactional`
+        domain's message with it is refused with 422
+        `list_unsubscribe_not_allowed`. With no policy, either is sent.
       requestBody:
         required: true
         content:
@@ -2841,6 +2847,12 @@ paths:
                 value:
                   name: example.org
                   server_type: external
+              # A sending policy that is not one: refused the same way.
+              sending_policy_invalid:
+                value:
+                  name: example.org
+                  server_type: restmail
+                  sending_policy: newsletter
       responses:
         "201":
           description: Domain created, not yet live
@@ -2861,6 +2873,7 @@ paths:
                       server_type: restmail
                       active: false
                       default_quota_bytes: 0
+                      sending_policy: ""
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
           links:
@@ -2943,6 +2956,14 @@ paths:
                       details:
                         fields:
                           server_type: "must be 'traditional' or 'restmail'"
+                sending_policy_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          sending_policy: must be 'transactional', 'bulk' or empty
 
   /api/v1/admin/domains/{id}:
     parameters:
@@ -2978,7 +2999,9 @@ paths:
         Setting `active` to true makes the domain live, and is refused with 409
         `certificate_required` unless the domain has a currently valid
         certificate: mail for it is only ever carried over TLS. Setting `active`
-        to false takes it out of service and is always allowed.
+        to false takes it out of service and is always allowed. Setting
+        `sending_policy` to `""` clears it; any value other than
+        `transactional`, `bulk` or `""` is refused with 422 `validation_failed`.
       requestBody:
         required: true
         content:
@@ -3004,6 +3027,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]
@@ -7888,7 +7913,7 @@ components:
     # ─────────────────────────────────────────────────────────────
     Domain:
       type: object
-      required: [id, name, server_type, active, default_quota_bytes, created_at, updated_at]
+      required: [id, name, server_type, active, default_quota_bytes, sending_policy, created_at, updated_at]
       properties:
         id:
           type: integer
@@ -7904,6 +7929,8 @@ components:
           format: int64
         dkim_selector:
           type: string
+        sending_policy:
+          $ref: "#/components/schemas/DomainSendingPolicy"
         created_at:
           type: string
           format: date-time
@@ -7923,6 +7950,8 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+        sending_policy:
+          $ref: "#/components/schemas/DomainSendingPolicy"
 
     UpdateDomainRequest:
       type: object
@@ -7932,6 +7961,22 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+        sending_policy:
+          $ref: "#/components/schemas/DomainSendingPolicy"
+
+    DomainSendingPolicy:
+      type: string
+      enum: ["", transactional, bulk]
+      description: >
+        What the send API expects of the domain's mail (RFC 2369, RFC 8058).
+        `transactional`: mail one person asked for, such as receipts and
+        password resets; it carries no List-Unsubscribe field, so a send with
+        `list_unsubscribe` is refused with 422 `list_unsubscribe_not_allowed`.
+        `bulk`: mail sent to a list, which receivers such as Gmail and Yahoo
+        expect to say how to unsubscribe; a send without `list_unsubscribe` is
+        refused with 422 `list_unsubscribe_required`. Empty: no rule, either is
+        sent. The policy applies to the send API; SMTP submission, draft send
+        and forward are not checked.
 
     # ─────────────────────────────────────────────────────────────
     # Mailbox

@@ -557,7 +557,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Compose and send a new message */
+        /**
+         * Compose and send a new message
+         * @description The sender domain's `sending_policy` decides whether the message carries `list_unsubscribe`: a `bulk` domain's message without it is refused with 422 `list_unsubscribe_required`, and a `transactional` domain's message with it is refused with 422 `list_unsubscribe_not_allowed`. With no policy, either is sent.
+         */
         post: operations["sendMessage"];
         delete?: never;
         options?: never;
@@ -1232,7 +1235,7 @@ export interface paths {
         head?: never;
         /**
          * Update a domain
-         * @description Setting `active` to true makes the domain live, and is refused with 409 `certificate_required` unless the domain has a currently valid certificate: mail for it is only ever carried over TLS. Setting `active` to false takes it out of service and is always allowed.
+         * @description Setting `active` to true makes the domain live, and is refused with 409 `certificate_required` unless the domain has a currently valid certificate: mail for it is only ever carried over TLS. Setting `active` to false takes it out of service and is always allowed. Setting `sending_policy` to `""` clears it; any value other than `transactional`, `bulk` or `""` is refused with 422 `validation_failed`.
          */
         patch: operations["updateDomain"];
         trace?: never;
@@ -3238,6 +3241,7 @@ export interface components {
             /** Format: int64 */
             default_quota_bytes: number;
             dkim_selector?: string;
+            sending_policy: components["schemas"]["DomainSendingPolicy"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3249,12 +3253,19 @@ export interface components {
             server_type: "traditional" | "restmail";
             /** Format: int64 */
             default_quota_bytes?: number;
+            sending_policy?: components["schemas"]["DomainSendingPolicy"];
         };
         UpdateDomainRequest: {
             active?: boolean;
             /** Format: int64 */
             default_quota_bytes?: number;
+            sending_policy?: components["schemas"]["DomainSendingPolicy"];
         };
+        /**
+         * @description What the send API expects of the domain's mail (RFC 2369, RFC 8058). `transactional`: mail one person asked for, such as receipts and password resets; it carries no List-Unsubscribe field, so a send with `list_unsubscribe` is refused with 422 `list_unsubscribe_not_allowed`. `bulk`: mail sent to a list, which receivers such as Gmail and Yahoo expect to say how to unsubscribe; a send without `list_unsubscribe` is refused with 422 `list_unsubscribe_required`. Empty: no rule, either is sent. The policy applies to the send API; SMTP submission, draft send and forward are not checked.
+         * @enum {string}
+         */
+        DomainSendingPolicy: "" | "transactional" | "bulk";
         /** @description An account, as the admin API shows it: a mailbox is the account. Its passwords, authenticators and app passwords are its credentials, never shown here; what it may do is its grants (/api/v1/admin/grants). */
         Mailbox: {
             id: number;
@@ -6699,6 +6710,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     listMailboxes: {

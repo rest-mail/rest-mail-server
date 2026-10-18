@@ -92,7 +92,17 @@ type createDomainRequest struct {
 	Name              string `json:"name"`
 	ServerType        string `json:"server_type"`
 	DefaultQuotaBytes *int64 `json:"default_quota_bytes"`
+	SendingPolicy     string `json:"sending_policy"`
 }
+
+// validSendingPolicy reports whether p is a sending policy a domain may have:
+// transactional, bulk, or empty for none (#144).
+func validSendingPolicy(p string) bool {
+	return p == "" || p == models.SendingPolicyTransactional || p == models.SendingPolicyBulk
+}
+
+// sendingPolicyInvalid is the validation message for any other value.
+const sendingPolicyInvalid = "must be 'transactional', 'bulk' or empty"
 
 func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createDomainRequest
@@ -122,15 +132,20 @@ func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"server_type": "must be 'traditional' or 'restmail'"})
 		return
 	}
+	if !validSendingPolicy(req.SendingPolicy) {
+		respond.ValidationError(w, map[string]string{"sending_policy": sendingPolicyInvalid})
+		return
+	}
 
 	// A domain is set up in stages and is not live until it has a certificate of
 	// its own: mail is only ever carried over TLS, and a live domain with no
 	// certificate cannot be served (issue #289). Making it live is a separate
 	// request, refused while there is no certificate to serve it with.
 	domain := models.Domain{
-		Name:       req.Name,
-		ServerType: req.ServerType,
-		Active:     false,
+		Name:          req.Name,
+		ServerType:    req.ServerType,
+		Active:        false,
+		SendingPolicy: req.SendingPolicy,
 	}
 	if req.DefaultQuotaBytes != nil {
 		domain.DefaultQuotaBytes = *req.DefaultQuotaBytes
@@ -183,8 +198,9 @@ func (h *DomainHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateDomainRequest struct {
-	Active            *bool  `json:"active"`
-	DefaultQuotaBytes *int64 `json:"default_quota_bytes"`
+	Active            *bool   `json:"active"`
+	DefaultQuotaBytes *int64  `json:"default_quota_bytes"`
+	SendingPolicy     *string `json:"sending_policy"`
 }
 
 func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -231,6 +247,15 @@ func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DefaultQuotaBytes != nil {
 		updates["default_quota_bytes"] = *req.DefaultQuotaBytes
+	}
+	// An empty string clears the policy; it is a value here, not "unchanged",
+	// so the map (not the struct) carries it to the update.
+	if req.SendingPolicy != nil {
+		if !validSendingPolicy(*req.SendingPolicy) {
+			respond.ValidationError(w, map[string]string{"sending_policy": sendingPolicyInvalid})
+			return
+		}
+		updates["sending_policy"] = *req.SendingPolicy
 	}
 
 	if len(updates) > 0 {
