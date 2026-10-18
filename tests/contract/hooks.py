@@ -147,12 +147,12 @@ def ask_for_the_created_domains_policy(transaction):
 @hooks.before("listQueue")
 def list_the_sent_messages_queue_entry(transaction):
     # The example asks for status=pending (the enum's first value), and the
-    # queue worker takes the entry sendMessage queued within a second: the
-    # list came back empty, and its links had no id. Ask by the example's
-    # recipient instead, whatever the entry's status. Only the example: the
-    # probes keep their own queries.
+    # queue worker can already have delivered sendMessage's entry when retry
+    # runs. The disposable topology prepares a separate deferred entry, held
+    # until tomorrow, for the linked queue examples. Only the pending example
+    # is redirected; invalid boundary queries and caller credentials stay intact.
     if transaction.get("fullPath", "").endswith("/api/v1/admin/queue?status=pending"):
-        transaction["fullPath"] = "/api/v1/admin/queue?recipient=someone%40imap.restmail.test"
+        transaction["fullPath"] = "/api/v1/admin/queue?recipient=contract-retry%40retry.invalid"
 
 
 @hooks.before("getMessageTrace")
