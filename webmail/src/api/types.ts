@@ -7242,11 +7242,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-                 *     }
-                 */
                 "application/json": {
                     /** @description JavaScript filter source to validate */
                     script: string;
@@ -7267,7 +7262,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
             /** @description JS filter sidecar unavailable, or it refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar) */
             503: {
                 headers: {
