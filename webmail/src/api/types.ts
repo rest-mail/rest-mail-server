@@ -8051,6 +8051,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description `bad_request`, before the domain is looked up: "Invalid request body" when the body is not JSON, is not an object (an array, a string, a number or a boolean), or holds a field of the wrong type; "domain_id, cert_pem, and key_pem are required" when the body (or a `null` one) leaves domain_id missing or 0, or cert_pem or key_pem missing or empty. A cert_pem that is not a PEM certificate is refused with `bad_request` too, after the domain is found. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             422: components["responses"]["ValidationError"];
         };
     };

@@ -4444,6 +4444,32 @@ paths:
               operationId: getCertificate
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: >
+            `bad_request`, before the domain is looked up: "Invalid request
+            body" when the body is not JSON, is not an object (an array, a
+            string, a number or a boolean), or holds a field of the wrong type;
+            "domain_id, cert_pem, and key_pem are required" when the body
+            (or a `null` one) leaves domain_id missing or 0, or cert_pem or
+            key_pem missing or empty. A cert_pem that is not a PEM certificate
+            is refused with `bad_request` too, after the domain is found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_body:
+                  summary: Not JSON, not an object, or a field of the wrong type
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                fields_missing:
+                  summary: domain_id, cert_pem or key_pem missing or empty
+                  value:
+                    error:
+                      code: bad_request
+                      message: domain_id, cert_pem, and key_pem are required
         "422":
           $ref: "#/components/responses/ValidationError"
 
