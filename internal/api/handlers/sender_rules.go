@@ -28,7 +28,7 @@ func NewSenderRuleHandler(db *gorm.DB) *SenderRuleHandler {
 // GET /api/v1/admin/domains/{id}/allowlist
 func (h *SenderRuleHandler) ListAllowlist(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
@@ -53,7 +53,7 @@ type addSenderRuleRequest struct {
 // POST /api/v1/admin/domains/{id}/allowlist
 func (h *SenderRuleHandler) AddToAllowlist(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
@@ -99,7 +99,7 @@ func (h *SenderRuleHandler) AddToAllowlist(w http.ResponseWriter, r *http.Reques
 // DELETE /api/v1/admin/domains/{id}/allowlist/{eid}
 func (h *SenderRuleHandler) RemoveFromAllowlist(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
@@ -131,7 +131,7 @@ func (h *SenderRuleHandler) RemoveFromAllowlist(w http.ResponseWriter, r *http.R
 // GET /api/v1/admin/domains/{id}/blocklist
 func (h *SenderRuleHandler) ListBlocklist(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
@@ -151,7 +151,7 @@ func (h *SenderRuleHandler) ListBlocklist(w http.ResponseWriter, r *http.Request
 // POST /api/v1/admin/domains/{id}/blocklist
 func (h *SenderRuleHandler) AddToBlocklist(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
@@ -197,7 +197,7 @@ func (h *SenderRuleHandler) AddToBlocklist(w http.ResponseWriter, r *http.Reques
 // DELETE /api/v1/admin/domains/{id}/blocklist/{eid}
 func (h *SenderRuleHandler) RemoveFromBlocklist(w http.ResponseWriter, r *http.Request) {
 	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
+	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
