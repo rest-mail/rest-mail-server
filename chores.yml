@@ -1175,12 +1175,44 @@ tasks:
           {{.CERTGEN_IMAGE}}:{{.CERTGEN_TAG}}
 
   website:init:
-    desc: First-run only — clone rest-mail/website into .workspace/website
-    status:
-      - test -d .workspace/website/.git
+    desc: Clone and validate the upstream website working copy (master)
+    dotenv: []
     cmds:
-      - mkdir -p .workspace
-      - git clone git@github.com:rest-mail/website.git .workspace/website
+      - scripts/website.sh init
+
+  website:dev:
+    desc: Run upstream website live reload locally (npm ci then npm run dev)
+    dotenv: []
+    interactive: true
+    cmds:
+      - scripts/website.sh dev
+
+  website:edit:
+    desc: Open the website working copy in VISUAL or EDITOR (clone if missing)
+    dotenv: []
+    interactive: true
+    cmds:
+      - scripts/website.sh edit
+
+  website:push:
+    desc: Commit website edits and push its current branch to upstream (no force)
+    dotenv: []
+    args:
+      - {name: message, desc: commit message for staged and unstaged website edits}
+    vars:
+      MESSAGE: ''
+    cmds:
+      - scripts/website.sh push
+
+  website:reset:
+    desc: Reset the website branch to upstream master; refuses to discard local work by default
+    dotenv: []
+    args:
+      - {name: discard_local_work, type: bool, desc: "discard tracked edits, untracked files and local commits"}
+    vars:
+      DISCARD_LOCAL_WORK: ''
+    cmds:
+      - scripts/website.sh reset
 
   # ════════════════════════════════════════════════════════
   # Instances
