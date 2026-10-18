@@ -4568,6 +4568,15 @@ paths:
                   protocol: all
                   duration: 1h
                   created_by: admin@restmail.test
+              # A duration Go cannot parse: refused before anything is looked
+              # up or stored.
+              duration_invalid:
+                value:
+                  ip: 192.0.2.10
+                  reason: Repeated failed sign-ins
+                  protocol: all
+                  duration: not-a-duration
+                  created_by: admin@restmail.test
       responses:
         "201":
           description: Ban created
@@ -4610,6 +4619,14 @@ paths:
                       details:
                         fields:
                           ip: IP address is required
+                duration_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          duration: invalid duration format (e.g. 24h, 168h)
 
   /api/v1/admin/bans/{id}:
     parameters:

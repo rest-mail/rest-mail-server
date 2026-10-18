@@ -8146,15 +8146,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "ip": "192.0.2.10",
-                 *       "reason": "Repeated failed sign-ins",
-                 *       "protocol": "all",
-                 *       "duration": "1h",
-                 *       "created_by": "admin@restmail.test"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateBanRequest"];
             };
         };
