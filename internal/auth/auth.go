@@ -32,6 +32,14 @@ const (
 	CSRFHeaderName    = "X-CSRF-Token"
 )
 
+// Authentication methods a session's amr claim lists (RFC 8176): how the
+// session signed in. AMRPassword is a password; AMROTP is a second factor, a
+// TOTP code or a recovery code, on top of it.
+const (
+	AMRPassword = "pwd"
+	AMROTP      = "otp"
+)
+
 // TokenIssuer is the `iss` claim stamped into every minted token and the value
 // the parser pins on validation (#204 defense in depth). Beyond the HMAC-alg
 // pin, the exp check, and the access/refresh token_type separation, requiring a
@@ -39,24 +47,57 @@ const (
 // share this secret cannot be replayed here.
 const TokenIssuer = "restmail"
 
-// Claims represents the JWT claims for access and refresh tokens.
+// Claims are the JWT claims of an account's session, in its access and
+// refresh tokens. There is one kind of account (a mailbox), so one kind of
+// token: what the session may do is read from the account's grants on every
+// request (internal/grants), never from the token.
 type Claims struct {
 	jwt.RegisteredClaims
-	Email            string   `json:"email,omitempty"`              // For mailbox users
-	WebmailAccountID uint     `json:"webmail_account_id,omitempty"` // For mailbox users
-	MailboxID        uint     `json:"mailbox_id,omitempty"`         // For mailbox users
-	UserType         string   `json:"user_type"`                    // "mailbox" or "admin"
-	AdminUserID      uint     `json:"admin_user_id,omitempty"`      // For admin users
-	Username         string   `json:"username,omitempty"`           // For admin users
-	Capabilities     []string `json:"capabilities,omitempty"`       // For admin users
-	// SetupPending marks an admin session whose account is not finished setting
-	// up (a new password, a 2FA enrollment). It reaches only the self-service
-	// endpoints that finish the setup; AdminOnly refuses it everywhere else.
+	// AccountID is the account (mailbox) the session is for; Address is its
+	// address when the token was minted.
+	AccountID uint   `json:"account_id"`
+	Address   string `json:"address"`
+	// AMR is how the session signed in (AMRPassword, AMROTP), carried from the
+	// sign-in to every token refreshed from it.
+	AMR []string `json:"amr,omitempty"`
+	// TwoFactor marks a session whose sign-in took a second factor as well as
+	// the password: AMR holds AMROTP. A refresh keeps it.
+	TwoFactor bool `json:"mfa,omitempty"`
+	// SetupPending marks a session whose account is not finished setting up (a
+	// new password, a 2FA enrollment). It reaches only the self-service
+	// endpoints that finish the setup; everything else refuses it.
 	SetupPending bool `json:"setup,omitempty"`
 	// CredentialEpoch is the account's credential version when the token was
-	// minted (admin tokens); RejectStaleAdminSessions refuses an outdated one.
-	CredentialEpoch int    `json:"cep,omitempty"`
-	TokenType       string `json:"token_type"`
+	// minted; RejectStaleSessions refuses an outdated one.
+	CredentialEpoch int `json:"cep,omitempty"`
+	// SessionID is the session the token belongs to: minted at sign-in, in
+	// both tokens, and carried unchanged by every refresh, which gives each
+	// token a new jti. What lives as long as a session, such as a phone
+	// registered for push, is keyed on it. Every token has one: ValidateToken
+	// refuses a token without it.
+	SessionID string `json:"sid,omitempty"`
+	TokenType string `json:"token_type"`
+
+	// CredentialID and CredentialKind are the credential a request was made
+	// with over HTTP Basic: an app password, or the account's password through
+	// a protocol gateway. Zero for a session. They are never part of a token:
+	// only the API sets them, on claims it builds from a credential it has just
+	// checked.
+	CredentialID   uint   `json:"-"`
+	CredentialKind string `json:"-"`
+}
+
+// HasAMR reports whether the session signed in with method.
+func (c *Claims) HasAMR(method string) bool {
+	return hasMethod(c.AMR, method)
+}
+
+// MailboxOnly reports whether the request reaches only its own account's
+// mailbox: one made with an app password, whose scope is that mailbox (#344).
+// A session, or the account's own password, reaches whatever the account's
+// grants reach.
+func (c *Claims) MailboxOnly() bool {
+	return c.CredentialKind == "app_password"
 }
 
 // TokenPair contains both access and refresh tokens.
@@ -72,6 +113,40 @@ type TokenPair struct {
 	// RefreshExpiresAt is the refresh token's absolute expiry, surfaced so the
 	// ledger row can carry the same horizon for pruning. Not serialized.
 	RefreshExpiresAt time.Time `json:"-"`
+	// SessionID is the sid both tokens carry, for the ledger row. Not
+	// serialized: the client has it inside its tokens.
+	SessionID string `json:"-"`
+}
+
+// TokenOption adjusts the tokens a Generate method mints.
+type TokenOption func(*tokenOptions)
+
+type tokenOptions struct {
+	sessionID string
+	continued bool
+}
+
+// ContinueSession makes the tokens part of session sid, as a refresh does,
+// instead of a new session.
+func ContinueSession(sid string) TokenOption {
+	return func(o *tokenOptions) { o.sessionID, o.continued = sid, true }
+}
+
+// sessionFor is the sid the tokens get: the one ContinueSession names, or a
+// new one, as at sign-in. Continuing a session without a sid is an error: a
+// sid is only ever minted at sign-in.
+func sessionFor(opts []TokenOption) (string, error) {
+	var o tokenOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if !o.continued {
+		return newSessionID()
+	}
+	if o.sessionID == "" {
+		return "", errors.New("cannot continue a session without a sid")
+	}
+	return o.sessionID, nil
 }
 
 // JWTService handles JWT token creation and validation.
@@ -94,56 +169,57 @@ func NewJWTService(secret string, accessExpiry, refreshExpiry time.Duration) *JW
 	}
 }
 
-// GenerateTokenPair creates both access and refresh tokens for a mailbox user.
+// GenerateSession creates the tokens of an account's session at the account's
+// current credential epoch, so that a later reset or password change ends it
+// at once. amr is how it signed in. setupPending marks a session of an
+// account still in setup, on both tokens, so neither the access token nor
+// anything refreshed from it reaches more than finishing the setup.
+//
 // The refresh token carries a freshly minted jti (RegisteredClaims.ID) so the
-// caller can persist a rotation/revocation ledger row for it.
-func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAccountID uint) (*TokenPair, error) {
+// caller can persist a rotation/revocation ledger row for it. The access token
+// carries one of its own, which the audit log records as the session. Both
+// carry a new sid, or the one ContinueSession names.
+func (s *JWTService) GenerateSession(accountID uint, address string, epoch int, amr []string, setupPending bool, opts ...TokenOption) (*TokenPair, error) {
 	now := time.Now()
-
-	// Access token
-	accessClaims := Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   fmt.Sprintf("mailbox:%d", mailboxID),
-			Issuer:    s.issuer,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessExpiry)),
-		},
-		Email:            email,
-		WebmailAccountID: webmailAccountID,
-		MailboxID:        mailboxID,
-		UserType:         "mailbox",
-		TokenType:        "access",
+	sid, err := sessionFor(opts)
+	if err != nil {
+		return nil, err
+	}
+	claims := func(jti, tokenType string, expires time.Time) Claims {
+		return Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				ID:        jti,
+				Subject:   fmt.Sprintf("account:%d", accountID),
+				Issuer:    s.issuer,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(expires),
+			},
+			AccountID:       accountID,
+			Address:         address,
+			AMR:             amr,
+			TwoFactor:       hasMethod(amr, AMROTP),
+			SetupPending:    setupPending,
+			CredentialEpoch: epoch,
+			SessionID:       sid,
+			TokenType:       tokenType,
+		}
 	}
 
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
-	accessStr, err := accessToken.SignedString(s.secret)
+	accessJTI, err := newJTI()
+	if err != nil {
+		return nil, err
+	}
+	accessStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims(accessJTI, "access", now.Add(s.accessExpiry))).SignedString(s.secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign access token: %w", err)
 	}
 
-	// Refresh token
 	jti, err := newJTI()
 	if err != nil {
 		return nil, err
 	}
 	refreshExpiry := now.Add(s.refreshExpiry)
-	refreshClaims := Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        jti,
-			Subject:   fmt.Sprintf("mailbox:%d", mailboxID),
-			Issuer:    s.issuer,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(refreshExpiry),
-		},
-		Email:            email,
-		WebmailAccountID: webmailAccountID,
-		MailboxID:        mailboxID,
-		UserType:         "mailbox",
-		TokenType:        "refresh",
-	}
-
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
-	refreshStr, err := refreshToken.SignedString(s.secret)
+	refreshStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims(jti, "refresh", refreshExpiry)).SignedString(s.secret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign refresh token: %w", err)
 	}
@@ -154,90 +230,17 @@ func (s *JWTService) GenerateTokenPair(mailboxID uint, email string, webmailAcco
 		ExpiresIn:        int(s.accessExpiry.Seconds()),
 		RefreshJTI:       jti,
 		RefreshExpiresAt: refreshExpiry,
+		SessionID:        sid,
 	}, nil
 }
 
-// GenerateAdminTokenPair creates both access and refresh tokens for an admin user.
-func (s *JWTService) GenerateAdminTokenPair(adminUserID uint, username string, capabilities []string) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, capabilities, false, 0)
-}
-
-// GenerateAdminSession creates the tokens for an admin's session at the
-// account's current credential epoch, so that a later reset or password change
-// ends it at once.
-func (s *JWTService) GenerateAdminSession(adminUserID uint, username string, capabilities []string, epoch int) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, capabilities, false, epoch)
-}
-
-// GenerateSetupTokenPair creates tokens for an admin whose account is still in
-// setup: no capabilities, and the setup claim on both tokens, so neither the
-// access token nor anything refreshed from it reaches the admin API.
-func (s *JWTService) GenerateSetupTokenPair(adminUserID uint, username string, epoch int) (*TokenPair, error) {
-	return s.generateAdminTokenPair(adminUserID, username, nil, true, epoch)
-}
-
-func (s *JWTService) generateAdminTokenPair(adminUserID uint, username string, capabilities []string, setupPending bool, epoch int) (*TokenPair, error) {
-	now := time.Now()
-
-	// Access token
-	accessClaims := Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   fmt.Sprintf("admin:%d", adminUserID),
-			Issuer:    s.issuer,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessExpiry)),
-		},
-		UserType:        "admin",
-		AdminUserID:     adminUserID,
-		Username:        username,
-		Capabilities:    capabilities,
-		SetupPending:    setupPending,
-		CredentialEpoch: epoch,
-		TokenType:       "access",
+func hasMethod(amr []string, method string) bool {
+	for _, m := range amr {
+		if m == method {
+			return true
+		}
 	}
-
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
-	accessStr, err := accessToken.SignedString(s.secret)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign access token: %w", err)
-	}
-
-	// Refresh token
-	jti, err := newJTI()
-	if err != nil {
-		return nil, err
-	}
-	refreshExpiry := now.Add(s.refreshExpiry)
-	refreshClaims := Claims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        jti,
-			Subject:   fmt.Sprintf("admin:%d", adminUserID),
-			Issuer:    s.issuer,
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(refreshExpiry),
-		},
-		UserType:        "admin",
-		AdminUserID:     adminUserID,
-		Username:        username,
-		Capabilities:    capabilities,
-		SetupPending:    setupPending,
-		CredentialEpoch: epoch,
-		TokenType:       "refresh",
-	}
-
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
-	refreshStr, err := refreshToken.SignedString(s.secret)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign refresh token: %w", err)
-	}
-
-	return &TokenPair{
-		AccessToken:      accessStr,
-		RefreshToken:     refreshStr,
-		ExpiresIn:        int(s.accessExpiry.Seconds()),
-		RefreshJTI:       jti,
-		RefreshExpiresAt: refreshExpiry,
-	}, nil
+	return false
 }
 
 // newJTI returns a cryptographically random 128-bit token id, hex-encoded, used
@@ -251,7 +254,18 @@ func newJTI() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ValidateToken parses and validates a JWT token string.
+// newSessionID returns a new sid: 128 random bits, hex-encoded, like a jti. A
+// sid is minted only at sign-in, so no two sessions share one.
+func newSessionID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate session id: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// ValidateToken parses and validates a JWT token string. A token without a
+// sid belongs to no session, and is invalid.
 func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -272,7 +286,7 @@ func (s *JWTService) ValidateToken(tokenStr string) (*Claims, error) {
 	}
 
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.SessionID == "" {
 		return nil, ErrInvalidToken
 	}
 

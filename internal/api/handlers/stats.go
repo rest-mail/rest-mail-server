@@ -135,11 +135,11 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 // Postgres-only COUNT(*) FILTER) so the exact query the server runs is also
 // exercisable against a lightweight test database.
 //
-// "Auth pass" is defined as a stored Authentication-Results carrying spf=pass or
-// dkim=pass — the tokens the SPF and DKIM filters actually persist onto the raw
-// message (the dmarc verdict is computed but not written to the header). These
-// are precisely DMARC's inputs, so the split answers "did this plaintext message
-// carry a passing sender authentication result, or none at all?".
+// "Auth pass" is defined as a stored message carrying spf=pass or dkim=pass —
+// the tokens the Authentication-Results this server prepends holds for the SPF
+// and DKIM verdicts, which are DMARC's inputs, so the split answers "did this
+// plaintext message carry a passing sender authentication result, or none at
+// all?". It is a dashboard count: no filter or decision reads it.
 const inboundTransportSecuritySQL = `SELECT
 	COUNT(*) AS total_inbound_mx,
 	COALESCE(SUM(CASE WHEN received_tls THEN 1 ELSE 0 END), 0) AS over_tls,

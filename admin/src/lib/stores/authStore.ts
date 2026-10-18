@@ -1,10 +1,12 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { apiV1 } from '../api'
+import { apiV1, getCsrfToken } from '../api'
+import type { SetupSession, SetupStep } from '../../components/auth/AccountAccess'
 import type { SecondFactor } from '../twoFactor'
 
 interface User {
-  username: string
+  // The account's address: an admin is an account holding admin grants.
+  email: string
   capabilities: string[]
 }
 
@@ -21,6 +23,9 @@ interface AuthState {
   accessToken: string | null
   isAuthenticated: boolean
   isLoading: boolean
+  sessionChecked: boolean
+  setupRequired: SetupStep[]
+  acceptSession: (session: SetupSession) => void
   // totpRequired flips true when the API answered a login with a 2FA challenge
   // (error code "totp_required"); the login form then collects the second factor
   // and retries. It stays false for accounts without 2FA.
@@ -28,7 +33,7 @@ interface AuthState {
   error: string | null
 
   // Actions
-  login: (username: string, password: string, second?: SecondFactor) => Promise<void>
+  login: (email: string, password: string, second?: SecondFactor) => Promise<void>
   logout: () => void
   checkSession: () => Promise<void>
   setUser: (user: User | null) => void
@@ -45,10 +50,17 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       isAuthenticated: false,
       isLoading: false,
+      sessionChecked: false,
+      setupRequired: [],
+      acceptSession: (data) => set({
+        user: { email: data.user.email, capabilities: data.capabilities || [] },
+        accessToken: COOKIE_SESSION, isAuthenticated: true, sessionChecked: true,
+        setupRequired: data.setup_required || [], error: null, totpRequired: false,
+      }),
       totpRequired: false,
       error: null,
 
-      login: async (username: string, password: string, second?: SecondFactor) => {
+      login: async (email: string, password: string, second?: SecondFactor) => {
         set({ isLoading: true, error: null })
 
         try {
@@ -59,7 +71,7 @@ export const useAuthStore = create<AuthState>()(
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              username,
+              email,
               password,
               ...second,
             }),
@@ -83,12 +95,14 @@ export const useAuthStore = create<AuthState>()(
           // The access token was set as an httpOnly cookie by the API; the body
           // carries only identity + capabilities, never the token.
           const user: User = {
-            username,
+            email: data.user?.email || email,
             capabilities: data.capabilities || [],
           }
 
           set({
             user,
+            sessionChecked: true,
+            setupRequired: data.setup_required || [],
             accessToken: COOKIE_SESSION,
             isAuthenticated: true,
             isLoading: false,
@@ -116,15 +130,19 @@ export const useAuthStore = create<AuthState>()(
       // session is cleared so route guards send the user to /login.
       checkSession: async () => {
         try {
-          const response = await apiV1.request('/auth/refresh', { method: 'POST' })
+          const response = await fetch(apiV1.url('/auth/refresh'), {
+            method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': getCsrfToken() },
+          })
           if (response.ok) {
             const body = await response.json()
             const data = body.data || body
             set({
               user: {
-                username: data.user?.email || data.user?.display_name || '',
+                email: data.user?.email || '',
                 capabilities: data.capabilities || [],
               },
+              sessionChecked: true,
+              setupRequired: data.setup_required || [],
               accessToken: COOKIE_SESSION,
               isAuthenticated: true,
               error: null,
@@ -134,7 +152,7 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // fall through to unauthenticated
         }
-        set({ user: null, accessToken: null, isAuthenticated: false })
+        set({ user: null, accessToken: null, isAuthenticated: false, sessionChecked: true, setupRequired: [] })
       },
 
       logout: () => {
@@ -143,6 +161,7 @@ export const useAuthStore = create<AuthState>()(
         void apiV1.request('/auth/logout', { method: 'POST' })
         set({
           user: null,
+          setupRequired: [],
           accessToken: null,
           isAuthenticated: false,
           error: null,

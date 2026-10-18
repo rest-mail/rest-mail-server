@@ -14,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/mtls/mtlstest"
+	"github.com/restmail/restmail/internal/outbound"
 )
 
 // mockBackend is an in-memory Backend: it decides recipient locality and
@@ -42,10 +43,15 @@ type mockBackend struct {
 	checkErrAfter map[string]int
 	checkCount    map[string]int // per-address CheckMailbox invocation count
 
-	// loginErr, when non-nil, is returned by Login instead of verifying
+	// loginErr, when non-nil, is returned by SignIn instead of verifying
 	// credentials — used to simulate a transient API/network failure.
 	loginErr   error
-	loginCalls int // number of times Login was invoked (brute-force hard-stop assertions)
+	loginCalls int // number of times SignIn was invoked (brute-force hard-stop assertions)
+
+	// appPassword, when set, is an app password SignIn also accepts for user,
+	// signing in with credentialID.
+	appPassword  string
+	credentialID uint
 
 	delivered   []string                    // recorded successful local deliveries (by Address)
 	deliverReqs []*apiclient.DeliverRequest // full deliver requests, for asserting captured fields
@@ -66,25 +72,34 @@ func newMockBackend() *mockBackend {
 	}
 }
 
-func (m *mockBackend) Login(email, password string) (*apiclient.LoginResponse, error) {
+func (m *mockBackend) SignIn(email, password, _ string) (*apiclient.LoginResponse, error) {
 	m.mu.Lock()
 	m.loginCalls++
 	loginErr := m.loginErr
+	appPassword, credentialID := m.appPassword, m.credentialID
 	m.mu.Unlock()
 	if loginErr != nil {
 		return nil, loginErr
 	}
-	if email != m.user || password != m.pass {
+	resp := &apiclient.LoginResponse{}
+	switch {
+	case email == m.user && password == m.pass:
+		// The account's password: a credential too, of the kind that may send
+		// as the accounts it owns.
+		resp.Data.AccessToken = m.token
+		resp.Data.CredentialID, resp.Data.CredentialKind = 1, "password"
+	case email == m.user && appPassword != "" && password == appPassword:
+		resp.Data.AccessToken = "Basic app-password"
+		resp.Data.CredentialID, resp.Data.CredentialKind = credentialID, "app_password"
+	default:
 		return nil, &apiclient.APIError{StatusCode: 401, Body: "invalid credentials"}
 	}
-	resp := &apiclient.LoginResponse{}
-	resp.Data.AccessToken = m.token
 	resp.Data.User.ID = m.accountID
 	resp.Data.User.Email = email
 	return resp, nil
 }
 
-// loginCallCount returns how many times Login has been invoked.
+// loginCallCount returns how many times SignIn has been invoked.
 func (m *mockBackend) loginCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -148,12 +163,39 @@ type mockStore struct {
 
 	authorized map[string]bool // MAIL FROM address -> allowed for the account
 	authErr    error           // forced SenderAuthorized error
-	enqueueErr error           // forced EnqueueOutbound error
-	persistErr error           // forced PersistSubmittedMessage error
+	// unusable marks credentials CredentialUsable reports as revoked;
+	// credentialErr is a forced CredentialUsable error.
+	unusable      map[uint]bool
+	credentialErr error
+	enqueueErr    error // forced EnqueueOutbound error
+	persistErr    error // forced PersistSubmittedMessage error
+	prepareErr    error // forced PrepareSubmitted error
 
 	enqueued  []OutboundMessage
 	persisted []SubmittedMessage
+	prepared  int  // PrepareSubmitted calls
 	nextMsgID uint // assigned to the most recent persisted submission
+}
+
+// mockSignature is the DKIM-Signature PrepareSubmitted puts on a message.
+const mockSignature = "DKIM-Signature: v=1; a=rsa-sha256; d=mock; b=mock\r\n"
+
+// PrepareSubmitted strips the Bcc header as outbound.Prepare does, and signs
+// with mockSignature.
+func (s *mockStore) PrepareSubmitted(_, raw string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.prepared++
+	if s.prepareErr != nil {
+		return "", s.prepareErr
+	}
+	return mockSignature + outbound.StripBcc(raw), nil
+}
+
+func (s *mockStore) preparedCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.prepared
 }
 
 func newMockStore() *mockStore {
@@ -167,6 +209,15 @@ func (s *mockStore) SenderAuthorized(_ uint, from string) (bool, error) {
 		return false, s.authErr
 	}
 	return s.authorized[from], nil
+}
+
+func (s *mockStore) CredentialUsable(id uint) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.credentialErr != nil {
+		return false, s.credentialErr
+	}
+	return !s.unusable[id], nil
 }
 
 func (s *mockStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {

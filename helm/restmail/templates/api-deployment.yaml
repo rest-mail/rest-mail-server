@@ -28,6 +28,9 @@ spec:
       annotations:
         # Force redeploy when ConfigMap or Secret content changes.
         checksum/configmap: {{ include (print $.Template.BasePath "/api-configmap.yaml") . | sha256sum }}
+        {{- if and (eq .Values.api.attachments.storageType "s3") (not .Values.api.attachments.s3.existingSecret) }}
+        checksum/attachments-secret: {{ include (print $.Template.BasePath "/api-attachment-secret.yaml") . | sha256sum }}
+        {{- end }}
         {{- if not .Values.api.existingSecret }}
         checksum/secret: {{ include (print $.Template.BasePath "/api-secret.yaml") . | sha256sum }}
         {{- end }}
@@ -61,6 +64,19 @@ spec:
                 name: {{ include "restmail.componentName" (list . "api") }}
           env:
             {{- include "restmail.dbEnv" . | nindent 12 }}
+            {{- if eq .Values.api.attachments.storageType "s3" }}
+            {{- $attachmentSecret := .Values.api.attachments.s3.existingSecret | default (include "restmail.componentName" (list . "api-attachments-s3")) }}
+            - name: ATTACHMENT_S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $attachmentSecret }}
+                  key: ACCESS_KEY_ID
+            - name: ATTACHMENT_S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $attachmentSecret }}
+                  key: SECRET_ACCESS_KEY
+            {{- end }}
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -71,16 +87,33 @@ spec:
                 secretKeyRef:
                   name: {{ include "restmail.api.secretName" . }}
                   key: MASTER_KEY
-            # First superadmin of a fresh install, created only while no admin
-            # exists, and made to set a new password and enroll 2FA at first
-            # sign-in. Optional: a Secret without the key means no bootstrap admin.
-            - name: RESTMAIL_BOOTSTRAP_ADMIN_USERNAME
-              value: {{ .Values.api.bootstrapAdminUsername | default "admin" | quote }}
+            # The JS filter sidecar runs a script only for a caller with its
+            # token (#160); the API is that caller.
+            - name: JS_FILTER_URL
+              value: {{ include "restmail.jsFilter.url" . | quote }}
+            - name: JS_FILTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.api.secretName" . }}
+                  key: JS_FILTER_TOKEN
+            # The first account of a fresh install, admin@ the mail domain,
+            # made only while no admin exists, holding superadmin, and made to
+            # set a new password and enroll 2FA at first sign-in. Optional: a
+            # Secret without the password key means no bootstrap account.
+            - name: RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS
+              value: {{ printf "admin@%s" .Values.mailserver.domain | quote }}
             - name: RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "restmail.api.secretName" . }}
                   key: BOOTSTRAP_ADMIN_PASSWORD
+                  optional: true
+            # Or a bcrypt hash of it; the Secret holds one or the other.
+            - name: RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.api.secretName" . }}
+                  key: BOOTSTRAP_ADMIN_PASSWORD_HASH
                   optional: true
             {{- if .Values.internalMtls.enabled }}
             {{- include "restmail.internalMtls.serverEnv" . | nindent 12 }}
@@ -95,6 +128,11 @@ spec:
             {{- if .Values.api.attachments.persistence.enabled }}
             - name: attachments
               mountPath: /attachments
+            {{- end }}
+            {{- if .Values.api.push.apns.enabled }}
+            - name: apns-key
+              mountPath: /etc/restmail/apns
+              readOnly: true
             {{- end }}
           readinessProbe:
             httpGet:
@@ -113,9 +151,17 @@ spec:
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
       volumes:
+        # Only the CA certificate, for the API to trust the peers it issued
+        # (TRUSTED_CA_CERT reads /certs/ca.crt). The API serves no mail TLS, so
+        # it gets neither the gateways' key nor anything else the Secret holds;
+        # a Secret with no ca.crt leaves the directory empty.
         - name: tls
           secret:
             secretName: {{ .Values.tls.secretName }}
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca.crt
         {{- if .Values.internalMtls.enabled }}
         {{- include "restmail.internalMtls.volume" (list . "server") | nindent 8 }}
         {{- end }}
@@ -123,6 +169,17 @@ spec:
         - name: attachments
           persistentVolumeClaim:
             claimName: {{ include "restmail.componentName" (list . "api-attachments") }}
+        {{- end }}
+        {{- with .Values.api.push.apns }}
+        {{- if .enabled }}
+        # The APNs auth key, from a Secret the chart never makes.
+        - name: apns-key
+          secret:
+            secretName: {{ .existingSecret }}
+            items:
+              - key: {{ .secretKey }}
+                path: AuthKey.p8
+        {{- end }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

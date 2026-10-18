@@ -18,7 +18,7 @@ type Engine struct {
 	// to ActionDefer — fail-CLOSED — so a broken or removed security filter
 	// temp-fails the message (sender retries) rather than being silently skipped
 	// while the rest of the pipeline continues. Override via SetFilterErrorAction
-	// (ActionContinue restores the legacy fail-open behavior).
+	// (ActionContinue is the explicit fail-open choice).
 	filterErrorAction Action
 	// filterTimeout bounds how long a single filter's Execute may run before it
 	// is abandoned and treated as a filter error (routed through
@@ -66,8 +66,8 @@ func (e *Engine) SetFilterTimeout(d time.Duration) {
 }
 
 // SetFilterErrorAction overrides the action taken when a filter fails to
-// instantiate or execute (OSI-18). Valid values are ActionContinue (legacy
-// fail-open), ActionDefer (default, fail-closed temp-fail), and ActionReject;
+// instantiate or execute (OSI-18). Valid values are ActionContinue (fail-open:
+// skip the filter), ActionDefer (default, fail-closed temp-fail), and ActionReject;
 // any other value is ignored, leaving the secure default in place. Call once at
 // wiring time — it is not safe to change while Execute is running.
 func (e *Engine) SetFilterErrorAction(a Action) {
@@ -84,6 +84,10 @@ type ExecutionResult struct {
 	Steps       []StepResult  `json:"steps"`
 	RejectMsg   string        `json:"reject_message,omitempty"`
 	Duration    time.Duration `json:"duration_ms"`
+	// Auth holds the verdicts the authentication filters recorded, in order. The
+	// delivery handlers write the stored message's Authentication-Results from
+	// it (AuthResultsHeader).
+	Auth []AuthResult `json:"auth_results,omitempty"`
 }
 
 // StepResult records what happened at each pipeline step.
@@ -105,7 +109,15 @@ func (e *Engine) Execute(ctx context.Context, pipeline *PipelineConfig, email *E
 	result := &ExecutionResult{
 		FinalAction: ActionContinue,
 		FinalEmail:  email,
+		// Empty rather than nil: a pipeline with no enabled filters reports
+		// steps as [] (the API's array), never null.
+		Steps: []StepResult{},
 	}
+
+	// Every run starts with no verdicts: the authentication filters record theirs
+	// here, and the filters that act on them read only this.
+	auth := &AuthResults{}
+	ctx = WithAuthResults(ctx, auth)
 
 	// Build the list of active filters
 	skipSet := make(map[string]bool)
@@ -144,7 +156,7 @@ Loop:
 		// Create the filter instance. A create failure means an unknown, renamed,
 		// or removed filter (OSI-18): under the default fail-closed policy this
 		// defers the message rather than silently skipping what may be a security
-		// filter. Only ActionContinue (legacy fail-open) skips and moves on.
+		// filter. Only ActionContinue (the fail-open choice) skips and moves on.
 		filter, err := e.registry.Create(fc.Name, fc.Config)
 		if err != nil {
 			step.Error = fmt.Sprintf("create filter: %v", err)
@@ -153,7 +165,7 @@ Loop:
 			recordStep(step)
 			e.logger.Error("failed to create filter", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
 			if e.filterErrorAction == ActionContinue {
-				continue // legacy fail-open: skip filters that fail to instantiate
+				continue // fail-open: skip filters that fail to instantiate
 			}
 			result.FinalAction = e.filterErrorAction
 			result.RejectMsg = fmt.Sprintf("filter %q unavailable", fc.Name)
@@ -173,7 +185,7 @@ Loop:
 			recordStep(step)
 			e.logger.Error("filter execution failed", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
 			if e.filterErrorAction == ActionContinue {
-				continue // legacy fail-open
+				continue // fail-open
 			}
 			result.FinalAction = e.filterErrorAction
 			result.RejectMsg = fmt.Sprintf("filter %q failed", fc.Name)
@@ -225,6 +237,7 @@ Loop:
 	}
 
 	result.Duration = time.Since(start)
+	result.Auth = auth.List()
 	// One terminal observation per message, once the final action is known. A
 	// non-continue outcome breaks the loop immediately after recording its step,
 	// so the last recorded step IS the terminal step — hand it to the observer so

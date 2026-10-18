@@ -5,7 +5,7 @@ Four steps, whichever way you install:
 1. **Pick a method** — Helm, or Pulumi.
 2. **Install.** The installer makes the admin password and shows it to you once.
 3. **Verify.** Every install ends in `chore server:verify`.
-4. **Sign in** with the rest-mail app as `admin`, with that password.
+4. **Sign in** with the rest-mail app as `admin@<your mail domain>`, with that password.
 
 After that, the same tasks look after it: upgrade, back up, take it offline when
 something is wrong, uninstall. They are all [chore](https://github.com/antimatter-studios/chore)
@@ -45,11 +45,88 @@ The installer makes it, unless you bring one:
 The chart itself refuses to install without one, and will not invent one: a
 chart runs where there is nobody to show it to.
 
+**Shown as a QR code, and always as text.** Point your phone's camera at the
+QR code and it opens the rest-mail app with the server, the first account's
+address (`admin@<your mail domain>`) and the password filled in
+(`https://rest-mail.com/setup#server=…&address=…&password=…`; the details ride
+after the `#`, which no web server is sent). The link, server, address and
+password are printed beneath it every time, so a QR code that
+will not scan — a small font, a terminal that mangles it — never leaves you
+stuck. The QR code needs the `restmail` CLI (`brew install antimatter-studios/tap/restmail`)
+and a terminal at least about 55 columns wide; without either, you get the
+text alone. `chore password:reset` shows its new password the same way.
+
 It is the only way into a server nobody has signed in to. Using it makes you
 choose your own password and enroll an authenticator, after which it is of no
 further use — and it **expires 72 hours after the server first takes it**, so
 an abandoned install does not sit on the internet waiting for whoever finds
 the password. Lost or expired? `chore password:reset`.
+
+## Owner recovery key
+
+Register a public SSH key during installation so losing the administrator
+password does not remove your independent recovery path:
+
+```bash
+chore install:helm mail.example.com --owner-key ~/.ssh/restmail_owner.pub
+chore install:pulumi ~/infra mail.example.com --owner-key ~/.ssh/restmail_owner.pub
+```
+
+At a terminal, omitting `--owner-key` offers to create a dedicated Ed25519
+key pair, select an existing public file, or keep managed keys unchanged.
+Creation needs `ssh-keygen` and `python3` and asks OpenSSH for a passphrase
+directly on your terminal. The default files are `restmail_owner_ed25519`
+and `restmail_owner_ed25519.pub` in the directory where you ran chore. It
+refuses existing files, including symlinks; the private key is mode `0600`.
+Back up that private file securely and keep it out of source control. This
+operation runs on your machine; the private key is never uploaded.
+
+Select a key whose private half you control on your own machine. The installer
+validates the public file and shows its SHA-256 fingerprint, then registers it
+as initial Helm `api.ownerKeys` or Pulumi `<name>:ownerKeys`. The API imports
+these public keys into PostgreSQL only while its owner registry is empty.
+After enrollment the database is authoritative: recovery works after removing
+that configuration or moving the database to another deployment platform.
+Generated Pulumi programs pass the initial value to the chart. The installer does not choose a key from your SSH agent
+or promote a read-only status key. Pipelines do not prompt or create keys;
+use `--owner-key FILE.pub` or managed owner-key configuration. If no
+owner key is selected, it says recovery will require cluster administrator
+access; existing configured owner keys are preserved.
+
+To recover later, load the corresponding private key into `ssh-agent` and run:
+
+```bash
+ssh-add ./restmail_owner_ed25519   # or your existing private-key filename
+restmail reset-admin --server https://mail.example.com --address admin@example.com
+```
+
+The server verifies a fresh signed challenge against its registered owner
+public keys before issuing a short-lived, single-use reset token. Password
+changes do not remove this recovery authority. Keep a secure backup of the
+private key. If the password and every owner key are lost, the CLI cannot
+recover the account without trusted deployment administration access.
+
+An existing deployment upgrading to the database registry imports its current
+configured owner keys once. After that, changing initial configuration cannot
+replace owners or restore a revoked key. The registry is included in database
+backups; private keys remain on the owner machine.
+
+For an existing installation, use the API's trusted operator command with its
+normal database configuration, however it runs:
+
+```bash
+restmail-api owner-key add < ./new-owner.pub
+restmail-api owner-key list
+restmail-api owner-key revoke --fingerprint SHA256:...
+```
+
+These maintenance commands require control of the installation; no public API
+lets an anonymous visitor register an owner. Normal recovery still uses only
+the HTTPS API and the owner's private key, never Kubernetes or Docker access.
+Revocation is effective on every API replica at the next request. Revoked rows
+are retained, so a restart does not silently enroll the old key again. An
+explicit `owner-key add` can restore a revoked key. Do not rerun the installer
+over a live release.
 
 ## Helm
 
@@ -67,7 +144,7 @@ installs, waits for the pods, and runs `server:verify`.
 - `--values FILE` — everything else the chart takes: an ingress, a storage
   class, resources. Upgrades keep it.
 - `--version` — a chart version; the newest otherwise
-- `--password`, `--name`, `--namespace`
+- `--password`, `--owner-key FILE.pub`, `--name`, `--namespace`
 
 It installs once. If rest-mail is already there it says so and points you at
 `upgrade:helm` — an install over the top would put back its own defaults.
@@ -82,15 +159,22 @@ Chore owns your stack's config; you own the program. The only contract between
 them is five config keys, under the mail server's name:
 
 ```
-restmail:hostname      mail.example.com
-restmail:domain        example.com
-restmail:namespace     rest-mail
-restmail:chartVersion  0.12.1
-restmail:adminPassword [secret]
+restmail:hostname           mail.example.com
+restmail:domain             example.com
+restmail:namespace          rest-mail
+restmail:chartVersion       0.14.0
+restmail:adminPasswordHash  $2a$10$…
 ```
 
 So the code is the same for every install and every stack, contains no secret,
 and is never touched again: an upgrade is a config change.
+
+**The admin password is in the stack only as a bcrypt hash** (`restmail
+password-hash`), an ordinary value that nobody can sign in with. The password
+itself is made by the installer, 32 random characters, and shown once — as a
+QR code and as text. So nothing here needs the stack's passphrase, and the
+hash is fine to commit. It needs `pulumi`, `jq` and the `restmail` CLI 0.7.0 or
+newer — and `kubectl` only where it deploys the stack itself.
 
 1. It sets the config — generating the password if you gave none and the stack
    has none, and showing it to you then.
@@ -107,6 +191,14 @@ and is never touched again: an upgrade is a config change.
 
 Run it again at any point and it picks up where it was. `--name mail-eu` puts
 a second mail server in the same stack under its own config namespace.
+
+**A project a pipeline deploys.** Where the stack's state cannot be read from
+the machine you run it on — its backend's credentials live in the pipeline —
+it sets nothing in the stack. It prints the config above as lines for
+`Pulumi.<stack>.yaml`, shows the password, prints the code, and waits while you
+commit both and your pipeline deploys them. Then it checks the server over its
+public API: that it answers as rest-mail at `https://<host>`, and that the
+admin password signs in.
 
 Every line of the printed code was learnt by installing it:
 
@@ -243,3 +335,39 @@ MX, SPF, DMARC, DKIM, the mail host's address and its reverse record. A
 healthy install delivers nothing to Gmail without them, so this is the likeliest
 reason one that passes `server:verify` still "does not work". The DKIM record
 can only come from the server, which made the key.
+
+### Recovering through Admin or Webmail
+
+If the installation password is unavailable, the operator can run
+`restmail-api mint-token --purpose reset-admin --address admin@example.com`
+inside the API container. Give the account owner the token privately; on either
+web app, choose **Use an account recovery token**. The owner chooses a password
+on the site, adds an authenticator using its setup key, saves the recovery
+codes, and confirms a current code. They then sign in with the new password
+and authenticator. The token is single use; redemption ends all previous
+sessions and revokes the old credentials. Do not put tokens or passwords in
+CI logs, issue comments, or repository files.
+
+## Ensure a missing DKIM key
+
+Inside the API container, using its existing configuration and database:
+
+```sh
+restmail-api dkim-key ensure --domain example.com
+```
+
+Use the exact canonical ASCII name of an existing domain. This deployment-only
+command requires a configured `MASTER_KEY` of at least 16 bytes, including in
+development. It connects without migrations, RBAC seeds, or account/domain
+creation. When both the stored selector and key are absent (NULL or empty), it
+atomically installs a fresh encrypted 2048-bit RSA key with the default selector.
+Concurrent calls serialize on that domain; lock waits and transactions are bounded.
+
+The single JSON result contains `domain`, `selector`, `created`, and
+`publicDKIMTXT`. Publish the TXT value at `<selector>._domainkey.<domain>`.
+A retry validates and preserves complete existing material byte for byte and
+returns its actual selector and public TXT with `created: false`. Partial,
+invalid, or unreadable material fails without repair or rotation. Review such
+material separately before taking any further action. Private keys and raw
+configuration/database errors are never printed, even with
+`RESTMAIL_OPERATOR_DEBUG=1`.

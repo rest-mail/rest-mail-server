@@ -1,12 +1,10 @@
 package api
 
 import (
-	"embed"
 	"net/http"
-)
 
-//go:embed openapi.yaml
-var openapiSpec embed.FS
+	"github.com/restmail/restmail"
+)
 
 // SwaggerUIHandler serves a Swagger UI page that loads the embedded OpenAPI spec.
 func SwaggerUIHandler() http.HandlerFunc {
@@ -16,10 +14,11 @@ func SwaggerUIHandler() http.HandlerFunc {
 	}
 }
 
-// OpenAPISpecHandler serves the raw openapi.yaml file.
+// OpenAPISpecHandler serves the root openapi.yaml, embedded by the root
+// package, so there is no copy of it here to keep in step.
 func OpenAPISpecHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := openapiSpec.ReadFile("openapi.yaml")
+		data, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 		if err != nil {
 			http.Error(w, "spec not found", http.StatusInternalServerError)
 			return

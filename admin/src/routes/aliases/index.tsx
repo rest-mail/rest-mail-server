@@ -17,7 +17,7 @@ function AliasesPage() {
 
   useEffect(() => {
     if (accessToken) {
-      fetchAliases(accessToken)
+      fetchAliases()
     }
   }, [accessToken, fetchAliases])
 
@@ -49,7 +49,7 @@ function AliasesPage() {
 
     setDeletingId(id)
     try {
-      await deleteAlias(accessToken, id)
+      await deleteAlias(id)
     } catch (err) {
       console.error('Failed to delete alias:', err)
     } finally {

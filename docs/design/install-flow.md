@@ -531,13 +531,14 @@ anything (`internal/bootstrap`, `setup_required` on login).
   ran out. Once the admin has chosen a password, the deployment's is ignored
   forever, so whoever can edit the Secret cannot reset the account.
 
-Not done, and belonging to the removal of setup codes rather than to this: a
-server with no admin and no bootstrap password still falls back to printing a
-setup code, where it should refuse to start.
+Setup codes are gone (2026-10-15). A server with no admin and no bootstrap
+password refuses to start in production, where it used to print a setup code;
+nothing claims a server, so `GET /api/v1/server` no longer says whether one is
+claimed.
 
-`server:verify` must read the server's state from sign-in, not from `claimed`
-in `GET /api/v1/server`: the bootstrap admin exists from the first start, so
-an install nobody has touched already reports `claimed: true`.
+`server:verify` reads the server's state from sign-in: `GET /api/v1/server`
+gives only the product and version, and the admin password is checked by
+signing in with it.
 
 ## What chore needs first
 

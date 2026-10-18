@@ -57,6 +57,12 @@ type session struct {
 	authenticated bool
 	authEmail     string
 	accountID     uint
+	// credentialID and credentialKind are the credential the session signed
+	// in with: one of the account's passwords, or an app password. It is
+	// checked again before each MAIL FROM. An app password's scope is its own
+	// mailbox: it sends as that address only, never as another account's.
+	credentialID   uint
+	credentialKind string
 
 	// Current transaction.
 	mailFrom string
@@ -171,7 +177,7 @@ func (s *session) AuthMechanisms() []string {
 }
 
 // Auth returns a SASL server for the requested mechanism. Both mechanisms
-// authenticate against the REST API via Backend.Login.
+// authenticate against the REST API via Backend.SignIn.
 func (s *session) Auth(mech string) (sasl.Server, error) {
 	if !s.isSubmission {
 		return nil, &gosmtp.SMTPError{
@@ -261,7 +267,7 @@ func (s *session) login(username, password string) error {
 		return tooManyAuthFailures
 	}
 
-	resp, err := s.api.Login(username, password)
+	resp, err := s.api.SignIn(username, password, "smtp")
 	if err != nil {
 		// OSI-5: the attempted username is attacker-controlled and high-volume on
 		// this path (credential-stuffing / user-enumeration probes), so it is
@@ -307,16 +313,18 @@ func (s *session) login(username, password string) error {
 	s.authenticated = true
 	s.authEmail = username
 	s.accountID = resp.Data.User.ID
+	s.credentialID = resp.Data.CredentialID
+	s.credentialKind = resp.Data.CredentialKind
 
 	slog.Info("smtp: authenticated", "remote", s.remoteAddr(), "user", username)
 	return nil
 }
 
 // rateLimitKey identifies the account a submission is charged against for the
-// per-account rate limit. Linked accounts share one webmail account id, so a
-// compromised credential is capped as a single principal regardless of which of
-// its authorized From addresses it sends as. It falls back to the authenticated
-// login when no account id is set.
+// per-account rate limit: the account signed in, so a compromised credential
+// is capped as a single principal regardless of which of its authorized From
+// addresses it sends as. It falls back to the authenticated login when no
+// account id is set.
 func (s *session) rateLimitKey() string {
 	if s.accountID != 0 {
 		return fmt.Sprintf("acct:%d", s.accountID)
@@ -325,8 +333,8 @@ func (s *session) rateLimitKey() string {
 }
 
 // Mail starts a transaction. On submission ports it requires authentication
-// and verifies the sender is either the authenticated user or one of its
-// linked accounts.
+// and verifies the sender is either the account signed in or one it may send
+// as (a mail:send grant on it).
 func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	// Port 25 takes mail in the clear. RFC 3207 §4: "A publicly-referenced SMTP server
 	// MUST NOT require use of the STARTTLS extension in order to deliver mail locally."
@@ -356,10 +364,33 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 		}
 	}
 
+	// A session signed in with an app password holds it only while it lasts:
+	// revoked, or expired, it sends nothing more.
+	if s.isSubmission && s.authenticated && s.credentialID != 0 {
+		usable, err := s.store.CredentialUsable(s.credentialID)
+		if err != nil {
+			slog.Error("smtp: could not check the credential", "user", maskEmail(s.authEmail), "error", err)
+			return &gosmtp.SMTPError{
+				Code:         451,
+				EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
+				Message:      "Temporary service failure",
+			}
+		}
+		if !usable {
+			slog.Warn("smtp: credential no longer usable", "user", maskEmail(s.authEmail), "event", "smtp_credential_unusable")
+			s.authenticated, s.authEmail, s.accountID, s.credentialID, s.credentialKind = false, "", 0, 0, ""
+			return &gosmtp.SMTPError{
+				Code:         530,
+				EnhancedCode: gosmtp.EnhancedCode{5, 7, 0},
+				Message:      "Authentication required",
+			}
+		}
+	}
+
 	if s.isSubmission && s.authenticated && from != s.authEmail {
-		// Check linked accounts. A lookup error is treated as "not authorized",
-		// matching the prior behavior (which left the count at zero).
-		authorized, err := s.store.SenderAuthorized(s.accountID, from)
+		// Another account it may send as. A lookup error is treated as "not
+		// authorized".
+		authorized, err := s.mayAlsoSendAs(from)
 		if err != nil || !authorized {
 			// OSI-5: mask the addresses — a mismatching MAIL FROM is a spoofing
 			// attempt and both values are logged in the clear otherwise.
@@ -385,8 +416,8 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 
 // authorizeFromHeader enforces that an authenticated submitter's message From:
 // header address is one the account is authorized to send as: its own login
-// identity, or a linked address (the same linked_accounts -> mailboxes lookup as
-// the MAIL FROM check). A From header for an address the account does not own —
+// identity, or an account it may send as (the same grants check as the MAIL
+// FROM check). A From header for an address the account does not own —
 // or a missing/unparseable From — is rejected 550, preventing header-level
 // spoofing (#181). Like Mail(), a store lookup error is treated as "not
 // authorized"; both the authenticated user and the offending From are masked in
@@ -403,7 +434,7 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 	if fromAddr == s.authEmail {
 		return nil
 	}
-	authorized, err := s.store.SenderAuthorized(s.accountID, fromAddr)
+	authorized, err := s.mayAlsoSendAs(fromAddr)
 	if err != nil || !authorized {
 		slog.Warn("smtp: From header not authorized",
 			"auth_user", maskEmail(s.authEmail), "header_from", maskEmail(fromAddr), "error", err)
@@ -414,6 +445,16 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 		}
 	}
 	return nil
+}
+
+// mayAlsoSendAs reports whether the account may send as addr, an address other
+// than the one it signed in as: an account it owns or has linked. A session
+// signed in with an app password never may.
+func (s *session) mayAlsoSendAs(addr string) (bool, error) {
+	if s.credentialKind != "password" {
+		return false, nil
+	}
+	return s.store.SenderAuthorized(s.accountID, addr)
 }
 
 // Rcpt accepts a recipient. Local recipients (per Backend.CheckMailbox) are
@@ -557,6 +598,20 @@ func (s *session) Data(r io.Reader) error {
 	var submittedMsgID *uint
 	submittedOnce := false
 
+	// What a local recipient is delivered. Inbound, it is the message as
+	// received, from the server that connected. An authenticated submission
+	// comes from one of this server's own mailboxes, so a local recipient gets
+	// it as one sent from the webmail (SendMessage): prepared as its remote
+	// copies are (Bcc stripped, DKIM-signed), and with no client IP or HELO.
+	// The client that submitted it is a mail program, not a server the
+	// sender's SPF record lists: delivered unsigned from its address, the
+	// message failed SPF and the domain's DMARC p=reject refused it (550),
+	// however the session had signed in. Prepared once, at the first local
+	// recipient.
+	localRaw, localClientIP, localHelo := data, extractIP(s.remoteAddr()), s.conn.Hostname()
+	prepareLocal := s.isSubmission && s.authenticated
+	var localErr error
+
 	for _, rcpt := range s.rcptTo {
 		// Check if this is a local recipient.
 		check, err := s.api.CheckMailbox(rcpt)
@@ -631,6 +686,26 @@ func (s *session) Data(r io.Reader) error {
 			continue
 		}
 
+		if prepareLocal {
+			prepareLocal = false
+			localClientIP, localHelo = "", ""
+			prepared, err := s.store.PrepareSubmitted(s.mailFrom, string(data))
+			if err != nil {
+				// A configured DKIM key could not be loaded: defer, as the queue
+				// worker does, rather than deliver the message unsigned.
+				slog.Error("smtp: could not prepare a submission for local delivery; deferring",
+					"from", s.mailFrom, "error", err)
+				localErr = err
+			} else {
+				localRaw = []byte(prepared)
+			}
+		}
+		if localErr != nil {
+			failCode, failEnhanced, failMsg = 451, gosmtp.EnhancedCode{4, 3, 0}, "Temporary delivery failure"
+			failed++
+			continue
+		}
+
 		// Local delivery via API.
 		deliverReq := &apiclient.DeliverRequest{
 			Address:    rcpt,
@@ -642,9 +717,9 @@ func (s *session) Data(r io.Reader) error {
 			MessageID:  messageID,
 			InReplyTo:  inReplyTo,
 			References: references,
-			RawMessage: data,
-			ClientIP:   extractIP(s.remoteAddr()),
-			HeloName:   s.conn.Hostname(),
+			RawMessage: localRaw,
+			ClientIP:   localClientIP,
+			HeloName:   localHelo,
 			// Always-on inbound transport-security metrics (inbound-MX only).
 			ReceivedTLS: receivedTLS,
 			TLSVersion:  tlsVersion,

@@ -67,7 +67,7 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 	if err := db.Create(&dom).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
-	sender := models.Mailbox{DomainID: dom.ID, LocalPart: "alice", Address: senderAddr, Password: "x", Active: true, QuotaBytes: 1 << 30}
+	sender := models.Mailbox{DomainID: dom.ID, LocalPart: "alice", Address: senderAddr, Active: true, QuotaBytes: 1 << 30}
 	if err := db.Create(&sender).Error; err != nil {
 		t.Fatalf("create sender mailbox: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 		db.Where("id = ?", dom.ID).Delete(&models.Domain{})
 	})
 
-	store := NewStore(db)
+	store := NewStore(db, "")
 
 	ref, err := store.PersistSubmittedMessage(SubmittedMessage{
 		Sender:     senderAddr,
@@ -134,7 +134,7 @@ func TestDBStore_PersistSubmittedMessageLinksQueue(t *testing.T) {
 // proceeds without a linked reference.
 func TestDBStore_PersistSubmittedMessageNoSenderMailbox(t *testing.T) {
 	db := openStoreTestDB(t)
-	store := NewStore(db)
+	store := NewStore(db, "")
 
 	ref, err := store.PersistSubmittedMessage(SubmittedMessage{
 		Sender:    fmt.Sprintf("nobody-%d@nowhere.test", time.Now().UnixNano()),

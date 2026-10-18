@@ -7,7 +7,7 @@ export const Route = createFileRoute('/login')({
 })
 
 function LoginPage() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [useRecovery, setUseRecovery] = useState(false)
@@ -22,9 +22,9 @@ function LoginPage() {
       if (totpRequired) {
         const trimmed = code.trim()
         if (!trimmed) return
-        await login(username, password, useRecovery ? { recovery_code: trimmed } : { totp_code: trimmed })
+        await login(email, password, useRecovery ? { recovery_code: trimmed } : { totp_code: trimmed })
       } else {
-        await login(username, password)
+        await login(email, password)
       }
       // Only navigate once actually authenticated. A 2FA-active account returns
       // from the first attempt with a totp_required challenge (not authenticated
@@ -72,24 +72,27 @@ function LoginPage() {
           </div>
         )}
 
+        <a href="#reset" className="text-sm underline">Use an account recovery token</a>
+
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           {!totpRequired && (
             <>
-              {/* Username Field */}
+              {/* Address Field */}
               <div className="flex flex-col gap-2">
                 <label className="text-[13px]" style={{ color: 'var(--black-soft)' }}>
-                  Username or Email
+                  Email address
                 </label>
                 <div
                   className="h-11 px-4 flex items-center border"
                   style={{ borderColor: 'var(--gray-border)' }}
                 >
                   <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="admin"
+                    type="email"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="admin@example.com"
                     className="w-full outline-none text-sm"
                     style={{ color: 'var(--black-soft)' }}
                   />

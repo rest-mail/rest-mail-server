@@ -8,20 +8,16 @@ const { startServer, request } = require('./helpers');
 const healthyScript =
   'function filter(email) { return { type: "action", action: "continue", log: { detail: "ok" } }; }';
 
-// An ASYNC busy-loop: vm.runInContext({timeout}) bounds only SYNCHRONOUS work, so
-// this escapes it and, on the single-threaded pre-fix server, saturates the
-// microtask queue and starves the event loop for every other request.
+// An ASYNC busy-loop: on a single-threaded server this saturates the microtask
+// queue and starves the event loop for every other request (#201). Each script
+// runs in its own Worker, under a CPU budget the QuickJS interrupt enforces and
+// a wall-clock deadline the parent enforces with terminate().
 const asyncBusyLoop =
   'async function filter(email) { while (true) { await 0; } }';
 
-// Core regression for #160 / #201: an async busy-loop must be HARD-terminated at
-// the wall-clock timeout (worker.terminate()) and, crucially, must NOT hang the
-// process — a concurrent /health and a concurrent healthy /execute must still
-// respond promptly while the busy-loop is running.
-//
-// RED (pre-fix): the busy loop runs on the main thread and starves the event
-// loop, so the concurrent /health request times out. GREEN (post-fix): the loop
-// runs in a Worker, the main thread stays responsive, and the loop is killed.
+// Regression for #201: an async busy-loop must be stopped at its timeout and,
+// crucially, must NOT hang the process — a concurrent /health and a concurrent
+// healthy /execute must still respond promptly while the busy-loop is running.
 test('async busy-loop is isolated and hard-terminated; other requests stay responsive', async (t) => {
   const srv = await startServer();
   t.after(() => srv.stop());
@@ -116,4 +112,46 @@ test('healthy script returns the expected {result, logs} contract', async (t) =>
   assert.strictEqual(res.json.result.type, 'action');
   assert.strictEqual(res.json.result.action, 'reject');
   assert.deepStrictEqual(res.json.logs, ['hi']);
+});
+
+test('a filter that awaits a promise nothing settles fails at once', async (t) => {
+  const srv = await startServer();
+  t.after(() => srv.stop());
+
+  const res = await request(srv.port, {
+    body: { script: 'async function filter(email) { await new Promise(() => {}); }', email: {}, timeout_ms: 300 },
+  });
+  assert.strictEqual(res.status, 500);
+  assert.match(res.json.error, /never returned/);
+});
+
+// /validate runs in the same isolate as /execute.
+test('/validate checks syntax without running the script, and dry-runs it with an email', async (t) => {
+  const srv = await startServer();
+  t.after(() => srv.stop());
+  const validate = (body) => request(srv.port, { pathName: '/validate', body });
+
+  const syntax = await validate({ script: 'function filter(email) { return ' });
+  assert.strictEqual(syntax.status, 200);
+  assert.strictEqual(syntax.json.valid, false);
+  assert.strictEqual(syntax.json.phase, 'syntax');
+
+  // Compiled, not run: the loop would time out if it ran.
+  const compiled = await validate({ script: 'while (true) {} function filter(email) { return 1; }' });
+  assert.deepStrictEqual(compiled.json, { valid: true });
+
+  const dry = await validate({
+    script: 'async function filter(email) { console.log(email.subject); return { type: "action", action: "reject" }; }',
+    email: { subject: 'hello' },
+  });
+  assert.deepStrictEqual(dry.json, { valid: true, dry_run: { result: { type: 'action', action: 'reject' }, logs: ['hello'] } });
+
+  const failing = await validate({ script: 'function filter(email) { throw new Error("nope"); }', email: {} });
+  assert.strictEqual(failing.json.valid, true);
+  assert.strictEqual(failing.json.phase, 'execution');
+  assert.match(failing.json.dry_run.error, /nope/);
+
+  const looping = await validate({ script: 'function filter(email) { while (true) {} }', email: {} });
+  assert.strictEqual(looping.json.phase, 'execution');
+  assert.match(looping.json.dry_run.error, /timeout/);
 });

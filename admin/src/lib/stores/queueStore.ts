@@ -26,18 +26,18 @@ interface QueueState {
   selectedIds: string[]
 
   // Actions
-  fetchQueue: (accessToken: string, filter?: QueueStatus | 'all') => Promise<void>
-  fetchEntry: (id: string, accessToken: string) => Promise<void>
-  retryEntry: (id: string, accessToken: string) => Promise<void>
-  deleteEntry: (id: string, accessToken: string) => Promise<void>
+  fetchQueue: (filter?: QueueStatus | 'all') => Promise<void>
+  fetchEntry: (id: string) => Promise<void>
+  retryEntry: (id: string) => Promise<void>
+  deleteEntry: (id: string) => Promise<void>
   setFilter: (filter: QueueStatus | 'all') => void
   clearError: () => void
   clearCurrentEntry: () => void
   toggleSelection: (id: string) => void
   selectAll: (ids: string[]) => void
   clearSelection: () => void
-  retryBulk: (ids: string[], accessToken: string) => Promise<void>
-  deleteBulk: (ids: string[], accessToken: string) => Promise<void>
+  retryBulk: (ids: string[]) => Promise<void>
+  deleteBulk: (ids: string[]) => Promise<void>
 }
 
 export const useQueueStore = create<QueueState>((set, get) => ({
@@ -48,7 +48,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   filter: 'all',
   selectedIds: [],
 
-  fetchQueue: async (accessToken: string, filter?: QueueStatus | 'all') => {
+  fetchQueue: async (filter?: QueueStatus | 'all') => {
     set({ isLoading: true, error: null })
 
     try {
@@ -57,7 +57,7 @@ export const useQueueStore = create<QueueState>((set, get) => ({
         ? '/admin/queue'
         : `/admin/queue?status=${filterParam}`
 
-      const response = await apiV1.request(path, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(path, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -81,11 +81,11 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     }
   },
 
-  fetchEntry: async (id: string, accessToken: string) => {
+  fetchEntry: async (id: string) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/queue/${id}`, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(`/admin/queue/${id}`, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -108,11 +108,11 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     }
   },
 
-  retryEntry: async (id: string, accessToken: string) => {
+  retryEntry: async (id: string) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/queue/${id}/retry`, { method: 'POST' }, accessToken)
+      const response = await apiV1.request(`/admin/queue/${id}/retry`, { method: 'POST' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -121,10 +121,10 @@ export const useQueueStore = create<QueueState>((set, get) => ({
 
       // Refresh the queue list and current entry if viewing details
       const currentFilter = get().filter
-      await get().fetchQueue(accessToken, currentFilter)
+      await get().fetchQueue(currentFilter)
 
       if (get().currentEntry?.id === id) {
-        await get().fetchEntry(id, accessToken)
+        await get().fetchEntry(id)
       }
 
       set({
@@ -140,11 +140,11 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     }
   },
 
-  deleteEntry: async (id: string, accessToken: string) => {
+  deleteEntry: async (id: string) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/queue/${id}`, { method: 'DELETE' }, accessToken)
+      const response = await apiV1.request(`/admin/queue/${id}`, { method: 'DELETE' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -194,17 +194,17 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     set({ selectedIds: [] })
   },
 
-  retryBulk: async (ids: string[], accessToken: string) => {
+  retryBulk: async (ids: string[]) => {
     set({ isLoading: true, error: null })
 
     try {
       // Retry each entry sequentially
       for (const id of ids) {
-        await apiV1.request(`/admin/queue/${id}/retry`, { method: 'POST' }, accessToken)
+        await apiV1.request(`/admin/queue/${id}/retry`, { method: 'POST' })
       }
 
       // Refresh queue and clear selection
-      await get().fetchQueue(accessToken, get().filter)
+      await get().fetchQueue(get().filter)
       set({ selectedIds: [], isLoading: false })
     } catch (error) {
       set({
@@ -215,17 +215,17 @@ export const useQueueStore = create<QueueState>((set, get) => ({
     }
   },
 
-  deleteBulk: async (ids: string[], accessToken: string) => {
+  deleteBulk: async (ids: string[]) => {
     set({ isLoading: true, error: null })
 
     try {
       // Delete each entry sequentially
       for (const id of ids) {
-        await apiV1.request(`/admin/queue/${id}`, { method: 'DELETE' }, accessToken)
+        await apiV1.request(`/admin/queue/${id}`, { method: 'DELETE' })
       }
 
       // Refresh queue and clear selection
-      await get().fetchQueue(accessToken, get().filter)
+      await get().fetchQueue(get().filter)
       set({ selectedIds: [], isLoading: false })
     } catch (error) {
       set({

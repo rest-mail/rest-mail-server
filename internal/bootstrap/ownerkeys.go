@@ -19,13 +19,13 @@ import (
 
 // Owner keys prove ownership of a server over its public API, whatever runs it.
 //
-// The deployment lists the owner's public keys (RESTMAIL_OWNER_KEYS, the
-// format of an authorized_keys file). Whoever holds a matching private key can
-// ask the server for a setup or reset-admin token: it signs a challenge the
-// server issued, and the server checks the signature against the list. No
-// secret is configured anywhere — the key that proves ownership never leaves
-// the machine holding it — and nothing about how the server is deployed is
-// assumed: an environment variable is something every platform can set.
+// PostgreSQL holds the owner's public keys, seeded once from trusted installer
+// input (RESTMAIL_OWNER_KEYS, authorized_keys format). A matching private key can
+// ask the server for a reset-admin token, the way back in for an admin who has
+// lost every other: it signs a challenge the server issued, and the server
+// checks the signature against the current registry. The private key never
+// leaves its owner's machine. Recovery needs HTTPS and the database, with no
+// dependency on Kubernetes, Docker or a mounted key file.
 
 // ChallengeLifetime is how long an owner challenge can be answered.
 const ChallengeLifetime = 2 * time.Minute
@@ -37,7 +37,7 @@ const ownerChallengePurpose = "owner_challenge"
 var (
 	// ErrNoOwnerKeys: the server lists no owner keys, so ownership cannot be
 	// proved this way.
-	ErrNoOwnerKeys = errors.New("this server lists no owner keys (RESTMAIL_OWNER_KEYS)")
+	ErrNoOwnerKeys = errors.New("this server has no registered owner keys")
 	// ErrNotOwner covers an unlisted key and a bad signature alike.
 	ErrNotOwner = errors.New("that key is not one of this server's owner keys, or the signature does not match")
 	// ErrChallengeInvalid covers forged, expired and already-answered challenges.
@@ -53,7 +53,16 @@ type OwnerKeys struct {
 // and # comments are ignored. A line that does not parse is an error, not a
 // skip: a typo here would otherwise lock the owner out without a word.
 func ParseOwnerKeys(spec string) (*OwnerKeys, error) {
-	o := &OwnerKeys{}
+	keys, err := parseKeys("RESTMAIL_OWNER_KEYS", spec)
+	if err != nil {
+		return nil, err
+	}
+	return &OwnerKeys{keys: keys}, nil
+}
+
+// parseKeys reads the authorized_keys list in the variable named name.
+func parseKeys(name, spec string) ([][]byte, error) {
+	var keys [][]byte
 	for i, line := range strings.Split(spec, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -61,11 +70,11 @@ func ParseOwnerKeys(spec string) (*OwnerKeys, error) {
 		}
 		pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(line))
 		if err != nil {
-			return nil, fmt.Errorf("RESTMAIL_OWNER_KEYS line %d: %w", i+1, err)
+			return nil, fmt.Errorf("%s line %d: %w", name, i+1, err)
 		}
-		o.keys = append(o.keys, pub.Marshal())
+		keys = append(keys, pub.Marshal())
 	}
-	return o, nil
+	return keys, nil
 }
 
 // Len is how many owner keys are listed.
@@ -77,8 +86,12 @@ func (o *OwnerKeys) Len() int {
 }
 
 func (o *OwnerKeys) has(pub ssh.PublicKey) bool {
+	return o != nil && listed(o.keys, pub)
+}
+
+func listed(keys [][]byte, pub ssh.PublicKey) bool {
 	wire := pub.Marshal()
-	for _, k := range o.keys {
+	for _, k := range keys {
 		if bytes.Equal(k, wire) {
 			return true
 		}
@@ -119,17 +132,17 @@ func checkChallenge(key []byte, challenge string, now time.Time) error {
 
 // OwnerMessage is what an owner signs: the challenge, bound to what it is asking
 // for, so a signature for one request cannot be presented for another.
-func OwnerMessage(challenge, purpose, username string) []byte {
-	return []byte("restmail-owner-v1\n" + purpose + "\n" + username + "\n" + challenge)
+func OwnerMessage(challenge, purpose, address string) []byte {
+	return []byte("restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge)
 }
 
-// OwnerRequest is a signed request for a setup or reset-admin token.
+// OwnerRequest is a signed request for a reset-admin token.
 type OwnerRequest struct {
 	Challenge string
 	PublicKey string // authorized_keys format
 	Signature []byte // ssh wire-format signature over OwnerMessage
-	Purpose   string // "setup" or "reset-admin"
-	Username  string // the admin to reset (reset-admin)
+	Purpose   string // "reset-admin", the only one; it is part of what is signed
+	Address   string // the account to reset (reset-admin)
 	Lifetime  time.Duration
 }
 
@@ -140,46 +153,69 @@ func MintForOwner(database *gorm.DB, keys *OwnerKeys, challengeKey []byte, req O
 	if keys.Len() == 0 {
 		return "", time.Time{}, ErrNoOwnerKeys
 	}
-	if err := checkChallenge(challengeKey, req.Challenge, now); err != nil {
+	if err := verifySigned(challengeKey, req.Challenge, req.PublicKey, req.Signature,
+		OwnerMessage(req.Challenge, req.Purpose, req.Address), keys.has, ErrNotOwner, now); err != nil {
 		return "", time.Time{}, err
 	}
-	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(req.PublicKey))
-	if err != nil || !keys.has(pub) {
-		return "", time.Time{}, ErrNotOwner
+	if err := spendChallenge(database, req.Challenge, now); err != nil {
+		return "", time.Time{}, err
+	}
+
+	if req.Purpose != "reset-admin" {
+		return "", time.Time{}, fmt.Errorf("purpose must be reset-admin, got %q", req.Purpose)
+	}
+	return MintResetToken(database, req.Address, req.Lifetime)
+}
+
+// verifySigned checks a signed answer to a challenge: the challenge is this
+// server's and unexpired, publicKey is one of those isListed accepts, and
+// signature is its signature over message. A key that is not listed and a
+// signature that does not verify are both notListed, so the answer does not
+// say which.
+func verifySigned(challengeKey []byte, challenge, publicKey string, signature, message []byte,
+	isListed func(ssh.PublicKey) bool, notListed error, now time.Time) error {
+	if err := checkChallenge(challengeKey, challenge, now); err != nil {
+		return err
+	}
+	pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil || !isListed(pub) {
+		return notListed
 	}
 	var sig ssh.Signature
-	if err := ssh.Unmarshal(req.Signature, &sig); err != nil {
-		return "", time.Time{}, ErrNotOwner
+	if err := ssh.Unmarshal(signature, &sig); err != nil {
+		return notListed
 	}
 	// RSA signatures over SHA-1 are refused; rsa-sha2-256/512, ed25519 and
 	// ecdsa are fine.
 	if sig.Format == ssh.KeyAlgoRSA {
-		return "", time.Time{}, ErrNotOwner
+		return notListed
 	}
-	if err := pub.Verify(OwnerMessage(req.Challenge, req.Purpose, req.Username), &sig); err != nil {
-		return "", time.Time{}, ErrNotOwner
+	if err := pub.Verify(message, &sig); err != nil {
+		return notListed
 	}
+	return nil
+}
 
-	// Spend the challenge: the token table's unique hash makes a second
-	// answer to it fail here.
+// spendChallenge records challenge as answered: the token table's unique hash
+// makes a second answer to it fail here. Call it only once the signature has
+// verified, so that only a key holder can make the server write anything.
+func spendChallenge(database *gorm.DB, challenge string, now time.Time) error {
+	// A spent challenge need only be remembered until it expires, after which
+	// checkChallenge refuses it anyway. Forget those that have, so that reading
+	// the status after every deploy does not grow the table for ever. A failure
+	// here leaves rows behind, nothing worse.
+	_ = database.Where("purpose = ? AND expires_at < ?", ownerChallengePurpose, now).
+		Delete(&models.OneTimeToken{}).Error
 	spent := models.OneTimeToken{
 		Purpose:   ownerChallengePurpose,
-		TokenHash: hashToken(req.Challenge),
+		TokenHash: hashToken(challenge),
 		ExpiresAt: now.Add(ChallengeLifetime),
 		UsedAt:    &now,
 	}
 	if err := database.Create(&spent).Error; err != nil {
-		return "", time.Time{}, ErrChallengeInvalid
+		return ErrChallengeInvalid
 	}
-
-	switch req.Purpose {
-	case "setup":
-		return MintSetupToken(database, req.Lifetime)
-	case "reset-admin":
-		return MintResetToken(database, req.Username, req.Lifetime)
-	default:
-		return "", time.Time{}, fmt.Errorf("purpose must be setup or reset-admin, got %q", req.Purpose)
-	}
+	return nil
 }
 
 // ChallengeKey derives the key owner challenges are signed with from a server

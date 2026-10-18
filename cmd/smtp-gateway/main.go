@@ -181,7 +181,7 @@ func main() {
 	limiter := connlimiter.New(connlimiter.Config{MaxPerIP: 20, MaxGlobal: 1000})
 	limiter.SetProtocol("smtp")
 	bancheck.Wire(limiter, database, "smtp")
-	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, smtpgw.NewStore(database), limiter)
+	smtpServer := smtpgw.NewServer(cfg.GatewayHostname, api, tlsConfig, smtpgw.NewStore(database, cfg.MasterKey), limiter)
 	smtpServer.SetMaxMessageSize(cfg.SMTPMaxMessageSize)
 	slog.Info("SMTP max message size configured", "max_message_size", cfg.SMTPMaxMessageSize)
 	if warn := cfg.SMTPMaxMessageSizeWarning(); warn != "" {
@@ -227,6 +227,7 @@ func main() {
 	queueWorker.SetMasterKey(cfg.MasterKey)
 	queueWorker.SetMTASTSEnforce(cfg.MTASTSEnforce)
 	queueWorker.SetBounceRateLimit(cfg.BounceDSNMaxPerRecipient, cfg.BounceDSNRateWindow)
+	queueWorker.SetSuppressionTTL(cfg.SuppressionTTL)
 	// OSI-7: size-aware per-attempt send budget + matching reclaim interval. The
 	// per-send deadline scales with each message's size (a fixed 30 s could not
 	// transfer a large body); the reclaim interval is kept strictly above the

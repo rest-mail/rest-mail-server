@@ -35,8 +35,8 @@ type vacationSetting struct {
 }
 
 // resolveMailboxID resolves the account ID from the URL to a mailbox ID,
-// verifying that the authenticated user owns the account (either as their
-// primary account or a linked account).
+// verifying that the session may reach the account (its own, or one it holds
+// a mail grant on).
 func (h *VacationHandler) resolveMailboxID(r *http.Request, accountIDStr string) (uint, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
@@ -47,7 +47,7 @@ func (h *VacationHandler) resolveMailboxID(r *http.Request, accountIDStr string)
 	if err != nil {
 		return 0, err
 	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
+	return resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
 }
 
 // GetVacation returns the vacation auto-reply configuration for a mailbox.

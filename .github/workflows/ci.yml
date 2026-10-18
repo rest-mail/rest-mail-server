@@ -17,6 +17,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      - name: Check constellation inventory
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
@@ -65,8 +68,11 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # -timeout is per package, and the race detector slows these packages
+      # several times over: internal/api/handlers once ran past go test's
+      # default 10 minutes. 20 leaves headroom while a hung test still fails.
       - name: Run unit tests with race detector
-        run: go test -race -count=1 -coverprofile=coverage.out ./internal/...
+        run: go test -race -count=1 -timeout=20m -coverprofile=coverage.out ./internal/...
         env:
           DB_HOST: localhost
           DB_PORT: "5432"
@@ -80,6 +86,19 @@ jobs:
           name: coverage-report
           path: coverage.out
           retention-days: 7
+
+  attachments-s3:
+    name: Garage attachment storage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+      - name: Verify private attachments against Garage
+        run: python3 scripts/garage-attachment-test.py
 
   build:
     name: Build
@@ -222,14 +241,56 @@ jobs:
   # This job always runs and fails only if a job that actually ran did not
   # succeed, so a skipped job is not a block. Requiring it — and nothing else
   # from this workflow — makes the 13 job names above free to change.
+  js-filter:
+    name: JS Filter
+    # The sidecar that runs javascript filters: its own tests (the sandbox
+    # escapes of #160 among them), then the API's filter against it, end to end.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: projects/js-filter-sidecar
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # The image's Node (Dockerfile: node:22-alpine).
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Test
+        run: npm test
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: "1.25.10"
+          cache: true
+
+      - name: The API's javascript filter against the sidecar
+        working-directory: .
+        run: |
+          set -euo pipefail
+          go test -count=1 -v -run 'TestJSFilter' ./internal/pipeline/filters/ | tee "$RUNNER_TEMP/jsfilter.log"
+          # The end-to-end test skips without node or npm ci; here it must run.
+          if grep -q -- '--- SKIP: TestJSFilter_RealSidecar' "$RUNNER_TEMP/jsfilter.log"; then
+            echo "::error::TestJSFilter_RealSidecar was skipped" >&2
+            exit 1
+          fi
+
   first-start:
     name: First start
     # Proves, against the real image, the path a fresh install takes: the
-    # restmail CLI claims it over the public API with an owner key (no
-    # password, no platform assumed), the first admin is forced through 2FA, a
-    # domain and a mailbox get built, and reset-admin hands it over -- after
-    # which nothing the first holder had works, an unexpired access token
-    # included. tests/first-start/agent-e2e.sh.
+    # first admin signs in with the bootstrap password the installer chose and
+    # is forced to choose their own and enroll 2FA, a domain and a mailbox get
+    # built, and the restmail CLI hands the server over with reset-admin, over
+    # the public API with an owner key (no platform assumed) -- after which
+    # nothing the first holder had works, an unexpired access token included.
+    # tests/first-start/agent-e2e.sh.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -251,16 +312,53 @@ jobs:
           # A version stamped in, so the run can check it reaches the binary.
           docker build --target prod --build-arg VERSION=0.0.0-first-start -t restmail-api:first-start .
 
-      - name: Claim, build, hand over
+      - name: Sign in with the bootstrap password, build, hand over
         env:
           RESTMAIL: ${{ runner.temp }}/restmail
           IMAGE: restmail-api:first-start
           EXPECT_VERSION: 0.0.0-first-start
         run: tests/first-start/agent-e2e.sh
 
+  webapp-images:
+    name: Web app image (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [webmail, admin]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Build and serve with the chart's security settings
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          docker build --target prod -t "restmail-$APP:smoke" "$APP"
+          container=$(docker run -d --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --user 101:101 \
+            --tmpfs /etc/nginx/conf.d:rw,uid=101,gid=101 \
+            --tmpfs /tmp:rw,uid=101,gid=101 \
+            -e NGINX_BASE_PATH=/ -p 127.0.0.1::8080 "restmail-$APP:smoke")
+          trap 'docker logs "$container"; docker rm -f "$container" >/dev/null' EXIT
+          origin="http://$(docker port "$container" 8080/tcp)"
+          curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 \
+            -D "$RUNNER_TEMP/headers" "$origin/" -o "$RUNNER_TEMP/index.html"
+          grep -q '<base href="/">' "$RUNNER_TEMP/index.html"
+          grep -qi "connect-src 'self'" "$RUNNER_TEMP/headers"
+          curl --fail --silent --show-error "$origin/login" -o "$RUNNER_TEMP/deep.html"
+          cmp "$RUNNER_TEMP/index.html" "$RUNNER_TEMP/deep.html"
+          asset=$(grep -oE 'src="[^"]+\.js"' "$RUNNER_TEMP/index.html" | head -1 | cut -d '"' -f2)
+          test -n "$asset"
+          curl --fail --silent --show-error -D "$RUNNER_TEMP/asset-headers" \
+            "$origin/${asset#/}" -o "$RUNNER_TEMP/bundle.js"
+          grep -Eqi '^content-type:[[:space:]]*(application|text)/(javascript|ecmascript)' "$RUNNER_TEMP/asset-headers"
+          test -s "$RUNNER_TEMP/bundle.js"
+
   ci:
     name: CI
-    needs: [lint, test, build, helm, webmail, admin, first-start]
+    needs: [lint, test, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -269,11 +367,14 @@ jobs:
           RESULTS: |
             lint=${{ needs.lint.result }}
             test=${{ needs.test.result }}
+            attachments-s3=${{ needs.attachments-s3.result }}
             build=${{ needs.build.result }}
             helm=${{ needs.helm.result }}
             webmail=${{ needs.webmail.result }}
             admin=${{ needs.admin.result }}
+            js-filter=${{ needs.js-filter.result }}
             first-start=${{ needs.first-start.result }}
+            webapp-images=${{ needs.webapp-images.result }}
         run: |
           set -euo pipefail
           # `needs.build.result` covers the whole matrix: it is `success` only

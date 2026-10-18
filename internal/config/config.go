@@ -12,7 +12,6 @@ import (
 
 	"github.com/restmail/restmail/internal/mtls"
 	"github.com/restmail/restmail/internal/netallow"
-	"github.com/restmail/restmail/internal/setuplink"
 )
 
 // DefaultSMTPMaxMessageSize is the SMTP maximum message size applied when
@@ -59,6 +58,7 @@ const (
 )
 
 type Config struct {
+	Attachments AttachmentStorageConfig
 	// Database
 	DBHost            string
 	DBPort            int
@@ -124,19 +124,22 @@ type Config struct {
 	// Master key for encrypting private keys at rest
 	MasterKey string
 
-	// First superadmin for a fresh install, created at startup only while no admin
-	// exists (internal/bootstrap). Empty password: no bootstrap admin.
-	BootstrapAdminUsername string
-	BootstrapAdminPassword string
+	// The first account of a fresh install, admin@<mail domain>, holding
+	// superadmin: created at startup only while no admin exists
+	// (internal/bootstrap). Empty password: no bootstrap account.
+	BootstrapAdminAddress      string
+	BootstrapAdminPassword     string
+	BootstrapAdminPasswordHash string
 
-	// OwnerKeys lists, in authorized_keys format, the public keys whose holders
-	// can claim this server or reset its admins over the public API
-	// (internal/bootstrap/ownerkeys.go). Not a secret.
+	// OwnerKeys seeds PostgreSQL's initial registry, in authorized_keys format.
+	// After enrollment the database is authoritative. The public keys' holders
+	// can reset its admins over the public API (internal/bootstrap/ownerkeys.go).
+	// Not a secret.
 	OwnerKeys string
-	// SetupLinkBase is where the link a fresh install prints points, e.g.
-	// https://rest-mail.com/setup. Empty: the app's own scheme, with no site
-	// involved. See internal/setuplink.
-	SetupLinkBase string
+	// StatusKeys lists, in the same format, the public keys whose holders can
+	// read which version the server runs, and nothing else
+	// (internal/bootstrap/statuskeys.go). Not a secret.
+	StatusKeys string
 
 	// DNS Provider
 	DNSProvider string
@@ -300,6 +303,9 @@ type Config struct {
 	// mail-bombing amplification without dropping legitimate low-volume bounces.
 	BounceDSNMaxPerRecipient int
 	BounceDSNRateWindow      time.Duration
+	// SuppressionTTL is how long a recipient that hard bounced (no such
+	// mailbox or domain) stays suppressed for the sending domain (#141).
+	SuppressionTTL time.Duration
 	// ════════════════════════════════════════════════════════════════════
 	// Auth-hardening additions (appended additively — keep contiguous to ease
 	// rebasing alongside other in-flight config.go work).
@@ -338,14 +344,21 @@ type Config struct {
 	// API adds to its outbound HTTP client trust store (on top of the system
 	// roots) at startup — so it trusts TLS peers (e.g. MTA-STS policy fetches)
 	// issued by an operator/testbed CA. On the testbed this is the shared testbed
-	// root CA. It de-hardcodes cmd/api's former literal "/certs/ca.crt": the
-	// DEFAULT is that exact path, so the testbed is byte-for-byte unchanged, but a
+	// root CA. The DEFAULT is "/certs/ca.crt", where the testbed mounts it; a
 	// deployer can point it elsewhere, and an EMPTY value skips the extra trust
 	// (system roots only). A missing/unreadable file is not an error — the API
-	// falls back to the system roots (unchanged legacy behavior). This is NOT the
+	// then trusts the system roots only. This is NOT the
 	// internal-mTLS CA (that is INTERNAL_MTLS_CA_CERT); it is the general outbound
 	// trust anchor.
 	TrustedCACertPath string
+
+	// DNSBLConfigPath is the operator's DNSBL monitor config file
+	// (RESTMAIL_DNSBL_CONFIG; issue #148): the sending IPs, the blocklist
+	// zones and their answer codes, and the cadence. Empty, the default, means
+	// the monitor is off: no resolver, no query, no loop. The file is read and
+	// validated by dnsbl.LoadConfigFile at startup; a file that is set and will
+	// not load stops the API before it serves.
+	DNSBLConfigPath string
 
 	// ════════════════════════════════════════════════════════════════════
 	// TLS-RPT ingestion rate limit (issue #183) — appended additively; keep
@@ -475,10 +488,13 @@ func Load() (*Config, error) {
 
 		MasterKey: getEnv("MASTER_KEY", ""),
 
-		BootstrapAdminUsername: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_USERNAME", "admin"),
+		// The chart sets it to admin@ its mailserver.domain.
+		BootstrapAdminAddress:  getEnv("RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS", ""),
 		BootstrapAdminPassword: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", ""),
-		OwnerKeys:              getEnv("RESTMAIL_OWNER_KEYS", ""),
-		SetupLinkBase:          getEnv("RESTMAIL_SETUP_LINK_BASE", setuplink.DefaultBase),
+		// Or a bcrypt hash of it, which a deploy tool can keep as plain config.
+		BootstrapAdminPasswordHash: getEnv("RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH", ""),
+		OwnerKeys:                  getEnv("RESTMAIL_OWNER_KEYS", ""),
+		StatusKeys:                 getEnv("RESTMAIL_STATUS_KEYS", ""),
 
 		DNSProvider: getEnv("DNS_PROVIDER", "dnsmasq"),
 
@@ -772,6 +788,7 @@ func Load() (*Config, error) {
 	// ── OSI-25: bounce/DSN anti-mailbomb (appended block — keep contiguous) ──
 	cfg.BounceDSNMaxPerRecipient = getEnvInt("BOUNCE_DSN_MAX_PER_RECIPIENT", 20)
 	cfg.BounceDSNRateWindow = getEnvDuration("BOUNCE_DSN_RATE_WINDOW", time.Hour)
+	cfg.SuppressionTTL = getEnvDuration("SUPPRESSION_TTL", 90*24*time.Hour)
 	// ════════════════════════════════════════════════════════════════════
 	// Auth-hardening additions (OSI-11) — appended additively; keep contiguous.
 	// ════════════════════════════════════════════════════════════════════
@@ -792,6 +809,11 @@ func Load() (*Config, error) {
 	// De-hardcodes cmd/api's former literal "/certs/ca.crt"; the default is that
 	// exact path so the testbed's rendered/provisioned setup is unchanged.
 	cfg.TrustedCACertPath = getEnv("TRUSTED_CA_CERT", "/certs/ca.crt")
+	cfg.DNSBLConfigPath = strings.TrimSpace(getEnv("RESTMAIL_DNSBL_CONFIG", ""))
+	cfg.Attachments, err = loadAttachmentStorage()
+	if err != nil {
+		return nil, err
+	}
 
 	// ── OSI-4: boot-time security config validation (single append-only call).
 	// Production (ENVIRONMENT=production) refuses to boot on an insecure value;
@@ -984,9 +1006,6 @@ const DefaultPipelineFilterTimeoutSeconds = 60
 // it any host can inject a spoofed-From message into a local mailbox
 // (BEC/CEO-fraud). See RestmailDeliverAuth for the field semantics.
 type RestmailDeliverAuthSettings struct {
-	// Enabled turns the delivery-auth gate on (default true). When false the
-	// endpoint reverts to legacy behavior (accept any well-formed delivery).
-	Enabled bool
 	// Strict requires EVERY delivery to originate from a trusted peer OR carry a
 	// DKIM signature that verifies and aligns with the From domain. Default false
 	// (open federation): only deliveries claiming a LOCALLY-hosted From domain
@@ -999,13 +1018,11 @@ type RestmailDeliverAuthSettings struct {
 	TrustedCIDRs []string
 }
 
-// RestmailDeliverAuth returns the OSI-3 delivery-authentication settings.
-// RESTMAIL_DELIVER_AUTH_ENABLED (default true), RESTMAIL_DELIVER_STRICT
-// (default false), RESTMAIL_DELIVER_TRUSTED_CIDRS (comma-separated, default
-// none).
+// RestmailDeliverAuth returns the OSI-3 delivery-authentication settings:
+// RESTMAIL_DELIVER_STRICT (default false), RESTMAIL_DELIVER_TRUSTED_CIDRS
+// (comma-separated, default none). The gate itself is always on.
 func (c *Config) RestmailDeliverAuth() RestmailDeliverAuthSettings {
 	return RestmailDeliverAuthSettings{
-		Enabled:      getEnvBool("RESTMAIL_DELIVER_AUTH_ENABLED", true),
 		Strict:       getEnvBool("RESTMAIL_DELIVER_STRICT", false),
 		TrustedCIDRs: getEnvSlice("RESTMAIL_DELIVER_TRUSTED_CIDRS", nil),
 	}
@@ -1015,8 +1032,8 @@ func (c *Config) RestmailDeliverAuth() RestmailDeliverAuthSettings {
 // mail (OSI-13). Redirect to an arbitrary external domain is a mail-exfiltration
 // vector, so the secure default denies it.
 type SieveRedirectSettings struct {
-	// AllowExternal, when true, permits redirect to ANY domain (legacy behavior);
-	// the redirect is still logged. Default false: a redirect target must be the
+	// AllowExternal, when true, permits redirect to ANY domain; the redirect is
+	// still logged. Default false: a redirect target must be the
 	// recipient's own domain or an explicitly allowlisted domain.
 	AllowExternal bool
 	// AllowedDomains are external domains explicitly permitted as redirect targets
@@ -1036,7 +1053,7 @@ func (c *Config) SieveRedirect() SieveRedirectSettings {
 
 // PipelineFilterErrorAction returns the OSI-18 fail-closed action applied when a
 // pipeline filter cannot be instantiated or errors during execution. One of
-// "continue" (legacy fail-open), "defer" (default, fail-closed temp-fail), or
+// "continue" (fail-open), "defer" (default, fail-closed temp-fail), or
 // "reject". A malformed value falls back to the secure default rather than
 // failing startup — an unparseable knob must never weaken the fail-closed
 // posture. Set with PIPELINE_FILTER_ERROR_ACTION.
@@ -1097,6 +1114,33 @@ func (c *Config) ScannerHMACSecret() string {
 }
 
 // END scanner-verdict hardening
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN JS filter sidecar (#160)
+//
+// Where the API finds the sidecar that runs javascript filter scripts, and the
+// token it authenticates to it with. Read lazily like the scanner secret above.
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultJSFilterURL is the JS filter sidecar's address unless JS_FILTER_URL
+// says otherwise: its name on the testbed network.
+const DefaultJSFilterURL = "http://js-filter:3100"
+
+// JSFilterURL returns the base URL of the JS filter sidecar (JS_FILTER_URL).
+func (c *Config) JSFilterURL() string {
+	return getEnv("JS_FILTER_URL", DefaultJSFilterURL)
+}
+
+// JSFilterToken returns the token the API sends the JS filter sidecar
+// (JS_FILTER_TOKEN). The sidecar runs a script only for a request carrying the
+// token it was started with, and does not start without one. Empty here means
+// every javascript filter fails, with its failure_action (defer by default).
+func (c *Config) JSFilterToken() string {
+	return getEnv("JS_FILTER_TOKEN", "")
+}
+
+// END JS filter sidecar
 // ══════════════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1280,11 +1324,11 @@ const MinJWTSecretLength = 32
 // guessability; 16 bytes is a conservative floor (instance:new generates 64).
 const MinMasterKeyLength = 16
 
-// legacyDefaultJWTSecret is the compiled-in development JWT secret. Shipping it
+// devDefaultJWTSecret is the compiled-in development JWT secret. Shipping it
 // outside development is equivalent to having no secret at all (it is public in
 // the source tree), so it is rejected the same as a blank secret. It matches the
 // default used by getEnv("JWT_SECRET", ...) in Load.
-const legacyDefaultJWTSecret = "dev-secret-change-in-production"
+const devDefaultJWTSecret = "dev-secret-change-in-production"
 
 // IsProduction reports whether ENVIRONMENT names a production deployment. It is
 // the single, typo-resistant answer every fail-closed security gate keys on: the
@@ -1327,7 +1371,7 @@ func (c *Config) validateSecurityConfig() error {
 	switch {
 	case c.JWTSecret == "":
 		findings = append(findings, fmt.Sprintf("JWT_SECRET is empty; set a random secret of at least %d bytes", MinJWTSecretLength))
-	case c.JWTSecret == legacyDefaultJWTSecret:
+	case c.JWTSecret == devDefaultJWTSecret:
 		findings = append(findings, fmt.Sprintf("JWT_SECRET is the built-in development default; set a unique random secret of at least %d bytes", MinJWTSecretLength))
 	case len(c.JWTSecret) < MinJWTSecretLength:
 		findings = append(findings, fmt.Sprintf("JWT_SECRET is too short (%d bytes); use at least %d bytes of randomness", len(c.JWTSecret), MinJWTSecretLength))
@@ -1876,4 +1920,62 @@ func (c *Config) TrustedARCSealers() []string {
 }
 
 // END trusted-ARC-sealer allowlist
+// ══════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════
+// BEGIN push notifications through APNs (#363)
+//
+// One contiguous, append-only block so it merges cleanly alongside concurrent
+// config.go edits. The settings are read lazily through a *Config accessor
+// over the getEnv helper above; the Config struct and Load() are untouched.
+// ══════════════════════════════════════════════════════════════════════════
+
+// DefaultAPNsTopic is the bundle id of the REST Mail app, the topic pushes are
+// addressed to when RESTMAIL_APNS_TOPIC is unset.
+const DefaultAPNsTopic = "com.antimatterstudios.restmail"
+
+// APNsSettings is how the server pushes to iPhones through Apple's push
+// service with token auth: the .p8 key Apple issued (a file, mounted from a
+// secret), its key id, the developer team it belongs to, and the topic. One key
+// serves both the production and the sandbox service.
+type APNsSettings struct {
+	KeyFile string // RESTMAIL_APNS_KEY_FILE
+	KeyID   string // RESTMAIL_APNS_KEY_ID
+	TeamID  string // RESTMAIL_APNS_TEAM_ID
+	Topic   string // RESTMAIL_APNS_TOPIC, default DefaultAPNsTopic
+}
+
+// APNs reads the APNs settings. Push is off unless the key file, key id and
+// team id are all set; the topic has a default.
+func (c *Config) APNs() APNsSettings {
+	topic := strings.TrimSpace(getEnv("RESTMAIL_APNS_TOPIC", ""))
+	if topic == "" {
+		topic = DefaultAPNsTopic
+	}
+	return APNsSettings{
+		KeyFile: strings.TrimSpace(getEnv("RESTMAIL_APNS_KEY_FILE", "")),
+		KeyID:   strings.TrimSpace(getEnv("RESTMAIL_APNS_KEY_ID", "")),
+		TeamID:  strings.TrimSpace(getEnv("RESTMAIL_APNS_TEAM_ID", "")),
+		Topic:   topic,
+	}
+}
+
+// Configured reports whether everything APNs needs is set.
+func (s APNsSettings) Configured() bool {
+	return s.KeyFile != "" && s.KeyID != "" && s.TeamID != "" && s.Topic != ""
+}
+
+// Partial reports whether some, but not all, of the key file, key id and team
+// id are set: most likely a mistake, and push stays off.
+func (s APNsSettings) Partial() bool {
+	set := 0
+	for _, v := range []string{s.KeyFile, s.KeyID, s.TeamID} {
+		if v != "" {
+			set++
+		}
+	}
+	return set > 0 && set < 3
+}
+
+// END push notifications through APNs
 // ══════════════════════════════════════════════════════════════════════════

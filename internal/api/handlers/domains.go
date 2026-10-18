@@ -62,10 +62,14 @@ func validateDomainName(name string) (string, error) {
 type DomainHandler struct {
 	db  *gorm.DB
 	dns dns.Provider
+
+	// The DNS check's lookups; tests replace them.
+	lookupMX  func(string) ([]*net.MX, error)
+	lookupTXT func(string) ([]string, error)
 }
 
 func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
-	return &DomainHandler{db: db, dns: dnsProvider}
+	return &DomainHandler{db: db, dns: dnsProvider, lookupMX: net.LookupMX, lookupTXT: net.LookupTXT}
 }
 
 func (h *DomainHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +291,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 	var checks []recordCheck
 
 	// MX records
-	mxs, err := net.LookupMX(domain.Name)
+	mxs, err := h.lookupMX(domain.Name)
 	if err != nil {
 		checks = append(checks, recordCheck{
 			Type: "MX", Name: domain.Name, Status: "missing",
@@ -311,7 +315,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 
 	// SPF (TXT record)
 	spfFound := false
-	txts, err := net.LookupTXT(domain.Name)
+	txts, err := h.lookupTXT(domain.Name)
 	if err == nil {
 		for _, txt := range txts {
 			if strings.HasPrefix(txt, "v=spf1") {
@@ -333,7 +337,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 
 	// DMARC
 	dmarcFound := false
-	dmarcTxts, err := net.LookupTXT("_dmarc." + domain.Name)
+	dmarcTxts, err := h.lookupTXT("_dmarc." + domain.Name)
 	if err == nil {
 		for _, txt := range dmarcTxts {
 			if strings.HasPrefix(txt, "v=DMARC1") {
@@ -353,24 +357,31 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// DKIM (check for default selector)
-	dkimName := "default._domainkey." + domain.Name
-	dkimTxts, err := net.LookupTXT(dkimName)
-	if err != nil || len(dkimTxts) == 0 {
+	// DKIM, under the selector the domain signs with (domains.dkim_selector).
+	if domain.DKIMSelector == "" || domain.DKIMPrivateKey == "" {
 		checks = append(checks, recordCheck{
-			Type: "DKIM", Name: dkimName, Status: "missing",
-			Message: "No DKIM record found for default selector",
+			Type: "DKIM", Name: domain.Name, Status: "missing",
+			Message: "The domain has no DKIM key, so its mail is not signed",
 		})
 	} else {
-		checks = append(checks, recordCheck{
-			Type: "DKIM", Name: dkimName, Status: "ok",
-			Value: dkimTxts[0],
-		})
+		dkimName := domain.DKIMSelector + "._domainkey." + domain.Name
+		dkimTxts, err := h.lookupTXT(dkimName)
+		if err != nil || len(dkimTxts) == 0 {
+			checks = append(checks, recordCheck{
+				Type: "DKIM", Name: dkimName, Status: "missing",
+				Message: fmt.Sprintf("No DKIM record found for selector %q", domain.DKIMSelector),
+			})
+		} else {
+			checks = append(checks, recordCheck{
+				Type: "DKIM", Name: dkimName, Status: "ok",
+				Value: dkimTxts[0],
+			})
+		}
 	}
 
 	// MTA-STS
 	mtaSTSName := "_mta-sts." + domain.Name
-	mtaSTSTxts, err := net.LookupTXT(mtaSTSName)
+	mtaSTSTxts, err := h.lookupTXT(mtaSTSName)
 	if err != nil || len(mtaSTSTxts) == 0 {
 		checks = append(checks, recordCheck{
 			Type: "MTA-STS", Name: mtaSTSName, Status: "missing",
@@ -398,7 +409,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 
 	// TLS-RPT
 	tlsRPTName := "_smtp._tls." + domain.Name
-	tlsRPTTxts, err := net.LookupTXT(tlsRPTName)
+	tlsRPTTxts, err := h.lookupTXT(tlsRPTName)
 	if err != nil || len(tlsRPTTxts) == 0 {
 		checks = append(checks, recordCheck{
 			Type: "TLS-RPT", Name: tlsRPTName, Status: "missing",

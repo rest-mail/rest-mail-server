@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { apiV1, apiUrl, apiRequest, setUnauthorizedHandler, resolveApiBase, DEFAULT_API_BASE } from './api'
+import { apiV1, setUnauthorizedHandler, resolveApiBase, DEFAULT_API_BASE } from './api'
 
 // VITE_API_URL is pinned to https://api.test by vitest.config.ts, so every
 // assertion below is against that fixed base.
@@ -23,11 +23,6 @@ describe('apiV1.url', () => {
   it('joins the API base with the path', () => {
     expect(apiV1.url('/admin/domains')).toBe(`${BASE}/admin/domains`)
   })
-
-  it('is exposed via the legacy apiUrl alias', () => {
-    expect(apiUrl).toBe(apiV1.url)
-    expect(apiUrl('/x')).toBe(`${BASE}/x`)
-  })
 })
 
 describe('apiV1.request', () => {
@@ -39,14 +34,14 @@ describe('apiV1.request', () => {
 
   it('fetches the base-prefixed URL', async () => {
     const fetchFn = mockFetch()
-    await apiRequest('/admin/queue')
+    await apiV1.request('/admin/queue')
     expect(fetchFn).toHaveBeenCalledTimes(1)
     expect(fetchFn.mock.calls[0][0]).toBe(`${BASE}/admin/queue`)
   })
 
   it('never attaches an Authorization header (auth is by httpOnly cookie)', async () => {
     const fetchFn = mockFetch()
-    await apiV1.request('/admin/domains', { method: 'GET' }, 'tok-123')
+    await apiV1.request('/admin/domains', { method: 'GET' })
     expect(lastHeaders(fetchFn).has('Authorization')).toBe(false)
   })
 
@@ -117,12 +112,6 @@ describe('401 handling', () => {
     setUnauthorizedHandler(handler)
     await apiV1.request('/admin/domains')
     expect(handler).not.toHaveBeenCalled()
-  })
-})
-
-describe('legacy aliases', () => {
-  it('apiRequest is the same function as apiV1.request', () => {
-    expect(apiRequest).toBe(apiV1.request)
   })
 })
 

@@ -78,7 +78,7 @@ func (f *greylistFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (
 		FirstSeen  time.Time
 		RetryAfter time.Time
 		Passed     bool
-		ExpiresAt  *time.Time
+		ExpiresAt  time.Time
 	}
 
 	err := f.db.Table("greylist_entries").
@@ -101,7 +101,7 @@ func (f *greylistFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (
 	// A stale entry past its TTL horizon (the purge worker has not collected it
 	// yet) is treated as a brand-new triple: re-greylist so an auto-whitelist is
 	// reconsidered rather than honored indefinitely.
-	if entry.ExpiresAt != nil && now.After(*entry.ExpiresAt) {
+	if now.After(entry.ExpiresAt) {
 		return f.reGreylist(entry.ID, now, "whitelist expired")
 	}
 

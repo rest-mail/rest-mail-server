@@ -21,9 +21,10 @@ var version = "dev"
 
 const topUsage = `restmail — run a rest-mail server
 
-  restmail status        what a server is, and whether it has been claimed
-  restmail setup         claim a freshly installed server (QR code for the app)
+  restmail status        what a server is, and which version it runs
   restmail reset-admin   let an admin back in; also hands a server over
+  restmail sign-in-link  the link, and QR code, that opens the app signed in
+  restmail password-hash a bcrypt hash of an admin password, for a deployment
   restmail version       print the version
   restmail [flags]       the interactive admin console (-api, -user, -pass)
 
@@ -38,8 +39,9 @@ func main() {
 
 	showVersion := flag.Bool("version", false, "Print the version and exit")
 	apiURL := flag.String("api", "http://localhost:8080", "REST API base URL")
-	adminUser := flag.String("user", "", "Admin username for login (or set RESTMAIL_ADMIN_USERNAME)")
-	adminPass := flag.String("pass", "", "Admin password (or set RESTMAIL_ADMIN_PASSWORD)")
+	adminUser := flag.String("user", "", "The admin account's address, to sign in with (or set RESTMAIL_ADMIN_ADDRESS)")
+	adminPass := flag.String("pass", "", "Its password (or set RESTMAIL_ADMIN_PASSWORD)")
+	adminCode := flag.String("code", "", "A current code from its authenticator, if it has 2FA (or set RESTMAIL_ADMIN_CODE)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("restmail", version)
@@ -47,31 +49,37 @@ func main() {
 	}
 
 	// Prefer flags, fall back to env vars
-	username := *adminUser
-	if username == "" {
-		username = os.Getenv("RESTMAIL_ADMIN_USERNAME")
+	address := *adminUser
+	if address == "" {
+		address = os.Getenv("RESTMAIL_ADMIN_ADDRESS")
 	}
 	pass := *adminPass
 	if pass == "" {
 		pass = os.Getenv("RESTMAIL_ADMIN_PASSWORD")
+	}
+	code := *adminCode
+	if code == "" {
+		code = os.Getenv("RESTMAIL_ADMIN_CODE")
 	}
 
 	client := apiclient.New(*apiURL)
 
 	// Login as admin to get a token for API calls
 	token := ""
-	if username != "" && pass != "" {
-		loginResp, err := client.LoginAdmin(username, pass)
+	var capabilities []string
+	if address != "" && pass != "" {
+		loginResp, err := client.Login(address, pass, code)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "warning: admin login failed: %v\n", err)
 		} else {
 			token = loginResp.Data.AccessToken
+			capabilities = loginResp.Data.Capabilities
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "hint: set -user/-pass flags or RESTMAIL_ADMIN_USERNAME/RESTMAIL_ADMIN_PASSWORD env vars for admin access")
+		fmt.Fprintln(os.Stderr, "hint: set -user/-pass (and -code) flags or RESTMAIL_ADMIN_ADDRESS/RESTMAIL_ADMIN_PASSWORD env vars for admin access")
 	}
 
-	model := console.NewModel(client, token)
+	model := console.NewModel(client, token, capabilities)
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
@@ -88,10 +96,14 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (code int, handled b
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	switch args[1] {
-	case "setup", "reset-admin":
-		return runSetupCommand(context.Background(), args[1], args[2:], client, localKeys, stdout, stderr), true
+	case "reset-admin":
+		return runResetAdmin(context.Background(), args[2:], client, localKeys, stdout, stderr), true
 	case "status":
-		return runStatus(context.Background(), args[2:], client, stdout, stderr), true
+		return runStatus(context.Background(), args[2:], client, keyFile, stdout, stderr), true
+	case "sign-in-link":
+		return runSignInLink(args[2:], os.Stdin, stdout, stderr), true
+	case "password-hash":
+		return runPasswordHash(args[2:], os.Stdin, stdout, stderr), true
 	case "version":
 		fmt.Fprintln(stdout, "restmail", version)
 		return 0, true

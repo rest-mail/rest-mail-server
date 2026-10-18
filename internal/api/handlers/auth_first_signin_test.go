@@ -14,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
+	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -48,15 +49,20 @@ type firstSignIn struct {
 func newFirstSignIn(t *testing.T) *firstSignIn {
 	t.Helper()
 	base := openLoginTestDB(t)
-	if err := base.AutoMigrate(&models.AdminUser{}, &models.Role{}, &models.Capability{},
-		&models.UserRole{}, &models.RoleCapability{}, &models.TwoFactor{}, &models.TwoFactorRecoveryCode{}); err != nil {
+	if err := base.AutoMigrate(append(accountModels, &models.Pipeline{})...); err != nil {
 		t.Skipf("first sign-in DB test skipped: migrate failed (%v)", err)
+	}
+	// The bootstrap admin's grants are recorded in the audit log.
+	if err := rmdb.MigrateAuditLog(base); err != nil {
+		t.Skipf("first sign-in DB test skipped: audit log migrate failed (%v)", err)
 	}
 	gdb := base.Begin()
 	t.Cleanup(func() { gdb.Rollback() })
+	// Grants only: "an admin exists" is any grant at "*", and the roles and
+	// capabilities are made again below.
 	tables := strings.Join([]string{
-		models.UserRole{}.TableName(), models.RoleCapability{}.TableName(),
-		models.AdminUser{}.TableName(), models.Role{}.TableName(), models.Capability{}.TableName(),
+		models.Grant{}.TableName(), models.GrantActivation{}.TableName(), models.RoleCapability{}.TableName(),
+		models.Role{}.TableName(), models.Capability{}.TableName(),
 	}, ", ")
 	if err := gdb.Exec("TRUNCATE " + tables + " RESTART IDENTITY CASCADE").Error; err != nil {
 		t.Fatalf("empty RBAC tables: %v", err)
@@ -65,7 +71,7 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 	if err := bootstrap.EnsureRBAC(gdb); err != nil {
 		t.Fatal(err)
 	}
-	name := "boot-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	name := "admin@boot-" + strconv.FormatInt(time.Now().UnixNano(), 36) + ".test"
 	if outcome, err := bootstrap.EnsureFirstAdmin(gdb, name, bootstrapPassword, true, time.Now()); err != nil || outcome != bootstrap.FirstAdminCreated {
 		t.Fatalf("bootstrap admin: outcome=%v err=%v", outcome, err)
 	}
@@ -73,8 +79,8 @@ func newFirstSignIn(t *testing.T) *firstSignIn {
 	return &firstSignIn{
 		db:    gdb,
 		jwt:   jwt,
-		auth:  NewAuthHandler(gdb, jwt, firstSignInKey),
-		twofa: NewTwoFactorHandler(gdb, firstSignInKey, true),
+		auth:  NewAuthHandler(gdb, jwt, firstSignInKey, nil),
+		twofa: NewTwoFactorHandler(gdb, firstSignInKey, true, nil),
 		name:  name,
 	}
 }
@@ -96,7 +102,7 @@ func sessionFrom(rr *httptest.ResponseRecorder) nativeSession {
 }
 
 func (f *firstSignIn) login(password, totp string) (*httptest.ResponseRecorder, nativeSession) {
-	body := map[string]string{"username": f.name, "password": password, "client": "native"}
+	body := map[string]string{"email": f.name, "password": password, "client": "native"}
 	if totp != "" {
 		body["totp_code"] = totp
 	}
@@ -122,16 +128,17 @@ func (f *firstSignIn) call(token string, handler http.Handler, body any) *httpte
 	rr := httptest.NewRecorder()
 	// The chain the routes put every authenticated call through.
 	middleware.JWTMiddleware(f.jwt)(
-		middleware.RejectStaleAdminSessions(AdminSessionCurrent(f.db))(handler),
+		middleware.RejectStaleSessions(SessionCurrent(f.db))(handler),
 	).ServeHTTP(rr, req)
 	return rr
 }
 
 var reached = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
 
-// adminAPI is any admin route, including one that checks no capability.
+// adminAPI is any route past setup: an admin route, the mail routes, or
+// creating an account.
 func (f *firstSignIn) adminAPI(token string) *httptest.ResponseRecorder {
-	return f.call(token, middleware.AdminOnly(reached), nil)
+	return f.call(token, middleware.SetupDone(reached), nil)
 }
 
 func (f *firstSignIn) changePassword(token, current, next string) *httptest.ResponseRecorder {
@@ -156,7 +163,7 @@ func (f *firstSignIn) enrollTOTP(t *testing.T, token string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rr := f.call(token, http.HandlerFunc(f.twofa.Confirm), map[string]string{"code": code}); rr.Code != http.StatusNoContent {
+	if rr := f.call(token, http.HandlerFunc(f.twofa.Confirm), map[string]string{"totp_code": code}); rr.Code != http.StatusNoContent {
 		t.Fatalf("2fa confirm = %d %s", rr.Code, rr.Body)
 	}
 	return env.Data.Secret
@@ -195,6 +202,9 @@ func TestFirstSignIn_CanOnlyFinishSetup(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("refresh = %d %s", rr.Code, rr.Body)
 	}
+	if want := []string{"password", "two_factor"}; !reflect.DeepEqual(refreshed.SetupRequired, want) {
+		t.Errorf("refresh setup_required = %v, want %v", refreshed.SetupRequired, want)
+	}
 	if got := f.adminAPI(refreshed.AccessToken); got.Code != http.StatusForbidden {
 		t.Fatalf("admin API after refresh = %d, want 403: the refresh escaped setup", got.Code)
 	}
@@ -223,6 +233,9 @@ func TestFirstSignIn_PasswordAloneIsNotEnough(t *testing.T) {
 	if want := []string{"two_factor"}; !reflect.DeepEqual(s2.SetupRequired, want) {
 		t.Errorf("setup_required = %v, want %v", s2.SetupRequired, want)
 	}
+	if rr, refreshed := f.refresh(s2.RefreshToken); rr.Code != http.StatusOK || !reflect.DeepEqual(refreshed.SetupRequired, []string{"two_factor"}) {
+		t.Errorf("refresh after password = %d, setup_required %v, want two_factor", rr.Code, refreshed.SetupRequired)
+	}
 	if got := f.adminAPI(s2.AccessToken); got.Code != http.StatusForbidden {
 		t.Errorf("admin API with password but no 2FA = %d, want 403", got.Code)
 	}
@@ -249,19 +262,22 @@ func TestFirstSignIn_PasswordAndAuthenticatorUnlockTheAccount(t *testing.T) {
 	if len(done.SetupRequired) != 0 {
 		t.Errorf("setup_required = %v after finishing setup", done.SetupRequired)
 	}
-	hasWildcard := false
+	// The admin role's capabilities, day to day; superadmin's "*" only once it
+	// is switched on (#346).
+	hasWildcard, canBuild := false, false
 	for _, c := range done.Capabilities {
 		hasWildcard = hasWildcard || c == "*"
+		canBuild = canBuild || c == "domains:write"
 	}
-	if !hasWildcard {
-		t.Errorf("superadmin capabilities = %v, want *", done.Capabilities)
+	if hasWildcard || !canBuild {
+		t.Errorf("capabilities = %v, want the admin role's, without *", done.Capabilities)
 	}
 	if got := f.adminAPI(done.AccessToken); got.Code != http.StatusTeapot {
 		t.Errorf("admin API after setup = %d, want it reached", got.Code)
 	}
 
 	// And 2FA stays: a required authenticator cannot be switched off.
-	if rr := f.call(done.AccessToken, http.HandlerFunc(f.twofa.Disable), map[string]string{"code": totpNow(t, secret)}); rr.Code != http.StatusForbidden {
+	if rr := f.call(done.AccessToken, http.HandlerFunc(f.twofa.Disable), map[string]string{"totp_code": totpNow(t, secret)}); rr.Code != http.StatusForbidden {
 		t.Errorf("disable required 2FA = %d %s, want 403", rr.Code, rr.Body)
 	}
 }
@@ -275,7 +291,8 @@ func TestChangePassword_RefusesBadRequests(t *testing.T) {
 		want                int
 	}{
 		// A stolen access token alone must not be enough to take the account.
-		{"wrong current password", "not-the-password-at-all", "a-brand-new-passphrase", http.StatusUnauthorized},
+		// 403, never 401: the session is still good (#392).
+		{"wrong current password", "not-the-password-at-all", "a-brand-new-passphrase", http.StatusForbidden},
 		{"too short", bootstrapPassword, "short", http.StatusUnprocessableEntity},
 		{"unchanged", bootstrapPassword, bootstrapPassword, http.StatusUnprocessableEntity},
 		{"missing new", bootstrapPassword, "", http.StatusUnprocessableEntity},
@@ -292,14 +309,15 @@ func TestChangePassword_RefusesBadRequests(t *testing.T) {
 	}
 }
 
-func TestChangePassword_MailboxSessionsAreRefused(t *testing.T) {
+// A session whose account is gone changes nothing.
+func TestChangePassword_NoSuchAccountIsRefused(t *testing.T) {
 	f := newFirstSignIn(t)
-	pair, err := f.jwt.GenerateTokenPair(1, "someone@example.test", 0)
+	pair, err := f.jwt.GenerateSession(1<<30, "someone@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := f.changePassword(pair.AccessToken, "x", "y-long-enough-pass"); got.Code != http.StatusForbidden {
-		t.Errorf("mailbox session = %d, want 403", got.Code)
+	if got := f.changePassword(pair.AccessToken, "x", "y-long-enough-pass"); got.Code != http.StatusUnauthorized {
+		t.Errorf("no such account = %d, want 401", got.Code)
 	}
 }
 
@@ -307,7 +325,7 @@ func TestChangePassword_MailboxSessionsAreRefused(t *testing.T) {
 // nobody finishing the install would.
 func (f *firstSignIn) expire(t *testing.T) {
 	t.Helper()
-	if err := f.db.Model(&models.AdminUser{}).Where("username = ?", f.name).
+	if err := f.db.Model(&models.Mailbox{}).Where("address = ?", f.name).
 		Update("bootstrap_expires_at", time.Now().Add(-time.Minute)).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -353,8 +371,8 @@ func TestFirstSignIn_ChoosingAPasswordEndsTheDeadline(t *testing.T) {
 		t.Fatalf("change password = %d %s", rr.Code, rr.Body)
 	}
 
-	var user models.AdminUser
-	if err := f.db.Where("username = ?", f.name).First(&user).Error; err != nil {
+	var user models.Mailbox
+	if err := f.db.Where("address = ?", f.name).First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
 	if user.BootstrapExpiresAt != nil {

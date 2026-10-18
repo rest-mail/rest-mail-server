@@ -13,6 +13,7 @@ import (
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
+	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
 
@@ -218,15 +219,36 @@ type EventHandler struct {
 	db         *gorm.DB
 	broker     *SSEBroker
 	jwtService *auth.JWTService
+	// sessionCurrent is RejectStaleSessions' check, which this route, outside
+	// the middleware groups, makes itself: when the stream opens, and again
+	// before every event and keepalive it sends.
+	sessionCurrent middleware.SessionCurrent
+	// keepalive is how often an idle stream is sent a comment.
+	keepalive time.Duration
 }
 
+// defaultSSEKeepalive is how often an idle stream is sent a keepalive.
+const defaultSSEKeepalive = 30 * time.Second
+
 // NewEventHandler creates a new EventHandler.
-func NewEventHandler(db *gorm.DB, broker *SSEBroker, jwtService *auth.JWTService) *EventHandler {
+func NewEventHandler(db *gorm.DB, broker *SSEBroker, jwtService *auth.JWTService, sessionCurrent middleware.SessionCurrent) *EventHandler {
 	return &EventHandler{
-		db:         db,
-		broker:     broker,
-		jwtService: jwtService,
+		db:             db,
+		broker:         broker,
+		jwtService:     jwtService,
+		sessionCurrent: sessionCurrent,
+		keepalive:      defaultSSEKeepalive,
 	}
+}
+
+// stillCurrent reports whether the session a stream was opened with has not
+// ended since: an account whose sessions end (a new password, a reset, 2FA
+// turned off, an admin ending them, a disable) loses its open streams too,
+// at the next thing they would send. A check that fails ends the stream as
+// well; the client reconnects.
+func (h *EventHandler) stillCurrent(claims *auth.Claims) bool {
+	current, err := h.sessionCurrent(claims.AccountID, claims.CredentialEpoch)
+	return err == nil && current
 }
 
 // Events handles GET /api/v1/accounts/{id}/events as a Server-Sent Events stream.
@@ -249,6 +271,16 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
 		return
 	}
+	// As on every other route: a token from before the account's sessions
+	// last ended is dead, and one still in setup reaches nothing.
+	if !h.stillCurrent(claims) {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired token")
+		return
+	}
+	if claims.SetupPending {
+		respond.Error(w, http.StatusForbidden, "setup_required", "Finish setting up this account first: a new password and two-factor authentication")
+		return
+	}
 
 	// 2. Parse account ID from URL
 	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
@@ -257,8 +289,8 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Resolve mailbox ID (same logic as MessageHandler.resolveAccountMailbox)
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	// 3. Resolve the mailbox: one the caller may read.
+	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -303,13 +335,17 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 	// 7. Flush immediately so the client knows the connection is open
 	flusher.Flush()
 
-	// 8. Event loop
-	ticker := time.NewTicker(30 * time.Second)
+	// 8. Event loop. A session that has ended since the stream opened is sent
+	// nothing more: the stream ends instead.
+	ticker := time.NewTicker(h.keepalive)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case event := <-ch:
+			if !h.stillCurrent(claims) {
+				return
+			}
 			data, err := json.Marshal(event.Event.Data)
 			if err != nil {
 				continue
@@ -318,6 +354,9 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 
 		case <-ticker.C:
+			if !h.stillCurrent(claims) {
+				return
+			}
 			fmt.Fprintf(w, ": keepalive\n\n")
 			flusher.Flush()
 
@@ -325,11 +364,4 @@ func (h *EventHandler) Events(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-}
-
-// resolveAccountMailbox looks up the mailbox ID for an account. It first checks
-// if the account is a WebmailAccount owned by the caller, then falls back to
-// checking LinkedAccounts.
-func (h *EventHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
-	return resolveAccountMailbox(h.db, accountID, webmailAccountID)
 }

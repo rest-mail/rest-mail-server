@@ -1,12 +1,23 @@
 'use strict';
 
+const crypto = require('crypto');
+const fs = require('fs');
 const http = require('http');
-const vm = require('vm');
 const path = require('path');
 const { Worker } = require('worker_threads');
 
 const PORT = process.env.PORT || 3100;
 const WORKER_PATH = path.join(__dirname, 'worker.js');
+
+// The API authenticates to the sidecar with a shared token (Authorization:
+// Bearer). Without one the sidecar would run any script anyone on the network
+// sent it, so it refuses to start.
+const TOKEN = process.env.JS_FILTER_TOKEN || '';
+if (TOKEN.length < 16) {
+  console.error('JS_FILTER_TOKEN must be set, at least 16 characters: the API sends it to authenticate');
+  process.exit(1);
+}
+const TOKEN_DIGEST = sha256(TOKEN);
 
 function toPositiveInt(raw, fallback) {
   const n = Number(raw);
@@ -19,13 +30,33 @@ function toPositiveInt(raw, fallback) {
 // encoding, plus the script) and is overridable for tight deployments.
 const MAX_BODY_BYTES = toPositiveInt(process.env.JS_FILTER_MAX_BODY_BYTES, 32 * 1024 * 1024);
 
-// Default allowed hosts from environment (comma-separated). The allowlist is
-// server-configured; request-supplied hosts are honoured too for backward
-// compatibility with the existing /execute contract.
+// The hosts a script may fetch from (comma-separated). The allowlist is set by
+// whoever runs the sidecar; a request cannot add to it.
 const DEFAULT_ALLOWED_HOSTS = (process.env.JS_FILTER_ALLOWED_HOSTS || '')
   .split(',')
   .map((h) => h.trim())
   .filter(Boolean);
+
+// What one run of a script may use inside QuickJS: its heap (the email it is
+// given included), and its stack. The CPU budget is the request's timeout_ms.
+const MEMORY_LIMIT_BYTES = toPositiveInt(process.env.JS_FILTER_MEMORY_LIMIT_BYTES, 64 * 1024 * 1024);
+const STACK_LIMIT_BYTES = 256 * 1024;
+
+// QuickJS is compiled once; each worker instantiates its own copy, so no two
+// scripts ever share an engine.
+const WASM_MODULE = new WebAssembly.Module(
+  fs.readFileSync(require.resolve('@jitl/quickjs-wasmfile-release-sync/wasm')),
+);
+
+function sha256(s) {
+  return crypto.createHash('sha256').update(s).digest();
+}
+
+// authorized checks the caller's bearer token in constant time.
+function authorized(req) {
+  const m = /^Bearer (.+)$/.exec(req.headers.authorization || '');
+  return Boolean(m) && crypto.timingSafeEqual(sha256(m[1]), TOKEN_DIGEST);
+}
 
 function sendJSON(res, status, obj) {
   if (res.headersSent || res.writableEnded) return;
@@ -77,10 +108,11 @@ function sendTooLarge(res, maxBytes) {
 }
 
 // runInWorker executes one script in a dedicated Worker with a hard wall-clock
-// deadline. When the deadline is hit the worker is terminated (killing async
-// busy-loops the vm timeout cannot), and the request gets a definite 408 timeout
-// — never a silent success. Exactly one response is sent per request.
-function runInWorker(workerData, wallTimeoutMs, res) {
+// deadline. When the deadline is hit the worker is terminated (whatever the
+// script is doing, waiting on fetch included), and the request gets a definite
+// 408 timeout — never a silent success. Exactly one response is sent per
+// request.
+function runInWorker(job, wallTimeoutMs, res) {
   let settled = false;
   let worker;
 
@@ -92,12 +124,23 @@ function runInWorker(workerData, wallTimeoutMs, res) {
     if (worker) worker.terminate();
   };
 
-  const timer = setTimeout(() => {
-    finish(() => sendJSON(res, 408, { error: 'execution timeout' }));
-  }, wallTimeoutMs);
+  // /validate answers 200 with the outcome of its dry run, a timeout included.
+  const timeout = () =>
+    job.mode === 'validate'
+      ? sendJSON(res, 200, { valid: true, dry_run: { error: 'execution timeout', logs: [] }, phase: 'execution' })
+      : sendJSON(res, 408, { error: 'execution timeout' });
+
+  const timer = setTimeout(() => finish(timeout), wallTimeoutMs);
 
   try {
-    worker = new Worker(WORKER_PATH, { workerData });
+    worker = new Worker(WORKER_PATH, {
+      workerData: {
+        ...job,
+        wasmModule: WASM_MODULE,
+        memoryLimitBytes: MEMORY_LIMIT_BYTES,
+        stackLimitBytes: STACK_LIMIT_BYTES,
+      },
+    });
   } catch (err) {
     finish(() => sendJSON(res, 500, { error: `failed to start worker: ${err && err.message}` }));
     return;
@@ -105,12 +148,15 @@ function runInWorker(workerData, wallTimeoutMs, res) {
 
   worker.once('message', (msg) => {
     finish(() => {
-      if (msg && msg.ok) {
+      if (msg && msg.ok && msg.body) {
+        sendJSON(res, 200, msg.body);
+      } else if (msg && msg.ok) {
         sendJSON(res, 200, { result: msg.result, logs: msg.logs || [] });
       } else if (msg && msg.timeout) {
-        // Uniform 408 body for both the synchronous (vm) and wall-clock
-        // (terminate) timeout paths; the Go filter keys on the 408 status.
-        sendJSON(res, 408, { error: 'execution timeout' });
+        // Uniform 408 body for both the CPU budget (QuickJS interrupt) and
+        // wall-clock (terminate) timeout paths; the Go filter keys on the 408
+        // status.
+        timeout();
       } else {
         sendJSON(res, 500, { error: (msg && msg.error) || 'script execution failed' });
       }
@@ -135,22 +181,28 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && req.url === '/validate') {
-    return handleValidate(req, res);
-  }
-
-  if (req.method !== 'POST' || req.url !== '/execute') {
+  if (req.method !== 'POST' || (req.url !== '/execute' && req.url !== '/validate')) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
     return;
   }
 
+  if (!authorized(req)) {
+    res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' });
+    res.end(JSON.stringify({ error: 'unauthorized' }));
+    return;
+  }
+
+  if (req.url === '/validate') {
+    return handleValidate(req, res);
+  }
   return handleExecute(req, res);
 });
 
 // Execute handler: runs a filter script against an email in a dedicated Worker,
-// with optional async fetch support. Request/response contract is unchanged:
-//   request : { script, email, timeout_ms?, allowed_hosts? }
+// with optional async fetch support. Request/response contract (every request
+// carries Authorization: Bearer <JS_FILTER_TOKEN>):
+//   request : { script, email, timeout_ms? }
 //   success : 200 { result, logs }
 //   timeout : 408 { error }
 //   failure : 5xx/413/400 { error }
@@ -164,97 +216,49 @@ function handleExecute(req, res) {
       return;
     }
 
-    const { script, email, timeout_ms, allowed_hosts } = parsed;
+    const { script, email, timeout_ms } = parsed;
     if (!script || !email) {
       sendJSON(res, 400, { error: 'script and email are required' });
       return;
     }
 
-    // Synchronous vm guard (inner) and wall-clock terminate deadline (outer). The
-    // outer bound gives async work (e.g. fetch) headroom while still being hard.
-    const syncTimeout = toPositiveInt(timeout_ms, 500);
-    const wallTimeout = Math.max(syncTimeout * 3, 2000);
-
-    const allowedHosts = new Set([...DEFAULT_ALLOWED_HOSTS, ...(Array.isArray(allowed_hosts) ? allowed_hosts : [])]);
+    // CPU budget inside QuickJS (inner) and wall-clock terminate deadline
+    // (outer). The outer bound gives async work (e.g. fetch) headroom while
+    // still being hard.
+    const cpuBudget = toPositiveInt(timeout_ms, 500);
+    const wallTimeout = Math.max(cpuBudget * 3, 2000);
 
     runInWorker(
-      { script, email, syncTimeout, allowedHosts: [...allowedHosts] },
+      { mode: 'execute', script, email, cpuBudgetMs: cpuBudget, allowedHosts: DEFAULT_ALLOWED_HOSTS },
       wallTimeout,
       res,
     );
   });
 }
 
-// Validate endpoint: syntax check + optional dry-run. The dry-run calls filter()
-// synchronously (its result is not awaited), so it cannot be hung by an async
-// loop; the vm synchronous timeout bounds a runaway sync script. Body size is
-// capped here too.
+// Validate endpoint: syntax check + optional dry-run, in the same isolated
+// Worker as /execute. The dry run gets 500ms of CPU and no fetch.
+//   request : { script, email? }
+//   success : 200 { valid: true } | 200 { valid: false, error, phase: 'syntax' }
+//             | 200 { valid: true, dry_run: { result, logs } }
+//             | 200 { valid: true, dry_run: { error, logs }, phase: 'execution' }
 function handleValidate(req, res) {
   readBody(req, res, MAX_BODY_BYTES, (body) => {
+    let parsed;
     try {
-      const { script, email } = JSON.parse(body);
-
-      if (!script) {
-        sendJSON(res, 400, { valid: false, error: 'script is required' });
-        return;
-      }
-
-      // Step 1: Syntax check — try to compile the script
-      const wrappedScript = `
-        ${script}
-        if (typeof filter !== 'function') {
-          throw new Error('script must define a filter(email) function');
-        }
-      `;
-
-      try {
-        new vm.Script(wrappedScript);
-      } catch (syntaxErr) {
-        sendJSON(res, 200, { valid: false, error: syntaxErr.message, phase: 'syntax' });
-        return;
-      }
-
-      // Step 2: If email is provided, do a dry-run
-      if (email) {
-        const logs = [];
-        const sandbox = {
-          JSON, Math, Date, String, Array, Object, RegExp,
-          parseInt, parseFloat, isNaN, isFinite,
-          encodeURIComponent, decodeURIComponent,
-          console: {
-            log: (...args) => { logs.push(args.map(String).join(' ')); },
-            warn: (...args) => { logs.push(args.map(String).join(' ')); },
-            error: (...args) => { logs.push(args.map(String).join(' ')); },
-          },
-        };
-
-        const context = vm.createContext(sandbox);
-        const dryRunScript = `
-          ${script}
-          if (typeof filter !== 'function') {
-            throw new Error('script must define a filter(email) function');
-          }
-          filter(${JSON.stringify(email)});
-        `;
-
-        try {
-          const result = vm.runInContext(dryRunScript, context, { timeout: 500 });
-          sendJSON(res, 200, { valid: true, dry_run: { result, logs } });
-        } catch (runErr) {
-          sendJSON(res, 200, {
-            valid: true,
-            dry_run: { error: runErr.message, logs },
-            phase: 'execution',
-          });
-        }
-        return;
-      }
-
-      // Syntax-only validation passed
-      sendJSON(res, 200, { valid: true });
-    } catch (err) {
-      sendJSON(res, 500, { valid: false, error: err.message });
+      parsed = JSON.parse(body);
+    } catch {
+      sendJSON(res, 400, { valid: false, error: 'invalid JSON body' });
+      return;
     }
+
+    const { script, email } = parsed;
+    if (!script) {
+      sendJSON(res, 400, { valid: false, error: 'script is required' });
+      return;
+    }
+
+    runInWorker({ mode: 'validate', script, email, cpuBudgetMs: 500, allowedHosts: [] }, 2000, res);
   });
 }
 

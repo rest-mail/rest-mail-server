@@ -14,7 +14,7 @@ function SettingsPage() {
 
   useEffect(() => {
     if (accessToken) {
-      fetchCertificates(accessToken).catch(() => {
+      fetchCertificates().catch(() => {
         // Silently fail - user may not have permissions
       })
     }

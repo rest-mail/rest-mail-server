@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
+	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 
@@ -63,7 +64,7 @@ func seedTraceReadFixtures(t *testing.T, tx *gorm.DB) *PipelineHandler {
 	if err := tx.Create(&rejected).Error; err != nil {
 		t.Fatalf("persist rejected trace: %v", err)
 	}
-	return NewPipelineHandler(tx, nil)
+	return NewPipelineHandler(tx, nil, filters.JSSidecar{})
 }
 
 // listTraces calls ListPipelineLogs with the given raw query string and decodes
@@ -129,7 +130,7 @@ func TestListPipelineLogs_TraceFilters(t *testing.T) {
 		t.Errorf("delivered MessageID = %v, want 1001", del[0].MessageID)
 	}
 
-	// action (=final_action) filter preserved from the legacy contract.
+	// action filters on final_action.
 	if got := listTraces(t, h, "action=continue"); len(got) != 1 || got[0].Outcome != outcomeDelivered {
 		t.Fatalf("action=continue → %+v, want the delivered (continue) trace", got)
 	}

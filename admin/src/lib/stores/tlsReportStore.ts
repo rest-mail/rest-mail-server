@@ -45,8 +45,7 @@ interface TLSReportState {
       reporting_org?: string
       limit?: number
       offset?: number
-    },
-    accessToken: string
+    }
   ) => Promise<void>
   selectReport: (report: TLSReport) => void
   clearCurrentReport: () => void
@@ -60,7 +59,7 @@ export const useTLSReportStore = create<TLSReportState>((set) => ({
   error: null,
   pagination: { total: 0, hasMore: false },
 
-  fetchReports: async (filters, accessToken: string) => {
+  fetchReports: async (filters) => {
     set({ isLoading: true, error: null })
     try {
       const params = new URLSearchParams()
@@ -72,8 +71,7 @@ export const useTLSReportStore = create<TLSReportState>((set) => ({
 
       const response = await apiV1.request(
         `/admin/tls-reports?${params.toString()}`,
-        { method: 'GET' },
-        accessToken
+        { method: 'GET' }
       )
       if (!response.ok) {
         const error = await response.json()

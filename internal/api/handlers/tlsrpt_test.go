@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -187,14 +185,7 @@ func buildTLSRPTBodyForDomain(t *testing.T, policyDomain string, numPolicies int
 // matching the repo's depless-local / DB-in-CI convention.
 func openTLSRPTTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("TLS-RPT DB test skipped: no database reachable (%v)", err)
 	}

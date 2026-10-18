@@ -12,11 +12,12 @@ import (
 	"testing"
 
 	"github.com/restmail/restmail/internal/bootstrap"
+	"github.com/restmail/restmail/internal/db/models"
 	"golang.org/x/crypto/ssh"
 )
 
-// The owner-key endpoints, end to end over HTTP: challenge, sign, token, and
-// the token claims the server.
+// The owner-key endpoints, end to end over HTTP: challenge, sign, and a token
+// that lets an admin back in.
 
 func ownerKey(t *testing.T) ssh.Signer {
 	t.Helper()
@@ -30,15 +31,33 @@ func ownerKey(t *testing.T) ssh.Signer {
 
 func ownerHandler(t *testing.T, f *firstSignIn, listed ...ssh.Signer) *OwnerHandler {
 	t.Helper()
-	var spec []string
-	for _, s := range listed {
-		spec = append(spec, string(ssh.MarshalAuthorizedKey(s.PublicKey())))
+	return keysHandler(t, f, listed, nil)
+}
+
+// keysHandler registers owners in PostgreSQL and configures read-only status keys.
+func keysHandler(t *testing.T, f *firstSignIn, owners, status []ssh.Signer) *OwnerHandler {
+	t.Helper()
+	spec := func(signers []ssh.Signer) string {
+		var lines []string
+		for _, s := range signers {
+			lines = append(lines, string(ssh.MarshalAuthorizedKey(s.PublicKey())))
+		}
+		return strings.Join(lines, "")
 	}
-	keys, err := bootstrap.ParseOwnerKeys(strings.Join(spec, ""))
+	if err := f.db.AutoMigrate(&models.OwnerKey{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Where("1 = 1").Delete(&models.OwnerKey{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.SeedOwnerKeys(f.db, spec(owners)); err != nil {
+		t.Fatal(err)
+	}
+	statusKeys, err := bootstrap.ParseStatusKeys(spec(status))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewOwnerHandler(f.db, keys, "owner-handler-secret")
+	return NewOwnerHandler(f.db, statusKeys, "owner-handler-secret")
 }
 
 // askAsOwner does what the CLI does and returns the token response.
@@ -63,19 +82,23 @@ func askAsOwner(t *testing.T, h *OwnerHandler, s ssh.Signer, purpose, username s
 		"public_key": string(ssh.MarshalAuthorizedKey(s.PublicKey())),
 		"signature":  base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
 		"purpose":    purpose,
-		"username":   username,
+		"address":    username,
 	})
 	rr = httptest.NewRecorder()
 	h.Token(rr, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(b)))
 	return rr
 }
 
-func TestOwner_SignedChallengeClaimsTheServer(t *testing.T) {
-	f := newUnclaimedServer(t)
+func TestOwner_SignedChallengeLetsAnAdminBackIn(t *testing.T) {
+	f := newInstalledServer(t)
+	f.signInFirstTime(t, chosenPassword)
 	owner := ownerKey(t)
 	h := ownerHandler(t, f, owner)
 
-	rr := askAsOwner(t, h, owner, "setup", "")
+	if rr := askAsOwner(t, h, owner, "reset-admin", "nobody@example.test"); rr.Code != http.StatusNotFound || errorCodeOf(rr) != "no_such_account" {
+		t.Errorf("reset for nobody = %d %s, want 404 no_such_account", rr.Code, rr.Body)
+	}
+	rr := askAsOwner(t, h, owner, "reset-admin", f.name)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("token = %d %s", rr.Code, rr.Body)
 	}
@@ -85,38 +108,36 @@ func TestOwner_SignedChallengeClaimsTheServer(t *testing.T) {
 		} `json:"data"`
 	}
 	_ = json.Unmarshal(rr.Body.Bytes(), &got)
-	claim := post(f.auth.Claim, map[string]string{
-		"token": got.Data.Token, "username": "owner", "password": ownerPassword, "client": "native",
-	})
-	if claim.Code != http.StatusOK {
-		t.Errorf("claim with the owner's token = %d %s", claim.Code, claim.Body)
+	if reset := post(f.auth.Reset, map[string]string{"token": got.Data.Token, "password": ownerPassword, "client": "native"}); reset.Code != http.StatusOK {
+		t.Errorf("reset with the owner's token = %d %s", reset.Code, reset.Body)
 	}
-	// Once claimed, setup is refused: the owner resets an admin instead.
-	if rr := askAsOwner(t, h, owner, "setup", ""); rr.Code != http.StatusConflict || claimErrorCode(rr) != "already_claimed" {
-		t.Errorf("second setup = %d %s, want 409 already_claimed", rr.Code, rr.Body)
-	}
-	if rr := askAsOwner(t, h, owner, "reset-admin", "nobody"); rr.Code != http.StatusNotFound || claimErrorCode(rr) != "no_such_admin" {
-		t.Errorf("reset for nobody = %d %s, want 404 no_such_admin", rr.Code, rr.Body)
-	}
-	if rr := askAsOwner(t, h, owner, "reset-admin", "owner"); rr.Code != http.StatusOK {
-		t.Errorf("reset for owner = %d %s", rr.Code, rr.Body)
+}
+
+// An owner key resets an account, and claims nothing: a server's first admin
+// is the bootstrap account.
+func TestOwner_NothingToClaim(t *testing.T) {
+	f := newInstalledServer(t)
+	owner := ownerKey(t)
+	rr := askAsOwner(t, ownerHandler(t, f, owner), owner, "setup", "")
+	if rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "validation_failed" {
+		t.Errorf("setup = %d %s, want 422 validation_failed", rr.Code, rr.Body)
 	}
 }
 
 func TestOwner_Refusals(t *testing.T) {
-	f := newUnclaimedServer(t)
+	f := newInstalledServer(t)
 	owner, stranger := ownerKey(t), ownerKey(t)
 
-	if rr := askAsOwner(t, ownerHandler(t, f, owner), stranger, "setup", ""); rr.Code != http.StatusForbidden || claimErrorCode(rr) != "not_owner" {
+	if rr := askAsOwner(t, ownerHandler(t, f, owner), stranger, "reset-admin", f.name); rr.Code != http.StatusForbidden || errorCodeOf(rr) != "not_owner" {
 		t.Errorf("a stranger's key = %d %s, want 403 not_owner", rr.Code, rr.Body)
 	}
-	if rr := askAsOwner(t, ownerHandler(t, f), owner, "setup", ""); rr.Code != http.StatusConflict || claimErrorCode(rr) != "no_owner_keys" {
+	if rr := askAsOwner(t, ownerHandler(t, f), owner, "reset-admin", f.name); rr.Code != http.StatusConflict || errorCodeOf(rr) != "no_owner_keys" {
 		t.Errorf("no owner keys listed = %d %s, want 409 no_owner_keys", rr.Code, rr.Body)
 	}
 	if rr := askAsOwner(t, ownerHandler(t, f, owner), owner, "become-root", ""); rr.Code != http.StatusUnprocessableEntity && rr.Code != http.StatusBadRequest {
 		t.Errorf("an unknown purpose = %d %s, want a validation error", rr.Code, rr.Body)
 	}
 	if rr := askAsOwner(t, ownerHandler(t, f, owner), owner, "reset-admin", ""); rr.Code != http.StatusUnprocessableEntity && rr.Code != http.StatusBadRequest {
-		t.Errorf("reset without a username = %d %s, want a validation error", rr.Code, rr.Body)
+		t.Errorf("reset without an address = %d %s, want a validation error", rr.Code, rr.Body)
 	}
 }

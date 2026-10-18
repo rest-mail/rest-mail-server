@@ -54,9 +54,10 @@ config/*/dkim.conf
 # Docker volumes (local dev)
 postgres-data/
 
-# Node modules (webmail)
+# Node modules (webmail, js-filter sidecar)
 webmail/node_modules/
 webmail/dist/
+projects/js-filter-sidecar/node_modules/
 
 # Generated certs (local)
 certs/
@@ -74,6 +75,10 @@ Thumbs.db
 .workspace/
 .claude/workgroup/
 .cache/
+__pycache__/
 
 # GoReleaser output (.goreleaser.yaml)
 /dist/
+
+# Python bytecode (tests/contract)
+__pycache__/

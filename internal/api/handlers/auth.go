@@ -17,6 +17,7 @@ import (
 	"github.com/restmail/restmail/internal/bootstrap"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -28,23 +29,19 @@ type refreshTokenStore interface {
 	Save(rec *models.RefreshToken) error
 	Rotate(jti string) error
 	Revoke(jti string) error
-	// RevokeAllForSubject kills every remaining active session for one owner —
+	// RevokeAllForAccount kills every remaining active session of one account —
 	// used when a refresh detects a disabled/deleted account, so no sibling
-	// session for that owner survives.
-	RevokeAllForSubject(userType string, subjectID uint) error
+	// session of that account survives.
+	RevokeAllForAccount(accountID uint) error
 }
 
 // accountStateStore re-reads live account state during a refresh so a token that
-// outlived a password change, disable, delete, or role change cannot be used to
-// mint fresh access tokens. It also re-derives an admin's capabilities from the
-// database rather than trusting the (up to 7-day-old) refresh-token claim. A nil
-// store (no database, some unit tests) skips the re-check and falls back to the
-// token claims.
+// outlived a password change, disable or delete cannot be used to mint fresh
+// access tokens. It also lists the account's capabilities, from its grants, for
+// the response. A nil store (no database, some unit tests) skips the re-check.
 type accountStateStore interface {
-	// MailboxActive reports whether the mailbox exists and is active.
-	MailboxActive(id uint) (bool, error)
-	// AdminState reports what a refresh needs to know about an admin now.
-	AdminState(id uint) (adminState, error)
+	// AccountState reports what a refresh needs to know about an account now.
+	AccountState(id uint) (accountState, error)
 }
 
 // dbAccountState is the gorm-backed accountStateStore used in production.
@@ -52,76 +49,72 @@ type dbAccountState struct {
 	db *gorm.DB
 }
 
-func (s dbAccountState) MailboxActive(id uint) (bool, error) {
-	var mb models.Mailbox
-	err := s.db.Select("id", "active").First(&mb, id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return mb.Active, nil
-}
-
-// adminState is an admin account as a refresh must see it: whether it exists
-// and is active, the capabilities its roles grant, whether it is still in setup
-// (see adminSetupSteps), and its current credential epoch.
-type adminState struct {
+// accountState is an account as a refresh must see it: whether it exists and
+// is active, its address, the capabilities it holds at "*" (for the client to
+// show; they authorise nothing), whether it is still in setup (see
+// accountSetupSteps), and its current credential epoch.
+type accountState struct {
 	Active          bool
+	Address         string
+	DisplayName     string
 	Capabilities    []string
 	SetupPending    bool
+	SetupRequired   []string
 	CredentialEpoch int
 }
 
-func (s dbAccountState) AdminState(id uint) (adminState, error) {
-	repo := repositories.NewAdminUserRepository(s.db)
-	user, err := repo.GetByID(id)
-	if errors.Is(err, repositories.ErrUserNotFound) {
-		return adminState{}, nil
+func (s dbAccountState) AccountState(id uint) (accountState, error) {
+	var account models.Mailbox
+	err := s.db.First(&account, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return accountState{}, nil
 	}
 	if err != nil {
-		return adminState{}, err
+		return accountState{}, err
 	}
 	// An expired bootstrap password ends the sessions it opened, too.
-	if !user.Active || user.BootstrapExpired(time.Now()) {
-		return adminState{}, nil
+	if !account.Active || account.BootstrapExpired(time.Now()) {
+		return accountState{}, nil
 	}
-	caps, err := repo.GetCapabilities(id)
+	held, err := grants.Load(s.db, id, time.Now())
 	if err != nil {
-		return adminState{}, err
+		return accountState{}, err
 	}
-	names := make([]string, len(caps))
-	for i, c := range caps {
-		names[i] = c.Name
-	}
-	steps, err := adminSetupSteps(repositories.NewTwoFactorRepository(s.db), user)
+	steps, err := accountSetupSteps(repositories.NewTwoFactorRepository(s.db), &account)
 	if err != nil {
-		return adminState{}, err
+		return accountState{}, err
 	}
-	return adminState{Active: true, Capabilities: names, SetupPending: len(steps) > 0, CredentialEpoch: user.CredentialEpoch}, nil
+	return accountState{
+		Active:          true,
+		Address:         account.Address,
+		DisplayName:     account.DisplayName,
+		Capabilities:    held.Capabilities(),
+		SetupPending:    len(steps) > 0,
+		SetupRequired:   steps,
+		CredentialEpoch: account.CredentialEpoch,
+	}, nil
 }
 
-// Setup steps an admin account may still owe before it can use its roles.
+// Setup steps an account may still owe before its sessions reach anything.
 const (
 	setupStepPassword  = "password"
 	setupStepTwoFactor = "two_factor"
 )
 
-// adminSetupSteps lists what the account must still do before its sessions
-// carry its capabilities: replace a password someone else chose, and enroll a
-// TOTP authenticator where 2FA is required. Empty means the account is set up.
-func adminSetupSteps(store twoFactorStore, user *models.AdminUser) ([]string, error) {
+// accountSetupSteps lists what the account must still do before its sessions
+// reach anything: replace a password someone else chose, and enroll a TOTP
+// authenticator where 2FA is required. Empty means the account is set up.
+func accountSetupSteps(store twoFactorStore, account *models.Mailbox) ([]string, error) {
 	var steps []string
-	if user.PasswordChangeRequired {
+	if account.PasswordChangeRequired {
 		steps = append(steps, setupStepPassword)
 	}
-	if user.TwoFactorRequired {
+	if account.TwoFactorRequired {
 		if store == nil {
 			// No way to check an enrollment: fail closed, the account stays in setup.
 			return append(steps, setupStepTwoFactor), nil
 		}
-		_, err := store.GetActive(models.TwoFactorUserTypeAdmin, user.ID)
+		_, err := store.GetActive(account.ID)
 		if errors.Is(err, repositories.ErrTwoFactorNotFound) {
 			steps = append(steps, setupStepTwoFactor)
 		} else if err != nil {
@@ -135,28 +128,44 @@ type AuthHandler struct {
 	db           *gorm.DB
 	jwtService   *auth.JWTService
 	refreshStore refreshTokenStore
-	// accountState re-derives live account state (active flag, admin
-	// capabilities) on refresh. Nil in DB-less unit tests, which then trust the
+	// accountState re-derives live account state (active flag, capabilities)
+	// on refresh. Nil in DB-less unit tests, which then trust the
 	// refresh-token claims unchanged.
 	accountState accountStateStore
 	// twoFactorStore + masterKey back the optional TOTP 2FA enforcement in the
 	// login path (OSI-19). When an account has 2FA active, a correct password is
 	// necessary but not sufficient — a valid current code (or recovery code) is
 	// also required before tokens are issued. masterKey decrypts the stored
-	// per-account secret. A nil store (no DB, some unit tests) disables the check.
+	// secrets. A nil store (no DB, some unit tests) disables the check.
 	twoFactorStore twoFactorStore
 	masterKey      string
-	// twoFactorUnavailable is set when accounts cannot enroll in 2FA here
-	// (SetTwoFactorAvailable); the zero value is the usual case.
-	twoFactorUnavailable bool
+	// pushDevices ends the push devices of a session a logout ends (#363).
+	// Nil when push is off.
+	pushDevices sessionDevices
+	// sessions is the cache RejectStaleSessions reads; a password change or
+	// a reset ends the account's sessions, and empties its entry.
+	sessions *SessionCache
+}
+
+// sessionDevices is what a logout needs of the push device store: to delete
+// the devices of a session once it has ended.
+type sessionDevices interface {
+	SessionEnded(sid string, now time.Time) (int, error)
+}
+
+// SetPushDevices makes a logout delete the push devices of the session it
+// ends. Call before the router serves traffic.
+func (h *AuthHandler) SetPushDevices(devices sessionDevices) {
+	h.pushDevices = devices
 }
 
 // NewAuthHandler wires the auth handler. masterKey is the MASTER_KEY used to
-// decrypt stored TOTP 2FA secrets during login enforcement; pass "" when
+// decrypt stored TOTP secrets during login enforcement; pass "" when
 // encryption is not configured (2FA enrollment is then refused elsewhere, and
 // login enforcement degrades to recovery-code-only for any pre-existing
-// enrollment — a secret that could not have been stored anyway).
-func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string) *AuthHandler {
+// enrollment — a secret that could not have been stored anyway). sessions is
+// the router's session cache; nil when there is none.
+func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string, sessions *SessionCache) *AuthHandler {
 	var refreshStore refreshTokenStore
 	var tfStore twoFactorStore
 	var accountState accountStateStore
@@ -165,40 +174,41 @@ func NewAuthHandler(db *gorm.DB, jwtService *auth.JWTService, masterKey string) 
 		tfStore = repositories.NewTwoFactorRepository(db)
 		accountState = dbAccountState{db: db}
 	}
-	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, accountState: accountState, twoFactorStore: tfStore, masterKey: masterKey}
+	return &AuthHandler{db: db, jwtService: jwtService, refreshStore: refreshStore, accountState: accountState, twoFactorStore: tfStore, masterKey: masterKey, sessions: sessions}
 }
 
 // persistRefreshToken records a freshly issued refresh token in the rotation
 // ledger (status active). A nil store (no database, e.g. some unit tests) is a
 // no-op — production always wires the DB-backed store via NewAuthHandler.
-func (h *AuthHandler) persistRefreshToken(tokens *auth.TokenPair, userType string, subjectID uint) error {
+func (h *AuthHandler) persistRefreshToken(tokens *auth.TokenPair, accountID uint) error {
 	if h.refreshStore == nil {
 		return nil
 	}
 	return h.refreshStore.Save(&models.RefreshToken{
 		Jti:       tokens.RefreshJTI,
-		UserType:  userType,
-		SubjectID: subjectID,
+		AccountID: accountID,
+		SessionID: tokens.SessionID,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: tokens.RefreshExpiresAt,
 	})
 }
 
-// revokeAllForSubject best-effort revokes every remaining active session for one
-// owner. Used from the refresh path when a disabled/deleted account is detected;
-// failures are non-fatal (the refresh is refused regardless) but logged.
-func (h *AuthHandler) revokeAllForSubject(userType string, subjectID uint) {
+// revokeAllForAccount best-effort revokes every remaining active session of one
+// account. Used from the refresh path when a disabled/deleted account is
+// detected; failures are non-fatal (the refresh is refused regardless) but
+// logged.
+func (h *AuthHandler) revokeAllForAccount(accountID uint) {
 	if h.refreshStore == nil {
 		return
 	}
-	if err := h.refreshStore.RevokeAllForSubject(userType, subjectID); err != nil {
-		slog.Warn("failed to revoke sessions on refresh", "user_type", userType, "subject_id", subjectID, "error", err)
+	if err := h.refreshStore.RevokeAllForAccount(accountID); err != nil {
+		slog.Warn("failed to revoke sessions on refresh", "account_id", accountID, "error", err)
 	}
 }
 
 type loginRequest struct {
-	Email    string `json:"email,omitempty"`    // For mailbox users
-	Username string `json:"username,omitempty"` // For admin users
+	// Email is the account's address.
+	Email    string `json:"email"`
 	Password string `json:"password"`
 	// TOTPCode / RecoveryCode carry the second factor for accounts with 2FA
 	// active (OSI-19). Both are optional and ignored for accounts without 2FA,
@@ -227,7 +237,9 @@ type refreshRequest struct {
 // page JavaScript — and therefore any XSS — can neither read them at rest nor
 // scrape them from this response. ExpiresIn lets the SPA schedule a pre-emptive
 // refresh without ever seeing the token; User and Capabilities let it restore
-// session UI state on boot from /auth/refresh.
+// session UI state on boot from /auth/refresh. Capabilities are what the
+// account holds at "*", from its grants, for the client to show what it can
+// do; they authorise nothing (the API reads the grants on every request).
 //
 // The token fields are filled only for a native client: one that logged in with
 // "client": "native", or refreshed by sending its refresh token in the body. A
@@ -236,11 +248,11 @@ type refreshRequest struct {
 type loginResponse struct {
 	ExpiresIn    int      `json:"expires_in"`
 	User         userInfo `json:"user"`
-	Capabilities []string `json:"capabilities,omitempty"` // For admin users
+	Capabilities []string `json:"capabilities,omitempty"`
 	// SetupRequired lists what the account must still do — "password" (POST
 	// /api/v1/auth/password), "two_factor" (POST /api/v1/auth/2fa/enroll, then
-	// /confirm) — before the session can use the admin API, which answers 403
-	// setup_required until then. Absent when the account is set up.
+	// /confirm) — before the session can reach anything else, which answers
+	// 403 setup_required until then. Absent when the account is set up.
 	SetupRequired []string `json:"setup_required,omitempty"`
 
 	AccessToken      string `json:"access_token,omitempty"`
@@ -350,12 +362,17 @@ func newCSRFToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// userInfo is the account a session is for: its id (the mailbox's, the
+// {id} of /api/v1/accounts/{id}/…) and address.
 type userInfo struct {
 	ID          uint   `json:"id"`
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 }
 
+// Login signs an account in: its address, a password matching one of its
+// password credentials, and a code from one of its TOTP credentials when it
+// has one.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -363,30 +380,63 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that either email or username is provided
-	if (req.Email == "" && req.Username == "") || req.Password == "" {
-		respond.ValidationError(w, map[string]string{
-			"email/username": "either email or username is required",
-			"password":       "required",
-		})
-		return
+	problems := map[string]string{}
+	if strings.TrimSpace(req.Email) == "" {
+		problems["email"] = "required: the account's address"
 	}
-
+	if req.Password == "" {
+		problems["password"] = "required"
+	}
 	if req.Client != "" && req.Client != clientNative {
-		respond.ValidationError(w, map[string]string{
-			"client": `must be "native" or omitted`,
-		})
+		problems["client"] = `must be "native" or omitted`
+	}
+	if len(problems) > 0 {
+		respond.ValidationError(w, problems)
 		return
 	}
 
-	// Admin user login path
-	if req.Username != "" {
-		h.loginAdmin(w, req)
+	// Find the account. A miss does NOT short-circuit: MatchPassword still runs
+	// one bcrypt comparison (against a dummy hash) so an unknown address, an
+	// account with no password and a wrong password are indistinguishable by
+	// timing or message (OSI-24 user-enumeration defense-in-depth).
+	var account models.Mailbox
+	lookupErr := h.db.Where("address = ?", strings.ToLower(strings.TrimSpace(req.Email))).First(&account).Error
+	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
+		return
+	}
+	now := time.Now()
+	cred, err := repositories.NewCredentialRepository(h.db).MatchPassword(account.ID, req.Password, now)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
+		return
+	}
+	if lookupErr != nil || cred == nil {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
 		return
 	}
 
-	// Mailbox user login path
-	h.loginMailbox(w, req)
+	// Credentials verified. Account-state checks (which legitimately surface a
+	// distinct message) run only after a correct password, so they never leak
+	// account existence to an unauthenticated guesser.
+	if !account.Active {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
+		return
+	}
+	if account.BootstrapExpired(now) {
+		respond.Error(w, http.StatusUnauthorized, "bootstrap_expired",
+			"This server's bootstrap password has expired. Deploy it again with a new one, then sign in with that.")
+		return
+	}
+
+	// Second factor (OSI-19): only reached with a correct password, so a 2FA
+	// challenge never leaks account existence. No-op for accounts without 2FA.
+	ok, verified := h.enforce2FA(w, account.ID, req)
+	if !ok {
+		return
+	}
+
+	h.startSession(w, &account, req.Client == clientNative, signInMethods(verified))
 }
 
 // enforce2FA gates token issuance on the second factor when an account has TOTP
@@ -394,140 +444,39 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 // enrollment lookup happens here, so whether 2FA is enabled never leaks to a
 // caller who has not already proven the password (OSI-19 + OSI-24). Returns
 // true when login may proceed (no active 2FA, or a valid TOTP/recovery code was
-// supplied). On failure it writes the response and returns false — with a
-// distinct totp_required code when no second factor was supplied, so a client
-// knows to prompt for one.
-func (h *AuthHandler) enforce2FA(w http.ResponseWriter, userType string, subjectID uint, req loginRequest) bool {
+// supplied), and whether a second factor was verified. On failure it writes the
+// response and returns false — with a distinct totp_required code when no
+// second factor was supplied, so a client knows to prompt for one.
+func (h *AuthHandler) enforce2FA(w http.ResponseWriter, accountID uint, req loginRequest) (proceed, verified bool) {
 	if h.twoFactorStore == nil {
-		return true
+		return true, false
 	}
-	tf, err := h.twoFactorStore.GetActive(userType, subjectID)
+	_, err := h.twoFactorStore.GetActive(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		return true // account has no active 2FA — unchanged behaviour
+		return true, false // account has no active 2FA — unchanged behaviour
 	}
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
-		return false
+		return false, false
 	}
-	if verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, tf, req.TOTPCode, req.RecoveryCode) {
-		return true
+	if verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, accountID, req.TOTPCode, req.RecoveryCode) {
+		return true, true
 	}
 	if req.TOTPCode == "" && req.RecoveryCode == "" {
 		respond.Error(w, http.StatusUnauthorized, "totp_required", "Two-factor authentication code required")
 	} else {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid two-factor authentication code")
 	}
-	return false
+	return false, false
 }
 
-func (h *AuthHandler) loginAdmin(w http.ResponseWriter, req loginRequest) {
-	username, password := req.Username, req.Password
-	adminUserRepo := repositories.NewAdminUserRepository(h.db)
-
-	// Find the admin user. A miss does NOT short-circuit: we still run one bcrypt
-	// comparison (against a dummy hash) so an unknown username costs the same as a
-	// wrong password and the two are indistinguishable by timing or message
-	// (OSI-24 user-enumeration defense-in-depth).
-	adminUser, lookupErr := adminUserRepo.GetByUsername(username)
-	passwordHash := auth.DummyPasswordHash
-	if lookupErr == nil {
-		passwordHash = adminUser.PasswordHash
+// signInMethods is the amr of a session that signed in with a password, and a
+// second factor if verified: a TOTP code or a recovery code.
+func signInMethods(verified bool) []string {
+	if verified {
+		return []string{auth.AMRPassword, auth.AMROTP}
 	}
-	pwErr := auth.CheckPassword(password, passwordHash)
-	if lookupErr != nil || pwErr != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid username or password")
-		return
-	}
-
-	// Credentials verified. Account-state checks (which legitimately surface a
-	// distinct message) run only after a correct password, so they never leak
-	// account existence to an unauthenticated guesser.
-	if !adminUser.Active {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
-		return
-	}
-	if adminUser.BootstrapExpired(time.Now()) {
-		respond.Error(w, http.StatusUnauthorized, "bootstrap_expired",
-			"This server's bootstrap password has expired. Deploy it again with a new one, then sign in with that.")
-		return
-	}
-
-	// Second factor (OSI-19): only reached with a correct password, so a 2FA
-	// challenge never leaks account existence. No-op for admins without 2FA.
-	if !h.enforce2FA(w, "admin", adminUser.ID, req) {
-		return
-	}
-
-	h.startAdminSession(w, adminUser, req.Client == clientNative)
-}
-
-func (h *AuthHandler) loginMailbox(w http.ResponseWriter, req loginRequest) {
-	email, password := req.Email, req.Password
-	// Find the mailbox. As with admin login, a miss does NOT short-circuit: run
-	// one bcrypt comparison (against a dummy hash) so an unknown or inactive
-	// address is timing- and message-indistinguishable from a wrong password
-	// (OSI-24 user-enumeration defense-in-depth).
-	var mailbox models.Mailbox
-	lookupErr := h.db.Where("address = ? AND active = ?", email, true).First(&mailbox).Error
-	passwordHash := auth.DummyPasswordHash
-	if lookupErr == nil {
-		passwordHash = mailbox.Password
-	}
-	pwErr := auth.CheckPassword(password, passwordHash)
-	if lookupErr != nil || pwErr != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
-		return
-	}
-
-	// Second factor (OSI-19): only reached with a correct password, so a 2FA
-	// challenge never leaks whether the address exists or has 2FA. No-op for
-	// mailboxes without 2FA, before any account side effects.
-	if !h.enforce2FA(w, "mailbox", mailbox.ID, req) {
-		return
-	}
-
-	// Find or create webmail account
-	var account models.WebmailAccount
-	if err := h.db.Where("primary_mailbox_id = ?", mailbox.ID).First(&account).Error; err != nil {
-		account = models.WebmailAccount{PrimaryMailboxID: mailbox.ID}
-		if err := h.db.Create(&account).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create account")
-			return
-		}
-	}
-
-	// Generate tokens
-	tokens, err := h.jwtService.GenerateTokenPair(mailbox.ID, mailbox.Address, account.ID)
-	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
-		return
-	}
-
-	// Record the refresh token in the rotation ledger before handing it out
-	// (OSI-10). Keyed by mailbox ID so a password change / account disable can
-	// revoke every session for that mailbox.
-	if err := h.persistRefreshToken(tokens, "mailbox", mailbox.ID); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
-		return
-	}
-
-	resp := loginResponse{
-		ExpiresIn: tokens.ExpiresIn,
-		User: userInfo{
-			ID:          account.ID,
-			Email:       mailbox.Address,
-			DisplayName: mailbox.DisplayName,
-		},
-	}
-	if err := deliverSession(w, tokens, req.Client == clientNative, &resp); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
-		return
-	}
-
-	// Update last login
-	h.db.Model(&mailbox).Update("last_login_at", time.Now())
-
-	respond.Data(w, http.StatusOK, resp)
+	return []string{auth.AMRPassword}
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -539,6 +488,12 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if token, _ := presentedRefreshToken(r); token != "" && h.refreshStore != nil {
 		if claims, err := h.jwtService.ValidateRefreshToken(token); err == nil && claims.ID != "" {
 			_ = h.refreshStore.Revoke(claims.ID)
+			// The phones the session registered for push go with it.
+			if h.pushDevices != nil {
+				if _, err := h.pushDevices.SessionEnded(claims.SessionID, time.Now()); err != nil {
+					slog.Warn("failed to remove the push devices of a session that signed out", "error", err)
+				}
+			}
 		}
 	}
 
@@ -571,49 +526,39 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-read live account state BEFORE consuming the rotation, so a token that
-	// outlived a password change, disable, delete, or role change cannot mint a
-	// fresh access token, and an admin's capabilities are re-derived from the
-	// database rather than trusted from the (up to 7-day-old) refresh token. A nil
+	// outlived a password change, disable or delete cannot mint a fresh access
+	// token, and the capabilities the response lists are the grants' now. A nil
 	// store (no DB, some unit tests) trusts the claims unchanged.
 	//
 	// Like the rotation-ledger check below, this path fails CLOSED: an
 	// unreachable store refuses the refresh (401) rather than minting tokens
 	// without re-verifying account state.
-	//
-	// capabilities carries the set the new admin access token will be minted with:
-	// the freshly re-derived DB set when reloaded, otherwise the token claim.
-	capabilities := claims.Capabilities
-	// A session whose account is in setup stays that way until the setup is
-	// done: the refresh must not be a way out of the restriction.
-	setupPending := claims.SetupPending
-	epoch := claims.CredentialEpoch
+	state := accountState{
+		Active:          true,
+		Address:         claims.Address,
+		DisplayName:     claims.Address,
+		SetupPending:    claims.SetupPending,
+		CredentialEpoch: claims.CredentialEpoch,
+	}
 	if h.accountState != nil {
-		if claims.UserType == "admin" {
-			state, stateErr := h.accountState.AdminState(claims.AdminUserID)
-			active, dbCaps, inSetup := state.Active, state.Capabilities, state.SetupPending
-			epoch = state.CredentialEpoch
-			if stateErr != nil {
-				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
-				return
-			}
-			if !active {
-				h.revokeAllForSubject("admin", claims.AdminUserID)
-				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
-				return
-			}
-			capabilities = dbCaps
-			setupPending = inSetup
-		} else {
-			active, stateErr := h.accountState.MailboxActive(claims.MailboxID)
-			if stateErr != nil {
-				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
-				return
-			}
-			if !active {
-				h.revokeAllForSubject("mailbox", claims.MailboxID)
-				respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
-				return
-			}
+		var stateErr error
+		state, stateErr = h.accountState.AccountState(claims.AccountID)
+		if stateErr != nil {
+			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired refresh token")
+			return
+		}
+		if !state.Active {
+			h.revokeAllForAccount(claims.AccountID)
+			respond.Error(w, http.StatusUnauthorized, "unauthorized", "Account is disabled")
+			return
+		}
+		// A refresh token from before the account's sessions last ended (a
+		// new password, a reset, 2FA turned off, an admin ending them) is as
+		// dead as the access tokens of its time: it must not mint one at the
+		// new epoch.
+		if state.CredentialEpoch != claims.CredentialEpoch {
+			respond.Error(w, http.StatusUnauthorized, "unauthorized", "This session has ended; sign in again")
+			return
 		}
 	}
 
@@ -629,32 +574,19 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Reissue the SAME kind of token the refresh token represents. Previously
-	// this always used the mailbox generator, so refreshing an admin session
-	// produced a mailbox access token (UserType="mailbox", no capabilities,
-	// MailboxID=0) — every admin route then 403'd and the admin was locked out
-	// until a full re-login.
-	var tokens *auth.TokenPair
-	var userType string
-	var subjectID uint
-	if claims.UserType == "admin" && setupPending {
-		capabilities = nil
-		tokens, err = h.jwtService.GenerateSetupTokenPair(claims.AdminUserID, claims.Username, epoch)
-		userType, subjectID = "admin", claims.AdminUserID
-	} else if claims.UserType == "admin" {
-		tokens, err = h.jwtService.GenerateAdminSession(claims.AdminUserID, claims.Username, capabilities, epoch)
-		userType, subjectID = "admin", claims.AdminUserID
-	} else {
-		tokens, err = h.jwtService.GenerateTokenPair(claims.MailboxID, claims.Email, claims.WebmailAccountID)
-		userType, subjectID = "mailbox", claims.MailboxID
-	}
+	// A refresh keeps the session's sign-in methods: finishing 2FA setup and
+	// refreshing is not signing in with 2FA. A session whose account is in
+	// setup stays that way until the setup is done: the refresh must not be a
+	// way out of the restriction. The new tokens stay in the session: the
+	// same sid.
+	tokens, err := h.jwtService.GenerateSession(claims.AccountID, state.Address, state.CredentialEpoch, claims.AMR, state.SetupPending, auth.ContinueSession(claims.SessionID))
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
 	}
 
 	// Record the replacement refresh token as the new active ledger row.
-	if err := h.persistRefreshToken(tokens, userType, subjectID); err != nil {
+	if err := h.persistRefreshToken(tokens, claims.AccountID); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
 		return
 	}
@@ -662,14 +594,20 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// For a browser the body carries only what the SPA needs to restore session
 	// UI on boot (identity + capabilities + expiry) and the tokens go out as
 	// cookies; a native client gets them in the body, on the same channel its
-	// refresh token came in on. User identity is taken from the validated
-	// refresh-token claims, so this stays a single DB-touch-free response.
-	resp := loginResponse{ExpiresIn: tokens.ExpiresIn}
-	if claims.UserType == "admin" {
-		resp.Capabilities = capabilities
-		resp.User = userInfo{ID: claims.AdminUserID, Email: claims.Username, DisplayName: claims.Username}
+	// refresh token came in on.
+	resp := loginResponse{
+		ExpiresIn: tokens.ExpiresIn,
+		User:      userInfo{ID: claims.AccountID, Email: state.Address, DisplayName: state.DisplayName},
+	}
+	if state.SetupPending {
+		resp.SetupRequired = state.SetupRequired
+		// A store-less handler is used in token-only tests. If it cannot
+		// distinguish the steps, keep the client in setup conservatively.
+		if len(resp.SetupRequired) == 0 {
+			resp.SetupRequired = []string{setupStepPassword, setupStepTwoFactor}
+		}
 	} else {
-		resp.User = userInfo{ID: claims.WebmailAccountID, Email: claims.Email, DisplayName: claims.Email}
+		resp.Capabilities = state.Capabilities
 	}
 	if err := deliverSession(w, tokens, native, &resp); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
@@ -688,19 +626,17 @@ type changePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
-// ChangePassword lets a signed-in admin replace their own password, and is the
-// one thing a session flagged password_change_required may do. It needs the
-// current password even then, so a stolen access token alone cannot take the
-// account. Success clears the flag and revokes every session of the account,
-// including this one: the next sign-in gets the account's real capabilities.
+// ChangePassword lets a signed-in account replace its own password, and is
+// the one thing a session flagged password_change_required may do besides
+// enrolling 2FA. It needs the current password even then, so a stolen access
+// token alone cannot take the account. Success clears the flag, revokes every
+// app password (whoever knew the old password could have made one) and every
+// session of the account, including this one: the next sign-in gets the
+// account's real capabilities.
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-	if claims.UserType != "admin" {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Only admin accounts change their password here")
 		return
 	}
 
@@ -717,14 +653,20 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repo := repositories.NewAdminUserRepository(h.db)
-	user, err := repo.GetByID(claims.AdminUserID)
-	if err != nil || !user.Active {
+	var account models.Mailbox
+	if err := h.db.First(&account, claims.AccountID).Error; err != nil || !account.Active {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Invalid or expired session")
 		return
 	}
-	if auth.CheckPassword(req.CurrentPassword, user.PasswordHash) != nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Current password is incorrect")
+	now := time.Now()
+	cred, err := repositories.NewCredentialRepository(h.db).MatchPassword(account.ID, req.CurrentPassword, now)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
+		return
+	}
+	if cred == nil {
+		// 403, never 401: the session is still good, only the password is wrong.
+		respond.Error(w, http.StatusForbidden, "invalid_password", "Current password is incorrect")
 		return
 	}
 	if len(req.NewPassword) < minChosenPasswordLength {
@@ -739,59 +681,67 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash, err := auth.HashPassword(req.NewPassword)
+	hash, err := hashPassword(req.NewPassword)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
 		return
 	}
-	if err := h.db.Model(&models.AdminUser{}).Where("id = ?", user.ID).Updates(map[string]interface{}{
-		"password_hash":            hash,
-		"last_password_change":     time.Now(),
-		"password_change_required": false,
-		// Its own password now: the deploy-time one, and its deadline, are gone.
-		"bootstrap_expires_at": nil,
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Mailbox{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
+			"last_password_change":     now,
+			"password_change_required": false,
+			// Its own password now: the deploy-time one, and its deadline, are gone.
+			"bootstrap_expires_at": nil,
+		}).Error; err != nil {
+			return err
+		}
 		// Every token of the account is dead from now, this one included.
-		"credential_epoch": gorm.Expr("credential_epoch + 1"),
-	}).Error; err != nil {
+		return setAccountPassword(tx, r, account.ID, hash, &account.ID, now)
+	})
+	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
 		return
 	}
-
-	h.revokeAllForSubject("admin", user.ID)
+	h.sessions.Forget(account.ID)
 	respond.Data(w, http.StatusOK, map[string]string{"message": "Password changed. Sign in again with the new password."})
 }
 
-// startAdminSession answers with a fresh session for an admin whose identity is
+// setAccountPassword makes hash the account's one password, in tx: its other
+// passwords and every app password are revoked (each app password recorded in
+// the audit log, as revoked for a new password), and every session ends
+// (endSessions). setBy is the account setting it.
+func setAccountPassword(tx *gorm.DB, r *http.Request, accountID uint, hash string, setBy *uint, now time.Time) error {
+	if _, err := repositories.NewCredentialRepository(tx).SetPassword(accountID, hash, setBy, now); err != nil {
+		return err
+	}
+	if err := revokeAppPasswordsForNewPassword(tx, r, accountID, now); err != nil {
+		return err
+	}
+	return endSessions(tx, accountID)
+}
+
+// startSession answers with a fresh session for an account whose identity is
 // already proven — by password and second factor at login, or by a single-use
-// token at claim and reset. An account still in setup gets a session that can
-// only finish the setup (see GenerateSetupTokenPair).
-func (h *AuthHandler) startAdminSession(w http.ResponseWriter, adminUser *models.AdminUser, native bool) {
-	adminUserRepo := repositories.NewAdminUserRepository(h.db)
-	// Get capabilities
-	capabilities, err := adminUserRepo.GetCapabilities(adminUser.ID)
+// token at reset — with amr saying how. An account still in setup gets a
+// session that can only finish the setup.
+func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbox, native bool, amr []string) {
+	// What the grants give at "*", for the client to show.
+	held, err := grants.Load(h.db, account.ID, time.Now())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load user capabilities")
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load the account's capabilities")
 		return
 	}
+	capNames := held.Capabilities()
 
-	// Convert capabilities to string slice
-	capNames := make([]string, len(capabilities))
-	for i, cap := range capabilities {
-		capNames[i] = cap.Name
-	}
-
-	setupSteps, err := adminSetupSteps(h.twoFactorStore, adminUser)
+	setupSteps, err := accountSetupSteps(h.twoFactorStore, account)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account state")
 		return
 	}
-	var tokens *auth.TokenPair
 	if len(setupSteps) > 0 {
 		capNames = nil
-		tokens, err = h.jwtService.GenerateSetupTokenPair(adminUser.ID, adminUser.Username, adminUser.CredentialEpoch)
-	} else {
-		tokens, err = h.jwtService.GenerateAdminSession(adminUser.ID, adminUser.Username, capNames, adminUser.CredentialEpoch)
 	}
+	tokens, err := h.jwtService.GenerateSession(account.ID, account.Address, account.CredentialEpoch, amr, len(setupSteps) > 0)
 	if err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
@@ -799,7 +749,7 @@ func (h *AuthHandler) startAdminSession(w http.ResponseWriter, adminUser *models
 
 	// Record the refresh token in the rotation ledger before handing it out, so
 	// it can later be rotated on use and revoked on logout (OSI-10).
-	if err := h.persistRefreshToken(tokens, "admin", adminUser.ID); err != nil {
+	if err := h.persistRefreshToken(tokens, account.ID); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to persist session")
 		return
 	}
@@ -809,9 +759,9 @@ func (h *AuthHandler) startAdminSession(w http.ResponseWriter, adminUser *models
 		Capabilities:  capNames,
 		SetupRequired: setupSteps,
 		User: userInfo{
-			ID:          adminUser.ID,
-			Email:       adminUser.Username, // Use username in email field for compatibility
-			DisplayName: adminUser.Username,
+			ID:          account.ID,
+			Email:       account.Address,
+			DisplayName: account.DisplayName,
 		},
 	}
 	if err := deliverSession(w, tokens, native, &resp); err != nil {
@@ -819,18 +769,9 @@ func (h *AuthHandler) startAdminSession(w http.ResponseWriter, adminUser *models
 		return
 	}
 
-	// Update last login
-	h.db.Model(adminUser).Update("updated_at", time.Now())
+	h.db.Model(account).Update("last_login_at", time.Now())
 
 	respond.Data(w, http.StatusOK, resp)
-}
-
-// claimRequest is the body of POST /api/v1/auth/claim.
-type claimRequest struct {
-	Token    string `json:"token"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Client   string `json:"client,omitempty"`
 }
 
 // resetRequest is the body of POST /api/v1/auth/reset.
@@ -840,40 +781,11 @@ type resetRequest struct {
 	Client   string `json:"client,omitempty"`
 }
 
-// SetTwoFactorAvailable says whether accounts can enroll in TOTP 2FA here
-// (TOTP_2FA_ENABLED). A server where they cannot refuses to be claimed: its
-// first admin could never finish setting up.
-func (h *AuthHandler) SetTwoFactorAvailable(available bool) {
-	h.twoFactorUnavailable = !available
-}
-
-// Claim redeems a setup token — minted by `restmail-api mint-token --purpose
-// setup`, so only by someone who controls the deployment — and makes the
-// redeemer the first admin, with the name and password they chose. The session
-// it answers with is still in setup: the account must enroll an authenticator
-// before it reaches the admin API.
-func (h *AuthHandler) Claim(w http.ResponseWriter, r *http.Request) {
-	var req claimRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-	if req.Client != "" && req.Client != clientNative {
-		respond.ValidationError(w, map[string]string{"client": `must be "native" or omitted`})
-		return
-	}
-	admin, err := bootstrap.ClaimServer(h.db, req.Token, strings.TrimSpace(req.Username), req.Password, !h.twoFactorUnavailable)
-	if h.redeemFailed(w, err) {
-		return
-	}
-	h.startAdminSession(w, admin, req.Client == clientNative)
-}
-
 // Reset redeems a reset_admin token — minted by `restmail-api mint-token
-// --purpose reset-admin`. The admin it names gets the password the redeemer
-// chose, loses its authenticator and must enroll a new one, and every session it
-// had ends: whoever held the old credentials, a person or an agent that set the
-// server up, is locked out.
+// --purpose reset-admin`, or for an owner key. The account it names gets the
+// password the redeemer chose, loses its authenticator and must enroll a new
+// one, and every session and app password it had ends: whoever held the old
+// credentials, a person or an agent that set the server up, is locked out.
 func (h *AuthHandler) Reset(w http.ResponseWriter, r *http.Request) {
 	var req resetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -884,11 +796,15 @@ func (h *AuthHandler) Reset(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"client": `must be "native" or omitted`})
 		return
 	}
-	admin, err := bootstrap.ResetAdmin(h.db, req.Token, req.Password)
+	account, err := bootstrap.ResetAdmin(h.db, req.Token, req.Password)
 	if h.redeemFailed(w, err) {
 		return
 	}
-	h.startAdminSession(w, admin, req.Client == clientNative)
+	h.sessions.Forget(account.ID)
+	// Redeeming a token is neither a password nor a second factor: the
+	// session records neither, and is in setup until a new authenticator is
+	// enrolled anyway.
+	h.startSession(w, account, req.Client == clientNative, nil)
 }
 
 // redeemFailed answers for a token that could not be redeemed, and says
@@ -899,12 +815,8 @@ func (h *AuthHandler) redeemFailed(w http.ResponseWriter, err error) bool {
 		return false
 	case errors.Is(err, bootstrap.ErrTokenInvalid):
 		respond.Error(w, http.StatusUnauthorized, "invalid_token", err.Error())
-	case errors.Is(err, bootstrap.ErrAlreadyClaimed):
-		respond.Error(w, http.StatusConflict, "already_claimed", err.Error())
 	case errors.Is(err, bootstrap.ErrPasswordTooShort):
 		respond.ValidationError(w, map[string]string{"password": err.Error()})
-	case errors.Is(err, bootstrap.ErrUsernameRequired):
-		respond.ValidationError(w, map[string]string{"username": "required"})
 	default:
 		slog.Error("redeeming a one-time token failed", "error", err)
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to redeem the token")
@@ -912,25 +824,18 @@ func (h *AuthHandler) redeemFailed(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-// AdminSessionCurrent is the database's answer to whether an admin access token
-// is still current (middleware.RejectStaleAdminSessions): the account must exist
-// and be active, not be a bootstrap admin whose deploy-time password has
-// expired, and the token must carry its current credential epoch — a reset or a
-// password change bumps it.
-func AdminSessionCurrent(db *gorm.DB) middleware.AdminSessionCurrent {
-	return func(adminID uint, epoch int) (bool, error) {
-		var admin models.AdminUser
-		err := db.Select("active", "credential_epoch", "password_change_required", "bootstrap_expires_at").
-			First(&admin, adminID).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, nil
-		}
+// SessionCurrent is the database's answer to whether an access token is still
+// current (middleware.RejectStaleSessions), read afresh on every call: the
+// account must exist and be active, not be a bootstrap account whose
+// deploy-time password has expired, and the token must carry its current
+// credential epoch, which endSessions moves on. The router reads it through a
+// SessionCache.
+func SessionCurrent(db *gorm.DB) middleware.SessionCurrent {
+	return func(accountID uint, epoch int) (bool, error) {
+		account, err := sessionAccount(db, accountID)
 		if err != nil {
 			return false, err
 		}
-		if !admin.Active || admin.BootstrapExpired(time.Now()) {
-			return false, nil
-		}
-		return admin.CredentialEpoch == epoch, nil
+		return sessionCurrent(account, epoch, time.Now()), nil
 	}
 }

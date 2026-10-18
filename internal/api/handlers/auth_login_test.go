@@ -6,12 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
@@ -22,23 +21,11 @@ import (
 // reachable, matching the repo's depless-local / DB-in-CI convention.
 func openLoginTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("login DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(
-		&models.Mailbox{},
-		&models.WebmailAccount{},
-		&models.LinkedAccount{},
-		&models.RefreshToken{},
-	); err != nil {
+	if err := gdb.AutoMigrate(accountModels...); err != nil {
 		t.Skipf("login DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
@@ -67,7 +54,7 @@ func seedLoginMailbox(t *testing.T, gdb *gorm.DB, password string) string {
 	t.Helper()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	addr := "ct-" + suffix + "@example.test"
-	hash, err := auth.HashPassword(password)
+	hash, err := hashPassword(password)
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -75,15 +62,19 @@ func seedLoginMailbox(t *testing.T, gdb *gorm.DB, password string) string {
 		DomainID:  1,
 		LocalPart: "ct-" + suffix,
 		Address:   addr,
-		Password:  hash,
 		Active:    true,
 	}
 	if err := gdb.Create(&mb).Error; err != nil {
 		t.Fatalf("seed mailbox: %v", err)
 	}
+	if password != "" {
+		if _, err := repositories.NewCredentialRepository(gdb).SetPassword(mb.ID, hash, nil, time.Now()); err != nil {
+			t.Fatalf("seed password: %v", err)
+		}
+	}
 	t.Cleanup(func() {
+		gdb.Where("account_id = ?", mb.ID).Delete(&models.Credential{})
 		gdb.Where("address = ?", addr).Delete(&models.Mailbox{})
-		gdb.Where("primary_mailbox_id = ?", mb.ID).Delete(&models.WebmailAccount{})
 	})
 	return addr
 }
@@ -96,7 +87,7 @@ func seedLoginMailbox(t *testing.T, gdb *gorm.DB, password string) string {
 func TestLogin_UnknownUserAndWrongPasswordAreIndistinguishable(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc, "")
+	h := NewAuthHandler(gdb, jwtSvc, "", nil)
 
 	addr := seedLoginMailbox(t, gdb, "correct-horse-battery")
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -120,7 +111,7 @@ func TestLogin_UnknownUserAndWrongPasswordAreIndistinguishable(t *testing.T) {
 func TestLogin_PersistsActiveRefreshToken(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc, "")
+	h := NewAuthHandler(gdb, jwtSvc, "", nil)
 
 	addr := seedLoginMailbox(t, gdb, "correct-horse-battery")
 
@@ -151,7 +142,50 @@ func TestLogin_PersistsActiveRefreshToken(t *testing.T) {
 	if rec.Status != models.RefreshTokenActive {
 		t.Errorf("ledger status = %q, want active", rec.Status)
 	}
-	if rec.UserType != "mailbox" {
-		t.Errorf("ledger user_type = %q, want mailbox", rec.UserType)
+	if rec.AccountID != claims.AccountID || rec.AccountID == 0 {
+		t.Errorf("ledger account_id = %d, want %d", rec.AccountID, claims.AccountID)
+	}
+}
+
+// TestLogin_ByAddressOnly: sign-in takes the account's address. A username is
+// not a field it knows: without an email it is a 422. An account with no
+// password of its own (one reached only through its owners) cannot be signed
+// in to, and is answered as a wrong password.
+func TestLogin_ByAddressOnly(t *testing.T) {
+	gdb := openLoginTestDB(t)
+	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
+	h := NewAuthHandler(gdb, jwtSvc, "", nil)
+
+	if rr := doLogin(h, map[string]string{"username": "admin", "password": "whatever"}); rr.Code != http.StatusUnprocessableEntity {
+		t.Errorf("username sign-in: %d, want 422 (%s)", rr.Code, rr.Body.String())
+	}
+	owned := seedLoginMailbox(t, gdb, "")
+	if rr := doLogin(h, map[string]string{"email": owned, "password": "anything at all"}); rr.Code != http.StatusUnauthorized || loginErrorMessage(rr) != "Invalid email or password" {
+		t.Errorf("an account with no password: %d %s", rr.Code, rr.Body.String())
+	}
+
+	addr := seedLoginMailbox(t, gdb, "correct-horse-battery")
+	rr := doLogin(h, map[string]string{"email": addr, "password": "correct-horse-battery"})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("login: %d %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data loginResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	var mb models.Mailbox
+	gdb.Where("address = ?", addr).First(&mb)
+	if resp.Data.User.ID != mb.ID || resp.Data.User.Email != addr || len(resp.Data.Capabilities) != 0 {
+		t.Errorf("user = %+v, capabilities %v; want the mailbox's id and address, and no admin capabilities", resp.Data.User, resp.Data.Capabilities)
+	}
+	claims, err := jwtSvc.ValidateAccessToken(accessCookieValue(rr))
+	if err != nil || claims.AccountID != mb.ID || claims.Address != addr || !claims.HasAMR(auth.AMRPassword) {
+		t.Errorf("session claims = %+v (%v)", claims, err)
+	}
+	// Addresses are matched as they are stored: in lower case.
+	if rr := doLogin(h, map[string]string{"email": " " + strings.ToUpper(addr) + " ", "password": "correct-horse-battery"}); rr.Code != http.StatusOK {
+		t.Errorf("the address in capitals: %d", rr.Code)
 	}
 }

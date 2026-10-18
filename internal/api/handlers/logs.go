@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// LogHandler provides admin endpoints for querying delivery and activity logs.
+// LogHandler provides the admin endpoint for querying the delivery log.
 type LogHandler struct {
 	db *gorm.DB
 }
@@ -66,50 +66,4 @@ func (h *LogHandler) DeliveryLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond.List(w, entries, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
-}
-
-// ActivityLog returns admin/system activity events.
-// GET /api/v1/admin/logs/activity?actor=...&action=...&since=...&until=...&limit=50&offset=0
-func (h *LogHandler) ActivityLog(w http.ResponseWriter, r *http.Request) {
-	limit := 50
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
-		limit = l
-	}
-	offset := 0
-	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && o >= 0 {
-		offset = o
-	}
-
-	query := h.db.Model(&models.ActivityLog{})
-
-	if actor := r.URL.Query().Get("actor"); actor != "" {
-		query = query.Where("actor ILIKE ? ESCAPE '\\'", "%"+escapeLike(actor)+"%")
-	}
-	if action := r.URL.Query().Get("action"); action != "" {
-		query = query.Where("action = ?", action)
-	}
-	if resource := r.URL.Query().Get("resource_type"); resource != "" {
-		query = query.Where("resource_type = ?", resource)
-	}
-	if since := r.URL.Query().Get("since"); since != "" {
-		if t, err := time.Parse(time.RFC3339, since); err == nil {
-			query = query.Where("created_at >= ?", t)
-		}
-	}
-	if until := r.URL.Query().Get("until"); until != "" {
-		if t, err := time.Parse(time.RFC3339, until); err == nil {
-			query = query.Where("created_at <= ?", t)
-		}
-	}
-
-	var total int64
-	query.Count(&total)
-
-	var logs []models.ActivityLog
-	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&logs).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to query activity log")
-		return
-	}
-
-	respond.List(w, logs, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -67,17 +66,12 @@ func validateSievePipelineFilters(raw json.RawMessage) error {
 }
 
 // validateDuplicatePipelineFilters rejects a domain pipeline that configures the
-// `duplicate` filter with a queue_recipient. That knob records
-// duplicate_queue_recipient metadata which NO delivery consumer reads, so it
-// silently no-ops (issue #201). Rather than accept a config we won't honour, the
-// admin save is rejected at HTTP 400 with an actionable message; the webhook
-// fork is unaffected and stays configurable.
-//
-// The reject deliberately lives here (config save) rather than in NewDuplicate:
-// erroring at filter construction would make the engine's fail-closed policy
-// DEFER live mail for any already-stored config, which is worse than the benign
-// no-op. Every duplicate block is inspected regardless of its `enabled` flag —
-// a disabled-but-unsupported block would no-op the moment it is enabled.
+// `duplicate` filter with a queue_recipient. The filter only forks to a webhook
+// (issue #201): copying to a mailbox reads like a working option, so a config
+// asking for it is refused at HTTP 400 with an actionable message rather than
+// saved and silently ignored. Every duplicate block is inspected regardless of
+// its `enabled` flag — a disabled block would be ignored the moment it is
+// enabled.
 //
 // Scope mirrors validateSievePipelineFilters: a filter list that does not
 // unmarshal is "nothing to validate" (nil), preserving the existing contract for
@@ -101,7 +95,7 @@ func validateDuplicatePipelineFilters(raw json.RawMessage) error {
 			continue
 		}
 		if strings.TrimSpace(cfg.QueueRecipient) != "" {
-			return fmt.Errorf("the duplicate filter's queue_recipient is not supported (it has no delivery consumer and would silently no-op); use webhook_url to fork a copy")
+			return fmt.Errorf("the duplicate filter's queue_recipient is not supported; use webhook_url to fork a copy")
 		}
 	}
 	return nil
@@ -110,11 +104,18 @@ func validateDuplicatePipelineFilters(raw json.RawMessage) error {
 type PipelineHandler struct {
 	db     *gorm.DB
 	engine *pipeline.Engine
+	// jsSidecar runs custom filter scripts for the test and validate routes.
+	jsSidecar filters.JSSidecar
 }
 
-func NewPipelineHandler(db *gorm.DB, engine *pipeline.Engine) *PipelineHandler {
-	return &PipelineHandler{db: db, engine: engine}
+func NewPipelineHandler(db *gorm.DB, engine *pipeline.Engine, jsSidecar filters.JSSidecar) *PipelineHandler {
+	return &PipelineHandler{db: db, engine: engine, jsSidecar: jsSidecar}
 }
+
+// jsSidecarRefused is the error when the sidecar refuses the API's token. It is
+// a 503, never the sidecar's 401, which would read as the admin's own session
+// having ended.
+const jsSidecarRefused = "JS filter sidecar refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar)"
 
 // ListPipelines returns all pipelines for a domain.
 func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) {
@@ -137,16 +138,11 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 	respond.List(w, pipelines, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
 
-// ListPipelineLogs returns recent per-message pipeline traces, newest first.
-//
-// PR5 repoint: the write path moved to message_traces (PR3), and the legacy
-// pipeline_logs table is no longer written, so this READ now reads
-// message_traces. The response is the richer trace shape (outcome, reason_code,
-// transport, mail_from/rcpt_to/client_ip, stages timeline, duration) rather than
-// the old {steps, action} log. The original pagination and the pipeline_id /
-// direction / action filters are preserved (action now matches the trace's
-// final_action column), and rfc_message_id / outcome / reason_code filters are
-// added to support message-lifecycle drill-down.
+// ListPipelineLogs returns recent per-message pipeline traces, newest first,
+// from message_traces: outcome, reason_code, transport,
+// mail_from/rcpt_to/client_ip, the stages timeline and duration. It filters on
+// pipeline_id, direction, action (the trace's final_action column), and on
+// rfc_message_id / outcome / reason_code for message-lifecycle drill-down.
 func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
@@ -164,8 +160,7 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 	if direction := r.URL.Query().Get("direction"); direction != "" {
 		query = query.Where("direction = ?", direction)
 	}
-	// action filters on the pipeline's final_action (the old PipelineLog.Action
-	// column's successor), preserving the existing query contract.
+	// action filters on the pipeline's final_action.
 	if action := r.URL.Query().Get("action"); action != "" {
 		query = query.Where("final_action = ?", action)
 	}
@@ -240,8 +235,8 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Reject a duplicate filter configured with an unsupported queue_recipient
-	// (issue #201) before persisting, for the same reason: an unhonoured config
-	// silently no-ops at delivery.
+	// (issue #201) before persisting: an unhonoured config would be silently
+	// ignored at delivery.
 	if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
 		respond.Error(w, http.StatusBadRequest, "unsupported_filter", err.Error())
 		return
@@ -329,7 +324,7 @@ func (h *PipelineHandler) DeletePipeline(w http.ResponseWriter, r *http.Request)
 // TestPipeline runs a sample email through a pipeline and returns step-by-step results.
 func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		PipelineID uint              `json:"pipeline_id"`
+		PipelineID uint                `json:"pipeline_id"`
 		Email      *pipeline.EmailJSON `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -455,6 +450,10 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		})
 		return
 	}
+	if errs := customFilterFieldErrors(req.FilterType, req.Direction); errs != nil {
+		respond.ValidationError(w, errs)
+		return
+	}
 
 	cf := models.CustomFilter{
 		DomainID:    req.DomainID,
@@ -472,6 +471,22 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 
 	respond.Data(w, http.StatusCreated, cf)
+}
+
+// customFilterFieldErrors checks a custom filter's type and direction against
+// the values the spec allows, or returns nil when both are allowed.
+func customFilterFieldErrors(filterType, direction string) map[string]string {
+	errs := map[string]string{}
+	if filterType != "action" && filterType != "transform" {
+		errs["filter_type"] = "must be action or transform"
+	}
+	if direction != "inbound" && direction != "outbound" && direction != "both" {
+		errs["direction"] = "must be inbound, outbound or both"
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
 }
 
 // GetCustomFilter returns a single custom filter by ID.
@@ -535,6 +550,14 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 	if req.Enabled != nil {
 		cf.Enabled = *req.Enabled
+	}
+	if cf.Name == "" {
+		respond.ValidationError(w, map[string]string{"name": "required"})
+		return
+	}
+	if errs := customFilterFieldErrors(cf.FilterType, cf.Direction); errs != nil {
+		respond.ValidationError(w, errs)
+		return
 	}
 
 	if err := h.db.Save(&cf).Error; err != nil {
@@ -606,14 +629,17 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 	}
 	bodyBytes, _ := json.Marshal(sidecarBody)
 
-	sidecarURL := "http://js-filter:3100/execute"
 	client := &http.Client{Timeout: 10 * time.Second}
-	sidecarResp, err := client.Post(sidecarURL, "application/json", bytes.NewReader(bodyBytes))
+	sidecarResp, err := h.jsSidecar.Post(r.Context(), client, "/execute", bodyBytes)
 	if err != nil {
 		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
 		return
 	}
 	defer sidecarResp.Body.Close()
+	if sidecarResp.StatusCode == http.StatusUnauthorized {
+		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
+		return
+	}
 
 	respBody, _ := io.ReadAll(sidecarResp.Body)
 
@@ -644,14 +670,17 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 	}
 	bodyBytes, _ := json.Marshal(sidecarBody)
 
-	sidecarURL := "http://js-filter:3100/validate"
 	client := &http.Client{Timeout: 5 * time.Second}
-	sidecarResp, err := client.Post(sidecarURL, "application/json", bytes.NewReader(bodyBytes))
+	sidecarResp, err := h.jsSidecar.Post(r.Context(), client, "/validate", bodyBytes)
 	if err != nil {
 		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
 		return
 	}
 	defer sidecarResp.Body.Close()
+	if sidecarResp.StatusCode == http.StatusUnauthorized {
+		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
+		return
+	}
 
 	respBody, _ := io.ReadAll(sidecarResp.Body)
 
@@ -670,8 +699,8 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 
 // ListQuarantine returns quarantined messages for a mailbox.
 // resolveMailboxID resolves the account ID from the URL to a mailbox ID,
-// verifying that the authenticated user owns the account (either as their
-// primary account or a linked account). Quarantine rows are per-mailbox
+// verifying that the session may reach the account (its own, or one it holds
+// a mail grant on). Quarantine rows are per-mailbox
 // confidential mail; without this check the {id} path segment was trusted as a
 // raw mailbox ID and quarantine rows were released/deleted by row ID with no
 // owner check, letting any authenticated caller view/release/delete another
@@ -686,7 +715,7 @@ func (h *PipelineHandler) resolveMailboxID(r *http.Request, accountIDStr string)
 	if err != nil {
 		return 0, err
 	}
-	return resolveAccountMailbox(h.db, uint(accountID), claims.WebmailAccountID)
+	return resolveAccountMailbox(h.db, uint(accountID), claims, mailCapabilityFor(r))
 }
 
 func (h *PipelineHandler) ListQuarantine(w http.ResponseWriter, r *http.Request) {

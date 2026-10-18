@@ -13,6 +13,11 @@ spec:
     metadata:
       labels:
         {{- include "restmail.componentSelectorLabels" (list . "js-filter") | nindent 8 }}
+      {{- if not .Values.api.existingSecret }}
+      annotations:
+        # Restart with the API when the Secret holding their shared token changes.
+        checksum/secret: {{ include (print $.Template.BasePath "/api-secret.yaml") . | sha256sum }}
+      {{- end }}
     spec:
       serviceAccountName: {{ include "restmail.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
@@ -33,6 +38,16 @@ spec:
             - name: http
               containerPort: {{ .Values.jsFilter.port }}
               protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.jsFilter.port | quote }}
+            # Only a request carrying this token runs a script (#160). The one
+            # key of the API Secret this pod is given.
+            - name: JS_FILTER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "restmail.api.secretName" . }}
+                  key: JS_FILTER_TOKEN
           volumeMounts:
             - name: tmp
               mountPath: /tmp

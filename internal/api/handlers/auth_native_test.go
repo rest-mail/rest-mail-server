@@ -48,11 +48,11 @@ func TestRefresh_NativeBodyTokenGetsBodyTokens(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateTokenPair(42, "user@example.test", 3)
+	pair, err := jwt.GenerateSession(42, "user@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, pair, "mailbox", 42)
+	seedActive(store, pair, 42)
 
 	rr := httptest.NewRecorder()
 	h.Refresh(rr, bodyRequest("/api/v1/auth/refresh", pair.RefreshToken))
@@ -96,16 +96,16 @@ func TestRefresh_CookieWinsOverBody(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	cookiePair, err := jwt.GenerateTokenPair(1, "a@example.test", 1)
+	cookiePair, err := jwt.GenerateSession(1, "a@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bodyPair, err := jwt.GenerateTokenPair(2, "b@example.test", 2)
+	bodyPair, err := jwt.GenerateSession(2, "b@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, cookiePair, "mailbox", 1)
-	seedActive(store, bodyPair, "mailbox", 2)
+	seedActive(store, cookiePair, 1)
+	seedActive(store, bodyPair, 2)
 
 	req := bodyRequest("/api/v1/auth/refresh", bodyPair.RefreshToken)
 	req.AddCookie(&http.Cookie{Name: auth.RefreshCookieName, Value: cookiePair.RefreshToken})
@@ -136,11 +136,11 @@ func TestLogout_NativeBodyTokenRevoked(t *testing.T) {
 	store := newFakeRefreshStore()
 	h := newRefreshHandler(jwt, store)
 
-	pair, err := jwt.GenerateTokenPair(5, "c@example.test", 5)
+	pair, err := jwt.GenerateSession(5, "c@example.test", 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedActive(store, pair, "mailbox", 5)
+	seedActive(store, pair, 5)
 
 	rr := httptest.NewRecorder()
 	h.Logout(rr, bodyRequest("/api/v1/auth/logout", pair.RefreshToken))
@@ -186,7 +186,7 @@ func TestLogin_UnknownClientRefused(t *testing.T) {
 func TestLogin_NativeGetsBodyTokens(t *testing.T) {
 	gdb := openLoginTestDB(t)
 	jwtSvc := auth.NewJWTService("login-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewAuthHandler(gdb, jwtSvc, "")
+	h := NewAuthHandler(gdb, jwtSvc, "", nil)
 
 	addr := seedLoginMailbox(t, gdb, "correct-horse-battery")
 	rr := doLogin(h, map[string]string{"email": addr, "password": "correct-horse-battery", "client": "native"})

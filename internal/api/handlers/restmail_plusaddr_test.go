@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -21,14 +19,7 @@ import (
 // is reachable — matching the repo's DB-in-CI convention.
 func openPlusAddrTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("restmail plus-addressing DB test skipped: no database reachable (%v)", err)
 	}
@@ -82,7 +73,7 @@ func TestRESTMAILDeliver_Subaddressing(t *testing.T) {
 	if err := db.Create(&dom).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
-	base := models.Mailbox{DomainID: dom.ID, LocalPart: "user", Address: baseAddr, Password: "x", Active: true, QuotaBytes: 1 << 30}
+	base := models.Mailbox{DomainID: dom.ID, LocalPart: "user", Address: baseAddr, Active: true, QuotaBytes: 1 << 30}
 	if err := db.Create(&base).Error; err != nil {
 		t.Fatalf("create base mailbox: %v", err)
 	}
@@ -91,7 +82,7 @@ func TestRESTMAILDeliver_Subaddressing(t *testing.T) {
 	// delivery would strip to this base mailbox — so the alias-wins case is only
 	// meaningful because this mailbox is here to (not) receive it.
 	claimedAddr := "claimed@" + domainName
-	claimedBox := models.Mailbox{DomainID: dom.ID, LocalPart: "claimed", Address: claimedAddr, Password: "x", Active: true, QuotaBytes: 1 << 30}
+	claimedBox := models.Mailbox{DomainID: dom.ID, LocalPart: "claimed", Address: claimedAddr, Active: true, QuotaBytes: 1 << 30}
 	if err := db.Create(&claimedBox).Error; err != nil {
 		t.Fatalf("create claimed mailbox: %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"io"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -12,17 +13,22 @@ import (
 	"github.com/rest-mail/go-dmarc"
 )
 
-func TestParseRUA(t *testing.T) {
-	cases := []struct{ record, want string }{
-		{"v=DMARC1; p=reject; rua=mailto:agg@example.test", "agg@example.test"},
-		{"v=DMARC1; p=none; rua=mailto:agg@example.test!10m, mailto:other@x.test", "agg@example.test"},
-		{"v=DMARC1; p=reject; ruf=mailto:forensic@example.test", ""}, // ruf, not rua
-		{"v=DMARC1; p=reject", ""},
-		{"v=DMARC1; rua=https://example.test/report", ""}, // non-mailto
+func TestMailtoRUA(t *testing.T) {
+	uri := func(u string, max uint64) dmarc.ReportURI { return dmarc.ReportURI{URI: u, MaxSize: max} }
+	cases := []struct {
+		name string
+		ruas []dmarc.ReportURI
+		want string
+	}{
+		{"first mailto", []dmarc.ReportURI{uri("mailto:agg@example.test", math.MaxUint64), uri("mailto:other@x.test", math.MaxUint64)}, "agg@example.test"},
+		{"scheme in any case", []dmarc.ReportURI{uri("MAILTO:agg@example.test", math.MaxUint64)}, "agg@example.test"},
+		{"non-mailto skipped", []dmarc.ReportURI{uri("https://example.test/report", math.MaxUint64), uri("mailto:agg@example.test", math.MaxUint64)}, "agg@example.test"},
+		{"too small a limit skipped", []dmarc.ReportURI{uri("mailto:small@example.test", 10), uri("mailto:agg@example.test", math.MaxUint64)}, "agg@example.test"},
+		{"none", nil, ""},
 	}
 	for _, c := range cases {
-		if got := parseRUA(c.record); got != c.want {
-			t.Errorf("parseRUA(%q) = %q, want %q", c.record, got, c.want)
+		if got := mailtoRUA(c.ruas, 100); got != c.want {
+			t.Errorf("%s: mailtoRUA = %q, want %q", c.name, got, c.want)
 		}
 	}
 }
@@ -51,8 +57,19 @@ func TestBuildReportEmail_AttachmentDecodes(t *testing.T) {
 		}
 	}
 
-	// Extract the base64 attachment body and decode -> gunzip -> original.
+	if got := reportXML(t, raw); got != string(original) {
+		t.Errorf("attachment did not round-trip to the original report XML")
+	}
+}
+
+// reportXML extracts a report email's base64 attachment and decodes and
+// gunzips it.
+func reportXML(t *testing.T, raw string) string {
+	t.Helper()
 	idx := strings.Index(raw, "filename=")
+	if idx < 0 {
+		t.Fatal("no attachment")
+	}
 	blockStart := strings.Index(raw[idx:], "\r\n\r\n")
 	if blockStart < 0 {
 		t.Fatal("no attachment body")
@@ -69,9 +86,7 @@ func TestBuildReportEmail_AttachmentDecodes(t *testing.T) {
 		t.Fatalf("gunzip: %v", err)
 	}
 	got, _ := io.ReadAll(zr)
-	if !bytes.Equal(got, original) {
-		t.Errorf("attachment did not round-trip to the original report XML")
-	}
+	return string(got)
 }
 
 func TestDomainOf(t *testing.T) {

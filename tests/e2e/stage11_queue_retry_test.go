@@ -11,25 +11,20 @@ import (
 
 func testStage11QueueRetry(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
 	// Ensure domains and mailboxes exist
 	createDomain(t, adminClient, "restmail.test", "restmail")
-	createMailbox(t, adminClient, "retry-sender@restmail.test", "password123", "Retry Sender")
+	createMailbox(t, adminClient, "retry-sender@restmail.test", accountPassword, "Retry Sender")
 
 	t.Run("EnqueueToUnresolvable_DefersWithRetry", func(t *testing.T) {
 		// Send a message to a domain that has no reachable MX.
 		// The queue worker will fail delivery and defer the item with
 		// exponential backoff.
 		senderClient := newAPIClient()
-		requireNoError(t, senderClient.login("retry-sender@restmail.test", "password123"))
-
-		// Link account
-		_, _ = senderClient.post("/api/v1/accounts", map[string]string{
-			"address": "retry-sender@restmail.test", "password": "password123",
-		})
+		requireNoError(t, senderClient.login("retry-sender@restmail.test", accountPassword))
 
 		subject := fmt.Sprintf("E2E-retry-%d", time.Now().UnixNano())
 
@@ -147,10 +142,11 @@ func testStage11QueueRetry(t *testing.T) {
 		// Verify the backoff formula: 2^attempt minutes, capped at 4 hours.
 		// This is a logic verification test -- does not require network.
 		for attempt := 0; attempt < 64; attempt++ {
-			// Mirror internal/gateway/queue.computeBackoff: the exponent MUST be
-			// guarded — 2^attempt * time.Minute overflows int64 and wraps to a
-			// negative duration (the product bug this stage exists to catch), so
-			// don't reintroduce it in the expectation.
+			// Mirror the connection-failure schedule in internal/gateway/queue
+			// (retry.go): the exponent MUST be guarded — 2^attempt * time.Minute
+			// overflows int64 and wraps to a negative duration (the product bug
+			// this stage exists to catch), so don't reintroduce it in the
+			// expectation.
 			var backoff time.Duration
 			if attempt >= 8 {
 				backoff = 4 * time.Hour

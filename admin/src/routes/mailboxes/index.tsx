@@ -52,7 +52,7 @@ function MailboxesPage() {
 
   useEffect(() => {
     if (accessToken) {
-      fetchMailboxes(accessToken)
+      fetchMailboxes()
     }
   }, [accessToken, fetchMailboxes])
 
@@ -82,7 +82,7 @@ function MailboxesPage() {
 
     setDeletingId(id)
     try {
-      await deleteMailbox(accessToken, id)
+      await deleteMailbox(id)
     } catch (err) {
       console.error('Failed to delete mailbox:', err)
     } finally {

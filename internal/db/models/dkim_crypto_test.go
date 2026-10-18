@@ -124,43 +124,40 @@ func TestLoadEncryptedWithoutMasterKeyFailsClosed(t *testing.T) {
 	}
 }
 
-// TestLoadLegacyPlaintextPEM: a legacy plaintext key (no prefix) is returned
-// as-is so signing keeps working until the migration upgrades it — a plaintext
-// key is NOT rejected merely for being plaintext.
-func TestLoadLegacyPlaintextPEM(t *testing.T) {
-	pemKey := genDKIMPEM(t)
-	loaded, err := LoadDKIMPrivateKey(pemKey, testMasterKey)
-	if err != nil {
-		t.Fatalf("LoadDKIMPrivateKey(plaintext): %v", err)
-	}
-	if loaded != pemKey {
-		t.Fatal("legacy plaintext key not returned verbatim")
-	}
-}
-
-// TestLoadLegacyBareBase64Ciphertext: a key encrypted before the version prefix
-// existed (bare base64 from crypto.EncryptString) still decrypts, and still
-// fails closed under the wrong key.
-func TestLoadLegacyBareBase64Ciphertext(t *testing.T) {
+// TestLoadRefusesUnencryptedWithMasterKey: with a MASTER_KEY configured, only
+// the versioned ciphertext is a key. A plaintext PEM or an unprefixed base64
+// ciphertext fails closed instead of being signed with.
+func TestLoadRefusesUnencryptedWithMasterKey(t *testing.T) {
 	pemKey := genDKIMPEM(t)
 	bare, err := restcrypto.EncryptString(pemKey, testMasterKey)
 	if err != nil {
 		t.Fatalf("EncryptString: %v", err)
 	}
-	if DKIMKeyIsEncrypted(bare) {
-		t.Fatal("bare ciphertext should not carry the version prefix")
+	for name, stored := range map[string]string{"plaintext PEM": pemKey, "unprefixed ciphertext": bare} {
+		loaded, err := LoadDKIMPrivateKey(stored, testMasterKey)
+		if !errors.Is(err, ErrDKIMKeyUndecryptable) {
+			t.Errorf("%s: expected ErrDKIMKeyUndecryptable, got %v", name, err)
+		}
+		if loaded != "" {
+			t.Errorf("%s: expected no key on fail-closed, got one", name)
+		}
 	}
+}
 
-	loaded, err := LoadDKIMPrivateKey(bare, testMasterKey)
+// TestLoadWithoutMasterKeyReturnsPlaintext: with encryption disabled (dev) the
+// key was stored as plaintext by EncryptDKIMPrivateKey and is read back as-is.
+func TestLoadWithoutMasterKeyReturnsPlaintext(t *testing.T) {
+	pemKey := genDKIMPEM(t)
+	stored, err := EncryptDKIMPrivateKey(pemKey, "")
 	if err != nil {
-		t.Fatalf("LoadDKIMPrivateKey(bare): %v", err)
+		t.Fatalf("EncryptDKIMPrivateKey: %v", err)
+	}
+	loaded, err := LoadDKIMPrivateKey(stored, "")
+	if err != nil {
+		t.Fatalf("LoadDKIMPrivateKey: %v", err)
 	}
 	if loaded != pemKey {
-		t.Fatal("legacy bare ciphertext did not decrypt to the original key")
-	}
-
-	if _, err := LoadDKIMPrivateKey(bare, "wrong-key"); !errors.Is(err, ErrDKIMKeyUndecryptable) {
-		t.Fatalf("expected fail-closed on legacy bare ciphertext with wrong key, got %v", err)
+		t.Fatal("plaintext key not returned verbatim with encryption disabled")
 	}
 }
 
@@ -169,99 +166,5 @@ func TestLoadLegacyBareBase64Ciphertext(t *testing.T) {
 func TestLoadEmptyStored(t *testing.T) {
 	if _, err := LoadDKIMPrivateKey("", testMasterKey); err == nil {
 		t.Fatal("expected error for empty stored key")
-	}
-}
-
-// TestMigratePlaintextThenIdempotent: plaintext migrates to versioned ciphertext
-// once (changed=true) and a second run is a no-op (changed=false) — never
-// double-encrypted, and the result still decrypts to the original key.
-func TestMigratePlaintextThenIdempotent(t *testing.T) {
-	pemKey := genDKIMPEM(t)
-
-	upgraded, changed, err := MigrateDKIMKeyAtRest(pemKey, testMasterKey)
-	if err != nil {
-		t.Fatalf("first MigrateDKIMKeyAtRest: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected changed=true migrating a plaintext key")
-	}
-	if !DKIMKeyIsEncrypted(upgraded) {
-		t.Fatal("migrated value is not versioned ciphertext")
-	}
-	if got, err := LoadDKIMPrivateKey(upgraded, testMasterKey); err != nil || got != pemKey {
-		t.Fatalf("migrated key did not decrypt to original: err=%v equal=%v", err, got == pemKey)
-	}
-
-	// Second run must be a no-op (idempotent), and byte-identical (no re-encrypt).
-	again, changed2, err := MigrateDKIMKeyAtRest(upgraded, testMasterKey)
-	if err != nil {
-		t.Fatalf("second MigrateDKIMKeyAtRest: %v", err)
-	}
-	if changed2 {
-		t.Fatal("expected changed=false on re-running migration (idempotency)")
-	}
-	if again != upgraded {
-		t.Fatal("re-run mutated an already-encrypted value")
-	}
-}
-
-// TestMigrateBareBase64Normalizes: a legacy bare-base64 ciphertext is normalized
-// to the versioned form by prefixing the SAME ciphertext (not re-encrypted), and
-// the re-run is idempotent.
-func TestMigrateBareBase64Normalizes(t *testing.T) {
-	pemKey := genDKIMPEM(t)
-	bare, err := restcrypto.EncryptString(pemKey, testMasterKey)
-	if err != nil {
-		t.Fatalf("EncryptString: %v", err)
-	}
-
-	upgraded, changed, err := MigrateDKIMKeyAtRest(bare, testMasterKey)
-	if err != nil {
-		t.Fatalf("MigrateDKIMKeyAtRest(bare): %v", err)
-	}
-	if !changed {
-		t.Fatal("expected changed=true normalizing bare ciphertext")
-	}
-	if upgraded != DKIMKeyCipherPrefix+bare {
-		t.Fatal("normalization should prefix the same ciphertext, not re-encrypt it")
-	}
-	if got, err := LoadDKIMPrivateKey(upgraded, testMasterKey); err != nil || got != pemKey {
-		t.Fatalf("normalized key did not decrypt to original: err=%v equal=%v", err, got == pemKey)
-	}
-
-	if _, changed2, err := MigrateDKIMKeyAtRest(upgraded, testMasterKey); err != nil || changed2 {
-		t.Fatalf("re-run not idempotent: changed=%v err=%v", changed2, err)
-	}
-}
-
-// TestMigrateWrongKeyBareLeavesUntouched: a bare value that fails to decrypt
-// under the current key is left byte-for-byte untouched (never mangled) and
-// surfaces ErrDKIMKeyUndecryptable so the caller can skip it.
-func TestMigrateWrongKeyBareLeavesUntouched(t *testing.T) {
-	pemKey := genDKIMPEM(t)
-	bare, err := restcrypto.EncryptString(pemKey, "some-other-key")
-	if err != nil {
-		t.Fatalf("EncryptString: %v", err)
-	}
-
-	out, changed, err := MigrateDKIMKeyAtRest(bare, testMasterKey)
-	if !errors.Is(err, ErrDKIMKeyUndecryptable) {
-		t.Fatalf("expected ErrDKIMKeyUndecryptable, got %v", err)
-	}
-	if changed {
-		t.Fatal("expected changed=false for an undecryptable bare value")
-	}
-	if out != bare {
-		t.Fatal("undecryptable value was mutated")
-	}
-}
-
-// TestMigrateNoMasterKeyNoOp: with no MASTER_KEY, migration is disabled and
-// leaves values as-is.
-func TestMigrateNoMasterKeyNoOp(t *testing.T) {
-	pemKey := genDKIMPEM(t)
-	out, changed, err := MigrateDKIMKeyAtRest(pemKey, "")
-	if err != nil || changed || out != pemKey {
-		t.Fatalf("expected no-op with empty master key: changed=%v err=%v", changed, err)
 	}
 }

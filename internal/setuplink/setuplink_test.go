@@ -6,93 +6,60 @@ import (
 	"testing"
 )
 
-const code = "7KQ2-M9XD-4TPA-HV3N-8RWC-ZB6E"
+const token = "q3B9xX7mVt0kQ2pLr8sYw1nZc4dHf6jA"
 
-// What the app is handed, and what a web server is not.
-func TestSetup_TheCodeRidesAfterTheHash(t *testing.T) {
-	link := Setup(DefaultBase, "", code)
+func TestReset_StaysOnTheAppsScheme(t *testing.T) {
+	// There is no page for a reset link, so it must not be given a web form.
+	link := Reset("https://mail.example.com", token)
+	if !strings.HasPrefix(link, "rest-mail://reset?") {
+		t.Fatalf("link = %q", link)
+	}
 	u, err := url.Parse(link)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.Scheme != "https" || u.Host != "rest-mail.com" || u.Path != "/setup" {
-		t.Errorf("link = %q", link)
+	if got := u.Query().Get("token"); got != token {
+		t.Errorf("token = %q, want %q", got, token)
 	}
-	if u.RawQuery != "" {
-		t.Errorf("link = %q: a code in the query reaches the web server's logs", link)
-	}
-	if got := carriedBy(t, link).Get("token"); got != code {
-		t.Errorf("the link carries token %q, want %q", got, code)
+	if got := u.Query().Get("server"); got != "https://mail.example.com" {
+		t.Errorf("server = %q", got)
 	}
 }
 
-func TestSetup_NamesTheServerWhenItIsKnown(t *testing.T) {
-	const server = "https://mail.example.com"
-	for _, base := range []string{DefaultBase, ""} {
-		parameters := carriedBy(t, Setup(base, server, code))
-		if parameters.Get("server") != server || parameters.Get("token") != code {
-			t.Errorf("base %q: link = %q", base, Setup(base, server, code))
-		}
+// A link with no server leaves the app to ask which.
+func TestReset_WithoutAServerNamesNone(t *testing.T) {
+	u, err := url.Parse(Reset("", token))
+	if err != nil {
+		t.Fatal(err)
 	}
-	// A server prints a link naming no server: it does not know its address.
-	if strings.Contains(Setup(DefaultBase, "", code), "server=") {
-		t.Error("a link with no server named should carry no server")
+	if u.Query().Has("server") {
+		t.Errorf("link names a server: %q", u)
 	}
 }
 
-// Set nothing and no site is involved at all.
-func TestSetup_WithoutABaseItIsTheAppsOwnScheme(t *testing.T) {
-	link := Setup("", "", code)
-	if !strings.HasPrefix(link, "restmail://setup?") || !strings.Contains(link, url.QueryEscape(code)) {
-		t.Errorf("link = %q", link)
-	}
-}
-
-func TestReset_StaysOnTheAppsScheme(t *testing.T) {
-	// There is no page for a reset link, so it must not be given a web form.
-	if link := Reset("https://mail.example.com", code); !strings.HasPrefix(link, "restmail://reset?") {
-		t.Errorf("link = %q", link)
-	}
-}
-
-func TestParseBase(t *testing.T) {
-	for raw, want := range map[string]string{
-		DefaultBase:                     DefaultBase,
-		"https://example.com/claim/":    "https://example.com/claim",
-		"  https://example.com/claim  ": "https://example.com/claim",
-		"http://localhost:8080/setup":   "http://localhost:8080/setup",
-		"":                              "",
-		"   ":                           "",
-	} {
-		got, err := ParseBase(raw)
-		if err != nil || got != want {
-			t.Errorf("ParseBase(%q) = %q, %v; want %q", raw, got, err, want)
-		}
-	}
-	// A base that is not an address, or that already carries parameters, would
-	// make a link nobody can open: say so at startup rather than print one.
-	for _, raw := range []string{"rest-mail.com/setup", "restmail://setup", "https://example.com/setup#token=x", "https://example.com/setup?a=b", "ftp://example.com/x"} {
-		if _, err := ParseBase(raw); err == nil {
-			t.Errorf("ParseBase(%q) was accepted", raw)
-		}
-	}
-}
-
-// carriedBy reads a link's parameters, wherever that form of link keeps them:
-// after the `#` for a web link, in the query for the app's own scheme.
-func carriedBy(t *testing.T, link string) url.Values {
-	t.Helper()
+// What the app is handed, and what a web server is not: everything after the
+// `#`, and every character of the password back as it went in.
+func TestSignIn_EverythingRidesAfterTheHash(t *testing.T) {
+	const password = "kX9+mQ2/rT7=vL4_wN8&pZ1 #?"
+	link := SignIn("https://mail.example.com", "admin@example.com", password)
 	u, err := url.Parse(link)
 	if err != nil {
-		t.Fatalf("parse %q: %v", link, err)
+		t.Fatal(err)
 	}
-	raw := u.RawQuery
-	if u.Fragment != "" {
-		raw = u.Fragment
+	if u.Scheme != "https" || u.Host != "rest-mail.com" || u.Path != "/setup" || u.RawQuery != "" {
+		t.Fatalf("link = %q", link)
 	}
-	parameters, err := url.ParseQuery(raw)
+	// As the app and the page read it: the fragment as sent, then decoded.
+	got, err := url.ParseQuery(u.EscapedFragment())
 	if err != nil {
-		t.Fatalf("parse %q of %q: %v", raw, link, err)
+		t.Fatal(err)
 	}
-	return parameters
+	if got.Get("server") != "https://mail.example.com" || got.Get("address") != "admin@example.com" || got.Get("password") != password {
+		t.Errorf("link carries %v", got)
+	}
+	// Server, address, password: the order a person reads them in.
+	if strings.Index(link, "server=") > strings.Index(link, "address=") ||
+		strings.Index(link, "address=") > strings.Index(link, "password=") {
+		t.Errorf("parameters out of order: %q", link)
+	}
 }

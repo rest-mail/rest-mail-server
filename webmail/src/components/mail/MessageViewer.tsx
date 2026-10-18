@@ -140,15 +140,8 @@ export function MessageViewer() {
         <p className="font-mono text-sm">// draft_message</p>
         <button
           onClick={() => {
-            let parsedTo: string[] = [];
-            try {
-              parsedTo = typeof msg.recipients_to === 'string'
-                ? JSON.parse(msg.recipients_to)
-                : (msg.recipients_to || []);
-            } catch { /* ignore */ }
-
             startCompose({
-              to: parsedTo.join(', '),
+              to: (msg.recipients_to || []).join(', '),
               cc: '',
               bcc: '',
               subject: msg.subject || '',
@@ -186,23 +179,15 @@ export function MessageViewer() {
     const quoteHtml = `<p><br></p><blockquote><p>On ${date}, ${sender} wrote:</p>${msg.body_html || `<p>${msg.body_text}</p>`}</blockquote>`;
 
     const replyTo = msg.sender;
-    let replyCc = '';
 
     const activeAccount = accounts.find(a => a.id === activeAccountId);
     const currentUser = activeAccount?.address || accounts[0]?.address || '';
 
-    try {
-      const originalTo: string[] = typeof msg.recipients_to === 'string'
-        ? JSON.parse(msg.recipients_to)
-        : (msg.recipients_to || []);
-      const allRecipients = originalTo.filter(addr =>
-        addr.toLowerCase() !== currentUser.toLowerCase() &&
-        addr.toLowerCase() !== msg.sender.toLowerCase()
-      );
-      replyCc = allRecipients.join(', ');
-    } catch {
-      // fallback: no CC
-    }
+    const allRecipients = (msg.recipients_to || []).filter(addr =>
+      addr.toLowerCase() !== currentUser.toLowerCase() &&
+      addr.toLowerCase() !== msg.sender.toLowerCase()
+    );
+    const replyCc = allRecipients.join(', ');
 
     startCompose({
       to: replyTo,
@@ -313,7 +298,7 @@ export function MessageViewer() {
               {msg.recipients_to && (
                 <p>
                   <span className="font-medium text-foreground">to:</span>{' '}
-                  {typeof msg.recipients_to === 'string' ? msg.recipients_to : JSON.stringify(msg.recipients_to)}
+                  {msg.recipients_to.join(', ')}
                 </p>
               )}
             </div>

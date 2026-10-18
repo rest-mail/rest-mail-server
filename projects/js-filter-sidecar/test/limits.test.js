@@ -127,3 +127,71 @@ test('a within-cap fetch response is delivered to the script', async (t) => {
   assert.strictEqual(res.status, 200);
   assert.strictEqual(res.json.result.log.detail, 'len 100');
 });
+
+// Memory: a script that allocates without end is stopped by the QuickJS memory
+// limit (or, failing that, the wall-clock deadline), and the sidecar carries on.
+test('a script that exhausts its memory fails, and the sidecar carries on', async (t) => {
+  const srv = await startServer({ JS_FILTER_MEMORY_LIMIT_BYTES: String(8 * 1024 * 1024) });
+  t.after(() => srv.stop());
+
+  const res = await request(srv.port, {
+    body: {
+      script: 'function filter(email){ const a = []; for (let i = 0; ; i++) a.push(new Array(1000).fill(i)); }',
+      email: { from: 'a@b.c' },
+      timeout_ms: 1000,
+    },
+    timeoutMs: 8000,
+  });
+  assert.ok(res.status === 500 || res.status === 408, `want a failure, got ${res.status} ${res.body}`);
+  if (res.status === 500) assert.match(res.json.error, /out of memory/);
+
+  const after = await request(srv.port, {
+    body: { script: 'function filter(email){ return { type:"action", action:"continue" }; }', email: {}, timeout_ms: 500 },
+  });
+  assert.strictEqual(after.status, 200);
+});
+
+// Stack: unbounded recursion is a script error, not a crash of its worker.
+test('unbounded recursion fails with a stack overflow', async (t) => {
+  const srv = await startServer();
+  t.after(() => srv.stop());
+
+  const res = await request(srv.port, {
+    body: { script: 'function filter(email){ function f(){ return f() + 1; } return f(); }', email: {}, timeout_ms: 1000 },
+  });
+  assert.strictEqual(res.status, 500);
+  assert.match(res.json.error, /stack overflow/);
+});
+
+// CPU: the budget is uncatchable, so a try/catch cannot outlast it.
+test('a script cannot catch its own timeout', async (t) => {
+  const srv = await startServer();
+  t.after(() => srv.stop());
+
+  const res = await request(srv.port, {
+    body: {
+      script: 'function filter(email){ for (;;) { try { for (;;) {} } catch (e) {} } }',
+      email: {},
+      timeout_ms: 200,
+    },
+    timeoutMs: 6000,
+  });
+  assert.strictEqual(res.status, 408);
+});
+
+// Logs live outside the script's memory limit, so they are capped.
+test('log output is capped', async (t) => {
+  const srv = await startServer();
+  t.after(() => srv.stop());
+
+  const res = await request(srv.port, {
+    body: {
+      script: 'function filter(email){ for (let i = 0; i < 1000; i++) console.log("x".repeat(1000)); return "done"; }',
+      email: {},
+      timeout_ms: 2000,
+    },
+  });
+  assert.strictEqual(res.status, 200);
+  assert.ok(res.json.logs.length < 100, `got ${res.json.logs.length} lines`);
+  assert.match(res.json.logs[res.json.logs.length - 1], /dropped/);
+});

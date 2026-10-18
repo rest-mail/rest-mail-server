@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -174,14 +172,7 @@ func TestRestmailClientIP(t *testing.T) {
 // matching the repo's depless-local / DB-in-CI convention.
 func openMailboxTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("restmail tarpit DB test skipped: no database reachable (%v)", err)
 	}
@@ -205,7 +196,7 @@ func TestCheckMailboxTarpitsNegativeButNotPositive(t *testing.T) {
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatalf("seed domain: %v", err)
 	}
-	mbox := models.Mailbox{DomainID: domain.ID, LocalPart: "real", Address: realAddr, Password: "x", Active: true}
+	mbox := models.Mailbox{DomainID: domain.ID, LocalPart: "real", Address: realAddr, Active: true}
 	if err := db.Create(&mbox).Error; err != nil {
 		t.Fatalf("seed mailbox: %v", err)
 	}

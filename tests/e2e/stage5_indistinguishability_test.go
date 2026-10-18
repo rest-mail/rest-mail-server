@@ -155,7 +155,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		// restmail (gateway)
 		ic3 := dialIMAPTLS(t, restmailIMAPAddr)
 		defer ic3.close()
-		ic3.login(t, "testuser@restmail.test", adminPassword)
+		ic3.login(t, "testuser@restmail.test", accountPassword)
 
 		result3, lines3 := ic3.command(t, "LIST \"\" \"*\"")
 		t.Logf("restmail LIST: %d lines, result: %s", len(lines3), result3)
@@ -180,7 +180,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		defer pc.close()
 
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
-		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
+		pc.sendExpect(t, "PASS "+accountPassword, "+OK")
 		pc.sendExpect(t, "STAT", "+OK")
 		pc.sendExpect(t, "LIST", "+OK")
 		// Read the list until "."
@@ -200,7 +200,7 @@ func testStage5Indistinguishability(t *testing.T) {
 
 		// We deliver via the API to testuser@restmail.test, then restmail relays to mail1
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
+		if err := gwClient.login("testuser@restmail.test", accountPassword); err != nil {
 			t.Skipf("Cannot login: %v", err)
 		}
 
@@ -328,7 +328,7 @@ func testStage5Indistinguishability(t *testing.T) {
 		t.Logf("IMAP implicit-TLS session established: %s", capLine)
 
 		// LOGIN over TLS
-		ic.login(t, "testuser@restmail.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", accountPassword)
 
 		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {
@@ -354,7 +354,7 @@ func testStage5Indistinguishability(t *testing.T) {
 
 		// Auth over TLS
 		pc.sendExpect(t, "USER testuser@restmail.test", "+OK")
-		pc.sendExpect(t, "PASS "+adminPassword, "+OK")
+		pc.sendExpect(t, "PASS "+accountPassword, "+OK")
 
 		statResp := pc.stat(t)
 		t.Logf("POP3 over TLS STAT: %s", statResp)
@@ -412,12 +412,11 @@ func testStage5Indistinguishability(t *testing.T) {
 		}
 
 		// Good credentials should succeed
-		sc.authPlain(t, "testuser@restmail.test", adminPassword)
+		sc.authPlain(t, "testuser@restmail.test", accountPassword)
 		t.Log("AUTH PLAIN after STARTTLS succeeded")
 
 		// Authenticated submission relays OUTBOUND to an external recipient (the
-		// real use case) — queued for delivery, not looped back through the
-		// inbound DMARC pipeline as a same-domain self-inject.
+		// real use case) — queued for delivery.
 		subject := fmt.Sprintf("auth-tls-test-%d", time.Now().UnixNano())
 		sc.sendExpect(t, "MAIL FROM:<testuser@restmail.test>", "250")
 		sc.sendExpect(t, "RCPT TO:<alice@mail1.test>", "250")
@@ -467,7 +466,7 @@ func testStage5Indistinguishability(t *testing.T) {
 			t.Errorf("IMAP advertises STARTTLS on its implicit-TLS port: %s", capLine)
 		}
 		// LOGIN with good credentials
-		ic.login(t, "testuser@restmail.test", adminPassword)
+		ic.login(t, "testuser@restmail.test", accountPassword)
 
 		result, _ := ic.command(t, "SELECT INBOX")
 		if !strings.Contains(result, "OK") {

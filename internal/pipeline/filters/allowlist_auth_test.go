@@ -3,6 +3,7 @@ package filters
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,37 +38,38 @@ func openAllowlistAuthTestDB(t *testing.T) *gorm.DB {
 }
 
 // TestSenderAuthenticated exercises the DB-free authentication gate directly:
-// only a locally-written, aligned SPF or DKIM pass authenticates a sender's
-// domain. A spoofer controls the raw envelope but cannot forge these local
-// verdicts (inbound Authentication-Results is stripped at ingress, #162).
+// only an aligned SPF (MAIL FROM) or DKIM pass that spf_check or dkim_verify
+// recorded for this run authenticates a sender's domain. A spoofer controls
+// the envelope and the headers but cannot record a verdict.
 func TestSenderAuthenticated(t *testing.T) {
-	mk := func(ar string) *pipeline.EmailJSON {
-		return &pipeline.EmailJSON{
-			Headers: pipeline.Headers{Extra: map[string]string{"Authentication-Results": ar}},
-		}
-	}
 	cases := []struct {
-		name   string
-		email  *pipeline.EmailJSON
-		domain string
-		want   bool
+		name     string
+		verdicts []pipeline.AuthResult
+		domain   string
+		want     bool
 	}{
-		{"no auth results", &pipeline.EmailJSON{}, "partner.example", false},
-		{"spf pass aligned", mk("spf=pass smtp.mailfrom=alice@partner.example"), "partner.example", true},
-		{"spf pass subdomain aligned", mk("spf=pass smtp.mailfrom=alice@mail.partner.example"), "partner.example", true},
-		{"spf pass unaligned domain", mk("spf=pass smtp.mailfrom=alice@attacker.example"), "partner.example", false},
-		{"spf fail", mk("spf=fail smtp.mailfrom=alice@partner.example"), "partner.example", false},
-		{"dkim pass aligned", mk("dkim=pass header.d=partner.example"), "partner.example", true},
-		{"dkim pass unaligned", mk("dkim=pass header.d=attacker.example"), "partner.example", false},
-		{"spf pass no mailfrom domain", mk("spf=pass"), "partner.example", false},
-		{"empty domain", mk("spf=pass smtp.mailfrom=alice@partner.example"), "", false},
+		{"no verdicts", nil, "partner.example", false},
+		{"spf pass aligned", []pipeline.AuthResult{spfVerdict("pass", "partner.example")}, "partner.example", true},
+		{"spf pass subdomain aligned", []pipeline.AuthResult{spfVerdict("pass", "mail.partner.example")}, "partner.example", true},
+		{"spf pass unaligned domain", []pipeline.AuthResult{spfVerdict("pass", "attacker.example")}, "partner.example", false},
+		{"spf fail", []pipeline.AuthResult{spfVerdict("fail", "partner.example")}, "partner.example", false},
+		{"spf HELO pass", []pipeline.AuthResult{{Method: pipeline.AuthSPF, Result: "pass", Property: pipeline.PropHelo, Domain: "partner.example"}}, "partner.example", false},
+		{"dkim pass aligned", []pipeline.AuthResult{dkimVerdict("pass", "partner.example")}, "partner.example", true},
+		{"dkim pass unaligned", []pipeline.AuthResult{dkimVerdict("pass", "attacker.example")}, "partner.example", false},
+		{"spf pass no domain", []pipeline.AuthResult{spfVerdict("pass", "")}, "partner.example", false},
+		{"dmarc pass alone", []pipeline.AuthResult{{Method: pipeline.AuthDMARC, Result: "pass", Property: pipeline.PropHeaderFrom, Domain: "partner.example"}}, "partner.example", false},
+		{"empty domain", []pipeline.AuthResult{spfVerdict("pass", "partner.example")}, "", false},
+		{"bare @domain", []pipeline.AuthResult{spfVerdict("pass", "partner.example")}, "@partner.example", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := senderAuthenticated(tc.email, tc.domain); got != tc.want {
+			if got := senderAuthenticated(authCtx(tc.verdicts...), tc.domain); got != tc.want {
 				t.Errorf("senderAuthenticated(%q) = %v, want %v", tc.domain, got, tc.want)
 			}
 		})
+	}
+	if senderAuthenticated(context.Background(), "partner.example") {
+		t.Error("authenticated a sender outside a pipeline run")
 	}
 }
 
@@ -80,13 +82,19 @@ func containsFilter(ss []string, want string) bool {
 	return false
 }
 
-// alignedAuthResults builds the local Authentication-Results a passing SPF check
-// would have written for sender: an aligned spf=pass. senderAuthenticated must
-// treat this as a verified identity.
-func alignedAuthResults(sender string) map[string]string {
-	return map[string]string{
-		"Authentication-Results": "spf=pass (matched ip4) smtp.mailfrom=" + sender,
-	}
+// alignedVerdict is the verdict a passing SPF check of sender records: an
+// aligned spf=pass. senderAuthenticated must treat it as a verified identity.
+func alignedVerdict(sender string) pipeline.AuthResult {
+	return spfVerdict("pass", sender[strings.LastIndexByte(sender, '@')+1:])
+}
+
+// forgedAuthResults is what a spoofer of sender can put in front of a filter:
+// Authentication-Results text, with our authserv-id, claiming every pass.
+func forgedAuthResults(sender string) map[string][]string {
+	domain := sender[strings.LastIndexByte(sender, '@')+1:]
+	return map[string][]string{"Authentication-Results": {
+		"restmail; spf=pass smtp.mailfrom=" + domain + "; dkim=pass header.d=" + domain + "; dmarc=pass header.from=" + domain,
+	}}
 }
 
 // TestDomainAllowlist_SkipRequiresAuthenticatedSender proves #177 for the
@@ -117,7 +125,7 @@ func TestDomainAllowlist_SkipRequiresAuthenticatedSender(t *testing.T) {
 	}
 
 	rcpt := "user@" + rcptDomainName
-	run := func(extra map[string]string) *pipeline.FilterResult {
+	run := func(raw map[string][]string, verdicts ...pipeline.AuthResult) *pipeline.FilterResult {
 		t.Helper()
 		f, err := NewDomainAllowlist(db)(nil)
 		if err != nil {
@@ -125,30 +133,35 @@ func TestDomainAllowlist_SkipRequiresAuthenticatedSender(t *testing.T) {
 		}
 		email := &pipeline.EmailJSON{
 			Envelope: pipeline.Envelope{MailFrom: sender, RcptTo: []string{rcpt}},
-			Headers:  pipeline.Headers{Extra: extra},
+			Headers:  pipeline.Headers{Raw: raw},
 		}
-		res, err := f.Execute(context.Background(), email)
+		res, err := f.Execute(authCtx(verdicts...), email)
 		if err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 		return res
 	}
 
-	t.Run("spoofed sender does not skip scanning", func(t *testing.T) {
-		res := run(nil) // no local Authentication-Results => unauthenticated
-		if res.Action != pipeline.ActionContinue {
-			t.Fatalf("action = %v, want continue (detail=%q)", res.Action, res.Log.Detail)
-		}
-		for _, scan := range []string{"rspamd", "spamassassin", "greylist"} {
-			if containsFilter(res.SkipFilters, scan) {
-				t.Errorf("spoofed allowlist match skipped %q scanning (SkipFilters=%v, detail=%q)",
-					scan, res.SkipFilters, res.Log.Detail)
+	for name, raw := range map[string]map[string][]string{
+		"spoofed sender does not skip scanning":                     nil, // no verdicts => unauthenticated
+		"spoofed sender with forged results does not skip scanning": forgedAuthResults(sender),
+	} {
+		t.Run(name, func(t *testing.T) {
+			res := run(raw)
+			if res.Action != pipeline.ActionContinue {
+				t.Fatalf("action = %v, want continue (detail=%q)", res.Action, res.Log.Detail)
 			}
-		}
-	})
+			for _, scan := range []string{"rspamd", "spamassassin", "greylist"} {
+				if containsFilter(res.SkipFilters, scan) {
+					t.Errorf("spoofed allowlist match skipped %q scanning (SkipFilters=%v, detail=%q)",
+						scan, res.SkipFilters, res.Log.Detail)
+				}
+			}
+		})
+	}
 
 	t.Run("authenticated aligned sender still skips scanning", func(t *testing.T) {
-		res := run(alignedAuthResults(sender))
+		res := run(nil, alignedVerdict(sender))
 		if res.Action != pipeline.ActionContinue {
 			t.Fatalf("action = %v, want continue (detail=%q)", res.Action, res.Log.Detail)
 		}
@@ -176,7 +189,6 @@ func TestContactWhitelist_SkipRequiresAuthenticatedSender(t *testing.T) {
 		DomainID:  dom.ID,
 		LocalPart: "bob",
 		Address:   "bob@" + rcptDomainName,
-		Password:  "x",
 		Active:    true,
 	}
 	if err := db.Create(&mb).Error; err != nil {
@@ -193,7 +205,7 @@ func TestContactWhitelist_SkipRequiresAuthenticatedSender(t *testing.T) {
 	}
 
 	rcpt := "bob@" + rcptDomainName
-	run := func(extra map[string]string) *pipeline.FilterResult {
+	run := func(raw map[string][]string, verdicts ...pipeline.AuthResult) *pipeline.FilterResult {
 		t.Helper()
 		f, err := NewContactWhitelist(db)(nil)
 		if err != nil {
@@ -201,30 +213,35 @@ func TestContactWhitelist_SkipRequiresAuthenticatedSender(t *testing.T) {
 		}
 		email := &pipeline.EmailJSON{
 			Envelope: pipeline.Envelope{MailFrom: sender, RcptTo: []string{rcpt}},
-			Headers:  pipeline.Headers{Extra: extra},
+			Headers:  pipeline.Headers{Raw: raw},
 		}
-		res, err := f.Execute(context.Background(), email)
+		res, err := f.Execute(authCtx(verdicts...), email)
 		if err != nil {
 			t.Fatalf("execute: %v", err)
 		}
 		return res
 	}
 
-	t.Run("spoofed sender does not skip scanning", func(t *testing.T) {
-		res := run(nil)
-		if res.Action != pipeline.ActionContinue {
-			t.Fatalf("action = %v, want continue (detail=%q)", res.Action, res.Log.Detail)
-		}
-		for _, scan := range []string{"rspamd", "spamassassin", "greylist"} {
-			if containsFilter(res.SkipFilters, scan) {
-				t.Errorf("spoofed trusted-contact match skipped %q scanning (SkipFilters=%v, detail=%q)",
-					scan, res.SkipFilters, res.Log.Detail)
+	for name, raw := range map[string]map[string][]string{
+		"spoofed sender does not skip scanning":                     nil,
+		"spoofed sender with forged results does not skip scanning": forgedAuthResults(sender),
+	} {
+		t.Run(name, func(t *testing.T) {
+			res := run(raw)
+			if res.Action != pipeline.ActionContinue {
+				t.Fatalf("action = %v, want continue (detail=%q)", res.Action, res.Log.Detail)
 			}
-		}
-	})
+			for _, scan := range []string{"rspamd", "spamassassin", "greylist"} {
+				if containsFilter(res.SkipFilters, scan) {
+					t.Errorf("spoofed trusted-contact match skipped %q scanning (SkipFilters=%v, detail=%q)",
+						scan, res.SkipFilters, res.Log.Detail)
+				}
+			}
+		})
+	}
 
 	t.Run("authenticated aligned sender still skips scanning", func(t *testing.T) {
-		res := run(alignedAuthResults(sender))
+		res := run(nil, alignedVerdict(sender))
 		if res.Action != pipeline.ActionContinue {
 			t.Fatalf("action = %v, want continue (detail=%q)", res.Action, res.Log.Detail)
 		}

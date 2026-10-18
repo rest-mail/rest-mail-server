@@ -21,31 +21,14 @@ func NewContactHandler(db *gorm.DB) *ContactHandler {
 	return &ContactHandler{db: db}
 }
 
-// resolveMailboxID converts a URL account ID to the actual mailbox ID using JWT claims.
-func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint) (uint, error) {
+// resolveMailboxID checks the caller may act on the account (mailbox) the
+// URL names with capability, and returns its id.
+func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint, capability string) (uint, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return 0, fmt.Errorf("not authenticated")
 	}
-
-	// Check if accountID is the user's own account
-	var account models.WebmailAccount
-	if err := h.db.First(&account, accountID).Error; err == nil {
-		if account.ID == claims.WebmailAccountID {
-			return account.PrimaryMailboxID, nil
-		}
-	}
-
-	// Check linked accounts
-	var targetAccount models.WebmailAccount
-	if err := h.db.First(&targetAccount, accountID).Error; err == nil {
-		var linked models.LinkedAccount
-		if err := h.db.Where("webmail_account_id = ? AND mailbox_id = ?", claims.WebmailAccountID, targetAccount.PrimaryMailboxID).First(&linked).Error; err == nil {
-			return linked.MailboxID, nil
-		}
-	}
-
-	return 0, fmt.Errorf("access denied")
+	return resolveAccountMailbox(h.db, accountID, claims, capability)
 }
 
 // ListContacts returns contacts for a mailbox with optional filtering.
@@ -57,7 +40,7 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -104,7 +87,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -160,7 +143,7 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -212,7 +195,7 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -251,7 +234,7 @@ func (h *ContactHandler) BlockSender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -307,7 +290,7 @@ func (h *ContactHandler) SuggestContacts(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -348,7 +331,7 @@ func (h *ContactHandler) ImportContacts(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID))
+	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return

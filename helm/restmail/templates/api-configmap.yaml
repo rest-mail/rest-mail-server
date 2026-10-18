@@ -8,6 +8,14 @@ data:
   API_PORT: {{ .Values.api.port | quote }}
   ENVIRONMENT: {{ .Values.api.environment | quote }}
   LOG_LEVEL: {{ .Values.api.logLevel | quote }}
+  ATTACHMENT_STORAGE_TYPE: {{ .Values.api.attachments.storageType | quote }}
+  {{- if eq .Values.api.attachments.storageType "s3" }}
+  ATTACHMENT_S3_ENDPOINT: {{ .Values.api.attachments.s3.endpoint | quote }}
+  ATTACHMENT_S3_REGION: {{ .Values.api.attachments.s3.region | quote }}
+  ATTACHMENT_S3_BUCKET: {{ .Values.api.attachments.s3.bucket | quote }}
+  ATTACHMENT_S3_PREFIX: {{ .Values.api.attachments.s3.prefix | quote }}
+  ATTACHMENT_S3_FORCE_PATH_STYLE: {{ .Values.api.attachments.s3.forcePathStyle | quote }}
+  {{- end }}
   # The API never terminates TLS itself; a front proxy/ingress does. In
   # production the boot validator refuses to serve cleartext auth traffic unless
   # this acknowledgement is set. Keep a TLS-terminating reverse proxy in front.
@@ -17,14 +25,23 @@ data:
   # trust boundary protects the gateway-facing routes on the public listener.
   INTERNAL_ROUTES_ALLOW_PUBLIC: "true"
   {{- end }}
-  {{- if not (kindIs "invalid" .Values.api.setupLinkBase) }}
-  # Where the link a fresh install prints points. Empty involves no site at
-  # all: the link is then restmail://setup, which only the app can open.
-  RESTMAIL_SETUP_LINK_BASE: {{ .Values.api.setupLinkBase | quote }}
-  {{- end }}
   {{- with .Values.api.ownerKeys }}
-  # Public keys of whoever owns this server, in authorized_keys format. Holding
-  # a matching private key is what lets `restmail setup` claim a fresh install
-  # and `restmail reset-admin` let an admin back in, over the public API.
+  # Trusted initial public keys, imported into PostgreSQL only while its owner
+  # registry is empty. Recovery reads the database, not this ConfigMap.
   RESTMAIL_OWNER_KEYS: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.api.statusKeys }}
+  # Public keys that may only read what the server runs (`restmail status
+  # --key`), in the same format.
+  RESTMAIL_STATUS_KEYS: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.api.push.apns }}
+  {{- if .enabled }}
+  # Push notifications through APNs. The key file is mounted from the Secret
+  # api.push.apns.existingSecret names (templates/api-deployment.yaml).
+  RESTMAIL_APNS_KEY_FILE: "/etc/restmail/apns/AuthKey.p8"
+  RESTMAIL_APNS_KEY_ID: {{ .keyId | quote }}
+  RESTMAIL_APNS_TEAM_ID: {{ .teamId | quote }}
+  RESTMAIL_APNS_TOPIC: {{ .topic | quote }}
+  {{- end }}
   {{- end }}

@@ -46,6 +46,8 @@ tasks:
         desc: the mail domain it serves; worked out from HOST if left out
       - name: password
         desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: owner_key
+        desc: public SSH key (.pub) for recovery; omitted at a terminal offers local creation or selection
       - name: version
         desc: the chart version (default the newest)
       - name: values
@@ -60,6 +62,7 @@ tasks:
       DOMAIN:
         sh: printf %s "${HOST#*.}"
       PASSWORD: ''
+      OWNER_KEY: ''
       VERSION: ''
       VALUES: ''
       NAME: restmail
@@ -97,6 +100,8 @@ tasks:
         desc: the mail domain it serves; worked out from HOST if left out
       - name: password
         desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: owner_key
+        desc: public SSH key (.pub) for recovery; omitted at a terminal offers local creation or selection
       - name: version
         desc: the chart version (default the newest)
       - name: name
@@ -109,6 +114,7 @@ tasks:
       DOMAIN:
         sh: printf %s "${HOST#*.}"
       PASSWORD: ''
+      OWNER_KEY: ''
       VERSION: ''
       NAME: restmail
       NAMESPACE: rest-mail
@@ -118,8 +124,13 @@ tasks:
       PROJECT_DIR:
         sh: cd "$USER_WORKING_DIR" 2>/dev/null; cd -- "$PROJECT" 2>/dev/null && pwd || printf %s "$PROJECT"
     preconditions:
-      - sh: command -v pulumi >/dev/null && command -v kubectl >/dev/null && command -v jq >/dev/null
-        msg: "This needs pulumi, kubectl and jq — see docs/installing.md"
+      # kubectl only where the stack is deployed from here: pulumi.sh asks for it
+      # then. A project a pipeline deploys is checked over its public API.
+      - sh: command -v pulumi >/dev/null && command -v jq >/dev/null
+        msg: "This needs pulumi and jq — see docs/installing.md"
+      # It hashes the admin password: the stack keeps only that.
+      - sh: restmail password-hash --help >/dev/null 2>&1
+        msg: "This needs the restmail CLI 0.7.0 or newer (restmail password-hash) — see docs/installing.md"
       - sh: test -f '{{.PROJECT_DIR}}/Pulumi.yaml' || test -f '{{.PROJECT_DIR}}/Pulumi.yml'
         msg: "{{.PROJECT}} is not a Pulumi project: there is no Pulumi.yaml in {{.PROJECT_DIR}}"
       - sh: printf %s "$NAME" | grep -Eq '^[a-z0-9]([-a-z0-9]{0,51}[a-z0-9])?$'
@@ -130,7 +141,7 @@ tasks:
         msg: "Could not work out the mail domain from {{.HOST}} (it came out as \"{{.DOMAIN}}\"): pass --domain"
     confirm:
       text: 'Add mail server "{{.NAME}}" ({{.HOST}}, mail for {{.DOMAIN}}) to the Pulumi project in {{.PROJECT_DIR}}?'
-      show: pulumi -C '{{.PROJECT_DIR}}' stack ls
+      show: "pulumi -C '{{.PROJECT_DIR}}' stack ls 2>/dev/null || echo '(its stack cannot be read from here: a pipeline deploys it)'"
     cmds:
       - cmd: PROJECT="$PROJECT_DIR" '{{.TASKFILE_DIR}}/lifecycle/pulumi.sh' install
         silent: true

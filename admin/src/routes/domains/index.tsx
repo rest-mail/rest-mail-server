@@ -23,7 +23,7 @@ function DomainsPage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch((err) => {
+      fetchDomains().catch((err) => {
         console.error('Failed to fetch domains:', err)
       })
     }
@@ -33,7 +33,7 @@ function DomainsPage() {
     if (!accessToken) return
 
     try {
-      await deleteDomain(id.toString(), accessToken)
+      await deleteDomain(id.toString())
       setDeleteConfirm(null)
     } catch (err) {
       console.error('Failed to delete domain:', err)

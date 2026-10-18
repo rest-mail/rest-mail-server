@@ -31,7 +31,7 @@ export function PipelineFunnel({ accessToken }: { accessToken: string | null }) 
   const onWindowChange = (value: string) => {
     setWindow(value)
     if (accessToken) {
-      fetchAnalytics(accessToken, value).catch((err) => {
+      fetchAnalytics(value).catch((err) => {
         console.error('Failed to fetch pipeline analytics:', err)
       })
     }

@@ -25,10 +25,10 @@ function CustomFiltersPage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch((err) => {
+      fetchDomains().catch((err) => {
         console.error('Failed to fetch domains:', err)
       })
-      fetchFilters(accessToken, selectedDomain || undefined).catch((err) => {
+      fetchFilters(selectedDomain || undefined).catch((err) => {
         console.error('Failed to fetch custom filters:', err)
       })
     }
@@ -38,7 +38,7 @@ function CustomFiltersPage() {
     if (!accessToken) return
 
     try {
-      await deleteFilter(id, accessToken)
+      await deleteFilter(id)
       setDeleteConfirm(null)
     } catch (err) {
       console.error('Failed to delete custom filter:', err)

@@ -22,6 +22,8 @@ vars:
   JS_FILTER_REGISTRY: '{{.JS_FILTER_REGISTRY | default "ghcr.io/rest-mail"}}'
   JS_FILTER_IMAGE: '{{.JS_FILTER_REGISTRY}}/js-filter:{{.JS_FILTER_IMAGE_TAG}}'
   JS_FILTER_BUILD_CONTEXT: '{{.JS_FILTER_BUILD_CONTEXT | default "./projects/js-filter-sidecar"}}'
+  # What the API authenticates with (#160); the API gets the same value.
+  JS_FILTER_TOKEN: '{{.JS_FILTER_TOKEN | default "dev-js-filter-token-change-in-production"}}'
 
 tasks:
 
@@ -44,38 +46,50 @@ tasks:
         echo "  starting js-filter ({{.JS_FILTER_CONTAINER_NAME}} @ {{.JS_FILTER_IP}})"
         docker rm -f {{.JS_FILTER_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # ── OSI-6: contain the admin-authored JS mail-filter runner ──────────
-        # This container executes trusted-admin-authored filter scripts in a
-        # Node `vm` sandbox, so it gets the strictest profile in the stack:
+        # Each filter script runs in its own QuickJS engine compiled to
+        # WebAssembly (#160), which can reach nothing of this container. The
+        # container is still given the strictest profile in the stack:
         #   * no-new-privileges + drop ALL capabilities (binds the unprivileged
         #     :3100, needs none) — no way to gain privilege from a filter.
         #   * read-only root filesystem with a small noexec/nosuid tmpfs for the
         #     only writable path a filter could need (/tmp scratch).
         #   * tight pid/mem/cpu ceilings to bound a runaway or abusive filter
-        #     (the Node heap is already capped at 64 MiB via --max-old-space-size).
+        #     (each script also has its own QuickJS memory limit).
         #   * runs as the non-root `jsfilter` user baked into the image.
-        # No secrets: this container is started with NO -e flags — it never sees
-        # DB creds, JWT_SECRET, MASTER_KEY, or API tokens.
+        # One secret: JS_FILTER_TOKEN, which the API must send for a script to
+        # run, handed over in a 0600 env-file (as tasks/api.yml does) so it is
+        # never on the `docker run` command line. It never sees DB creds,
+        # JWT_SECRET or MASTER_KEY.
         # Egress: this container carries no outbound dependency of its own (it
         # only *receives* /execute + /validate calls from the API). Filter
         # scripts can only fetch() hosts explicitly allow-listed by the app, and
         # NO allow-list is configured here (JS_FILTER_ALLOWED_HOSTS unset), so
         # outbound HTTP is default-denied at the application layer. A dedicated
         # `internal: true` network is the intended container-level backstop but
-        # is not adoptable from this repo alone: the API resolves the sidecar as
-        # `http://js-filter:3100` via the testbed dnsmasq to a fixed mailnet IP
-        # and bypasses Docker's embedded DNS, so the sidecar must stay on the
+        # is not adoptable from this repo alone: the API reaches the sidecar at
+        # its fixed mailnet IP (JS_FILTER_URL, tasks/api.yml) and bypasses
+        # Docker's embedded DNS, so the sidecar must stay on the
         # mailnet at {{.JS_FILTER_IP}} to remain reachable. Moving it behind an
         # internal network requires a testbed dnsmasq/addressing change — see PR
-        # notes (OSI-6 follow-up).
+        # notes (OSI-6 follow-up). Others on the mailnet can reach it, which is
+        # why it checks the token.
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --read-only --tmpfs /tmp:rw,noexec,nosuid,size=32m \
           --pids-limit 64 --memory 256m --cpus 0.5"
+        mkdir -p {{.ROOT_DIR}}/.cache
+        SECRETS_ENV="{{.ROOT_DIR}}/.cache/{{.JS_FILTER_CONTAINER_NAME}}.secrets.env"
+        trap 'rm -f "$SECRETS_ENV"' EXIT
+        rm -f "$SECRETS_ENV"
+        : > "$SECRETS_ENV"
+        chmod 600 "$SECRETS_ENV"
+        printf 'JS_FILTER_TOKEN=%s\n' "{{.JS_FILTER_TOKEN}}" > "$SECRETS_ENV"
         docker run -d --name {{.JS_FILTER_CONTAINER_NAME}} \
           $HARDENING \
           --restart unless-stopped \
           --network {{.JS_FILTER_NETWORK}} \
           --ip {{.JS_FILTER_IP}} \
+          --env-file "$SECRETS_ENV" \
           --health-cmd 'nc -z localhost 3100 || exit 1' \
           --health-interval 10s \
           --health-timeout 5s \

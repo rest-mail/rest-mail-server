@@ -2,55 +2,93 @@ package filters
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
-// emailWithAR builds a From-example.test message carrying the given
-// Authentication-Results header (as the SPF/DKIM filters would leave it).
-func emailWithAR(ar string) *pipeline.EmailJSON {
+// authCtx returns a context carrying verdicts, as Engine.Execute's would once
+// spf_check, dkim_verify and arc_verify had recorded them.
+func authCtx(verdicts ...pipeline.AuthResult) context.Context {
+	a := &pipeline.AuthResults{}
+	a.Add(verdicts...)
+	return pipeline.WithAuthResults(context.Background(), a)
+}
+
+// spfVerdict is spf_check's verdict on the MAIL FROM identity of domain.
+func spfVerdict(result, domain string) pipeline.AuthResult {
+	return pipeline.AuthResult{Method: pipeline.AuthSPF, Result: result, Property: pipeline.PropMailFrom, Domain: domain}
+}
+
+// dkimVerdict is dkim_verify's verdict on a signature with d=domain.
+func dkimVerdict(result, domain string) pipeline.AuthResult {
+	return pipeline.AuthResult{Method: pipeline.AuthDKIM, Result: result, Property: pipeline.PropHeaderD, Domain: domain}
+}
+
+// stubDMARC makes DMARC discovery see the record publishing(domain) gives for
+// _dmarc.<domain>, "" for none.
+func stubDMARC(t *testing.T, publishing func(domain string) string) {
+	t.Helper()
+	orig := dmarcTXT
+	dmarcTXT = func(name string) ([]string, error) {
+		if rec := publishing(strings.TrimPrefix(name, "_dmarc.")); rec != "" {
+			return []string{rec}, nil
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() { dmarcTXT = orig })
+}
+
+// fromExampleTest is a message From example.test.
+func fromExampleTest() *pipeline.EmailJSON {
 	return &pipeline.EmailJSON{
-		Headers: pipeline.Headers{
-			From: []pipeline.Address{{Address: "user@example.test"}},
-			Raw:  map[string][]string{"Authentication-Results": {ar}},
-		},
+		Headers: pipeline.Headers{From: []pipeline.Address{{Address: "user@example.test"}}},
 	}
 }
 
 func TestDMARC_DKIMAlignment(t *testing.T) {
-	orig := lookupDMARC
-	lookupDMARC = func(string) (string, error) { return "v=DMARC1; p=reject", nil }
-	defer func() { lookupDMARC = orig }()
+	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
 
 	f := &dmarcCheckFilter{}
 
 	cases := []struct {
 		name       string
-		ar         string
+		verdicts   []pipeline.AuthResult
 		wantAction pipeline.Action
 		wantResult string
 	}{
 		{
 			name:       "aligned dkim passes DMARC",
-			ar:         "restmail; dkim=pass header.d=example.test",
+			verdicts:   []pipeline.AuthResult{dkimVerdict("pass", "example.test")},
 			wantAction: pipeline.ActionContinue,
 			wantResult: "pass",
 		},
 		{
-			// The hardening: a DKIM pass whose signing domain isn't aligned must
-			// NOT satisfy DMARC (previously any dkim=pass was assumed aligned).
+			// A DKIM pass whose signing domain isn't aligned must NOT satisfy
+			// DMARC.
 			name:       "unaligned dkim domain is rejected under p=reject",
-			ar:         "restmail; dkim=pass header.d=evil.test",
+			verdicts:   []pipeline.AuthResult{dkimVerdict("pass", "evil.test")},
 			wantAction: pipeline.ActionReject,
 			wantResult: "fail",
 		},
 		{
-			// A dkim=pass with no identifiable signing domain no longer counts as
-			// aligned (the old stub-era shortcut). The real verifier always emits
-			// header.d= on pass, so this only affects spoofed/degenerate input.
-			name:       "dkim pass without header.d is not aligned",
-			ar:         "restmail; dkim=pass",
+			// A dkim pass with no signing domain does not count as aligned.
+			name:       "dkim pass without a domain is not aligned",
+			verdicts:   []pipeline.AuthResult{dkimVerdict("pass", "")},
+			wantAction: pipeline.ActionReject,
+			wantResult: "fail",
+		},
+		{
+			// Any one passing, aligned signature is enough (RFC 7489 §4.2).
+			name:       "one aligned signature among several",
+			verdicts:   []pipeline.AuthResult{dkimVerdict("fail", "example.test"), dkimVerdict("pass", "esp.test"), dkimVerdict("pass", "mail.example.test")},
+			wantAction: pipeline.ActionContinue,
+			wantResult: "pass",
+		},
+		{
+			name:       "aligned dkim that failed",
+			verdicts:   []pipeline.AuthResult{dkimVerdict("fail", "example.test")},
 			wantAction: pipeline.ActionReject,
 			wantResult: "fail",
 		},
@@ -58,7 +96,7 @@ func TestDMARC_DKIMAlignment(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := f.Execute(context.Background(), emailWithAR(tc.ar))
+			res, err := f.Execute(authCtx(tc.verdicts...), fromExampleTest())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -72,18 +110,69 @@ func TestDMARC_DKIMAlignment(t *testing.T) {
 	}
 }
 
-func TestDMARC_SPFAlignmentStillPasses(t *testing.T) {
-	orig := lookupDMARC
-	lookupDMARC = func(string) (string, error) { return "v=DMARC1; p=reject", nil }
-	defer func() { lookupDMARC = orig }()
+func TestDMARC_SPFAlignment(t *testing.T) {
+	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
 
 	f := &dmarcCheckFilter{}
-	// SPF-aligned alone satisfies DMARC even with no DKIM.
-	res, err := f.Execute(context.Background(), emailWithAR("spf=pass smtp.mailfrom=user@example.test"))
-	if err != nil {
-		t.Fatal(err)
+
+	cases := []struct {
+		name     string
+		verdicts []pipeline.AuthResult
+		want     pipeline.Action
+	}{
+		// SPF-aligned alone satisfies DMARC even with no DKIM.
+		{"aligned pass", []pipeline.AuthResult{spfVerdict("pass", "example.test")}, pipeline.ActionContinue},
+		{"aligned subdomain pass", []pipeline.AuthResult{spfVerdict("pass", "bounce.example.test")}, pipeline.ActionContinue},
+		{"unaligned pass", []pipeline.AuthResult{spfVerdict("pass", "attacker.test")}, pipeline.ActionReject},
+		{"aligned softfail", []pipeline.AuthResult{spfVerdict("softfail", "example.test")}, pipeline.ActionReject},
+		{"pass with no domain", []pipeline.AuthResult{spfVerdict("pass", "")}, pipeline.ActionReject},
+		// The HELO identity is not DMARC's SPF identifier (RFC 7489 §3.1.2).
+		{"aligned HELO pass only", []pipeline.AuthResult{
+			{Method: pipeline.AuthSPF, Result: "pass", Property: pipeline.PropHelo, Domain: "example.test"},
+			spfVerdict("fail", "attacker.test"),
+		}, pipeline.ActionReject},
 	}
-	if res.Action != pipeline.ActionContinue || res.Log.Result != "pass" {
-		t.Errorf("SPF-aligned should pass DMARC, got action=%s result=%s", res.Action, res.Log.Result)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res, err := f.Execute(authCtx(tc.verdicts...), fromExampleTest())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Action != tc.want {
+				t.Errorf("action = %s, want %s (result %s, detail %q)", res.Action, tc.want, res.Log.Result, res.Log.Detail)
+			}
+		})
+	}
+}
+
+// TestDMARC_RecordsVerdict checks that dmarc_check records its own verdict on
+// the From domain, for the filters after it and the stored
+// Authentication-Results: pass, fail, or none without a policy.
+func TestDMARC_RecordsVerdict(t *testing.T) {
+	f := &dmarcCheckFilter{}
+
+	cases := []struct {
+		name     string
+		record   string
+		verdicts []pipeline.AuthResult
+		want     string
+	}{
+		{"pass", "v=DMARC1; p=reject", []pipeline.AuthResult{spfVerdict("pass", "example.test")}, "pass"},
+		{"fail", "v=DMARC1; p=none", []pipeline.AuthResult{spfVerdict("fail", "example.test")}, "fail"},
+		{"no record", "", nil, "none"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stubDMARC(t, func(string) string { return tc.record })
+			ctx := authCtx(tc.verdicts...)
+			if _, err := f.Execute(ctx, fromExampleTest()); err != nil {
+				t.Fatal(err)
+			}
+			got := pipeline.AuthResultsFromContext(ctx).Find(pipeline.AuthDMARC, pipeline.PropHeaderFrom)
+			want := []pipeline.AuthResult{{Method: pipeline.AuthDMARC, Result: tc.want, Property: pipeline.PropHeaderFrom, Domain: "example.test"}}
+			if len(got) != 1 || got[0] != want[0] {
+				t.Errorf("recorded %+v, want %+v", got, want)
+			}
+		})
 	}
 }

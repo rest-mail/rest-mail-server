@@ -28,7 +28,7 @@ function CreateAliasPage() {
     setIsSubmitting(true)
 
     try {
-      await createAlias(accessToken, formData)
+      await createAlias(formData)
       navigate({ to: '/aliases' })
     } catch (err) {
       console.error('Failed to create alias:', err)

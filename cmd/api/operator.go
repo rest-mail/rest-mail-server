@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -21,6 +22,7 @@ import (
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -36,43 +38,66 @@ import (
 
 // Exit statuses an operator command can return.
 const (
-	exitOK             = 0
-	exitFailed         = 1 // anything unexpected: no database, a bug
-	exitUsage          = 2 // a command or flag that does not exist, or is missing
-	exitAlreadyClaimed = 3 // setup asked for, but the server has an admin
-	exitNoSuchAdmin    = 4 // reset-admin named an account that does not exist
+	exitOK     = 0
+	exitFailed = 1 // anything unexpected: no database, a bug
+	exitUsage  = 2 // a command or flag that does not exist, or is missing
+	// 3 was already_claimed, from when a server could be claimed. Unused, so a
+	// script written against it does not read some other failure into it.
+	exitNoSuchAccount = 4 // the command named an account that does not exist
 )
 
 const operatorUsage = `restmail-api operator commands
 
-  restmail-api mint-token --purpose setup [--lifetime 15m]
-      A single-use token that claims this server while it has no admin.
-
-  restmail-api mint-token --purpose reset-admin --username NAME [--lifetime 15m]
-      A single-use token that lets an admin choose a new password and enroll a
-      new authenticator, for when every other way in is lost.
+  restmail-api mint-token --purpose reset-admin --address ADDRESS [--lifetime 15m]
+      A single-use token that lets the account at ADDRESS choose a new password
+      and enroll a new authenticator, for when every other way in is lost.
 
       Output: {"purpose": ..., "token": ..., "expires_at": ...}
 
-  restmail-api reset-password --username NAME < password
-      Gives an admin the password read from stdin and puts the account back in
-      setup: it must choose its own at the next sign-in and enroll a new
-      authenticator. Every session it had ends.
-      Output: {"username": ..., "setup_required": ["password", "two_factor"]}
+  restmail-api reset-password --address ADDRESS < password
+      Gives the account at ADDRESS the password read from stdin and puts it
+      back in setup: it must choose its own at the next sign-in and enroll a
+      new authenticator. Every session and app password it had ends.
+      Output: {"address": ..., "setup_required": ["password", "two_factor"]}
 
   restmail-api revoke-sessions
-      Signs everybody out: every refresh token, then every admin's epoch.
-      Output: {"refresh_tokens": N, "admins": N}
+      Signs everybody out: every refresh token, then every account's epoch.
+      Output: {"refresh_tokens": N, "accounts": N}
 
   restmail-api dns-records --mail-host HOST [--ip ADDRESS]
       The records each domain must publish: MX, SPF, DMARC, and DKIM where the
       domain has a key. ADDRESS adds the mail host's A record and the PTR.
       Output: {"domains": [{"domain": ..., "records": [...]}]}
 
+  restmail-api dkim-key ensure --domain NAME
+      Create an encrypted DKIM key only when both key and selector are absent
+      on an existing domain. Retries preserve valid existing material; partial
+      or unreadable material is refused. Requires MASTER_KEY, even in development.
+      Output: {"domain": ..., "selector": ..., "created": ..., "publicDKIMTXT": ...}
+
+  restmail-api owner-key add < owner.pub
+      Register public recovery keys in PostgreSQL. Private keys are refused.
+      Output: {"fingerprints": [...]}
+
+  restmail-api owner-key list
+      List registered public owner keys, including revoked keys.
+      Output: {"keys": [...]}
+
+  restmail-api owner-key revoke --fingerprint SHA256:...
+      Revoke a recovery key immediately on every API replica.
+      Output: {"fingerprint": ..., "revoked": true}
+
+  restmail-api check-attachment-storage
+      Verify the configured private S3 store with a random put/get/range/delete.
+
+  restmail-api migrate-attachments
+      Copy existing filesystem attachments to S3, verify bytes, then update
+      their references. Resumable; source files are retained.
+
 Results are one JSON object on stdout. Errors: {"error": {"code": ...,
-"message": ...}} on stderr, with exit status 2 (usage), 3 (already_claimed),
-4 (no_such_admin) or 1 (anything else). Nothing else is written to either;
-RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr.
+"message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_account) or
+1 (anything else). Nothing else is written to either;
+RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr, except for dkim-key.
 Usually run for you: chore password:reset, chore sessions:revoke,
 chore dns:show.
 `
@@ -83,7 +108,7 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 	// program can read each whole. What the server code logs on the way (config
 	// warnings, say) goes nowhere unless RESTMAIL_OPERATOR_DEBUG is set.
 	logTo := io.Discard
-	if os.Getenv("RESTMAIL_OPERATOR_DEBUG") != "" {
+	if os.Getenv("RESTMAIL_OPERATOR_DEBUG") != "" && args[0] != "dkim-key" {
 		logTo = stderr
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logTo, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -92,6 +117,11 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 	// still starting up then prints a connection error ahead of the result. It
 	// gets ours from the start.
 	gormlogger.Default = operatorDBLogger(stderr)
+	if args[0] == "dkim-key" {
+		// This command reads and writes private material: never log SQL or
+		// configuration, even when operator debugging is enabled.
+		gormlogger.Default = gormlogger.Discard
+	}
 
 	switch args[0] {
 	case "mint-token":
@@ -102,6 +132,15 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 		return revokeSessions(args[1:], stdout, stderr)
 	case "dns-records":
 		return dnsRecords(args[1:], stdout, stderr)
+	case "dkim-key":
+		return dkimKeyCommand(args[1:], stdout, stderr)
+	case "owner-key":
+		return ownerKeyCommand(args[1:], os.Stdin, stdout, stderr)
+
+	case "check-attachment-storage":
+		return checkAttachmentStorage(args[1:], stdout, stderr)
+	case "migrate-attachments":
+		return migrateAttachments(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		_, _ = io.WriteString(stdout, operatorUsage)
 		return exitOK
@@ -113,17 +152,17 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 func mintToken(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("mint-token", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	purpose := fs.String("purpose", "", "setup or reset-admin")
-	username := fs.String("username", "", "the admin to reset (reset-admin)")
+	purpose := fs.String("purpose", "", "reset-admin, the only one")
+	address := fs.String("address", "", "the account to reset (reset-admin)")
 	lifetime := fs.Duration("lifetime", bootstrap.DefaultTokenLifetime, "how long the token can be redeemed")
 	if err := fs.Parse(args); err != nil {
 		return fail(stderr, exitUsage, "bad_flag", err.Error())
 	}
-	if *purpose != "setup" && *purpose != "reset-admin" {
-		return fail(stderr, exitUsage, "bad_flag", `--purpose must be "setup" or "reset-admin"`)
+	if *purpose != "reset-admin" {
+		return fail(stderr, exitUsage, "bad_flag", `--purpose must be "reset-admin"`)
 	}
-	if *purpose == "reset-admin" && *username == "" {
-		return fail(stderr, exitUsage, "bad_flag", "--username is required with --purpose reset-admin")
+	if *address == "" {
+		return fail(stderr, exitUsage, "bad_flag", "--address is required with --purpose reset-admin")
 	}
 	if *lifetime <= 0 || *lifetime > 24*time.Hour {
 		return fail(stderr, exitUsage, "bad_flag", "--lifetime must be between 1s and 24h")
@@ -133,20 +172,12 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 	if status != exitOK {
 		return status
 	}
+	defer closeDatabase(database)
 
-	var token string
-	var err error
-	var expires time.Time
-	if *purpose == "setup" {
-		token, expires, err = bootstrap.MintSetupToken(database, *lifetime)
-	} else {
-		token, expires, err = bootstrap.MintResetToken(database, *username, *lifetime)
-	}
+	token, expires, err := bootstrap.MintResetToken(database, *address, *lifetime)
 	switch {
-	case errors.Is(err, bootstrap.ErrAlreadyClaimed):
-		return fail(stderr, exitAlreadyClaimed, "already_claimed", err.Error())
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
-		return fail(stderr, exitNoSuchAdmin, "no_such_admin", fmt.Sprintf("no admin named %q", *username))
+		return fail(stderr, exitNoSuchAccount, "no_such_account", fmt.Sprintf("no account at %q", *address))
 	case err != nil:
 		return fail(stderr, exitFailed, "mint_failed", err.Error())
 	}
@@ -160,8 +191,28 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 
 // openDatabase connects with the API's own configuration and brings the schema
 // up to date. On failure it has already written the error and returns its exit
-// status.
+// status; on success the caller closes the database with closeDatabase.
 func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
+	database, cfg, status := connectOperatorDatabase(stderr)
+	if status != exitOK {
+		return nil, nil, status
+	}
+	// The same additive steps the server runs at boot, so this works against a
+	// database the server has not started on yet.
+	if err := db.AutoMigrate(database); err != nil {
+		closeDatabase(database)
+		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
+	}
+	if err := bootstrap.EnsureRBAC(database); err != nil {
+		closeDatabase(database)
+		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
+	}
+	return database, cfg, exitOK
+}
+
+// connectOperatorDatabase configures a quiet operator connection without
+// changing schema or seeding data. Observation commands use this path.
+func connectOperatorDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, nil, fail(stderr, exitFailed, "config", err.Error())
@@ -175,15 +226,16 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	// every statement. Here stdout is the result, so it gets a logger of ours:
 	// silent, or on stderr with RESTMAIL_OPERATOR_DEBUG.
 	database = database.Session(&gorm.Session{Logger: operatorDBLogger(stderr)})
-	// The same additive steps the server runs at boot, so this works against a
-	// database the server has not started on yet.
-	if err := db.AutoMigrate(database, false); err != nil {
-		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
-	}
-	if err := bootstrap.EnsureRBAC(database); err != nil {
-		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
-	}
 	return database, cfg, exitOK
+}
+
+// closeDatabase closes the connections openDatabase made. A process that runs
+// one command exits anyway; one that runs several, as the tests do, would
+// otherwise keep a pool open on the database per command.
+func closeDatabase(database *gorm.DB) {
+	if s, err := database.DB(); err == nil {
+		_ = s.Close()
+	}
 }
 
 // resetPassword reads the new password from stdin rather than a flag, so it
@@ -191,12 +243,12 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 func resetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("reset-password", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	username := fs.String("username", "", "the admin whose password to reset")
+	address := fs.String("address", "", "the account whose password to reset")
 	if err := fs.Parse(args); err != nil {
 		return fail(stderr, exitUsage, "bad_flag", err.Error())
 	}
-	if *username == "" {
-		return fail(stderr, exitUsage, "bad_flag", "--username is required")
+	if *address == "" {
+		return fail(stderr, exitUsage, "bad_flag", "--address is required")
 	}
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
@@ -211,15 +263,16 @@ func resetPassword(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	if status != exitOK {
 		return status
 	}
-	admin, err := bootstrap.ResetPassword(database, *username, password)
+	defer closeDatabase(database)
+	account, err := bootstrap.ResetPassword(database, *address, password)
 	switch {
 	case errors.Is(err, bootstrap.ErrNoSuchAdmin):
-		return fail(stderr, exitNoSuchAdmin, "no_such_admin", fmt.Sprintf("no admin named %q", *username))
+		return fail(stderr, exitNoSuchAccount, "no_such_account", fmt.Sprintf("no account at %q", *address))
 	case err != nil:
 		return fail(stderr, exitFailed, "reset_failed", err.Error())
 	}
 	_ = json.NewEncoder(stdout).Encode(map[string]any{
-		"username":       admin.Username,
+		"address":        account.Address,
 		"setup_required": []string{"password", "two_factor"},
 	})
 	return exitOK
@@ -233,6 +286,7 @@ func revokeSessions(args []string, stdout, stderr io.Writer) int {
 	if status != exitOK {
 		return status
 	}
+	defer closeDatabase(database)
 	revoked, err := bootstrap.RevokeAllSessions(database)
 	if err != nil {
 		return fail(stderr, exitFailed, "revoke_failed", err.Error())
@@ -254,12 +308,15 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	if *mailHost == "" {
 		return fail(stderr, exitUsage, "bad_flag", "--mail-host is required")
 	}
-	database, cfg, status := openDatabase(stderr)
+	database, cfg, status := connectOperatorDatabase(stderr)
 	if status != exitOK {
 		return status
 	}
+	defer closeDatabase(database)
 	var domains []models.Domain
-	if err := database.Order("name").Find(&domains).Error; err != nil {
+	if err := database.Transaction(func(tx *gorm.DB) error {
+		return tx.Order("name").Find(&domains).Error
+	}, &sql.TxOptions{ReadOnly: true}); err != nil {
 		return fail(stderr, exitFailed, "database", err.Error())
 	}
 	type domainRecords struct {
@@ -297,11 +354,11 @@ func dkimRecordValue(stored, masterKey string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	priv, err := dkim.ParsePrivateKey(keyPEM)
+	priv, err := outbound.ParseDKIMKey(keyPEM)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("the key %w", err)
 	}
-	pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	pubDER, err := x509.MarshalPKIXPublicKey(priv.Public())
 	if err != nil {
 		return "", err
 	}

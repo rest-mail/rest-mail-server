@@ -112,13 +112,13 @@ func bareAddressList(addrs []string) []pipeline.Address {
 	return out
 }
 
-// transformHeaders returns the headers a pipeline transform added, minus the
+// transformHeaders returns the headers a pipeline transform added, minus any
 // signatures.
 //
-// DKIM-Signature and ARC-* are dropped deliberately: the pipeline signs a
-// reconstructed EmailJSON whose header bytes do not match this rendering, so
-// such a signature would never verify. DKIM is signed authoritatively over the
-// finalized raw by the caller (signOutboundDKIM).
+// DKIM-Signature and ARC-* are dropped deliberately: a transform (a custom
+// javascript or webhook filter) sees a parsed EmailJSON, not these bytes, so a
+// signature it supplied could never verify. DKIM is signed over the finished
+// message by the caller (signOutboundDKIM), so it carries exactly one signature.
 func transformHeaders(extra map[string]string) map[string]string {
 	if len(extra) == 0 {
 		return nil

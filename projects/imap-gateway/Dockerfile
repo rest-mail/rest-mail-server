@@ -21,15 +21,29 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/imap-gateway ./cmd/imap-gateway
 FROM deps AS dev
 # air pinned (not @latest) for reproducible dev images (OSI-17).
 RUN go install github.com/air-verse/air@v1.67.2
+# The same unprivileged user as the prod image (#193). Go's build cache goes in
+# its home directory, and air builds into /app/tmp, which the dev task mounts as
+# a tmpfs that user owns.
+RUN addgroup -S -g 10001 restmail && adduser -S -u 10001 -G restmail restmail
+USER 10001:10001
 EXPOSE 143 993
 CMD ["air", "-c", "projects/imap-gateway/.air.toml"]
 
-# ── Stage 4: prod (minimal Alpine runtime) ───────────────────────────
+# ── Stage 4: prod (minimal Alpine runtime, non-root) ─────────────────
 FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc AS prod
-RUN apk add --no-cache ca-certificates
+# An unprivileged runtime user (#193), the API image's uid. It needs no
+# capability for the ports below 1024: the chart has the gateway listen on
+# unprivileged ports and its Service maps the public ones onto them, and Docker
+# lets any user bind any port in a container (net.ipv4.ip_unprivileged_port_start=0).
+RUN apk add --no-cache ca-certificates \
+ && addgroup -S -g 10001 restmail && adduser -S -u 10001 -G restmail restmail
 COPY --from=builder /bin/imap-gateway /usr/local/bin/imap-gateway
 COPY projects/imap-gateway/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# 0755, not +x: the mode must not depend on how the builder's checkout set the
+# read bits, or the unprivileged user below cannot read its own entrypoint.
+RUN chmod 0755 /entrypoint.sh
+# Numeric, so Kubernetes can tell it is not root without being told the uid.
+USER 10001:10001
 EXPOSE 143 993
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD nc -z localhost 143 || exit 1

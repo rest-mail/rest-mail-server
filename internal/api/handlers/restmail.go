@@ -123,6 +123,11 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// When raw_message is provided, parse RFC 2822 into structured fields. The
 	// parsed form is retained (not discarded) so it can seed the pipeline message
 	// below with its real headers, including Headers.Raw.
+	//
+	// Authentication-Results claiming this server's authserv-id did not come
+	// from this server: they are removed first, before anything parses,
+	// verifies or stores the message (RFC 8601 §5).
+	req.RawMessage = rmime.StripAuthResults(req.RawMessage, pipeline.AuthServID)
 	var parsed *pipeline.EmailJSON
 	if req.RawMessage != "" {
 		p, err := rmime.Parse([]byte(req.RawMessage))
@@ -188,41 +193,39 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// into a local mailbox (BEC/CEO-fraud). Trusted peers and DKIM-aligned mail
 	// pass; an unauthenticated delivery claiming a locally-hosted From domain
 	// (the internal-spoofing vector) is refused before any pipeline or storage.
-	if h.deliverAuth != nil && h.deliverAuth.enabled {
-		clientIP := restmailClientIP(r)
-		fromDomain := rmail.DomainFromAddress(req.From)
-		fromLocal := false
-		if fromDomain != "" {
-			var d models.Domain
-			if h.db.Where("name = ?", fromDomain).First(&d).Error == nil {
-				fromLocal = true
-			}
-		}
-		// DKIM verification does DNS lookups, so only pay for it when the decision
-		// depends on it: a trusted peer is already accepted, and a non-strict
-		// external sender is accepted regardless of signature.
-		aligned := false
-		if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) {
-			aligned = dkimAlignedWith(r.Context(), req.RawMessage, fromDomain)
-		}
-		if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
-			slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
-				"reason", reason,
-				"from_domain", fromDomain,
-				"client_ip", clientIP,
-				"dkim_aligned", aligned,
-			)
-			respond.Error(w, http.StatusForbidden, "unauthorized", "Delivery not authenticated")
-			return
+	clientIP := restmailClientIP(r)
+	fromDomain := rmail.DomainFromAddress(req.From)
+	fromLocal := false
+	if fromDomain != "" {
+		var d models.Domain
+		if h.db.Where("name = ?", fromDomain).First(&d).Error == nil {
+			fromLocal = true
 		}
 	}
+	// DKIM verification does DNS lookups, so only pay for it when the decision
+	// depends on it: a trusted peer is already accepted, and a non-strict
+	// external sender is accepted regardless of signature.
+	aligned := false
+	if !h.deliverAuth.trusted(clientIP) && (h.deliverAuth.strict || fromLocal) {
+		aligned = dkimAlignedWith(r.Context(), req.RawMessage, fromDomain)
+	}
+	if ok, reason := h.deliverAuth.authorize(clientIP, fromDomain, fromLocal, aligned); !ok {
+		slog.Warn("restmail: delivery refused by delivery-auth gate (OSI-3)",
+			"reason", reason,
+			"from_domain", fromDomain,
+			"client_ip", clientIP,
+			"dkim_aligned", aligned,
+		)
+		respond.Error(w, http.StatusForbidden, "unauthorized", "Delivery not authenticated")
+		return
+	}
 
-	var delivered []string
-	var failed []string
-	// Authentication-Results the inbound pipeline produced (dkim/spf/dmarc/arc),
-	// prepended onto the stored raw message so the verdicts are visible — the
+	delivered := []string{}
+	failed := []string{}
+	// The inbound pipeline's verdicts (spf/dkim/arc/dmarc), prepended onto the
+	// stored raw message as Authentication-Results so they are visible — the
 	// same surfacing the SMTP delivery path does.
-	var authResults []string
+	var authResults []pipeline.AuthResult
 
 	// Build the pipeline EmailJSON for inbound filtering. The parsed raw message
 	// (with its real headers, including Headers.Raw) seeds the message so
@@ -341,12 +344,9 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			// be delivered — stash the trace to record post-loop with message_id.
 			base := rmTrace
 			deliveredTrace = &base
-			// Carry the pipeline's Authentication-Results forward so the message
-			// stored below records the dkim/spf/dmarc/arc verdicts (they are
-			// otherwise computed and thrown away).
-			if result.FinalEmail != nil {
-				authResults = result.FinalEmail.Headers.Raw["Authentication-Results"]
-			}
+			// Carry the pipeline's verdicts forward so the message stored below
+			// records them (they are otherwise computed and thrown away).
+			authResults = result.Auth
 
 			// Sieve `redirect`: forward the ORIGINAL message onward to each recorded
 			// target via the outbound queue (the same path SMTP submission and
@@ -388,14 +388,8 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// RESTMAIL-delivered mail lost its full MIME (attachments, headers) over
 	// IMAP/POP3 and couldn't be re-verified.
 	rawMessage := req.RawMessage
-	if rawMessage != "" && len(authResults) > 0 {
-		var b strings.Builder
-		for _, ar := range authResults {
-			b.WriteString("Authentication-Results: ")
-			b.WriteString(ar)
-			b.WriteString("\r\n")
-		}
-		rawMessage = b.String() + rawMessage
+	if rawMessage != "" {
+		rawMessage = pipeline.AuthResultsHeader(authResults) + rawMessage
 	}
 
 	for _, rcpt := range req.To {
@@ -426,7 +420,7 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 			threadID = req.InReplyTo
 		}
 
-		recipientsTo, _ := json.Marshal([]map[string]string{{"address": rcpt}})
+		recipientsTo, _ := json.Marshal([]string{rcpt})
 
 		msg := models.Message{
 			MailboxID:    mailbox.ID,
@@ -493,9 +487,8 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 //
 // When the raw message parsed, that parsed form is the base — crucially it
 // carries Headers.Raw, so header-dependent filters see the real headers rather
-// than an empty set: arc_verify, header_validate, dmarc_check (which reads the
-// local Authentication-Results the spf/dkim filters append), and vacation's RFC
-// 3834 auto-reply suppression. Building the message from scratch (as this path
+// than an empty set: arc_verify, header_validate, and vacation's RFC 3834
+// auto-reply suppression. Building the message from scratch (as this path
 // previously did) left Headers.Raw nil and blinded those filters. The structured
 // request fields fill any header the parse left empty, and are the sole source
 // when there was no parseable raw message (parsed == nil).

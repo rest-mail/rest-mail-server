@@ -105,8 +105,8 @@ func Configs(root string) ([]Selection, error) {
 	}
 	var out []Selection
 	for _, e := range entries {
-		// Follow symlinked config dirs too: they are legacy but should still be
-		// listed, and `project:check:runtime` is what objects to them.
+		// Follow symlinked config dirs too, so they are listed;
+		// `project:check:runtime` is what objects to them.
 		if !e.IsDir() && e.Type()&os.ModeSymlink == 0 {
 			continue
 		}

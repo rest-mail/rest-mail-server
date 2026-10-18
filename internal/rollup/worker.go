@@ -80,8 +80,8 @@ type Worker struct {
 	wg   sync.WaitGroup
 }
 
-// Option customises a Worker at construction (functional-options so the base
-// NewWorker signature stays backward-compatible).
+// Option customises a Worker at construction (functional options, so NewWorker
+// takes only what every worker needs).
 type Option func(*Worker)
 
 // WithDownsampling enables multi-resolution downsampling: fine rollups are kept

@@ -7,17 +7,21 @@ Helm chart for the rest-mail "mail3" stack.
 - `postgres` — single-replica StatefulSet running PostgreSQL 16, backing the
   REST API and protocol gateways. Persistent storage via PVC.
 - `api` — the Go REST API.
-- `js-filter` — the JavaScript filter sidecar consumed by the API.
+- `js-filter` — the JavaScript filter sidecar consumed by the API. It runs
+  each script in its own QuickJS WebAssembly sandbox, only for the API (by
+  NetworkPolicy, and with `JS_FILTER_TOKEN` from the API Secret).
 - `smtp-gateway` — SMTP listener on 25 (inbound, STARTTLS) and 465
   (submission, implicit TLS).
 - `imap-gateway` — IMAP listener on 993 (implicit TLS).
 - `pop3-gateway` — POP3 listener on 995 (implicit TLS).
+- `webmail` — the mail client in the browser, at `webmail.<mailserver.domain>`.
+- `admin` — the admin webmail, at `admin.<mailserver.domain>`.
 
 The gateways are how any ordinary mail client reads and sends mail. There are
 no cleartext client ports: 587, 143 and 110 do not exist, and a gateway refuses
 to start in production if asked for one.
-- A ServiceAccount, a ConfigMap for non-secret API config, and an optional
-  Ingress for the API.
+- A ServiceAccount, a ConfigMap for non-secret API config, an Ingress for each
+  web app, and an optional Ingress for the API.
 
 This chart deploys **only** the rest-mail product surface. It does **not** include:
 
@@ -25,7 +29,7 @@ This chart deploys **only** the rest-mail product surface. It does **not** inclu
   stack — see `rest-mail/reference-mailserver`).
 - DNS (dnsmasq), TLS issuance (cert-manager / certgen), mail-internet
   simulation (`rest-mail/testbed`).
-- The webmail front-end or the marketing website.
+- The marketing website.
 
 ## Deploying the API without the gateways
 
@@ -42,21 +46,122 @@ helm install restmail helm/restmail \
 ```
 
 That leaves the API, the JS filter and Postgres, and drops each disabled
-gateway's Deployment, Service and NetworkPolicy. All three default to `true`,
+gateway's workload, Service and NetworkPolicy. All three default to `true`,
 so an existing install renders exactly as it did before.
+
+## A gateway endpoint on every eligible node
+
+Each gateway defaults to `workloadKind: Deployment`, with `replicaCount: 1`.
+Opt in independently to `DaemonSet` for one pod per eligible node:
+
+```yaml
+smtpGateway:
+  workloadKind: DaemonSet
+imapGateway:
+  workloadKind: DaemonSet
+pop3Gateway:
+  workloadKind: DaemonSet
+```
+
+Only `Deployment` and `DaemonSet` are accepted. `replicaCount` applies only to
+Deployments. Both kinds reuse the global `nodeSelector`, `tolerations` and
+`affinity`, the same hardened pod configuration, and the same Service selectors
+and ports. Disabling a gateway removes its workload in either mode.
+
+The gateway Services keep `externalTrafficPolicy: Local` by default, preserving
+the original inbound SMTP client IP for SPF and abuse checks. Every node
+advertised by the mail hostname's round-robin DNS must have a ready local
+endpoint for each advertised protocol, and the load balancer/firewall must
+forward its public ports there. Scheduling constraints, taints, capacity and
+rollouts can leave a node without a ready endpoint even in DaemonSet mode;
+verify coverage before advertising a node. Client submission uses 465, IMAP
+993 and POP3 995; port 25 accepts inbound server mail. There is no listener on
+587. Changing workload kind replaces the controller and can interrupt gateway
+availability during the transition; plan the rollout and verify readiness on
+each advertised node. This option does not configure DNS or the load balancer.
+
+## The web apps
+
+The webmail and the admin webmail are each served at the root of a host of
+their own, `webmail.<mailserver.domain>` and `admin.<mailserver.domain>` unless
+`webmail.ingress.host` / `admin.ingress.host` say otherwise. Each host's Ingress
+sends `/` to the app and `/api` to the API. That is not a convenience: the apps
+sign in with `SameSite=Strict` cookies and their CSP allows `connect-src 'self'`
+only, so the API has to be on the app's own origin. There is no CORS to set up,
+and nothing in either image names a host.
+
+A cookie belongs to the host that set it, so signing in on `admin.` does not
+sign you in on `webmail.`. That is intended.
+
+TLS is set per app, the same way as the API's (`webmail.ingress.tls.enabled`,
+`.secretName`, default `<release>-webmail-tls`), with the ingress class and
+annotations alongside. One certificate can cover every host: name the same
+Secret in all three.
+
+```sh
+helm upgrade restmail helm/restmail --reuse-values \
+  --set webmail.ingress.className=traefik \
+  --set webmail.ingress.tls.enabled=true \
+  --set webmail.ingress.tls.secretName=restmail-tls \
+  --set admin.ingress.className=traefik \
+  --set admin.ingress.tls.enabled=true \
+  --set admin.ingress.tls.secretName=restmail-tls
+```
+
+Both are on by default. `webmail.enabled=false` or `admin.enabled=false` drops
+that app's Deployment, Service, Ingress and NetworkPolicy, and nothing else.
+
+To let only some addresses reach `admin.`, use your ingress controller's own
+mechanism through `admin.ingress.annotations` (a Traefik `ipAllowList`
+middleware, ingress-nginx's `whitelist-source-range`). The chart has no
+controller-neutral way to say it, and the API is reachable on its own host
+either way: the admin API is guarded by sign-in and capabilities, not by
+where the request comes from.
+
+The pods run the unprivileged nginx image as uid 101 on a read-only root
+filesystem, with all capabilities dropped. They talk to nothing; the browser
+reaches the API through the Ingress.
 
 ## The first admin
 
-A fresh install has no admin, and the image carries no seed tool. Claim it with
-the CLI, which proves you own it by the access you installed with:
+The first admin is the account `admin@<mailserver.domain>`, made from the
+password you install with, `api.bootstrapAdminPassword` (16 characters or
+more; the chart will not render without one). It is a mailbox like any other,
+holding the admin role, and superadmin to switch on when needed.
+`chore install:helm` and `chore install:pulumi` make the password and show it
+once. Sign in to the rest-mail app as `admin@<mailserver.domain>` with it: you
+choose your own password and enroll an authenticator straight away, after
+which it stops working. It also expires 72 hours after the server first takes
+it.
+
+A server with no admin and no bootstrap password refuses to start: nobody could
+ever sign in to it.
+
+`restmail reset-admin` is the way back in for an admin who has lost every other,
+and how a server is handed over. It proves you own the server with a key listed
+in `api.ownerKeys`.
+
+`restmail status --key` confirms a deploy from outside: the version, commit, and
+when the server was built and started. It signs with a key listed in
+`api.statusKeys`, which can read that and nothing else, or in `api.ownerKeys`.
+
+## Push notifications
+
+Off by default. To have the server tell the REST Mail iPhone app that mail has
+arrived, put the APNs auth key from the Apple Developer account that ships the
+app in a Secret, and name it with the key's ids:
 
 ```sh
-brew install rest-mail/tap/restmail
-restmail setup --namespace <your namespace>
+kubectl create secret generic restmail-apns --from-file=AuthKey.p8=AuthKey_ABC123DEFG.p8
+helm upgrade restmail ... \
+  --set api.push.apns.enabled=true \
+  --set api.push.apns.existingSecret=restmail-apns \
+  --set api.push.apns.keyId=ABC123DEFG \
+  --set api.push.apns.teamId=43UMKXZ8P4
 ```
 
-It mints a single-use link inside the API's container and shows it as a QR code
-for the app. `restmail reset-admin` is the way back in, and hands a server over.
+The key is mounted from the Secret and never goes in values. A push carries
+only the account and its unread count; the app fetches the mail itself.
 
 Or, without the CLI: add a
 `BOOTSTRAP_ADMIN_PASSWORD` key (16+ bytes, generated at deploy time) to the
@@ -73,20 +178,24 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
 1. **Real DNS.** Pods use `dnsPolicy: ClusterFirst`. In-cluster Service DNS
    resolves peer services (`api` finds `postgres` by Service name).
 2. **External TLS Secret.** A Secret of type `kubernetes.io/tls` named
-   `restmail-tls` (override via `tls.secretName`) is mounted into every
-   gateway pod at `/certs`. Populate this with cert-manager,
-   external-secrets, or any other operator that produces a `kubernetes.io/tls`
-   Secret with `tls.crt` + `tls.key` keys.
+   `restmail-tls` (override via `tls.secretName`), whose `tls.crt` and
+   `tls.key` every gateway pod mounts at `/certs`. Populate this with
+   cert-manager, external-secrets, or any other operator that produces a
+   `kubernetes.io/tls` Secret with `tls.crt` + `tls.key` keys. See
+   [Certificates and keys](#certificates-and-keys) for what goes where.
 3. **External credentials Secrets.**
    - `restmail-postgres` — keys `POSTGRES_USER`, `POSTGRES_PASSWORD`,
      `POSTGRES_DB`.
-   - `restmail-api` — keys `JWT_SECRET`, `MASTER_KEY`.
+   - `restmail-api` — keys `JWT_SECRET`, `MASTER_KEY`, `JS_FILTER_TOKEN`
+     (what the API authenticates to the JS filter sidecar with).
 4. **LoadBalancer support** for SMTP/IMAP/POP3 Services — typically a cloud
    LB (AWS NLB, GCE LB, MetalLB on bare metal). For kind/k3s without a LB
    driver, override `*.service.type` to `NodePort` (the dev values file
    already does this).
-5. **PersistentVolume provisioner.** PostgreSQL data and API attachments use
-   PVCs.
+5. **PersistentVolume provisioner.** PostgreSQL uses a PVC. API attachments use
+   a PVC by default, or a private S3-compatible bucket with
+   `api.attachments.storageType=s3`. See [attachment storage](../../docs/attachment-storage.md)
+   before disabling an existing attachment volume.
 6. **NetworkPolicy-enforcing CNI** (Calico, Cilium, Weave, …). The chart ships
    default-deny NetworkPolicies. On a cluster whose CNI does not enforce them,
    set `networkPolicy.enabled=false` (the policies are then simply inert, but
@@ -106,17 +215,67 @@ The chart is hardened by default and is deployable in its declared
   `postgres.enabled=false` and `db.sslMode=verify-full` for the strongest
   posture, or acknowledge an in-cluster cleartext link with
   `db.sslMode=disable` + `db.allowInsecure=true`.
-- **Per-container securityContext.** Every workload drops all Linux
-  capabilities, sets `seccompProfile: RuntimeDefault`, and disables privilege
-  escalation. The API, js-filter and PostgreSQL run as non-root with read-only
-  root filesystems where feasible. The SMTP/IMAP/POP3 gateways bind privileged
-  ports (<1024); their images ship no file capabilities, so they keep a root
-  UID with **only** `NET_BIND_SERVICE` re-added — everything else is dropped.
+- **Per-container securityContext.** Every workload runs as a non-root user,
+  drops all Linux capabilities and adds none back, sets `seccompProfile:
+  RuntimeDefault`, and disables privilege escalation, with a read-only root
+  filesystem where feasible. The SMTP/IMAP/POP3 gateways run as uid 10001 on a
+  read-only root filesystem. They listen on unprivileged ports inside the pod
+  (`*.containerPorts`: 10025, 10465, 10993, 10995), and each gateway's Service
+  maps the public mail ports (25, 465, 993, 995) onto them, so binding needs no
+  capability.
+- **No CA private key in any pod.** See
+  [Certificates and keys](#certificates-and-keys).
 - **No ServiceAccount token.** `automountServiceAccountToken: false` on the
   ServiceAccount and every pod (no workload uses the Kubernetes API).
 - **Default-deny NetworkPolicies.** Ingress and egress are denied by default,
   then re-opened least-privilege: DNS, API↔DB, gateway↔API/DB, public
-  mail/API ingress, and SMTP outbound delivery (25/465/587) + MTA-STS (443).
+  mail/API/web app ingress, and SMTP outbound delivery (25/465/587) + MTA-STS
+  (443). The web apps get no egress beyond DNS.
+
+## Certificates and keys
+
+No pod mounts a CA's private key, and each pod mounts only the keys that are
+its own. A pod that could read a CA key could sign certificates its peers
+trust: a gateway holding the internal CA's key could make a client
+certificate the API's internal mTLS listener accepts, which is the one thing
+that listener exists to prevent.
+
+| Pod | Mounts | From |
+|-----|--------|------|
+| each gateway | `/certs/tls.crt`, `/certs/tls.key` | `tls.secretName`: the mail hosts' certificate, which it serves |
+| each gateway | `ca.crt`, `client.crt`, `client.key` under `internalMtls.mountPath` | the internal mTLS Secret: the CA certificate, to verify the API, and the gateways' client keypair |
+| API | `ca.crt`, `server.crt`, `server.key` under `internalMtls.mountPath` | the internal mTLS Secret: the CA certificate, to verify gateways, and the API's server keypair |
+| API | `/certs/ca.crt`, if the TLS Secret has one | `tls.secretName`: a CA certificate the API trusts on top of the system roots; it gets no mail key |
+| PostgreSQL | `tls.crt`, `tls.key` | `postgres.tls.secretName`, or `tls.secretName` |
+
+Every one of those is projected key by key, never as a whole Secret, so a key
+your Secret also holds stays out of the pod (cert-manager, for one, keeps a CA
+issuer's own key in a Secret).
+
+**The internal mTLS CA.** Unless you bring your own
+(`internalMtls.existingSecret`), the chart makes a CA when it is first
+installed, signs the API's server certificate and the gateways' client
+certificate with it, and keeps only those and the CA's certificate in the
+Secret. The CA's private key exists only while the chart renders. Nothing in
+the cluster can sign another certificate the API would accept; the price is
+that a new certificate means a new CA. The certificates last ten years. To
+replace them all, delete the Secret (`<release>-internal-mtls`) and run
+`helm upgrade`, then restart the API and the gateways.
+
+If you bring your own, the Secret needs `ca.crt`, `server.crt`, `server.key`,
+`client.crt` and `client.key`, and keep the CA's key somewhere else: the chart
+never mounts it, but anything that can read the Secret could.
+
+**The mail certificate** comes from you, through `tls.secretName`; the chart
+issues nothing for it.
+
+**Development (`chore`).** The testbed issues certificates into its
+`testbed_certs` volume, where its CA key lives, and `chore instance:mtls:issue`
+issues the internal ones into a volume of their own, where the internal CA key
+lives. Only those one-off issuing containers mount either volume. Each service
+gets a volume of its own, filled with copies of the files it needs right before
+it starts, and owned by the user it runs as; no service mounts either issuing
+volume.
 
 ## Where the chart is published
 
@@ -154,7 +313,8 @@ first alone.
    # API credentials.
    kubectl create secret generic restmail-api \
      --from-literal=JWT_SECRET="$(openssl rand -base64 64)" \
-     --from-literal=MASTER_KEY="$(openssl rand -base64 32)"
+     --from-literal=MASTER_KEY="$(openssl rand -base64 32)" \
+     --from-literal=JS_FILTER_TOKEN="$(openssl rand -base64 32)"
    ```
 
 2. Install:
@@ -248,13 +408,24 @@ The most common knobs at install time:
 | `smtpGateway.service.type` | `LoadBalancer` | `NodePort` for dev |
 | `imapGateway.service.type` | `LoadBalancer` | |
 | `pop3Gateway.service.type` | `LoadBalancer` | |
+| `*Gateway.containerPorts` | `10025`, `10465`, `10993`, `10995` | What each gateway listens on in its pod; its Service maps the public port onto it |
 | `networking.dnsPolicy` | `ClusterFirst` | Override for testbed |
 | `db.sslMode` | `require` | libpq sslmode in the DSN; `verify-full` for external DB |
 | `db.allowInsecure` | `false` | Acknowledge a cleartext DB link (insecure sslmode only) |
 | `postgres.tls.enabled` | `true` | Bundled Postgres serves TLS so `require` connects |
 | `api.tlsTerminatedByProxy` | `true` | Acknowledge a TLS-terminating front proxy |
 | `networkPolicy.enabled` | `true` | Default-deny + least-privilege policies |
+| `webmail.enabled` | `true` | The webmail, with its Ingress |
+| `webmail.ingress.host` | `webmail.<mailserver.domain>` | `/` is the app, `/api` the API |
+| `webmail.ingress.tls.enabled` | `false` | Secret `<release>-webmail-tls` unless named |
+| `admin.enabled` | `true` | The admin webmail, with its Ingress |
+| `admin.ingress.host` | `admin.<mailserver.domain>` | `/` is the app, `/api` the API |
+| `admin.ingress.tls.enabled` | `false` | Secret `<release>-admin-tls` unless named |
 | `serviceAccount.automountServiceAccountToken` | `false` | No workload uses the K8s API |
+| `api.push.apns.enabled` | `false` | Push notifications to the iPhone app; needs the three below |
+| `api.push.apns.existingSecret` | _(empty)_ | Secret holding the APNs `.p8` key, under `api.push.apns.secretKey` (`AuthKey.p8`) |
+| `api.push.apns.keyId` / `teamId` | _(empty)_ | The key's id and its developer team, from the Apple Developer portal |
+| `api.push.apns.topic` | `com.antimatterstudios.restmail` | The app's bundle id |
 
 To verify the chart renders and stays hardened, run the infra test:
 
@@ -264,10 +435,6 @@ helm/restmail/tests/render-test.sh
 
 ## What is intentionally not in this chart
 
-- **Webmail front-end.** `ghcr.io/rest-mail/webmail` is published now, multi-arch,
-  from this repo's `webmail/` directory, so the reason this chart skipped it has
-  gone. Adding it means a `webmail-deployment.yaml` template and a `webmail.*`
-  block in values. Nothing blocks it; nobody has needed it yet.
 - **Project website.** Tracked separately (Phase 6 of the decomposition).
 - **Reference mail daemons.** Postfix/Dovecot/rspamd live in
   `rest-mail/reference-mailserver`. They are not part of the rest-mail

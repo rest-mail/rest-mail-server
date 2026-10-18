@@ -130,6 +130,16 @@ spec:
         - protocol: TCP
           port: {{ .Values.jsFilter.port }}
     # Outbound HTTPS/HTTP for ACME issuance and any remote fetches.
+    {{- if eq .Values.api.attachments.storageType "s3" }}
+    {{- with .Values.api.attachments.s3.networkPolicy.to }}
+    # Private object storage, scoped to the configured peers and S3 port.
+    - to:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.api.attachments.s3.networkPolicy.port }}
+    {{- end }}
+    {{- end }}
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -151,7 +161,9 @@ spec:
       {{- include "restmail.componentSelectorLabels" (list . "js-filter") | nindent 6 }}
   policyTypes:
     - Ingress
-  # The sandboxed filter runner is called only by the API.
+  # The filter runner is called only by the API, which also authenticates
+  # with JS_FILTER_TOKEN (#160). No egress is opened: beyond DNS, the default
+  # deny holds, so a script's fetch reaches nothing in or out of the cluster.
   ingress:
     - from:
         - podSelector:
@@ -176,12 +188,13 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail listeners: inbound 25 and implicit-TLS submission 465.
+    # Public mail listeners: inbound 25 and implicit-TLS submission 465. A
+    # policy sees the port the pod listens on, which the Service maps them to.
     - ports:
         - protocol: TCP
-          port: {{ .Values.smtpGateway.ports.inbound }}
+          port: {{ .Values.smtpGateway.containerPorts.inbound }}
         - protocol: TCP
-          port: {{ .Values.smtpGateway.ports.submissionTLS }}
+          port: {{ .Values.smtpGateway.containerPorts.submissionTLS }}
   egress:
     - to:
         - podSelector:
@@ -234,10 +247,10 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail access: 993, implicit TLS.
+    # Public mail access: 993, implicit TLS, on the port the pod listens on.
     - ports:
         - protocol: TCP
-          port: {{ .Values.imapGateway.ports.tls }}
+          port: {{ .Values.imapGateway.containerPorts.tls }}
   egress:
     - to:
         - podSelector:
@@ -276,10 +289,10 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Public mail access: 995, implicit TLS.
+    # Public mail access: 995, implicit TLS, on the port the pod listens on.
     - ports:
         - protocol: TCP
-          port: {{ .Values.pop3Gateway.ports.tls }}
+          port: {{ .Values.pop3Gateway.containerPorts.tls }}
   egress:
     - to:
         - podSelector:
@@ -301,5 +314,29 @@ spec:
         - protocol: TCP
           port: {{ .Values.postgres.service.port }}
     {{- end }}
+{{- end }}
+{{- range $app := list "webmail" "admin" }}
+{{- if (index $.Values $app).enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "restmail.componentName" (list $ $app) }}
+  labels:
+    {{- include "restmail.componentLabels" (list $ $app) | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "restmail.componentSelectorLabels" (list $ $app) | nindent 6 }}
+  policyTypes:
+    - Ingress
+  # Static files, to the ingress controller in whatever namespace it runs. The
+  # app itself talks to nothing: the browser reaches the API through the
+  # Ingress, so egress stays denied (DNS aside).
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}
 {{- end }}
 {{- end }}

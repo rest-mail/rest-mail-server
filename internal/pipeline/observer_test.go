@@ -116,7 +116,7 @@ func TestEngine_Observer_RejectStopsAndReportsTerminal(t *testing.T) {
 }
 
 // An engine constructed without an Observer must use the no-op default and run
-// without panicking (backward compatibility for existing callers/tests).
+// without panicking (the observer is optional).
 func TestEngine_NoObserver_DefaultsToNop(t *testing.T) {
 	reg := NewRegistry()
 	reg.Register("a", continueFilter("a"))

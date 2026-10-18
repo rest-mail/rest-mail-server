@@ -1,22 +1,25 @@
 // Package bootstrap brings an empty database to the state a fresh install needs
-// before anyone can sign in: the RBAC roles and capabilities, and — when the
-// operator supplies a password — a first superadmin.
+// before anyone can sign in: the roles and capabilities, and — when the
+// operator supplies a password — the first account, admin@<mail domain>,
+// holding superadmin.
 //
 // Both run on every API start and are idempotent. The production image ships
 // only restmail-api (cmd/seed is deliberately kept out of it, since it makes
 // fixture accounts with known passwords), so without this a fresh install had
-// no admin, therefore no domain or mailbox, therefore nobody who could sign in.
+// no account, therefore nobody who could sign in.
 package bootstrap
 
 import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
-	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
+	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
 )
 
@@ -38,7 +41,7 @@ const (
 	FirstAdminUnchanged FirstAdminOutcome = iota
 	// FirstAdminCreated: there was no admin, and now there is one, in setup.
 	FirstAdminCreated
-	// FirstAdminRearmed: the bootstrap admin was still on its deploy-time
+	// FirstAdminRearmed: the bootstrap account was still on its deploy-time
 	// password and was given a new one, with a fresh BootstrapPasswordLifetime.
 	FirstAdminRearmed
 )
@@ -57,9 +60,9 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "mailboxes:read", Description: "View mailboxes", Resource: "mailboxes", Action: "read"},
 		{Name: "mailboxes:write", Description: "Create/update mailboxes", Resource: "mailboxes", Action: "write"},
 		{Name: "mailboxes:delete", Description: "Delete mailboxes", Resource: "mailboxes", Action: "delete"},
-		{Name: "users:read", Description: "View admin users", Resource: "users", Action: "read"},
-		{Name: "users:write", Description: "Create/update admin users", Resource: "users", Action: "write"},
-		{Name: "users:delete", Description: "Delete admin users", Resource: "users", Action: "delete"},
+		{Name: "users:read", Description: "View roles and grants", Resource: "users", Action: "read"},
+		{Name: "users:write", Description: "Grant and remove roles", Resource: "users", Action: "write"},
+		{Name: "users:delete", Description: "Remove accounts' grants when deleting them", Resource: "users", Action: "delete"},
 		{Name: "pipelines:read", Description: "View pipelines", Resource: "pipelines", Action: "read"},
 		{Name: "pipelines:write", Description: "Create/update pipelines", Resource: "pipelines", Action: "write"},
 		{Name: "pipelines:delete", Description: "Delete pipelines", Resource: "pipelines", Action: "delete"},
@@ -71,6 +74,11 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "bans:write", Description: "Create/update IP bans", Resource: "bans", Action: "write"},
 		{Name: "bans:delete", Description: "Delete IP bans", Resource: "bans", Action: "delete"},
 		{Name: "observability:read", Description: "View pipeline analytics funnel and per-message traces", Resource: "observability", Action: "read"},
+		{Name: "audit:read", Description: "Read the audit log and verify its chain", Resource: "audit", Action: "read"},
+		{Name: models.CapMailRead, Description: "Read a mailbox's mail", Resource: "mail", Action: "read"},
+		{Name: models.CapMailWrite, Description: "Change a mailbox's mail: folders, flags, drafts, contacts, filters", Resource: "mail", Action: "write"},
+		{Name: models.CapMailSend, Description: "Send as a mailbox", Resource: "mail", Action: "send"},
+		{Name: models.CapMailboxManage, Description: "Manage a mailbox's settings and credentials", Resource: "mailbox", Action: "manage"},
 	}
 
 	for i := range capabilities {
@@ -86,6 +94,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		{Name: "superadmin", Description: "Full system access", SystemRole: true},
 		{Name: "admin", Description: "Standard administrator", SystemRole: true},
 		{Name: "readonly", Description: "Read-only access", SystemRole: true},
+		{Name: models.RoleOwner, Description: "Everything on a mailbox: read, write, send and manage", SystemRole: true},
 	}
 
 	for i := range roles {
@@ -124,6 +133,7 @@ func EnsureRBAC(database *gorm.DB) error {
 		"queue:read", "queue:manage",
 		"bans:read", "bans:write", "bans:delete",
 		"observability:read",
+		"audit:read",
 	}
 	for _, capName := range adminCaps {
 		var cap models.Capability
@@ -163,59 +173,78 @@ func EnsureRBAC(database *gorm.DB) error {
 	}
 	slog.Info("role capabilities assigned", "role", "readonly", "count", len(readonlyCaps))
 
+	var ownerRole models.Role
+	database.Where("name = ?", models.RoleOwner).First(&ownerRole)
+	for _, capName := range models.OwnerCapabilities {
+		var cap models.Capability
+		database.Where("name = ?", capName).First(&cap)
+		var rc models.RoleCapability
+		result := database.Where("role_id = ? AND capability_id = ?", ownerRole.ID, cap.ID).
+			FirstOrCreate(&rc, models.RoleCapability{RoleID: ownerRole.ID, CapabilityID: cap.ID})
+		if result.Error != nil {
+			return result.Error
+		}
+	}
+	slog.Info("role capabilities assigned", "role", models.RoleOwner, "count", len(models.OwnerCapabilities))
+
 	return nil
 }
 
-// EnsureFirstAdmin creates a superadmin named username with password while
-// there are no admin users at all, and keeps that account's deploy-time
-// password in step with the deployment until the account chooses its own.
+// EnsureFirstAdmin makes the first account of a fresh install: address (the
+// deployment's admin@<mail domain>), with password, in setup (it must choose
+// its own password and enroll an authenticator before it can do anything
+// else), holding admin at "*", and superadmin at "*" eligible (#346). Its
+// domain is created too, not yet live, when the server does not host it yet.
 //
-// The account starts in setup: its first sign-in can do nothing but set a new
-// password and enroll a TOTP authenticator. The deploy-time password sits in the
-// deploy tool's state, so until both are done the account is not the operator's
-// alone. twoFactorAvailable says whether this server lets accounts enroll in
-// 2FA; without it the setup could never finish, so no admin is created.
+// It does nothing on a server that already has an admin (an account holding
+// any grant at "*"), except re-arm the bootstrap account while it is still on
+// a deploy-time password (rearmBootstrapAdmin). The password works for
+// BootstrapPasswordLifetime.
 //
-// The deploy-time password works for BootstrapPasswordLifetime from now, and
-// restarting does not extend it. Deploying with a DIFFERENT password, while the
-// account still has not chosen its own, re-arms it: the new password replaces
-// the old, every session the old one opened ends, and the clock starts again.
-// That is the recovery for a password that leaked or ran out before anyone
-// signed in, and it grants nothing: until the account chooses a password,
-// whoever can change the Secret could already read the one in it.
-//
-// Once the account has chosen its own password this is a no-op forever, so
-// changing or removing the deployment's password later cannot reset it, and
-// no second admin is ever added. An empty password means the operator did not
-// ask for a bootstrap admin, and nothing happens.
-func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAvailable bool, now time.Time) (FirstAdminOutcome, error) {
-	if password == "" {
+// twoFactorAvailable is whether this server can enroll an authenticator. The
+// account must, so without it the account could never finish signing in, and
+// making it is refused.
+func EnsureFirstAdmin(database *gorm.DB, address, password string, twoFactorAvailable bool, now time.Time) (FirstAdminOutcome, error) {
+	return EnsureFirstAdminWith(database, address, BootstrapPassword(password), twoFactorAvailable, now)
+}
+
+// EnsureFirstAdminWith is EnsureFirstAdmin for a credential that may be the
+// password or a bcrypt hash of it (BootstrapCredential). A different hash is a
+// different password: it re-arms the account exactly as a different password
+// does.
+func EnsureFirstAdminWith(database *gorm.DB, address string, credential BootstrapCredential, twoFactorAvailable bool, now time.Time) (FirstAdminOutcome, error) {
+	if credential.IsZero() {
 		return FirstAdminUnchanged, nil
 	}
-	if len(password) < MinAdminPasswordLength {
-		return FirstAdminUnchanged, fmt.Errorf("bootstrap admin password is %d bytes; it must be at least %d", len(password), MinAdminPasswordLength)
-	}
-	if username == "" {
-		username = "admin"
-	}
-
-	var count int64
-	if err := database.Model(&models.AdminUser{}).Count(&count).Error; err != nil {
+	if err := credential.validate(); err != nil {
 		return FirstAdminUnchanged, err
 	}
-	if count > 0 {
-		return rearmBootstrapAdmin(database, username, password, now)
-	}
-	if !twoFactorAvailable {
-		return FirstAdminUnchanged, fmt.Errorf("a bootstrap admin must enroll in 2FA, but TOTP_2FA_ENABLED is off: it could never finish signing in")
+	address = strings.ToLower(strings.TrimSpace(address))
+	local, domain, ok := strings.Cut(address, "@")
+	if !ok || local == "" || domain == "" || strings.Contains(domain, "@") {
+		return FirstAdminUnchanged, fmt.Errorf("the bootstrap account's address %q is not an address (RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS)", address)
 	}
 
-	var superadmin models.Role
+	exists, err := AdminExists(database)
+	if err != nil {
+		return FirstAdminUnchanged, err
+	}
+	if exists {
+		return rearmBootstrapAdmin(database, address, credential, now)
+	}
+	if !twoFactorAvailable {
+		return FirstAdminUnchanged, fmt.Errorf("the bootstrap account must enroll in 2FA, but TOTP_2FA_ENABLED is off: it could never finish signing in")
+	}
+
+	var superadmin, admin models.Role
 	if err := database.Where("name = ?", "superadmin").First(&superadmin).Error; err != nil {
 		return FirstAdminUnchanged, fmt.Errorf("superadmin role missing (run EnsureRBAC first): %w", err)
 	}
+	if err := database.Where("name = ?", "admin").First(&admin).Error; err != nil {
+		return FirstAdminUnchanged, fmt.Errorf("admin role missing (run EnsureRBAC first): %w", err)
+	}
 
-	hash, err := auth.HashPassword(password)
+	hash, err := credential.stored()
 	if err != nil {
 		return FirstAdminUnchanged, err
 	}
@@ -223,25 +252,42 @@ func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAva
 
 	created := false
 	err = database.Transaction(func(tx *gorm.DB) error {
-		// Keyed on username, so two replicas starting together cannot both insert.
-		var user models.AdminUser
-		res := tx.Where("username = ?", username).
-			Attrs(models.AdminUser{
-				Username:               username,
-				PasswordHash:           hash,
+		d, err := ensureDomain(tx, domain)
+		if err != nil {
+			return err
+		}
+		var account models.Mailbox
+		res := tx.Where("address = ?", address).
+			Attrs(models.Mailbox{
+				DomainID:               d.ID,
+				LocalPart:              local,
+				Address:                address,
+				QuotaBytes:             d.DefaultQuotaBytes,
 				Active:                 true,
 				PasswordChangeRequired: true,
 				TwoFactorRequired:      true,
 				BootstrapExpiresAt:     &expires,
 			}).
-			FirstOrCreate(&user)
+			FirstOrCreate(&account)
 		if res.Error != nil {
 			return res.Error
 		}
 		created = res.RowsAffected > 0
-		var ur models.UserRole
-		return tx.Where("user_id = ? AND role_id = ?", user.ID, superadmin.ID).
-			FirstOrCreate(&ur, models.UserRole{UserID: user.ID, RoleID: superadmin.ID}).Error
+		if created {
+			if _, err := repositories.NewCredentialRepository(tx).SetPassword(account.ID, hash, nil, now); err != nil {
+				return err
+			}
+		}
+		// The admin role at "*" to work with day to day, and superadmin at "*"
+		// to escalate to: eligible, switched on with a fresh code and a reason
+		// only when needed (#346), so a stolen phone or session never carries
+		// it. Only a new admin gets these: one that already holds either role
+		// keeps it as it is.
+		if _, err := grants.EnsureSystem(tx, account.ID, admin.ID, grants.All, models.GrantActive); err != nil {
+			return err
+		}
+		_, err = grants.EnsureSystem(tx, account.ID, superadmin.ID, grants.All, models.GrantEligible)
+		return err
 	})
 	if err != nil {
 		return FirstAdminUnchanged, err
@@ -249,57 +295,116 @@ func EnsureFirstAdmin(database *gorm.DB, username, password string, twoFactorAva
 	if !created {
 		return FirstAdminUnchanged, nil
 	}
-	slog.Info("bootstrap admin created", "username", username, "password_expires", expires.UTC().Format(time.RFC3339))
+	slog.Info("bootstrap account created", "address", address, "password_expires", expires.UTC().Format(time.RFC3339))
 	return FirstAdminCreated, nil
 }
 
-// rearmBootstrapAdmin gives the bootstrap admin a new deploy-time password,
+// ensureDomain finds the domain name, or creates it as a fresh install's
+// first domain: not live (it has no certificate yet), with the default
+// inbound and outbound pipelines, as the admin API creates one.
+func ensureDomain(tx *gorm.DB, name string) (*models.Domain, error) {
+	var d models.Domain
+	err := tx.Where("name = ?", name).First(&d).Error
+	if err == nil {
+		return &d, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	d = models.Domain{Name: name, ServerType: "restmail", Active: false, DefaultQuotaBytes: 1 << 30}
+	if err := tx.Create(&d).Error; err != nil {
+		return nil, err
+	}
+	for _, direction := range []string{"inbound", "outbound"} {
+		if err := tx.Create(&models.Pipeline{
+			DomainID:  d.ID,
+			Direction: direction,
+			Filters:   pipeline.DefaultPipelineJSON(direction),
+			Active:    true,
+		}).Error; err != nil {
+			return nil, err
+		}
+	}
+	return &d, nil
+}
+
+// AdminExists reports whether any account holds a grant at "*", active or
+// eligible: whether the server has an admin.
+func AdminExists(database *gorm.DB) (bool, error) {
+	var count int64
+	err := database.Model(&models.Grant{}).
+		Where("holder_kind = ? AND scope = ?", models.GrantHolderAccount, grants.All).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// ErrNoAdmin: the server has no admin, and was given no bootstrap password to
+// make one with, so nobody could ever sign in.
+var ErrNoAdmin = errors.New("there is no admin and no bootstrap admin password (RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD, or its hash in RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD_HASH): nobody could sign in")
+
+// RequireAdmin answers ErrNoAdmin for a server nobody can administer. The
+// first admin comes from the password the installer chose (EnsureFirstAdmin);
+// there is no other way to make one over the network.
+func RequireAdmin(database *gorm.DB) error {
+	exists, err := AdminExists(database)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNoAdmin
+	}
+	return nil
+}
+
+// rearmBootstrapAdmin gives the bootstrap account a new deploy-time password,
 // if it is still on one and the deployment now carries a different one.
 //
-// Only the account EnsureFirstAdmin made qualifies: the bootstrap username,
+// Only the account EnsureFirstAdmin made qualifies: the bootstrap address,
 // still owing its password change, with an expiry stamped. One that has chosen
 // its own password has its expiry cleared and is never touched again. The same
 // password as before changes nothing, so a restart does not extend the expiry.
-func rearmBootstrapAdmin(database *gorm.DB, username, password string, now time.Time) (FirstAdminOutcome, error) {
-	var user models.AdminUser
+func rearmBootstrapAdmin(database *gorm.DB, address string, credential BootstrapCredential, now time.Time) (FirstAdminOutcome, error) {
+	var account models.Mailbox
 	err := database.
-		Where("username = ? AND password_change_required = ? AND bootstrap_expires_at IS NOT NULL", username, true).
-		First(&user).Error
+		Where("address = ? AND password_change_required = ? AND bootstrap_expires_at IS NOT NULL", address, true).
+		First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return FirstAdminUnchanged, nil
 	}
 	if err != nil {
 		return FirstAdminUnchanged, err
 	}
-	if auth.CheckPassword(password, user.PasswordHash) == nil {
-		return FirstAdminUnchanged, nil
+	passwords, err := repositories.NewCredentialRepository(database).Passwords(account.ID, now)
+	if err != nil {
+		return FirstAdminUnchanged, err
+	}
+	for _, p := range passwords {
+		if credential.matches(p.SecretHash) {
+			return FirstAdminUnchanged, nil
+		}
 	}
 
-	hash, err := auth.HashPassword(password)
+	hash, err := credential.stored()
 	if err != nil {
 		return FirstAdminUnchanged, err
 	}
 	expires := now.Add(BootstrapPasswordLifetime)
 	rearmed := false
 	err = database.Transaction(func(tx *gorm.DB) error {
-		// Conditional on the account still owing its change, so a password
-		// chosen between the read above and this write is never overwritten.
-		res := tx.Model(&models.AdminUser{}).
-			Where("id = ? AND password_change_required = ?", user.ID, true).
+		res := tx.Model(&models.Mailbox{}).
+			Where("id = ? AND password_change_required = ?", account.ID, true).
 			Updates(map[string]interface{}{
-				"password_hash":        hash,
 				"bootstrap_expires_at": expires,
 				"credential_epoch":     gorm.Expr("credential_epoch + 1"),
 			})
 		if res.Error != nil || res.RowsAffected == 0 {
 			return res.Error
 		}
+		if _, err := repositories.NewCredentialRepository(tx).SetPassword(account.ID, hash, nil, now); err != nil {
+			return err
+		}
 		rearmed = true
-		// Whoever signed in with the old password is signed out. The epoch ends
-		// their access tokens; a refresh re-mints at the current epoch rather
-		// than checking it, so their refresh tokens must be revoked as well —
-		// as a password change does.
-		return repositories.NewRefreshTokenRepository(tx).RevokeAllForSubject("admin", user.ID)
+		return repositories.NewRefreshTokenRepository(tx).RevokeAllForAccount(account.ID)
 	})
 	if err != nil {
 		return FirstAdminUnchanged, err
@@ -307,6 +412,6 @@ func rearmBootstrapAdmin(database *gorm.DB, username, password string, now time.
 	if !rearmed {
 		return FirstAdminUnchanged, nil
 	}
-	slog.Info("bootstrap admin given the deployment's new password", "username", username, "password_expires", expires.UTC().Format(time.RFC3339))
+	slog.Info("bootstrap account given the deployment's new password", "address", address, "password_expires", expires.UTC().Format(time.RFC3339))
 	return FirstAdminRearmed, nil
 }

@@ -2,44 +2,72 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
+
+	"golang.org/x/crypto/ssh"
 )
 
-// `restmail status` asks a server what it is and whether it has been claimed.
+// `restmail status` asks a server what it is and which version it runs.
 // Like every command here, it knows a server only by its address: it asks the
 // server (GET /api/v1/server) and believes the answer. How the server was
 // installed — Helm, Pulumi, Docker, anything — is none of its business.
+//
+// With --key it proves it may know more, the way reset-admin proves ownership:
+// it signs a challenge for the purpose "status" with a key the deployment lists
+// in RESTMAIL_STATUS_KEYS (or an owner key), and the server answers with its
+// commit, when it was built and when it started (POST /api/v1/auth/owner/status).
 
-const statusUsage = `restmail status — what a rest-mail server is, and whether it is claimed
+const statusUsage = `restmail status — what a rest-mail server is
 
-  restmail status --server https://mail.example.com
+  restmail status --server https://mail.example.com [--key PATH]
 
-Asks the server itself, over its public API: whether it answers, which version
-it runs, and whether anyone has claimed it yet — and if not, how to.
+Asks the server itself, over its public API: whether it answers, and which
+version it runs.
+
+With --key, signs the question with a private key whose public half the
+deployment lists in RESTMAIL_STATUS_KEYS or RESTMAIL_OWNER_KEYS, and also
+prints the commit, when it was built and when it started: how a deploy is
+confirmed from outside. A status key reads this and nothing else.
 
   --server URL   the server's address (https; http only for localhost)
+  --key PATH     a private key file (unencrypted) to sign with
   --json         one JSON object on stdout; errors as one on stderr
 
-Exit status: 0 the server answered (claimed or not: --json says which),
-2 usage, 5 the server did not answer, or not as rest-mail.
+Exit status: 0 the server answered, 2 usage, 5 the server did not answer, or
+not as rest-mail, 6 the key is not one of the server's status or owner keys
+(or it lists none), 1 anything else.
 `
 
-// serverStatus is GET /api/v1/server's answer.
-type serverStatus struct {
-	Product      string   `json:"product"`
-	Version      string   `json:"version"`
-	Claimed      bool     `json:"claimed"`
-	ClaimMethods []string `json:"claim_methods"`
+// serverDescription is GET /api/v1/server's answer.
+type serverDescription struct {
+	Product string `json:"product"`
+	Version string `json:"version"`
 }
 
-func runStatus(ctx context.Context, args []string, client *http.Client, stdout, stderr io.Writer) int {
+// signedStatus is POST /api/v1/auth/owner/status's answer.
+type signedStatus struct {
+	Version   string `json:"version"`
+	Commit    string `json:"commit"`
+	BuiltAt   string `json:"built_at"`
+	StartedAt string `json:"started_at"`
+}
+
+// statusPurpose is what --key signs: the server's bootstrap.StatusPurpose.
+const statusPurpose = "status"
+
+func runStatus(ctx context.Context, args []string, client *http.Client, keys keySource, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	server := fs.String("server", "", "the server's address")
+	keyPath := fs.String("key", "", "a private key file")
 	asJSON := fs.Bool("json", false, "JSON output")
 	help := fs.Bool("help", false, "show help")
 
@@ -56,9 +84,13 @@ func runStatus(ctx context.Context, args []string, client *http.Client, stdout, 
 	if err != nil {
 		return o.fail(exitUsage, "bad_flag", err.Error())
 	}
+	api := apiClient{base: base, http: client}
+	if *keyPath != "" {
+		return signedStatusOf(ctx, api, keys, *keyPath, o)
+	}
 
-	var got serverStatus
-	code, msg, err := apiClient{base: base, http: client}.get(ctx, "/api/v1/server", &got)
+	var got serverDescription
+	code, msg, err := api.get(ctx, "/api/v1/server", &got)
 	if err != nil {
 		return o.fail(exitUnreachable, "unreachable", err.Error())
 	}
@@ -71,34 +103,93 @@ func runStatus(ctx context.Context, args []string, client *http.Client, stdout, 
 
 	if o.json {
 		_ = json.NewEncoder(stdout).Encode(map[string]any{
-			"server":        base.String(),
-			"product":       got.Product,
-			"version":       got.Version,
-			"claimed":       got.Claimed,
-			"claim_methods": got.ClaimMethods,
+			"server":  base.String(),
+			"product": got.Product,
+			"version": got.Version,
 		})
 		return exitOK
 	}
 
 	fmt.Fprintf(stdout, "%s: rest-mail %s\n", base.Host, got.Version)
-	if got.Claimed {
-		fmt.Fprintln(stdout, "  claimed: it has an admin. Sign in with the rest-mail app.")
+	return exitOK
+}
+
+// signedStatusOf asks for the status with a challenge signed by the key at
+// path.
+func signedStatusOf(ctx context.Context, api apiClient, keys keySource, path string, o output) int {
+	signers, err := keys(path)
+	if errors.Is(err, errPassphrase) {
+		return o.fail(exitNotOwner, "no_key", fmt.Sprintf("%s is passphrase-protected, and restmail never prompts: give status a key file without one", path))
+	}
+	if err != nil {
+		return o.fail(exitNotOwner, "no_key", err.Error())
+	}
+
+	var got signedStatus
+	var refused, refusal string
+	for _, s := range signers {
+		// A fresh challenge per key: each is spent once it is answered.
+		var ch struct {
+			Challenge string `json:"challenge"`
+		}
+		if code, msg, err := api.post(ctx, "/api/v1/auth/owner/challenge", nil, &ch); err != nil {
+			return o.fail(exitUnreachable, "unreachable", err.Error())
+		} else if code != "" {
+			return o.fail(statusExit(code), code, msg)
+		}
+		sig, err := s.sign(ownerMessage(ch.Challenge, statusPurpose, ""))
+		if err != nil {
+			return o.fail(exitFailed, "sign_failed", err.Error())
+		}
+		code, msg, err := api.post(ctx, "/api/v1/auth/owner/status", map[string]any{
+			"challenge":  ch.Challenge,
+			"public_key": strings.TrimSpace(string(ssh.MarshalAuthorizedKey(s.pub))),
+			"signature":  base64.StdEncoding.EncodeToString(ssh.Marshal(sig)),
+		}, &got)
+		if err != nil {
+			return o.fail(exitUnreachable, "unreachable", err.Error())
+		}
+		if code == "not_status_key" {
+			refused, refusal = code, msg
+			continue
+		}
+		if code != "" {
+			return o.fail(statusExit(code), code, msg)
+		}
+		return o.signedStatus(api.base, got)
+	}
+	if refused == "" {
+		return o.fail(exitNotOwner, "no_key", "no key to sign with in "+path)
+	}
+	return o.fail(exitNotOwner, refused, refusal)
+}
+
+// signedStatus prints a signed status answer.
+func (o output) signedStatus(base *url.URL, got signedStatus) int {
+	if got.Version == "" {
+		return o.fail(exitUnreachable, "unreachable", fmt.Sprintf("%s answered, but not as a rest-mail server", base.Host))
+	}
+	if o.json {
+		_ = json.NewEncoder(o.stdout).Encode(map[string]any{
+			"server":     base.String(),
+			"version":    got.Version,
+			"commit":     got.Commit,
+			"built_at":   got.BuiltAt,
+			"started_at": got.StartedAt,
+		})
 		return exitOK
 	}
-	fmt.Fprintln(stdout, "  not claimed yet. Whoever claims it first becomes its admin. To claim it:")
-	for _, method := range got.ClaimMethods {
-		switch method {
-		case "setup_code":
-			fmt.Fprintln(stdout, "    - with the setup code it prints at every start (read its output wherever")
-			fmt.Fprintln(stdout, "      it was installed): scan the QR code with your phone, or")
-			fmt.Fprintf(stdout, "      restmail setup --server %s --code CODE\n", base)
-		case "owner_key":
-			fmt.Fprintln(stdout, "    - with a key it lists as an owner's:")
-			fmt.Fprintf(stdout, "      restmail setup --server %s --key ~/.ssh/id_ed25519\n", base)
-		default:
-			// A newer server may offer a way this CLI does not know yet.
-			fmt.Fprintf(stdout, "    - %s\n", method)
-		}
-	}
+	fmt.Fprintf(o.stdout, "%s: rest-mail %s\n  commit   %s\n  built    %s\n  started  %s\n",
+		base.Host, got.Version, got.Commit, got.BuiltAt, got.StartedAt)
 	return exitOK
+}
+
+// statusExit maps the server's refusals of a signed status request to exit
+// statuses.
+func statusExit(code string) int {
+	switch code {
+	case "not_status_key", "no_status_keys", "no_owner_keys":
+		return exitNotOwner
+	}
+	return exitFailed
 }

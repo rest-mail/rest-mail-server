@@ -44,7 +44,7 @@ interface DashboardState {
   error: string | null
 
   // Actions
-  fetchDashboardStats: (accessToken: string) => Promise<void>
+  fetchDashboardStats: () => Promise<void>
   clearError: () => void
 }
 
@@ -53,11 +53,11 @@ export const useDashboardStore = create<DashboardState>()((set) => ({
   isLoading: false,
   error: null,
 
-  fetchDashboardStats: async (accessToken: string) => {
+  fetchDashboardStats: async () => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request('/admin/stats', { method: 'GET' }, accessToken)
+      const response = await apiV1.request('/admin/stats', { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()

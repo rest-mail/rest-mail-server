@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, Check, X as XIcon, Wifi } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
 import { useMailStore } from '@/stores/mailStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { runDetection, detectionTests, type DetectionProgress } from '@/hooks/useAccountDetection';
 import * as api from '@/api/client';
 
+// AddAccountView links an existing account by its password: the same proof as
+// signing in to it, its 2FA code included, after which this account owns it.
 export function AddAccountView() {
   const { setView } = useUIStore();
   const { loadAccounts } = useMailStore();
@@ -17,44 +17,45 @@ export function AddAccountView() {
   const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [testing, setTesting] = useState(false);
+  const [code, setCode] = useState('');
+  const [needsCode, setNeedsCode] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [progress, setProgress] = useState<DetectionProgress | null>(null);
-
-  const handleTest = async () => {
-    if (!address.trim() || !password.trim()) {
-      toast.error('Email address and password are required');
-      return;
-    }
-    setTesting(true);
-    setProgress(null);
-
-    const result = await runDetection(address, password, setProgress);
-
-    if (result.success) {
-      toast.success(`Connection OK via ${result.method}`);
-      if (!displayName && result.display_name) {
-        setDisplayName(result.display_name);
-      }
-    } else {
-      toast.error(result.error || 'All connection tests failed');
-    }
-    setTesting(false);
-  };
 
   const handleSave = async () => {
     if (!address.trim() || !password.trim()) {
       toast.error('Email address and password are required');
       return;
     }
+    if (needsCode && !code.trim()) {
+      toast.error('Enter the code from that account\'s authenticator');
+      return;
+    }
     setSaving(true);
     try {
-      await api.linkAccount({ address, password, display_name: displayName });
+      await api.linkAccount({
+        address,
+        password,
+        display_name: displayName,
+        ...(needsCode ? { totp_code: code.trim() } : {}),
+      });
       toast.success('Account linked successfully');
       await loadAccounts();
       setView('mail');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to link account');
+      // A refused link is a 403 with its reason; this session is still good.
+      const reason = err instanceof api.ApiError ? err.code : '';
+      if (reason === 'totp_required') {
+        setNeedsCode(true);
+        toast.message('That account has two-factor authentication: enter its code');
+      } else if (reason === 'invalid_totp') {
+        setNeedsCode(true);
+        setCode('');
+        toast.error('That code is not right: enter the current one from that account\'s authenticator');
+      } else if (reason === 'invalid_credentials') {
+        toast.error('That address and password do not match an account');
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Failed to link account');
+      }
     } finally {
       setSaving(false);
     }
@@ -83,6 +84,17 @@ export function AddAccountView() {
               onChange={e => setPassword(e.target.value)}
             />
           </div>
+          {needsCode && (
+            <div className="space-y-2">
+              <Label>Authenticator code</Label>
+              <Input
+                value={code}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                onChange={e => setCode(e.target.value)}
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Display Name</Label>
             <Input
@@ -92,48 +104,11 @@ export function AddAccountView() {
             />
           </div>
 
-          {/* Detection progress */}
-          {testing && progress && (
-            <div className="text-sm text-muted-foreground space-y-1">
-              <p>Testing: {progress.currentTest}...</p>
-              <div className="flex gap-1 flex-wrap">
-                {detectionTests.map(t => {
-                  const done = progress.completedTests.includes(t.id);
-                  const active = progress.currentTest === t.label && !done;
-                  const success = done && progress.result?.success && progress.result?.method === t.id;
-                  return (
-                    <span
-                      key={t.id}
-                      className={`text-xs px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
-                        done
-                          ? success
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                            : 'bg-muted text-muted-foreground line-through'
-                          : active
-                            ? 'bg-primary/10 text-primary'
-                            : 'bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {active && <Loader2 className="w-3 h-3 animate-spin" />}
-                      {done && success && <Check className="w-3 h-3" />}
-                      {done && !success && <XIcon className="w-3 h-3" />}
-                      {t.label}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           <div className="flex items-center gap-2 pt-2">
-            <Button variant="outline" onClick={handleTest} disabled={testing}>
-              <Wifi className="w-4 h-4 mr-1" />
-              {testing ? 'Testing...' : 'Test Connection'}
-            </Button>
             <div className="flex-1" />
             <Button variant="ghost" onClick={() => setView('mail')}>Cancel</Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? 'Linking...' : 'Link'}
             </Button>
           </div>
         </CardContent>

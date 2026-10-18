@@ -45,8 +45,8 @@ func SecurityHeaders(cfg SecurityHeadersConfig) func(http.Handler) http.Handler 
 			h := w.Header()
 			// Stop MIME sniffing turning a JSON/text body into an executable type.
 			h.Set("X-Content-Type-Options", "nosniff")
-			// Deny framing (clickjacking) — both the legacy header and the CSP
-			// directive below, for older and modern agents respectively.
+			// Deny framing (clickjacking) — both X-Frame-Options and the CSP
+			// frame-ancestors directive below, for older and modern agents.
 			h.Set("X-Frame-Options", "DENY")
 			// Never leak URLs (which can carry ids/tokens) in the Referer header.
 			h.Set("Referrer-Policy", "no-referrer")

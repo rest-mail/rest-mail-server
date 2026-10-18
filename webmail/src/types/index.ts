@@ -10,6 +10,7 @@ export interface LoginResponse {
     expires_in: number;
     user: User;
     capabilities?: string[];
+    setup_required?: ('password' | 'two_factor')[];
   };
 }
 
@@ -26,7 +27,7 @@ export interface MessageSummary {
   message_id: string;
   sender: string;
   sender_name: string;
-  recipients_to: string | null;
+  recipients_to: string[] | null;
   subject: string;
   size_bytes: number;
   has_attachments: boolean;
@@ -71,12 +72,13 @@ export interface CalendarEvent {
   dtstamp?: string;
 }
 
+// An account is a mailbox: id is the mailbox's, the {id} of every
+// /accounts/{id}/… route. is_primary marks the session's own.
 export interface Account {
   id: number;
   address: string;
   display_name: string;
   is_primary: boolean;
-  mailbox_id: number;
 }
 
 export interface Attachment {

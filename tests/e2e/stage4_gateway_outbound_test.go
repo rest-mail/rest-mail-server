@@ -10,7 +10,7 @@ import (
 
 func testStage4GatewayOutbound(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
@@ -19,11 +19,11 @@ func testStage4GatewayOutbound(t *testing.T) {
 	// the product DB would make restmail believe it owns those domains and
 	// stop relaying to them. Outbound relay is verified over the reference
 	// servers' own IMAP.
-	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
+	createMailbox(t, adminClient, "testuser@restmail.test", accountPassword, "GW Test User")
 	ensureE2EPipeline(t, adminClient)
 
 	gwClient := newAPIClient()
-	if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
+	if err := gwClient.login("testuser@restmail.test", accountPassword); err != nil {
 		skipOrFail(t, "Cannot login as testuser@restmail.test: %v", err)
 	}
 
@@ -83,45 +83,28 @@ func testStage4GatewayOutbound(t *testing.T) {
 		quotaAddr := fmt.Sprintf("quotauser-%d@restmail.test", time.Now().UnixNano())
 		var quotaBytes int64 = 1024
 
-		resp, err := adminClient.post("/api/v1/admin/mailboxes", map[string]interface{}{
-			"address":      quotaAddr,
-			"password":     "password123",
-			"display_name": "Quota Test User",
-			"quota_bytes":  quotaBytes,
-		})
+		created := createMailbox(t, adminClient, quotaAddr, accountPassword, "Quota Test User")
+		quotaUserID := created.ID
+		resp, err := adminClient.patch(fmt.Sprintf("/api/v1/admin/mailboxes/%d", quotaUserID), map[string]any{"quota_bytes": quotaBytes})
 		requireNoError(t, err)
-
-		if resp.StatusCode == http.StatusConflict {
-			resp.Body.Close()
-			t.Skip("Quota test mailbox already exists, skipping")
-		}
-		if resp.StatusCode != http.StatusCreated {
-			body := readBody(resp)
-			t.Fatalf("create quota mailbox: status %d: %s", resp.StatusCode, body)
-		}
-
-		var created struct {
+		requireStatus(t, resp, http.StatusOK)
+		var updated struct {
 			Data struct {
-				ID         uint   `json:"id"`
-				Address    string `json:"address"`
-				QuotaBytes int64  `json:"quota_bytes"`
+				QuotaBytes int64 `json:"quota_bytes"`
 			} `json:"data"`
 		}
-		if err := decodeJSON(resp, &created); err != nil {
-			t.Fatalf("decode created mailbox: %v", err)
+		if err := decodeJSON(resp, &updated); err != nil {
+			t.Fatalf("decode updated mailbox: %v", err)
+		}
+		t.Logf("Created quota test account: id=%d addr=%s quota=%d bytes",
+			quotaUserID, created.Address, updated.Data.QuotaBytes)
+
+		if updated.Data.QuotaBytes != quotaBytes {
+			t.Errorf("expected quota %d bytes, got %d", quotaBytes, updated.Data.QuotaBytes)
 		}
 
-		quotaUserID := created.Data.ID
-		t.Logf("Created quota test mailbox: id=%d addr=%s quota=%d bytes",
-			quotaUserID, created.Data.Address, created.Data.QuotaBytes)
-
-		if created.Data.QuotaBytes != quotaBytes {
-			t.Errorf("expected quota %d bytes, got %d", quotaBytes, created.Data.QuotaBytes)
-		}
-
-		// Login as the quota user and resolve its webmail-account id (the quota
-		// endpoint is keyed by account, not mailbox).
-		quotaClient, quotaAcctID := restmailInbox(t, quotaAddr, "password123")
+		// Sign in as the quota user and find its account id.
+		quotaClient, quotaAcctID := restmailInbox(t, quotaAddr, accountPassword)
 
 		// Send messages until quota fills.
 		// Each message with headers is roughly 200-400 bytes,

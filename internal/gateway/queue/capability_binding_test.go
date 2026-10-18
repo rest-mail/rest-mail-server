@@ -61,7 +61,7 @@ func TestCapabilityApplies_MXBinding(t *testing.T) {
 			want:   false,
 		},
 		{
-			name:   "legacy row with empty MXHost -> no reuse, force reprobe",
+			name:   "row with empty MXHost -> no reuse, force reprobe",
 			cap:    func() models.RESTMAILCapability { c := base; c.MXHost = ""; return c }(),
 			domain: "example.test",
 			mxHost: "mx1.example.test",

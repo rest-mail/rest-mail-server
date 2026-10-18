@@ -25,10 +25,10 @@ function PipelinesPage() {
     }
 
     if (accessToken) {
-      fetchDomains(accessToken).catch((err) => {
+      fetchDomains().catch((err) => {
         console.error('Failed to fetch domains:', err)
       })
-      fetchPipelines(accessToken, selectedDomain || undefined).catch((err) => {
+      fetchPipelines(selectedDomain || undefined).catch((err) => {
         console.error('Failed to fetch pipelines:', err)
       })
     }
@@ -38,7 +38,7 @@ function PipelinesPage() {
     if (!accessToken) return
 
     try {
-      await deletePipeline(id, accessToken)
+      await deletePipeline(id)
       setDeleteConfirm(null)
     } catch (err) {
       console.error('Failed to delete pipeline:', err)

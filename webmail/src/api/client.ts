@@ -1,5 +1,6 @@
 import type { LoginResponse, Folder, MessageSummary, MessageDetail, Account, Pagination, Attachment } from '../types';
 import { API_BASE as BASE } from './base';
+import type { paths } from './types';
 
 // BASE is the same-origin API path (default `/api/v1`); see ./base for how it is
 // resolved and why a missing/invalid VITE_API_URL no longer falls back to a
@@ -40,6 +41,8 @@ export function setOnUnauthorized(handler: () => void) {
   onUnauthorized = handler;
 }
 
+// request answers with the parsed body. A 401 is an expired session, so it
+// signs the user out.
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -70,10 +73,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
-// requestNoContent is for endpoints that reply 204 No Content (nothing to parse)
-// and whose 401 is a domain error — e.g. a wrong 2FA code — rather than an
-// expired session. It therefore deliberately does NOT invoke the global
-// unauthorized handler, which would otherwise log the user out mid-flow.
+// requestNoContent is request for endpoints that reply 204 No Content (nothing
+// to parse). A 401 is an expired session here too: a wrong 2FA code is a 403.
 async function requestNoContent(path: string, options: RequestInit = {}): Promise<void> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -85,6 +86,9 @@ async function requestNoContent(path: string, options: RequestInit = {}): Promis
   }
   const res = await fetch(path, { ...options, headers, credentials: 'include' });
   if (!res.ok) {
+    if (res.status === 401 && onUnauthorized) {
+      onUnauthorized();
+    }
     const body = await res.text();
     try {
       const parsed = JSON.parse(body);
@@ -189,40 +193,73 @@ export async function enrollTwoFactor(): Promise<{ data: TwoFactorEnrollment }> 
   return request(`${BASE}/auth/2fa/enroll`, { method: 'POST' });
 }
 
-/** Confirm enrollment by verifying a first code; flips 2FA active (204). */
+/**
+ * Confirm enrollment by verifying a first code; flips 2FA active (204). A
+ * wrong code is a 403 ApiError with code "invalid_totp"; the session is
+ * untouched.
+ */
 export async function confirmTwoFactor(code: string): Promise<void> {
+  const body: TwoFactorBody<'/api/v1/auth/2fa/confirm'> = { totp_code: code };
   await requestNoContent(`${BASE}/auth/2fa/confirm`, {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(body),
   });
 }
 
-/** Disable 2FA; requires a current TOTP code or an unused recovery code (204). */
+/**
+ * Disable 2FA; requires a current TOTP code or an unused recovery code (204).
+ * A wrong one is a 403 ApiError with code "invalid_totp" or
+ * "invalid_recovery_code"; the session is untouched.
+ */
 export async function disableTwoFactor(proof: SecondFactor): Promise<void> {
+  const body: TwoFactorBody<'/api/v1/auth/2fa/disable'> = proof;
   await requestNoContent(`${BASE}/auth/2fa/disable`, {
     method: 'POST',
-    body: JSON.stringify(proof),
+    body: JSON.stringify(body),
   });
 }
+
+// TwoFactorBody is an endpoint's request body as openapi.yaml documents it, so
+// the build fails if these fields and the API's drift apart again (#392).
+type TwoFactorBody<P extends '/api/v1/auth/2fa/confirm' | '/api/v1/auth/2fa/disable'> =
+  NonNullable<paths[P]['post']['requestBody']>['content']['application/json'];
 
 // Accounts
 export async function listAccounts(): Promise<{ data: Account[] }> {
   return request(`${BASE}/accounts`);
 }
 
-export async function testConnection(data: { address: string; password: string }): Promise<{ data: { status: string; address: string; display_name: string } }> {
-  return request(`${BASE}/accounts/test-connection`, {
+/**
+ * Link an existing account by proving one of its passwords — and its 2FA
+ * code when it has one. The session's account becomes its owner. A refused
+ * link is a 403 ApiError, never a 401, so the session is untouched: its code
+ * is "invalid_credentials" for a wrong address or password, "totp_required"
+ * when the account's code is needed, and "invalid_totp" when it is wrong.
+ */
+export async function linkAccount(data: {
+  address: string;
+  password: string;
+  display_name: string;
+  totp_code?: string;
+}): Promise<{ data: Account }> {
+  return request(`${BASE}/accounts/link`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
 
-export async function linkAccount(data: { address: string; password: string; display_name: string }): Promise<{ data: Account }> {
+/**
+ * Create an account, owned by this one. Needs mailboxes:write on its domain.
+ * Without a password it can't be signed in to, and is reached only through
+ * its owners.
+ */
+export async function createAccount(data: { address: string; display_name?: string; password?: string }): Promise<{ data: Account }> {
   return request(`${BASE}/accounts`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
 }
+
 
 // Folders
 export async function listFolders(accountId: number): Promise<{ data: Folder[] }> {
@@ -385,8 +422,9 @@ export async function getThread(accountId: number, threadId: string): Promise<{ 
 }
 
 // Account management
+/** Give up access to an account this one owns or linked (204). */
 export async function deleteAccount(accountId: number): Promise<void> {
-  await request(`${BASE}/accounts/${accountId}`, { method: 'DELETE' });
+  await requestNoContent(`${BASE}/accounts/${accountId}`, { method: 'DELETE' });
 }
 
 // Vacation

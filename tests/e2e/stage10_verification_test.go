@@ -16,16 +16,16 @@ var (
 
 func testStage10Verification(t *testing.T) {
 	client := newAPIClient()
-	requireNoError(t, client.loginAdmin("admin", "admin123!@"))
+	requireNoError(t, client.loginAdmin())
 
 	// Product-owned mailboxes only: mail1.test belongs to the mail1 reference
 	// server (its users are seeded there — alice/bob), and creating it in the
 	// product DB would make restmail stop relaying to it.
 	createDomain(t, client, "restmail.test", "restmail")
-	createMailbox(t, client, "verify-recv@restmail.test", "password123", "Verify Receiver")
-	createMailbox(t, client, "verify-out@restmail.test", "password123", "Verify Outbound")
-	createMailbox(t, client, "verify-rm1@restmail.test", "password123", "Verify RM1")
-	createMailbox(t, client, "verify-rm2@restmail.test", "password123", "Verify RM2")
+	createMailbox(t, client, "verify-recv@restmail.test", accountPassword, "Verify Receiver")
+	createMailbox(t, client, "verify-out@restmail.test", accountPassword, "Verify Outbound")
+	createMailbox(t, client, "verify-rm1@restmail.test", accountPassword, "Verify RM1")
+	createMailbox(t, client, "verify-rm2@restmail.test", accountPassword, "Verify RM2")
 	ensureE2EPipeline(t, client)
 
 	t.Run("Mail1_to_Mail3_Inbound", func(t *testing.T) {
@@ -40,12 +40,7 @@ func testStage10Verification(t *testing.T) {
 
 		// Login as receiver and check via API
 		recvClient := newAPIClient()
-		requireNoError(t, recvClient.login("verify-recv@restmail.test", "password123"))
-
-		// Link account
-		_, _ = recvClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-recv@restmail.test", "password": "password123",
-		})
+		requireNoError(t, recvClient.login("verify-recv@restmail.test", accountPassword))
 
 		// Get account ID
 		resp, err := recvClient.get("/api/v1/accounts")
@@ -66,7 +61,7 @@ func testStage10Verification(t *testing.T) {
 			}
 		}
 		if accountID == 0 {
-			t.Fatal("could not find linked account for verify-recv@restmail.test")
+			t.Fatal("could not find the account verify-recv@restmail.test")
 		}
 
 		msgID := waitForMessage(t, recvClient, accountID, "INBOX", subject, 30*time.Second)
@@ -100,12 +95,7 @@ func testStage10Verification(t *testing.T) {
 
 		// Login as restmail sender
 		sendClient := newAPIClient()
-		requireNoError(t, sendClient.login("verify-out@restmail.test", "password123"))
-
-		// Link account
-		_, _ = sendClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-out@restmail.test", "password": "password123",
-		})
+		requireNoError(t, sendClient.login("verify-out@restmail.test", accountPassword))
 
 		// Send via API
 		resp, err := sendClient.post("/api/v1/messages/send", map[string]any{
@@ -128,10 +118,7 @@ func testStage10Verification(t *testing.T) {
 
 		// Login as sender
 		sendClient := newAPIClient()
-		requireNoError(t, sendClient.login("verify-rm1@restmail.test", "password123"))
-		_, _ = sendClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-rm1@restmail.test", "password": "password123",
-		})
+		requireNoError(t, sendClient.login("verify-rm1@restmail.test", accountPassword))
 
 		// Send to another restmail user
 		resp, err := sendClient.post("/api/v1/messages/send", map[string]any{
@@ -145,10 +132,7 @@ func testStage10Verification(t *testing.T) {
 
 		// Login as receiver and verify fast delivery
 		recvClient := newAPIClient()
-		requireNoError(t, recvClient.login("verify-rm2@restmail.test", "password123"))
-		_, _ = recvClient.post("/api/v1/accounts", map[string]string{
-			"address": "verify-rm2@restmail.test", "password": "password123",
-		})
+		requireNoError(t, recvClient.login("verify-rm2@restmail.test", accountPassword))
 
 		resp2, err := recvClient.get("/api/v1/accounts")
 		requireNoError(t, err)
@@ -168,7 +152,7 @@ func testStage10Verification(t *testing.T) {
 			}
 		}
 		if accountID == 0 {
-			t.Fatal("could not find linked account for verify-rm2@restmail.test")
+			t.Fatal("could not find the account verify-rm2@restmail.test")
 		}
 
 		// RESTMAIL path should be near-instant for same-server
@@ -258,7 +242,7 @@ func testStage10Verification(t *testing.T) {
 		}
 
 		// LOGIN
-		fmt.Fprintf(conn, "A001 LOGIN verify-recv@restmail.test password123\r\n")
+		fmt.Fprintf(conn, "A001 LOGIN verify-recv@restmail.test %s\r\n", accountPassword)
 		if loginResp := readUntilTagRaw(t, reader, "A001"); !strings.Contains(loginResp, "A001 OK") {
 			t.Skipf("IMAP LOGIN failed (may need setup): %s", loginResp)
 		}

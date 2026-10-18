@@ -15,7 +15,7 @@ import (
 // straddle the auth check, which runs before any database access.
 func TestEvents_CookieAuth(t *testing.T) {
 	jwt := auth.NewJWTService("sse-secret", 15*time.Minute, 7*24*time.Hour)
-	h := NewEventHandler(nil, NewSSEBroker(), jwt)
+	h := NewEventHandler(nil, NewSSEBroker(), jwt, func(uint, int) (bool, error) { return true, nil })
 
 	// No credentials at all -> rejected at auth (401), before any DB access.
 	t.Run("no credentials is 401", func(t *testing.T) {
@@ -32,7 +32,7 @@ func TestEvents_CookieAuth(t *testing.T) {
 	// context is attached), yielding 400 rather than 401. Reaching 400 proves the
 	// cookie was accepted as credentials.
 	t.Run("valid access cookie passes auth", func(t *testing.T) {
-		pair, err := jwt.GenerateTokenPair(42, "user@example.test", 7)
+		pair, err := jwt.GenerateSession(42, "user@example.test", 0, []string{auth.AMRPassword}, false)
 		if err != nil {
 			t.Fatal(err)
 		}

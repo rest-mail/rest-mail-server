@@ -2,46 +2,36 @@ package filters
 
 import (
 	"context"
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/pem"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/rest-mail/go-dkim"
-	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
-	"gorm.io/gorm"
 )
 
-// dkimVerifyFilter verifies DKIM signatures on inbound messages.
-// This adds Authentication-Results headers to the email.
+// dkimVerifyFilter verifies DKIM signatures on inbound messages. It records one
+// AuthResult per signature, with the signature's d=, for dmarc_check and the
+// other filters that act on it, and writes the matching Authentication-Results
+// entry for downstream scripts.
 type dkimVerifyFilter struct{}
 
 func init() {
 	pipeline.DefaultRegistry.Register("dkim_verify", NewDKIMVerify)
-	// dkim_sign is registered in routes.go with DB access
 }
 
 func NewDKIMVerify(_ []byte) (pipeline.Filter, error) {
 	return &dkimVerifyFilter{}, nil
 }
 
-func (f *dkimVerifyFilter) Name() string             { return "dkim_verify" }
+func (f *dkimVerifyFilter) Name() string              { return "dkim_verify" }
 func (f *dkimVerifyFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
 func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	modified := *email
-	// Clone the header maps before appending: `modified := *email` shares them
-	// with the caller's original, so mutating them in place would leak this
+	// Clone the header map before appending: `modified := *email` shares it
+	// with the caller's original, so mutating it in place would leak this
 	// filter's Authentication-Results back onto the input (issue #201).
 	modified.Headers.Raw = cloneRawHeaders(email.Headers.Raw)
-	modified.Headers.Extra = cloneStringMap(email.Headers.Extra)
 
 	// DKIM must be verified against the exact signed bytes. The raw message is
 	// threaded through the pipeline as metadata by the inbound handlers; a
@@ -54,33 +44,28 @@ func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 
 	result := dkim.ResultNone
 	detail := "no DKIM signature present"
-	authResults := "restmail; dkim=none"
+	verdicts := []pipeline.AuthResult{{Method: pipeline.AuthDKIM, Result: dkim.ResultNone}}
 
 	if raw != "" {
 		results := dkim.Verify(ctx, []byte(raw), nil)
 		if len(results) > 0 {
-			result, detail, authResults = summarizeDKIM(results)
+			result, detail, verdicts = summarizeDKIM(results)
 		}
 	} else if hasRawHeader(email.Headers.Raw, "Dkim-Signature") {
 		// Signature present but we never received the raw source to verify it.
 		result = dkim.ResultNeutral
 		detail = "DKIM signature present but raw message unavailable for verification"
-		authResults = "restmail; dkim=neutral"
+		verdicts = []pipeline.AuthResult{{Method: pipeline.AuthDKIM, Result: dkim.ResultNeutral}}
 	}
 
-	// Add Authentication-Results header. Append (not overwrite) to Extra so an
-	// earlier filter's entry — spf_check runs before dkim_verify — is preserved
-	// rather than clobbered (issue #201); Raw already appends. Both maps were
-	// cloned above, so this never touches the caller's original.
-	if existing := modified.Headers.Extra["Authentication-Results"]; existing != "" {
-		modified.Headers.Extra["Authentication-Results"] = existing + "; " + authResults
-	} else {
-		modified.Headers.Extra["Authentication-Results"] = authResults
-	}
+	pipeline.AuthResultsFromContext(ctx).Add(verdicts...)
 
+	// The same verdicts as an Authentication-Results entry, for downstream
+	// scripts. The map was cloned above, so this never touches the caller's
+	// original.
 	modified.Headers.Raw["Authentication-Results"] = append(
 		modified.Headers.Raw["Authentication-Results"],
-		authResults,
+		pipeline.AuthResultsValue(verdicts),
 	)
 
 	return &pipeline.FilterResult{
@@ -96,30 +81,27 @@ func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 }
 
 // summarizeDKIM reduces one-or-more signature verdicts to an overall result,
-// a log detail, and an RFC 8601 Authentication-Results value (one dkim= entry
-// per signature). The overall result is the strongest: pass > fail > temperror
-// > permerror > neutral > none.
-func summarizeDKIM(results []dkim.VerifyResult) (overall, detail, authResults string) {
+// a log detail, and one AuthResult per signature carrying its d= domain. The
+// overall result is the strongest: pass > fail > temperror > permerror >
+// neutral > none.
+func summarizeDKIM(results []dkim.VerifyResult) (overall, detail string, verdicts []pipeline.AuthResult) {
 	rank := map[string]int{
 		dkim.ResultNone: 0, dkim.ResultNeutral: 1, dkim.ResultPermError: 2,
 		dkim.ResultTempError: 3, dkim.ResultFail: 4, dkim.ResultPass: 5,
 	}
 	overall = dkim.ResultNone
-	var entries, details []string
+	var details []string
 	for _, r := range results {
-		entry := "dkim=" + r.Result
-		if r.Domain != "" {
-			entry += " header.d=" + r.Domain
-		}
-		entries = append(entries, entry)
+		verdicts = append(verdicts, pipeline.AuthResult{
+			Method: pipeline.AuthDKIM, Result: r.Result, Property: pipeline.PropHeaderD, Domain: r.Domain,
+		})
 		details = append(details, fmt.Sprintf("d=%s s=%s %s: %s", r.Domain, r.Selector, r.Result, r.Reason))
 		if rank[r.Result] > rank[overall] {
 			overall = r.Result
 		}
 	}
-	authResults = "restmail; " + strings.Join(entries, "; ")
 	detail = strings.Join(details, " | ")
-	return overall, detail, authResults
+	return overall, detail, verdicts
 }
 
 // hasRawHeader reports whether a canonical (Header-Case) header name has a
@@ -130,222 +112,4 @@ func hasRawHeader(raw map[string][]string, name string) bool {
 	}
 	vals, ok := raw[name]
 	return ok && len(vals) > 0
-}
-
-// dkimSignFilter signs outbound messages with the domain's DKIM key.
-type dkimSignFilter struct {
-	db        *gorm.DB
-	masterKey string
-}
-
-// NewDKIMSign returns a FilterFactory that creates dkimSignFilter instances
-// backed by the given database connection (for domain key lookups).
-func NewDKIMSign(db *gorm.DB, masterKey string) pipeline.FilterFactory {
-	return func(config []byte) (pipeline.Filter, error) {
-		return &dkimSignFilter{db: db, masterKey: masterKey}, nil
-	}
-}
-
-func (f *dkimSignFilter) Name() string             { return "dkim_sign" }
-func (f *dkimSignFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
-
-func (f *dkimSignFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
-	modified := *email
-
-	// Extract sender domain
-	senderDomain := ""
-	if from := email.Envelope.MailFrom; from != "" {
-		if idx := strings.LastIndex(from, "@"); idx >= 0 {
-			senderDomain = from[idx+1:]
-		}
-	}
-
-	if senderDomain == "" {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeTransform,
-			Action: pipeline.ActionContinue,
-			Message: &modified,
-			Log: pipeline.FilterLog{
-				Filter: "dkim_sign",
-				Result: "skipped",
-				Detail: "no sender domain",
-			},
-		}, nil
-	}
-
-	// Look up domain DKIM config
-	var domain models.Domain
-	if err := f.db.Where("name = ?", senderDomain).First(&domain).Error; err != nil || domain.DKIMPrivateKey == "" || domain.DKIMSelector == "" {
-		return &pipeline.FilterResult{
-			Type:   pipeline.FilterTypeTransform,
-			Action: pipeline.ActionContinue,
-			Message: &modified,
-			Log: pipeline.FilterLog{
-				Filter: "dkim_sign",
-				Result: "skipped",
-				Detail: "no DKIM key configured for domain " + senderDomain,
-			},
-		}, nil
-	}
-
-	// OSI-8: load the domain's DKIM private key, decrypting the at-rest ciphertext.
-	// This FAILS CLOSED — an encrypted key that cannot be decrypted (wrong/missing
-	// MASTER_KEY or corrupt ciphertext) returns an error, so the pipeline engine
-	// applies its fail-closed policy (defer/temp-fail by default, OSI-18) instead
-	// of silently signing with the raw ciphertext or sending the message unsigned.
-	// A legacy plaintext key is returned as-is (the startup migration upgrades it).
-	privateKeyPEM, err := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, f.masterKey)
-	if err != nil {
-		return nil, fmt.Errorf("dkim_sign: %w", err)
-	}
-
-	// Parse private key
-	block, _ := pem.Decode([]byte(privateKeyPEM))
-	if block == nil {
-		return skipResult("failed to decode DKIM private key PEM"), nil
-	}
-
-	privKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		// Try PKCS8
-		key, err2 := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if err2 != nil {
-			return skipResult("failed to parse DKIM private key: " + err.Error()), nil
-		}
-		var ok bool
-		privKey, ok = key.(*rsa.PrivateKey)
-		if !ok {
-			return skipResult("DKIM key is not RSA"), nil
-		}
-	}
-
-	// Build canonical body (relaxed)
-	bodyContent := email.Body.Content
-	if bodyContent == "" && len(email.Body.Parts) > 0 {
-		bodyContent = email.Body.Parts[0].Content
-	}
-	canonBody := relaxedBody(bodyContent)
-	bodyHash := sha256.Sum256([]byte(canonBody))
-	bh := base64.StdEncoding.EncodeToString(bodyHash[:])
-
-	// Build signed headers
-	signedHeaders := "from:to:subject:date:message-id"
-	headerValues := buildCanonicalHeaders(email, signedHeaders)
-
-	// Build DKIM-Signature without b= value
-	now := time.Now()
-	dkimHeader := fmt.Sprintf(
-		"v=1; a=rsa-sha256; c=relaxed/relaxed; d=%s; s=%s; t=%d; h=%s; bh=%s; b=",
-		senderDomain, domain.DKIMSelector, now.Unix(), signedHeaders, bh,
-	)
-
-	// Add DKIM-Signature to the headers to sign
-	signData := headerValues + "dkim-signature:" + relaxedHeaderValue(dkimHeader)
-
-	// Sign
-	hashed := sha256.Sum256([]byte(signData))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, hashed[:])
-	if err != nil {
-		return skipResult("DKIM signing failed: " + err.Error()), nil
-	}
-
-	dkimSig := "v=1; a=rsa-sha256; c=relaxed/relaxed; d=" + senderDomain +
-		"; s=" + domain.DKIMSelector +
-		"; t=" + fmt.Sprintf("%d", now.Unix()) +
-		"; h=" + signedHeaders +
-		"; bh=" + bh +
-		"; b=" + base64.StdEncoding.EncodeToString(signature)
-
-	if modified.Headers.Extra == nil {
-		modified.Headers.Extra = make(map[string]string)
-	}
-	modified.Headers.Extra["DKIM-Signature"] = dkimSig
-
-	return &pipeline.FilterResult{
-		Type:    pipeline.FilterTypeTransform,
-		Action:  pipeline.ActionContinue,
-		Message: &modified,
-		Log: pipeline.FilterLog{
-			Filter: "dkim_sign",
-			Result: "signed",
-			Detail: fmt.Sprintf("d=%s s=%s", senderDomain, domain.DKIMSelector),
-		},
-	}, nil
-}
-
-func skipResult(detail string) *pipeline.FilterResult {
-	return &pipeline.FilterResult{
-		Type:   pipeline.FilterTypeTransform,
-		Action: pipeline.ActionContinue,
-		Log: pipeline.FilterLog{
-			Filter: "dkim_sign",
-			Result: "skipped",
-			Detail: detail,
-		},
-	}
-}
-
-// relaxedBody implements DKIM relaxed body canonicalization.
-func relaxedBody(body string) string {
-	lines := strings.Split(body, "\n")
-	var result []string
-	for _, line := range lines {
-		line = strings.TrimRight(line, "\r")
-		// Reduce sequences of WSP to single SP
-		line = strings.Join(strings.Fields(line), " ")
-		line = strings.TrimRight(line, " ")
-		result = append(result, line)
-	}
-	// Remove trailing empty lines
-	for len(result) > 0 && result[len(result)-1] == "" {
-		result = result[:len(result)-1]
-	}
-	canonical := strings.Join(result, "\r\n")
-	if canonical != "" {
-		canonical += "\r\n"
-	}
-	return canonical
-}
-
-// relaxedHeaderValue implements relaxed header value canonicalization.
-func relaxedHeaderValue(value string) string {
-	// Unfold (remove CRLF followed by WSP)
-	value = strings.ReplaceAll(value, "\r\n ", " ")
-	value = strings.ReplaceAll(value, "\r\n\t", " ")
-	// Reduce WSP sequences to single SP
-	value = strings.Join(strings.Fields(value), " ")
-	return strings.TrimSpace(value)
-}
-
-// buildCanonicalHeaders builds the canonicalized header string for DKIM signing.
-func buildCanonicalHeaders(email *pipeline.EmailJSON, headerList string) string {
-	// Map header names to values from the email
-	headerMap := map[string]string{}
-	if len(email.Headers.From) > 0 {
-		from := email.Headers.From[0]
-		if from.Name != "" {
-			headerMap["from"] = fmt.Sprintf("%s <%s>", from.Name, from.Address)
-		} else {
-			headerMap["from"] = from.Address
-		}
-	}
-	if len(email.Headers.To) > 0 {
-		var addrs []string
-		for _, a := range email.Headers.To {
-			addrs = append(addrs, a.Address)
-		}
-		headerMap["to"] = strings.Join(addrs, ", ")
-	}
-	headerMap["subject"] = email.Headers.Subject
-	headerMap["date"] = email.Headers.Date
-	headerMap["message-id"] = email.Headers.MessageID
-
-	var result string
-	for _, name := range strings.Split(headerList, ":") {
-		name = strings.TrimSpace(name)
-		if val, ok := headerMap[name]; ok {
-			result += strings.ToLower(name) + ":" + relaxedHeaderValue(val) + "\r\n"
-		}
-	}
-	return result
 }

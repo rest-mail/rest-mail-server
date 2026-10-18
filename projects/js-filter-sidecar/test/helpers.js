@@ -3,12 +3,16 @@
 // Test helpers: spawn the sidecar as a child process (so per-test env vars such
 // as body/fetch caps and the allowed-hosts list take effect at import time),
 // wait for it to report its listening port, and make HTTP requests against it.
+// Requests carry the sidecar's token unless a test says otherwise.
 
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
 
 const SERVER = path.join(__dirname, '..', 'server.js');
+
+// TOKEN is the JS_FILTER_TOKEN every test server is started with.
+const TOKEN = 'test-token-0123456789abcdef';
 
 // startServer launches server.js on an OS-assigned port (PORT=0) with the given
 // extra environment, resolving with the actual bound port once the server logs
@@ -17,7 +21,7 @@ const SERVER = path.join(__dirname, '..', 'server.js');
 function startServer(env = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [SERVER], {
-      env: { ...process.env, PORT: '0', ...env },
+      env: { ...process.env, PORT: '0', JS_FILTER_TOKEN: TOKEN, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -53,12 +57,16 @@ function startServer(env = {}) {
 
 // request makes an HTTP request and resolves with { status, body, json }.
 // A client-side timeout rejects with an Error tagged code 'CLIENT_TIMEOUT' so a
-// hung server is observable rather than hanging the test forever.
+// hung server is observable rather than hanging the test forever. It sends
+// `token` (TOKEN by default; null for none) as a bearer token.
 function request(port, opts = {}) {
-  const { method = 'POST', pathName = '/execute', body, timeoutMs = 5000, headers = {} } = opts;
+  const { method = 'POST', pathName = '/execute', body, timeoutMs = 5000, headers = {}, token = TOKEN } = opts;
   return new Promise((resolve, reject) => {
     const data = body == null ? null : typeof body === 'string' ? body : JSON.stringify(body);
     const reqHeaders = { ...headers };
+    if (token != null) {
+      reqHeaders.Authorization = `Bearer ${token}`;
+    }
     if (data != null && reqHeaders['Content-Type'] === undefined && !opts.chunked) {
       reqHeaders['Content-Type'] = 'application/json';
     }
@@ -100,4 +108,4 @@ function request(port, opts = {}) {
   });
 }
 
-module.exports = { startServer, request };
+module.exports = { startServer, request, TOKEN, SERVER };

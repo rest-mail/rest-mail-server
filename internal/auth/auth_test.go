@@ -14,7 +14,6 @@ const (
 	testSecret    = "test-secret-key-for-unit-tests"
 	testEmail     = "alice@mail1.test"
 	testMailboxID = uint(42)
-	testAccountID = uint(7)
 )
 
 func newTestService() *JWTService {
@@ -26,9 +25,9 @@ func newTestService() *JWTService {
 func TestGenerateTokenPair(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+		t.Fatalf("GenerateSession() unexpected error: %v", err)
 	}
 
 	if pair.AccessToken == "" {
@@ -49,19 +48,16 @@ func TestGenerateTokenPair(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ValidateToken(access) unexpected error: %v", err)
 	}
-	if claims.Email != testEmail {
-		t.Errorf("Email = %q; want %q", claims.Email, testEmail)
+	if claims.Address != testEmail {
+		t.Errorf("Address = %q; want %q", claims.Address, testEmail)
 	}
-	if claims.MailboxID != testMailboxID {
-		t.Errorf("MailboxID = %d; want %d", claims.MailboxID, testMailboxID)
-	}
-	if claims.WebmailAccountID != testAccountID {
-		t.Errorf("WebmailAccountID = %d; want %d", claims.WebmailAccountID, testAccountID)
+	if claims.AccountID != testMailboxID {
+		t.Errorf("AccountID = %d; want %d", claims.AccountID, testMailboxID)
 	}
 	if claims.Issuer != "restmail" {
 		t.Errorf("Issuer = %q; want %q", claims.Issuer, "restmail")
 	}
-	wantSubject := fmt.Sprintf("mailbox:%d", testMailboxID)
+	wantSubject := fmt.Sprintf("account:%d", testMailboxID)
 	if claims.Subject != wantSubject {
 		t.Errorf("Subject = %q; want %q", claims.Subject, wantSubject)
 	}
@@ -82,9 +78,9 @@ func TestGenerateTokenPair(t *testing.T) {
 func TestValidateToken(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+		t.Fatalf("GenerateSession() unexpected error: %v", err)
 	}
 
 	// Both tokens should be valid.
@@ -100,14 +96,11 @@ func TestValidateToken(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ValidateToken() unexpected error: %v", err)
 			}
-			if claims.Email != testEmail {
-				t.Errorf("Email = %q; want %q", claims.Email, testEmail)
+			if claims.Address != testEmail {
+				t.Errorf("Address = %q; want %q", claims.Address, testEmail)
 			}
-			if claims.MailboxID != testMailboxID {
-				t.Errorf("MailboxID = %d; want %d", claims.MailboxID, testMailboxID)
-			}
-			if claims.WebmailAccountID != testAccountID {
-				t.Errorf("WebmailAccountID = %d; want %d", claims.WebmailAccountID, testAccountID)
+			if claims.AccountID != testMailboxID {
+				t.Errorf("AccountID = %d; want %d", claims.AccountID, testMailboxID)
 			}
 		})
 	}
@@ -115,9 +108,9 @@ func TestValidateToken(t *testing.T) {
 
 func TestValidateAccessToken(t *testing.T) {
 	svc := newTestService()
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+		t.Fatalf("GenerateSession() unexpected error: %v", err)
 	}
 
 	// Access token should pass ValidateAccessToken.
@@ -138,9 +131,9 @@ func TestValidateAccessToken(t *testing.T) {
 
 func TestValidateRefreshToken(t *testing.T) {
 	svc := newTestService()
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+		t.Fatalf("GenerateSession() unexpected error: %v", err)
 	}
 
 	// Refresh token should pass ValidateRefreshToken.
@@ -163,9 +156,9 @@ func TestValidateToken_Expired(t *testing.T) {
 	// Use negative durations so the token is already expired at creation time.
 	svc := NewJWTService(testSecret, -1*time.Second, -1*time.Second)
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+		t.Fatalf("GenerateSession() unexpected error: %v", err)
 	}
 
 	_, err = svc.ValidateToken(pair.AccessToken)
@@ -194,13 +187,13 @@ func TestValidateToken_IssuerValidated(t *testing.T) {
 	claimsWithIssuer := func(iss string) Claims {
 		return Claims{
 			RegisteredClaims: jwt.RegisteredClaims{
-				Subject:   fmt.Sprintf("mailbox:%d", testMailboxID),
+				Subject:   fmt.Sprintf("account:%d", testMailboxID),
 				Issuer:    iss,
 				IssuedAt:  jwt.NewNumericDate(now),
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 			},
-			MailboxID: testMailboxID,
-			UserType:  "mailbox",
+			AccountID: testMailboxID,
+			SessionID: "0123456789abcdef0123456789abcdef",
 			TokenType: "access",
 		}
 	}
@@ -226,9 +219,9 @@ func TestValidateToken_IssuerValidated(t *testing.T) {
 func TestMintedTokensCarryPinnedIssuer(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair: %v", err)
+		t.Fatalf("GenerateSession: %v", err)
 	}
 	for _, tok := range []string{pair.AccessToken, pair.RefreshToken} {
 		claims, err := svc.ValidateToken(tok)
@@ -240,9 +233,9 @@ func TestMintedTokensCarryPinnedIssuer(t *testing.T) {
 		}
 	}
 
-	admin, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	admin, err := svc.GenerateSession(1, "admin@mail1.test", 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateAdminTokenPair: %v", err)
+		t.Fatalf("GenerateSession: %v", err)
 	}
 	for _, tok := range []string{admin.AccessToken, admin.RefreshToken} {
 		claims, err := svc.ValidateToken(tok)
@@ -258,9 +251,9 @@ func TestMintedTokensCarryPinnedIssuer(t *testing.T) {
 func TestValidateToken_WrongSecret(t *testing.T) {
 	svc := newTestService()
 
-	pair, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	pair, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair() unexpected error: %v", err)
+		t.Fatalf("GenerateSession() unexpected error: %v", err)
 	}
 
 	wrongSvc := NewJWTService("wrong-secret", 1*time.Second, 10*time.Second)
@@ -334,13 +327,13 @@ func TestCheckPassword_Wrong(t *testing.T) {
 func TestRefreshToken_HasUniqueRoundTrippingJTI(t *testing.T) {
 	svc := newTestService()
 
-	p1, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	p1, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair: %v", err)
+		t.Fatalf("GenerateSession: %v", err)
 	}
-	p2, err := svc.GenerateTokenPair(testMailboxID, testEmail, testAccountID)
+	p2, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateTokenPair: %v", err)
+		t.Fatalf("GenerateSession: %v", err)
 	}
 
 	if p1.RefreshJTI == "" {
@@ -364,12 +357,37 @@ func TestRefreshToken_HasUniqueRoundTrippingJTI(t *testing.T) {
 	}
 
 	// Admin pairs carry a jti too.
-	ap, err := svc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	ap, err := svc.GenerateSession(1, "admin@mail1.test", 0, []string{AMRPassword}, false)
 	if err != nil {
-		t.Fatalf("GenerateAdminTokenPair: %v", err)
+		t.Fatalf("GenerateSession: %v", err)
 	}
 	if ap.RefreshJTI == "" || ap.RefreshExpiresAt.IsZero() {
 		t.Errorf("admin refresh pair missing jti/expiry: jti=%q expiry=%v", ap.RefreshJTI, ap.RefreshExpiresAt)
+	}
+}
+
+// Access tokens carry a jti of their own, which the audit log records as the
+// session: unique per token, and never the refresh token's.
+func TestAccessToken_HasItsOwnJTI(t *testing.T) {
+	svc := newTestService()
+	mailbox, err := svc.GenerateSession(testMailboxID, testEmail, 0, []string{AMRPassword}, false)
+	if err != nil {
+		t.Fatalf("GenerateSession: %v", err)
+	}
+	admin, err := svc.GenerateSession(1, "admin@mail1.test", 0, []string{AMRPassword}, false)
+	if err != nil {
+		t.Fatalf("GenerateSession: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, pair := range []*TokenPair{mailbox, admin} {
+		claims, err := svc.ValidateAccessToken(pair.AccessToken)
+		if err != nil {
+			t.Fatalf("ValidateAccessToken: %v", err)
+		}
+		if claims.ID == "" || claims.ID == pair.RefreshJTI || seen[claims.ID] {
+			t.Errorf("access jti %q: want one of its own (refresh jti %q)", claims.ID, pair.RefreshJTI)
+		}
+		seen[claims.ID] = true
 	}
 }
 
@@ -401,5 +419,134 @@ func TestCheckPassword_NoPrefixHash(t *testing.T) {
 
 	if err := CheckPassword(password, rawHash); err != nil {
 		t.Errorf("CheckPassword(raw bcrypt) unexpected error: %v", err)
+	}
+}
+
+// TestGenerateSession_OneKindOfToken: every account gets the same token,
+// naming the account, with how it signed in and whether it is in setup.
+func TestGenerateSession_OneKindOfToken(t *testing.T) {
+	svc := NewJWTService(testSecret, time.Minute, time.Hour)
+	pair, err := svc.GenerateSession(7, "admin@mail1.test", 3, []string{AMRPassword, AMROTP}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range []string{pair.AccessToken, pair.RefreshToken} {
+		claims, err := svc.ValidateToken(tok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if claims.AccountID != 7 || claims.Address != "admin@mail1.test" || claims.Subject != "account:7" {
+			t.Errorf("claims = %+v", claims)
+		}
+		if !claims.HasAMR(AMROTP) || !claims.TwoFactor || !claims.SetupPending || claims.CredentialEpoch != 3 {
+			t.Errorf("amr %v, mfa %v, setup %v, epoch %d", claims.AMR, claims.TwoFactor, claims.SetupPending, claims.CredentialEpoch)
+		}
+		if claims.MailboxOnly() || claims.CredentialID != 0 {
+			t.Error("a session is not a credential sent with HTTP Basic")
+		}
+	}
+	plain, err := svc.GenerateSession(7, "admin@mail1.test", 0, []string{AMRPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claims, err := svc.ValidateAccessToken(plain.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claims.TwoFactor || claims.HasAMR(AMROTP) {
+		t.Error("a password-only sign-in carries no second factor")
+	}
+}
+
+// TestSessionIDIsMintedAtSignInAndCarriedByRefresh: both tokens of a sign-in
+// carry one new sid; a second sign-in gets another; tokens minted to continue
+// a session keep its sid under a new jti, and there is no continuing a session
+// without a sid.
+func TestSessionIDIsMintedAtSignInAndCarriedByRefresh(t *testing.T) {
+	svc := NewJWTService("sid-secret", 15*time.Minute, 7*24*time.Hour)
+	sids := func(p *TokenPair) (access, refresh *Claims) {
+		t.Helper()
+		a, err := svc.ValidateAccessToken(p.AccessToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := svc.ValidateRefreshToken(p.RefreshToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a, r
+	}
+
+	signIn, err := svc.GenerateSession(7, "u@example.com", 3, []string{AMRPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	access, refresh := sids(signIn)
+	if len(access.SessionID) != 32 || access.SessionID != refresh.SessionID || signIn.SessionID != access.SessionID {
+		t.Fatalf("sign-in sids: access %q, refresh %q, pair %q; want one 128-bit hex sid in all three",
+			access.SessionID, refresh.SessionID, signIn.SessionID)
+	}
+
+	again, err := svc.GenerateSession(7, "u@example.com", 3, []string{AMRPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.SessionID == signIn.SessionID {
+		t.Fatal("a second sign-in reused the first one's sid")
+	}
+
+	refreshed, err := svc.GenerateSession(7, "u@example.com", 3, []string{AMRPassword}, false, ContinueSession(refresh.SessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	access2, refresh2 := sids(refreshed)
+	if access2.SessionID != signIn.SessionID || refresh2.SessionID != signIn.SessionID {
+		t.Fatalf("refreshed sids %q/%q, want the session's %q", access2.SessionID, refresh2.SessionID, signIn.SessionID)
+	}
+	if refresh2.ID == refresh.ID {
+		t.Fatal("a refresh kept the refresh token's jti; it must rotate")
+	}
+
+	if pair, err := svc.GenerateSession(7, "u@example.com", 3, []string{AMRPassword}, false, ContinueSession("")); err == nil {
+		t.Fatalf("continuing a session without a sid minted tokens with sid %q; want an error", pair.SessionID)
+	}
+
+	admin, err := svc.GenerateSession(1, "admin@example.com", 0, []string{AMRPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminAccess, _ := sids(admin)
+	setup, err := svc.GenerateSession(1, "admin@example.com", 0, nil, true, ContinueSession(adminAccess.SessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adminAccess.SessionID == "" || setup.SessionID != adminAccess.SessionID {
+		t.Fatalf("admin sids %q then %q; want one sid carried", adminAccess.SessionID, setup.SessionID)
+	}
+}
+
+// TestTokenWithoutSessionIDIsInvalid: every session has a sid, so an access or
+// refresh token without one, however well signed, is refused.
+func TestTokenWithoutSessionIDIsInvalid(t *testing.T) {
+	svc := newTestService()
+	now := time.Now()
+	for _, tokenType := range []string{"access", "refresh"} {
+		raw := signRawClaims(t, Claims{
+			RegisteredClaims: jwt.RegisteredClaims{
+				ID:        "no-sid-" + tokenType,
+				Subject:   fmt.Sprintf("account:%d", testMailboxID),
+				Issuer:    TokenIssuer,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+			},
+			AccountID: testMailboxID,
+			TokenType: tokenType,
+		})
+		if _, err := svc.ValidateAccessToken(raw); !errors.Is(err, ErrInvalidToken) {
+			t.Errorf("%s token without a sid: ValidateAccessToken err = %v; want %v", tokenType, err, ErrInvalidToken)
+		}
+		if _, err := svc.ValidateRefreshToken(raw); !errors.Is(err, ErrInvalidToken) {
+			t.Errorf("%s token without a sid: ValidateRefreshToken err = %v; want %v", tokenType, err, ErrInvalidToken)
+		}
 	}
 }

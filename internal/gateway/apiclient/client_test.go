@@ -80,7 +80,7 @@ func TestLogin_Success(t *testing.T) {
 	})
 
 	c := New(srv.URL)
-	resp, err := c.Login("user@test.com", "secret")
+	resp, err := c.Login("user@test.com", "secret", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestLogin_Unauthorized(t *testing.T) {
 	})
 
 	c := New(srv.URL)
-	_, err := c.Login("user@test.com", "wrong")
+	_, err := c.Login("user@test.com", "wrong", "")
 	if err == nil {
 		t.Fatal("expected error for 401 response")
 	}
@@ -788,7 +788,7 @@ func TestListMailboxes_Success(t *testing.T) {
 
 func TestCreateMailbox_Success(t *testing.T) {
 	srv, mux := newTestServer(t)
-	mux.HandleFunc("/api/v1/admin/mailboxes", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/accounts", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
@@ -803,15 +803,14 @@ func TestCreateMailbox_Success(t *testing.T) {
 		if body["password"] != "pass123" {
 			t.Errorf("expected password 'pass123', got %v", body["password"])
 		}
-		// domain_id comes as float64 from JSON
-		if body["domain_id"] != float64(1) {
-			t.Errorf("expected domain_id 1, got %v", body["domain_id"])
+		if _, ok := body["domain_id"]; ok {
+			t.Error("an account is made by its address alone")
 		}
 		w.WriteHeader(http.StatusCreated)
 	})
 
 	c := New(srv.URL)
-	err := c.CreateMailbox("tok", "new@mail1.test", "New User", "pass123", 1)
+	err := c.CreateMailbox("tok", "new@mail1.test", "New User", "pass123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1115,7 +1114,7 @@ func TestContentType_SetOnPost(t *testing.T) {
 	})
 
 	c := New(srv.URL)
-	_, err := c.Login("a@b.com", "pass")
+	_, err := c.Login("a@b.com", "pass", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1177,7 +1176,7 @@ func TestMessageSummary_WireSize_PrefersRawSize(t *testing.T) {
 }
 
 // TestMessageSummary_WireSize_FallsBackToSizeBytes proves messages without a
-// stored raw form (raw_size 0) keep reporting the legacy size_bytes value.
+// stored raw form (raw_size 0) report the size_bytes approximation.
 func TestMessageSummary_WireSize_FallsBackToSizeBytes(t *testing.T) {
 	m := MessageSummary{SizeBytes: 120, RawSize: 0}
 	if got := m.WireSize(); got != 120 {
@@ -1218,5 +1217,45 @@ func TestListMessages_DecodesRawSize(t *testing.T) {
 	}
 	if resp.Data[1].RawSize != 0 || resp.Data[1].SizeBytes != 33 {
 		t.Errorf("message 2: raw_size=%d size_bytes=%d, want 0/33 (absent field decodes to 0)", resp.Data[1].RawSize, resp.Data[1].SizeBytes)
+	}
+}
+
+// SignIn is the one way the gateways sign a mail client in: HTTP Basic to
+// protocol-sign-in, whatever the password is, and the same Basic credentials
+// on every call after.
+func TestSignIn_OnePathForEveryPassword(t *testing.T) {
+	srv, mux := newTestServer(t)
+	var seen []string
+	mux.HandleFunc("/api/v1/auth/protocol-sign-in", func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "chris@example.test" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		seen = append(seen, pass)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": map[string]interface{}{
+			"user":            map[string]interface{}{"id": 7, "email": user},
+			"credential_id":   3,
+			"credential_kind": "password",
+		}})
+	})
+	mux.HandleFunc("/api/v1/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("a gateway signed in interactively")
+	})
+
+	c := New(srv.URL)
+	for _, password := range []string{"the account's own password", "rm_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"} {
+		resp, err := c.SignIn("chris@example.test", password, "imap")
+		if err != nil {
+			t.Fatalf("SignIn(%q): %v", password, err)
+		}
+		if resp.Data.User.ID != 7 || resp.Data.CredentialID != 3 || resp.Data.CredentialKind != "password" ||
+			!strings.HasPrefix(resp.Data.AccessToken, "Basic ") {
+			t.Errorf("SignIn(%q) = %+v", password, resp.Data)
+		}
+	}
+	if len(seen) != 2 {
+		t.Errorf("protocol sign-ins seen: %v", seen)
 	}
 }

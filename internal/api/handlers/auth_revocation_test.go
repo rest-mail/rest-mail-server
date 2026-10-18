@@ -3,19 +3,22 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -34,29 +37,11 @@ func revUniq() string {
 // convention.
 func openRevocationTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("session-revocation DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(
-		&models.Domain{},
-		&models.Mailbox{},
-		&models.WebmailAccount{},
-		&models.QuotaUsage{},
-		&models.RefreshToken{},
-		&models.AdminUser{},
-		&models.Role{},
-		&models.Capability{},
-		&models.UserRole{},
-		&models.RoleCapability{},
-	); err != nil {
+	if err := gdb.AutoMigrate(accountModels...); err != nil {
 		t.Skipf("session-revocation DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
@@ -72,7 +57,7 @@ func seedMailbox(t *testing.T, db *gorm.DB, label string) models.Mailbox {
 	if err := db.Create(&domain).Error; err != nil {
 		t.Fatalf("create domain: %v", err)
 	}
-	hash, err := auth.HashPassword("password123")
+	hash, err := hashPassword("password123")
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
@@ -80,36 +65,33 @@ func seedMailbox(t *testing.T, db *gorm.DB, label string) models.Mailbox {
 		DomainID:    domain.ID,
 		LocalPart:   label,
 		Address:     label + "-" + tok + "@" + domain.Name,
-		Password:    hash,
 		DisplayName: "User",
 		Active:      true,
 	}
 	if err := db.Create(&mb).Error; err != nil {
 		t.Fatalf("create mailbox: %v", err)
 	}
+	if _, err := repositories.NewCredentialRepository(db).SetPassword(mb.ID, hash, nil, time.Now()); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
 	return mb
 }
 
-// seedAdminWithCaps creates an active admin user holding a single role that
-// grants the given capability names, and returns the admin. The label only aids
-// debugging; the username and role name are uniquified.
-func seedAdminWithCaps(t *testing.T, db *gorm.DB, label string, capNames []string) models.AdminUser {
+// seedAdminWithCaps creates an active account holding a single role, at "*",
+// that grants the given capability names, and returns it: an admin. The label
+// only aids debugging; the address and role name are uniquified.
+func seedAdminWithCaps(t *testing.T, db *gorm.DB, label string, capNames []string) models.Mailbox {
 	t.Helper()
-	tok := revUniq()
-	hash, err := auth.HashPassword("password123")
-	if err != nil {
-		t.Fatalf("hash: %v", err)
-	}
-	admin := models.AdminUser{Username: label + "-" + tok, PasswordHash: hash, Active: true}
-	if err := db.Create(&admin).Error; err != nil {
-		t.Fatalf("create admin: %v", err)
-	}
-	role := models.Role{Name: "role-" + label + "-" + tok}
+	admin := seedMailbox(t, db, label)
+	role := models.Role{Name: "role-" + label + "-" + revUniq()}
 	if err := db.Create(&role).Error; err != nil {
 		t.Fatalf("create role: %v", err)
 	}
-	if err := db.Create(&models.UserRole{UserID: admin.ID, RoleID: role.ID}).Error; err != nil {
-		t.Fatalf("assign role: %v", err)
+	if err := db.Create(&models.Grant{
+		HolderKind: models.GrantHolderAccount, HolderID: admin.ID, RoleID: role.ID,
+		Scope: "*", Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now(),
+	}).Error; err != nil {
+		t.Fatalf("grant role: %v", err)
 	}
 	setRoleCaps(t, db, role.ID, capNames)
 	return admin
@@ -134,12 +116,12 @@ func setRoleCaps(t *testing.T, db *gorm.DB, roleID uint, capNames []string) {
 
 // seedLedger persists an active refresh-token ledger row for a freshly issued
 // pair so it can be exchanged at /auth/refresh.
-func seedLedger(t *testing.T, db *gorm.DB, pair *auth.TokenPair, userType string, subjectID uint) {
+func seedLedger(t *testing.T, db *gorm.DB, pair *auth.TokenPair, accountID uint) {
 	t.Helper()
 	if err := repositories.NewRefreshTokenRepository(db).Save(&models.RefreshToken{
 		Jti:       pair.RefreshJTI,
-		UserType:  userType,
-		SubjectID: subjectID,
+		AccountID: accountID,
+		SessionID: pair.SessionID,
 		Status:    models.RefreshTokenActive,
 		ExpiresAt: pair.RefreshExpiresAt,
 	}); err != nil {
@@ -148,7 +130,7 @@ func seedLedger(t *testing.T, db *gorm.DB, pair *auth.TokenPair, userType string
 }
 
 func newDBAuthHandler(db *gorm.DB, jwt *auth.JWTService) *AuthHandler {
-	return NewAuthHandler(db, jwt, "")
+	return NewAuthHandler(db, jwt, "", nil)
 }
 
 // TestRefresh_DisabledMailboxRejected: a still-valid refresh token must stop
@@ -161,11 +143,11 @@ func TestRefresh_DisabledMailboxRejected(t *testing.T) {
 	h := newDBAuthHandler(db, jwt)
 
 	mb := seedMailbox(t, db, "disabled")
-	pair, err := jwt.GenerateTokenPair(mb.ID, mb.Address, 0)
+	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedLedger(t, db, pair, "mailbox", mb.ID)
+	seedLedger(t, db, pair, mb.ID)
 
 	// Disable the mailbox out-of-band.
 	if err := db.Model(&models.Mailbox{}).Where("id = ?", mb.ID).Update("active", false).Error; err != nil {
@@ -185,13 +167,13 @@ func TestRefresh_DisabledAdminRejected(t *testing.T) {
 	h := newDBAuthHandler(db, jwt)
 
 	admin := seedAdminWithCaps(t, db, "disabled-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
+	pair, err := jwt.GenerateSession(admin.ID, admin.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedLedger(t, db, pair, "admin", admin.ID)
+	seedLedger(t, db, pair, admin.ID)
 
-	if err := db.Model(&models.AdminUser{}).Where("id = ?", admin.ID).Update("active", false).Error; err != nil {
+	if err := db.Model(&models.Mailbox{}).Where("id = ?", admin.ID).Update("active", false).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -200,30 +182,36 @@ func TestRefresh_DisabledAdminRejected(t *testing.T) {
 	}
 }
 
-// TestRefresh_AdminCapabilitiesRederivedFromDB: an admin's capabilities are
-// re-derived from the database on refresh, not copied from the (up to 7-day-old)
-// refresh token. A token minted while the admin was privileged must yield a
-// reduced capability set once the admin has been demoted in the database.
+// TestRefresh_AdminCapabilitiesRederivedFromDB: the capabilities a refresh
+// answers with are the admin's grants now. Tokens carry none: the refreshed
+// session's response lists what the database grants, whatever it held when
+// the refresh token was minted.
 func TestRefresh_AdminCapabilitiesRederivedFromDB(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
 	h := newDBAuthHandler(db, jwt)
 
 	admin := seedAdminWithCaps(t, db, "demoted-admin", []string{"queue:read"})
-	// Refresh token still carries the old, elevated capability set.
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"*", "queue:read"})
+	pair, err := jwt.GenerateSession(admin.ID, admin.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedLedger(t, db, pair, "admin", admin.ID)
+	seedLedger(t, db, pair, admin.ID)
 
 	rr := doRefresh(h, pair.RefreshToken)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("admin refresh: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
-	claims := validateBody(t, jwt, rr)
-	if len(claims.Capabilities) != 1 || claims.Capabilities[0] != "queue:read" {
-		t.Fatalf("capabilities not re-derived from DB: got %v, want [queue:read]", claims.Capabilities)
+	var body struct {
+		Data struct {
+			Capabilities []string `json:"capabilities"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if got := body.Data.Capabilities; len(got) != 1 || got[0] != "queue:read" {
+		t.Fatalf("capabilities not re-derived from DB: got %v, want [queue:read]", got)
 	}
 }
 
@@ -245,14 +233,14 @@ func TestMailboxPasswordChangeRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
 	authH := newDBAuthHandler(db, jwt)
-	mbH := NewMailboxHandler(db)
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	mb := seedMailbox(t, db, "pwchange")
-	pair, err := jwt.GenerateTokenPair(mb.ID, mb.Address, 0)
+	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedLedger(t, db, pair, "mailbox", mb.ID)
+	seedLedger(t, db, pair, mb.ID)
 
 	if rr := mailboxUpdate(t, mbH, mb.ID, `{"password":"newpassword123"}`); rr.Code != http.StatusOK {
 		t.Fatalf("password change: expected 200, got %d (%s)", rr.Code, rr.Body.String())
@@ -267,14 +255,14 @@ func TestMailboxPasswordChangeRevokesSessions(t *testing.T) {
 func TestMailboxDisableRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	mbH := NewMailboxHandler(db)
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	mb := seedMailbox(t, db, "disable-mb")
-	pair, err := jwt.GenerateTokenPair(mb.ID, mb.Address, 0)
+	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedLedger(t, db, pair, "mailbox", mb.ID)
+	seedLedger(t, db, pair, mb.ID)
 
 	if rr := mailboxUpdate(t, mbH, mb.ID, `{"active":false}`); rr.Code != http.StatusOK {
 		t.Fatalf("disable: expected 200, got %d (%s)", rr.Code, rr.Body.String())
@@ -289,14 +277,14 @@ func TestMailboxDisableRevokesSessions(t *testing.T) {
 func TestMailboxDeleteRevokesSessions(t *testing.T) {
 	db := openRevocationTestDB(t)
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	mbH := NewMailboxHandler(db)
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	mb := seedMailbox(t, db, "delete-mb")
-	pair, err := jwt.GenerateTokenPair(mb.ID, mb.Address, 0)
+	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedLedger(t, db, pair, "mailbox", mb.ID)
+	seedLedger(t, db, pair, mb.ID)
 
 	idStr := strconv.FormatUint(uint64(mb.ID), 10)
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/mailboxes/"+idStr, nil)
@@ -314,118 +302,134 @@ func TestMailboxDeleteRevokesSessions(t *testing.T) {
 	}
 }
 
-func adminUpdate(t *testing.T, h *AdminUserHandler, id uint, body string) *httptest.ResponseRecorder {
+// grantingTx is a transaction, rolled back after the test, for a test that
+// changes grants: each change writes to the audit log, which cannot be
+// emptied, and this database is shared. It returns the session of a
+// superadmin, signed in with 2FA, to make the changes as.
+func grantingTx(t *testing.T, db *gorm.DB) (*gorm.DB, *auth.Claims) {
 	t.Helper()
-	idStr := strconv.FormatUint(uint64(id), 10)
-	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/users/"+idStr, bytes.NewBufferString(body))
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", idStr)
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	rr := httptest.NewRecorder()
-	h.UpdateAdminUser(rr, req)
-	return rr
-}
-
-// TestAdminPasswordChangeRevokesSessions: changing an admin password revokes
-// their live sessions.
-func TestAdminPasswordChangeRevokesSessions(t *testing.T) {
-	db := openRevocationTestDB(t)
-	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
-
-	admin := seedAdminWithCaps(t, db, "pw-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
-	if err != nil {
-		t.Fatal(err)
+	if err := rmdb.MigrateAuditLog(db); err != nil {
+		t.Skipf("grant change DB test skipped: audit log migrate failed (%v)", err)
 	}
-	seedLedger(t, db, pair, "admin", admin.ID)
-
-	if rr := adminUpdate(t, adminH, admin.ID, `{"password":"newpassword123"}`); rr.Code != http.StatusOK {
-		t.Fatalf("admin password change: expected 200, got %d (%s)", rr.Code, rr.Body.String())
-	}
-
-	if got := ledgerStatus(t, db, pair.RefreshJTI); got != models.RefreshTokenRevoked {
-		t.Fatalf("ledger status after admin password change = %q, want revoked", got)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	granter := seedAdminWithCaps(t, tx, "granter", []string{"*"})
+	return tx, &auth.Claims{
+		AccountID: granter.ID, Address: granter.Address,
+		AMR: []string{auth.AMRPassword, auth.AMROTP}, TwoFactor: true,
 	}
 }
 
-// TestAdminRoleChangeRevokesSessions: changing an admin's roles revokes their
-// live sessions so stale capabilities cannot persist in an issued token.
-func TestAdminRoleChangeRevokesSessions(t *testing.T) {
-	db := openRevocationTestDB(t)
-	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
-
-	admin := seedAdminWithCaps(t, db, "role-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	seedLedger(t, db, pair, "admin", admin.ID)
-
-	// Create a second role and reassign the admin to it.
-	newRole := models.Role{Name: "role-admin-2-" + revUniq()}
-	if err := db.Create(&newRole).Error; err != nil {
-		t.Fatal(err)
-	}
-	body := `{"role_ids":[` + strconv.FormatUint(uint64(newRole.ID), 10) + `]}`
-	if rr := adminUpdate(t, adminH, admin.ID, body); rr.Code != http.StatusOK {
-		t.Fatalf("admin role change: expected 200, got %d (%s)", rr.Code, rr.Body.String())
-	}
-
-	if got := ledgerStatus(t, db, pair.RefreshJTI); got != models.RefreshTokenRevoked {
-		t.Fatalf("ledger status after admin role change = %q, want revoked", got)
-	}
-}
-
-// TestAdminDisableRevokesSessions: disabling an admin revokes their sessions.
-func TestAdminDisableRevokesSessions(t *testing.T) {
-	db := openRevocationTestDB(t)
-	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
-
-	admin := seedAdminWithCaps(t, db, "disable-admin-h", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	seedLedger(t, db, pair, "admin", admin.ID)
-
-	if rr := adminUpdate(t, adminH, admin.ID, `{"active":false}`); rr.Code != http.StatusOK {
-		t.Fatalf("admin disable: expected 200, got %d (%s)", rr.Code, rr.Body.String())
-	}
-
-	if got := ledgerStatus(t, db, pair.RefreshJTI); got != models.RefreshTokenRevoked {
-		t.Fatalf("ledger status after admin disable = %q, want revoked", got)
-	}
-}
-
-// TestAdminDeleteRevokesSessions: deleting an admin revokes their sessions.
+// TestAdminDeleteRevokesSessions: deleting an account that holds admin grants
+// removes them under the grants rules (a session with 2FA, holding what it
+// removes), revokes its sessions and its credentials, and removes the grants
+// others held on it.
 func TestAdminDeleteRevokesSessions(t *testing.T) {
-	db := openRevocationTestDB(t)
+	db, granter := grantingTx(t, openRevocationTestDB(t))
 	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
-	adminH := NewAdminUserHandler(db)
+	mbH := NewMailboxHandler(db, grants.NewCache(db, grants.CacheTTL), nil)
 
 	admin := seedAdminWithCaps(t, db, "delete-admin", []string{"queue:read"})
-	pair, err := jwt.GenerateAdminTokenPair(admin.ID, admin.Username, []string{"queue:read"})
+	pair, err := jwt.GenerateSession(admin.ID, admin.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	seedLedger(t, db, pair, "admin", admin.ID)
+	seedLedger(t, db, pair, admin.ID)
+	// Someone else owns it, too.
+	var owner models.Role
+	if err := db.Where("name = ?", models.RoleOwner).FirstOrCreate(&owner, models.Role{Name: models.RoleOwner}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Grant{HolderKind: models.GrantHolderAccount, HolderID: granter.AccountID, RoleID: owner.ID,
+		Scope: grants.Mailbox(admin.Address), Mode: models.GrantActive, GrantedByKind: models.AuditActorSystem, GrantedAt: time.Now()}).Error; err != nil {
+		t.Fatal(err)
+	}
 
-	idStr := strconv.FormatUint(uint64(admin.ID), 10)
-	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/"+idStr, nil)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", idStr)
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	rr := httptest.NewRecorder()
-	adminH.DeleteAdminUser(rr, req)
-	if rr.Code != http.StatusNoContent {
+	del := func(as *auth.Claims) *httptest.ResponseRecorder {
+		idStr := strconv.FormatUint(uint64(admin.ID), 10)
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/mailboxes/"+idStr, nil)
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", idStr)
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, as))
+		rr := httptest.NewRecorder()
+		mbH.Delete(rr, req)
+		return rr
+	}
+	noOTP := *granter
+	noOTP.AMR, noOTP.TwoFactor = []string{auth.AMRPassword}, false
+	if rr := del(&noOTP); rr.Code != http.StatusForbidden {
+		t.Fatalf("delete an admin without 2FA: expected 403, got %d (%s)", rr.Code, rr.Body.String())
+	}
+	if rr := del(granter); rr.Code != http.StatusNoContent {
 		t.Fatalf("admin delete: expected 204, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
 	if got := ledgerStatus(t, db, pair.RefreshJTI); got != models.RefreshTokenRevoked {
 		t.Fatalf("ledger status after admin delete = %q, want revoked", got)
+	}
+	var grantsLeft, liveCreds int64
+	db.Model(&models.Grant{}).Where("holder_id = ? OR scope = ?", admin.ID, grants.Mailbox(admin.Address)).Count(&grantsLeft)
+	db.Model(&models.Credential{}).Where("account_id = ? AND revoked_at IS NULL", admin.ID).Count(&liveCreds)
+	if grantsLeft != 0 || liveCreds != 0 {
+		t.Errorf("after deleting: %d grants by or on it, %d live credentials", grantsLeft, liveCreds)
+	}
+}
+
+// TestAccountPasswordChangeRevokesSessions: an account choosing a new
+// password (POST /auth/password) ends its sessions and app passwords, bumps
+// its epoch, and leaves it the one new password.
+func TestAccountPasswordChangeRevokesSessions(t *testing.T) {
+	db := openRevocationTestDB(t)
+	if err := rmdb.MigrateAuditLog(db); err != nil {
+		t.Skipf("audit log migrate failed (%v)", err)
+	}
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	jwt := auth.NewJWTService("rev-secret", 15*time.Minute, 7*24*time.Hour)
+	h := newDBAuthHandler(tx, jwt)
+
+	mb := seedMailbox(t, tx, "own-pw")
+	pair, err := jwt.GenerateSession(mb.ID, mb.Address, 0, []string{auth.AMRPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedLedger(t, tx, pair, mb.ID)
+	if _, _, err := repositories.NewCredentialRepository(tx).CreateAppPassword(mb.ID, mb.ID, "phone", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	change := func(current, next string) *httptest.ResponseRecorder {
+		body := `{"current_password":"` + current + `","new_password":"` + next + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/password", bytes.NewBufferString(body))
+		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: mb.ID, Address: mb.Address}))
+		rr := httptest.NewRecorder()
+		h.ChangePassword(rr, req)
+		return rr
+	}
+	if rr := change("wrong", "a brand new passphrase"); rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"code":"invalid_password"`) {
+		t.Fatalf("wrong current password: %d %s", rr.Code, rr.Body.String())
+	}
+	if rr := change("password123", "a brand new passphrase"); rr.Code != http.StatusOK {
+		t.Fatalf("change: %d %s", rr.Code, rr.Body.String())
+	}
+	if got := ledgerStatus(t, tx, pair.RefreshJTI); got != models.RefreshTokenRevoked {
+		t.Errorf("session after a new password = %q, want revoked", got)
+	}
+	creds := repositories.NewCredentialRepository(tx)
+	if c, _ := creds.MatchPassword(mb.ID, "password123", time.Now()); c != nil {
+		t.Error("the old password still matches")
+	}
+	if c, _ := creds.MatchPassword(mb.ID, "a brand new passphrase", time.Now()); c == nil {
+		t.Error("the new password does not match")
+	}
+	if live, _ := creds.ListForAccount(mb.ID, models.CredentialKindAppPassword); len(live) != 0 {
+		t.Errorf("app passwords outlived the new password: %d", len(live))
+	}
+	var after models.Mailbox
+	tx.First(&after, mb.ID)
+	if after.CredentialEpoch != mb.CredentialEpoch+1 {
+		t.Errorf("epoch %d -> %d, want it bumped", mb.CredentialEpoch, after.CredentialEpoch)
 	}
 }
 

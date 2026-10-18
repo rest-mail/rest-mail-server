@@ -121,7 +121,7 @@ func TestCertSANHostnames(t *testing.T) {
 		Hostname: "mail3.test",
 		Domains: []DomainEntry{
 			{Name: "shop.test"}, // hostname defaults to name
-			{Name: "legacy.test", Hostname: "mx.legacy.test"}, // explicit hostname
+			{Name: "traditional.test", Hostname: "mx.traditional.test"}, // explicit hostname
 		},
 		TLS: TLS{ExtraHostnames: []string{
 			"mta-sts.mail3.test",
@@ -129,7 +129,7 @@ func TestCertSANHostnames(t *testing.T) {
 		}},
 	}
 	got := m.CertSANHostnames()
-	want := []string{"mail3.test", "shop.test", "mx.legacy.test", "mta-sts.mail3.test"}
+	want := []string{"mail3.test", "shop.test", "mx.traditional.test", "mta-sts.mail3.test"}
 	if len(got) != len(want) {
 		t.Fatalf("SANs = %v, want %v", got, want)
 	}

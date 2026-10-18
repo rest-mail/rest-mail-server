@@ -161,7 +161,8 @@ func (h *QueueHandler) QueueStats(w http.ResponseWriter, r *http.Request) {
 		Group("status").
 		Scan(&counts)
 
-	stats := map[string]int64{}
+	// Every status the spec documents is in the answer, at 0 when no entry has it.
+	stats := map[string]int64{"pending": 0, "deferred": 0, "delivered": 0, "bounced": 0}
 	var total int64
 	for _, c := range counts {
 		stats[c.Status] = c.Count

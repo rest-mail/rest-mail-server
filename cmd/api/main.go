@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,10 +21,12 @@ import (
 	"github.com/restmail/restmail/internal/digest"
 	"github.com/restmail/restmail/internal/dmarcreport"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/dnsbl"
 	"github.com/restmail/restmail/internal/domainstate"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/greylist"
+	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/rollup"
-	"github.com/restmail/restmail/internal/setuplink"
 	"github.com/restmail/restmail/internal/trace"
 	"github.com/restmail/restmail/internal/vacation"
 )
@@ -97,6 +100,18 @@ func main() {
 		slog.SetDefault(slog.New(logHandler))
 	}
 
+	// The DNSBL monitor is off unless the operator's config file enables it
+	// (issue #148); off, it makes no resolver and sends no query. The whole
+	// file is validated here, before the database or any listener, so a bad
+	// one stops the API cleanly.
+	dnsblMonitor, err := newDNSBLRuntime(cfg.DNSBLConfigPath,
+		func() dnsbl.Resolver { return net.DefaultResolver },
+		dnsbl.NewMetricsObserver(slog.Default(), metrics.DNSBLChecks, metrics.DNSBLListed, metrics.DNSBLLastAnswer))
+	if err != nil {
+		slog.Error("invalid DNSBL monitor configuration", "error", err)
+		os.Exit(1)
+	}
+
 	// Secure-by-construction (production-only): the API always serves plaintext
 	// HTTP (TLS is terminated by a front proxy), so in production refuse to boot
 	// unless the operator acknowledges that proxy with
@@ -119,43 +134,54 @@ func main() {
 	// never issues destructive DML at startup, so a rolling deploy cannot have
 	// whichever version boots first silently rewrite data. Destructive one-time
 	// upgrades are the migrate tool's job (issue #196).
-	if err := db.AutoMigrate(database, false); err != nil {
+	if err := db.AutoMigrate(database); err != nil {
 		slog.Error("failed to run database migration", "error", err)
 		os.Exit(1)
 	}
 
 	// A key list that does not parse would lock the owner out without a word;
 	// refuse to start instead.
-	if _, err := bootstrap.ParseOwnerKeys(cfg.OwnerKeys); err != nil {
-		slog.Error("invalid owner keys", "error", err)
+	if err := bootstrap.SeedOwnerKeys(database, cfg.OwnerKeys); err != nil {
+		slog.Error("failed to register initial owner keys", "error", err)
+		os.Exit(1)
+	}
+	if _, err := bootstrap.ParseStatusKeys(cfg.StatusKeys); err != nil {
+		slog.Error("invalid status keys", "error", err)
+		os.Exit(1)
+	}
+	// Push is off unless APNs is configured; an APNs key that is set and will
+	// not load would leave it off without a word.
+	if err := api.CheckPush(cfg); err != nil {
+		slog.Error("invalid APNs configuration", "error", err)
 		os.Exit(1)
 	}
 
-	// Likewise a setup link nobody could open: the code it carries would be the
-	// only way in to a server that has just been installed.
-	setupLinkBase, err := setuplink.ParseBase(cfg.SetupLinkBase)
-	if err != nil {
-		slog.Error("invalid setup link base", "error", err)
-		os.Exit(1)
-	}
-
-	// A fresh install has no admin and no roles, and the production image carries
-	// no seed tool, so nobody could ever sign in. Both steps are no-ops once done.
+	// A fresh install has no account and no roles, and the production image
+	// carries no seed tool, so nobody could ever sign in. Both steps are no-ops
+	// once done: the bootstrap account is admin@<mail domain>.
 	if err := bootstrap.EnsureRBAC(database); err != nil {
 		slog.Error("failed to create the built-in roles", "error", err)
 		os.Exit(1)
 	}
-	if _, err := bootstrap.EnsureFirstAdmin(database, cfg.BootstrapAdminUsername, cfg.BootstrapAdminPassword, cfg.TOTP2FAEnabled, time.Now()); err != nil {
-		slog.Error("failed to create the bootstrap admin", "error", err)
+	credential, err := bootstrap.BootstrapFromConfig(cfg.BootstrapAdminPassword, cfg.BootstrapAdminPasswordHash)
+	if err != nil {
+		slog.Error("invalid bootstrap admin password", "error", err)
 		os.Exit(1)
 	}
-	// Still no admin: print the setup code the owner claims the server with.
-	if code, expires, err := bootstrap.EnsureSetupCode(database, time.Now()); err != nil {
-		slog.Error("failed to mint the setup code", "error", err)
+	if _, err := bootstrap.EnsureFirstAdminWith(database, cfg.BootstrapAdminAddress, credential, cfg.TOTP2FAEnabled, time.Now()); err != nil {
+		slog.Error("failed to create the bootstrap account", "error", err)
 		os.Exit(1)
-	} else if code != "" {
-		printSetupBanner(os.Stdout, setupLinkBase, code, expires)
-		slog.Info("server not claimed yet: the setup code is printed above (restart for a new one)")
+	}
+	// Still no admin: nobody could ever sign in. The installer chooses the first
+	// admin's password; a server that was given none says so and stops, rather
+	// than run with no way in. A development stack seeds its admin into the
+	// running API (chore db:seed), so there it is only said.
+	if err := bootstrap.RequireAdmin(database); err != nil {
+		if cfg.IsProduction() {
+			slog.Error("refusing to start", "error", err)
+			os.Exit(1)
+		}
+		slog.Warn("no admin yet: seed one (chore db:seed) or set RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD", "error", err)
 	}
 
 	// Create JWT service
@@ -254,6 +280,11 @@ func main() {
 	domainWatcher := domainstate.NewWatcher(database, domainstate.DefaultInterval)
 	domainWatcher.Start()
 
+	// Record escalations that ran out (#346). What they gave stops at once
+	// regardless; this writes the expiry into the audit log.
+	grantSweeper := grants.NewSweeper(database, grants.SweepInterval)
+	grantSweeper.Start()
+
 	// Start quarantine digest worker
 	digestInterval := 24 * time.Hour
 	if cfg.Environment == "development" {
@@ -310,6 +341,11 @@ func main() {
 	vacationPurger := vacation.NewPurger(database, time.Hour, vacation.DefaultRetention)
 	vacationPurger.Start()
 
+	// Check the operator's sending IPs against their blocklists until shutdown.
+	if dnsblMonitor != nil {
+		dnsblMonitor.start(context.Background())
+	}
+
 	// Create HTTP server
 	srv := &http.Server{
 		Addr:    cfg.APIAddr(),
@@ -352,10 +388,16 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down server...")
+	if dnsblMonitor != nil {
+		if err := dnsblMonitor.stop(); err != nil {
+			slog.Error("DNSBL monitor shutdown", "error", err)
+		}
+	}
 	if acmeManager != nil {
 		acmeManager.Shutdown()
 	}
 	domainWatcher.Shutdown()
+	grantSweeper.Shutdown()
 	quotaReconciler.Shutdown()
 	dmarcReporter.Shutdown()
 	// Stop the rollup worker (takes a final snapshot to capture the partial

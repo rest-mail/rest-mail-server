@@ -114,6 +114,16 @@ Usage: {{ include "restmail.imageTag" (list . .Values.api.image.tag) }}
 {{- end -}}
 
 {{/*
+A web app's public host: <app>.ingress.host, or <app>.<mailserver.domain>.
+Usage: {{ include "restmail.webappHost" (list . "webmail") }}
+*/}}
+{{- define "restmail.webappHost" -}}
+{{- $root := index . 0 -}}
+{{- $app := index . 1 -}}
+{{- default (printf "%s.%s" $app $root.Values.mailserver.domain) (index $root.Values $app).ingress.host -}}
+{{- end -}}
+
+{{/*
 Postgres host = Service DNS name of the embedded postgres.
 */}}
 {{- define "restmail.postgres.host" -}}
@@ -221,9 +231,45 @@ dnsConfig:
 {{- end -}}
 
 {{/*
+Gateway workload kind, validated even for disabled gateways.
+Usage: {{ include "restmail.gatewayWorkloadKind" (list .Values.smtpGateway "smtpGateway") }}
+*/}}
+{{- define "restmail.gatewayWorkloadKind" -}}
+{{- $gateway := index . 0 -}}
+{{- $name := index . 1 -}}
+{{- $kind := "Deployment" -}}
+{{- if hasKey $gateway "workloadKind" -}}
+{{- $kind = $gateway.workloadKind -}}
+{{- end -}}
+{{- if not (has $kind (list "Deployment" "DaemonSet")) -}}
+{{- fail (printf "%s.workloadKind must be Deployment or DaemonSet (got %v)" $name $kind) -}}
+{{- end -}}
+{{- $kind -}}
+{{- end -}}
+
+{{/*
 Validate required production values.
 */}}
 {{- define "restmail.validate" -}}
+{{- range $name := list "smtpGateway" "imapGateway" "pop3Gateway" -}}
+{{- $_ := include "restmail.gatewayWorkloadKind" (list (index $.Values $name) $name) -}}
+{{- end -}}
+{{- $attachments := .Values.api.attachments -}}
+{{- if not (has $attachments.storageType (list "filesystem" "s3")) -}}
+{{- fail "api.attachments.storageType must be filesystem or s3" -}}
+{{- end -}}
+{{- if eq $attachments.storageType "s3" -}}
+{{- if not (and $attachments.s3.bucket $attachments.s3.region) -}}
+{{- fail "S3 attachments require api.attachments.s3.bucket and region" -}}
+{{- end -}}
+{{- if $attachments.s3.existingSecret -}}
+{{- if or $attachments.s3.accessKeyId $attachments.s3.secretAccessKey -}}
+{{- fail "use api.attachments.s3.existingSecret or inline S3 credentials, not both" -}}
+{{- end -}}
+{{- else if not (and $attachments.s3.accessKeyId $attachments.s3.secretAccessKey) -}}
+{{- fail "S3 attachments require api.attachments.s3.existingSecret or both accessKeyId and secretAccessKey" -}}
+{{- end -}}
+{{- end -}}
 {{- if not .Values.mailserver.hostname -}}
 {{- fail "mailserver.hostname is required (the public FQDN gateways announce)" -}}
 {{- end -}}
@@ -250,6 +296,21 @@ fail rendering early with an actionable message instead of shipping a crash-loop
 {{- if and (eq .Values.api.environment "production") (not .Values.internalMtls.enabled) (not .Values.api.internalRoutesAllowPublic) -}}
 {{- fail "internalMtls.enabled=false requires api.internalRoutesAllowPublic=true in production: the API refuses to serve its gateway-facing routes unauthenticated unless you acknowledge an out-of-band network trust boundary (NetworkPolicy/firewall). Enable internalMtls (recommended), or set api.internalRoutesAllowPublic=true." -}}
 {{- end -}}
+{{- /*
+Push through APNs needs its key from a Secret, never from values, and the ids
+that go with it. Without them the API would start with push off and say so only
+in its log.
+*/ -}}
+{{- with .Values.api.push.apns -}}
+{{- if .enabled -}}
+{{- if not .existingSecret -}}
+{{- fail "api.push.apns.enabled needs api.push.apns.existingSecret: a Secret holding the APNs .p8 key, which never goes in values (kubectl create secret generic restmail-apns --from-file=AuthKey.p8=AuthKey_XXXXXXXXXX.p8)" -}}
+{{- end -}}
+{{- if or (not .keyId) (not .teamId) -}}
+{{- fail "api.push.apns.enabled needs api.push.apns.keyId and api.push.apns.teamId, from the Apple Developer portal" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
@@ -257,13 +318,13 @@ Pod-level securityContext for a component. Produces a hardened baseline keyed by
 component name, then deep-merges the operator's global .Values.podSecurityContext
 on top (operator values win), so a cluster can override any field globally.
 
-The protocol gateways (smtp/imap/pop3) bind privileged ports (<1024). The current
-gateway images run as root and carry no file capabilities, so they cannot run as
-a non-root UID and still bind those ports (Kubernetes does not yet populate the
-ambient capability set from securityContext.capabilities). They therefore keep
-runAsNonRoot unset here and rely on the container-level "drop ALL, add only
-NET_BIND_SERVICE" posture below. The API, js-filter and Postgres images ship a
-non-root user, so they run fully non-root.
+Every workload runs non-root. The protocol gateways (smtp/imap/pop3) run as uid
+10001, the uid their images declare, like the API and js-filter. They listen on
+unprivileged ports (*.containerPorts) and their Services map the public mail
+ports onto them, so they need no capability to bind: a non-root process would
+not get NET_BIND_SERVICE anyway, because Kubernetes does not populate the
+ambient capability set from securityContext.capabilities. The web apps'
+unprivileged nginx image runs as uid 101 on port 8080.
 
 Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
 */}}
@@ -271,7 +332,7 @@ Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
 {{- $root := index . 0 -}}
 {{- $comp := index . 1 -}}
 {{- $base := dict "seccompProfile" (dict "type" "RuntimeDefault") -}}
-{{- if eq $comp "api" -}}
+{{- if or (eq $comp "api") (eq $comp "smtp-gateway") (eq $comp "imap-gateway") (eq $comp "pop3-gateway") -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "fsGroup" 10001) -}}
 {{- else if eq $comp "js-filter" -}}
 {{- /* A numeric runAsUser is required: the image declares a NAMED user
@@ -281,6 +342,8 @@ Usage: {{ include "restmail.podSecurityContext" (list . "api") }}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 10001 "runAsGroup" 10001 "fsGroup" 10001) -}}
 {{- else if eq $comp "postgres" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 70 "runAsGroup" 70 "fsGroup" 70) -}}
+{{- else if or (eq $comp "webmail") (eq $comp "admin") -}}
+{{- $base = merge $base (dict "runAsNonRoot" true "runAsUser" 101 "runAsGroup" 101 "fsGroup" 101) -}}
 {{- end -}}
 {{- $merged := merge (deepCopy $root.Values.podSecurityContext) $base -}}
 {{- toYaml $merged -}}
@@ -291,13 +354,15 @@ Container-level securityContext for a component. Hardened baseline keyed by
 component, deep-merged under the operator's global .Values.securityContext
 (operator values win).
 
-Gateways: drop ALL, add back only NET_BIND_SERVICE so a root process can bind
-25/465/993/995 and nothing else; read-only rootfs is safe because the
-queue is DB-backed and the CA-trust entrypoint only writes when /certs/ca.crt is
-present (the chart projects tls.crt/tls.key only). API: read-only rootfs is off
-because its entrypoint may run update-ca-certificates. js-filter: read-only rootfs
-on (its image is built for it). Postgres: read-only rootfs off (writes PGDATA,
-sockets, runtime config).
+Gateways: non-root with every capability dropped and none added back (they
+listen on unprivileged ports); read-only rootfs is safe because the queue is
+DB-backed and the CA-trust entrypoint writes only to /tmp, an emptyDir, and only
+when /certs/ca.crt is present (the chart projects tls.crt/tls.key only). API:
+read-only rootfs is off because its entrypoint may run update-ca-certificates.
+js-filter: read-only rootfs on (its image is built for it). Postgres: read-only
+rootfs off (writes PGDATA, sockets, runtime config). Web apps: read-only rootfs
+on; nginx writes only the config its entrypoint makes (conf.d) and /tmp, both
+emptyDirs.
 
 Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 */}}
@@ -306,16 +371,25 @@ Usage: {{ include "restmail.containerSecurityContext" (list . "smtp-gateway") }}
 {{- $comp := index . 1 -}}
 {{- $base := dict "allowPrivilegeEscalation" false -}}
 {{- if or (eq $comp "smtp-gateway") (eq $comp "imap-gateway") (eq $comp "pop3-gateway") -}}
-{{- $base = merge $base (dict "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL") "add" (list "NET_BIND_SERVICE"))) -}}
+{{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- else if eq $comp "api" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" false "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- else if eq $comp "js-filter" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- else if eq $comp "postgres" -}}
 {{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" false "capabilities" (dict "drop" (list "ALL"))) -}}
+{{- else if or (eq $comp "webmail") (eq $comp "admin") -}}
+{{- $base = merge $base (dict "runAsNonRoot" true "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL"))) -}}
 {{- end -}}
 {{- $merged := merge (deepCopy $root.Values.securityContext) $base -}}
 {{- toYaml $merged -}}
+{{- end -}}
+
+{{/*
+The JS filter sidecar's in-cluster URL, which the API calls (JS_FILTER_URL).
+*/}}
+{{- define "restmail.jsFilter.url" -}}
+http://{{ include "restmail.componentName" (list . "js-filter") }}:{{ .Values.jsFilter.service.port }}
 {{- end -}}
 
 {{/*

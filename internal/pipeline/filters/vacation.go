@@ -63,7 +63,7 @@ func (f *vacationFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 	sender = strings.TrimSpace(strings.ToLower(sender))
 
 	// ── 2. RFC 3834 suppression checks ─────────────────────────────
-	if reason := f.shouldSuppress(sender, email); reason != "" {
+	if reason := f.shouldSuppress(ctx, sender, email); reason != "" {
 		return f.skip(reason), nil
 	}
 
@@ -189,7 +189,7 @@ func buildVacationReply(from, to, subject, body, inReplyTo string) string {
 // ── RFC 3834 suppression logic ──────────────────────────────────────────
 
 // shouldSuppress returns a non-empty reason string if we must NOT auto-reply.
-func (f *vacationFilter) shouldSuppress(sender string, email *pipeline.EmailJSON) string {
+func (f *vacationFilter) shouldSuppress(ctx context.Context, sender string, email *pipeline.EmailJSON) string {
 	// 1. Empty / null sender (bounce messages).
 	if sender == "" || sender == "<>" {
 		return "empty or null sender"
@@ -227,9 +227,9 @@ func (f *vacationFilter) shouldSuppress(sender string, email *pipeline.EmailJSON
 
 	// 3b. Backscatter guard: do not auto-reply to a sender whose SPF/DMARC failed.
 	//     The reply would go to the (likely forged) envelope sender — classic
-	//     backscatter. The signal is the Authentication-Results the spf_check /
-	//     dmarc_check filters recorded earlier in the pipeline.
-	if reason := authFailureReason(email); reason != "" {
+	//     backscatter. The signal is the verdicts the spf_check / dmarc_check
+	//     filters recorded earlier in the pipeline.
+	if reason := authFailureReason(ctx); reason != "" {
 		return reason
 	}
 
@@ -264,47 +264,24 @@ func autoSubmittedKeyword(v string) string {
 	return strings.TrimSpace(v)
 }
 
-// authFailureReason returns a non-empty reason when the message's
-// Authentication-Results indicate an SPF or DMARC failure, so the vacation
-// responder can suppress a backscatter reply. It is deliberately conservative:
-// any spf=fail/softfail or dmarc=fail token anywhere in the recorded results is
-// enough to hold the reply (fail-safe — a false positive only means "no
-// auto-reply", never a lost message).
-func authFailureReason(email *pipeline.EmailJSON) string {
-	var results []string
-	results = append(results, rawAuthResults(email)...)
-	if email.Headers.Extra != nil {
-		if v := email.Headers.Extra["Authentication-Results"]; v != "" {
-			results = append(results, v)
-		}
-	}
-	for _, ar := range results {
-		lc := strings.ToLower(ar)
+// authFailureReason returns a non-empty reason when spf_check or dmarc_check
+// recorded an SPF or DMARC failure for the message, so the vacation responder
+// can suppress a backscatter reply. It is deliberately conservative: an SPF
+// fail or softfail of either identity, or a DMARC fail, is enough to hold the
+// reply (fail-safe — a false positive only means "no auto-reply", never a lost
+// message).
+func authFailureReason(ctx context.Context) string {
+	for _, r := range pipeline.AuthResultsFromContext(ctx).List() {
 		switch {
-		case strings.Contains(lc, "spf=fail"):
+		case r.Method == pipeline.AuthSPF && r.Result == "fail":
 			return "sender failed SPF (backscatter guard)"
-		case strings.Contains(lc, "spf=softfail"):
+		case r.Method == pipeline.AuthSPF && r.Result == "softfail":
 			return "sender soft-failed SPF (backscatter guard)"
-		case strings.Contains(lc, "dmarc=fail"):
+		case r.Method == pipeline.AuthDMARC && r.Result == "fail":
 			return "sender failed DMARC (backscatter guard)"
 		}
 	}
 	return ""
-}
-
-// rawAuthResults returns every Authentication-Results value from the Raw
-// headers, case-insensitively.
-func rawAuthResults(email *pipeline.EmailJSON) []string {
-	if email.Headers.Raw == nil {
-		return nil
-	}
-	var out []string
-	for k, v := range email.Headers.Raw {
-		if strings.EqualFold(k, "Authentication-Results") {
-			out = append(out, v...)
-		}
-	}
-	return out
 }
 
 // sanitizeHeaderValue strips CR and LF (and other C0 control characters except

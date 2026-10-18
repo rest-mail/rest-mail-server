@@ -132,7 +132,7 @@ func TestToMessage_SizePrefersRawSize(t *testing.T) {
 
 // TestToMessage_SizeFallsBackToSizeBytes proves messages the server has no
 // stored raw for (raw_size 0, e.g. locally-composed items served via the
-// rebuilt fallback) keep reporting the legacy size_bytes value.
+// rebuilt form) report the size_bytes approximation.
 func TestToMessage_SizeFallsBackToSizeBytes(t *testing.T) {
 	msg := toMessage(apiclient.MessageSummary{ID: 8, SizeBytes: 55})
 	if msg.Size != 55 {

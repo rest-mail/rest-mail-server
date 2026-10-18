@@ -49,7 +49,7 @@ func openGreylistTestDB(t *testing.T) *gorm.DB {
 	return gdb
 }
 
-func seedEntry(t *testing.T, db *gorm.DB, sender string, createdAt time.Time, expiresAt *time.Time) {
+func seedEntry(t *testing.T, db *gorm.DB, sender string, createdAt time.Time, expiresAt time.Time) {
 	t.Helper()
 	e := models.GreylistEntry{
 		Sender:     sender,
@@ -90,9 +90,9 @@ func TestPurger_DeletesExpiredKeepsUnexpired(t *testing.T) {
 	past := now.Add(-1 * time.Hour)
 	future := now.Add(1 * time.Hour)
 
-	seedEntry(t, tx, "expired-1", now.Add(-48*time.Hour), &past)
-	seedEntry(t, tx, "expired-2", now.Add(-48*time.Hour), &past)
-	seedEntry(t, tx, "fresh", now, &future)
+	seedEntry(t, tx, "expired-1", now.Add(-48*time.Hour), past)
+	seedEntry(t, tx, "expired-2", now.Add(-48*time.Hour), past)
+	seedEntry(t, tx, "fresh", now, future)
 
 	p := NewPurger(tx, time.Hour)
 	deleted := p.PurgeOnce(now)
@@ -102,31 +102,5 @@ func TestPurger_DeletesExpiredKeepsUnexpired(t *testing.T) {
 	}
 	if got := countEntries(t, tx); got != 1 {
 		t.Fatalf("after purge: %d entries remain, want 1 (fresh)", got)
-	}
-}
-
-// TestPurger_FallbackBoundsNullHorizonRows proves legacy rows written before the
-// expires_at column existed (NULL horizon) are still bounded: those older than
-// the default TTL are collected by the created_at fallback, recent ones survive.
-func TestPurger_FallbackBoundsNullHorizonRows(t *testing.T) {
-	gdb := openGreylistTestDB(t)
-	tx := gdb.Begin()
-	t.Cleanup(func() { tx.Rollback() })
-	if err := tx.Exec("DELETE FROM greylist_entries").Error; err != nil {
-		t.Fatalf("clear greylist_entries: %v", err)
-	}
-
-	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
-	seedEntry(t, tx, "legacy-old", now.Add(-40*24*time.Hour), nil) // older than 36d default TTL
-	seedEntry(t, tx, "legacy-new", now.Add(-1*24*time.Hour), nil)  // recent: must survive
-
-	p := NewPurger(tx, time.Hour)
-	deleted := p.PurgeOnce(now)
-
-	if deleted != 1 {
-		t.Errorf("PurgeOnce deleted = %d, want 1 (the aged NULL-horizon row)", deleted)
-	}
-	if got := countEntries(t, tx); got != 1 {
-		t.Fatalf("after purge: %d entries remain, want 1 (recent legacy row)", got)
 	}
 }

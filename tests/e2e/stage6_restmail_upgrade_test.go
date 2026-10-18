@@ -11,13 +11,13 @@ import (
 
 func testStage6RestmailUpgrade(t *testing.T) {
 	adminClient := newAPIClient()
-	if err := adminClient.loginAdmin("admin", "admin123!@"); err != nil {
+	if err := adminClient.loginAdmin(); err != nil {
 		skipOrFail(t, "Cannot get admin token: %v", err)
 	}
 
 	// Ensure restmail users exist
-	createMailbox(t, adminClient, "testuser@restmail.test", adminPassword, "GW Test User")
-	createMailbox(t, adminClient, "other@restmail.test", adminPassword, "Other User")
+	createMailbox(t, adminClient, "testuser@restmail.test", accountPassword, "GW Test User")
+	createMailbox(t, adminClient, "other@restmail.test", accountPassword, "Other User")
 
 	t.Run("Mail3_EhloAdvertisesRestmail", func(t *testing.T) {
 		sc := dialSMTP(t, restmailSMTPAddr)
@@ -87,7 +87,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		resp.Body.Close()
 
 		// Verify delivery
-		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", adminPassword)
+		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", accountPassword)
 		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
 		t.Logf("RESTMAIL direct delivery verified: id=%d", msgID)
 	})
@@ -97,7 +97,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 
 		// Send testuser -> other (both restmail) via the outbound compose path.
 		gwClient := newAPIClient()
-		if err := gwClient.login("testuser@restmail.test", adminPassword); err != nil {
+		if err := gwClient.login("testuser@restmail.test", accountPassword); err != nil {
 			t.Skipf("Cannot login: %v", err)
 		}
 
@@ -111,7 +111,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 		requireSuccess(t, resp)
 		resp.Body.Close()
 
-		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", adminPassword)
+		otherClient, otherClientAcct := restmailInbox(t, "other@restmail.test", accountPassword)
 		msgID := waitForMessage(t, otherClient, otherClientAcct, "INBOX", subject, 15*time.Second)
 		t.Logf("Mail3→Mail3 delivery (upgrade path): id=%d", msgID)
 	})
@@ -124,7 +124,7 @@ func testStage6RestmailUpgrade(t *testing.T) {
 			"alice@mail1.test", "testuser@restmail.test",
 			subject, "mail1 sends to restmail, ignoring RESTMAIL extension")
 
-		gwClient, gwAcct := restmailInbox(t, "testuser@restmail.test", adminPassword)
+		gwClient, gwAcct := restmailInbox(t, "testuser@restmail.test", accountPassword)
 		msgID := waitForMessage(t, gwClient, gwAcct, "INBOX", subject, 30*time.Second)
 		t.Logf("Traditional server delivered to restmail normally: id=%d", msgID)
 	})

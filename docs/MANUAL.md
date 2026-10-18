@@ -8,7 +8,7 @@ The original plan and stage documents have since been retired — completed work
 
 ## 1. Overview
 
-RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, and a pluggable pipeline engine (23 built-in filters, including JavaScript and Sieve custom-script filters). Email authentication and policy — DKIM, ARC, DMARC, MTA-STS, and Sieve — are provided by the extracted libraries `rest-mail/{dkim,arc,dmarc,mtasts,sieve}`. The standalone mail-server auditing CLI (Instant Mail Check) now lives in its own repository (see §4.5).
+RESTMAIL is a Go-based mail server platform that exposes full email functionality through a REST API while remaining protocol-indistinguishable from Postfix/Dovecot at the network layer. It ships with a React webmail, a separate React admin UI, SMTP/IMAP/POP3 gateways, and a pluggable pipeline engine (21 built-in filters, including JavaScript and Sieve custom-script filters). Email authentication and policy — DKIM, ARC, DMARC, MTA-STS, and Sieve — are provided by the extracted libraries `rest-mail/{dkim,arc,dmarc,mtasts,sieve}`. The standalone mail-server auditing CLI (Instant Mail Check) now lives in its own repository (see §4.5).
 
 The development testbed simulates parallel mail domains: reference `mail1.test` and `mail2.test` run traditional Postfix + Dovecot (from the separate `rest-mail/reference-mailserver` project), while `restmail.test` routes through the RESTMAIL gateways. They exist to verify cross-domain delivery, anti-spoofing, and protocol compatibility in a realistic environment.
 
@@ -49,6 +49,24 @@ docs/                 This manual + reference docs (adapter-filters,
 ## 2. Changelog
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
+
+### 2026-10-17 — Mailboxes are the accounts
+There is one kind of account: a mailbox, signing in by its address (`POST /api/v1/auth/login` takes `email`; there are no usernames). Admin users, webmail accounts, linked accounts and the two-factor tables are gone. An account's passwords, authenticator, recovery codes and app passwords are all credentials (0..n of each; an account may have no password), and what it may do comes from grants on it: admins hold roles at `*`, and `GET /api/v1/accounts` lists the session's own account first, then each account it holds a mail grant on, by mailbox id. `POST /api/v1/accounts` creates an account (`mailboxes:write` on its domain) and makes the creator its `owner`; `POST /api/v1/accounts/link` gives `owner` on an existing one by proving its password; unlinking removes the grant. Every gateway signs in through `POST /api/v1/auth/protocol-sign-in`. The first account of a fresh install is `admin@<mailserver.domain>` (`RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS`); the sign-in link, `restmail reset-admin`, `restmail-api mint-token` and the owner endpoints name accounts by address. No migration: a server from before this change is reinstalled from an empty database. [§3.3](#33-auth), [§4.1](#41-rest-api).
+
+### 2026-10-17 — The webmail and the admin webmail deploy with the chart
+The Helm chart now runs both web apps, each at the root of a host of its own: `webmail.<domain>` and `admin.<domain>` by default (`webmail.ingress.host`, `admin.ingress.host`). Each host's Ingress sends `/api` to the API, so the apps keep their same-origin cookies and `connect-src 'self'` CSP with no CORS; a sign-in on one host is not a sign-in on the other. Either app turns off with `webmail.enabled` / `admin.enabled`. The `admin` image is now published beside `webmail`, both versioned like the rest, and both serve from a read-only root filesystem as uid 101. [§4.6](#46-webmail-react--vite--tailwind--shadcn), [§4.7](#47-admin-ui-react--tanstack-router--zustand--tailwind-v4).
+
+### 2026-10-17 — Push notifications to the iPhone app
+With an APNs auth key configured (`RESTMAIL_APNS_*`, Helm `api.push.apns`), a signed-in phone registers with its session at `/api/v1/devices`, and new mail in the INBOX of any mailbox the session lists sends it a background push: the account and its unread count, never anything of the mail, which the app then fetches over the API. A device goes when its session does. Without the key the routes answer 404 and nothing else changes. Every session carries a `sid` that survives refresh, and a token without one is refused. [§3.3](#33-auth).
+
+### 2026-10-17 — App passwords
+A mailbox can give each mail client or automation a named, revocable app password (`rm_<public id>_<secret>`), shown once and stored only as a SHA-256 of its secret. It signs in over IMAP, POP3 and SMTP, and with HTTP Basic on the mail routes of the REST API, reaching only its own mailbox; it never signs in at `POST /api/v1/auth/login` and never manages credentials, passwords or 2FA. Making one takes the mailbox's current password, entered again. Revoking one stops it at the next request, and a new password for the mailbox revokes them all. Creation, revocation, refusals and protocol sign-ins go into the audit log. [§3.3](#33-auth).
+
+### 2026-10-15 — The installer shows the admin password as a QR code
+`restmail sign-in-link` draws the link that opens the rest-mail app signed in — `https://rest-mail.com/setup#server=…&username=…&password=…` — as a QR code a phone's camera opens, and always prints the link, server, username and password as text too. `chore install:helm`, `install:pulumi` and `password:reset` show the password they made that way. [§7.9](#79-first-start-of-a-production-install).
+
+### 2026-10-15 — No setup codes: the first admin is the bootstrap one
+A server no longer prints a setup code, and nothing claims one: `POST /api/v1/auth/claim`, `restmail setup`, `mint-token --purpose setup` and `RESTMAIL_SETUP_LINK_BASE` are gone, and `GET /api/v1/server` says only what the server is. The first admin comes from the password the installer chose; a server with no admin and no bootstrap password refuses to start in production. Owner keys and `restmail reset-admin` remain the way back in. [§7.9](#79-first-start-of-a-production-install).
 
 ### 2026-10-10 — Claiming a server with the CLI, and handing it over
 A fresh server prints a setup code (and its QR code) to its own output until it is claimed; `restmail setup` also claims one over its public API, proving ownership with a key the deployment lists, and shows a single-use link the app redeems; `restmail reset-admin` lets an admin back in and hands a server over, ending every session the account had, unexpired access tokens included. Agent-friendly throughout: `--json`, stable exit statuses, nothing prompts. [§7.9](#79-first-start-of-a-production-install).
@@ -98,14 +116,15 @@ Design docs for 7 pipeline/gateway integration fixes and 5 API endpoint wiring t
 | `mail2.test` | Traditional | Postfix + Dovecot (reference-mailserver project) |
 | `restmail.test` | RESTMAIL | Go gateways → REST API → PostgreSQL |
 
-The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds `domains`, `mailboxes`, `aliases`, `messages`, `webmail_accounts`, `linked_accounts`, `quota_usage`, and ancillary tables. The traditional reference servers (`mail1.test`, `mail2.test`) run their own storage from the separate `rest-mail/reference-mailserver` project and are used only for cross-domain interop testing.
+The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds `domains`, `mailboxes` (the accounts), `credentials`, `roles`, `grants`, `aliases`, `messages`, `quota_usage`, and ancillary tables. The traditional reference servers (`mail1.test`, `mail2.test`) run their own storage from the separate `rest-mail/reference-mailserver` project and are used only for cross-domain interop testing.
 
 ### 3.2 Database schema (selected core tables)
 - `domains` — name, `server_type` (traditional|restmail), active, default_quota_bytes
-- `mailboxes` — domain_id, local_part, address, password `{BLF-CRYPT}`, display_name, quota_bytes, quota_used_bytes, active, last_login_at
+- `mailboxes` — the accounts: domain_id, local_part, address (what signs in), display_name, quota_bytes, quota_used_bytes, active, last_login_at, password_change_required, two_factor_required, credential_epoch, bootstrap_expires_at. No password column: passwords are credentials.
+- `credentials` — account_id (a mailbox), kind (`password`, `totp`, `recovery_code`, `app_password`), name, public_id (unique), secret_hash (`{BLF-CRYPT}` bcrypt for passwords and recovery codes, SHA-256 for app password secrets), encrypted_secret (a TOTP secret, encrypted with `MASTER_KEY`), scope (JSONB), created_by_id, created_at, confirmed_at (a TOTP), last_used_at, expires_at, revoked_at. An account has 0..n of each. Never deleted: a revoked one stays for the audit trail.
+- `roles`, `capabilities`, `role_capabilities` — the built-in roles (`superadmin`, `admin`, `readonly`, `owner`) and what each holds.
+- `grants` — holder_kind (`account`) + holder_id (a mailbox), role_id, scope (`*`, `domain:<name>`, `mailbox:<address>`), mode (`active`, `eligible`), granted_by, expires_at; `grant_activations` — an eligible grant switched on.
 - `aliases` — domain_id, source_address, destination_address, active
-- `webmail_accounts` — primary_mailbox_id
-- `linked_accounts` — webmail_account_id, mailbox_id
 - `messages` — mailbox_id, folder, message_id, subject, body_text, body_html, sender, recipients_to/cc (JSONB), size_bytes, is_read / is_flagged / is_starred / is_draft / is_deleted, received_at, date_header, thread_id, in_reply_to, references
 - `quota_usage` — mailbox_id, subject_bytes, body_bytes, attachment_bytes, total_bytes (GENERATED), message_count
 - `attachments` — message_id, filename, content_type, size, checksum (indexed for dedup), storage_type, storage_ref, is_inline
@@ -115,10 +134,18 @@ The `restmail.test` domain uses the `restmail` PostgreSQL database, which holds 
 
 ### 3.3 Auth
 - Password hashing: bcrypt cost 10, stored with `{BLF-CRYPT}` prefix (Dovecot-compatible). Implementation at [internal/auth/auth.go](../internal/auth/auth.go).
-- JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. Claims: `sub`, `email`, `webmail_account_id`, `iss=restmail`, `iat`, `exp`, `capabilities[]`.
+- Accounts: an account is a mailbox. `POST /api/v1/auth/login` takes `email` (the address), `password` and, for an account with 2FA, `totp_code` or `recovery_code`; there are no usernames and no other kind of user. The password matches any of the account's `password` credentials (an account may have none: nothing then signs in to it).
+- JWT: 15-min access token (memory only in browser), 7-day refresh token in HTTP-only `Secure SameSite=Strict` cookie. HS256 signed with `JWT_SECRET`. One kind of token. Claims: `sub` (`account:<id>`), `account_id` (the mailbox id), `address`, `iss=restmail`, `iat`, `exp`, `jti` (new at every refresh), `sid` (the session: minted at sign-in, 128 random bits, kept by every refresh, and recorded on the refresh token's ledger row as `session_id`; an access or refresh token without one is refused with 401), `amr` (how it signed in: `pwd`, plus `otp` with 2FA), `mfa` when its sign-in took 2FA, `cep` (the account's credential epoch: a token from before a credential change is refused), `setup` while the account is in setup; a refresh keeps them. No capabilities: they come from the account's grants on every request. An app password makes no token: the gateways send it with HTTP Basic on every request.
+- Ending sessions (#354): a new password (`POST /api/v1/auth/password`, or an admin's `PATCH /api/v1/admin/mailboxes/{id}`), a reset, turning 2FA off, an admin's `DELETE /api/v1/admin/mailboxes/{id}/sessions` and a disable each end every session of the account in their own transaction (`endSessions`, [internal/api/handlers/sessions.go](../internal/api/handlers/sessions.go)): its refresh tokens are revoked and `credential_epoch` moves on. Every token carries the epoch it was minted at, and one from an older epoch is refused with 401 by `RejectStaleSessions` (every authenticated route group), by the event stream (when it opens, and before every event and keepalive, so an open stream ends), and by refresh (even if its ledger row was never revoked). The check reads a per-account cache (`SessionCache`, 5 seconds), so it costs no query per request; every change above made through the API empties the account's entry before answering, so it takes effect at the next request. The operator commands (`restmail-api reset-password`, `revoke-sessions`) run in another process and reach a running API within those 5 seconds. Enabling 2FA ends nothing. App passwords are credentials, not sessions: only a new password or a reset revokes them.
 - Refresh flow: axios response interceptor in admin / webmail detects 401 → `POST /api/v1/auth/refresh` → retry request → logout on refresh failure.
-- RBAC: JWT carries `capabilities[]`. Wildcard `*` = superadmin. Capabilities use `resource:action` format (e.g. `domains:write`, `users:delete`). Server enforces; client-side checks are UX only.
-- Account setup: an admin flagged `password_change_required`, or `two_factor_required` without a confirmed authenticator, is *in setup*. Its sessions carry the `setup` claim and no capabilities; `AdminOnly` answers `403 setup_required` on every admin route, and refresh re-derives the state from the database so it is no way out. Login reports what is owed in `setup_required`. The roles and the first admin of a fresh install come from [internal/bootstrap](../internal/bootstrap/bootstrap.go) at every API start — see [§7.9](#79-first-start-of-a-production-install).
+- RBAC: an account holds **grants** (`grants` table, [internal/grants](../internal/grants/)): a role at a scope, `*`, `domain:<name>` or `mailbox:<address>`, each covering everything beneath it, `active` or `eligible` (eligible does nothing until switched on). `RequireCapability` reads the caller's grants in force on every request (a 5-second cache, emptied by every grant change made through that replica, and never kept past an expiry), never the token. Routes on the domain or mailbox their `{id}` names accept a grant covering it; every other route needs the capability at `*`. Wildcard `*` = superadmin. Capabilities use `resource:action` format (e.g. `domains:write`, `users:delete`). The login response's `capabilities` lists what the grants give at `*` (`["*"]` for a superadmin), for display; client-side checks are UX only.
+- Changing grants (`POST`/`DELETE /admin/grants`) needs `users:write`, a session whose `amr` includes `otp`, and holding every capability of the role at a scope covering the grant's. Each change and its audit entry commit in one transaction. The last superadmin grant at `*` held by an active admin who can use it (active, or eligible with an authenticator to switch it on) cannot be removed.
+- Escalation (#346): an **eligible** grant gives nothing until its holder switches it on: `POST /admin/grants/{id}/activate` with `{reason, minutes, totp_code}` (or `recovery_code`). `minutes` defaults to 60, at most 240; the code must be given in the body, as a session's own 2FA is not enough. It stays on until it runs out (never past the grant's own expiry) or `POST /admin/grants/{id}/deactivate`. Only the grant's holder can do either (anyone else gets 404). `GET /admin/grants/mine` lists the caller's grants with any activation and `seconds_left`, for an "Escalate" button. Activations live in `grant_activations`; `grants.activate`, `grants.deactivate` and `grants.expire` go into the audit log in the same transaction. Expiry is recorded when noticed, by a sweeper in the API every minute or when `grants/mine` is read; the access stops at the moment it runs out regardless.
+- Superadmin is eligible for a new install's first admin, who works day to day with `admin` at `*`. An admin holding a grant active can choose to hold it only when needed: `POST /admin/grants/{id}/make-eligible` with a fresh code, recorded as `grants.make_eligible`. Nothing makes it eligible for them. An owner whose only grant is `superadmin` should first grant themselves `admin` at `*` (`POST /admin/grants`), or day-to-day work needs escalating too. Making a grant eligible is one way: only another superadmin can make it active again.
+- Mail on another account: a grant of `owner` (or any role holding `mail:read`, `mail:write`, `mail:send`, `mailbox:manage`) at `mailbox:<address>` lets the holder read, change and send that account's mail, and manage it (its app passwords). An account always holds them on itself. Creating an account (`POST /api/v1/accounts`) or linking one (`POST /api/v1/accounts/link`, proving its password and 2FA) gives the session's account the `owner` grant on it; unlinking (`DELETE /api/v1/accounts/{id}`) removes the session's own grants on it. A sub account is just an account you own.
+- App passwords: `POST /api/v1/accounts/{id}/credentials` for the session's own account or one it holds `mailbox:manage` on (a session from a password sign-in, with its 2FA code when the account has 2FA, and the session's own current password entered again in `password`: `403 reauth_required` without it, `403 invalid_password` when it is wrong (never `401`: the session is still good), checked with bcrypt against the hash as it is now and throttled with login's budget) makes one and shows it once; `GET` lists them, `DELETE …/{credential_id}` revokes one. A new password for the mailbox (`PATCH /api/v1/admin/mailboxes/{id}` with `password`) revokes all of them, in the transaction that sets it, with a `credentials.revoke` audit entry for each, `reason` `password_changed`. The mail routes take one with HTTP Basic (`address:app_password`), checked on every request; the gateways sign a client in with one through `POST /api/v1/auth/protocol-sign-in` and send it with each request, so a revoked one stops at the client's next command, and SMTP rechecks it before each message. Its scope is its own account (read, write, send): never another the account holds grants on. Gateways sign every client in through that one path: a password works over Basic only for an account without 2FA and out of setup (`401 app_password_required`, `401 setup_required` otherwise, after the password is proven). Refusals are throttled at login's rate, per client IP for guesses and per credential for one whose secret matched. Implementation at [internal/api/middleware/basic_credentials.go](../internal/api/middleware/basic_credentials.go) and [internal/db/repositories/credential.go](../internal/db/repositories/credential.go).
+- Push devices (#363): only with APNs configured (`RESTMAIL_APNS_KEY_FILE`, `_KEY_ID`, `_TEAM_ID`, `_TOPIC`); otherwise `GET`/`POST /api/v1/devices` and `DELETE /api/v1/devices/{id}` answer 404, which the app reads as "no push". A session registers its phone's APNs token (`platform`, `token`, `environment` `production` or `sandbox`, `app_id` = the topic), once per (session, token), at most 10; a refused registration answers 422 `validation_failed` with `details.fields`, like the rest of the API. A device belongs to its session: a logout that ends the session removes it, and a sweep every minute removes those of sessions revoked (a password change, `RevokeAllForAccount`) or expired, which get no push from the moment they end. New mail into the INBOX (not already read) of a mailbox the session lists in `GET /api/v1/accounts` sends each of its devices a background push (`apns-push-type: background`, priority 5, an hour's `apns-expiration`) over HTTP/2 with an ES256 provider token signed with the `.p8` and reused for 50 minutes. The whole payload is `{"aps":{"content-available":1},"restmail":{"v":1,"device":"<id>","account":<id in GET /accounts>,"unread":<INBOX unread>}}`. At most one push per device and account every 5 seconds: mail inside the window is told once at its end, with the count then. APNs answering 410, `BadDeviceToken` or `DeviceTokenNotForTopic` removes the device. Registration and removal are audited (`devices.register`, `devices.remove`; the server's own removals by the system, with the reason, in the transaction that deletes). Implementation at [internal/push](../internal/push/).
+- Account setup: an account flagged `password_change_required`, or `two_factor_required` without a confirmed authenticator, is *in setup*. Its sessions carry the `setup` claim; `SetupDone` answers `403 setup_required` on every route but those that finish the setup (a new password, 2FA enrollment, `GET /auth/me`, logout), and refresh re-derives the state from the database so it is no way out. Login reports what is owed in `setup_required`. The roles and the first admin of a fresh install come from [internal/bootstrap](../internal/bootstrap/bootstrap.go) at every API start — see [§7.9](#79-first-start-of-a-production-install).
 
 ### 3.4 Web framework & runtime
 - Go: chi router, zero external deps beyond stdlib for middleware (`func(http.Handler) http.Handler`).
@@ -133,7 +160,7 @@ A shared **testbed** (the `mailnet` network, the certs volume, and the dnsmasq f
 Optional add-on:
 - `chore monitoring:up` — Prometheus + Grafana + postgres-exporter.
 
-Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence uses named volumes (per-service data/logs volumes plus the shared `testbed_certs`).
+Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence uses named volumes (per-service data/logs volumes plus the shared `testbed_certs`). Certificates are issued into `testbed_certs` and `<project>-internal-mtls`, which also hold the CAs' private keys, so no service mounts either: each one gets `<container>-certs`, holding copies of only its own files, made right before it starts. The gateways run as uid 10001 with every capability dropped.
 
 ---
 
@@ -144,12 +171,19 @@ Containers resolve names through the testbed dnsmasq (`10.99.0.10`). Persistence
 API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoints under `/api/v1/`; server-to-server RESTMAIL endpoints under `/restmail/` (unversioned).
 
 #### Auth / session
-- `POST /api/v1/auth/login` — returns access token + sets refresh cookie
+- `POST /api/v1/auth/login` — `{email, password, totp_code?|recovery_code?}`; returns access token + sets refresh cookie
+- `POST /api/v1/auth/password`, `POST /api/v1/auth/2fa/{enroll,confirm,disable}` — any account's own password and authenticator
 - `POST /api/v1/auth/logout` — revoke session
 - `POST /api/v1/auth/refresh` — rotate access token
+- `POST /api/v1/auth/protocol-sign-in` — a gateway signs a mail client in (HTTP Basic: an app password, or the password of an account without 2FA); the one path every gateway uses
+- `GET|POST /api/v1/accounts/:id/credentials`, `DELETE /api/v1/accounts/:id/credentials/:credential_id` — app passwords of the session's own account or one it owns
+- `GET|POST /api/v1/devices`, `DELETE /api/v1/devices/:id` — phones registered for push by this session (404 when push is off)
 
 #### User-level mail (authenticated)
-- `GET /api/v1/accounts` — list linked mailboxes
+- `GET /api/v1/accounts` — the session's own account first, then every account it holds a mail grant on; `id` is the mailbox id
+- `POST /api/v1/accounts` — `{address, display_name?, password?}`: create an account (needs `mailboxes:write` covering its domain); the creator gets `owner` on it. `201 {"data": Account}`, `403`, `409`, `422`; audited (`accounts.create`) in the transaction that creates it
+- `POST /api/v1/accounts/link` — `{address, password, display_name?, totp_code?|recovery_code?}`: prove an account's password to get `owner` on it; a refused proof is `403` `invalid_credentials`, `totp_required` or `invalid_totp`, never `401`, since the session that sent it is still good; throttled like sign-in, audited (`accounts.link`)
+- `DELETE /api/v1/accounts/:id` — unlink: remove the session's own grants on the account
 - `GET /api/v1/accounts/:id/folders`
 - `GET /api/v1/accounts/:id/folders/:folder/messages` — cursor pagination
 - `GET /api/v1/accounts/:id/folders/:folder/threads` — grouped by `thread_id`
@@ -175,9 +209,8 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 
 #### Admin (capability-gated)
 - Domains: `GET/POST /api/v1/admin/domains`, `GET/PATCH/DELETE /:id`, `GET /:id/dns` (required records), `POST /:id/verify`
-- Mailboxes: standard CRUD + quota preload
+- Mailboxes (the accounts): `GET /mailboxes`, `GET/PATCH/DELETE /mailboxes/:id` (display name, quota, active, a new password). They are created with `POST /api/v1/accounts`, the one way an account is made
 - Aliases: standard CRUD
-- Webmail accounts: list, create, link primary mailbox, delete
 - Queue: list + filters (status, domain, sender, recipient, attempts), `GET /:id`, `POST /:id/retry`, `POST /:id/bounce`, `DELETE /:id`, plus bulk endpoints `POST /bulk-retry`, `POST /bulk-bounce`, `DELETE /bulk-delete` (accept `ids[]` up to 1000 or `filter{status, domain, sender, recipient}`)
 - Pipelines: `GET/POST /pipelines`, `PATCH/DELETE /pipelines/:id`, `POST /pipelines/test`, `POST /pipelines/test-filter`, `GET /pipelines/logs`, `GET /pipelines/analytics`. Each pipeline is still per-domain, per-direction (the model carries `domain_id` + `direction`), but the API addresses pipelines by numeric id.
 - Custom filters: `GET/POST /custom-filters`, `POST /custom-filters/validate`, `GET/PATCH/DELETE /custom-filters/:id`, `POST /custom-filters/:id/test`
@@ -188,7 +221,7 @@ API at `http://localhost:8080` (or `/api` through the reverse proxy). All endpoi
 - MTA-STS: `GET /domains/:id/mta-sts`, `PUT`, `DELETE`
 - TLS-RPT: `GET /tls-reports?domain_id=&policy_type=&reporting_org=`
 - Stats: `GET /stats` (dashboard)
-- Admin users (RBAC): `GET/POST /admin-users`, `GET/PUT/DELETE /admin-users/:id`, `GET /roles`, `GET /capabilities`
+- Grants (RBAC): `GET /roles`, `GET /capabilities`, `GET/POST /grants` (`?holder_kind=account&holder_id=&scope=`), `DELETE /grants/:id`, `GET /grants/mine`, `POST /grants/:id/{activate,deactivate,make-eligible}`
 
 #### Server-to-server (RESTMAIL protocol, unauthenticated body verified by DKIM/SPF/DMARC)
 - `GET /restmail/capabilities`
@@ -214,16 +247,14 @@ Per-domain, per-direction (inbound / outbound) filter chains. Configured via `/a
 
 Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defer`. SMTP gateway maps these to reply codes 250 / 550 / silent discard / 200 / 451 respectively.
 
-#### Built-in filters (23)
+#### Built-in filters (21)
 
 | Filter | Type | Notes |
 |--------|------|-------|
-| `spf_check` | Check | SPF record validation |
+| `spf_check` | Check | SPF verification (via go-spf) of the HELO and MAIL FROM identities; records the results for DMARC. `fail_action` (tag, reject, quarantine) acts on a MAIL FROM fail; the default, tag, leaves it to DMARC |
 | `dkim_verify` | Check | Verify incoming signatures |
-| `dkim_sign` | Transform | Sign outbound with active DKIM key |
 | `dmarc_check` | Check | DMARC policy enforcement |
 | `arc_verify` | Check | ARC chain verification |
-| `arc_seal` | Transform | ARC seal generation |
 | `rate_limit` | Check | Per-sender/domain |
 | `size_check` | Check | Message size ceiling |
 | `header_validate` | Check | Require From/Date/Message-ID; reject header-injection attempts |
@@ -237,12 +268,16 @@ Each filter returns one of: `continue`, `reject`, `quarantine`, `discard`, `defe
 | `vacation` | Action | DB-backed; reads `vacation_configs`, queues reply via `outbound_queue` with RFC 3834 headers: `Auto-Submitted: auto-replied`, `Precedence: bulk`, `In-Reply-To`, `References`, `X-Auto-Response-Suppress: All` |
 | `sieve` | Action | Sieve script execution |
 | `webhook` | Action | HTTP POST notification |
-| `duplicate` | Action | Fork message to webhook/queue |
-| `javascript` | Action | Runs in [projects/js-filter-sidecar](../projects/js-filter-sidecar/) (Node.js, `vm.runInNewContext` with whitelisted globals, `--max-old-space-size=64`) |
+| `duplicate` | Action | Fork a copy of the message to a webhook |
+| `javascript` | Action | Runs in [projects/js-filter-sidecar](../projects/js-filter-sidecar/): each script in its own QuickJS engine compiled to WebAssembly, in a Worker, with a memory limit, a CPU budget (`timeout_ms`) and a wall-clock deadline. The API calls it at `JS_FILTER_URL` with `JS_FILTER_TOKEN`; a filter's config cannot point it elsewhere |
 | `rspamd` | Adapter | HTTP POST to `rspamd:11333`, 5 s timeout, maps action enum |
 | `clamav` | Adapter | HTTP POST to `clamav-rest:3000`, 30 s timeout, clean / infected |
 
-Filters that need runtime dependencies — the DB-backed ones (greylist, vacation, domain_allowlist, contact_whitelist, recipient_check, sender_verify) and the signing filters that read keys and require the master key (dkim_sign, arc_seal) — are explicitly `pipeline.DefaultRegistry.Register()`'d in [internal/api/routes.go](../internal/api/routes.go). The remaining built-ins self-register via `init()` in [internal/pipeline/filters/](../internal/pipeline/filters/) on blank import.
+Filters that need runtime dependencies — the DB-backed ones (greylist, vacation, domain_allowlist, contact_whitelist, recipient_check, sender_verify) — are explicitly `pipeline.DefaultRegistry.Register()`'d in [internal/api/routes.go](../internal/api/routes.go). The remaining built-ins self-register via `init()` in [internal/pipeline/filters/](../internal/pipeline/filters/) on blank import.
+
+DKIM signing is not a filter. Every outbound message — sent through the API, submitted over SMTP, or relayed by the queue worker — is signed once, over its finished wire bytes, by [internal/outbound](../internal/outbound/prepare.go) (`SignDKIM`, via go-dkim). A domain with a key either signs or the message waits: a key that cannot sign fails closed.
+
+List-Unsubscribe (#144): `POST /api/v1/messages/send` takes `list_unsubscribe: {mailto, https}`, a bare address and/or one https URL the sender runs; the server publishes them as `List-Unsubscribe: <mailto:…>, <https://…>` and never fetches or posts to them. Only an `https` target adds the RFC 8058 one-click field, `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, and `SignDKIM` signs it along with `List-Unsubscribe` (go-dkim's default set plus `list-unsubscribe-post`; a field the message lacks is not named, so other mail signs as before). A one-click claim must be DKIM signed (RFC 8058 §4), so an `https` target from a domain with no DKIM key is refused with `422 dkim_required`; a `mailto`-only target sends either way. A target with a line break, space, comma, angle bracket or quote, another scheme, credentials, a display name, a `mailto:` query or a key other than `mailto` and `https` is refused with 400, and the request's fields replace any a pipeline transform set. Marking a domain transactional or requiring the field for bulk senders is not built yet.
 
 #### Pipeline DB context
 Pipeline context carries `*gorm.DB` via `context.WithValue()`; filters access via `pipeline.DBFromContext()`. This lets filters query tables (e.g. `extract_attachments` checks the `attachments.checksum` index to dedup).
@@ -258,6 +293,8 @@ Implementations at [internal/gateway/smtp/](../internal/gateway/smtp/), [interna
 - **SMTP**: inbound (25), submission (587), implicit TLS (465). Built on the `rest-mail/go-smtp` fork (`internal/gateway/smtp` is a thin layer over it) and still advertises the custom `RESTMAIL` EHLO capability for server-to-server upgrade. Wired for the outbound queue — inserts into `outbound_queue` on non-local RCPT with `ExpiresAt: now+72h`, `MaxRetries: 30`.
 - **IMAP**: 143 / 993. A thin `Backend` adapter over the `rest-mail/imap` server library; the library handles the IMAP protocol (SELECT/FETCH/SEARCH/EXPUNGE/CREATE etc.) and the gateway serves mailbox data from the REST/DB layer.
 - **POP3**: 110 / 995. A thin `Backend` adapter over the `rest-mail/pop3` server library (STAT/LIST/RETR/DELE/QUIT).
+
+All three sign a client in through one path: `POST /api/v1/auth/protocol-sign-in` with HTTP Basic, which checks the secret against the account's credentials (an app password, recognised by its format, or one of its passwords), after which every API call carries it with HTTP Basic. A password signs in only an account without 2FA and out of setup; an account with 2FA uses app passwords. Over SMTP, only a password session may send as another account it holds `mail:send` on; an app password sends as its own address only.
 
 #### Outbound queue worker
 At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Polls `outbound_queue`, attempts delivery, parses SMTP errors via `SMTPError{Code, Enhanced, Message}` + `parseSMTPError()`, and:
@@ -325,12 +362,16 @@ Install via Homebrew, Go, or pre-built binary — see https://github.com/rest-ma
 
 Located at [webmail/](../webmail/). Features: rich text editor, contacts, drafts, threads, attachments, SSE live updates, vacation settings. Served on `:3000` (production build) or `:3001` (Vite HMR dev).
 
+Deployed by the Helm chart at `webmail.<domain>` (`webmail.*` in [helm/restmail/values.yaml](../helm/restmail/values.yaml)), whose Ingress also sends `/api` to the API: the app calls the API at the root-relative `/api/v1` on its own origin, which its CSP (`connect-src 'self'`) and `SameSite=Strict` cookies require. The image (`ghcr.io/rest-mail/webmail`) takes the path it is served under when it starts (`NGINX_BASE_PATH`, default `/`) and names it in the page's `<base>`; the chart serves it at `/`.
+
 #### SSE reconnect strategy
 [webmail/src/hooks/useSSE.ts](../webmail/src/hooks/useSSE.ts) — manual reconnect with exponential backoff (1 s → 2× → 30 s max, reset on successful open). Events handled: `message.new`, `message.updated`, `message.deleted`, `message_sent`, `folder.updated`.
 
 ### 4.7 Admin UI (React / TanStack Router / Zustand / Tailwind v4)
 
 Located at [admin/](../admin/). Served on `:3002` or through `/admin` on the reverse proxy.
+
+Deployed by the Helm chart at `admin.<domain>` (`admin.*` in [helm/restmail/values.yaml](../helm/restmail/values.yaml)), with `/api` to the API on the same host, exactly as the webmail is (§4.6). The image (`ghcr.io/rest-mail/admin`) takes its path from `NGINX_BASE_PATH` when it starts and names it in the page's `<base>`, which is where the router reads its basepath; the chart serves it at `/`. Restricting `admin.` by source address is left to the ingress controller, through `admin.ingress.annotations`.
 
 #### Tech stack (actual, not as PLAN.md originally described)
 - TanStack Router (React 19), not TanStack Start
@@ -351,7 +392,7 @@ admin/src/
 │   ├── queue/{index,$id}.tsx
 │   ├── pipelines/{index,$id,new,logs}.tsx
 │   ├── custom-filters/{index,$id,new}.tsx
-│   ├── admin-users/{index,$id,new}.tsx
+│   ├── grants/index.tsx
 │   ├── settings/{index,dkim,certificates,bans,tls-reports,mta-sts}.tsx
 │   └── messages/$id/...
 ├── components/  (dashboard, domains, layout, mailboxes, pipelines, queue)
@@ -359,7 +400,7 @@ admin/src/
 │   ├── api.ts   (axios client + per-resource calls)
 │   └── stores/  (authStore, domainStore, mailboxStore, aliasStore, queueStore,
 │                 pipelineStore, customFilterStore, filterRegistryStore,
-│                 adminUserStore, dkimStore, certificateStore, banStore,
+│                 grantStore, dkimStore, certificateStore, banStore,
 │                 tlsReportStore, mtastsStore, dashboardStore, analyticsStore,
 │                 uiStore)
 ├── main.tsx, router.tsx, routeTree.gen.ts
@@ -369,7 +410,8 @@ admin/src/
 #### Implemented features
 - **Dashboard** — metric cards (domains, mailboxes, queue counts), Recharts 3.7.0 installed. *Partial: volume chart + recent activity feed need real data integration.*
 - **Domains** — full CRUD. *Partial: DNS status check component is template-only.*
-- **Mailboxes** — full CRUD, filter by domain, search, last login. *Partial: quota visualization basic, bulk ops not implemented.*
+- **Mailboxes** — the accounts: list, filter by domain, search, last login; a new one is made through `POST /api/v1/accounts` (the admin owns it), with or without a password. *Partial: quota visualization basic, bulk ops not implemented.*
+- **Grants** — who holds which role at which scope; grant and remove roles (needs `users:write` and a 2FA session).
 - **Queue** — complete (Stage 4, see §2 Changelog).
 
 #### RBAC hook
@@ -377,7 +419,7 @@ admin/src/
 
 ### 4.8 Console admin tool
 
-Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Authenticates with seeded admin credentials (`admin` / `admin123!@`, superadmin). Build: `chore build:console` (auto-detects platform) or `chore build:console:all`. Run: `chore run:console` (runs inside the api container).
+Terminal UI built with bubbletea at [cmd/console/main.go](../cmd/console/main.go). Features: inbox viewer, search, compose, live status, RBAC-aware capability display. Signs in by address: the seeded admin account (`admin@<domain>` / `admin123!@`, superadmin), set with `RESTMAIL_ADMIN_ADDRESS` and `RESTMAIL_ADMIN_PASSWORD`. Build: `chore build:console` (auto-detects platform) or `chore build:console:all`. Run: `chore run:console` (runs inside the api container).
 
 Released as **`restmail`** on every SemVer tag (`v1.2.3`) by [release-cli.yml](../.github/workflows/release-cli.yml) and [.goreleaser.yaml](../.goreleaser.yaml): macOS and Linux binaries on the GitHub Release, each with a build-provenance attestation.
 
@@ -402,22 +444,20 @@ Prometheus metrics at `/metrics`. Grafana dashboards under [monitoring/](../moni
 
 ## 5. Outstanding Work
 
-> **Status note (2026-07 refresh):** much of the admin UI described below as outstanding has since been built. `admin/src/routes/` and `admin/src/lib/stores/` now ship pages and stores for aliases, pipelines, custom filters, admin-users (RBAC), and every settings subsection (DKIM, certificates, IP bans, TLS-RPT, MTA-STS), and the admin-user backend has landed (§5.1). The per-stage detail below is retained as historical planning context; each item still needs verification against the code before being treated as fully done.
+> **Status note (2026-07 refresh):** much of the admin UI described below as outstanding has since been built. `admin/src/routes/` and `admin/src/lib/stores/` now ship pages and stores for aliases, pipelines, custom filters, grants (RBAC), and every settings subsection (DKIM, certificates, IP bans, TLS-RPT, MTA-STS), and the grants backend has landed (§5.1). The per-stage detail below is retained as historical planning context; each item still needs verification against the code before being treated as fully done.
 
 ### 5.1 Critical blockers
 
-None outstanding. The former blocker — the admin-user (RBAC) management backend — has landed. The handler is at [internal/api/handlers/admin_user.go](../internal/api/handlers/admin_user.go), with routes registered in [internal/api/routes.go](../internal/api/routes.go):
+None outstanding. The former blocker — RBAC management — has landed as grants on accounts. The handler is at [internal/api/handlers/grants.go](../internal/api/handlers/grants.go), with routes registered in [internal/api/routes.go](../internal/api/routes.go):
 ```
-GET    /api/v1/admin/admin-users
-POST   /api/v1/admin/admin-users
-GET    /api/v1/admin/admin-users/{id}
-PUT    /api/v1/admin/admin-users/{id}
-DELETE /api/v1/admin/admin-users/{id}
 GET    /api/v1/admin/roles
 GET    /api/v1/admin/capabilities
+GET    /api/v1/admin/grants
+POST   /api/v1/admin/grants
+DELETE /api/v1/admin/grants/{id}
 ```
 
-Routes are capability-gated with a `needs(...)` helper against the taxonomy in [internal/api/middleware/capabilities.go](../internal/api/middleware/capabilities.go) — `users:read`, `users:write`, `users:delete`, plus the wildcard `*`. The matching admin UI ships at `admin/src/routes/admin-users/`.
+Routes are capability-gated with a `needs(...)` helper against the taxonomy in [internal/api/middleware/capabilities.go](../internal/api/middleware/capabilities.go) — `users:read`, `users:write`, `users:delete`, plus the wildcard `*`. The matching admin UI ships at `admin/src/routes/grants/`.
 
 ### 5.2 High-priority next
 
@@ -464,7 +504,7 @@ Estimated effort: 4–5 days.
 - Global toast system: `useToastStore` + `ToastContainer` + animations (currently only local to admin queue page)
 - Responsive (sm/md/lg/xl breakpoints); test iPhone SE, iPad, 1920px
 - WCAG 2.1 AA accessibility audit (semantic HTML, heading hierarchy, ARIA labels, focus management, 4.5:1 contrast, keyboard nav)
-- Playwright E2E: `playwright.config.ts`, auth/domain/mailbox/queue/admin-user specs, fixtures, setup/teardown
+- Playwright E2E: `playwright.config.ts`, auth/domain/mailbox/queue/grant specs, fixtures, setup/teardown
 - Performance: bundle < 500 KB gzipped, route-based code splitting (TanStack Router), `React.lazy` + Suspense, image optimization (AVIF + srcSet), Web Vitals tracking
 - Security: CSP headers, DOMPurify if needed, CSRF token in header, 429 handling, secure-cookie settings
 - Documentation: `USER_GUIDE.md`, `API_INTEGRATION.md`, `DEPLOYMENT.md`
@@ -581,8 +621,12 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 | `API_HOST` | `0.0.0.0` | |
 | `JWT_SECRET` | `dev-secret-change-in-production` | **Required in prod** |
 | `MASTER_KEY` | *(empty)* | AES-256-GCM key for encrypting private keys at rest. **Required in prod; losing it means losing all DKIM/TLS private keys.** |
-| `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` | *(empty)* | First superadmin of a fresh install, created only while **no** admin exists; 16+ bytes. Empty = no bootstrap admin. See [§7.9](#79-first-start-of-a-production-install). |
-| `RESTMAIL_BOOTSTRAP_ADMIN_USERNAME` | `admin` | Username for that admin. |
+| `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` | *(empty)* | First admin of a fresh install (superadmin eligible, switched on when needed), created only while **no** admin exists; 16+ bytes. Empty = no bootstrap admin. See [§7.9](#79-first-start-of-a-production-install). |
+| `RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS` | *(empty)* | The address of that first account. The Helm chart sets it to `admin@<mailserver.domain>`; its domain is created with it if this server does not host it yet. |
+| `RESTMAIL_APNS_KEY_FILE` | *(empty)* | Path to the APNs auth key (`.p8`), mounted from a secret. Push is off unless this, the key id and the team id are all set; a key that is set and does not load stops the API starting. |
+| `RESTMAIL_APNS_KEY_ID` | *(empty)* | The key's id, from the Apple Developer portal. |
+| `RESTMAIL_APNS_TEAM_ID` | *(empty)* | The developer team the key belongs to. |
+| `RESTMAIL_APNS_TOPIC` | `com.antimatterstudios.restmail` | The app's bundle id; registrations naming another are refused. |
 | `TOTP_2FA_ENABLED` | `true` | Lets accounts enroll in TOTP 2FA. The bootstrap admin must enroll, so the API refuses to create one while this is off. |
 | `ENVIRONMENT` | `development` | `development`, `production`, `test` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
@@ -616,6 +660,7 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 | `POP3_TLS_PORT` | `995` | |
 | `QUEUE_WORKERS` | `4` | |
 | `QUEUE_POLL_INTERVAL` | `5s` | |
+| `SUPPRESSION_TTL` | `2160h` (90 days) | How long a recipient that hard bounced (no such mailbox or domain) stays suppressed for the sending domain |
 | `MTASTS_ENFORCE` | `true` | Enforce recipient MTA-STS policies on outbound delivery (RFC 8461) |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS` | *(empty)* | Comma-separated CIDRs; empty disables. SMTP gateway only |
@@ -644,9 +689,9 @@ Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection*
 The stack is driven by per-service tasks in `chores.yml`, not a single compose file. Run `chore --list` for the full catalog; `chore status` shows what is running and where.
 ```bash
 chore testbed:up          # shared testbed: mailnet network + certs volume + dnsmasq
-chore dev                 # bring up the full restmail stack (alias for restmail:up)
-chore restmail:down       # stop the restmail stack (preserves data volumes)
-chore restmail:restart    # stop + recreate the full stack (rebuilds images)
+chore instance:up         # bring up the full restmail stack (CONFIG defaults to restmail.test)
+chore instance:down       # stop the restmail stack (preserves data volumes)
+chore instance:restart    # stop + recreate the full stack (rebuilds images)
 chore purge               # remove all rest-mail-* containers (keeps volumes)
 chore db:reset            # drop postgres data volume, recreate, then seed (destructive)
 chore db:seed             # seed the instance DB (admin/admin123!@ + restmail.test accounts)
@@ -742,17 +787,20 @@ Capability cache (`restmail_capabilities` table) avoids re-probing; atomic upser
 
 ### 7.9 First start of a production install
 
-The production image ships only `restmail-api` — no seed tool, so no known passwords. A fresh database therefore has no admin, and without one nobody can create a domain or a mailbox. At every start the API creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles (idempotent). Then there are three ways to get a first admin:
+The production image ships only `restmail-api` — no seed tool, so no known passwords. At every start the API creates the built-in capabilities and the `superadmin`, `admin` and `readonly` roles (idempotent). Its first admin comes from the password the installer chose, below; a server with no admin and no bootstrap password **refuses to start** in production, because nobody could ever sign in to it. (A development stack starts anyway, and says so: it seeds its admins into the running API with `chore db:seed`.)
 
 #### What a Helm install needs
 
-A hostname and a domain. The chart makes the API's `JWT_SECRET` and `MASTER_KEY`, and the embedded Postgres's credentials, on the first install. It keeps them across every upgrade, and keeps them when the release is uninstalled, so reinstalling under the same name finds them again. `MASTER_KEY` encrypts private keys at rest, and a new one would leave every stored key unreadable, which is why it is never regenerated.
+A hostname, a domain, and the first admin's password (`api.bootstrapAdminPassword`, 16 characters or more; the chart will not render without it). The chart makes the API's `JWT_SECRET` and `MASTER_KEY`, and the embedded Postgres's credentials, on the first install. It keeps them across every upgrade, and keeps them when the release is uninstalled, so reinstalling under the same name finds them again. `MASTER_KEY` encrypts private keys at rest, and a new one would leave every stored key unreadable, which is why it is never regenerated.
 
 ```sh
 helm install restmail oci://ghcr.io/rest-mail/charts/restmail \
   --namespace rest-mail --create-namespace \
-  --set mailserver.hostname=mail.example.com --set mailserver.domain=example.com
+  --set mailserver.hostname=mail.example.com --set mailserver.domain=example.com \
+  --set api.bootstrapAdminPassword="$(openssl rand -base64 24)"
 ```
+
+`chore install:helm` does this for you, and shows the password once.
 
 The one thing the chart cannot make is a trusted TLS certificate: a `kubernetes.io/tls` Secret named `tls.secretName` (default `restmail-tls`), from cert-manager or your own. The API, the gateways and Postgres all mount it and wait until it exists, and the install notes say so when it is missing.
 
@@ -777,41 +825,27 @@ Delete the volumes and keep the Secrets, or the other way round, only if you mea
 restmail status --server https://mail.example.com
 ```
 
-The CLI knows a server only by its address, whatever installed it, so it asks the server (`GET /api/v1/server`): whether it answers, which version it runs, and whether it has been claimed — and if not, which of the ways below it offers. `--json` gives one object, with `claimed` and `claim_methods`, for scripts. It exits 0 when the server answered, claimed or not; 5 when it did not, or not as rest-mail.
+The CLI knows a server only by its address, whatever installed it, so it asks the server (`GET /api/v1/server`): whether it answers, and which version it runs. `--json` gives one object for scripts. It exits 0 when the server answered; 5 when it did not, or not as rest-mail.
 
-#### Claim it with the setup code it prints (simplest)
-
-While the server has no admin, every start mints a random setup code (120 bits, as `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`) and prints it to the server's own output: a QR code of the link that claims it, the link itself, and the code to type in. Read it however your platform shows a process's output: `docker logs restmail-api`, `kubectl logs deploy/restmail-api`, `journalctl -u restmail-api`, or the terminal you started it in. Scan the QR code with the rest-mail app, or enter the server and code by hand. Case, dashes and spaces do not matter, and O, I and L read as 0, 1 and 1. You then choose the admin's name and password, and enroll an authenticator, as below.
-
-- Only a SHA-256 of the code is stored.
-- **A restart replaces it.** A code that leaked, or that scrolled out of the logs, is fixed by restarting the server; the old one stops working. It also stops working after 7 days without a restart.
-- Claiming the server, by any route, spends it, and once there is an admin no code is printed again.
-- **The link is an ordinary web link**, `https://rest-mail.com/setup#token=CODE`, because a web link is tappable everywhere a link is: a phone's own camera recognises one in the printed QR code and offers to open it, and a chat app makes it a link rather than plain text. The app takes it before any browser does. Nothing is given away: the code rides after the `#`, which browsers never send to a web server, so rest-mail.com never learns one — and where the app is not installed, the page there just says what the code is for.
-- That page need not be this project's. `RESTMAIL_SETUP_LINK_BASE` (Helm: `api.setupLinkBase`) points the link at your own, and setting it to empty gives `restmail://setup?token=CODE` instead, which involves no site at all but which only the app can open. `restmail setup --link-base` does the same for links the CLI draws.
-- The server does not know the address it is reached at — that is the deployment's to say (the Helm chart's notes print it) — so its link names no server, and the app asks which. `restmail setup --server URL --code CODE` draws one naming both.
-- Anyone who can read the server's output can claim it until you do, the same as anyone with access to the deployment. Claim it soon after the first start. If logs are shipped somewhere, the code goes there too; it is dead once the server is claimed.
-
-#### Or with an owner key and the restmail CLI
-
-Ownership is proved with an SSH key, the way a server's first login usually is. The deployment lists the owner's **public** keys in `RESTMAIL_OWNER_KEYS` (authorized_keys format, one per line; Helm value `api.ownerKeys`). Nothing secret is configured, the private key never leaves your machine, and there is no password to generate or race to lose. However the server runs — Kubernetes, Docker, a VM, anything — the CLI only talks to its public API:
+#### Confirming a deploy: status keys
 
 ```sh
-brew install antimatter-studios/tap/restmail   # or the .deb / .rpm from the release
-restmail setup --server https://mail.example.com --key ~/.ssh/id_ed25519
-restmail setup --server https://mail.example.com   # tries the keys in ssh-agent
+restmail status --server https://mail.example.com --key ~/.ssh/restmail_status_ed25519
 ```
 
-The CLI asks the server for a challenge (`POST /api/v1/auth/owner/challenge`), signs it — bound to what it asks for, so a signature for `setup` cannot be used for a reset — and sends it back (`POST /api/v1/auth/owner/token`). The server checks the key is listed and the signature verifies, spends the challenge so the answer cannot be replayed, and mints a single-use token. Ed25519, ECDSA and RSA keys work; RSA signatures over SHA-1 are refused. A passphrase-protected key goes through ssh-agent: the CLI never prompts. `--server` must be `https://`, or `http://` to localhost.
+With `--key`, the CLI also learns the commit the server was built from, when it was built, and when it started (`{version, commit, built_at, started_at}`), so a deploy can be seen to have landed and restarted the server. The deployment lists the keys allowed to ask in `RESTMAIL_STATUS_KEYS` (authorized_keys format, as `RESTMAIL_OWNER_KEYS`; Helm value `api.statusKeys`). A status key reads this and nothing else: it cannot reset an admin. Owner keys can read it too.
 
-The CLI shows the link as a QR code (a web link too, unless `--link-base` says otherwise): `https://rest-mail.com/setup#server=…&token=…`, valid 15 minutes (`--lifetime`). Scanning it in the app redeems it at `POST /api/v1/auth/claim`: you choose the admin's name and password, then enroll an authenticator (below). The token is spent on success; a refused attempt (short password, say) leaves it usable. Only a SHA-256 of it is stored. On a server that already has an admin, `restmail setup` exits 3 and points at `reset-admin`.
+It is proved as `reset-admin` proves ownership, with the same challenge (`POST /api/v1/auth/owner/challenge`), signed for the purpose `status` instead of `reset-admin` and with no admin named, and sent to `POST /api/v1/auth/owner/status`. A signature made for one purpose cannot be presented for the other, and the challenge is spent, so an answer cannot be replayed. The key file must be unencrypted: the CLI never prompts, and `status` does not use ssh-agent. Exit status 6 means the key is not one the server lists (`not_status_key`), or it lists none.
 
-With no owner keys listed, neither command works over the API (exit 6, `no_owner_keys`). The same tokens can then be minted on the server itself, however you reach a shell there: `restmail-api mint-token --purpose setup` (or `--purpose reset-admin --username NAME`) prints `{"purpose","token","expires_at"}`; the app link is `https://rest-mail.com/setup#server=<url>&token=<token>`, or `restmail://setup?server=<url>&token=<token>`.
+`GET /api/health` says nothing of this: it stays a liveness probe.
 
-#### Or a bootstrap password
+#### The first admin: a bootstrap password
 
-1. If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates a superadmin (`RESTMAIL_BOOTSTRAP_ADMIN_USERNAME`, default `admin`) and logs `bootstrap admin created`. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
+1. If `RESTMAIL_BOOTSTRAP_ADMIN_PASSWORD` is set **and no admin exists**, it creates the first admin: the account `RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS` (the chart's `admin@<mailserver.domain>`, an account like any other, with its domain if it is new, not live until it has a certificate), holding `admin` at `*`, active, and `superadmin` at `*`, eligible, switched on when needed ([§3.3](#33-auth)), and logs `bootstrap account created`. It is created in setup, inside the transaction that sets its password from the deploy-time hash. Once any admin exists this never acts again — changing or removing the password later cannot reset an account or add a second one.
 
 The API **refuses to start** if a bootstrap admin would be created with a password under 16 bytes (a placeholder left in), or while `TOTP_2FA_ENABLED` is off (the admin could never finish setup and would be locked out for good).
+
+**Seeing it.** `chore install:helm`, `chore install:pulumi` and `chore password:reset` show a password they made once, as a QR code your phone's camera opens the app with, signed in, and always as text (the link, server, address and password) beneath it. They draw it with `printf '%s' "$PASSWORD" | restmail sign-in-link --server https://mail.example.com --address admin@example.com`: the password comes on stdin, never on the command line. The QR code is drawn only on a terminal wide enough for it (`--no-qr` turns it off), and the link is `https://rest-mail.com/setup#server=…&address=…&password=…` — after the `#`, so no web server is ever sent the password; where the app does not take the link, that page hands it to the app or shows it to type in.
 
 **Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart, set `api.bootstrapAdminPassword` (the chart puts it in the API Secret it makes), or put a `BOOTSTRAP_ADMIN_PASSWORD` key in your own Secret (`api.existingSecret`). Read it back with
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
@@ -819,16 +853,20 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 #### Getting back in, and handing a server over: `restmail reset-admin`
 
 ```sh
-restmail reset-admin --server https://mail.example.com --username admin
+restmail reset-admin --server https://mail.example.com --address admin@example.com
 ```
 
-A link like `restmail setup`'s, for an admin who has lost every way in. It stays on `restmail://reset?…`: there is no page for a reset link, and the app cannot yet redeem one from a link. Whoever redeems it (`POST /api/v1/auth/reset`) chooses a new password, loses the old authenticator and must enroll a new one, and **every token the account held is dead at once**: refresh tokens are revoked, and access tokens carry the account's credential epoch, which the reset bumps (`RejectStaleAdminSessions`), so even one minted seconds earlier is refused. A password change does the same.
+A single-use link, shown as a QR code, for an admin who has lost every way in. The CLI produces `rest-mail://reset?…` for app handoff. Admin and Webmail also have a **Use an account recovery token** action on their login pages: paste the token there and choose a password directly on the site. A web handoff may use `<app URL>#reset_token=<token>`; the fragment is removed from browser history immediately and never sent in the page request or saved in browser storage. Treat the link as a credential and share it privately before it expires. Both web apps guide a bootstrap account through its required password change and authenticator enrollment, block their normal content during setup, and require a fresh sign-in after enrollment. Whoever redeems it (`POST /api/v1/auth/reset`) chooses a new password, loses the old authenticator and must enroll a new one, and **every token the account held is dead at once**: refresh tokens are revoked, and access tokens carry the account's credential epoch, which the reset bumps (`RejectStaleSessions`), so even one minted seconds earlier is refused. A password change does the same.
+
+Ownership is proved with an SSH key, the way a server's first login usually is. The deployment lists the owner's **public** keys in `RESTMAIL_OWNER_KEYS` (authorized_keys format, one per line; Helm value `api.ownerKeys`). Nothing secret is configured, and the private key never leaves your machine. However the server runs — Kubernetes, Docker, a VM, anything — the CLI only talks to its public API: it asks for a challenge (`POST /api/v1/auth/owner/challenge`), signs it — bound to the admin it names, so a signature for one cannot be used for another — and sends it back (`POST /api/v1/auth/owner/token`). The server checks the key is listed and the signature verifies, spends the challenge so the answer cannot be replayed, and mints a single-use token, valid 15 minutes (`--lifetime`). Ed25519, ECDSA and RSA keys work; RSA signatures over SHA-1 are refused. Without `--key` the keys in ssh-agent are tried, which is also how a passphrase-protected key is used: the CLI never prompts. `--server` must be `https://`, or `http://` to localhost.
+
+With no owner keys listed this does not work over the API (exit 6, `no_owner_keys`). The same token can then be minted on the server itself, however you reach a shell there: `restmail-api mint-token --purpose reset-admin --address ADDRESS` prints `{"purpose","token","expires_at"}`, and the app's link is `rest-mail://reset?server=<url>&token=<token>`. `chore password:reset` does the equivalent through the cluster, with a new password shown once.
 
 That makes it the hand-over too. Someone — or an agent — who set the server up and holds its admin's credentials runs `reset-admin` and gives the link to the owner; once the owner redeems it, nothing the first holder knew works. The first holder could still mint another link while their key is listed in `RESTMAIL_OWNER_KEYS`, which is what owning it means: take their key off the list (and replace it with yours) to finish the hand-over.
 
 #### For agents and scripts
 
-Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 3 already claimed, 4 no such admin, 5 the server not reachable (or not rest-mail), 6 no key offered is an owner key (or none is listed), 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract on the server; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.
+Every `restmail` subcommand takes `--json`: one object on stdout, an error as one object on stderr, nothing else on either, and an exit status that says what happened — 0 ok, 2 usage, 4 no such account, 5 the server not reachable (or not rest-mail), 6 no key offered is an owner key (for `status --key`, a status or owner key), or none is listed, 1 anything else. Nothing prompts. The link grants admin, so `--json` leaves it out (`"link_redacted": true`) unless `--show-secret` is given. `restmail-api mint-token` itself follows the same contract on the server; `RESTMAIL_OPERATOR_DEBUG=1` adds its logs to stderr.
 
 #### What the first admin must do
 
@@ -839,7 +877,7 @@ That password was chosen by a deploy tool and sits in its state, so the account 
 | `password` | a new password is set | `POST /api/v1/auth/password` |
 | `two_factor` | a TOTP authenticator is confirmed | `POST /api/v1/auth/2fa/enroll`, then `POST /api/v1/auth/2fa/confirm` |
 
-Until both are done, every session of the account — including any refreshed from it — can make only these calls and `GET /api/v1/auth/2fa`. Everything under the admin API answers `403` with code `setup_required`.
+Until both are done, every session of the account — including any refreshed from it — can make only these calls and `GET /api/v1/auth/2fa`. Everything else, the admin API and the accounts included, answers `403` with code `setup_required`.
 
 The admin web UI does not walk this setup yet: it shows the `403`s. Until it does, use the API directly. With `"client": "native"` the tokens come back in the body; send them as `Authorization: Bearer`.
 
@@ -848,7 +886,7 @@ API=https://mail.example.com/api/v1
 
 # 1. Sign in with the bootstrap password.
 curl -s $API/auth/login -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"<bootstrap password>","client":"native"}'
+  -d '{"email":"admin@example.com","password":"<bootstrap password>","client":"native"}'
 #   → data.setup_required: ["password","two_factor"]; keep data.access_token as $TOKEN
 
 # 2. Enroll an authenticator. Scan data.otpauth_url as a QR code (or type
@@ -858,7 +896,7 @@ curl -s -X POST $API/auth/2fa/enroll -H "Authorization: Bearer $TOKEN"
 
 # 3. Confirm it with a code from the app.       → 204
 curl -s -X POST $API/auth/2fa/confirm -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"code":"123456"}'
+  -H 'Content-Type: application/json' -d '{"totp_code":"123456"}'
 
 # 4. Replace the password: 12+ characters, different from the old one.
 #    Every session of the account is revoked, this one included.
@@ -868,11 +906,19 @@ curl -s -X POST $API/auth/password -H "Authorization: Bearer $TOKEN" \
 
 # 5. Sign in for real: new password and a current code.
 curl -s $API/auth/login -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"<yours>","totp_code":"123456","client":"native"}'
-#   → no setup_required, capabilities ["*", …]
+  -d '{"email":"admin@example.com","password":"<yours>","totp_code":"123456","client":"native"}'
+#   → no setup_required, capabilities: the admin role's
+
+# 6. When you need superadmin (adding an admin, changing grants), switch it on
+#    for a while with a fresh code and a reason. Its grant id is in grants/mine.
+curl -s $API/admin/grants/mine -H "Authorization: Bearer $TOKEN"
+curl -s -X POST $API/admin/grants/<id>/activate -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"add an admin","minutes":30,"totp_code":"123456"}'
+#   → capabilities ["*"], until it runs out or you POST …/deactivate
 ```
 
-After that the account is an ordinary superadmin, except that **2FA cannot be disabled on it** (`403 two_factor_required`): the requirement is a rule, not a one-time gate. The bootstrap password no longer signs in, and can be removed from the Secret — though leaving it does nothing, since an admin now exists.
+After that the account is an ordinary admin that can switch superadmin on, except that **2FA cannot be disabled on it** (`403 two_factor_required`): the requirement is a rule, not a one-time gate. The bootstrap password no longer signs in, and can be removed from the Secret — though leaving it does nothing, since an admin now exists.
 
 ---
 

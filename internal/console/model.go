@@ -48,20 +48,26 @@ type Model struct {
 	// RBAC
 	capabilities []string
 	isSuperAdmin bool
-	username     string
+	address      string
 }
 
-// NewModel creates the root console model.
-func NewModel(api *apiclient.Client, token string) Model {
-	// Parse JWT token to extract capabilities
-	capabilities, isSuperAdmin, username := parseTokenCapabilities(token)
+// NewModel creates the root console model. capabilities are the ones the
+// sign-in answered with: the token carries none.
+func NewModel(api *apiclient.Client, token string, capabilities []string) Model {
+	address := tokenAddress(token)
+	isSuperAdmin := false
+	for _, c := range capabilities {
+		if c == "*" {
+			isSuperAdmin = true
+		}
+	}
 
 	return Model{
-		api:           api,
-		token:         token,
-		capabilities:  capabilities,
-		isSuperAdmin:  isSuperAdmin,
-		username:      username,
+		api:          api,
+		token:        token,
+		capabilities: capabilities,
+		isSuperAdmin: isSuperAdmin,
+		address:      address,
 		menuItems: []string{
 			"Domains     - Manage mail domains",
 			"Users       - Manage mailboxes and users",
@@ -79,44 +85,26 @@ func NewModel(api *apiclient.Client, token string) Model {
 	}
 }
 
-// parseTokenCapabilities extracts capabilities from the JWT token
-func parseTokenCapabilities(tokenStr string) (capabilities []string, isSuperAdmin bool, username string) {
+// tokenAddress reads which account the JWT token is for.
+func tokenAddress(tokenStr string) string {
 	if tokenStr == "" {
-		return nil, false, "anonymous"
+		return "anonymous"
 	}
 
 	// Parse without validation (we're just reading claims, API already validated it)
 	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 	token, _, err := parser.ParseUnverified(tokenStr, jwt.MapClaims{})
 	if err != nil {
-		return nil, false, "unknown"
+		return "unknown"
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, false, "unknown"
+		return "unknown"
 	}
 
-	// Extract username
-	if un, ok := claims["username"].(string); ok {
-		username = un
-	} else if email, ok := claims["email"].(string); ok {
-		username = email
-	}
-
-	// Extract capabilities
-	if caps, ok := claims["capabilities"].([]interface{}); ok {
-		for _, cap := range caps {
-			if capStr, ok := cap.(string); ok {
-				capabilities = append(capabilities, capStr)
-				if capStr == "*" {
-					isSuperAdmin = true
-				}
-			}
-		}
-	}
-
-	return capabilities, isSuperAdmin, username
+	address, _ := claims["address"].(string)
+	return address
 }
 
 func (m Model) Init() tea.Cmd {
@@ -355,7 +343,7 @@ func (m Model) renderStatusBar() string {
 	banStr := fmt.Sprintf("Bans: %d active", m.status.ActiveBans())
 
 	// Add user info and capability warning
-	userInfo := fmt.Sprintf("User: %s", m.username)
+	userInfo := fmt.Sprintf("Account: %s", m.address)
 	if !m.isSuperAdmin {
 		warning := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("202")). // Orange/warning color

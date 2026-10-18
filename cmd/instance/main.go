@@ -26,6 +26,7 @@ import (
 	"github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/fleet"
 	"github.com/restmail/restmail/internal/instance"
+	"github.com/restmail/restmail/internal/outbound"
 )
 
 func main() {
@@ -349,7 +350,7 @@ func renderCmd(args []string) {
 func dkimKeygenCmd(args []string) {
 	fs := flag.NewFlagSet("dkim-keygen", flag.ExitOnError)
 	selector := fs.String("selector", dkim.DefaultSelector, "DKIM selector")
-	bits := fs.Int("bits", 2048, "RSA key size in bits")
+	bits := fs.Int("bits", 2048, "RSA key size in bits (2048 or more)")
 	_ = fs.Parse(args)
 
 	if fs.NArg() != 1 {
@@ -360,6 +361,11 @@ func dkimKeygenCmd(args []string) {
 
 	priv, pub, err := dkim.GenerateKey(*bits)
 	if err != nil {
+		fatal("dkim-keygen: %v", err)
+	}
+	// The selector, and the key with it, as PUT /api/v1/admin/dkim/{id} checks
+	// them: printing a record for a selector the server refuses helps no one.
+	if err := outbound.CheckDKIMKey(domain, *selector, priv); err != nil {
 		fatal("dkim-keygen: %v", err)
 	}
 	rec, err := dkim.RecordValue(pub)
@@ -385,15 +391,24 @@ func dkimProvisionCmd(args []string) {
 	fs := flag.NewFlagSet("dkim-provision", flag.ExitOnError)
 	api := fs.String("api", "http://localhost:8080", "instance API base URL")
 	domain := fs.String("domain", "", "domain to provision DKIM for")
-	user := fs.String("admin-user", "admin", "admin username")
+	user := fs.String("admin-address", "", "the admin account's address")
 	pass := fs.String("admin-pass", "", "admin password")
 	selector := fs.String("selector", dkim.DefaultSelector, "DKIM selector")
-	bits := fs.Int("bits", 2048, "RSA key size in bits")
+	bits := fs.Int("bits", 2048, "RSA key size in bits (2048 or more)")
 	_ = fs.Parse(args)
-	if *domain == "" || *pass == "" {
-		fatal("dkim-provision: --domain and --admin-pass are required")
+	if *domain == "" || *user == "" || *pass == "" {
+		fatal("dkim-provision: --domain, --admin-address and --admin-pass are required")
 	}
 
+	priv, pub, err := dkim.GenerateKey(*bits)
+	if err != nil {
+		fatal("dkim-provision: keygen: %v", err)
+	}
+	// The server checks the key and selector again before storing them; this
+	// says what it would refuse before signing in to it.
+	if err := outbound.CheckDKIMKey(*domain, *selector, priv); err != nil {
+		fatal("dkim-provision: %v", err)
+	}
 	token, err := apiLogin(*api, *user, *pass)
 	if err != nil {
 		fatal("dkim-provision: login: %v", err)
@@ -401,10 +416,6 @@ func dkimProvisionCmd(args []string) {
 	id, err := apiDomainID(*api, token, *domain)
 	if err != nil {
 		fatal("dkim-provision: find domain %q: %v", *domain, err)
-	}
-	priv, pub, err := dkim.GenerateKey(*bits)
-	if err != nil {
-		fatal("dkim-provision: keygen: %v", err)
 	}
 	if err := apiInstallDKIM(*api, token, id, *selector, priv); err != nil {
 		fatal("dkim-provision: install key: %v", err)
@@ -428,7 +439,7 @@ func dkimProvisionCmd(args []string) {
 func dkimCheckCmd(args []string) {
 	fs := flag.NewFlagSet("dkim-check", flag.ExitOnError)
 	api := fs.String("api", "http://localhost:8080", "instance API base URL")
-	user := fs.String("admin-user", "admin", "admin username")
+	user := fs.String("admin-address", "", "the admin account's address")
 	pass := fs.String("admin-pass", "", "admin password")
 	_ = fs.Parse(args)
 
@@ -436,8 +447,8 @@ func dkimCheckCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "instance dkim-check: exactly one manifest path is required")
 		os.Exit(2)
 	}
-	if *pass == "" {
-		fatal("dkim-check: --admin-pass is required")
+	if *user == "" || *pass == "" {
+		fatal("dkim-check: --admin-address and --admin-pass are required")
 	}
 
 	raw, err := os.ReadFile(fs.Arg(0))
@@ -525,11 +536,10 @@ func apiJSON(method, url, token string, body any, out any) error {
 	return nil
 }
 
-func apiLogin(api, user, pass string) (string, error) {
+func apiLogin(api, address, pass string) (string, error) {
 	// The API delivers the access token as the httpOnly restmail_access cookie
-	// (no longer in the JSON body), so read it from the Set-Cookie header; fall
-	// back to a body access_token for older servers that still return it there.
-	b, err := json.Marshal(map[string]string{"username": user, "password": pass})
+	// (not in the JSON body), so read it from the Set-Cookie header.
+	b, err := json.Marshal(map[string]string{"email": address, "password": pass})
 	if err != nil {
 		return "", err
 	}

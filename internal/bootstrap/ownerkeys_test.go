@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/restmail/restmail/internal/db/models"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -43,7 +44,7 @@ func signed(t *testing.T, s ssh.Signer, purpose, username string) OwnerRequest {
 		t.Fatal(err)
 	}
 	return OwnerRequest{Challenge: challenge, PublicKey: authorized(s), Signature: ssh.Marshal(sig),
-		Purpose: purpose, Username: username}
+		Purpose: purpose, Address: username}
 }
 
 func TestParseOwnerKeys(t *testing.T) {
@@ -61,20 +62,22 @@ func TestParseOwnerKeys(t *testing.T) {
 	}
 }
 
-func TestOwner_ListedKeyGetsASetupToken(t *testing.T) {
+// Owner keys only let an admin back in. A request to claim the server — what
+// they also did before 0.7 — is refused, even signed by an owner.
+func TestOwner_NoTokenClaimsAServer(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
 	owner := newSigner(t)
 	keys, _ := ParseOwnerKeys(authorized(owner))
 
-	token, _, err := MintForOwner(gdb, keys, challengeKey, signed(t, owner, "setup", ""), time.Now())
-	if err != nil {
-		t.Fatalf("owner: %v", err)
+	if _, _, err := MintForOwner(gdb, keys, challengeKey, signed(t, owner, "setup", ""), time.Now()); err == nil {
+		t.Fatal("an owner key minted a setup token")
 	}
-	// It is an ordinary setup token: it claims the server.
-	if _, err := ClaimServer(gdb, token, "owner", chosenPassword, true); err != nil {
-		t.Errorf("claim with the owner's token: %v", err)
+	var minted int64
+	gdb.Model(&models.OneTimeToken{}).Where("purpose <> ?", ownerChallengePurpose).Count(&minted)
+	if minted != 0 {
+		t.Errorf("%d tokens minted, want none", minted)
 	}
 }
 
@@ -82,47 +85,48 @@ func TestOwner_EverythingElseIsRefused(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 	owner, stranger := newSigner(t), newSigner(t)
 	keys, _ := ParseOwnerKeys(authorized(owner))
 	now := time.Now()
 
 	t.Run("a key not on the list", func(t *testing.T) {
-		if _, _, err := MintForOwner(gdb, keys, challengeKey, signed(t, stranger, "setup", ""), now); !errors.Is(err, ErrNotOwner) {
+		if _, _, err := MintForOwner(gdb, keys, challengeKey, signed(t, stranger, "reset-admin", adminAddr), now); !errors.Is(err, ErrNotOwner) {
 			t.Errorf("err = %v, want ErrNotOwner", err)
 		}
 	})
 	t.Run("a stranger presenting the owner's public key", func(t *testing.T) {
-		req := signed(t, stranger, "setup", "")
+		req := signed(t, stranger, "reset-admin", adminAddr)
 		req.PublicKey = authorized(owner)
 		if _, _, err := MintForOwner(gdb, keys, challengeKey, req, now); !errors.Is(err, ErrNotOwner) {
 			t.Errorf("err = %v, want ErrNotOwner", err)
 		}
 	})
-	t.Run("a setup signature used for a reset", func(t *testing.T) {
-		req := signed(t, owner, "setup", "")
-		req.Purpose, req.Username = "reset-admin", "admin"
+	t.Run("a signature for one admin used for another", func(t *testing.T) {
+		req := signed(t, owner, "reset-admin", adminAddr)
+		req.Address = "someone-else@example.com"
 		if _, _, err := MintForOwner(gdb, keys, challengeKey, req, now); !errors.Is(err, ErrNotOwner) {
 			t.Errorf("err = %v, want ErrNotOwner: the signature is bound to what it asked for", err)
 		}
 	})
 	t.Run("a forged challenge", func(t *testing.T) {
-		req := signed(t, owner, "setup", "")
+		req := signed(t, owner, "reset-admin", adminAddr)
 		forged, _, _ := NewChallenge(ChallengeKey("another server's secret"), now)
-		sig, _ := owner.Sign(rand.Reader, OwnerMessage(forged, "setup", ""))
+		sig, _ := owner.Sign(rand.Reader, OwnerMessage(forged, "reset-admin", adminAddr))
 		req.Challenge, req.Signature = forged, ssh.Marshal(sig)
 		if _, _, err := MintForOwner(gdb, keys, challengeKey, req, now); !errors.Is(err, ErrChallengeInvalid) {
 			t.Errorf("err = %v, want ErrChallengeInvalid", err)
 		}
 	})
 	t.Run("an expired challenge", func(t *testing.T) {
-		req := signed(t, owner, "setup", "")
+		req := signed(t, owner, "reset-admin", adminAddr)
 		if _, _, err := MintForOwner(gdb, keys, challengeKey, req, now.Add(ChallengeLifetime+time.Minute)); !errors.Is(err, ErrChallengeInvalid) {
 			t.Errorf("err = %v, want ErrChallengeInvalid", err)
 		}
 	})
 	t.Run("no keys configured", func(t *testing.T) {
 		none, _ := ParseOwnerKeys("")
-		if _, _, err := MintForOwner(gdb, none, challengeKey, signed(t, owner, "setup", ""), now); !errors.Is(err, ErrNoOwnerKeys) {
+		if _, _, err := MintForOwner(gdb, none, challengeKey, signed(t, owner, "reset-admin", adminAddr), now); !errors.Is(err, ErrNoOwnerKeys) {
 			t.Errorf("err = %v, want ErrNoOwnerKeys", err)
 		}
 	})
@@ -133,9 +137,10 @@ func TestOwner_AnAnswerCannotBeReplayed(t *testing.T) {
 	gdb := openBootstrapTestDB(t)
 	migrateTokens(t, gdb)
 	mustRBAC(t, gdb)
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 	owner := newSigner(t)
 	keys, _ := ParseOwnerKeys(authorized(owner))
-	req := signed(t, owner, "setup", "")
+	req := signed(t, owner, "reset-admin", adminAddr)
 
 	if _, _, err := MintForOwner(gdb, keys, challengeKey, req, time.Now()); err != nil {
 		t.Fatal(err)
@@ -151,15 +156,12 @@ func TestOwner_ResetNamesItsAdmin(t *testing.T) {
 	mustRBAC(t, gdb)
 	owner := newSigner(t)
 	keys, _ := ParseOwnerKeys(authorized(owner))
-	setup, _, _ := MintSetupToken(gdb, 0)
-	if _, err := ClaimServer(gdb, setup, "admin", "the first admin's password", true); err != nil {
-		t.Fatal(err)
-	}
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 
 	if _, _, err := MintForOwner(gdb, keys, challengeKey, signed(t, owner, "reset-admin", "nobody"), time.Now()); !errors.Is(err, ErrNoSuchAdmin) {
 		t.Errorf("reset for nobody: err = %v, want ErrNoSuchAdmin", err)
 	}
-	token, _, err := MintForOwner(gdb, keys, challengeKey, signed(t, owner, "reset-admin", "admin"), time.Now())
+	token, _, err := MintForOwner(gdb, keys, challengeKey, signed(t, owner, "reset-admin", adminAddr), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,17 +179,19 @@ func TestOwner_RSAOnlyWithSHA2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	newAdmin(t, gdb, adminAddr, "the first admin's password")
 	s, _ := ssh.NewSignerFromKey(rsaKey)
 	as := s.(ssh.AlgorithmSigner)
 	keys, _ := ParseOwnerKeys(authorized(s))
 
 	sign := func(algo string) OwnerRequest {
 		challenge, _, _ := NewChallenge(challengeKey, time.Now())
-		sig, err := as.SignWithAlgorithm(rand.Reader, OwnerMessage(challenge, "setup", ""), algo)
+		sig, err := as.SignWithAlgorithm(rand.Reader, OwnerMessage(challenge, "reset-admin", adminAddr), algo)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return OwnerRequest{Challenge: challenge, PublicKey: authorized(s), Signature: ssh.Marshal(sig), Purpose: "setup"}
+		return OwnerRequest{Challenge: challenge, PublicKey: authorized(s), Signature: ssh.Marshal(sig),
+			Purpose: "reset-admin", Address: adminAddr}
 	}
 	if _, _, err := MintForOwner(gdb, keys, challengeKey, sign(ssh.KeyAlgoRSA), time.Now()); !errors.Is(err, ErrNotOwner) {
 		t.Errorf("ssh-rsa (SHA-1) signature: err = %v, want ErrNotOwner", err)

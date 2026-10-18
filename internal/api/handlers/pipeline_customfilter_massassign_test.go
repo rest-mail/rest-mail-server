@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/pipeline/filters"
 	"gorm.io/gorm"
 )
 
@@ -58,7 +59,7 @@ func TestCreateCustomFilter_RejectsNestedDomainMassAssignment(t *testing.T) {
 
 	domainsBefore := domainCount(t, tx)
 
-	h := NewPipelineHandler(tx, nil)
+	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	// id + created_at are client-forged; `domain` is a nested association that,
 	// under the old code, GORM would auto-create as a brand-new domain row.
 	const clientForgedID = 987654
@@ -118,7 +119,7 @@ func TestCreateCustomFilter_ValidCreatePersisted(t *testing.T) {
 		t.Fatalf("create domain: %v", err)
 	}
 
-	h := NewPipelineHandler(tx, nil)
+	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	body := `{
 		"domain_id": ` + uintToStr(dom.ID) + `,
 		"name": "valid-filter",

@@ -38,33 +38,9 @@ type CustomFilter struct {
 
 func (CustomFilter) TableName() string { return "custom_filters" }
 
-// PipelineLog recorded the execution of a pipeline on a message.
-//
-// DEAD as of PR5: PR3 moved the WRITE path to MessageTrace and PR5 repointed the
-// last READER (ListPipelineLogs) to message_traces, so this table now has no
-// writer and no reader. It is intentionally LEFT in place (still AutoMigrated)
-// rather than dropped in this PR to avoid migration risk on existing databases;
-// a later cleanup PR can drop the pipeline_logs table and this model together.
-type PipelineLog struct {
-	ID         uint            `gorm:"primaryKey" json:"id"`
-	PipelineID uint            `gorm:"index" json:"pipeline_id"`
-	MessageID  *uint           `gorm:"index" json:"message_id"`
-	Direction  string          `gorm:"size:20" json:"direction"`
-	Action     string          `gorm:"size:20" json:"action"` // "continue", "reject", "quarantine", "discard"
-	Steps      json.RawMessage `gorm:"type:jsonb" json:"steps"`
-	DurationMS int64           `json:"duration_ms"`
-	CreatedAt  time.Time       `json:"created_at"`
-}
-
-func (PipelineLog) TableName() string { return "pipeline_logs" }
-
 // MessageTrace is the durable per-message observability record: exactly one row
 // per message that traversed a pipeline, recording what happened to THIS
-// message. It supersedes PipelineLog as the write target (PR3); PipelineLog is
-// retained only for the legacy read handler until PR5 repoints it here. A new
-// table (message_traces) rather than an in-place rename because the schema is a
-// near-total superset with renamed columns and the old rows carry no true trace
-// (no backfill — their real forensic detail is unknown).
+// message.
 //
 // Trace-only raw PII (mail_from, rcpt_to, client_ip) is stored raw by resolved
 // decision: full forensics while a row is hot, pruned at the retention horizon
@@ -170,11 +146,9 @@ type GreylistEntry struct {
 	Passed     bool      `gorm:"default:false" json:"passed"`
 	// ExpiresAt is the TTL horizon after which this entry is purged by the
 	// greylist purge worker and, if it is still present when re-encountered,
-	// re-greylisted. Nullable so rows written before the column existed (NULL)
-	// are handled by the purge worker's created_at fallback rather than living
-	// forever.
-	ExpiresAt *time.Time `gorm:"index" json:"expires_at,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	// re-greylisted. The filter stamps it on every write.
+	ExpiresAt time.Time `gorm:"not null;index" json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (GreylistEntry) TableName() string { return "greylist_entries" }
@@ -261,12 +235,6 @@ func (Attachment) TableName() string { return "attachments" }
 // anyone who can write the script column can recompute the hash. A future
 // upgrade could HMAC the script with a server-held key to make the marker
 // tamper-evident; the 64-char column already fits a sha256 HMAC.
-//
-// Legacy rows created before this column existed carry an empty ScriptHash; the
-// delivery trust check treats an empty hash as "no marker to verify" and behaves
-// exactly as before (parse-only). The hash is backfilled lazily the next time the
-// script is saved through the API, so existing valid scripts keep working with no
-// data migration.
 type SieveScript struct {
 	ID          uint       `gorm:"primaryKey" json:"id"`
 	MailboxID   uint       `gorm:"not null;uniqueIndex" json:"mailbox_id"`

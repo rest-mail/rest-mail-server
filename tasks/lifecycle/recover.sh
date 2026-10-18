@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# chore password:reset [--username NAME] / chore sessions:revoke
+# chore password:reset [--address ADDRESS] / chore sessions:revoke
 #
 # Both run `restmail-api` in a pod of the API's own (lib.sh's operator), so
 # neither needs mail, DNS, a certificate, a working sign-in, or even the API to
 # be running: they are what you do while it is offline.
 #
-#   recover.sh password    a new password for USERNAME, shown once
+#   recover.sh password    a new password for ADDRESS (default admin@ the
+#                          release's mail domain), shown once
 #   recover.sh sessions    sign everybody out
 set -uo pipefail
 here=$(dirname "$0")
@@ -17,21 +18,28 @@ need_release
 
 case "${1:-}" in
 password)
-  username=${USERNAME:-admin}
+  address=${ADDRESS:-}
+  if [ -z "$address" ]; then
+    domain=$(release_values | jq -r '.mailserver.domain // empty')
+    [ -n "$domain" ] || refuse "The release has no mailserver.domain to find admin@ in." "Name the account: --address ADDRESS"
+    address="admin@$domain"
+  fi
   [ -t 1 ] || refuse "The new password is shown once, on the terminal, and there is none."
   password=$(new_password)
-  if ! out=$(INPUT=$password operator reset-password --username "$username" 2>&1); then
+  if ! out=$(INPUT=$password operator reset-password --address "$address" 2>&1); then
     die "The reset failed: $(operator_error "$out")"
   fi
+  host=$(release_values | jq -r '.mailserver.hostname // empty')
+  printf '\n  New password for "%s" — this is the only time it is shown.\n' "$address"
+  if [ -n "$host" ]; then
+    show_sign_in "https://$host" "$address" "$password"
+  else
+    printf '\n      %s\n\n' "$password"
+  fi
   cat <<EOF
-
-  New password for "$username" — this is the only time it is shown:
-
-      $password
-
   Sign in with it in the rest-mail app. You will choose your own password and
   enroll a new authenticator before anything else works; the old one is gone.
-  Every session "$username" had has ended.
+  Every session and app password "$address" had has ended.
 
 EOF
   ;;

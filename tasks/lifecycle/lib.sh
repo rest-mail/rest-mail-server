@@ -120,6 +120,29 @@ trap _cleanup EXIT
 # server's 16-character minimum.
 new_password() { openssl rand -base64 33 | tr '+/' '-_' | tr -d '=\n' | cut -c1-32; }
 
+# show_sign_in SERVER ADDRESS PASSWORD: a password shown once, as the link
+# that opens the rest-mail app signed in. The restmail CLI draws it as a QR
+# code a phone's camera opens, where the terminal is wide enough, and prints
+# it as text either way; without the CLI, or with one too old to know the
+# command, the text is printed here. The link, server, address and password
+# are on the screen every time: nothing can tell whether a drawn QR code scans.
+show_sign_in() {
+  local server=$1 address=$2 password=$3 link
+  printf '\n'
+  if command -v restmail >/dev/null 2>&1 &&
+    printf '%s' "$password" | restmail sign-in-link --server "$server" --address "$address" 2>/dev/null; then
+    printf '\n'
+    return
+  fi
+  link="https://rest-mail.com/setup#server=$(uri "$server")&address=$(uri "$address")&password=$(uri "$password")"
+  printf '  Open this link on your phone: it opens the rest-mail app, signed in.\n'
+  printf '  Or sign in by hand, with the server, address and password below.\n\n'
+  printf '  Link:      %s\n  Server:    %s\n  Address:   %s\n  Password:  %s\n\n' \
+    "$link" "$server" "$address" "$password"
+  printf "  (With the restmail CLI installed, this is a QR code your phone's camera opens.)\n\n"
+}
+uri() { jq -rn --arg v "$1" '$v | @uri'; }
+
 # Ask on the terminal itself, not stdin: `yes |` cannot answer it, and with no
 # terminal at all (a pipeline) it fails closed.
 ask_tty() { # ask_tty PROMPT -> the answer on stdout
@@ -186,7 +209,7 @@ operator() (
   # it carries the API's labels, which the network policy needs to let it
   # reach the database.
   # The command's arguments go in as a JSON array: as jq positional arguments,
-  # one like --username would be taken for an option of jq's own.
+  # one like --address would be taken for an option of jq's own.
   local argv
   argv=$(printf '%s\n' "$@" | jq -R . | jq -sc .)
   spec=$(k get "$deploy" -o json | jq --arg pod "$pod" --arg cmd "$cmd" --arg secret "${input_secret:-}" \

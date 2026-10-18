@@ -10,28 +10,47 @@ import (
 	"strings"
 	"time"
 
+	rmconfig "github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
-const defaultSidecarURL = "http://js-filter:3100"
+// JSSidecar is the JS filter sidecar the javascript filter runs its scripts on
+// (JS_FILTER_URL), and the token it authenticates with (JS_FILTER_TOKEN, #160).
+// Both are the operator's: a pipeline's filter config cannot send a script, or
+// the token, anywhere else.
+type JSSidecar struct {
+	URL   string
+	Token string
+}
+
+// Post sends body to one of the sidecar's endpoints ("/execute", "/validate")
+// with the token, so the sidecar knows the request comes from the API.
+func (s JSSidecar) Post(ctx context.Context, client *http.Client, path string, body []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(s.URL, "/")+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create sidecar request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.Token)
+	return client.Do(req)
+}
 
 type jsFilterConfig struct {
 	Script    string `json:"script"`
 	TimeoutMS int    `json:"timeout_ms"`
-	URL       string `json:"url"`
 	// FailureAction is the pipeline action applied when the sidecar cannot be
 	// reached, times out, errors, or returns an unusable result. It defaults to
 	// "defer" (fail-closed): a wedged or compromised sidecar must not silently
 	// disable JS filtering by letting every message through. An operator may set
-	// "continue" to restore the legacy fail-open behaviour, or "reject".
+	// "continue" to fail open, or "reject".
 	FailureAction string `json:"failure_action"`
 }
 
 type jsFilter struct {
-	script     string
-	timeout    time.Duration
-	sidecarURL string
-	onFailure  pipeline.Action
+	script    string
+	timeout   time.Duration
+	sidecar   JSSidecar
+	onFailure pipeline.Action
 }
 
 func init() {
@@ -59,10 +78,26 @@ var jsResultActions = map[pipeline.Action]bool{
 	pipeline.ActionDefer:      true,
 }
 
+// NewJavaScript creates a javascript filter that runs its script on the sidecar
+// at the default address with no token, which the sidecar refuses, so it fails
+// closed. It is the init()-registered factory; routes.go re-registers via
+// NewJavaScriptWithSidecar to bind the deployment's JS_FILTER_URL and
+// JS_FILTER_TOKEN.
 func NewJavaScript(config []byte) (pipeline.Filter, error) {
+	return newJavaScript(config, JSSidecar{URL: rmconfig.DefaultJSFilterURL})
+}
+
+// NewJavaScriptWithSidecar returns a filter factory whose javascript filters
+// run their scripts on sidecar.
+func NewJavaScriptWithSidecar(sidecar JSSidecar) pipeline.FilterFactory {
+	return func(config []byte) (pipeline.Filter, error) {
+		return newJavaScript(config, sidecar)
+	}
+}
+
+func newJavaScript(config []byte, sidecar JSSidecar) (pipeline.Filter, error) {
 	cfg := jsFilterConfig{
 		TimeoutMS: 500,
-		URL:       defaultSidecarURL,
 	}
 	if len(config) > 0 {
 		if err := json.Unmarshal(config, &cfg); err != nil {
@@ -71,9 +106,6 @@ func NewJavaScript(config []byte) (pipeline.Filter, error) {
 	}
 	if cfg.Script == "" {
 		return nil, fmt.Errorf("javascript filter requires a script")
-	}
-	if cfg.URL == "" {
-		cfg.URL = defaultSidecarURL
 	}
 
 	onFailure := pipeline.ActionDefer // fail-closed default
@@ -86,10 +118,10 @@ func NewJavaScript(config []byte) (pipeline.Filter, error) {
 	}
 
 	return &jsFilter{
-		script:     cfg.Script,
-		timeout:    time.Duration(cfg.TimeoutMS) * time.Millisecond,
-		sidecarURL: cfg.URL,
-		onFailure:  onFailure,
+		script:    cfg.Script,
+		timeout:   time.Duration(cfg.TimeoutMS) * time.Millisecond,
+		sidecar:   sidecar,
+		onFailure: onFailure,
 	}, nil
 }
 
@@ -108,14 +140,14 @@ func (f *jsFilter) fail(result, detail string) *pipeline.FilterResult {
 	}
 }
 
-func (f *jsFilter) Name() string             { return "javascript" }
+func (f *jsFilter) Name() string              { return "javascript" }
 func (f *jsFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
 // sidecarRequest is the JSON payload sent to the Node.js sidecar.
 type sidecarRequest struct {
-	Script    string             `json:"script"`
+	Script    string              `json:"script"`
 	Email     *pipeline.EmailJSON `json:"email"`
-	TimeoutMS int                `json:"timeout_ms"`
+	TimeoutMS int                 `json:"timeout_ms"`
 }
 
 // sidecarResponse is the JSON response from the Node.js sidecar.
@@ -136,18 +168,11 @@ func (f *jsFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pip
 		return nil, fmt.Errorf("marshal sidecar request: %w", err)
 	}
 
-	// Build HTTP request with context for cancellation
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, f.sidecarURL+"/execute", bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("create sidecar request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
 	client := &http.Client{
 		Timeout: f.timeout + 5*time.Second, // extra headroom beyond script timeout
 	}
 
-	resp, err := client.Do(httpReq)
+	resp, err := f.sidecar.Post(ctx, client, "/execute", bodyBytes)
 	if err != nil {
 		return f.fail("error", fmt.Sprintf("sidecar request failed: %v", err)), nil
 	}

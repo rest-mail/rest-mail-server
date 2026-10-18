@@ -7,19 +7,16 @@ import (
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
-// arcEmail builds an inbound message From the given domain carrying the local
-// arc_verify verdict (arc_status) and the sealing domain (arc_sealer) in
-// metadata — exactly what arc_verify records for a structurally/cryptographically
-// valid chain. It has NO SPF/DKIM alignment, so DMARC fails on its own and only
-// an ARC override could rescue it.
-func arcEmail(fromDomain, arcStatus, arcSealer string) *pipeline.EmailJSON {
-	return &pipeline.EmailJSON{
+// arcEmail builds an inbound message From the given domain, and a context
+// carrying the arc_verify verdict with the sealing domain — exactly what
+// arc_verify records for a structurally/cryptographically valid chain. It has
+// NO SPF/DKIM alignment, so DMARC fails on its own and only an ARC override
+// could rescue it.
+func arcEmail(fromDomain, arcStatus, arcSealer string) (context.Context, *pipeline.EmailJSON) {
+	ctx := authCtx(pipeline.AuthResult{Method: pipeline.AuthARC, Result: arcStatus, Domain: arcSealer})
+	return ctx, &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
 			From: []pipeline.Address{{Address: "ceo@" + fromDomain}},
-		},
-		Metadata: map[string]string{
-			"arc_status": arcStatus,
-			"arc_sealer": arcSealer,
 		},
 	}
 }
@@ -30,14 +27,12 @@ func arcEmail(fromDomain, arcStatus, arcSealer string) *pipeline.EmailJSON {
 // allowlist ARC is purely informational, so an attacker who runs their own ARC
 // sealer cannot launder a spoofed From past the victim domain's p=reject.
 func TestDMARC_UntrustedARCSealerDoesNotOverride(t *testing.T) {
-	orig := lookupDMARC
-	lookupDMARC = func(string) (string, error) { return "v=DMARC1; p=reject", nil }
-	defer func() { lookupDMARC = orig }()
+	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
 
 	// Default filter: empty trusted-sealer allowlist.
 	f := &dmarcCheckFilter{}
 
-	res, err := f.Execute(context.Background(), arcEmail("victim.example", "pass", "attacker.example"))
+	res, err := f.Execute(arcEmail("victim.example", "pass", "attacker.example"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,9 +47,7 @@ func TestDMARC_UntrustedARCSealerDoesNotOverride(t *testing.T) {
 // allowlisted domain rescues an otherwise-failing DMARC evaluation (the
 // legitimate forwarding case ARC exists for). Matching is case-insensitive.
 func TestDMARC_TrustedARCSealerOverrides(t *testing.T) {
-	orig := lookupDMARC
-	lookupDMARC = func(string) (string, error) { return "v=DMARC1; p=reject", nil }
-	defer func() { lookupDMARC = orig }()
+	stubDMARC(t, func(string) string { return "v=DMARC1; p=reject" })
 
 	fac := NewDMARCCheckWithSealers([]string{"forwarder.example"})
 	filt, err := fac(nil)
@@ -63,7 +56,7 @@ func TestDMARC_TrustedARCSealerOverrides(t *testing.T) {
 	}
 
 	// Sealer matches the allowlist (case-insensitively) → override applies.
-	res, err := filt.Execute(context.Background(), arcEmail("victim.example", "pass", "Forwarder.Example"))
+	res, err := filt.Execute(arcEmail("victim.example", "pass", "Forwarder.Example"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +66,7 @@ func TestDMARC_TrustedARCSealerOverrides(t *testing.T) {
 	}
 
 	// A different (untrusted) sealer on the same filter must NOT override.
-	res, err = filt.Execute(context.Background(), arcEmail("victim.example", "pass", "other.example"))
+	res, err = filt.Execute(arcEmail("victim.example", "pass", "other.example"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,9 +77,9 @@ func TestDMARC_TrustedARCSealerOverrides(t *testing.T) {
 }
 
 // TestARCVerify_RecordsSealerDomain confirms arc_verify records the most recent
-// ARC-Seal's d= (sealing domain) in metadata as arc_sealer, which is what
-// dmarc_check gates the trusted-sealer override on. A single-set chain (cv=none)
-// is structurally valid, so the sealer is recorded.
+// ARC-Seal's d= (sealing domain) with its verdict, which is what dmarc_check
+// gates the trusted-sealer override on. A single-set chain (cv=none) is
+// structurally valid, so the sealer is recorded.
 func TestARCVerify_RecordsSealerDomain(t *testing.T) {
 	f := &arcVerifyFilter{}
 	email := &pipeline.EmailJSON{
@@ -99,12 +92,12 @@ func TestARCVerify_RecordsSealerDomain(t *testing.T) {
 		},
 	}
 
-	res, err := f.Execute(context.Background(), email)
-	if err != nil {
+	ctx := authCtx()
+	if _, err := f.Execute(ctx, email); err != nil {
 		t.Fatal(err)
 	}
-	if got := res.Message.Metadata["arc_sealer"]; got != "forwarder.example" {
-		t.Fatalf("arc_verify should record arc_sealer=forwarder.example, got %q (arc_status=%q)",
-			got, res.Message.Metadata["arc_status"])
+	got := pipeline.AuthResultsFromContext(ctx).Find(pipeline.AuthARC, "")
+	if len(got) != 1 || got[0].Domain != "forwarder.example" {
+		t.Fatalf("arc_verify should record the sealer forwarder.example, got %+v", got)
 	}
 }

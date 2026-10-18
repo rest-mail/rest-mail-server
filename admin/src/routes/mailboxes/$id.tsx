@@ -171,7 +171,7 @@ function MailboxDetailsPage() {
     setError(null)
 
     try {
-      const response = await apiV1.request(`/admin/mailboxes/${id}`, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(`/admin/mailboxes/${id}`, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -217,8 +217,7 @@ function MailboxDetailsPage() {
         {
           method: 'PUT',
           body: JSON.stringify(updateData),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -241,7 +240,7 @@ function MailboxDetailsPage() {
     if (!confirm(`Are you sure you want to delete mailbox "${mailbox.address}"?`)) return
 
     try {
-      await deleteMailbox(accessToken, mailbox.id)
+      await deleteMailbox(mailbox.id)
       navigate({ to: '/mailboxes' })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete mailbox')

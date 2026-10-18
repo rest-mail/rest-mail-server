@@ -55,10 +55,8 @@ func (metricsObserver) ObserveTerminal(direction string, action pipeline.Action,
 var builtinFilters = map[string]struct{}{
 	"spf_check":           {},
 	"dkim_verify":         {},
-	"dkim_sign":           {},
 	"dmarc_check":         {},
 	"arc_verify":          {},
-	"arc_seal":            {},
 	"clamav":              {},
 	"rspamd":              {},
 	"greylist":            {},
@@ -102,8 +100,8 @@ func stepAction(step pipeline.StepResult) string {
 }
 
 // authMechanism maps an auth *verification* filter's self-reported name (from
-// FilterLog.Filter) to its mechanism. Signing/sealing filters (dkim_sign,
-// arc_seal) are not verdicts and return ok=false.
+// FilterLog.Filter) to its mechanism. Any other filter is not a verdict and
+// returns ok=false.
 func authMechanism(filterLogName string) (string, bool) {
 	switch filterLogName {
 	case "spf_check":

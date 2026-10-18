@@ -4,6 +4,44 @@ A full-featured mail server platform that exposes email functionality through a 
 
 The application itself is deliberately thin: the protocol engines and email-authentication logic live in a family of focused, standalone Go libraries (published under the [`rest-mail`](https://github.com/rest-mail) org), and this repo composes them — implementing each library's `Backend` interface on top of the REST API.
 
+## The REST Mail constellation
+
+Every repository in the [`rest-mail`](https://github.com/rest-mail) organization
+belongs to the same project family: the server and web apps, mobile client,
+website, protocol libraries, reference images, testbed, deployment and distribution.
+[`constellation.json`](constellation.json) records the membership rule and each
+repository's role. New organization repositories are included automatically in
+live inventories, even before their role is recorded in the manifest.
+
+```bash
+# Offline repository snapshot; Python 3 is the only dependency.
+python3 scripts/constellation.py repos
+
+# Current membership and the full open-issue queue; requires authenticated gh.
+python3 scripts/constellation.py repos --live
+python3 scripts/constellation.py issues --include-related --json
+```
+
+Both repository and issue queries follow all GitHub pages. A failed query exits
+nonzero instead of reporting an incomplete inventory as an empty queue. Archived
+repositories remain visible and are marked in JSON output.
+
+Related projects have explicit limits. Vertrag contributes only its registered
+REST Mail contract-testing issues (#71, #73 and #74). The infrastructure repository
+records only REST Mail deployment, DNS and certificate work; the current web-app
+rollout is tracked in [server #365](https://github.com/rest-mail/rest-mail-server/issues/365).
+Its Gitea issue tracker is not queried by this GitHub inventory. Adding a related
+repository requires a scope description and specific issue numbers; it does not
+add that repository's entire backlog. `repos --include-related --json` includes
+these scope descriptions.
+
+Agents should select one bounded issue from this queue, check dependencies and
+existing worktrees, and verify its done conditions before closing it. Membership
+does not authorize spawning workers, changing credentials or deploying services;
+the owner's current agent and timebox instructions still apply. Work across
+repositories uses separate worktrees and records any library release or downstream
+version bump needed by the server or clients.
+
 ## Features
 
 **Core Email**
@@ -20,6 +58,7 @@ The application itself is deliberately thin: the protocol engines and email-auth
 - MTA-STS and TLS-RPT (RFC 8460/8461), including outbound MTA-STS policy enforcement
 - ACME/Let's Encrypt auto-renewal
 - JWT authentication with bcrypt passwords (Dovecot-compatible `{BLF-CRYPT}` format)
+- App passwords: named, revocable passwords for mail clients and automations, over IMAP, POP3, SMTP and the REST API
 - Capability-based RBAC enforced on every admin route
 - PROXY protocol support for reverse proxies (HAProxy, nginx)
 - Connection rate limiting, auth ban tracking, fail2ban integration
@@ -33,7 +72,7 @@ The application itself is deliberately thin: the protocol engines and email-auth
 **Administration**
 - Domain, mailbox, and alias CRUD via REST API
 - Queue management with retry, bounce, and bulk operations
-- Delivery and activity log queries
+- Delivery log queries and a hash-chained audit log
 - IP ban management
 - OpenAPI 3.1 spec (146 operations) with Swagger UI
 - Console admin tool (bubbletea) with inbox, search, compose, and live status
@@ -43,13 +82,14 @@ The application itself is deliberately thin: the protocol engines and email-auth
 
 ## The Library Family
 
-RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is seven focused libraries, all MIT-licensed and each usable entirely on its own:
+RESTMAIL follows an adopt-vs-extract rule: adopt mature external libraries where they are good; extract our own only where there is a real ecosystem gap. The result is eight focused libraries, all MIT-licensed and each usable entirely on its own:
 
 | Library | What it is |
 |---------|------------|
 | [`rest-mail/go-pop3`](https://github.com/rest-mail/go-pop3) | RFC 1939 POP3 server engine — bring a `Backend`, it speaks the protocol |
 | [`rest-mail/go-imap`](https://github.com/rest-mail/go-imap) | IMAP server engine with the same bring-a-`Backend` design |
 | [`rest-mail/go-dkim`](https://github.com/rest-mail/go-dkim) | RFC 6376 DKIM signing + verification, zero external deps |
+| [`rest-mail/go-spf`](https://github.com/rest-mail/go-spf) | RFC 7208 SPF evaluation, zero external deps |
 | [`rest-mail/go-arc`](https://github.com/rest-mail/go-arc) | RFC 8617 ARC chain verification and sealing |
 | [`rest-mail/go-dmarc`](https://github.com/rest-mail/go-dmarc) | RFC 7489 DMARC policy, alignment, and rua report XML |
 | [`rest-mail/go-mtasts`](https://github.com/rest-mail/go-mtasts) | RFC 8461 MTA-STS policy fetch/parse/enforce |
@@ -91,10 +131,10 @@ chore testbed:init
 chore testbed:up
 
 # 3. Start the restmail.test product stack
-chore dev   # alias for restmail:up (= instance:up)
+chore instance:up   # CONFIG defaults to restmail.test
 ```
 
-`chore dev` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `chore status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`chores.yml`](chores.yml).
+`chore instance:up` brings up PostgreSQL, the JS filter sidecar, the REST API, the SMTP/IMAP/POP3 gateways, webmail, and the admin UI, seeds the database, and finishes by printing `chore status` — the live view of what is running and on which URLs. Each container is driven by its own file under [`tasks/`](tasks/), included from the root [`chores.yml`](chores.yml).
 
 ### Seed Test Data
 
@@ -140,12 +180,12 @@ task -d .workspace/reference-mailserver up CONFIG=mail1
 
 After seeding, the following accounts are available:
 
-**Admin User (for Console tool):**
-- Username: `admin`
+**The admin (for the console and the admin webmail):**
+- Address: `admin@restmail.test` (an account like the others, signing in by its address)
 - Password: `admin123!@`
-- Role: `superadmin` (full access)
+- Role: `superadmin` at `*` (full access)
 
-**restmail.test Mailboxes:**
+**restmail.test accounts:**
 | Email | Password | Display Name |
 |-------|----------|--------------|
 | `eve@restmail.test` | `password123` | Eve Wilson |
@@ -154,13 +194,13 @@ After seeding, the following accounts are available:
 
 **restmail.test Aliases:**
 - `info@restmail.test` → `eve@restmail.test`
-- `admin@restmail.test` → `eve@restmail.test`
 
 **RBAC System:**
-The seed command also creates a complete Role-Based Access Control system:
-- **Roles**: `superadmin`, `admin`, `readonly`
-- **Capabilities**: 20 permissions covering domains, mailboxes, users, pipelines, messages, queue, and bans — enforced per-route on the admin API
-- See [cmd/seed/main.go](cmd/seed/main.go) for the complete capability list
+The server creates its roles on start, and every account's access is a grant
+of one of them at a scope (`*`, `domain:<name>` or `mailbox:<address>`):
+- **Roles**: `superadmin`, `admin`, `readonly`, and `owner` (read, write and send mail on one account, and manage it)
+- **Capabilities**: permissions covering domains, mailboxes, users, pipelines, messages, queue, bans and mail — enforced per route
+- See [internal/bootstrap/bootstrap.go](internal/bootstrap/bootstrap.go) for the complete capability list
 
 ## Admin Tools
 
@@ -182,7 +222,7 @@ chore run:console
 - Queue operations
 - Live status monitoring
 
-**Authentication:** Uses the admin credentials (username/password) seeded by `chore db:seed`.
+**Authentication:** Signs in as the admin account seeded by `chore db:seed` (`admin@<domain>`), by its address and password.
 
 ### Instant Mail Check
 
@@ -282,7 +322,7 @@ cmd/
   migrate/          Database migration runner
   certgen/          TLS/DKIM certificate generator
   rotate-key/       MASTER_KEY rotation tool
-  seed/             Test data and RBAC seeder (domains, mailboxes, admin user)
+  seed/             Test data seeder (domain, accounts, the admin account)
   website/          Project website server
 internal/
   acme/             ACME (Let's Encrypt) certificate auto-provisioning
@@ -308,7 +348,7 @@ projects/           Dockerfiles for the gateways, js-filter sidecar, dnsmasq fra
 helm/               Helm chart for restmail
 monitoring/         Prometheus config, alerting rules, Grafana dashboards
 tasks/              Per-service task files (one per container) included from root chores.yml
-tests/e2e/          End-to-end test suite (13 stages)
+tests/e2e/          End-to-end test suite (14 stages)
 .workspace/         Sibling repos cloned on demand (testbed, reference-mailserver, website) — gitignored
 ```
 
@@ -338,8 +378,6 @@ chore config:render     # manifest.yml → config.env (after editing a manifest)
 chore config:check      # fail if config.env drifted from its manifest
 ```
 
-`restmail:up` / `restmail:down` / `chore dev` are aliases for `instance:up` / `instance:down` with the default config.
-
 ## Development
 
 ### Prerequisites
@@ -356,7 +394,7 @@ chore config:check      # fail if config.env drifted from its manifest
 chore setup
 ```
 
-TLS certificates are provisioned per config into the shared `testbed_certs` volume (`chore instance:certs:issue`, run automatically by `instance:new`). To pull the dev CA out of the testbed for browser/IMAP-client trust:
+TLS certificates are provisioned per config into the shared `testbed_certs` volume (`chore instance:certs:issue`, run automatically by `instance:new`), and the internal mTLS ones into `<project>-internal-mtls` (`chore instance:mtls:issue`). Both hold a CA's private key, so no service mounts them: each service's `up` copies the files that service needs into a volume of its own, `<container>-certs` ([tasks/stage-certs.sh](tasks/stage-certs.sh)). To pull the dev CA out of the testbed for browser/IMAP-client trust:
 
 ```bash
 cd .workspace/testbed && chore ca:fetch    # writes ./ca.crt
@@ -397,13 +435,13 @@ chore test:e2e
 chore test:all
 ```
 
-The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 13 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, and IMAP IDLE.
+The e2e suite runs inside a container attached to the testbed mailnet with the testbed dnsmasq as its only resolver — it exercises the stack as just another user of the simulated internet. Its 14 stages cover infrastructure, traditional cross-domain mail, gateway inbound/outbound, protocol indistinguishability, the RESTMAIL upgrade, webmail and console flows, database consistency, email-auth verification, queue retry, bounce DSNs, IMAP IDLE, and app passwords.
 
 ### Local Development
 
 ```bash
 # Start the full restmail.test product stack
-chore dev                       # alias for restmail:up
+chore instance:up               # CONFIG defaults to restmail.test
 
 # Drive a single container
 chore api:up                    # build + run the API
@@ -417,8 +455,18 @@ chore api:logs
 chore smtp-gateway:logs
 
 # Tear it all down
-chore restmail:down
+chore instance:down
 ```
+
+The API and SMTP/IMAP/POP3 gateway Go dev containers run with a read-only root
+filesystem. The source overlay at `/app` stays writable for development; Air's
+executables use a separate 128 MiB tmpfs at `/app/tmp`. A 1 GiB tmpfs at `/tmp`
+holds Go's build cache, module cache, checksum state, and temporary files. These
+mounts count toward the existing container memory limits and reset when the
+container is recreated. Go reads the image's preloaded module archive first,
+then falls back to the public Go proxy and direct downloads for new dependencies.
+Certificate, attachment, and log mounts retain their existing permissions and
+locations. These dev flags do not change the `prod` launch commands.
 
 Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
 
@@ -478,6 +526,7 @@ All configuration is done via environment variables. The API, gateways, and tool
 | `POP3_TLS_PORT`               | `995`              | POP3 implicit TLS port        |
 | `QUEUE_WORKERS`               | `4`                | Number of outbound queue workers |
 | `QUEUE_POLL_INTERVAL`         | `5s`               | Queue polling interval        |
+| `SUPPRESSION_TTL`             | `2160h` (90 days)  | How long a recipient that hard bounced stays suppressed for the sending domain |
 | `MTASTS_ENFORCE`              | `true`             | Enforce recipient MTA-STS policies on outbound delivery |
 | `CORS_ALLOWED_ORIGINS`        | `http://localhost:3000` | Comma-separated CORS origins |
 | `PROXY_PROTOCOL_TRUSTED_CIDRS`| *(empty)*          | Trusted front-proxy CIDRs. Also gates HTTP `X-Forwarded-For`: a forwarded client IP is honored only when the direct peer is listed; empty = trust no proxy, use the real socket peer |
@@ -547,9 +596,15 @@ the in-repo certgen — idempotent and CA-preserving (it re-mints the server lea
 if the requested SANs drift, e.g. the api IP changes on a persistent volume):
 
 ```
-go run ./cmd/certgen --internal-mtls --out /certs \
+go run ./cmd/certgen --internal-mtls --out /internal-mtls \
   --server-ip 127.0.0.1,<api-ip> --server-dns api,localhost,<hostname>
 ```
+
+That directory then holds the internal CA's private key, so mount it into
+nothing that serves: give the API the CA certificate and its server keypair,
+and each gateway the CA certificate and the client keypair. `chore
+instance:mtls:issue` does exactly that with its own volume, and the Helm chart
+keeps no CA key at all.
 
 When enabled, set the gateways' `API_INTERNAL_BASE_URL` to the https internal
 listener (e.g. `https://<api-host>:8443`) and leave `API_BASE_URL` on the public
@@ -576,7 +631,7 @@ this repo); its `configs/restmail/manifest.yml` should also carry
 The REST API exposes 146 operations across these resource groups:
 
 - **Auth** -- Login, logout, token refresh
-- **Accounts** -- Link/unlink mail accounts, test connections
+- **Accounts** -- List the accounts a session reaches, create one, link one by its password, unlink, app passwords
 - **Messages** -- List, read, send, reply, forward, delete, search, thread
 - **Folders** -- Create, rename, delete, list
 - **Drafts** -- Save, update, send
@@ -595,14 +650,14 @@ The REST API exposes 146 operations across these resource groups:
 - **Admin: DKIM** -- Key management
 - **Admin: Certificates** -- TLS certificate CRUD
 - **Admin: Bans** -- List, create, delete IP bans
-- **Admin: Logs** -- Delivery and activity log queries
+- **Admin: Logs** -- Delivery log queries
 - **Admin: MTA-STS** -- Policy management per domain
 - **Admin: TLS-RPT** -- View TLS report submissions
 - **SSE** -- Real-time event stream per account
 - **Health** -- `GET /api/health`
 - **Metrics** -- `GET /metrics` (Prometheus)
 
-Admin routes are guarded by capability-based RBAC — each route requires the matching capability (e.g. `domains:write`) on the caller's role.
+Every route is guarded by capability-based RBAC — each requires the matching capability (e.g. `domains:write`) from the caller's grants, at a scope covering what it acts on.
 
 ### Documentation
 
@@ -622,18 +677,75 @@ curl http://localhost:8080/api/v1/accounts \
   -H "Authorization: Bearer <access_token>"
 ```
 
+### Accounts
+
+An account is a mailbox: its address is what signs in, and its id is the
+`{id}` of every `/api/v1/accounts/{id}/…` route. It has 0..n passwords, an
+authenticator if it enrolled one, and app passwords. What else a session
+reaches comes from grants: `GET /api/v1/accounts` lists its own account first,
+then every account it holds a mail grant on.
+
+```bash
+# Make an account (needs mailboxes:write on its domain). The creator owns it:
+# reads, writes and sends its mail, and manages it. With no password, nothing
+# can sign in to it until one is set or an app password is made for it.
+curl -X POST http://localhost:8080/api/v1/accounts \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"address": "chris@restmail.test", "display_name": "Chris"}'
+
+# Link an account someone else made, by proving its password (and its 2FA code,
+# as totp_code, if it has 2FA): the session's account becomes an owner of it
+curl -X POST http://localhost:8080/api/v1/accounts/link \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"address": "frank@restmail.test", "password": "password123"}'
+
+# Unlink it: removes the session's own grants on it
+curl -X DELETE http://localhost:8080/api/v1/accounts/<account id> -H "Authorization: Bearer <access_token>"
+```
+
+### App passwords
+
+An account can give each mail client or automation an app password of its own:
+`rm_<public id>_<secret>`, 59 letters, digits and underscores. It is shown once,
+when it is made; the server keeps only a SHA-256 of the secret.
+
+```bash
+# Make one, signed in with a password (and a 2FA code, if the account has 2FA),
+# entering that password again: for the session's own account, or one it owns
+curl -X POST http://localhost:8080/api/v1/accounts/<account id>/credentials \
+  -H "Authorization: Bearer <access_token>" -H "Content-Type: application/json" \
+  -d '{"name": "Thunderbird", "expires_at": "2027-01-01T00:00:00Z", "password": "<your password>"}'
+
+# Use it as the password in a mail client (IMAP, POP3, SMTP), or with HTTP Basic
+curl -u 'eve@restmail.test:rm_…' http://localhost:8080/api/v1/accounts/<account id>/folders
+
+# List them (never the secret), and revoke one: the next request made with it is refused
+curl http://localhost:8080/api/v1/accounts/<account id>/credentials -H "Authorization: Bearer <access_token>"
+curl -X DELETE http://localhost:8080/api/v1/accounts/<account id>/credentials/<id> -H "Authorization: Bearer <access_token>"
+```
+
+An app password reaches only its own account, to read, change and send mail. It
+cannot sign in at `/api/v1/auth/login` (the app and the webmail), change a
+password or 2FA, link an account, or list, make or revoke app passwords. An
+account with 2FA signs mail clients in with app passwords only: its password
+alone is refused over IMAP, POP3 and SMTP. A new
+password for the account revokes all of them, as it ends every session. Making
+one takes the session's own current password, entered again (`403 reauth_required`
+without it, `403 invalid_password` when it is wrong, never `401`), so a session from before
+a new password, still valid until its access token expires, can't make one
+that outlives the change. Each creation, refused creation, revocation, refused
+app password and sign-in over IMAP, POP3 or SMTP is recorded in the audit log.
+
 ## Pipeline Filters
 
 The pipeline engine processes emails through configurable filter chains. Built-in filters:
 
 | Filter | Description |
 |--------|-------------|
-| `spf_check` | SPF record validation |
+| `spf_check` | SPF verification (via `rest-mail/go-spf`) |
 | `dkim_verify` | DKIM signature verification (via `rest-mail/go-dkim`) |
-| `dkim_sign` | DKIM signature generation (via `rest-mail/go-dkim`) |
 | `dmarc_check` | DMARC policy enforcement (via `rest-mail/go-dmarc`) |
 | `arc_verify` | ARC chain verification (via `rest-mail/go-arc`) |
-| `arc_seal` | ARC seal generation (via `rest-mail/go-arc`) |
 | `greylist` | Greylisting with DB-backed tracking |
 | `rate_limit` | Per-sender/domain rate limiting |
 | `size_check` | Message size enforcement |
@@ -647,7 +759,7 @@ The pipeline engine processes emails through configurable filter chains. Built-i
 | `vacation` | Auto-reply responder |
 | `sieve` | Sieve script execution (via `rest-mail/go-sieve`) |
 | `webhook` | HTTP webhook notifications |
-| `duplicate` | Fork message to webhook/queue |
+| `duplicate` | Fork a copy of the message to a webhook |
 | `javascript` | Custom JS filter via Node.js sidecar |
 | `rspamd` | Rspamd spam scanning (adapter) |
 | `clamav` | ClamAV virus scanning (adapter) |

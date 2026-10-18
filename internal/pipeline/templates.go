@@ -23,7 +23,9 @@ func DefaultInboundPipeline(domainID uint) *PipelineConfig {
 
 // DefaultOutboundPipeline returns a sensible default outbound pipeline
 // configuration that gets applied when a new domain is created. It includes
-// sender verification, rate limiting, header cleanup, and DKIM signing.
+// sender verification, rate limiting and header cleanup. DKIM signing is not a
+// filter: the finished message is signed over its wire bytes after the pipeline
+// (internal/outbound.SignDKIM).
 func DefaultOutboundPipeline(domainID uint) *PipelineConfig {
 	now := time.Now()
 	return &PipelineConfig{
@@ -161,19 +163,6 @@ func defaultOutboundFilters() []FilterConfig {
 			Type:    FilterTypeTransform,
 			Enabled: true,
 			Config:  json.RawMessage(`{}`),
-		},
-		{
-			Name:    "arc_seal",
-			Type:    FilterTypeTransform,
-			Enabled: true,
-			Config:  json.RawMessage(`{}`),
-		},
-		{
-			Name:        "dkim_sign",
-			Type:        FilterTypeTransform,
-			Enabled:     true,
-			Unskippable: true,
-			Config:      json.RawMessage(`{}`),
 		},
 	}
 }

@@ -25,7 +25,7 @@ func NewContactWhitelist(db *gorm.DB) pipeline.FilterFactory {
 func (f *contactWhitelistFilter) Name() string             { return "contact_whitelist" }
 func (f *contactWhitelistFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
-func (f *contactWhitelistFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
+func (f *contactWhitelistFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	sender := email.Envelope.MailFrom
 	if sender == "" && len(email.Headers.From) > 0 {
 		sender = email.Headers.From[0].Address
@@ -52,7 +52,7 @@ func (f *contactWhitelistFilter) Execute(_ context.Context, email *pipeline.Emai
 	// Otherwise a spoofer who forges a trusted contact's address would reuse the
 	// entry to bypass scanning entirely (#177). An unauthenticated match still
 	// passes (no reject) but is scanned like any other mail.
-	authed := senderAuthenticated(email, senderDomain)
+	authed := senderAuthenticated(ctx, senderDomain)
 	// gatedSkip returns the requested skip list only for an authenticated sender;
 	// for a spoofable (unauthenticated) match it returns nil so scanning proceeds,
 	// and notes why in the log detail.

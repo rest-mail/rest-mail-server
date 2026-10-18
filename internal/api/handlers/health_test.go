@@ -9,26 +9,17 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
 
 func openHealthTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	cfg := &config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: envIntOr("DB_PORT", 5432),
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	}
-	gdb, err := rmdb.Connect(cfg)
+	gdb, err := connectTestDB()
 	if err != nil {
 		t.Skipf("health DB test skipped: no database reachable (%v)", err)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.Certificate{}); err != nil {
+	if err := gdb.AutoMigrate(append(accountModels, &models.Certificate{})...); err != nil {
 		t.Skipf("health DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
@@ -91,8 +82,24 @@ func TestHealth_CertDetailGatedByAuth(t *testing.T) {
 		t.Fatalf("unauthenticated /api/health disclosed cert inventory: %v", body)
 	}
 
-	// Authenticated admin: certificate inventory is included.
-	pair, err := jwtSvc.GenerateAdminTokenPair(1, "admin", []string{"*"})
+	// A signed-in account holding no admin role: liveness only.
+	user := seedMailbox(t, gdb, "health-user")
+	plain, err := jwtSvc.GenerateSession(user.ID, user.Address, 0, []string{auth.AMRPassword}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	userReq := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	userReq.Header.Set("Authorization", "Bearer "+plain.AccessToken)
+	userRR := httptest.NewRecorder()
+	h.Health(userRR, userReq)
+	if _, leaked := healthBody(t, userRR)["cert_warnings"]; leaked {
+		t.Fatal("an account without domains:read was shown the certificate inventory")
+	}
+
+	// Authenticated admin (domains:read at "*"): certificate inventory is
+	// included.
+	admin := seedAdminWithCaps(t, gdb, "health-admin", []string{"domains:read"})
+	pair, err := jwtSvc.GenerateSession(admin.ID, admin.Address, 0, []string{auth.AMRPassword}, false)
 	if err != nil {
 		t.Fatalf("mint admin token: %v", err)
 	}

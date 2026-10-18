@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
@@ -41,6 +43,23 @@ type MessageHandler struct {
 	// every request).
 	maxRecipients int
 	sendLimiter   *ratelimit.SubmissionLimiter
+
+	// newMail is told of each message delivered into a mailbox's INBOX, to
+	// push to the phones of the sessions that list it (#363). Nil when push
+	// is off.
+	newMail NewMailNotifier
+}
+
+// NewMailNotifier is told that a message reached the INBOX of a mailbox. It
+// must not block: delivery waits for it. *push.Dispatcher is one.
+type NewMailNotifier interface {
+	NewMail(mailboxID uint)
+}
+
+// SetNewMailNotifier tells n of every message delivered into an INBOX. Call
+// before the router serves traffic.
+func (h *MessageHandler) SetNewMailNotifier(n NewMailNotifier) {
+	h.newMail = n
 }
 
 func NewMessageHandler(db *gorm.DB, broker *SSEBroker, engine *pipeline.Engine, masterKey string, recorder traceRecorder) *MessageHandler {
@@ -69,16 +88,15 @@ func (h *MessageHandler) recordTrace(t models.MessageTrace) {
 
 // signOutboundDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes
 // with the sender domain's key, returning the signed message. DKIM must be
-// signed over what is transmitted — signing a reconstructed EmailJSON produced
-// signatures whose header hash never matched the wire form, so every outbound
-// message failed verification at receivers. If the domain has no key configured
-// (or signing fails), the message is returned unchanged. If the domain HAS a
-// key configured but it cannot be loaded (OSI-8: an encrypted-at-rest key that
-// fails to decrypt), it returns an error so the caller fails closed (temp-fail)
-// rather than sending the message unsigned.
+// signed over what is transmitted, so it runs on the finished message, after the
+// pipeline. If the domain has no key configured the message is returned
+// unchanged. If the domain HAS a key but it cannot sign (OSI-8: an
+// encrypted-at-rest key that fails to decrypt), it returns an error so the
+// caller fails closed (temp-fail) rather than sending the message unsigned.
 //
-// The signing itself lives in internal/outbound.SignDKIM, shared with the queue
-// worker so submitted mail is signed by the same code (#171).
+// The signing itself lives in internal/outbound.SignDKIM, the only DKIM signer,
+// shared with the queue worker so submitted mail is signed by the same code
+// (#171).
 func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, error) {
 	return outbound.SignDKIM(h.db, h.masterKey, senderDomain, raw)
 }
@@ -102,7 +120,7 @@ func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		folder = "INBOX"
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -179,7 +197,7 @@ func (h *MessageHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &msg) {
+	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailRead) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -207,7 +225,7 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &msg) {
+	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailWrite) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -297,7 +315,7 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &msg) {
+	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailWrite) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -386,6 +404,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		BodyHTML      string                  `json:"body_html"`
 		InReplyTo     string                  `json:"in_reply_to"`
 		CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
+		// ListUnsubscribe, when set, publishes where a recipient unsubscribes
+		// (#144). Absent, the message carries no List-Unsubscribe fields.
+		ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -443,9 +464,17 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
 		return
 	}
+	// The unsubscribe targets become header fields, so they are checked here,
+	// with the addresses, before anything is stored or signed.
+	if req.ListUnsubscribe != nil {
+		if err := req.ListUnsubscribe.validate(); err != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+	}
 
 	// Per-account send rate limit (#184): cap how many messages one authenticated
-	// webmail account may send per minute/hour, mirroring the SMTP submission cap
+	// account may send per minute/hour, mirroring the SMTP submission cap
 	// (#171) so a compromised credential cannot flood outbound mail through the API
 	// any more than through submission. Keyed on the authenticated account (not the
 	// From address, which the caller can rotate among its authorized senders), and
@@ -453,38 +482,42 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// throttled request enqueues nothing. A nil limiter (feature disabled) allows
 	// every request. Both the draft-send and forward paths delegate to SendMessage,
 	// so they inherit this cap.
-	if !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.WebmailAccountID), 10)) {
+	if !h.sendLimiter.Allow(strconv.FormatUint(uint64(claims.AccountID), 10)) {
 		w.Header().Set("Retry-After", "60")
 		respond.Error(w, http.StatusTooManyRequests, "rate_limited",
 			"Account send rate limit exceeded; try again later")
 		return
 	}
 
-	// Verify sender belongs to authenticated user
-	var senderMailbox models.Mailbox
-	authorized := false
-
-	// Check primary mailbox
-	var webmailAccount models.WebmailAccount
-	if err := h.db.Preload("PrimaryMailbox").First(&webmailAccount, claims.WebmailAccountID).Error; err == nil {
-		if webmailAccount.PrimaryMailbox.Address == req.From {
-			senderMailbox = webmailAccount.PrimaryMailbox
-			authorized = true
+	// The sender must be an account the caller may send as: its own, or one
+	// it holds mail:send on (an account it owns or has linked).
+	sender, err := mayActAs(h.db, claims, req.From, models.CapMailSend)
+	if err != nil {
+		if errors.Is(err, errNoAccess) {
+			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
+		} else {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender")
 		}
-	}
-
-	// Check linked accounts
-	if !authorized {
-		var linked models.LinkedAccount
-		if err := h.db.Joins("Mailbox").Where("linked_accounts.webmail_account_id = ? AND \"Mailbox\".address = ?", claims.WebmailAccountID, req.From).First(&linked).Error; err == nil {
-			senderMailbox = linked.Mailbox
-			authorized = true
-		}
-	}
-
-	if !authorized {
-		respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		return
+	}
+	senderMailbox := *sender
+
+	// RFC 8058 §4: a one-click claim counts only under a DKIM signature that
+	// covers it. A sender domain with no key would send an unsigned claim, so
+	// an HTTPS unsubscribe target is refused for it rather than sent unsigned
+	// or silently downgraded. A mailto-only target makes no claim and is sent
+	// either way.
+	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" {
+		signs, err := outbound.HasDKIMKey(h.db, rmail.DomainFromAddress(req.From))
+		if err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
+			return
+		}
+		if !signs {
+			respond.Error(w, http.StatusUnprocessableEntity, "dkim_required",
+				"list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed")
+			return
+		}
 	}
 
 	// ── Outbound pipeline execution ────────────────────────────────
@@ -545,7 +578,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		if outEmailJSON.Metadata == nil {
 			outEmailJSON.Metadata = make(map[string]string)
 		}
-		outEmailJSON.Metadata["auth_account"] = strconv.FormatUint(uint64(claims.WebmailAccountID), 10)
+		outEmailJSON.Metadata["auth_account"] = strconv.FormatUint(uint64(claims.AccountID), 10)
 
 		var outPipelineCfg *pipeline.PipelineConfig
 		var dbOutPipeline models.Pipeline
@@ -616,7 +649,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 			queuedTrace = &base
 			// Feed pipeline transforms back into req so downstream code
 			// (sent message creation + raw RFC 2822 builder) uses the
-			// pipeline output (e.g. header_cleanup, dkim_sign).
+			// pipeline output (e.g. header_cleanup).
 			if outResult.FinalEmail != nil {
 				req.Subject = outResult.FinalEmail.Headers.Subject
 
@@ -635,7 +668,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 					req.Bcc = nil
 				}
 
-				// Capture extra headers (e.g. DKIM-Signature) for the raw message.
+				// Capture headers a transform added for the raw message.
 				extraHeaders = outResult.FinalEmail.Headers.Extra
 			}
 		}
@@ -739,7 +772,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		MessageID: messageID,
 		InReplyTo: req.InReplyTo,
 		Date:      now,
-		Extra:     extraHeaders,
+		Extra:     withListUnsubscribe(extraHeaders, req.ListUnsubscribe),
 		ICS:       icsData,
 		ICSMethod: calendarMethod(req.CalendarEvent),
 	})
@@ -756,7 +789,19 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
 		return
 	}
+	// The key was there when the request was checked; if the message still
+	// came back unsigned, its one-click claim must not leave.
+	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && signedRaw == rawMessage {
+		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
+		return
+	}
 	rawMessage = signedRaw
+
+	// The Sent copy keeps the source that was sent, as a delivered copy does,
+	// so its raw source can be read (GET /messages/{id}/raw, IMAP, POP3).
+	if err := h.db.Model(&sentMsg).Updates(map[string]any{"raw_message": rawMessage, "raw_size": len(rawMessage)}).Error; err != nil {
+		slog.Warn("failed to store the sent message's raw source", "message_id", sentMsg.ID, "error", err)
+	}
 
 	// Deliver to each recipient in to + cc + bcc
 	allRecipients := make([]string, 0, len(req.To)+len(req.Cc)+len(req.Bcc))
@@ -956,7 +1001,7 @@ func (h *MessageHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1005,7 +1050,7 @@ func (h *MessageHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1059,7 +1104,7 @@ func (h *MessageHandler) RenameFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1100,7 +1145,7 @@ func (h *MessageHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailWrite)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1155,7 +1200,7 @@ func (h *MessageHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1178,20 +1223,11 @@ func (h *MessageHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// resolveSenderMailbox verifies the given from address belongs to the
-// authenticated user (via primary or linked mailbox) and returns the mailbox.
-func (h *MessageHandler) resolveSenderMailbox(from string, webmailAccountID uint) (*models.Mailbox, error) {
-	var account models.WebmailAccount
-	if err := h.db.Preload("PrimaryMailbox").First(&account, webmailAccountID).Error; err == nil {
-		if account.PrimaryMailbox.Address == from {
-			return &account.PrimaryMailbox, nil
-		}
-	}
-	var linked models.LinkedAccount
-	if err := h.db.Joins("Mailbox").Where("linked_accounts.webmail_account_id = ? AND \"Mailbox\".address = ?", webmailAccountID, from).First(&linked).Error; err == nil {
-		return &linked.Mailbox, nil
-	}
-	return nil, fmt.Errorf("sender not authorized")
+// resolveSenderMailbox finds the mailbox the given from address is, if the
+// caller may send as it (mail:send): its own account's, or one it owns or has
+// linked. An app password sends only as its own.
+func (h *MessageHandler) resolveSenderMailbox(from string, claims *auth.Claims) (*models.Mailbox, error) {
+	return mayActAs(h.db, claims, from, models.CapMailSend)
 }
 
 // SaveDraft creates a new draft message.
@@ -1218,21 +1254,16 @@ func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var mailboxID uint
+	// A draft is kept in the mailbox it is from: one the caller may write to.
+	// Without a from, the caller's own.
+	mailboxID := claims.AccountID
 	if req.From != "" {
-		mb, err := h.resolveSenderMailbox(req.From, claims.WebmailAccountID)
+		mb, err := mayActAs(h.db, claims, req.From, models.CapMailWrite)
 		if err != nil {
 			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 			return
 		}
 		mailboxID = mb.ID
-	} else {
-		var account models.WebmailAccount
-		if err := h.db.First(&account, claims.WebmailAccountID).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to resolve account")
-			return
-		}
-		mailboxID = account.PrimaryMailboxID
 	}
 
 	toJSON, _ := json.Marshal(req.To)
@@ -1290,7 +1321,7 @@ func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &draft) {
+	if !h.verifyMessageOwnership(w, r, &draft, models.CapMailWrite) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -1359,7 +1390,7 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &draft) {
+	if !h.verifyMessageOwnership(w, r, &draft, models.CapMailWrite) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -1428,7 +1459,7 @@ func (h *MessageHandler) GetThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
@@ -1466,7 +1497,7 @@ func (h *MessageHandler) GetRawMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &msg) {
+	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailRead) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -1502,7 +1533,7 @@ func (h *MessageHandler) ForwardMessage(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &original) {
+	if !h.verifyMessageOwnership(w, r, &original, models.CapMailRead) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -1612,7 +1643,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if !h.verifyMessageOwnership(w, r, &msg) {
+	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailRead) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -1652,7 +1683,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Verify sender belongs to authenticated user
-	senderMailbox, err := h.resolveSenderMailbox(req.From, claims.WebmailAccountID)
+	senderMailbox, err := h.resolveSenderMailbox(req.From, claims)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
 		return
@@ -1723,7 +1754,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	b.WriteString("--" + boundary + "--\r\n")
 
 	rawMessage := b.String()
-	// OSI-8: fail closed if the DKIM key cannot be loaded (see signOutboundDKIM).
+	// OSI-8: fail closed if the DKIM key cannot sign (see signOutboundDKIM).
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
 		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
@@ -1797,32 +1828,16 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// verifyMessageOwnership checks that the authenticated user owns the message.
-// Returns true only if the message belongs to one of the authenticated mailbox
-// account's mailboxes. These are mailbox-scoped webmail routes; there is no
-// cross-mailbox admin bypass here (the deprecated IsAdmin claim was removed —
-// OSI-14). Admin management happens on the capability-gated /admin surface.
-func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.Request, msg *models.Message) bool {
+// verifyMessageOwnership checks that the caller may act on the message with
+// capability: that it is in a mailbox the caller holds the capability on (its
+// own, or one it owns or has linked; an app password, only its own).
+func (h *MessageHandler) verifyMessageOwnership(w http.ResponseWriter, r *http.Request, msg *models.Message, capability string) bool {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
 		return false
 	}
-	// Check primary mailbox
-	var account models.WebmailAccount
-	if err := h.db.First(&account, claims.WebmailAccountID).Error; err == nil {
-		if msg.MailboxID == account.PrimaryMailboxID {
-			return true
-		}
-	}
-	// Check linked accounts
-	var linked []models.LinkedAccount
-	h.db.Where("webmail_account_id = ?", claims.WebmailAccountID).Find(&linked)
-	for _, la := range linked {
-		if msg.MailboxID == la.MailboxID {
-			return true
-		}
-	}
-	return false
+	_, err := mayReach(h.db, claims, msg.MailboxID, capability)
+	return err == nil
 }
 
 // localDeliveryParams holds the information needed for local message delivery with
@@ -1896,6 +1911,11 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// labelled by transport. Non inbound-MX deliveries (nil ReceivedTLS) are not
 	// counted — this measures mail received from the internet.
 	recordInboundReceived(params.ReceivedTLS)
+
+	// Authentication-Results claiming this server's authserv-id did not come
+	// from this server: remove them before anything parses, verifies or stores
+	// the message (RFC 8601 §5).
+	params.RawMessage = rmime.StripAuthResults(params.RawMessage, pipeline.AuthServID)
 
 	// ── Build pipeline EmailJSON ─────────────────────────────────────
 	var toAddrs []pipeline.Address
@@ -1994,6 +2014,8 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	// deliveredTrace, set in the pipeline's continue branch, defers recording the
 	// happy-path trace until the Message row exists so its message_id is non-nil.
 	var deliveredTrace *traceInputs
+	// authResults are the pipeline's verdicts, written onto the stored message.
+	var authResults []pipeline.AuthResult
 	if h.engine != nil {
 		var pipelineCfg *pipeline.PipelineConfig
 		var dbPipeline models.Pipeline
@@ -2066,6 +2088,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			return nil, fmt.Errorf("deferred: try again later")
 		case pipeline.ActionContinue:
 			emailJSON = pipelineResult.FinalEmail
+			authResults = pipelineResult.Auth
 			// Stash the delivered trace; it is recorded after the Message row is
 			// created so message_id is non-nil (the only path where it is set).
 			base := traceBase
@@ -2099,20 +2122,14 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 	}
 
 	// ── Persist Authentication-Results ───────────────────────────────
-	// Prepend any Authentication-Results the inbound pipeline produced (the
-	// dkim/spf/dmarc verdicts) onto the stored raw message — standard receiver
+	// Prepend the inbound pipeline's spf/dkim/arc/dmarc verdicts onto the stored
+	// raw message as one Authentication-Results field — standard receiver
 	// behavior — so the outcome is visible via the message API, not buried in
-	// the pipeline execution log.
-	if emailJSON != nil && params.RawMessage != "" {
-		if ars := emailJSON.Headers.Raw["Authentication-Results"]; len(ars) > 0 {
-			var b strings.Builder
-			for _, ar := range ars {
-				b.WriteString("Authentication-Results: ")
-				b.WriteString(ar)
-				b.WriteString("\r\n")
-			}
-			params.RawMessage = b.String() + params.RawMessage
-		}
+	// the pipeline execution log. It is written from the recorded verdicts, not
+	// copied from the pipeline message's headers, which a script may have
+	// changed.
+	if params.RawMessage != "" {
+		params.RawMessage = pipeline.AuthResultsHeader(authResults) + params.RawMessage
 	}
 
 	// ── Ensure Message-ID exists ────────────────────────────────────
@@ -2196,29 +2213,49 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		msg.ReceivedAt = *params.ReceivedAt
 	}
 
-	// Create the message and bump quota in one transaction so a COPY/APPEND (or
-	// inbound delivery) never leaves a half-written row or quota that disagrees
-	// with the stored message: either both commit or neither does. The message now
-	// lands directly in its destination folder, so there is no transient INBOX
-	// state and no separate, swallow-prone move step. Any write error rolls the
-	// whole delivery back and is surfaced to the caller rather than swallowed; a
-	// quota row that does not exist yet matches zero rows, which is not an error,
-	// so ordinary deliveries are unaffected.
+	// Attachment references, message and quota commit together. If metadata
+	// cannot be saved, the sender retries; an uploaded content-addressed object
+	// is safe to reuse, whereas acknowledging a message without its attachments
+	// would permanently hide them from the recipient.
+	var attachmentRows []models.Attachment
+	var totalAttBytes int64
+	if emailJSON != nil {
+		for _, group := range [][]pipeline.Attachment{emailJSON.Attachments, emailJSON.Inline} {
+			for _, att := range group {
+				if att.Ref == "" {
+					continue
+				}
+				attachmentRows = append(attachmentRows, models.Attachment{
+					Filename: att.Filename, ContentType: att.ContentType, SizeBytes: att.Size,
+					StorageType: att.Storage, StorageRef: att.Ref, Checksum: att.Checksum,
+				})
+				totalAttBytes += att.Size
+			}
+		}
+	}
+	msg.HasAttachments = len(attachmentRows) > 0
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&msg).Error; err != nil {
 			return err
 		}
+		if len(attachmentRows) > 0 {
+			for i := range attachmentRows {
+				attachmentRows[i].MessageID = msg.ID
+			}
+			if err := tx.Create(&attachmentRows).Error; err != nil {
+				return err
+			}
+		}
 		if err := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
-			"subject_bytes": gorm.Expr("subject_bytes + ?", len(params.Subject)),
-			"body_bytes":    gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
-			"message_count": gorm.Expr("message_count + 1"),
+			"subject_bytes":    gorm.Expr("subject_bytes + ?", len(params.Subject)),
+			"body_bytes":       gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
+			"attachment_bytes": gorm.Expr("attachment_bytes + ?", totalAttBytes),
+			"message_count":    gorm.Expr("message_count + 1"),
 		}).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes)).Error; err != nil {
-			return err
-		}
-		return nil
+		return tx.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
+			Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", int64(sizeBytes)+totalAttBytes)).Error
 	}); err != nil {
 		return nil, fmt.Errorf("failed to create message: %w", err)
 	}
@@ -2233,47 +2270,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		mid := msg.ID
 		deliveredTrace.MessageID = &mid
 		h.recordTrace(buildTrace(*deliveredTrace))
-	}
-
-	// ── Persist attachments ──────────────────────────────────────────
-	if emailJSON != nil {
-		var hasAttachments bool
-		allAttachments := append(emailJSON.Attachments, emailJSON.Inline...)
-		for _, att := range allAttachments {
-			if att.Ref == "" {
-				continue
-			}
-			dbAtt := models.Attachment{
-				MessageID:   msg.ID,
-				Filename:    att.Filename,
-				ContentType: att.ContentType,
-				SizeBytes:   att.Size,
-				StorageType: att.Storage,
-				StorageRef:  att.Ref,
-				Checksum:    att.Checksum,
-			}
-			if err := h.db.Create(&dbAtt).Error; err != nil {
-				slog.Error("deliver: failed to persist attachment", "message_id", msg.ID, "filename", att.Filename, "error", err)
-				continue
-			}
-			hasAttachments = true
-		}
-		if hasAttachments {
-			h.db.Model(&msg).Update("has_attachments", true)
-
-			var totalAttBytes int64
-			for _, att := range allAttachments {
-				if att.Ref != "" {
-					totalAttBytes += att.Size
-				}
-			}
-			if totalAttBytes > 0 {
-				h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
-					Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", totalAttBytes))
-				h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).
-					Update("attachment_bytes", gorm.Expr("attachment_bytes + ?", totalAttBytes))
-			}
-		}
 	}
 
 	// ── Extract calendar events ─────────────────────────────────────
@@ -2338,12 +2334,17 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 			},
 		})
 	}
+	// ── Push to phones: only that there is mail, never what it is ───
+	// A message copied in already read (an IMAP COPY or APPEND) is not news.
+	if h.newMail != nil && msg.Folder == "INBOX" && !msg.IsRead {
+		h.newMail.NewMail(mailbox.ID)
+	}
 
 	return &msg, nil
 }
 
-func (h *MessageHandler) resolveAccountMailbox(accountID, webmailAccountID uint) (uint, error) {
-	return resolveAccountMailbox(h.db, accountID, webmailAccountID)
+func (h *MessageHandler) resolveAccountMailbox(accountID uint, claims *auth.Claims, capability string) (uint, error) {
+	return resolveAccountMailbox(h.db, accountID, claims, capability)
 }
 
 // ListCalendarEvents returns calendar event versions for a mailbox,
@@ -2362,7 +2363,7 @@ func (h *MessageHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims.WebmailAccountID)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
 	if err != nil {
 		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
 		return

@@ -27,8 +27,8 @@ func TestSMTPErrorFrom_UnwrapsPermanentFailure(t *testing.T) {
 	if se == nil {
 		t.Fatal("smtpErrorFrom returned nil for a wrapped *SMTPError — permanent failure would be retried, not bounced")
 	}
-	if !se.IsPermanent() {
-		t.Fatalf("recovered SMTPError not permanent: code=%d", se.Code)
+	if c := ClassifyFailure(wrapped); !c.Permanent() {
+		t.Fatalf("wrapped 550 5.1.1 classified %q, not permanent", c)
 	}
 	if !errors.Is(wrapped, error(se)) {
 		t.Fatalf("recovered error is not the one in the chain")

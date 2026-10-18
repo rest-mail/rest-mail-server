@@ -1,5 +1,7 @@
 package version
 
+import "time"
+
 // Set via -ldflags at build time:
 //
 //	go build -ldflags "-X github.com/restmail/restmail/internal/version.Version=1.0.0
@@ -10,3 +12,8 @@ var (
 	Commit    = "unknown"
 	BuildDate = "unknown"
 )
+
+// Started is when this process started, near enough: when its packages were
+// initialised. A signed status answer gives it, so a deploy can be seen to have
+// restarted the server.
+var Started = time.Now()

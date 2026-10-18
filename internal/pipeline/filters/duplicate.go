@@ -13,19 +13,17 @@ import (
 )
 
 type duplicateConfig struct {
-	WebhookURL     string            `json:"webhook_url"`
-	Method         string            `json:"method"`
-	Headers        map[string]string `json:"headers"`
-	TimeoutMS      int               `json:"timeout_ms"`
-	QueueRecipient string            `json:"queue_recipient"`
+	WebhookURL string            `json:"webhook_url"`
+	Method     string            `json:"method"`
+	Headers    map[string]string `json:"headers"`
+	TimeoutMS  int               `json:"timeout_ms"`
 }
 
 type duplicateFilter struct {
-	webhookURL     string
-	method         string
-	headers        map[string]string
-	timeout        time.Duration
-	queueRecipient string
+	webhookURL string
+	method     string
+	headers    map[string]string
+	timeout    time.Duration
 }
 
 func init() {
@@ -33,8 +31,7 @@ func init() {
 }
 
 // NewDuplicate creates a duplicate filter from its JSON configuration.
-// The filter forks a copy of the email to a webhook URL and/or marks it
-// for delivery to an additional queue recipient.
+// The filter forks a copy of the email to a webhook URL.
 func NewDuplicate(config []byte) (pipeline.Filter, error) {
 	var cfg duplicateConfig
 	if len(config) > 0 {
@@ -43,8 +40,8 @@ func NewDuplicate(config []byte) (pipeline.Filter, error) {
 		}
 	}
 
-	if cfg.WebhookURL == "" && cfg.QueueRecipient == "" {
-		return nil, fmt.Errorf("duplicate: at least one of webhook_url or queue_recipient is required")
+	if cfg.WebhookURL == "" {
+		return nil, fmt.Errorf("duplicate: webhook_url is required")
 	}
 
 	if cfg.Method == "" {
@@ -54,23 +51,11 @@ func NewDuplicate(config []byte) (pipeline.Filter, error) {
 		cfg.TimeoutMS = 5000
 	}
 
-	// queue_recipient has no delivery consumer, so it silently no-ops (issue
-	// #201). New saves are rejected at the admin-pipeline config gate
-	// (validateDuplicatePipelineFilters); a filter is still constructed for any
-	// LEGACY stored config so its (working) webhook fork keeps running and the
-	// engine's fail-closed policy does not defer the domain's mail. Warn so an
-	// operator sees the queue copy is not being made.
-	if cfg.QueueRecipient != "" {
-		slog.Warn("duplicate: queue_recipient is not supported and is ignored (no delivery consumer); use webhook_url to fork a copy",
-			"queue_recipient", cfg.QueueRecipient)
-	}
-
 	return &duplicateFilter{
-		webhookURL:     cfg.WebhookURL,
-		method:         cfg.Method,
-		headers:        cfg.Headers,
-		timeout:        time.Duration(cfg.TimeoutMS) * time.Millisecond,
-		queueRecipient: cfg.QueueRecipient,
+		webhookURL: cfg.WebhookURL,
+		method:     cfg.Method,
+		headers:    cfg.Headers,
+		timeout:    time.Duration(cfg.TimeoutMS) * time.Millisecond,
 	}, nil
 }
 
@@ -78,36 +63,15 @@ func (f *duplicateFilter) Name() string             { return "duplicate" }
 func (f *duplicateFilter) Type() pipeline.FilterType { return pipeline.FilterTypeAction }
 
 func (f *duplicateFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
-	var destinations []string
-
 	// Fire-and-forget webhook delivery in a goroutine
-	if f.webhookURL != "" {
-		destinations = append(destinations, "webhook:"+f.webhookURL)
-
-		payload, err := json.Marshal(email)
-		if err != nil {
-			slog.Error("duplicate: failed to marshal email for webhook", "error", err)
-		} else {
-			go f.sendWebhook(payload)
-		}
+	payload, err := json.Marshal(email)
+	if err != nil {
+		slog.Error("duplicate: failed to marshal email for webhook", "error", err)
+	} else {
+		go f.sendWebhook(payload)
 	}
 
-	// Store queue recipient metadata for later processing
-	if f.queueRecipient != "" {
-		destinations = append(destinations, "queue:"+f.queueRecipient)
-
-		if email.Metadata == nil {
-			email.Metadata = make(map[string]string)
-		}
-		email.Metadata["duplicate_queue_recipient"] = f.queueRecipient
-
-		slog.Info("duplicate: queued copy for additional recipient",
-			"recipient", f.queueRecipient,
-			"from", email.Envelope.MailFrom,
-		)
-	}
-
-	detail := fmt.Sprintf("duplicated to: %v", destinations)
+	detail := fmt.Sprintf("duplicated to: %v", []string{"webhook:" + f.webhookURL})
 
 	return &pipeline.FilterResult{
 		Type:   pipeline.FilterTypeAction,

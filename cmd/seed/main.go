@@ -10,6 +10,8 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	"github.com/restmail/restmail/internal/instance"
 	"github.com/restmail/restmail/internal/seed"
 	"gorm.io/gorm"
@@ -41,9 +43,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Seeding is additive-only (allowDestructive=false); it never issues
-	// destructive DML (issue #196).
-	if err := db.AutoMigrate(database, false); err != nil {
+	// Seeding is additive-only; it never issues destructive DML (issue #196).
+	if err := db.AutoMigrate(database); err != nil {
 		slog.Error("failed to migrate", "error", err)
 		os.Exit(1)
 	}
@@ -63,7 +64,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := seedRBAC(database); err != nil {
+	if err := seedRBAC(database, domain); err != nil {
 		slog.Error("RBAC seeding failed", "error", err)
 		os.Exit(1)
 	}
@@ -85,15 +86,21 @@ func seedFixture(database *gorm.DB, domain string) error {
 	}
 	slog.Info("domain", "name", fx.Domain.Name, "id", fx.Domain.ID, "created", result.RowsAffected > 0)
 
-	// Mailboxes
+	// Accounts, each with the fixture password as its password credential.
+	creds := repositories.NewCredentialRepository(database)
 	for i := range fx.Mailboxes {
 		fx.Mailboxes[i].DomainID = fx.Domain.ID
 		result := database.Where("address = ?", fx.Mailboxes[i].Address).FirstOrCreate(&fx.Mailboxes[i])
 		if result.Error != nil {
 			return result.Error
 		}
-		slog.Info("mailbox", "address", fx.Mailboxes[i].Address, "id", fx.Mailboxes[i].ID, "created", result.RowsAffected > 0)
+		slog.Info("account", "address", fx.Mailboxes[i].Address, "id", fx.Mailboxes[i].ID, "created", result.RowsAffected > 0)
 		database.Where("mailbox_id = ?", fx.Mailboxes[i].ID).FirstOrCreate(&models.QuotaUsage{MailboxID: fx.Mailboxes[i].ID})
+		if result.RowsAffected > 0 {
+			if _, err := creds.SetPassword(fx.Mailboxes[i].ID, fx.PasswordHash, nil, time.Now()); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Aliases
@@ -104,19 +111,6 @@ func seedFixture(database *gorm.DB, domain string) error {
 			return result.Error
 		}
 		slog.Info("alias", "source", fx.Aliases[i].SourceAddress, "dest", fx.Aliases[i].DestinationAddress, "created", result.RowsAffected > 0)
-	}
-
-	// Webmail accounts
-	for _, addr := range fx.WebmailAddresses {
-		var mailbox models.Mailbox
-		database.Where("address = ?", addr).First(&mailbox)
-
-		var account models.WebmailAccount
-		result := database.Where("primary_mailbox_id = ?", mailbox.ID).FirstOrCreate(&account, models.WebmailAccount{PrimaryMailboxID: mailbox.ID})
-		if result.Error != nil {
-			return result.Error
-		}
-		slog.Info("webmail_account", "address", addr, "id", account.ID, "created", result.RowsAffected > 0)
 	}
 
 	return nil
@@ -143,7 +137,7 @@ func seedServedDomains(database *gorm.DB, spec string) error {
 	return nil
 }
 
-func seedRBAC(database *gorm.DB) error {
+func seedRBAC(database *gorm.DB, domain string) error {
 	if err := bootstrap.EnsureRBAC(database); err != nil {
 		return err
 	}
@@ -152,51 +146,57 @@ func seedRBAC(database *gorm.DB) error {
 	if err := database.Where("name = ?", "superadmin").First(&superadminRole).Error; err != nil {
 		return err
 	}
+	var fixtureDomain models.Domain
+	if err := database.Where("name = ?", domain).First(&fixtureDomain).Error; err != nil {
+		return err
+	}
 
-	// Create initial admin user (username: admin, password: admin123!@)
+	// The fixture admin: the account admin@<domain>, password admin123!@,
+	// holding superadmin. A test fixture, like the password123 accounts: dev
+	// instances and the e2e suite sign in as it directly, and this tool never
+	// ships in an image. The API enforces password_change_required (a session
+	// can do nothing else until it is cleared), so it is off here.
 	adminPassword, err := auth.HashPassword("admin123!@")
 	if err != nil {
 		return err
 	}
-
-	// The attrs MUST go through Attrs(), not as FirstOrCreate conditions: GORM
-	// merges a conditions-struct into the lookup query, and PasswordHash is a
-	// freshly salted bcrypt hash on every run — the SELECT never matches the
-	// stored row, so re-seeding an existing database tried to INSERT a second
-	// "admin" and aborted the whole up chain on the unique username index.
-	var adminUser models.AdminUser
-	result := database.Where("username = ?", "admin").
-		Attrs(models.AdminUser{
-			Username:     "admin",
-			Email:        "admin@localhost",
-			PasswordHash: adminPassword,
-			Active:       true,
+	address := "admin@" + domain
+	var admin models.Mailbox
+	result := database.Where("address = ?", address).
+		Attrs(models.Mailbox{
+			DomainID:    fixtureDomain.ID,
+			LocalPart:   "admin",
+			Address:     address,
+			DisplayName: "Admin",
+			QuotaBytes:  fixtureDomain.DefaultQuotaBytes,
+			Active:      true,
 		}).
-		FirstOrCreate(&adminUser)
+		FirstOrCreate(&admin)
 	if result.Error != nil {
 		return result.Error
 	}
-	// A test fixture, like the password123 mailboxes: dev instances and the e2e
-	// suite sign in as admin/admin123!@ directly, and this tool never ships in an
-	// image. The API now enforces password_change_required (a session can do
-	// nothing else until it is cleared), so the flag must be off here — including
-	// on databases seeded before it was enforced, which have it set.
-	if err := database.Model(&adminUser).Update("password_change_required", false).Error; err != nil {
+	if err := database.Model(&admin).Update("password_change_required", false).Error; err != nil {
 		return err
 	}
-	slog.Info("admin user", "username", "admin", "created", result.RowsAffected > 0)
-
-	// Assign superadmin role to admin user
-	var ur models.UserRole
-	result = database.Where("user_id = ? AND role_id = ?", adminUser.ID, superadminRole.ID).
-		FirstOrCreate(&ur, models.UserRole{
-			UserID: adminUser.ID,
-			RoleID: superadminRole.ID,
-		})
-	if result.Error != nil {
-		return result.Error
+	if result.RowsAffected > 0 {
+		database.Where("mailbox_id = ?", admin.ID).FirstOrCreate(&models.QuotaUsage{MailboxID: admin.ID})
+		if _, err := repositories.NewCredentialRepository(database).SetPassword(admin.ID, adminPassword, nil, time.Now()); err != nil {
+			return err
+		}
 	}
-	slog.Info("user role assigned", "user", "admin", "role", "superadmin", "created", result.RowsAffected > 0)
+	slog.Info("admin account", "address", address, "created", result.RowsAffected > 0)
+
+	// Superadmin at "*" for the fixture admin.
+	var created bool
+	err = database.Transaction(func(tx *gorm.DB) error {
+		var err error
+		created, err = grants.EnsureSystem(tx, admin.ID, superadminRole.ID, grants.All, models.GrantActive)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	slog.Info("grant", "account", address, "role", "superadmin", "scope", grants.All, "created", created)
 
 	return nil
 }

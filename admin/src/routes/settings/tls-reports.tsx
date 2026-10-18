@@ -29,10 +29,9 @@ function TLSReportsPage() {
         {
           domain_id: filterDomain ? parseInt(filterDomain) : undefined,
           reporting_org: filterReportingOrg || undefined,
-        },
-        accessToken
+        }
       ).catch(console.error)
-      fetchDomains(accessToken).catch(console.error)
+      fetchDomains().catch(console.error)
     }
   }, [isAuthenticated, accessToken, filterDomain, filterReportingOrg])
 

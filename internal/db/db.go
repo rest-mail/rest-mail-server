@@ -3,7 +3,6 @@ package db
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/restmail/restmail/internal/config"
@@ -46,119 +45,28 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
-// backfillRawSizeSQL populates messages.raw_size for pre-existing rows:
-// the exact octet count of the stored raw message when one exists
-// (octet_length counts bytes, matching len(raw) at write time), else the
-// legacy size_bytes value so gateways report an unchanged size for
-// messages that never had a stored raw. Guarded on raw_size = 0 so the
-// statement is idempotent across restarts and never overwrites a value a
-// writer recorded.
-const backfillRawSizeSQL = `UPDATE messages SET raw_size = CASE
-	WHEN raw_message IS NOT NULL AND raw_message <> '' THEN octet_length(raw_message)
-	ELSE size_bytes
-END
-WHERE raw_size = 0 AND (COALESCE(raw_message, '') <> '' OR size_bytes <> 0)`
-
-// dedupeLinkedAccountsSQL collapses pre-existing duplicate linked_accounts rows,
-// keeping the earliest (lowest id) link per mailbox, so the standalone unique
-// index on mailbox_id (OSI-21) can be created on a database that predates the
-// constraint. It DELETEs rows, so it is DESTRUCTIVE and one-time: it runs only on
-// the explicit opt-in migrate path, never on a server boot (issue #196).
-const dedupeLinkedAccountsSQL = `DELETE FROM linked_accounts a USING linked_accounts b WHERE a.mailbox_id = b.mailbox_id AND a.id > b.id`
-
-// countLinkedAccountDuplicatesSQL counts the rows a dedupe would remove: any link
-// for a mailbox that already has an earlier (lower-id) link. Used on the additive
-// boot path to detect — WITHOUT deleting anything — whether a legacy database
-// still holds duplicates that would block creating the unique index.
-const countLinkedAccountDuplicatesSQL = `SELECT count(*) FROM linked_accounts a WHERE EXISTS (SELECT 1 FROM linked_accounts b WHERE b.mailbox_id = a.mailbox_id AND b.id < a.id)`
-
-// pendingDestructiveMigrations returns the destructive, one-time DML a migration
-// run would issue for the given opt-in. On the additive/boot path (allowDestructive
-// == false) it is ALWAYS empty: booting the API, seeding, or any default run never
-// issues destructive DML, so a rolling deploy can never have whichever code
-// version boots first silently rewrite data (issue #196). The destructive steps
-// run only when an operator explicitly opts in via the migrate tool.
-func pendingDestructiveMigrations(allowDestructive bool) []string {
-	if !allowDestructive {
-		return nil
-	}
-	return []string{dedupeLinkedAccountsSQL}
-}
-
-// migrateLinkedAccountsDedupe applies (or, on the boot path, guards against) the
-// one-time destructive collapse of duplicate linked_accounts rows. When
-// allowDestructive is true it runs the dedupe; when false (every server boot) it
-// deletes nothing and, if a legacy database still holds duplicates that would make
-// the unique-index creation fail opaquely, it refuses with an actionable error so
-// the operator runs the migrate tool rather than the API silently rewriting data.
-func migrateLinkedAccountsDedupe(db *gorm.DB, allowDestructive bool) error {
-	// Fresh database: the table does not exist yet, so there is nothing to collapse
-	// and nothing to guard — a no-op for the common install case.
-	if !db.Migrator().HasTable(&models.LinkedAccount{}) {
-		return nil
-	}
-
-	for _, stmt := range pendingDestructiveMigrations(allowDestructive) {
-		if err := db.Exec(stmt).Error; err != nil {
-			return fmt.Errorf("destructive migration failed: %w", err)
-		}
-	}
-	if allowDestructive {
-		return nil
-	}
-
-	// Additive/boot path: never delete. If duplicates remain, the unique index
-	// below would fail with an opaque error — surface an actionable one and refuse.
-	var dupes int64
-	if err := db.Raw(countLinkedAccountDuplicatesSQL).Scan(&dupes).Error; err != nil {
-		// Could not even introspect (e.g. an unrelated quirk on a very old schema):
-		// do not block boot on the check itself — proceed additive-only.
-		slog.Warn("could not check linked_accounts for duplicates; proceeding additive-only", "error", err)
-		return nil
-	}
-	if dupes > 0 {
-		return fmt.Errorf("linked_accounts holds %d duplicate row(s) that block the unique index; a server boot never modifies data — run the migrate tool with DB_ALLOW_DESTRUCTIVE_MIGRATIONS=true to collapse duplicates", dupes)
-	}
-	return nil
-}
-
 // AutoMigrate runs GORM's auto-migration for all models. It is ADDITIVE and
-// idempotent by default: it adds tables/columns/indexes and runs guarded,
-// WHERE-0 backfills — all safe to re-run on every startup. Destructive one-time
-// upgrades (currently the linked_accounts dedupe) run ONLY when allowDestructive
-// is true, i.e. from the dedicated migrate tool with an explicit opt-in, never
-// from a server boot (issue #196).
-func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
-	slog.Info("running database auto-migration", "allow_destructive", allowDestructive)
-
-	// OSI-21: linked_accounts carries a standalone unique index on mailbox_id (a
-	// mailbox may be linked to at most one webmail account). On a database that
-	// predates the constraint, duplicate links must be collapsed first or the
-	// unique-index creation below would fail — but that collapse is destructive, so
-	// it is gated behind the explicit opt-in (see migrateLinkedAccountsDedupe).
-	if err := migrateLinkedAccountsDedupe(db, allowDestructive); err != nil {
-		return err
-	}
+// idempotent: it adds tables/columns/indexes, safe to re-run on every
+// startup. A server boot never issues destructive DML (issue #196).
+func AutoMigrate(db *gorm.DB) error {
+	slog.Info("running database auto-migration")
 
 	err := db.AutoMigrate(
 		&models.Domain{},
 		&models.Mailbox{},
 		&models.Alias{},
-		&models.WebmailAccount{},
-		&models.LinkedAccount{},
 		&models.Message{},
 		&models.QuotaUsage{},
 		&models.Certificate{},
-		&models.DKIMKey{},
 		&models.OutboundQueue{},
+		// Addresses a domain no longer sends to after a hard bounce (#141).
+		&models.Suppression{},
 		// Pipeline models
 		&models.Pipeline{},
 		&models.CustomFilter{},
-		&models.PipelineLog{},
-		// Per-message observability trace (PR3): supersedes PipelineLog as the
-		// write target; the composite (outcome, created_at) index is created via
-		// its GORM tags above, alongside standalone indexes for correlation and
-		// PR4 pruning.
+		// Per-message observability trace: the composite (outcome, created_at)
+		// index is created via its GORM tags, alongside standalone indexes for
+		// correlation and pruning.
 		&models.MessageTrace{},
 		// Time-bucketed aggregate rollups (PR4): the rollup worker snapshots the
 		// always-on pipeline counters into these long-lived rows. Separate from
@@ -182,28 +90,33 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		&models.RESTMAILCapability{},
 		// Admin features
 		&models.Ban{},
-		&models.ActivityLog{},
 		// MTA-STS (RFC 8461) policies
 		&models.MTASTSPolicy{},
 		// TLS-RPT (RFC 8460) reports
 		&models.TLSReport{},
 		// Calendar event lifecycle tracking
 		&models.CalendarEventVersion{},
-		// RBAC models
-		&models.AdminUser{},
+		// Roles, their capabilities, and the grants that give them to accounts
+		// at a scope (#345).
 		&models.Role{},
 		&models.Capability{},
-		&models.UserRole{},
 		&models.RoleCapability{},
+		&models.Grant{},
+		&models.GrantActivation{},
 		// Refresh-token rotation/revocation ledger (OSI-10): one row per issued
 		// refresh token, keyed by jti, tracking active/rotated/revoked state.
 		&models.RefreshToken{},
-		// Single-use setup and admin-reset tokens (internal/bootstrap).
+		// Single-use account-reset tokens (internal/bootstrap).
 		&models.OneTimeToken{},
-		// Optional TOTP two-factor auth (OSI-19): one enrollment per account
-		// (secret encrypted at rest) plus its hashed one-time recovery codes.
-		&models.TwoFactor{},
-		&models.TwoFactorRecoveryCode{},
+		// Public owner recovery keys, independent of the deployment platform.
+		&models.OwnerKey{},
+		// Credentials: everything an account signs in with (passwords, TOTP
+		// secrets encrypted at rest, recovery codes, app passwords), 0..n per
+		// account, kept after revocation for the audit trail.
+		&models.Credential{},
+		// Phones registered for push (#363), each by the session that
+		// registered it, gone when it ends.
+		&models.PushDevice{},
 		// DMARC aggregate (rua) reporting
 		&models.DMARCAggregateRecord{},
 	)
@@ -211,24 +124,11 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 		return fmt.Errorf("auto-migration failed: %w", err)
 	}
 
-	// Backfill messages.raw_size for rows created before the column existed.
-	// octet_length (not length) matches Go's len() over the stored text: it
-	// counts bytes in the database encoding, which is exactly what the writer
-	// would have recorded. Rows without a stored raw fall back to size_bytes so
-	// protocol gateways keep reporting the same size they always did for them.
-	// The raw_size = 0 guard makes the backfill idempotent and cheap on
-	// subsequent startups.
-	if err := db.Exec(backfillRawSizeSQL).Error; err != nil {
-		slog.Warn("failed to backfill messages.raw_size", "error", err)
+	// The audit log, and what makes it append-only. Unlike the indexes below, a
+	// failure here stops the server: the table must never exist unguarded.
+	if err := MigrateAuditLog(db); err != nil {
+		return err
 	}
-
-	// messages.received_tls / messages.tls_version (inbound transport-security
-	// monitoring) are added by AutoMigrate above and deliberately NOT backfilled:
-	// the true transport security of a message that arrived before the column
-	// existed is genuinely unknown, and received_tls is nullable so NULL encodes
-	// exactly that. Defaulting old rows to false would misreport them as
-	// plaintext inbound-MX arrivals and skew the dashboard aggregate, so they are
-	// left NULL ("not applicable / unknown") — the honest, non-breaking default.
 
 	// Create composite unique index for mailboxes (domain_id, local_part)
 	if !db.Migrator().HasIndex(&models.Mailbox{}, "idx_mailboxes_domain_localpart") {
@@ -269,57 +169,51 @@ func AutoMigrate(db *gorm.DB, allowDestructive bool) error {
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_attachments_checksum ON attachments(checksum)`)
 	db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_vacation_responses_unique ON vacation_responses(mailbox_id, sender)`)
 
-	// ── OSI-8: encrypt DKIM private keys at rest ──────────────────────────────
-	// Any domains.dkim_private_key stored as legacy plaintext PEM is encrypted in
-	// place with the MASTER_KEY-derived key and tagged with the dkim:v1: version
-	// prefix, so the signer can tell an encrypted key (which MUST decrypt) apart
-	// from a plaintext one and fail closed on an undecryptable key. Idempotent:
-	// already-versioned rows are skipped and legacy bare-base64 ciphertext is only
-	// normalized (prefixed, never re-encrypted), so a re-run never double-encrypts.
-	// A no-op when MASTER_KEY is unset (encryption disabled) or the table is absent.
-	// The key is read from the same MASTER_KEY env var config.Load uses, so every
-	// entrypoint that calls AutoMigrate (api, migrate, seed) runs this transparently.
-	if masterKey := os.Getenv("MASTER_KEY"); masterKey != "" && db.Migrator().HasTable(&models.Domain{}) {
-		if n, err := encryptPlaintextDKIMKeys(db, masterKey); err != nil {
-			slog.Warn("failed to encrypt DKIM keys at rest", "error", err)
-		} else if n > 0 {
-			slog.Info("encrypted plaintext DKIM keys at rest", "count", n)
-		}
-	}
-
 	slog.Info("database migration completed")
 	return nil
 }
 
-// encryptPlaintextDKIMKeys migrates any plaintext domains.dkim_private_key rows
-// to the encrypted-at-rest form (OSI-8), returning how many rows were changed.
-// Per-value plaintext/ciphertext detection and idempotency live in
-// models.MigrateDKIMKeyAtRest; a row whose value cannot be interpreted under the
-// current MASTER_KEY is logged and left untouched (fail-closed happens at sign
-// time), so a single bad row never aborts startup migration.
-func encryptPlaintextDKIMKeys(db *gorm.DB, masterKey string) (int, error) {
-	var domains []models.Domain
-	if err := db.Where("dkim_private_key <> ''").Find(&domains).Error; err != nil {
-		return 0, err
-	}
-	migrated := 0
-	for i := range domains {
-		d := domains[i]
-		upgraded, changed, err := models.MigrateDKIMKeyAtRest(d.DKIMPrivateKey, masterKey)
-		if err != nil {
-			slog.Warn("DKIM key at-rest migration skipped a row", "domain", d.Name, "error", err)
-			continue
+// auditLogAppendOnlySQL makes audit_log append-only: a row trigger refuses
+// UPDATE and DELETE, a statement trigger refuses TRUNCATE, and both raise the
+// same error. CREATE OR REPLACE (Postgres 14 and later) keeps it idempotent.
+var auditLogAppendOnlySQL = []string{
+	`CREATE OR REPLACE FUNCTION audit_log_append_only() RETURNS trigger
+	LANGUAGE plpgsql AS $$
+	BEGIN
+		RAISE EXCEPTION 'audit_log is append-only';
+	END
+	$$`,
+	`CREATE OR REPLACE TRIGGER audit_log_no_update_or_delete
+	BEFORE UPDATE OR DELETE ON audit_log
+	FOR EACH ROW EXECUTE FUNCTION audit_log_append_only()`,
+	`CREATE OR REPLACE TRIGGER audit_log_no_truncate
+	BEFORE TRUNCATE ON audit_log
+	FOR EACH STATEMENT EXECUTE FUNCTION audit_log_append_only()`,
+}
+
+// auditLogMigrateLockKey serialises MigrateAuditLog across replicas starting
+// at once, which would otherwise race replacing the same function and
+// triggers: "auditmig".
+const auditLogMigrateLockKey int64 = 0x61756469746d6967
+
+// MigrateAuditLog creates the audit_log table (models.AuditEntry) and installs
+// the triggers that make it append-only, in one transaction. Idempotent;
+// AutoMigrate runs it on every start.
+func MigrateAuditLog(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", auditLogMigrateLockKey).Error; err != nil {
+			return fmt.Errorf("audit log migration failed: %w", err)
 		}
-		if !changed {
-			continue
+		if err := tx.AutoMigrate(&models.AuditEntry{}); err != nil {
+			return fmt.Errorf("audit log migration failed: %w", err)
 		}
-		if err := db.Model(&models.Domain{}).Where("id = ?", d.ID).
-			Update("dkim_private_key", upgraded).Error; err != nil {
-			return migrated, err
+		for _, stmt := range auditLogAppendOnlySQL {
+			if err := tx.Exec(stmt).Error; err != nil {
+				return fmt.Errorf("audit log append-only guard failed: %w", err)
+			}
 		}
-		migrated++
-	}
-	return migrated, nil
+		return nil
+	})
 }
 
 // WaitForDB retries connecting to the database until it succeeds or the timeout is reached.

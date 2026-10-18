@@ -43,10 +43,9 @@ function NewMailboxPage() {
     }
 
     // Password validation
-    if (!formData.password) {
-      newErrors.password = 'Password is required'
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters'
+    // No password: an account reached only through you, its owner.
+    if (formData.password && formData.password.length < 12) {
+      newErrors.password = 'Password must be at least 12 characters'
     }
 
     // Confirm password validation
@@ -79,9 +78,9 @@ function NewMailboxPage() {
     setIsSubmitting(true)
 
     try {
-      await createMailbox(accessToken, {
+      await createMailbox({
         email: formData.email,
-        password: formData.password,
+        password: formData.password || undefined,
         display_name: formData.display_name || undefined,
         quota_bytes: formData.quota_bytes,
       })
@@ -196,8 +195,11 @@ function NewMailboxPage() {
               {/* Password */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium" style={{ color: 'var(--black-soft)' }}>
-                  Password *
+                  Password
                 </label>
+                <p className="text-xs" style={{ color: 'var(--gray-secondary)' }}>
+                  Optional: without one the account can't be signed in to, and you reach it as its owner
+                </p>
                 <div
                   className="h-11 px-4 flex items-center border"
                   style={{
@@ -227,7 +229,7 @@ function NewMailboxPage() {
               {/* Confirm Password */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-medium" style={{ color: 'var(--black-soft)' }}>
-                  Confirm Password *
+                  Confirm Password
                 </label>
                 <div
                   className="h-11 px-4 flex items-center border"

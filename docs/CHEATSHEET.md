@@ -33,12 +33,12 @@ Prerequisites: **Docker** and **chore** (`brew install antimatter-studios/tap/ch
 ## Start a server
 
 ```sh
-chore restmail:up                      # the default instance (restmail.test); alias: chore dev
+chore instance:up                      # the default instance (restmail.test)
 chore instance:new DOMAIN=mail4.test   # a brand-new instance end-to-end: scaffold → certs → mTLS → DNS → up → DKIM
 chore instance:up --name mail4.test    # bring up an already-scaffolded instance
 ```
 
-`restmail:up` chains postgres → js-filter → api → seed → gateways → webmail →
+`instance:up` chains postgres → js-filter → api → seed → gateways → webmail →
 admin, then prints `chore status`.
 
 ## Inspect what's running
@@ -58,9 +58,9 @@ stale `rest-mail-*` containers left over from a previous run — clear them with
 ## Stop a server
 
 ```sh
-chore restmail:down                     # stop the default instance (keeps data volumes)
+chore instance:down                    # stop the default instance (keeps data volumes)
 chore instance:down --name mail4.test  # stop a named instance
-chore restmail:restart                  # stop + recreate (rebuilds images)
+chore instance:restart                 # stop + recreate (rebuilds images)
 ```
 
 ## Reference servers (mail1 / mail2)

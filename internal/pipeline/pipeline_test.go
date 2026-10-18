@@ -424,7 +424,7 @@ func TestDefaultOutboundPipeline(t *testing.T) {
 	}
 
 	expectedFilters := []string{
-		"sender_verify", "rate_limit", "header_cleanup", "arc_seal", "dkim_sign",
+		"sender_verify", "rate_limit", "header_cleanup",
 	}
 	if len(p.Filters) != len(expectedFilters) {
 		t.Fatalf("expected %d filters, got %d", len(expectedFilters), len(p.Filters))

@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/smtp"
+	"net/textproto"
 	"net/url"
 	"strings"
 	"sync"
@@ -46,21 +46,22 @@ func (e *SMTPError) Error() string {
 	return fmt.Sprintf("SMTP %d: %s", e.Code, e.Message)
 }
 
-func (e *SMTPError) IsPermanent() bool {
-	return e.Code >= 500 && e.Code < 600
-}
-
 // smtpErrorFrom recovers a *SMTPError from anywhere in err's wrap chain. The
 // delivery path returns the structured SMTP error wrapped (fmt.Errorf("… %w",
 // lastErr)), so callers MUST use errors.As rather than a concrete type assertion
 // — an assertion only matches the outermost error and would silently miss a
 // wrapped permanent (5xx) failure, retrying it for the whole budget instead of
-// bouncing. Returns nil when the failure carried no SMTP status (e.g. a
-// connect/DNS/TLS error).
+// bouncing. A reply net/smtp hands back as it is (a refusal at the greeting, to
+// EHLO or to DATA) counts too. Returns nil when the failure carried no SMTP
+// status (e.g. a connect/DNS/TLS error).
 func smtpErrorFrom(err error) *SMTPError {
 	var se *SMTPError
 	if errors.As(err, &se) {
 		return se
+	}
+	var reply *textproto.Error
+	if errors.As(err, &reply) {
+		return parseSMTPError(reply)
 	}
 	return nil
 }
@@ -83,31 +84,38 @@ func dsnStatusCode(smtpErr *SMTPError) string {
 	return "5.0.0"
 }
 
-// parseSMTPError extracts SMTP status code from a net/smtp error string.
+// parseSMTPError reads the reply in an error net/smtp returned: its code, the
+// RFC 3463 enhanced code its text starts with, if any, and the rest of the
+// text. The reply's fields are read, not its Error() string, whose format is
+// Go's to change (Go 1.27 quotes the text, which would hide the enhanced
+// code). An error that carries no reply (the connection failed mid-command)
+// becomes a code-less SMTPError with its text.
 func parseSMTPError(err error) *SMTPError {
-	msg := err.Error()
-	// Try to parse "NNN X.X.X rest" or "NNN rest"
-	if len(msg) >= 3 && msg[0] >= '1' && msg[0] <= '5' {
-		code := 0
-		_, _ = fmt.Sscanf(msg[:3], "%d", &code)
-		if code >= 100 && code <= 599 {
-			rest := strings.TrimSpace(msg[3:])
-			enhanced := ""
-			if len(rest) > 0 && rest[0] >= '1' && rest[0] <= '5' {
-				parts := strings.SplitN(rest, " ", 2)
-				if len(parts[0]) >= 5 && strings.Count(parts[0], ".") == 2 {
-					enhanced = parts[0]
-					if len(parts) > 1 {
-						rest = parts[1]
-					} else {
-						rest = ""
-					}
-				}
-			}
-			return &SMTPError{Code: code, Enhanced: enhanced, Message: rest}
+	var reply *textproto.Error
+	if !errors.As(err, &reply) {
+		return &SMTPError{Code: 0, Message: err.Error()}
+	}
+	text := strings.TrimSpace(reply.Msg)
+	enhanced := ""
+	if first, rest, _ := strings.Cut(text, " "); isEnhancedStatus(first) {
+		enhanced, text = first, rest
+	}
+	return &SMTPError{Code: reply.Code, Enhanced: enhanced, Message: text}
+}
+
+// isEnhancedStatus reports whether s looks like an RFC 3463 status code:
+// class.subject.detail, the class 2, 4 or 5.
+func isEnhancedStatus(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 || len(parts[0]) != 1 || !strings.ContainsAny(parts[0], "245") {
+		return false
+	}
+	for _, p := range parts[1:] {
+		if p == "" || len(p) > 3 || strings.Trim(p, "0123456789") != "" {
+			return false
 		}
 	}
-	return &SMTPError{Code: 0, Message: msg}
+	return true
 }
 
 // staleDeliveringTimeout is the DEFAULT interval a row may sit in "delivering"
@@ -128,56 +136,6 @@ func defaultSendDeadline(int64) time.Duration { return 30 * time.Second }
 // hostile endpoint exhaust worker memory; 64 KiB is far more than any legitimate
 // error payload needs.
 const maxRESTMAILErrorBody = 64 << 10
-
-// computeBackoff returns the retry delay for the Nth delivery attempt:
-// exponential (1m, 2m, 4m, 8m, ...) capped at 4 hours.
-//
-// The exponent MUST be guarded. The obvious `2^attempts * time.Minute`
-// overflows int64 once attempts is large and wraps to a NEGATIVE duration
-// that slips under a naive `> 4h` cap, scheduling the retry in the past so it
-// fires immediately forever. 2^8 minutes (~4.3h) already exceeds the cap, so
-// anything at or beyond attempt 8 is clamped.
-func computeBackoff(attempts int) time.Duration {
-	const maxBackoff = 4 * time.Hour
-	if attempts < 0 {
-		attempts = 0
-	}
-	if attempts >= 8 {
-		return maxBackoff
-	}
-	if b := time.Duration(1<<uint(attempts)) * time.Minute; b < maxBackoff {
-		return b
-	}
-	return maxBackoff
-}
-
-// backoffJitterFraction is the maximum proportion by which computeBackoffWithJitter
-// perturbs the base delay in each direction (±20%).
-const backoffJitterFraction = 0.20
-
-// computeBackoffWithJitter returns the base exponential backoff for the Nth
-// attempt with ±20% random jitter applied, clamped to (0, 4h].
-//
-// Without jitter, many messages deferred by the same outage retry in lockstep —
-// a thundering herd that hammers a recovering MX at each backoff boundary and
-// wastes work when they all fail again together. Spreading each retry randomly
-// across a ±20% band de-synchronizes the queue. The result is clamped to the
-// same 4h cap computeBackoff enforces (so the +20% at the cap cannot push a retry
-// past it) and to a positive floor (so it never schedules in the past).
-func computeBackoffWithJitter(attempts int) time.Duration {
-	base := computeBackoff(attempts)
-	// factor in [1-frac, 1+frac).
-	factor := 1 - backoffJitterFraction + rand.Float64()*(2*backoffJitterFraction)
-	jittered := time.Duration(float64(base) * factor)
-	const maxBackoff = 4 * time.Hour
-	if jittered > maxBackoff {
-		jittered = maxBackoff
-	}
-	if jittered <= 0 {
-		jittered = time.Second
-	}
-	return jittered
-}
 
 // messageRequires8BitTransport reports whether an outbound message can only be
 // relayed over a channel that accepts 8-bit content — i.e. it must NOT be sent to
@@ -214,7 +172,7 @@ type Worker struct {
 
 	// masterKey decrypts the domain's at-rest DKIM private key when the worker
 	// signs an outbound message that arrived unsigned (SMTP submission, #171).
-	// Empty when DKIM keys are stored as legacy plaintext (encryption disabled).
+	// Empty only when encryption is disabled (dev), where keys are plaintext.
 	masterKey string
 
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
@@ -222,6 +180,10 @@ type Worker struct {
 	// bounceMax <= 0 disables the cap. See generateBounce.
 	bounceMax    int
 	bounceWindow time.Duration
+
+	// suppressionTTL is how long an address stays suppressed after it hard
+	// bounces (#141). See suppression.go.
+	suppressionTTL time.Duration
 
 	// Size-aware delivery timing (OSI-7). sendDeadline maps a message's byte size
 	// to the maximum time a single outbound send attempt (SMTP to a peer MX, or
@@ -258,17 +220,18 @@ const (
 // NewWorker creates a new queue worker.
 func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.Duration) *Worker {
 	w := &Worker{
-		db:           db,
-		hostname:     hostname,
-		numWorkers:   numWorkers,
-		pollInterval: pollInterval,
-		tlsInsecure:  false,
-		stsEnforce:   true,
-		shutdown:     make(chan struct{}),
-		bounceMax:    defaultBounceMaxPerRecipient,
-		bounceWindow: defaultBounceWindow,
-		sendDeadline: defaultSendDeadline,
-		reclaim:      staleDeliveringTimeout,
+		db:             db,
+		hostname:       hostname,
+		numWorkers:     numWorkers,
+		pollInterval:   pollInterval,
+		tlsInsecure:    false,
+		stsEnforce:     true,
+		shutdown:       make(chan struct{}),
+		bounceMax:      defaultBounceMaxPerRecipient,
+		bounceWindow:   defaultBounceWindow,
+		sendDeadline:   defaultSendDeadline,
+		suppressionTTL: DefaultSuppressionTTL,
+		reclaim:        staleDeliveringTimeout,
 	}
 	// MTA-STS resolver: real DNS lookups, HTTPS policy fetch whose certificate
 	// verification tracks the worker's tlsInsecure flag at call time.
@@ -276,7 +239,17 @@ func NewWorker(db *gorm.DB, hostname string, numWorkers int, pollInterval time.D
 	w.sts.FetchPolicy = func(ctx context.Context, url string) ([]byte, error) {
 		return mtasts.HTTPFetch(ctx, url, w.tlsInsecure)
 	}
+	w.sts.RefreshFailed = logSTSRefreshFailed
 	return w
+}
+
+// logSTSRefreshFailed reports a failed MTA-STS policy refresh. Delivery goes
+// on under the cached policy until it expires, so this is the warning RFC
+// 8461 §3.3 and §10.2 ask for: a domain's policy host or TXT record has broken
+// (or is being blocked), and mail to it stops once max_age runs out.
+func logSTSRefreshFailed(domain string, cached *mtasts.Policy, err error) {
+	slog.Warn("mta-sts: policy refresh failed, using the cached policy",
+		"domain", domain, "mode", cached.Mode, "error", err)
 }
 
 // SetTLSInsecure sets whether to skip TLS certificate verification for outbound delivery.
@@ -294,8 +267,9 @@ func (w *Worker) SetAllowPrivateDestinations(allow bool) {
 }
 
 // SetMasterKey provides the key used to decrypt at-rest DKIM private keys so the
-// worker can DKIM-sign outbound messages that arrived unsigned (#171). Pass the
-// empty string when DKIM keys are stored as legacy plaintext.
+// worker can DKIM-sign outbound messages that arrived unsigned (#171). It is
+// the same MASTER_KEY the API encrypts them with; empty only when encryption is
+// disabled (dev).
 func (w *Worker) SetMasterKey(key string) {
 	w.masterKey = key
 }
@@ -307,7 +281,7 @@ func (w *Worker) SetMasterKey(key string) {
 // SMTP-submitted mail (which enqueues raw MUA bytes) gets the same treatment the
 // API path applies at submission (#171); the transforms are idempotent, so
 // already-prepared API mail passes through unchanged. It returns an error only
-// when a configured DKIM key cannot be loaded, so the caller fails closed
+// when a configured DKIM key cannot sign, so the caller fails closed
 // (defer/retry) rather than relaying the message unsigned.
 func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
 	return outbound.Prepare(w.db, w.masterKey, rmail.DomainFromAddress(item.Sender), item.RawMessage)
@@ -448,8 +422,20 @@ func (w *Worker) processOne(workerID int) {
 		"sender", item.Sender,
 		"recipient", item.Recipient,
 		"domain", item.Domain,
-		"attempt", item.Attempts+1,
+		"attempt", item.Attempts, // the claim above counted it already
 	)
+
+	w.process(item, now)
+}
+
+// process sends a claimed message and records how that went.
+func (w *Worker) process(item models.OutboundQueue, now time.Time) {
+	// A recipient that hard bounced from this sending domain isn't tried
+	// again until its suppression expires (#141).
+	if s, ok := w.suppression(item, now); ok {
+		w.bounceSuppressed(item, s)
+		return
+	}
 
 	// Attempt delivery
 	deliveryErr := w.deliver(item)
@@ -467,66 +453,68 @@ func (w *Worker) processOne(workerID int) {
 		return
 	}
 
-	// Extract the SMTP error code if the delivery error carries one. deliver()
-	// wraps the underlying failure (fmt.Errorf("all MX hosts failed: %w", …)), so a
-	// bare type assertion would never see the *SMTPError through the %w wrap and
-	// would treat every permanent 5xx as transient — retrying an unrecoverable
-	// failure for the full retry budget. errors.As unwraps the chain so a wrapped
-	// permanent failure is recognized and bounced immediately.
+	w.recordFailure(item, deliveryErr, time.Now())
+}
+
+// recordFailure decides what a failed attempt means for the message: a
+// permanent failure bounces it at once, a transient one is retried on its
+// category's schedule until that runs out, and then it bounces. Either bounce
+// sends the sender a DSN.
+func (w *Worker) recordFailure(item models.OutboundQueue, deliveryErr error, now time.Time) {
+	// deliver() wraps the underlying failure (fmt.Errorf("all MX hosts failed:
+	// %w", …)), so the SMTP reply, when there was one, is recovered with
+	// errors.As (smtpErrorFrom), never a type assertion that would miss it.
 	smtpErr := smtpErrorFrom(deliveryErr)
 	var errorCode int
 	if smtpErr != nil {
 		errorCode = smtpErr.Code
 	}
+	category := ClassifyFailure(deliveryErr)
+	item.FailureCategory = category
 
 	slog.Warn("queue: delivery failed",
 		"id", item.ID,
 		"recipient", item.Recipient,
-		"attempt", item.Attempts+1,
+		"attempt", item.Attempts,
 		"error", deliveryErr,
 		"smtp_code", errorCode,
+		"failure_category", category,
 	)
 
-	// Permanent failure (5xx) — bounce immediately, don't retry
-	if smtpErr != nil && smtpErr.IsPermanent() {
-		w.db.Model(&item).Updates(map[string]interface{}{
-			"status":          "bounced",
-			"last_error":      deliveryErr.Error(),
-			"last_error_code": errorCode,
-		})
-		slog.Warn("queue: permanent failure, bouncing", "id", item.ID, "smtp_code", errorCode)
-		w.generateBounce(item, smtpErr)
-		return
+	failed := map[string]interface{}{
+		"last_error":       deliveryErr.Error(),
+		"last_error_code":  errorCode,
+		"failure_category": category,
 	}
 
-	// Check if we should retry or bounce (max retries exhausted)
-	if item.Attempts+1 >= item.MaxRetries {
-		w.db.Model(&item).Updates(map[string]interface{}{
-			"status":          "bounced",
-			"last_error":      deliveryErr.Error(),
-			"last_error_code": errorCode,
-		})
-		slog.Warn("queue: message bounced (max retries)", "id", item.ID, "recipient", item.Recipient)
-		// Report the last SMTP status when we have one so a retry budget exhausted
-		// on repeated 4xx bounces as a persistent-transient 4.x.y, not a fabricated
-		// 5.0.0. Only when the failure carried no SMTP code (e.g. a connect/DNS
-		// error) do we fall back to a code-less DSN.
-		bounceErr := smtpErr
-		if bounceErr == nil {
-			bounceErr = &SMTPError{Code: 0, Message: deliveryErr.Error()}
+	if !category.Permanent() {
+		if next, ok := retryAt(item, category, now); ok {
+			failed["status"] = "deferred"
+			failed["next_attempt"] = next
+			w.db.Model(&item).Updates(failed)
+			return
 		}
-		w.generateBounce(item, bounceErr)
-		return
 	}
 
-	backoff := computeBackoffWithJitter(item.Attempts)
-
-	w.db.Model(&item).Updates(map[string]interface{}{
-		"status":          "deferred",
-		"next_attempt":    time.Now().Add(backoff),
-		"last_error":      deliveryErr.Error(),
-		"last_error_code": errorCode,
-	})
+	failed["status"] = "bounced"
+	w.db.Model(&item).Updates(failed)
+	if category.Suppresses() {
+		w.suppress(item, category, deliveryErr.Error(), now)
+	}
+	if category.Permanent() {
+		slog.Warn("queue: permanent failure, bouncing", "id", item.ID, "smtp_code", errorCode, "failure_category", category)
+	} else {
+		slog.Warn("queue: message bounced, retries ran out", "id", item.ID, "recipient", item.Recipient, "failure_category", category)
+	}
+	// Report the SMTP status when we have one, so a retry budget exhausted on
+	// repeated 4xx bounces as a persistent-transient 4.x.y, not a fabricated
+	// 5.0.0. Only a failure with no SMTP reply (a connect/DNS error) gets a
+	// code-less DSN.
+	bounceErr := smtpErr
+	if bounceErr == nil {
+		bounceErr = &SMTPError{Code: 0, Message: deliveryErr.Error()}
+	}
+	w.generateBounce(item, bounceErr)
 }
 
 // deliver attempts to send a message via SMTP to the destination MX.
@@ -565,6 +553,11 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	if len(mxRecords) == 0 {
 		// Fall back to A record
 		mxRecords = []*net.MX{{Host: item.Domain, Pref: 0}}
+	}
+	// A null MX (RFC 7505) says the domain accepts no mail. Its host is "." —
+	// left alone, that would be dialed as ":25", this machine.
+	if len(mxRecords) == 1 && mxRecords[0].Host == "." {
+		return &SMTPError{Code: 556, Enhanced: "5.1.10", Message: "recipient domain accepts no mail (null MX)"}
 	}
 
 	firstHost := strings.TrimSuffix(mxRecords[0].Host, ".")
@@ -1085,14 +1078,25 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 		originalHeaders = originalHeaders[:idx]
 	}
 
-	// Part 1: Human-readable.
+	// Part 1: Human-readable, with the reason in plain words when the failure
+	// was classified.
+	reason := ""
+	if d := item.FailureCategory.Description(); d != "" {
+		reason = d + "\r\n\r\n"
+	}
+	// A message to a suppressed recipient is bounced without an attempt.
+	attempted := ""
+	if item.Attempts > 0 {
+		attempted = fmt.Sprintf("The delivery has been attempted %d time(s).\r\n\r\n", item.Attempts)
+	}
 	humanPart := fmt.Sprintf(
 		"This is the mail delivery system at %s.\r\n\r\n"+
 			"Your message could not be delivered to the following recipient:\r\n\r\n"+
 			"    %s\r\n\r\n"+
-			"The delivery has been attempted %d time(s).\r\n\r\n"+
+			"%s"+
+			"%s"+
 			"Error: %s\r\n",
-		hostname, recipient, item.Attempts, diagnosticCode,
+		hostname, recipient, reason, attempted, diagnosticCode,
 	)
 
 	// Part 2: Machine-readable DSN (RFC 3464). Remote-MTA is emitted only when the

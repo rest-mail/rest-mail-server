@@ -91,20 +91,8 @@ function createApiClient() {
      * @param path - API path
      * @param options - Fetch options
      * @returns Fetch response
-     *
-     * A third positional argument — a legacy access token — is still accepted
-     * from existing call sites but ignored: the access token now rides in the
-     * httpOnly `restmail_access` cookie the browser attaches automatically
-     * (credentials: 'include'), so it is never held in JavaScript. It is
-     * absorbed as an unused rest parameter (and discarded) so those call sites
-     * keep compiling without a dead named parameter.
      */
-    request: async (
-      path: string,
-      options: RequestInit = {},
-      ...ignoredLegacyToken: [token?: string]
-    ): Promise<Response> => {
-      void ignoredLegacyToken
+    request: async (path: string, options: RequestInit = {}): Promise<Response> => {
       const headers = new Headers(options.headers)
 
       if (!headers.has('Content-Type') && options.body) {
@@ -136,10 +124,3 @@ function createApiClient() {
  * API client rooted at the resolved same-origin API base (see resolveApiBase).
  */
 export const apiV1 = createApiClient()
-
-/**
- * Legacy exports for backward compatibility
- * @deprecated Use apiV1.url() and apiV1.request() instead
- */
-export const apiUrl = apiV1.url
-export const apiRequest = apiV1.request

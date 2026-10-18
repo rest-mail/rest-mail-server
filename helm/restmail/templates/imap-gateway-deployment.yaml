@@ -1,12 +1,15 @@
 {{- if .Values.imapGateway.enabled -}}
+{{- $kind := include "restmail.gatewayWorkloadKind" (list .Values.imapGateway "imapGateway") -}}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ $kind }}
 metadata:
   name: {{ include "restmail.componentName" (list . "imap-gateway") }}
   labels:
     {{- include "restmail.componentLabels" (list . "imap-gateway") | nindent 4 }}
 spec:
+  {{- if eq $kind "Deployment" }}
   replicas: {{ .Values.imapGateway.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "restmail.componentSelectorLabels" (list . "imap-gateway") | nindent 6 }}
@@ -33,7 +36,7 @@ spec:
             {{- include "restmail.containerSecurityContext" (list . "imap-gateway") | nindent 12 }}
           ports:
             - name: imaps
-              containerPort: {{ .Values.imapGateway.ports.tls }}
+              containerPort: {{ .Values.imapGateway.containerPorts.tls }}
               protocol: TCP
           env:
             - name: GATEWAY_HOSTNAME
@@ -41,7 +44,7 @@ spec:
             - name: API_BASE_URL
               value: {{ include "restmail.api.url" . | quote }}
             - name: IMAP_TLS_PORT
-              value: {{ .Values.imapGateway.ports.tls | quote }}
+              value: {{ .Values.imapGateway.containerPorts.tls | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.imapGateway.logLevel | quote }}
             - name: ENVIRONMENT

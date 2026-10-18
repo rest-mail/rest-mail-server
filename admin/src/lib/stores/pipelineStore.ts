@@ -44,9 +44,8 @@ interface TraceStage {
   error?: string
 }
 
-// MessageTrace is the richer per-message observability record returned by the
-// repointed GET /admin/pipelines/logs (list) and GET /admin/messages/{id}/trace
-// (single). It supersedes the old PipelineLog {steps, action} shape, adding
+// MessageTrace is the per-message observability record returned by
+// GET /admin/pipelines/logs (list) and GET /admin/messages/{id}/trace (single):
 // outcome, reason_code, transport, correlation ids and the ordered stage
 // timeline.
 interface MessageTrace {
@@ -105,15 +104,15 @@ interface PipelineState {
   error: string | null
 
   // Actions
-  fetchPipelines: (accessToken: string, domainId?: number) => Promise<void>
-  fetchPipeline: (id: number, accessToken: string) => Promise<Pipeline>
-  createPipeline: (data: Partial<Pipeline>, accessToken: string) => Promise<Pipeline>
-  updatePipeline: (id: number, data: Partial<Pipeline>, accessToken: string) => Promise<Pipeline>
-  deletePipeline: (id: number, accessToken: string) => Promise<void>
-  testPipeline: (pipelineId: number, email: unknown, accessToken: string) => Promise<PipelineTestResult>
-  testFilter: (filterName: string, config: unknown, email: unknown, accessToken: string) => Promise<FilterTestResult>
-  fetchTraces: (params: TraceQueryParams, accessToken: string) => Promise<void>
-  fetchMessageTrace: (id: number, accessToken: string) => Promise<MessageTrace>
+  fetchPipelines: (domainId?: number) => Promise<void>
+  fetchPipeline: (id: number) => Promise<Pipeline>
+  createPipeline: (data: Partial<Pipeline>) => Promise<Pipeline>
+  updatePipeline: (id: number, data: Partial<Pipeline>) => Promise<Pipeline>
+  deletePipeline: (id: number) => Promise<void>
+  testPipeline: (pipelineId: number, email: unknown) => Promise<PipelineTestResult>
+  testFilter: (filterName: string, config: unknown, email: unknown) => Promise<FilterTestResult>
+  fetchTraces: (params: TraceQueryParams) => Promise<void>
+  fetchMessageTrace: (id: number) => Promise<MessageTrace>
   clearError: () => void
   clearCurrentPipeline: () => void
   clearCurrentTrace: () => void
@@ -127,7 +126,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchPipelines: async (accessToken: string, domainId?: number) => {
+  fetchPipelines: async (domainId?: number) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -135,7 +134,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         ? `/admin/pipelines?domain_id=${domainId}`
         : '/admin/pipelines'
 
-      const response = await apiV1.request(url, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(url, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -158,14 +157,13 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  fetchPipeline: async (id: number, accessToken: string) => {
+  fetchPipeline: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
       const response = await apiV1.request(
         `/admin/pipelines/${id}`,
-        { method: 'GET' },
-        accessToken
+        { method: 'GET' }
       )
 
       if (!response.ok) {
@@ -190,7 +188,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  createPipeline: async (data: Partial<Pipeline>, accessToken: string) => {
+  createPipeline: async (data: Partial<Pipeline>) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -199,8 +197,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify(data),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -224,7 +221,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  updatePipeline: async (id: number, data: Partial<Pipeline>, accessToken: string) => {
+  updatePipeline: async (id: number, data: Partial<Pipeline>) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -233,8 +230,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         {
           method: 'PATCH',
           body: JSON.stringify(data),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -259,14 +255,13 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  deletePipeline: async (id: number, accessToken: string) => {
+  deletePipeline: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
       const response = await apiV1.request(
         `/admin/pipelines/${id}`,
-        { method: 'DELETE' },
-        accessToken
+        { method: 'DELETE' }
       )
 
       if (!response.ok) {
@@ -288,7 +283,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  testPipeline: async (pipelineId: number, email: unknown, accessToken: string) => {
+  testPipeline: async (pipelineId: number, email: unknown) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -297,8 +292,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify({ pipeline_id: pipelineId, email }),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -318,7 +312,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
     }
   },
 
-  testFilter: async (filterName: string, config: unknown, email: unknown, accessToken: string) => {
+  testFilter: async (filterName: string, config: unknown, email: unknown) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -327,8 +321,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
         {
           method: 'POST',
           body: JSON.stringify({ filter_name: filterName, config, email }),
-        },
-        accessToken
+        }
       )
 
       if (!response.ok) {
@@ -351,7 +344,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
   // fetchTraces lists per-message traces from the repointed pipelines/logs
   // endpoint (now backed by message_traces), newest first, with the richer
   // outcome/reason_code/rfc_message_id filters.
-  fetchTraces: async (params: TraceQueryParams, accessToken: string) => {
+  fetchTraces: async (params: TraceQueryParams) => {
     set({ isLoading: true, error: null })
 
     try {
@@ -366,7 +359,7 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
       if (params.offset) queryParams.set('offset', params.offset.toString())
 
       const url = `/admin/pipelines/logs${queryParams.toString() ? '?' + queryParams.toString() : ''}`
-      const response = await apiV1.request(url, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(url, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json()
@@ -391,11 +384,11 @@ export const usePipelineStore = create<PipelineState>((set, get) => ({
 
   // fetchMessageTrace loads the single delivered-message trace timeline from
   // GET /admin/messages/{id}/trace (keyed on the delivered messages row id).
-  fetchMessageTrace: async (id: number, accessToken: string) => {
+  fetchMessageTrace: async (id: number) => {
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiV1.request(`/admin/messages/${id}/trace`, { method: 'GET' }, accessToken)
+      const response = await apiV1.request(`/admin/messages/${id}/trace`, { method: 'GET' })
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}))
