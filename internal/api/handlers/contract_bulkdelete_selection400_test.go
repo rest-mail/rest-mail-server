@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/restmail/restmail"
+	"github.com/restmail/restmail/internal/db/models"
 	yaml "go.yaml.in/yaml/v2"
 )
 
@@ -248,6 +249,62 @@ func TestBulkDeleteQueue_SelectionMissingRefused(t *testing.T) {
 	}
 }
 
+// The 200's by_ids example is what the handler answers: the documented request
+// removes the entry it names, affecting exactly one, and no other. The entry
+// is seeded under the documented id inside a transaction that is rolled back.
+func TestBulkDeleteQueue_ByIDsExampleAnswered(t *testing.T) {
+	spec := readBulkDeleteSpec(t)
+	request, ok := spec.requests(t)["by_ids"]
+	if !ok {
+		t.Fatal("bulkDeleteQueue names no by_ids request example")
+	}
+	want, ok := spec.responses(t)["200"]["by_ids"]
+	if !ok {
+		t.Fatal("bulkDeleteQueue's 200 names no by_ids example")
+	}
+	ids, _ := request.(map[string]interface{})["ids"].([]interface{})
+	if len(ids) != 1 {
+		t.Fatalf("by_ids names %v, want one id", ids)
+	}
+	documented := uint(ids[0].(float64))
+
+	gdb := openAuthzTestDB(t)
+	if err := gdb.AutoMigrate(&models.OutboundQueue{}); err != nil {
+		t.Skipf("bulk-delete test skipped: migrate failed (%v)", err)
+	}
+	tx := gdb.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+
+	for _, id := range []uint{documented, documented + 1} {
+		if err := tx.Delete(&models.OutboundQueue{}, id).Error; err != nil {
+			t.Fatalf("clear queue entry %d: %v", id, err)
+		}
+		if err := tx.Create(&models.OutboundQueue{ID: id, Sender: "s@x.test", Recipient: "r@y.test", Domain: "y.test"}).Error; err != nil {
+			t.Fatalf("seed queue entry %d: %v", id, err)
+		}
+	}
+
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr := httptest.NewRecorder()
+	NewQueueHandler(tx).BulkDelete(rr,
+		httptest.NewRequest(http.MethodDelete, bulkDeleteQueuePath, bytes.NewReader(body)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("%s: status %d, want 200; body %s", body, rr.Code, rr.Body)
+	}
+	assertDocumentedBody(t, request, rr, want)
+
+	var left []uint
+	if err := tx.Model(&models.OutboundQueue{}).Where("id IN ?", []uint{documented, documented + 1}).Order("id").Pluck("id", &left).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(left, []uint{documented + 1}) {
+		t.Errorf("entries left after the documented request: %v, want only %d", left, documented+1)
+	}
+}
+
 // The pair checks reject a spec that drops the request or the 400, names the
 // pair differently, documents another body, or pairs the refused request with
 // success.
@@ -327,7 +384,10 @@ func TestBulkDeleteQueue_SelectionMissingPairMutationsRejected(t *testing.T) {
 			})
 		}},
 		{"unnamed_example_returns", func(s *bulkDeleteSpec) {
-			request(s, func(c bulkContent) bulkContent { c.Example = map[interface{}]interface{}{"ids": []interface{}{987654}}; return c })
+			request(s, func(c bulkContent) bulkContent {
+				c.Example = map[interface{}]interface{}{"ids": []interface{}{987654}}
+				return c
+			})
 		}},
 		{"response_400_missing", func(s *bulkDeleteSpec) {
 			responses := map[string]struct {
