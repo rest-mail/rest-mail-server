@@ -76,8 +76,25 @@ makes an unknown IP look clean. A check cut short by shutdown is not counted.
 `monitoring/alerting-rules.yml` alerts on a listing separately from a provider
 that is not answering.
 
-## Limits
+## Durable history
 
-The listing state is in memory only. After a restart every IP and provider is
-unknown again, and a listing that is still there is reported again. Durable
-listing history is a later slice of #148.
+Startup auto-migration adds `dnsbl_listing_events`. Each listing writes one
+`listed` row; the first authoritative clean answer after it writes a `delisted`
+row. `at` is the event time and `since` is the listing's first-seen time (on
+both rows). Each row also records the sending IP, provider name, zone, answer
+codes (JSON), TXT reason and DNS query. Unchanged results and provider errors
+write no rows. A first clean answer has no listing to resolve and writes none.
+
+Before starting queries, the API loads the latest event by ID for each
+configured IP/provider/zone. This preserves listings and their first-seen time
+across restarts: an existing listing is not announced again, and a clean answer
+can resolve a listing seen before restart. A different zone starts unknown.
+A seed read failure refuses startup. An event write failure stops the monitor
+and logs `DNSBL monitor stopped`; repair the database and restart the API.
+Writes have a three-second timeout. Metrics still count completed DNS checks.
+
+History is retained indefinitely; there is no automatic pruning. Do not remove
+the latest event for a pair: it is also the restart seed. Run one enabled DNSBL
+monitor for an instance; this slice does not coordinate multiple monitor owners.
+Alert delivery, an admin history view, a circuit breaker and keyed zones remain
+outside this feature.

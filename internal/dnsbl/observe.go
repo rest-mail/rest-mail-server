@@ -6,9 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// MetricsObserver is the Observer the server runs: it logs each listing and
-// recovery and keeps the DNSBL metrics. Its state is the Monitor's, so it is
-// in memory only and starts from unknown on every restart.
+// MetricsObserver logs each listing and recovery and keeps the DNSBL metrics.
 type MetricsObserver struct {
 	log        *slog.Logger
 	checks     *prometheus.CounterVec // provider, status
@@ -47,7 +45,7 @@ func (o *MetricsObserver) Checked(obs Observation) {
 
 // Changed logs a listing as a warning and a recovery as info, each with the
 // evidence that caused it.
-func (o *MetricsObserver) Changed(tr Transition) {
+func (o *MetricsObserver) Changed(tr Transition) error {
 	switch tr.Kind {
 	case TransitionListed:
 		o.log.Warn("dnsbl: sending IP listed", "result", tr.Result, "at", tr.At)
@@ -55,4 +53,5 @@ func (o *MetricsObserver) Changed(tr Transition) {
 		o.log.Info("dnsbl: sending IP no longer listed", "result", tr.Result, "at", tr.At,
 			"listing", tr.Previous, "listed_since", tr.Since)
 	}
+	return nil
 }
