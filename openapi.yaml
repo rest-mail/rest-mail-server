@@ -5023,27 +5023,54 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TLSRPTReport"
-            example:
-              organization-name: Example Reporter
-              contact-info: tlsrpt@reporter.example.com
-              report-id: 2026-10-17T00:00:00Z_restmail.test
-              date-range:
-                start-datetime: "2026-10-16T00:00:00Z"
-                end-datetime: "2026-10-16T23:59:59Z"
-              policies:
-                - policy:
-                    policy-type: sts
-                    policy-string: ["version: STSv1", "mode: testing", "mx: mail.restmail.test", "max_age: 86400"]
-                    policy-domain: restmail.test
-                    mx-host: [mail.restmail.test]
-                  summary:
-                    total-successful-session-count: 12
-                    total-failure-session-count: 1
-                  failure-details:
-                    - result-type: certificate-expired
-                      sending-mta-ip: 192.0.2.1
-                      receiving-mx-hostname: mail.restmail.test
-                      failed-session-count: 1
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              stored:
+                value:
+                  organization-name: Example Reporter
+                  contact-info: tlsrpt@reporter.example.com
+                  report-id: 2026-10-17T00:00:00Z_restmail.test
+                  date-range:
+                    start-datetime: "2026-10-16T00:00:00Z"
+                    end-datetime: "2026-10-16T23:59:59Z"
+                  policies:
+                    - policy:
+                        policy-type: sts
+                        policy-string: ["version: STSv1", "mode: testing", "mx: mail.restmail.test", "max_age: 86400"]
+                        policy-domain: restmail.test
+                        mx-host: [mail.restmail.test]
+                      summary:
+                        total-successful-session-count: 12
+                        total-failure-session-count: 1
+                      failure-details:
+                        - result-type: certificate-expired
+                          sending-mta-ip: 192.0.2.1
+                          receiving-mx-hostname: mail.restmail.test
+                          failed-session-count: 1
+              # No organization-name: refused before anything is looked up or
+              # stored.
+              organization_missing:
+                value:
+                  contact-info: tlsrpt@reporter.example.com
+                  report-id: 2026-10-17T00:00:00Z_restmail.test
+                  date-range:
+                    start-datetime: "2026-10-16T00:00:00Z"
+                    end-datetime: "2026-10-16T23:59:59Z"
+                  policies:
+                    - policy:
+                        policy-type: sts
+                        policy-string: ["version: STSv1", "mode: testing", "mx: mail.restmail.test", "max_age: 86400"]
+                        policy-domain: restmail.test
+                        mx-host: [mail.restmail.test]
+                      summary:
+                        total-successful-session-count: 12
+                        total-failure-session-count: 1
+                      failure-details:
+                        - result-type: certificate-expired
+                          sending-mta-ip: 192.0.2.1
+                          receiving-mx-hostname: mail.restmail.test
+                          failed-session-count: 1
       responses:
         "201":
           description: Report stored
@@ -5059,6 +5086,11 @@ paths:
                       stored:
                         type: integer
                         description: Number of policy entries persisted
+              examples:
+                stored:
+                  value:
+                    data:
+                      stored: 1
         "400":
           description: Malformed report
           content:
@@ -5066,7 +5098,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                organization_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          organization-name: Required field
 
   /.well-known/acme-challenge/{token}:
     get:
