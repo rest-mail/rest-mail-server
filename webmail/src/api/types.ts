@@ -6814,12 +6814,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "source_address": "sales@restmail.test",
-                 *       "destination_address": "admin@restmail.test"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateAliasRequest"];
             };
         };
@@ -6835,7 +6829,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     getAlias: {
