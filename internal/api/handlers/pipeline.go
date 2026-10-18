@@ -480,6 +480,13 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		respond.ValidationError(w, errs)
 		return
 	}
+	// config is required and is an object (CreateCustomFilterRequest, #388).
+	// The column takes any JSON, so a missing or misshapen config would be
+	// stored as it came. What the object holds is the filter's own concern.
+	if !isJSONObject(req.Config) {
+		respond.ValidationError(w, map[string]string{"config": "must be an object"})
+		return
+	}
 
 	cf := models.CustomFilter{
 		DomainID:    req.DomainID,
@@ -524,6 +531,13 @@ func customFilterFieldErrors(filterType, direction string) map[string]string {
 		return nil
 	}
 	return errs
+}
+
+// isJSONObject reports whether raw is a JSON object, the shape of a custom
+// filter's config. A missing or null config is not one; an empty object is.
+func isJSONObject(raw json.RawMessage) bool {
+	var obj map[string]json.RawMessage
+	return json.Unmarshal(raw, &obj) == nil && obj != nil
 }
 
 // GetCustomFilter returns a single custom filter by ID.
