@@ -34,6 +34,24 @@ The documented error responses other than 401 are excluded by pattern in
 (antimatter-studios/vertrag#71), and 400, 404, 409 and 422 each need a request
 of their own that provokes them (#386).
 
+That request is a named request example, and the response it provokes carries
+an example of the same name: vertrag pairs a request only with the response
+example named like it, and a side naming no example pairs with everything.
+`createDomain` is the first: its `name_missing` request (`{}`) goes with its
+422, and `created` with its 201.
+`internal/api/handlers/domain_contract_examples_test.go` sends each request
+named on createDomain's 422 to the handler and checks it gets the documented
+body, before anything is stored.
+
+Its 422 is still excluded, though vertrag sends it and it passes: the coverage
+phase probes every transaction sent, and judges valid-mode probes whenever the
+transaction's own request gets the status it documents. For a refusal that
+request is the refused one, so every valid probe built from it (`{}` with a
+`server_type`, say) is refused as well, and each is counted as a failure on an
+operation the coverage baseline does not list. The error responses come off
+`exclude-matching` once vertrag does not judge valid probes built from a
+documented refusal.
+
 vertrag is the released, checksum-pinned binary (v0.27.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
 

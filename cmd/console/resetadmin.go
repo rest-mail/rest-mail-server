@@ -25,7 +25,7 @@ import (
 
 // `restmail reset-admin` lets an account back in when every other way is lost,
 // proving ownership of the server over its public API, whatever runs it. The
-// deployment lists the owner's public keys (RESTMAIL_OWNER_KEYS); the CLI signs
+// database holds the owner's registered public keys; the CLI signs
 // a challenge the server issues with the matching private key, and gets back a
 // single-use link for the app, shown as a QR code.
 //
@@ -52,8 +52,8 @@ const resetUsage = `restmail reset-admin — let an account back in when every o
 
   restmail reset-admin --server https://mail.example.com --address ADDRESS [--key PATH]
 
-Proves you own the server with a private key whose public half the deployment
-lists in RESTMAIL_OWNER_KEYS (authorized_keys format), then shows a single-use
+Proves you own the server with a private key whose public half is registered
+in its PostgreSQL owner-key registry, then shows a single-use
 link for that account as a QR code. Whoever redeems it chooses a new password and
 enrolls a new authenticator, and every session the account had ends: anyone who
 held the old credentials is locked out. This is also how a server set up by

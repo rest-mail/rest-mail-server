@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -68,10 +69,35 @@ const operatorUsage = `restmail-api operator commands
       domain has a key. ADDRESS adds the mail host's A record and the PTR.
       Output: {"domains": [{"domain": ..., "records": [...]}]}
 
+  restmail-api dkim-key ensure --domain NAME
+      Create an encrypted DKIM key only when both key and selector are absent
+      on an existing domain. Retries preserve valid existing material; partial
+      or unreadable material is refused. Requires MASTER_KEY, even in development.
+      Output: {"domain": ..., "selector": ..., "created": ..., "publicDKIMTXT": ...}
+
+  restmail-api owner-key add < owner.pub
+      Register public recovery keys in PostgreSQL. Private keys are refused.
+      Output: {"fingerprints": [...]}
+
+  restmail-api owner-key list
+      List registered public owner keys, including revoked keys.
+      Output: {"keys": [...]}
+
+  restmail-api owner-key revoke --fingerprint SHA256:...
+      Revoke a recovery key immediately on every API replica.
+      Output: {"fingerprint": ..., "revoked": true}
+
+  restmail-api check-attachment-storage
+      Verify the configured private S3 store with a random put/get/range/delete.
+
+  restmail-api migrate-attachments
+      Copy existing filesystem attachments to S3, verify bytes, then update
+      their references. Resumable; source files are retained.
+
 Results are one JSON object on stdout. Errors: {"error": {"code": ...,
 "message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_account) or
 1 (anything else). Nothing else is written to either;
-RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr.
+RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr, except for dkim-key.
 Usually run for you: chore password:reset, chore sessions:revoke,
 chore dns:show.
 `
@@ -82,7 +108,7 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 	// program can read each whole. What the server code logs on the way (config
 	// warnings, say) goes nowhere unless RESTMAIL_OPERATOR_DEBUG is set.
 	logTo := io.Discard
-	if os.Getenv("RESTMAIL_OPERATOR_DEBUG") != "" {
+	if os.Getenv("RESTMAIL_OPERATOR_DEBUG") != "" && args[0] != "dkim-key" {
 		logTo = stderr
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logTo, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -91,6 +117,11 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 	// still starting up then prints a connection error ahead of the result. It
 	// gets ours from the start.
 	gormlogger.Default = operatorDBLogger(stderr)
+	if args[0] == "dkim-key" {
+		// This command reads and writes private material: never log SQL or
+		// configuration, even when operator debugging is enabled.
+		gormlogger.Default = gormlogger.Discard
+	}
 
 	switch args[0] {
 	case "mint-token":
@@ -101,6 +132,15 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 		return revokeSessions(args[1:], stdout, stderr)
 	case "dns-records":
 		return dnsRecords(args[1:], stdout, stderr)
+	case "dkim-key":
+		return dkimKeyCommand(args[1:], stdout, stderr)
+	case "owner-key":
+		return ownerKeyCommand(args[1:], os.Stdin, stdout, stderr)
+
+	case "check-attachment-storage":
+		return checkAttachmentStorage(args[1:], stdout, stderr)
+	case "migrate-attachments":
+		return migrateAttachments(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		_, _ = io.WriteString(stdout, operatorUsage)
 		return exitOK
@@ -153,6 +193,26 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 // up to date. On failure it has already written the error and returns its exit
 // status; on success the caller closes the database with closeDatabase.
 func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
+	database, cfg, status := connectOperatorDatabase(stderr)
+	if status != exitOK {
+		return nil, nil, status
+	}
+	// The same additive steps the server runs at boot, so this works against a
+	// database the server has not started on yet.
+	if err := db.AutoMigrate(database); err != nil {
+		closeDatabase(database)
+		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
+	}
+	if err := bootstrap.EnsureRBAC(database); err != nil {
+		closeDatabase(database)
+		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
+	}
+	return database, cfg, exitOK
+}
+
+// connectOperatorDatabase configures a quiet operator connection without
+// changing schema or seeding data. Observation commands use this path.
+func connectOperatorDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, nil, fail(stderr, exitFailed, "config", err.Error())
@@ -166,16 +226,6 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	// every statement. Here stdout is the result, so it gets a logger of ours:
 	// silent, or on stderr with RESTMAIL_OPERATOR_DEBUG.
 	database = database.Session(&gorm.Session{Logger: operatorDBLogger(stderr)})
-	// The same additive steps the server runs at boot, so this works against a
-	// database the server has not started on yet.
-	if err := db.AutoMigrate(database); err != nil {
-		closeDatabase(database)
-		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
-	}
-	if err := bootstrap.EnsureRBAC(database); err != nil {
-		closeDatabase(database)
-		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
-	}
 	return database, cfg, exitOK
 }
 
@@ -258,13 +308,15 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	if *mailHost == "" {
 		return fail(stderr, exitUsage, "bad_flag", "--mail-host is required")
 	}
-	database, cfg, status := openDatabase(stderr)
+	database, cfg, status := connectOperatorDatabase(stderr)
 	if status != exitOK {
 		return status
 	}
 	defer closeDatabase(database)
 	var domains []models.Domain
-	if err := database.Order("name").Find(&domains).Error; err != nil {
+	if err := database.Transaction(func(tx *gorm.DB) error {
+		return tx.Order("name").Find(&domains).Error
+	}, &sql.TxOptions{ReadOnly: true}); err != nil {
 		return fail(stderr, exitFailed, "database", err.Error())
 	}
 	type domainRecords struct {

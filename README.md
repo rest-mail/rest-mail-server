@@ -458,6 +458,16 @@ chore smtp-gateway:logs
 chore instance:down
 ```
 
+The API and SMTP/IMAP/POP3 gateway Go dev containers run with a read-only root
+filesystem. The source overlay at `/app` stays writable for development; Air's
+executables use a separate 128 MiB tmpfs at `/app/tmp`. A 1 GiB tmpfs at `/tmp`
+holds Go's build cache, module cache, checksum state, and temporary files. These
+mounts count toward the existing container memory limits and reset when the
+container is recreated. Go reads the image's preloaded module archive first,
+then falls back to the public Go proxy and direct downloads for new dependencies.
+Certificate, attachment, and log mounts retain their existing permissions and
+locations. These dev flags do not change the `prod` launch commands.
+
 Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
 
 ### Code Quality

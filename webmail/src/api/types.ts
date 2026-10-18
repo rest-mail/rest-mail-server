@@ -2980,6 +2980,22 @@ export interface components {
             body_text?: string;
             body_html?: string;
             in_reply_to?: string;
+            list_unsubscribe?: components["schemas"]["ListUnsubscribe"];
+        };
+        /** @description Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058), published as the message's List-Unsubscribe field. You run the endpoint; the server never fetches or posts to it. With `https`, the message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click` and both fields are DKIM signed; a sender domain with no DKIM key is refused with 422 `dkim_required` rather than sent with an unsigned one-click claim. With only `mailto`, there is no one-click field. Omit the object and the message carries neither field. A value with a line break, a space, a comma, an angle bracket or quote, or any other scheme is refused with 400, as is any key other than `mailto` and `https`. */
+        ListUnsubscribe: {
+            /**
+             * Format: email
+             * @description A bare ASCII address (no display name, no `mailto:`, no query), published as `<mailto:address>`.
+             * @example unsubscribe@example.com
+             */
+            mailto?: string;
+            /**
+             * Format: uri
+             * @description One absolute https URL with a host and no credentials, which unsubscribes the recipient when it receives the RFC 8058 one-click POST (body `List-Unsubscribe=One-Click`). It should identify the recipient and the list, as RFC 8058 §3.1 asks.
+             * @example https://example.com/unsubscribe?t=opaque-token
+             */
+            https?: string;
         };
         ForwardMessageRequest: {
             /** Format: email */
@@ -5340,6 +5356,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description A field is missing or invalid, including an unsafe list_unsubscribe target */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             422: components["responses"]["ValidationError"];
         };
     };
@@ -6476,12 +6501,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "name": "example.org",
-                 *       "server_type": "restmail"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateDomainRequest"];
             };
         };
@@ -6498,7 +6517,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     getDomain: {

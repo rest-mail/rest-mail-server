@@ -13,6 +13,7 @@
 package outbound
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -125,6 +126,29 @@ func HasDKIMSignature(raw string) bool {
 	return false
 }
 
+// signedHeaders is the h= set SignDKIM signs: go-dkim's default set and the
+// RFC 8058 one-click field, so a one-click claim is covered alongside the
+// List-Unsubscribe target it applies to.
+var signedHeaders = append(append([]string{}, dkim.DefaultSignedHeaders...), "list-unsubscribe-post")
+
+// HasDKIMKey reports whether SignDKIM would sign mail from senderDomain: the
+// domain is hosted here with a selector and a key configured. Whether the key
+// loads is not checked; SignDKIM fails closed when it does not.
+func HasDKIMKey(db *gorm.DB, senderDomain string) (bool, error) {
+	if db == nil || senderDomain == "" {
+		return false, nil
+	}
+	var domain models.Domain
+	err := db.Where("name = ?", senderDomain).First(&domain).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return domain.DKIMPrivateKey != "" && domain.DKIMSelector != "", nil
+}
+
 // SignDKIM prepends a DKIM-Signature computed over the ACTUAL raw bytes with the
 // sender domain's key, returning the signed message. DKIM must be signed over
 // what is transmitted, so this operates on the raw message directly rather than
@@ -157,15 +181,19 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 		slog.Error("outbound dkim sign: parse key failed (fail-closed)", "domain", senderDomain, "error", err)
 		return "", fmt.Errorf("dkim: the key for %s %w", senderDomain, err)
 	}
-	// No Headers or Oversign: go-dkim's defaults sign the RFC 6376 §5.4.1 set
-	// and oversign the fields a reader sees, so a From, Subject or Reply-To
-	// added after signing breaks the signature (#128). Naming Headers here
-	// would switch the oversigning off.
+	// go-dkim's defaults sign the RFC 6376 §5.4.1 set and oversign the fields
+	// a reader sees, so a From, Subject or Reply-To added after signing breaks
+	// the signature (#128). Naming Headers switches the defaults off, so both
+	// lists are given in full: the defaults plus List-Unsubscribe-Post, which
+	// RFC 8058 §4 requires signed and RFC 6376 predates (#144). A field the
+	// message lacks is not named, so plain mail signs exactly as before.
 	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
 		Domain:     senderDomain,
 		Selector:   domain.DKIMSelector,
 		PrivateKey: priv,
 		Time:       time.Now().Unix(),
+		Headers:    signedHeaders,
+		Oversign:   dkim.DefaultOversignedHeaders,
 	})
 	if err != nil {
 		slog.Error("outbound dkim sign failed (fail-closed)", "domain", senderDomain, "error", err)

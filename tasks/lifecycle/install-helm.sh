@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chore install:helm HOST [--domain D] [--password P] [--version V] [--values FILE]
+# chore install:helm HOST [--domain D] [--password P] [--owner-key FILE.pub] [--version V] [--values FILE]
 #
 # The admin password is made here, not by you, unless you bring one:
 #   - none given, at a terminal: generated, used, shown once
@@ -17,6 +17,8 @@ set -uo pipefail
 here=$(dirname "$0")
 # shellcheck source=lib.sh
 . "$here/lib.sh"
+# shellcheck source=owner-key.sh
+. "$here/owner-key.sh"
 
 need helm kubectl jq openssl curl
 : "${HOST:?}" "${DOMAIN:?}"
@@ -33,6 +35,8 @@ if release_exists; then
     "  to install again from clean: chore uninstall:helm, then this — the mail is kept" \
     "  to see what is there:        chore server:status"
 fi
+
+owner_key=$(choose_owner_key) || exit $?
 
 if [ -z "$VERSION" ]; then
   VERSION=$(latest_chart_version)
@@ -60,9 +64,10 @@ fi
 [ -n "$kept_volumes" ] && say "Found the data of an earlier install ($kept_volumes); this install picks it up."
 
 values=$(private_tmp)
-jq -n --arg host "$HOST" --arg domain "$DOMAIN" --arg pw "$PASSWORD" '
+jq -n --arg host "$HOST" --arg domain "$DOMAIN" --arg pw "$PASSWORD" --arg owner "$owner_key" '
   {mailserver: {hostname: $host, domain: $domain}}
-  + (if $pw != "" then {api: {bootstrapAdminPassword: $pw}} else {} end)' >"$values"
+  + {api: ((if $pw != "" then {bootstrapAdminPassword: $pw} else {} end)
+      + (if $owner != "" then {ownerKeys: $owner} else {} end))}' >"$values"
 
 say "Installing chart $VERSION as \"$NAME\" in namespace $NAMESPACE..."
 # Theirs first, ours last: the hostname, domain and password given here win.
@@ -85,6 +90,8 @@ if [ -n "$generated" ]; then
 
 EOF
 fi
+
+owner_key_guidance "$owner_key"
 
 say "Waiting for it to start (every pod waits for the TLS Secret ${TLS_SECRET:-restmail-tls})..."
 for d in $(serving_deployments) $(k get statefulset -l "app.kubernetes.io/instance=$NAME" -o name); do

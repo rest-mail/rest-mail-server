@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { AuthenticatorSetup } from '@/components/auth/AuthenticatorSetup';
 import {
   ApiError,
   getTwoFactorStatus,
@@ -32,8 +33,8 @@ function refusalMessage(e: unknown): string {
  * TwoFactorView surfaces the server's TOTP 2FA (two_factor.go) for the signed-in
  * account: it shows enabled/disabled status and drives the enable (enroll →
  * show secret + recovery codes → confirm a code) and disable (prove a code)
- * flows against the /auth/2fa endpoints. A dedicated QR image is intentionally
- * omitted; the base32 secret and otpauth URL are shown for manual entry.
+ * flows against the /auth/2fa endpoints. Provisioning is rendered locally as a
+ * QR code, with a manual setup key as a fallback.
  */
 export function TwoFactorView() {
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);
@@ -211,12 +212,8 @@ export function TwoFactorView() {
             /* ── Enrolling: show secret + recovery codes, confirm a code ── */
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label>1. Add this secret to your authenticator app</Label>
-                <CopyRow value={enrollment.secret} mono />
-                <p className="text-xs text-muted-foreground">
-                  Or use the provisioning URL:
-                </p>
-                <CopyRow value={enrollment.otpauth_url} mono small />
+                <Label>1. Add REST Mail to your authenticator app</Label>
+                <AuthenticatorSetup secret={enrollment.secret} otpauthUrl={enrollment.otpauth_url} />
               </div>
 
               <div className="space-y-1.5">

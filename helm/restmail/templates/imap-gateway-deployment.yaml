@@ -1,12 +1,15 @@
 {{- if .Values.imapGateway.enabled -}}
+{{- $kind := include "restmail.gatewayWorkloadKind" (list .Values.imapGateway "imapGateway") -}}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ $kind }}
 metadata:
   name: {{ include "restmail.componentName" (list . "imap-gateway") }}
   labels:
     {{- include "restmail.componentLabels" (list . "imap-gateway") | nindent 4 }}
 spec:
+  {{- if eq $kind "Deployment" }}
   replicas: {{ .Values.imapGateway.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "restmail.componentSelectorLabels" (list . "imap-gateway") | nindent 6 }}

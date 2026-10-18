@@ -431,8 +431,8 @@ paths:
       tags: [Auth]
       summary: A challenge for an owner key to sign
       description: >
-        The first half of proving ownership of the server with a key listed in
-        RESTMAIL_OWNER_KEYS (what `restmail reset-admin` does), or of reading
+        The first half of proving ownership of the server with a public key registered in
+        PostgreSQL (what `restmail reset-admin` does), or of reading
         its status with a key listed in RESTMAIL_STATUS_KEYS (what
         `restmail status --key` does). The challenge is stateless, valid two minutes, and answered once.
         Throttled like login.
@@ -465,7 +465,7 @@ paths:
         half of `public_key` over the bytes
         `"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge`,
         so a signature for one request cannot be presented for another. `public_key` must be listed in
-        RESTMAIL_OWNER_KEYS; a status key (RESTMAIL_STATUS_KEYS) is refused.
+        the PostgreSQL owner-key registry; a status key (RESTMAIL_STATUS_KEYS) is refused.
         Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are
         accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at
         `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
@@ -524,7 +524,7 @@ paths:
         the owner scheme with the purpose `status` and no address, so a
         signature made to reset an admin does not read the status, nor the
         other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or
-        RESTMAIL_OWNER_KEYS. A status key reads this and can do nothing else.
+        the PostgreSQL owner-key registry. A status key reads this and can do nothing else.
         The challenge is spent, so an answer works once. Keys and signatures as
         for `/api/v1/auth/owner/token`. Throttled with the owner endpoints.
       security: []
@@ -1604,6 +1604,12 @@ paths:
               operationId: getMessageTrace
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: A field is missing or invalid, including an unsafe list_unsubscribe target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -2753,9 +2759,16 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateDomainRequest"
-            example:
-              name: example.org
-              server_type: restmail
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  name: example.org
+                  server_type: restmail
+              # No name: refused before anything is stored.
+              name_missing:
+                value: {}
       responses:
         "201":
           description: Domain created, not yet live
@@ -2767,6 +2780,17 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Domain"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      name: example.org
+                      server_type: restmail
+                      active: false
+                      default_quota_bytes: 0
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             getDomain:
               operationId: getDomain
@@ -2811,7 +2835,20 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                name_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
 
   /api/v1/admin/domains/{id}:
     parameters:
@@ -6581,6 +6618,43 @@ components:
           type: string
         in_reply_to:
           type: string
+        list_unsubscribe:
+          $ref: "#/components/schemas/ListUnsubscribe"
+
+    ListUnsubscribe:
+      type: object
+      description: >
+        Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058),
+        published as the message's List-Unsubscribe field. You run the
+        endpoint; the server never fetches or posts to it. With `https`, the
+        message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+        and both fields are DKIM signed; a sender domain with no DKIM key is
+        refused with 422 `dkim_required` rather than sent with an unsigned
+        one-click claim. With only `mailto`, there is no one-click field. Omit
+        the object and the message carries neither field. A value with a line
+        break, a space, a comma, an angle bracket or quote, or any other scheme
+        is refused with 400, as is any key other than `mailto` and `https`.
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        mailto:
+          type: string
+          format: email
+          description: >
+            A bare ASCII address (no display name, no `mailto:`, no query),
+            published as `<mailto:address>`.
+          example: unsubscribe@example.com
+        https:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: "^https://"
+          description: >
+            One absolute https URL with a host and no credentials, which
+            unsubscribes the recipient when it receives the RFC 8058 one-click
+            POST (body `List-Unsubscribe=One-Click`). It should identify the
+            recipient and the list, as RFC 8058 §3.1 asks.
+          example: https://example.com/unsubscribe?t=opaque-token
 
     ForwardMessageRequest:
       type: object

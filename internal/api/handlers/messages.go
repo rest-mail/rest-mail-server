@@ -404,6 +404,9 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		BodyHTML      string                  `json:"body_html"`
 		InReplyTo     string                  `json:"in_reply_to"`
 		CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
+		// ListUnsubscribe, when set, publishes where a recipient unsubscribes
+		// (#144). Absent, the message carries no List-Unsubscribe fields.
+		ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -461,6 +464,14 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
 		return
 	}
+	// The unsubscribe targets become header fields, so they are checked here,
+	// with the addresses, before anything is stored or signed.
+	if req.ListUnsubscribe != nil {
+		if err := req.ListUnsubscribe.validate(); err != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", err.Error())
+			return
+		}
+	}
 
 	// Per-account send rate limit (#184): cap how many messages one authenticated
 	// account may send per minute/hour, mirroring the SMTP submission cap
@@ -490,6 +501,24 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	senderMailbox := *sender
+
+	// RFC 8058 §4: a one-click claim counts only under a DKIM signature that
+	// covers it. A sender domain with no key would send an unsigned claim, so
+	// an HTTPS unsubscribe target is refused for it rather than sent unsigned
+	// or silently downgraded. A mailto-only target makes no claim and is sent
+	// either way.
+	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" {
+		signs, err := outbound.HasDKIMKey(h.db, rmail.DomainFromAddress(req.From))
+		if err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's DKIM key")
+			return
+		}
+		if !signs {
+			respond.Error(w, http.StatusUnprocessableEntity, "dkim_required",
+				"list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed")
+			return
+		}
+	}
 
 	// ── Outbound pipeline execution ────────────────────────────────
 	var extraHeaders map[string]string // populated by pipeline transforms (e.g. DKIM-Signature)
@@ -743,7 +772,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		MessageID: messageID,
 		InReplyTo: req.InReplyTo,
 		Date:      now,
-		Extra:     extraHeaders,
+		Extra:     withListUnsubscribe(extraHeaders, req.ListUnsubscribe),
 		ICS:       icsData,
 		ICSMethod: calendarMethod(req.CalendarEvent),
 	})
@@ -757,6 +786,12 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// send (client retries) rather than deliver the message unsigned.
 	signedRaw, signErr := h.signOutboundDKIM(rmail.DomainFromAddress(req.From), rawMessage)
 	if signErr != nil {
+		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
+		return
+	}
+	// The key was there when the request was checked; if the message still
+	// came back unsigned, its one-click claim must not leave.
+	if req.ListUnsubscribe != nil && req.ListUnsubscribe.HTTPS != "" && signedRaw == rawMessage {
 		respond.Error(w, http.StatusServiceUnavailable, "deferred", "Try again later")
 		return
 	}
@@ -2178,29 +2213,49 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		msg.ReceivedAt = *params.ReceivedAt
 	}
 
-	// Create the message and bump quota in one transaction so a COPY/APPEND (or
-	// inbound delivery) never leaves a half-written row or quota that disagrees
-	// with the stored message: either both commit or neither does. The message now
-	// lands directly in its destination folder, so there is no transient INBOX
-	// state and no separate, swallow-prone move step. Any write error rolls the
-	// whole delivery back and is surfaced to the caller rather than swallowed; a
-	// quota row that does not exist yet matches zero rows, which is not an error,
-	// so ordinary deliveries are unaffected.
+	// Attachment references, message and quota commit together. If metadata
+	// cannot be saved, the sender retries; an uploaded content-addressed object
+	// is safe to reuse, whereas acknowledging a message without its attachments
+	// would permanently hide them from the recipient.
+	var attachmentRows []models.Attachment
+	var totalAttBytes int64
+	if emailJSON != nil {
+		for _, group := range [][]pipeline.Attachment{emailJSON.Attachments, emailJSON.Inline} {
+			for _, att := range group {
+				if att.Ref == "" {
+					continue
+				}
+				attachmentRows = append(attachmentRows, models.Attachment{
+					Filename: att.Filename, ContentType: att.ContentType, SizeBytes: att.Size,
+					StorageType: att.Storage, StorageRef: att.Ref, Checksum: att.Checksum,
+				})
+				totalAttBytes += att.Size
+			}
+		}
+	}
+	msg.HasAttachments = len(attachmentRows) > 0
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&msg).Error; err != nil {
 			return err
 		}
+		if len(attachmentRows) > 0 {
+			for i := range attachmentRows {
+				attachmentRows[i].MessageID = msg.ID
+			}
+			if err := tx.Create(&attachmentRows).Error; err != nil {
+				return err
+			}
+		}
 		if err := tx.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).Updates(map[string]interface{}{
-			"subject_bytes": gorm.Expr("subject_bytes + ?", len(params.Subject)),
-			"body_bytes":    gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
-			"message_count": gorm.Expr("message_count + 1"),
+			"subject_bytes":    gorm.Expr("subject_bytes + ?", len(params.Subject)),
+			"body_bytes":       gorm.Expr("body_bytes + ?", len(params.BodyText)+len(params.BodyHTML)),
+			"attachment_bytes": gorm.Expr("attachment_bytes + ?", totalAttBytes),
+			"message_count":    gorm.Expr("message_count + 1"),
 		}).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", sizeBytes)).Error; err != nil {
-			return err
-		}
-		return nil
+		return tx.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
+			Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", int64(sizeBytes)+totalAttBytes)).Error
 	}); err != nil {
 		return nil, fmt.Errorf("failed to create message: %w", err)
 	}
@@ -2215,47 +2270,6 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 		mid := msg.ID
 		deliveredTrace.MessageID = &mid
 		h.recordTrace(buildTrace(*deliveredTrace))
-	}
-
-	// ── Persist attachments ──────────────────────────────────────────
-	if emailJSON != nil {
-		var hasAttachments bool
-		allAttachments := append(emailJSON.Attachments, emailJSON.Inline...)
-		for _, att := range allAttachments {
-			if att.Ref == "" {
-				continue
-			}
-			dbAtt := models.Attachment{
-				MessageID:   msg.ID,
-				Filename:    att.Filename,
-				ContentType: att.ContentType,
-				SizeBytes:   att.Size,
-				StorageType: att.Storage,
-				StorageRef:  att.Ref,
-				Checksum:    att.Checksum,
-			}
-			if err := h.db.Create(&dbAtt).Error; err != nil {
-				slog.Error("deliver: failed to persist attachment", "message_id", msg.ID, "filename", att.Filename, "error", err)
-				continue
-			}
-			hasAttachments = true
-		}
-		if hasAttachments {
-			h.db.Model(&msg).Update("has_attachments", true)
-
-			var totalAttBytes int64
-			for _, att := range allAttachments {
-				if att.Ref != "" {
-					totalAttBytes += att.Size
-				}
-			}
-			if totalAttBytes > 0 {
-				h.db.Model(&models.Mailbox{}).Where("id = ?", mailbox.ID).
-					Update("quota_used_bytes", gorm.Expr("quota_used_bytes + ?", totalAttBytes))
-				h.db.Model(&models.QuotaUsage{}).Where("mailbox_id = ?", mailbox.ID).
-					Update("attachment_bytes", gorm.Expr("attachment_bytes + ?", totalAttBytes))
-			}
-		}
 	}
 
 	// ── Extract calendar events ─────────────────────────────────────

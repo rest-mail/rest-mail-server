@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/restmail/restmail/internal/attachmentstore"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
@@ -23,6 +24,7 @@ type extractAttConfig struct {
 
 type extractAttFilter struct {
 	cfg extractAttConfig
+	s3  *attachmentstore.S3
 }
 
 func init() {
@@ -30,17 +32,36 @@ func init() {
 }
 
 func NewExtractAttachments(config []byte) (pipeline.Filter, error) {
+	return newExtractAttachments(config, nil)
+}
+
+// NewExtractAttachmentsWithS3 binds storage to trusted server configuration.
+// A pipeline cannot choose an endpoint, bucket or credentials of its own.
+func NewExtractAttachmentsWithS3(store *attachmentstore.S3) pipeline.FilterFactory {
+	return func(config []byte) (pipeline.Filter, error) {
+		return newExtractAttachments(config, store)
+	}
+}
+
+func newExtractAttachments(config []byte, store *attachmentstore.S3) (pipeline.Filter, error) {
 	cfg := extractAttConfig{
 		StorageType: "filesystem",
 		StoragePath: "/attachments",
 	}
 	if len(config) > 0 {
-		_ = json.Unmarshal(config, &cfg)
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, fmt.Errorf("invalid attachment filter configuration: %w", err)
+		}
 	}
-	return &extractAttFilter{cfg: cfg}, nil
+	if store != nil {
+		cfg.StorageType = "s3"
+	} else if cfg.StorageType != "filesystem" {
+		return nil, fmt.Errorf("S3 attachment storage must be configured on the server")
+	}
+	return &extractAttFilter{cfg: cfg, s3: store}, nil
 }
 
-func (f *extractAttFilter) Name() string             { return "extract_attachments" }
+func (f *extractAttFilter) Name() string              { return "extract_attachments" }
 func (f *extractAttFilter) Type() pipeline.FilterType { return pipeline.FilterTypeTransform }
 
 func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
@@ -52,11 +73,9 @@ func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	newAttachments := make([]pipeline.Attachment, len(email.Attachments))
 	for i, att := range email.Attachments {
 		if att.Content != "" && att.Storage == "" {
-			ref, checksum, err := f.store(att, db)
+			ref, checksum, err := f.store(ctx, att, db)
 			if err != nil {
-				// Keep original on error
-				newAttachments[i] = att
-				continue
+				return nil, fmt.Errorf("store attachment: %w", err)
 			}
 			newAttachments[i] = pipeline.Attachment{
 				Filename:    att.Filename,
@@ -78,10 +97,9 @@ func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	newInline := make([]pipeline.Attachment, len(email.Inline))
 	for i, att := range email.Inline {
 		if att.Content != "" && att.Storage == "" {
-			ref, checksum, err := f.store(att, db)
+			ref, checksum, err := f.store(ctx, att, db)
 			if err != nil {
-				newInline[i] = att
-				continue
+				return nil, fmt.Errorf("store inline attachment: %w", err)
 			}
 			newInline[i] = pipeline.Attachment{
 				Filename:    att.Filename,
@@ -112,10 +130,13 @@ func (f *extractAttFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}, nil
 }
 
-func (f *extractAttFilter) store(att pipeline.Attachment, db *gorm.DB) (string, string, error) {
+func (f *extractAttFilter) store(ctx context.Context, att pipeline.Attachment, db *gorm.DB) (string, string, error) {
 	data, err := base64.StdEncoding.DecodeString(att.Content)
 	if err != nil {
 		return "", "", fmt.Errorf("decode base64: %w", err)
+	}
+	if f.s3 != nil {
+		return f.s3.Put(ctx, data)
 	}
 
 	// Compute checksum

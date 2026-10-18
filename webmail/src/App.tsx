@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
 import { useMailStore } from '@/stores/mailStore';
 import { setOnUnauthorized } from '@/api/client';
+import { AccountAccess } from '@/components/auth/AccountAccess';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -23,8 +24,8 @@ import { useMultiAccountSSE, type SSEEvent } from '@/hooks/useSSE';
 import { useNotifications } from '@/hooks/useNotifications';
 
 function App() {
-  const { isAuthenticated, sessionChecked, checkSession, logout } = useAuthStore();
-  const { view, startCompose } = useUIStore();
+  const { user, setupRequired, acceptSession, isAuthenticated, sessionChecked, checkSession, logout } = useAuthStore();
+  const { startCompose } = useUIStore();
   const { accounts, refresh, loadFolders } = useMailStore();
   // Restore an existing session on boot by exchanging the httpOnly refresh
   // cookie for a fresh access cookie — no token is ever exposed to JS.
@@ -42,10 +43,10 @@ function App() {
 
   // Request notification permission on first auth
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && setupRequired.length === 0) {
       requestPermission();
     }
-  }, [isAuthenticated, requestPermission]);
+  }, [isAuthenticated, setupRequired.length, requestPermission]);
 
   // SSE event handler
   const handleSSEEvent = useCallback((event: SSEEvent) => {
@@ -69,12 +70,12 @@ function App() {
   }, [refresh, loadFolders, showDesktopNotification]);
 
   // Subscribe to SSE events for all linked accounts
-  const accountIds = isAuthenticated ? accounts.map(a => a.id) : [];
+  const accountIds = isAuthenticated && setupRequired.length === 0 ? accounts.map(a => a.id) : [];
   useMultiAccountSSE(accountIds, handleSSEEvent);
 
   // Keyboard shortcuts
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || setupRequired.length) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore shortcuts when typing in inputs
       const tag = (e.target as HTMLElement).tagName;
@@ -87,22 +88,29 @@ function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthenticated, startCompose]);
+  }, [isAuthenticated, setupRequired.length, startCompose]);
 
   // Avoid flashing the login page before the boot session check resolves.
   if (!sessionChecked) {
     return null;
   }
 
-  if (!isAuthenticated) {
-    return (
-      <>
-        <LoginPage />
-        <Toaster richColors position="bottom-right" />
-      </>
-    );
-  }
+  const content = !isAuthenticated ? (
+    <LoginPage />
+  ) : (
+    <MailApp />
+  );
+  return (
+    <AccountAccess apiBase="/api/v1" email={user?.email} steps={setupRequired}
+      onSession={acceptSession} onSignOut={logout}>
+      {content}
+      <Toaster richColors position="bottom-right" />
+    </AccountAccess>
+  );
+}
 
+function MailApp() {
+  const { view } = useUIStore();
   return (
     <>
       <div className="h-full flex">
@@ -129,7 +137,6 @@ function App() {
           </div>
         </div>
       </div>
-      <Toaster richColors position="bottom-right" />
     </>
   );
 }

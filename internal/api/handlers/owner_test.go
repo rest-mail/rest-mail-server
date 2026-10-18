@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/restmail/restmail/internal/bootstrap"
+	"github.com/restmail/restmail/internal/db/models"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -33,8 +34,7 @@ func ownerHandler(t *testing.T, f *firstSignIn, listed ...ssh.Signer) *OwnerHand
 	return keysHandler(t, f, listed, nil)
 }
 
-// keysHandler lists owners in RESTMAIL_OWNER_KEYS and status in
-// RESTMAIL_STATUS_KEYS.
+// keysHandler registers owners in PostgreSQL and configures read-only status keys.
 func keysHandler(t *testing.T, f *firstSignIn, owners, status []ssh.Signer) *OwnerHandler {
 	t.Helper()
 	spec := func(signers []ssh.Signer) string {
@@ -44,15 +44,20 @@ func keysHandler(t *testing.T, f *firstSignIn, owners, status []ssh.Signer) *Own
 		}
 		return strings.Join(lines, "")
 	}
-	keys, err := bootstrap.ParseOwnerKeys(spec(owners))
-	if err != nil {
+	if err := f.db.AutoMigrate(&models.OwnerKey{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.Where("1 = 1").Delete(&models.OwnerKey{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := bootstrap.SeedOwnerKeys(f.db, spec(owners)); err != nil {
 		t.Fatal(err)
 	}
 	statusKeys, err := bootstrap.ParseStatusKeys(spec(status))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewOwnerHandler(f.db, keys, statusKeys, "owner-handler-secret")
+	return NewOwnerHandler(f.db, statusKeys, "owner-handler-secret")
 }
 
 // askAsOwner does what the CLI does and returns the token response.

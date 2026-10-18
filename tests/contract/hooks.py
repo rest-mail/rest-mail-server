@@ -78,6 +78,10 @@ def link_a_seeded_account(transaction):
 @hooks.after("createDomain")
 def keep_the_created_domain(transaction):
     data = hooks.get_json(transaction, "real").get("data") or {}
+    # The refused create (name_missing, 422) runs straight after the one that
+    # made the domain, and created nothing to keep.
+    if not data.get("id"):
+        return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
 

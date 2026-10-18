@@ -4,6 +4,8 @@ import { setUnauthorizedHandler } from '../lib/api'
 import { useAuthStore } from '../lib/stores/authStore'
 
 import '../styles.css'
+import { AccountAccess } from '../components/auth/AccountAccess'
+import { apiV1 } from '../lib/api'
 
 // Devtools are loaded ONLY in development, via a dev-gated dynamic import. In a
 // production build `import.meta.env.DEV` is statically `false`, so the ternary
@@ -43,6 +45,8 @@ function RootComponent() {
   const logout = useAuthStore((state) => state.logout)
   const checkSession = useAuthStore((state) => state.checkSession)
 
+  const { user, setupRequired, acceptSession, sessionChecked } = useAuthStore()
+
   // Restore an existing session on boot by exchanging the httpOnly refresh
   // cookie for a fresh access cookie. No token is ever exposed to JS; on failure
   // the session is cleared and the route guards redirect to /login.
@@ -58,9 +62,15 @@ function RootComponent() {
     })
   }, [logout, navigate])
 
+  if (!sessionChecked) return null
+
   return (
     <>
-      <Outlet />
+      <AccountAccess apiBase={apiV1.url('')} email={user?.email} steps={setupRequired}
+        onSession={acceptSession}
+        onSignOut={() => { logout(); void navigate({ to: '/login' }) }}>
+        <Outlet />
+      </AccountAccess>
       <Suspense fallback={null}>
         <DevTools />
       </Suspense>
