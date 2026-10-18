@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """The contract tests' gate (#376), read from vertrag's JUnit report.
 
-Examples phase: every operation that vertrag.yml does not exclude must be
-exercised, and pass. An operation passes when the run sent at least one of its
-transactions and none of them failed, errored or was skipped (a skip means the
-step it follows failed, so it was never checked). Every exclusion is printed
-with the reason written above it in vertrag.yml.
+Examples phase: vertrag judges it itself. vertrag.yml's surface gate counts an
+operation only when every documented transaction of it was sent and passed,
+and requires every operation it does not exclude; a shortfall exits 3 and a
+failed transaction 1, and the contract step fails on either. What this script
+checks of it is the configuration: every operation never sent
+(exclude-operation-id) is taken out of the surface with its reason
+(surface.exclude), and the other way round, and both name operations the spec
+has.
 
 Coverage phase, a ratchet: tests/contract/coverage-baseline.txt lists the
 operations whose boundary probes still fail (#388). A failing probe on any
@@ -13,15 +16,11 @@ operation not in the baseline fails the gate, and so does an operation in the
 baseline whose probes all pass now: the fix takes it out of the baseline in the
 same change. So the baseline only shrinks.
 
-TODO(antimatter-studios/vertrag#70): once vertrag reports surface coverage
-itself, the examples half becomes `vertrag run --require-surface 100`.
-
 Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
        gate.py --failing-probes <openapi.yaml> <junit.xml>
            prints the operations with a failing probe, in baseline form.
 """
 import os
-import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -29,7 +28,6 @@ import yaml
 
 METHODS = ("get", "put", "post", "delete", "patch")
 PROBE = "coverage: "
-LINK = "links: "
 
 
 def operations(spec_path):
@@ -45,28 +43,13 @@ def operations(spec_path):
 
 
 def exclusions(config_path):
-    """The excluded operationIds, each with the comment block above it."""
-    reasons, comment, inside, listed = {}, [], False, False
-    for line in open(config_path):
-        stripped = line.strip()
-        if re.match(r"^exclude-operation-id:", line):
-            inside, comment = True, []
-            continue
-        if not inside:
-            continue
-        if line and not line[0].isspace() and stripped:
-            break
-        if stripped.startswith("#"):
-            # A comment after the operations it explained starts the next reason.
-            if listed:
-                comment, listed = [], False
-            comment.append(stripped.lstrip("# "))
-        elif stripped.startswith("- "):
-            reasons[stripped[2:].strip()] = " ".join(comment)
-            listed = True
-        elif not stripped:
-            comment, listed = [], False
-    return reasons
+    """The operationIds never sent, and those surface.exclude takes out of the
+    count whole (an entry naming a status as well takes out only that status)."""
+    config = yaml.safe_load(open(config_path))
+    skipped = config.get("exclude-operation-id") or []
+    uncounted = [entry["operation"] for entry in (config.get("surface") or {}).get("exclude") or []
+                 if "operation" in entry and "status" not in entry]
+    return skipped, uncounted
 
 
 def baseline(path):
@@ -80,84 +63,63 @@ def baseline(path):
 
 
 def results(report_path, ops):
-    """Per operation: the examples-phase outcomes, which operations were probed,
-    and which had a probe fail.
+    """Which operations were probed, and which had a probe fail.
 
-    A transaction is named "<path> > <summary> > <status>[ > <type>]", and a
-    probe "coverage: <the transaction's name> · <where> · <what>".
+    A probe is named "coverage: <path> > <summary> > <status>[ > <type>] ·
+    <where> · <what>".
     """
-    examples, probed, probes_failed = {}, set(), set()
+    probed, probes_failed = set(), set()
     for case in ET.parse(report_path).getroot().iter("testcase"):
         name = case.get("name")
-        bad = any(case.find(tag) is not None for tag in ("failure", "error"))
-        if name.startswith(LINK):
-            continue  # a link that could not be followed: its cause fails elsewhere
-        probe = name.startswith(PROBE)
-        if probe:
-            name = name[len(PROBE):].split(" · ", 1)[0]
-        parts = name.split(" > ")
+        if not name.startswith(PROBE):
+            continue
+        parts = name[len(PROBE):].split(" · ", 1)[0].split(" > ")
         op = ops.get((parts[0], parts[1])) if len(parts) >= 3 else None
         if op is None:
             continue
-        if probe:
-            probed.add(op)
-            if bad:
-                probes_failed.add(op)
-            continue
-        if bad:
-            outcome = "failed"
-        elif case.find("skipped") is not None:
-            outcome = "skipped"
-        else:
-            outcome = "passed"
-        examples.setdefault(op, []).append(outcome)
-    return examples, probed, probes_failed
+        probed.add(op)
+        if any(case.find(tag) is not None for tag in ("failure", "error")):
+            probes_failed.add(op)
+    return probed, probes_failed
 
 
 def gate(spec_path, config_path, report_path, baseline_path):
     ops = operations(spec_path)
     all_ids = set(ops.values())
-    excluded = exclusions(config_path)
+    skipped, uncounted = exclusions(config_path)
     listed = baseline(baseline_path)
     ok = True
 
-    for what, ids in (("vertrag.yml excludes", excluded), ("the coverage baseline lists", listed)):
+    for what, ids in (("exclude-operation-id names", skipped),
+                      ("surface.exclude names", uncounted),
+                      ("the coverage baseline lists", listed)):
         unknown = sorted(set(ids) - all_ids)
         if unknown:
             print("%s operations the spec does not have: %s" % (what, ", ".join(unknown)))
             ok = False
-    duplicated = sorted({op for op in listed if listed.count(op) > 1})
-    if duplicated:
-        print("the coverage baseline lists these twice: " + ", ".join(duplicated))
-        ok = False
+        duplicated = sorted({op for op in ids if ids.count(op) > 1})
+        if duplicated:
+            print("%s these twice: %s" % (what, ", ".join(duplicated)))
+            ok = False
+    for what, ids in (
+            ("never sent but counted: add them to surface.exclude, with their reason",
+             sorted(set(skipped) - set(uncounted))),
+            ("not counted but sent: add them to exclude-operation-id, or count them",
+             sorted(set(uncounted) - set(skipped)))):
+        if ids:
+            print("vertrag.yml: %s: %s" % (what, ", ".join(ids)))
+            ok = False
 
     if not os.path.exists(report_path):
         print("no report at %s: vertrag judged nothing (see its log)" % report_path)
         return 1
     try:
-        examples, probed, probes_failed = results(report_path, ops)
+        probed, probes_failed = results(report_path, ops)
     except ET.ParseError as err:
         # vertrag exits 1 when it cannot read the spec, leaving an empty report.
         print("the report at %s is unreadable (%s): vertrag judged nothing (see its log)" % (
             report_path, err))
         return 1
-    required = sorted(all_ids - set(excluded))
-    passing = [op for op in required if examples.get(op) and set(examples[op]) == {"passed"}]
-    not_passing = [op for op in required if op not in passing]
-
-    print("Operations in the spec:          %d" % len(all_ids))
-    print("Excluded, with their reasons:    %d" % len(excluded))
-    for op in sorted(excluded):
-        print("  %-28s %s" % (op, excluded[op]))
-
-    print("Examples phase: %d of %d operations exercised and passing (%.1f%%)" % (
-        len(passing), len(required), 100.0 * len(passing) / max(len(required), 1)))
-    if not_passing:
-        ok = False
-        print("Not passing (each needs every transaction to pass):")
-        for op in not_passing:
-            outcomes = examples.get(op)
-            print("  %-28s %s" % (op, ", ".join(outcomes) if outcomes else "not sent"))
 
     new = sorted(probes_failed - set(listed))
     # Only an operation that was probed has passed its probes: one the run never
@@ -182,7 +144,7 @@ def main(argv):
     if argv[:1] == ["--failing-probes"]:
         spec_path, report_path = argv[1:3]
         ops = operations(spec_path)
-        for op in sorted(results(report_path, ops)[2]):
+        for op in sorted(results(report_path, ops)[1]):
             print(op)
         return 0
     return gate(*argv[:4])

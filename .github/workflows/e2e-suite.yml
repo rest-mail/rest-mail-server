@@ -175,10 +175,10 @@ jobs:
         # dependency: vertrag needs Go 1.26 and this module is on 1.25. Verified
         # the same way as chore above, never piped from the network.
         env:
-          VERTRAG_VERSION: 0.27.0
+          VERTRAG_VERSION: 0.29.0
           # sha256 of vertrag-${VERTRAG_VERSION}-linux-x86_64.tar.gz, from that
           # release's checksums.txt. Bump both together when upgrading.
-          VERTRAG_SHA256: 7e9af304768f82cce9b62369d017a92f5c0bfeb9697a4e7a18386342c6876f49
+          VERTRAG_SHA256: 6ab32926379d4c4b205b48fb4f0d0d31fd3c1a7d79af7effacce63c6c17df3c6
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
@@ -202,28 +202,28 @@ jobs:
         # (--sequence) so each read, update and delete addresses what its create
         # made. The examples phase checks each documented answer; the coverage
         # phase sends every boundary each schema implies and requires a 4xx for
-        # each one outside it. Both are deterministic, so both gate, in the
-        # step after this one. See vertrag.yml and tests/contract/.
+        # each one outside it. Both are deterministic, so both gate: the
+        # examples here, through vertrag.yml's surface gate, and the coverage
+        # ratchet in the step after this one. See vertrag.yml and tests/contract/.
         id: contract
         if: inputs.contract-phases == 'gate'
         run: |
           set -o pipefail
-          # 1 is a failed transaction and 2 a failed boundary probe: findings,
-          # which the gate below judges from the report. Anything else means
-          # vertrag could not run at all.
+          # 1 is a failed transaction (or a run that could not be carried out)
+          # and 3 an operation not exercised and passing (vertrag.yml's surface
+          # gate): both fail here. 2 is a failed boundary probe, which the
+          # ratchet below judges from the report.
           code=0
           # vertrag writes its report here and makes no directories itself.
           mkdir -p .cache/contract
           vertrag run --sequence --phases coverage 2>&1 | tee "$RUNNER_TEMP/contract.log" || code=$?
           echo "vertrag exited $code"
-          if [ "$code" -gt 2 ]; then exit "$code"; fi
+          if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
 
-      - name: Contract gate (every operation passes; the coverage baseline only shrinks)
-        # Examples: every operation not excluded in vertrag.yml passes. Coverage:
-        # no failing probe outside tests/contract/coverage-baseline.txt, and no
-        # operation left in it once its probes pass.
-        # TODO(antimatter-studios/vertrag#70): `vertrag run --require-surface 100`
-        # for the examples half, once vertrag reports surface coverage itself.
+      - name: Contract gate (the coverage baseline only shrinks)
+        # No failing probe outside tests/contract/coverage-baseline.txt, and no
+        # operation left in it once its probes pass; and every operation
+        # vertrag.yml never sends is one its surface gate does not count.
         if: always() && steps.contract.outcome != 'skipped'
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
