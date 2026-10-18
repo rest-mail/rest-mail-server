@@ -3213,6 +3213,8 @@ paths:
                     $ref: "#/components/schemas/Alias"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteAlias
       tags: ["Admin: Aliases"]

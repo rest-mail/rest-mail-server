@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -127,6 +128,10 @@ func (h *AliasHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req updateAliasRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	if req.DestinationAddress != nil && rmail.ValidateAddress(*req.DestinationAddress) != nil {
+		respond.ValidationError(w, map[string]string{"destination_address": "must be a valid email address"})
 		return
 	}
 
