@@ -3655,6 +3655,10 @@ paths:
               # No script: refused before the sidecar is asked.
               script_missing:
                 value: {}
+              # Not an object at all: refused before the body is read for a
+              # script.
+              body_array:
+                value: []
       responses:
         "200":
           description: >-
@@ -3671,6 +3675,18 @@ paths:
                 valid:
                   value:
                     valid: true
+        "400":
+          description: The body is not a JSON object, or a field has the wrong type (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:
