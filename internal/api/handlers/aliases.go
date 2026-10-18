@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -57,6 +58,8 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DestinationAddress == "" {
 		errors["destination_address"] = "required"
+	} else if rmail.ValidateAddress(req.DestinationAddress) != nil {
+		errors["destination_address"] = "must be a valid email address"
 	}
 	if len(errors) > 0 {
 		respond.ValidationError(w, errors)
