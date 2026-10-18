@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -179,6 +180,26 @@ func mintToken(args []string, stdout, stderr io.Writer) int {
 // up to date. On failure it has already written the error and returns its exit
 // status; on success the caller closes the database with closeDatabase.
 func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
+	database, cfg, status := connectOperatorDatabase(stderr)
+	if status != exitOK {
+		return nil, nil, status
+	}
+	// The same additive steps the server runs at boot, so this works against a
+	// database the server has not started on yet.
+	if err := db.AutoMigrate(database); err != nil {
+		closeDatabase(database)
+		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
+	}
+	if err := bootstrap.EnsureRBAC(database); err != nil {
+		closeDatabase(database)
+		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
+	}
+	return database, cfg, exitOK
+}
+
+// connectOperatorDatabase configures a quiet operator connection without
+// changing schema or seeding data. Observation commands use this path.
+func connectOperatorDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, nil, fail(stderr, exitFailed, "config", err.Error())
@@ -192,16 +213,6 @@ func openDatabase(stderr io.Writer) (*gorm.DB, *config.Config, int) {
 	// every statement. Here stdout is the result, so it gets a logger of ours:
 	// silent, or on stderr with RESTMAIL_OPERATOR_DEBUG.
 	database = database.Session(&gorm.Session{Logger: operatorDBLogger(stderr)})
-	// The same additive steps the server runs at boot, so this works against a
-	// database the server has not started on yet.
-	if err := db.AutoMigrate(database); err != nil {
-		closeDatabase(database)
-		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
-	}
-	if err := bootstrap.EnsureRBAC(database); err != nil {
-		closeDatabase(database)
-		return nil, nil, fail(stderr, exitFailed, "database", err.Error())
-	}
 	return database, cfg, exitOK
 }
 
@@ -284,13 +295,15 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	if *mailHost == "" {
 		return fail(stderr, exitUsage, "bad_flag", "--mail-host is required")
 	}
-	database, cfg, status := openDatabase(stderr)
+	database, cfg, status := connectOperatorDatabase(stderr)
 	if status != exitOK {
 		return status
 	}
 	defer closeDatabase(database)
 	var domains []models.Domain
-	if err := database.Order("name").Find(&domains).Error; err != nil {
+	if err := database.Transaction(func(tx *gorm.DB) error {
+		return tx.Order("name").Find(&domains).Error
+	}, &sql.TxOptions{ReadOnly: true}); err != nil {
 		return fail(stderr, exitFailed, "database", err.Error())
 	}
 	type domainRecords struct {
