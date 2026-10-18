@@ -6831,6 +6831,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The body is not a JSON object of the request's fields (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Request body failed validation */
             422: {
                 headers: {
@@ -6977,7 +6986,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     deletePipeline: {
@@ -7197,18 +7214,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "name": "tag-invoices",
-                 *       "description": "Tags mail about invoices",
-                 *       "filter_type": "action",
-                 *       "direction": "inbound",
-                 *       "config": {
-                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-                 *       },
-                 *       "enabled": false
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateCustomFilterRequest"];
             };
         };
@@ -7224,7 +7229,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     validateCustomFilter: {
@@ -7236,11 +7249,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-                 *     }
-                 */
                 "application/json": {
                     /** @description JavaScript filter source to validate */
                     script: string;
@@ -7261,7 +7269,24 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description The body is not a JSON object, or a field has the wrong type (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
             /** @description JS filter sidecar unavailable, or it refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar) */
             503: {
                 headers: {
@@ -7843,12 +7868,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "pattern": "spam@spammer.example.com",
-                 *       "reason": "Sends spam"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -7865,6 +7884,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     removeFromBlocklist: {
@@ -8158,7 +8186,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     deleteBan: {

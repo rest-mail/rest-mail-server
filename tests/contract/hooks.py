@@ -95,13 +95,22 @@ def on_the_created_domain(transaction, **fields):
 
 @hooks.before("createPipeline")
 def a_pipeline_on_the_created_domain(transaction):
-    on_the_created_domain(transaction, direction="inbound", active=False,
-                          filters=[{"name": "header_validate", "config": {}}])
+    fields = {"active": False, "filters": [{"name": "header_validate", "config": {}}]}
+    # The refused create (direction_missing, 422) is sent as documented, with
+    # no direction.
+    if "direction" in hooks.get_json(transaction):
+        fields["direction"] = "inbound"
+    on_the_created_domain(transaction, **fields)
 
 
 @hooks.after("createPipeline")
 def keep_the_created_pipeline(transaction):
-    hooks.stash["pipeline_id"] = (hooks.get_json(transaction, "real").get("data") or {}).get("id")
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    # The refused create runs straight after the one that made the pipeline,
+    # and created nothing to keep.
+    if not data.get("id"):
+        return
+    hooks.stash["pipeline_id"] = data.get("id")
 
 
 @hooks.before("testPipeline")
