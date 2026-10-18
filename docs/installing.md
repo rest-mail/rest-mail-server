@@ -347,3 +347,27 @@ codes, and confirms a current code. They then sign in with the new password
 and authenticator. The token is single use; redemption ends all previous
 sessions and revokes the old credentials. Do not put tokens or passwords in
 CI logs, issue comments, or repository files.
+
+## Ensure a missing DKIM key
+
+Inside the API container, using its existing configuration and database:
+
+```sh
+restmail-api dkim-key ensure --domain example.com
+```
+
+Use the exact canonical ASCII name of an existing domain. This deployment-only
+command requires a configured `MASTER_KEY` of at least 16 bytes, including in
+development. It connects without migrations, RBAC seeds, or account/domain
+creation. When both the stored selector and key are absent (NULL or empty), it
+atomically installs a fresh encrypted 2048-bit RSA key with the default selector.
+Concurrent calls serialize on that domain; lock waits and transactions are bounded.
+
+The single JSON result contains `domain`, `selector`, `created`, and
+`publicDKIMTXT`. Publish the TXT value at `<selector>._domainkey.<domain>`.
+A retry validates and preserves complete existing material byte for byte and
+returns its actual selector and public TXT with `created: false`. Partial,
+invalid, or unreadable material fails without repair or rotation. Review such
+material separately before taking any further action. Private keys and raw
+configuration/database errors are never printed, even with
+`RESTMAIL_OPERATOR_DEBUG=1`.
