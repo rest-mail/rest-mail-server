@@ -38,6 +38,25 @@ def basic(address, password):
     return "Basic " + token
 
 
+def admin_token(origin):
+    """A bearer token for the fixture admin, for the setup a hook does itself.
+
+    The authorization phase runs each transaction as another principal, so a
+    hook's own calls cannot borrow the transaction's credential: they sign in
+    as the admin, whoever the transaction is sent as. Signed in once a run.
+    """
+    if "admin_token" not in hooks.stash:
+        request = urllib.request.Request(
+            origin + "/api/v1/auth/login",
+            data=json.dumps({"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            hooks.stash["admin_token"] = json.load(response)["data"]["access_token"]
+    return hooks.stash["admin_token"]
+
+
 @hooks.before("login")
 def sign_in_as_the_fixture_admin(transaction):
     hooks.set_json(transaction, {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"})
@@ -190,7 +209,7 @@ def give_each_rename_probe_a_folder(transaction):
     request = urllib.request.Request(
         origin + parent,
         data=json.dumps({"name": folder}).encode(),
-        headers={"Content-Type": "application/json", "Authorization": basic(ADMIN, ADMIN_PASSWORD)},
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:
