@@ -4,15 +4,19 @@
 package acme
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -209,23 +213,22 @@ func (c *Client) ObtainCertificate(ctx context.Context, domain string) (*models.
 }
 
 // StoreCertificate stores a PEM-encoded certificate and key in the database,
-// encrypting the private key with the master key.
+// encrypting the private key with the master key. It refuses, without writing,
+// a key that does not match the certificate, a certificate not valid for
+// domain, and an expired one.
 func (c *Client) StoreCertificate(domain, certPEM, keyPEM string) (*models.Certificate, error) {
+	// Refuse anything that could not be served for domain before touching the
+	// database, so a bad issuance or renewal never adds a row that would
+	// supplant the working certificate.
+	x509Cert, err := validateCertificate(domain, certPEM, keyPEM, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
 	// Look up the domain in the database.
 	var dbDomain models.Domain
 	if err := c.db.Where("name = ?", domain).First(&dbDomain).Error; err != nil {
 		return nil, fmt.Errorf("acme: domain %q not found in database: %w", domain, err)
-	}
-
-	// Parse the certificate to extract metadata.
-	block, _ := pem.Decode([]byte(certPEM))
-	if block == nil {
-		return nil, fmt.Errorf("acme: invalid certificate PEM")
-	}
-
-	x509Cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("acme: failed to parse certificate: %w", err)
 	}
 
 	// Encrypt the private key.
@@ -255,6 +258,62 @@ func (c *Client) StoreCertificate(domain, certPEM, keyPEM string) (*models.Certi
 	}
 
 	return cert, nil
+}
+
+// validateCertificate checks that certPEM is a certificate chain and keyPEM its
+// one matching private key, and that the leaf is valid for domain at now. It
+// returns the leaf. Its errors never quote the PEM input, which carries the
+// private key.
+func validateCertificate(domain, certPEM, keyPEM string, now time.Time) (*x509.Certificate, error) {
+	// certPEM is stored in plaintext, so it must hold certificates and nothing
+	// else; a stray private key block there would be kept unencrypted.
+	if countPEMBlocks(certPEM, func(t string) bool { return t == "CERTIFICATE" }) == 0 {
+		return nil, errors.New("acme: certificate PEM must hold only CERTIFICATE blocks")
+	}
+	if countPEMBlocks(keyPEM, func(t string) bool { return strings.HasSuffix(t, "PRIVATE KEY") }) != 1 {
+		return nil, errors.New("acme: private key PEM must hold exactly one private key block")
+	}
+
+	// X509KeyPair parses the chain and the RSA, ECDSA or Ed25519 key, and checks
+	// that the key belongs to the leaf certificate.
+	pair, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM))
+	if err != nil {
+		return nil, errors.New("acme: certificate and private key are not a valid matching pair")
+	}
+	leaf := pair.Leaf
+	if leaf == nil {
+		if leaf, err = x509.ParseCertificate(pair.Certificate[0]); err != nil {
+			return nil, errors.New("acme: failed to parse certificate")
+		}
+	}
+
+	if err := leaf.VerifyHostname(domain); err != nil {
+		return nil, fmt.Errorf("acme: certificate is not valid for domain %q", domain)
+	}
+	if now.After(leaf.NotAfter) {
+		return nil, fmt.Errorf("acme: certificate for %q expired at %s", domain, leaf.NotAfter.UTC().Format(time.RFC3339))
+	}
+
+	return leaf, nil
+}
+
+// countPEMBlocks returns how many PEM blocks data holds, or 0 if it holds
+// anything else: a block of a type allowed refuses, or text outside the blocks.
+func countPEMBlocks(data string, allowed func(blockType string) bool) int {
+	n := 0
+	rest := bytes.TrimSpace([]byte(data))
+	for len(rest) > 0 {
+		if !bytes.HasPrefix(rest, []byte("-----BEGIN ")) {
+			return 0
+		}
+		block, next := pem.Decode(rest)
+		if block == nil || !allowed(block.Type) {
+			return 0
+		}
+		n++
+		rest = bytes.TrimSpace(next)
+	}
+	return n
 }
 
 // NeedsRenewal returns true if the certificate expires within RenewalWindow.
@@ -356,8 +415,9 @@ func (c *dbCache) Get(ctx context.Context, key string) ([]byte, error) {
 		}
 	}
 
-	// Return concatenated cert+key PEM (autocert cache format).
-	return []byte(cert.CertPEM + keyPEM), nil
+	// Return the key followed by the chain: autocert reads the private key from
+	// the first PEM block, and treats anything else as a cache miss.
+	return []byte(keyPEM + cert.CertPEM), nil
 }
 
 func (c *dbCache) Put(ctx context.Context, key string, data []byte) error {
