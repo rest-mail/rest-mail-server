@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/auth"
-	"github.com/restmail/restmail/internal/config"
-	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
@@ -19,48 +17,47 @@ import (
 
 const strongPassword = "correct-horse-battery-staple"
 
-// openBootstrapTestDB connects to the unit-test Postgres and empties the RBAC
-// tables inside a transaction, so each test starts from a fresh install. It skips (never fails) when
-// no database is reachable, matching the repo's depless-local / DB-in-CI
-// convention.
+// openBootstrapTestDB gives each fresh-install test its own scratch database.
+// Other packages migrate the configured database concurrently; even a rolled-back
+// TRUNCATE there can deadlock with their schema queries.
 func openBootstrapTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	port, _ := strconv.Atoi(envOr("DB_PORT", "5432"))
-	gdb, err := rmdb.Connect(&config.Config{
-		DBHost: envOr("DB_HOST", "localhost"),
-		DBPort: port,
-		DBName: envOr("DB_NAME", "restmail"),
-		DBUser: envOr("DB_USER", "restmail"),
-		DBPass: envOr("DB_PASS", "restmail"),
-	})
-	if err != nil {
-		t.Skipf("bootstrap DB test skipped: no database reachable (%v)", err)
+	gdb := openScratchDatabase(t).Begin()
+	if gdb.Error != nil {
+		t.Fatalf("begin bootstrap test transaction: %v", gdb.Error)
 	}
-	if err := gdb.AutoMigrate(&models.Domain{}, &models.Mailbox{}, &models.Pipeline{}, &models.Credential{},
-		&models.Role{}, &models.Capability{}, &models.RoleCapability{}, &models.Grant{}, &models.GrantActivation{},
-		&models.RefreshToken{}); err != nil {
-		t.Skipf("bootstrap DB test skipped: migrate failed (%v)", err)
-	}
-	// Grants made at bootstrap are recorded in the audit log.
-	if err := rmdb.MigrateAuditLog(gdb); err != nil {
-		t.Skipf("bootstrap DB test skipped: audit log migrate failed (%v)", err)
-	}
-	// One rolled-back transaction per test: "no admin exists" is a fact about the
-	// whole database, and other packages' tests share it and run in parallel.
-	// Inside the transaction the emptied tables are invisible to them, and the
-	// TRUNCATE's lock makes them wait for the rollback instead of colliding.
-	gdb = gdb.Begin()
 	t.Cleanup(func() { gdb.Rollback() })
-	// Named by the models, not by hand: a wrong name fails the TRUNCATE.
-	tables := strings.Join([]string{
-		models.Grant{}.TableName(), models.GrantActivation{}.TableName(), models.RoleCapability{}.TableName(),
-		models.Role{}.TableName(), models.Capability{}.TableName(), models.Credential{}.TableName(),
-		models.Mailbox{}.TableName(), models.Pipeline{}.TableName(), "domains",
-	}, ", ")
-	if err := gdb.Exec("TRUNCATE " + tables + " RESTART IDENTITY CASCADE").Error; err != nil {
-		t.Fatalf("empty RBAC tables: %v", err)
-	}
 	return gdb
+}
+
+func TestBootstrapTestDB_IsolatedFromOtherFixtures(t *testing.T) {
+	first := openBootstrapTestDB(t)
+	var firstName string
+	if err := first.Raw("SELECT current_database()").Scan(&firstName).Error; err != nil {
+		t.Fatal(err)
+	}
+	if firstName == envOr("DB_NAME", "restmail") {
+		t.Fatal("fresh-install fixture uses the database shared by other packages")
+	}
+	if err := first.Create(&models.Domain{Name: "fixture-isolation.test"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	second := openBootstrapTestDB(t)
+	var secondName string
+	if err := second.Raw("SELECT current_database()").Scan(&secondName).Error; err != nil {
+		t.Fatal(err)
+	}
+	if firstName == secondName {
+		t.Fatal("fresh-install fixtures share a database")
+	}
+	var count int64
+	if err := second.Model(&models.Domain{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("fresh-install fixture has %d domains, want none", count)
+	}
 }
 
 func envOr(key, fallback string) string {
