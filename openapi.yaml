@@ -3999,7 +3999,7 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/domains/{id}/allowlist:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
     get:
       operationId: listAllowlist
       tags: ["Admin: Sender Rules"]
@@ -4058,7 +4058,7 @@ paths:
 
   /api/v1/admin/domains/{id}/allowlist/{eid}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
       - name: eid
         in: path
         required: true
@@ -4081,7 +4081,7 @@ paths:
 
   /api/v1/admin/domains/{id}/blocklist:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
     get:
       operationId: listBlocklist
       tags: ["Admin: Sender Rules"]
@@ -4140,7 +4140,7 @@ paths:
 
   /api/v1/admin/domains/{id}/blocklist/{eid}:
     parameters:
-      - $ref: "#/components/parameters/ResourceId"
+      - $ref: "#/components/parameters/DomainId"
       - name: eid
         in: path
         required: true
