@@ -355,6 +355,28 @@ includes:
 tasks:
 
   # ════════════════════════════════════════════════════════
+  # REST Mail constellation overview (issues and linked PRs)
+  # ════════════════════════════════════════════════════════
+
+  overview:summary:
+    desc: Counts only — one row per REST Mail repository, including issues and pull requests
+    dotenv: []
+    cmds:
+      - scripts/am-overview --summary
+
+  overview:list:
+    desc: Every REST Mail repository in turn, with issues and their linked pull requests
+    dotenv: []
+    cmds:
+      - scripts/am-overview --list
+
+  overview:tsv:
+    desc: REST Mail issue and pull request detail rows as TSV
+    dotenv: []
+    cmds:
+      - scripts/am-overview --tsv
+
+  # ════════════════════════════════════════════════════════
   # Build (Go binaries — used for local development without Docker)
   # ════════════════════════════════════════════════════════
 
