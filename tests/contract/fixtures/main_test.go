@@ -34,7 +34,11 @@ func fixtureDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { sqlDB.Close() })
+	t.Cleanup(func() {
+		if err := sqlDB.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if err := db.AutoMigrate(&models.Domain{}, &models.OutboundQueue{}); err != nil {
 		t.Fatal(err)
 	}
