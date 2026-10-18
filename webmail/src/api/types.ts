@@ -7544,6 +7544,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Invalid JSON or a body that cannot be decoded into the request shape; no IDs and no filter; or more than 1000 IDs. Refused before any queue lookup. An empty filter object is accepted. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     bulkBounceQueue: {
