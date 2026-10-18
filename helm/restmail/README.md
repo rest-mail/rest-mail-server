@@ -46,8 +46,39 @@ helm install restmail helm/restmail \
 ```
 
 That leaves the API, the JS filter and Postgres, and drops each disabled
-gateway's Deployment, Service and NetworkPolicy. All three default to `true`,
+gateway's workload, Service and NetworkPolicy. All three default to `true`,
 so an existing install renders exactly as it did before.
+
+## A gateway endpoint on every eligible node
+
+Each gateway defaults to `workloadKind: Deployment`, with `replicaCount: 1`.
+Opt in independently to `DaemonSet` for one pod per eligible node:
+
+```yaml
+smtpGateway:
+  workloadKind: DaemonSet
+imapGateway:
+  workloadKind: DaemonSet
+pop3Gateway:
+  workloadKind: DaemonSet
+```
+
+Only `Deployment` and `DaemonSet` are accepted. `replicaCount` applies only to
+Deployments. Both kinds reuse the global `nodeSelector`, `tolerations` and
+`affinity`, the same hardened pod configuration, and the same Service selectors
+and ports. Disabling a gateway removes its workload in either mode.
+
+The gateway Services keep `externalTrafficPolicy: Local` by default, preserving
+the original inbound SMTP client IP for SPF and abuse checks. Every node
+advertised by the mail hostname's round-robin DNS must have a ready local
+endpoint for each advertised protocol, and the load balancer/firewall must
+forward its public ports there. Scheduling constraints, taints, capacity and
+rollouts can leave a node without a ready endpoint even in DaemonSet mode;
+verify coverage before advertising a node. Client submission uses 465, IMAP
+993 and POP3 995; port 25 accepts inbound server mail. There is no listener on
+587. Changing workload kind replaces the controller and can interrupt gateway
+availability during the transition; plan the rollout and verify readiness on
+each advertised node. This option does not configure DNS or the load balancer.
 
 ## The web apps
 
@@ -161,8 +192,10 @@ The chart runs on any conformant Kubernetes cluster (1.27+) and assumes:
    LB (AWS NLB, GCE LB, MetalLB on bare metal). For kind/k3s without a LB
    driver, override `*.service.type` to `NodePort` (the dev values file
    already does this).
-5. **PersistentVolume provisioner.** PostgreSQL data and API attachments use
-   PVCs.
+5. **PersistentVolume provisioner.** PostgreSQL uses a PVC. API attachments use
+   a PVC by default, or a private S3-compatible bucket with
+   `api.attachments.storageType=s3`. See [attachment storage](../../docs/attachment-storage.md)
+   before disabling an existing attachment volume.
 6. **NetworkPolicy-enforcing CNI** (Calico, Cilium, Weave, …). The chart ships
    default-deny NetworkPolicies. On a cluster whose CNI does not enforce them,
    set `networkPolicy.enabled=false` (the policies are then simply inert, but

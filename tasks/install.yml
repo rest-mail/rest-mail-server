@@ -46,6 +46,8 @@ tasks:
         desc: the mail domain it serves; worked out from HOST if left out
       - name: password
         desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: owner_key
+        desc: public SSH key (.pub) for recovery; omitted at a terminal offers local creation or selection
       - name: version
         desc: the chart version (default the newest)
       - name: values
@@ -60,6 +62,7 @@ tasks:
       DOMAIN:
         sh: printf %s "${HOST#*.}"
       PASSWORD: ''
+      OWNER_KEY: ''
       VERSION: ''
       VALUES: ''
       NAME: restmail
@@ -97,6 +100,8 @@ tasks:
         desc: the mail domain it serves; worked out from HOST if left out
       - name: password
         desc: the admin password, if yours comes from somewhere; otherwise one is made and shown once
+      - name: owner_key
+        desc: public SSH key (.pub) for recovery; omitted at a terminal offers local creation or selection
       - name: version
         desc: the chart version (default the newest)
       - name: name
@@ -109,6 +114,7 @@ tasks:
       DOMAIN:
         sh: printf %s "${HOST#*.}"
       PASSWORD: ''
+      OWNER_KEY: ''
       VERSION: ''
       NAME: restmail
       NAMESPACE: rest-mail

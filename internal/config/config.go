@@ -58,6 +58,7 @@ const (
 )
 
 type Config struct {
+	Attachments AttachmentStorageConfig
 	// Database
 	DBHost            string
 	DBPort            int
@@ -130,7 +131,8 @@ type Config struct {
 	BootstrapAdminPassword     string
 	BootstrapAdminPasswordHash string
 
-	// OwnerKeys lists, in authorized_keys format, the public keys whose holders
+	// OwnerKeys seeds PostgreSQL's initial registry, in authorized_keys format.
+	// After enrollment the database is authoritative. The public keys' holders
 	// can reset its admins over the public API (internal/bootstrap/ownerkeys.go).
 	// Not a secret.
 	OwnerKeys string
@@ -808,6 +810,10 @@ func Load() (*Config, error) {
 	// exact path so the testbed's rendered/provisioned setup is unchanged.
 	cfg.TrustedCACertPath = getEnv("TRUSTED_CA_CERT", "/certs/ca.crt")
 	cfg.DNSBLConfigPath = strings.TrimSpace(getEnv("RESTMAIL_DNSBL_CONFIG", ""))
+	cfg.Attachments, err = loadAttachmentStorage()
+	if err != nil {
+		return nil, err
+	}
 
 	// ── OSI-4: boot-time security config validation (single append-only call).
 	// Production (ENVIRONMENT=production) refuses to boot on an insecure value;

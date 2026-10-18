@@ -12,6 +12,7 @@ import (
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/attachmentstore"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/bootstrap"
@@ -165,7 +166,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	eventH := handlers.NewEventHandler(db, broker, jwtService, sessionCurrent)
 	accountH := handlers.NewAccountHandler(db, grantCache, cfg.MasterKey)
 	searchH := handlers.NewSearchHandler(db)
-	attachmentH := handlers.NewAttachmentHandler(db)
+	attachmentStore := attachmentstore.NewS3(cfg.Attachments)
+	attachmentH := handlers.NewAttachmentHandler(db, attachmentStore)
 	contactH := handlers.NewContactHandler(db)
 	vacationH := handlers.NewVacationHandler(db)
 	sieveH := handlers.NewSieveHandler(db)
@@ -208,6 +210,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	credentialH := handlers.NewCredentialHandler(db)
 
 	// Register DB-backed filters that need a database connection.
+	pipeline.DefaultRegistry.Register("extract_attachments", filters.NewExtractAttachmentsWithS3(attachmentStore))
 	pipeline.DefaultRegistry.Register("greylist", filters.NewGreylist(db))
 	pipeline.DefaultRegistry.Register("vacation", filters.NewVacation(db))
 	pipeline.DefaultRegistry.Register("domain_allowlist", filters.NewDomainAllowlist(db))
@@ -397,7 +400,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// mint-token) or for an owner key: reset an admin who has lost every way
 	// in. Throttled like login: it guesses at a secret.
 	r.With(authThrottle, auditLog("auth.reset", middleware.AuditStartedSession())).Post("/api/v1/auth/reset", authH.Reset)
-	// Owners prove themselves with a key listed in RESTMAIL_OWNER_KEYS: sign a
+	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
 	// up the budget the owner then needs to sign in. main has already refused
@@ -409,9 +412,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Burst: cfg.AuthRateLimitBurst,
 		})
 	}
-	ownerKeys, _ := bootstrap.ParseOwnerKeys(cfg.OwnerKeys)
 	statusKeys, _ := bootstrap.ParseStatusKeys(cfg.StatusKeys)
-	ownerH := handlers.NewOwnerHandler(db, ownerKeys, statusKeys, cfg.JWTSecret)
+	ownerH := handlers.NewOwnerHandler(db, statusKeys, cfg.JWTSecret)
 	r.With(ownerThrottle).Post("/api/v1/auth/owner/challenge", ownerH.Challenge)
 	r.With(ownerThrottle, auditLog("auth.owner_token", middleware.AuditSignIn())).Post("/api/v1/auth/owner/token", ownerH.Token)
 	// The same challenge, signed for "status" with a key in

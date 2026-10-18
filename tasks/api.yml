@@ -87,10 +87,18 @@ tasks:
         fi
       - |
         echo "  starting api ({{.API_CONTAINER_NAME}} @ {{.API_IP}}, mode={{.API_MODE}})"
+        # Air executes /app/tmp binaries; Go needs executable build/temp space.
+        # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
+        # the image's preloaded modules as a read-only proxy before the network.
         if [ "{{.API_MODE}}" = "dev" ]; then
-          DEV_MOUNTS="-v $(pwd):/app -v /app/tmp"
+          DEV_FLAGS="--read-only -v $(pwd):/app \
+            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,uid=0,gid=0 \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777 \
+            -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
+            -e GOCACHE=/tmp/go-build-cache \
+            -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
         else
-          DEV_MOUNTS=""
+          DEV_FLAGS=""
         fi
         docker rm -f {{.API_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # The testbed dnsmasq must be the ONLY resolver (mounted resolv.conf, not
@@ -113,10 +121,8 @@ tasks:
         PUBLISH=""
         # Container hardening (OSI-17): no privilege escalation, drop ALL Linux
         # capabilities (the API binds the unprivileged :8080/:8443, so needs
-        # none), plus pid/mem/cpu ceilings. Rootfs is left writable: dev mode
-        # hot-reloads via `air` (compiles into the bind-mounted /app) and the
-        # entrypoint runs update-ca-certificates — read-only rootfs is a
-        # prod-image follow-up (see PR notes).
+        # none), plus pid/mem/cpu ceilings. Dev uses a read-only rootfs with
+        # bounded tmpfs mounts for Air and Go; prod retains its CA entrypoint.
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --pids-limit 1024 --memory 2g --cpus 2"
@@ -156,7 +162,7 @@ tasks:
           $PUBLISH \
           -v {{.API_OWN_CERTS_VOLUME}}:/certs:ro \
           -v {{.API_ATTACHMENTS_VOLUME}}:/attachments \
-          $DEV_MOUNTS \
+          $DEV_FLAGS \
           -l docker-proxy.api.host={{.API_PROXY_HOST}} \
           -l docker-proxy.api.port={{.API_PORT}} \
           -l docker-proxy.api.path=/api \

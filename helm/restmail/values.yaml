@@ -190,12 +190,13 @@ api:
   # so the API may serve them unauthenticated on the public listener. Without
   # either mTLS or this acknowledgement, the API refuses to boot in production.
   internalRoutesAllowPublic: false
-  # Public keys of the server's owners, one per line in authorized_keys format
+  # Initial public owner keys, one per line in authorized_keys format
   # (e.g. the contents of ~/.ssh/id_ed25519.pub). Whoever holds a matching
   # private key can let an admin back in (`restmail reset-admin`) from anywhere
   # the API is reachable, when every other way in is lost. Public keys, so not
-  # secret. Empty: that is possible only with `chore password:reset`, or
-  # `restmail-api mint-token` on the server itself.
+  # secret. Imported only while PostgreSQL's owner registry is empty. Later
+  # changes use `restmail-api owner-key add/revoke`; removing this value does
+  # not remove registered keys, and a restart cannot restore revoked keys.
   ownerKeys: ""
   # Public keys, in the same format, that may only read which version the
   # server runs, its commit, and when it was built and started
@@ -243,6 +244,25 @@ api:
       cpu: 1000m
       memory: 512Mi
   attachments:
+    # Select s3 to let API pods share private attachment objects without a PVC.
+    # Keep persistence enabled during migration; migrate-attachments verifies
+    # copies before updating PostgreSQL references and retains source files.
+    storageType: filesystem
+    s3:
+      endpoint: "" # empty uses the AWS endpoint; Garage: http://garage-s3.garage.svc:3900
+      region: us-east-1
+      bucket: ""
+      prefix: attachments/
+      forcePathStyle: true
+      accessKeyId: ""
+      secretAccessKey: ""
+      # Or provide a Secret with ACCESS_KEY_ID and SECRET_ACCESS_KEY.
+      existingSecret: ""
+      # Additional API egress for private stores. Public HTTP(S) is already
+      # allowed. For Garage, select its namespace and app=garage pods on 3900.
+      networkPolicy:
+        port: 443
+        to: []
     persistence:
       enabled: true
       storageClass: ""
@@ -280,6 +300,9 @@ smtpGateway:
   # why. The API is a complete product without the protocol gateways; they are
   # how traditional clients reach it, not how it works.
   enabled: true
+  # Deployment (default) or DaemonSet for one gateway pod per eligible node.
+  workloadKind: Deployment
+  # Used only by Deployment.
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/smtp-gateway
@@ -332,6 +355,9 @@ smtpGateway:
 imapGateway:
   # See smtpGateway.enabled. Off means no IMAP clients, not a degraded API.
   enabled: true
+  # Deployment (default) or DaemonSet for one gateway pod per eligible node.
+  workloadKind: Deployment
+  # Used only by Deployment.
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/imap-gateway
@@ -362,6 +388,9 @@ imapGateway:
 pop3Gateway:
   # See smtpGateway.enabled. Off means no POP3 clients, not a degraded API.
   enabled: true
+  # Deployment (default) or DaemonSet for one gateway pod per eligible node.
+  workloadKind: Deployment
+  # Used only by Deployment.
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/pop3-gateway

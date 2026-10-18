@@ -88,9 +88,9 @@ echo "== no workload mounts a CA private key (#193) =="
 # key: a Secret given to the chart may hold more (cert-manager keeps a CA issuer's
 # key in a Secret, for one), and a whole-Secret mount would hand that over too.
 #
-# The chart's workloads are Deployments and StatefulSets; the guard below fails if
+# The chart's workloads are Deployments, DaemonSets and StatefulSets; the guard fails if
 # another kind appears, so it cannot slip past these checks.
-workloads='select(.kind == "Deployment" or .kind == "StatefulSet")'
+workloads='select(.kind == "Deployment" or .kind == "DaemonSet" or .kind == "StatefulSet")'
 MOUNTABLE=" tls.crt tls.key ca.crt server.crt server.key client.crt client.key AuthKey.p8 "
 # One line per Secret volume: <workload> <volume> <key,key,...>.
 secret_volumes() {
@@ -99,7 +99,7 @@ secret_volumes() {
 }
 check_no_ca_key() { # check_no_ca_key <label> <render>
   local other volumes w vol keys k
-  other=$(yq -N e 'select(.kind == "Pod" or .kind == "DaemonSet" or .kind == "ReplicaSet" or .kind == "Job" or .kind == "CronJob") | .kind' "$2")
+  other=$(yq -N e 'select(.kind == "Pod" or .kind == "ReplicaSet" or .kind == "Job" or .kind == "CronJob") | .kind' "$2")
   [ -z "$other" ] || fail "$1: a workload this test does not look into: $other"
   other=$(yq -N e "$workloads"' | .metadata.name as $w | .spec.template.spec.volumes[]
     | select(has("hostPath") or has("projected")) | $w + " " + .name' "$2")
@@ -194,6 +194,106 @@ for gw in smtp:25,465:10025,10465 imap:993:10993 pop3:995:10995; do
   pass "$name gateway: public $public onto $listening, and the policy opens $listening"
 done
 
+echo "== gateway Deployment defaults and opt-in DaemonSets (#372) =="
+DAEMONSET_ARGS=(--set smtpGateway.workloadKind=DaemonSet --set imapGateway.workloadKind=DaemonSet
+                --set pop3Gateway.workloadKind=DaemonSet)
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" "${DAEMONSET_ARGS[@]}" \
+  --set smtpGateway.replicaCount=7 --set imapGateway.replicaCount=7 \
+  --set pop3Gateway.replicaCount=7 > "$tmp/daemonsets.yaml"
+
+# Compare structured objects: the controller kind must not change pod security,
+# probes, ports, credentials, metadata or any Service field.
+gateway_object() { # gateway_object <render> <kind> <name> <expression>
+  yq -N -o=json -I=0 e "select(.kind == \"$2\" and .metadata.name == \"$3\") | $4 | sort_keys(..)" "$1"
+}
+for gw in smtp imap pop3; do
+  name="restmail-$gw-gateway"
+  gateway_object "$tmp/prod.yaml" Deployment "$name" '.' > "$tmp/default-gateway.json"
+  gateway_object "$tmp/daemonsets.yaml" DaemonSet "$name" '.' > "$tmp/daemonset-gateway.json"
+  [ -s "$tmp/default-gateway.json" ] || fail "$gw: default Deployment missing"
+  [ -s "$tmp/daemonset-gateway.json" ] || fail "$gw: opt-in DaemonSet missing"
+  [ "$(yq -r e '.spec.replicas' "$tmp/default-gateway.json")" = 1 ] || fail "$gw: default replicas changed"
+  yq -e '.spec | (has("replicas") or has("strategy") or has("progressDeadlineSeconds")) == false' \
+    "$tmp/daemonset-gateway.json" > /dev/null || fail "$gw: DaemonSet has Deployment-only fields"
+  for field in '.metadata' '.spec.selector' '.spec.template'; do
+    yq -o=json -I=0 e "$field" "$tmp/default-gateway.json" > "$tmp/default-field.json"
+    yq -o=json -I=0 e "$field" "$tmp/daemonset-gateway.json" > "$tmp/daemonset-field.json"
+    diff -u "$tmp/default-field.json" "$tmp/daemonset-field.json" || fail "$gw: $field changed with workload kind"
+  done
+  for render in prod daemonsets; do
+    gateway_object "$tmp/$render.yaml" Service "$name" '.' > "$tmp/$render-service.json"
+    [ "$(yq -r e '.spec.externalTrafficPolicy' "$tmp/$render-service.json")" = Local ] ||
+      fail "$gw: $render Service lost Local traffic policy"
+    yq -o=json -I=0 e '.spec.selector' "$tmp/$render-service.json" > "$tmp/service-selector.json"
+    yq -o=json -I=0 e '.spec.selector.matchLabels' "$tmp/default-gateway.json" > "$tmp/workload-selector.json"
+    diff -u "$tmp/workload-selector.json" "$tmp/service-selector.json" || fail "$gw: Service selector mismatch"
+    yq -o=json -I=0 e '.spec.template.metadata.labels' "$tmp/default-gateway.json" > "$tmp/pod-labels.json"
+    diff -u "$tmp/workload-selector.json" "$tmp/pod-labels.json" || fail "$gw: pod labels mismatch"
+  done
+  diff -u "$tmp/prod-service.json" "$tmp/daemonsets-service.json" || fail "$gw: Service changed with workload kind"
+  pass "$gw: Deployment defaults, DaemonSet without replicas/strategy, identical pod and Local Service"
+done
+check_no_ca_key "DaemonSets" "$tmp/daemonsets.yaml"
+check_non_root "DaemonSets" "$tmp/daemonsets.yaml"
+
+# Each gateway opts in independently; the others must remain Deployments.
+for chosen in smtp imap pop3; do
+  helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+    --set "${chosen}Gateway.workloadKind=DaemonSet" > "$tmp/mixed.yaml"
+  for gw in smtp imap pop3; do
+    kind=Deployment
+    if [ "$gw" = "$chosen" ]; then kind=DaemonSet; fi
+    object=$(gateway_object "$tmp/mixed.yaml" "$kind" "restmail-$gw-gateway" '.kind')
+    [ "$object" = "\"$kind\"" ] || fail "$chosen opt-in: $gw is not $kind"
+  done
+  pass "$chosen: workload kind is independent"
+done
+
+cat > "$tmp/scheduling.yaml" <<'YAML'
+nodeSelector:
+  restmail-role: mail
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: mail
+    effect: NoSchedule
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/os
+              operator: In
+              values: [linux]
+YAML
+for kind in Deployment DaemonSet; do
+  helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/scheduling.yaml" \
+    --set "smtpGateway.workloadKind=$kind" --set "imapGateway.workloadKind=$kind" \
+    --set "pop3Gateway.workloadKind=$kind" > "$tmp/scheduled.yaml"
+  for gw in smtp imap pop3; do
+    for field in nodeSelector tolerations affinity; do
+      yq -o=json -I=0 e ".$field | sort_keys(..)" "$tmp/scheduling.yaml" > "$tmp/expected-scheduling.json"
+      gateway_object "$tmp/scheduled.yaml" "$kind" "restmail-$gw-gateway" \
+        ".spec.template.spec.$field" > "$tmp/actual-scheduling.json"
+      diff -u "$tmp/expected-scheduling.json" "$tmp/actual-scheduling.json" ||
+        fail "$gw $kind: $field not retained"
+    done
+    pass "$gw $kind: nodeSelector, tolerations and affinity retained"
+  done
+done
+
+for gw in smtp imap pop3; do
+  for invalid in StatefulSet daemonset '' true 42; do
+    refusal=$(helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
+      --set "${gw}Gateway.workloadKind=$invalid" 2>&1) && fail "$gw: accepted workloadKind=$invalid"
+    case "$refusal" in
+      *"${gw}Gateway.workloadKind must be Deployment or DaemonSet"*) ;;
+      *) fail "$gw: invalid kind refused without useful error: $refusal" ;;
+    esac
+  done
+  pass "$gw: invalid kinds refused with the setting name and allowed kinds"
+done
+
 echo "== the API's rollout can finish with a single-node volume =="
 # A rolling update cannot hand a ReadWriteOnce volume from the old pod to a new
 # one on another node; Recreate can. With shared (ReadWriteMany) storage, or
@@ -239,6 +339,13 @@ helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" \
 
 for gw in smtp imap pop3; do
   assert_absent "$gw gateway gone"        "$tmp/api-only.yaml" "restmail-$gw-gateway"
+done
+# Disabling a gateway also wins over a valid DaemonSet opt-in.
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" "${DAEMONSET_ARGS[@]}" \
+  --set smtpGateway.enabled=false --set imapGateway.enabled=false \
+  --set pop3Gateway.enabled=false > "$tmp/disabled-daemonsets.yaml"
+for gw in smtp imap pop3; do
+  assert_absent "$gw DaemonSet gateway gone" "$tmp/disabled-daemonsets.yaml" "restmail-$gw-gateway"
 done
 # A Service left behind would sit pending for an address nobody will give it.
 assert_absent   "no LoadBalancer remains" "$tmp/api-only.yaml" 'type: LoadBalancer'
@@ -512,4 +619,52 @@ fi
 pass "guard rejects secure sslMode against a non-TLS bundled Postgres"
 
 echo
+echo "== private S3 attachments and retained migration volume =="
+cat > "$tmp/s3-values.yaml" <<'YAML'
+api:
+  attachments:
+    storageType: s3
+    s3:
+      endpoint: http://garage-s3.garage.svc:3900
+      region: garage
+      bucket: mail-attachments
+      accessKeyId: fixture-key-id
+      secretAccessKey: fixture-private-secret
+      networkPolicy:
+        port: 3900
+        to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: garage
+            podSelector:
+              matchLabels:
+                app: garage
+YAML
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" > "$tmp/s3.yaml"
+assert_contains "S3 driver is configured" "$tmp/s3.yaml" 'ATTACHMENT_STORAGE_TYPE: "s3"'
+assert_contains "S3 credentials use a Secret" "$tmp/s3.yaml" 'name: restmail-api-attachments-s3'
+yq 'select(.kind == "ConfigMap")' "$tmp/s3.yaml" > "$tmp/s3-configmaps.yaml"
+assert_absent "S3 credential never enters a ConfigMap" "$tmp/s3-configmaps.yaml" 'fixture-private-secret'
+assert_contains "old attachment PVC remains during migration" "$tmp/s3.yaml" 'mountPath: /attachments'
+yq 'select(.kind == "NetworkPolicy" and .metadata.name == "restmail-api") | .spec.egress[] | select(.ports[0].port == 3900) | .to' "$tmp/s3.yaml" > "$tmp/s3-egress.yaml"
+assert_contains "Garage egress selects its namespace" "$tmp/s3-egress.yaml" 'kubernetes.io/metadata.name: garage'
+assert_contains "Garage egress selects its pods" "$tmp/s3-egress.yaml" 'app: garage'
+
+helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" \
+  --set api.attachments.persistence.enabled=false \
+  --set api.attachments.s3.existingSecret=my-s3-secret \
+  --set api.attachments.s3.accessKeyId= --set api.attachments.s3.secretAccessKey= > "$tmp/s3-no-pvc.yaml"
+assert_contains "external S3 Secret is referenced" "$tmp/s3-no-pvc.yaml" 'name: my-s3-secret'
+assert_absent "S3 after migration has no attachment mount" "$tmp/s3-no-pvc.yaml" 'mountPath: /attachments'
+assert_absent "external S3 Secret creates no inline credentials" "$tmp/s3-no-pvc.yaml" 'fixture-private-secret'
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" --set api.attachments.storageType=s3 > /dev/null 2>&1; then
+  fail "S3 without bucket and credentials was accepted"
+fi
+pass "incomplete S3 configuration is refused"
+if helm template restmail "$CHART_DIR" "${PROD_ARGS[@]}" -f "$tmp/s3-values.yaml" \
+  --set api.attachments.s3.existingSecret=my-s3-secret > /dev/null 2>&1; then
+  fail "conflicting S3 credential sources were accepted"
+fi
+pass "conflicting S3 credential sources are refused"
+
 echo "All chart render tests passed."

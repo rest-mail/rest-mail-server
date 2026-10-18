@@ -141,8 +141,8 @@ func main() {
 
 	// A key list that does not parse would lock the owner out without a word;
 	// refuse to start instead.
-	if _, err := bootstrap.ParseOwnerKeys(cfg.OwnerKeys); err != nil {
-		slog.Error("invalid owner keys", "error", err)
+	if err := bootstrap.SeedOwnerKeys(database, cfg.OwnerKeys); err != nil {
+		slog.Error("failed to register initial owner keys", "error", err)
 		os.Exit(1)
 	}
 	if _, err := bootstrap.ParseStatusKeys(cfg.StatusKeys); err != nil {

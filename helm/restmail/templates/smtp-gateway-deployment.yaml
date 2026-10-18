@@ -1,12 +1,15 @@
 {{- if .Values.smtpGateway.enabled -}}
+{{- $kind := include "restmail.gatewayWorkloadKind" (list .Values.smtpGateway "smtpGateway") -}}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ $kind }}
 metadata:
   name: {{ include "restmail.componentName" (list . "smtp-gateway") }}
   labels:
     {{- include "restmail.componentLabels" (list . "smtp-gateway") | nindent 4 }}
 spec:
+  {{- if eq $kind "Deployment" }}
   replicas: {{ .Values.smtpGateway.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "restmail.componentSelectorLabels" (list . "smtp-gateway") | nindent 6 }}

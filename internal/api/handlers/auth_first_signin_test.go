@@ -202,6 +202,9 @@ func TestFirstSignIn_CanOnlyFinishSetup(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("refresh = %d %s", rr.Code, rr.Body)
 	}
+	if want := []string{"password", "two_factor"}; !reflect.DeepEqual(refreshed.SetupRequired, want) {
+		t.Errorf("refresh setup_required = %v, want %v", refreshed.SetupRequired, want)
+	}
 	if got := f.adminAPI(refreshed.AccessToken); got.Code != http.StatusForbidden {
 		t.Fatalf("admin API after refresh = %d, want 403: the refresh escaped setup", got.Code)
 	}
@@ -229,6 +232,9 @@ func TestFirstSignIn_PasswordAloneIsNotEnough(t *testing.T) {
 	}
 	if want := []string{"two_factor"}; !reflect.DeepEqual(s2.SetupRequired, want) {
 		t.Errorf("setup_required = %v, want %v", s2.SetupRequired, want)
+	}
+	if rr, refreshed := f.refresh(s2.RefreshToken); rr.Code != http.StatusOK || !reflect.DeepEqual(refreshed.SetupRequired, []string{"two_factor"}) {
+		t.Errorf("refresh after password = %d, setup_required %v, want two_factor", rr.Code, refreshed.SetupRequired)
 	}
 	if got := f.adminAPI(s2.AccessToken); got.Code != http.StatusForbidden {
 		t.Errorf("admin API with password but no 2FA = %d, want 403", got.Code)

@@ -59,6 +59,7 @@ type accountState struct {
 	DisplayName     string
 	Capabilities    []string
 	SetupPending    bool
+	SetupRequired   []string
 	CredentialEpoch int
 }
 
@@ -89,6 +90,7 @@ func (s dbAccountState) AccountState(id uint) (accountState, error) {
 		DisplayName:     account.DisplayName,
 		Capabilities:    held.Capabilities(),
 		SetupPending:    len(steps) > 0,
+		SetupRequired:   steps,
 		CredentialEpoch: account.CredentialEpoch,
 	}, nil
 }
@@ -597,7 +599,14 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		ExpiresIn: tokens.ExpiresIn,
 		User:      userInfo{ID: claims.AccountID, Email: state.Address, DisplayName: state.DisplayName},
 	}
-	if !state.SetupPending {
+	if state.SetupPending {
+		resp.SetupRequired = state.SetupRequired
+		// A store-less handler is used in token-only tests. If it cannot
+		// distinguish the steps, keep the client in setup conservatively.
+		if len(resp.SetupRequired) == 0 {
+			resp.SetupRequired = []string{setupStepPassword, setupStepTwoFactor}
+		}
+	} else {
 		resp.Capabilities = state.Capabilities
 	}
 	if err := deliverSession(w, tokens, native, &resp); err != nil {

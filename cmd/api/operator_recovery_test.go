@@ -1,7 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -160,6 +166,9 @@ func TestRevokeSessions_EndsEveryRefreshTokenAndEpoch(t *testing.T) {
 }
 
 func TestDNSRecords_DerivesDKIMFromTheStoredKey(t *testing.T) {
+	if os.Getenv("RESTMAIL_DNS_SUBPROCESS") == "1" {
+		os.Exit(runOperator([]string{"dns-records", "--mail-host", "mail.signed.example", "--ip", "203.0.113.5"}, os.Stdout, os.Stderr))
+	}
 	gdb := scratchDatabase(t)
 	masterKey := "a-master-key-long-enough-for-config"
 	t.Setenv("MASTER_KEY", masterKey)
@@ -172,12 +181,65 @@ func TestDNSRecords_DerivesDKIMFromTheStoredKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gdb.Create(&models.Domain{Name: "signed.example", DKIMSelector: "mail", DKIMPrivateKey: stored})
-	gdb.Create(&models.Domain{Name: "unsigned.example"})
+	// Insert out of order to retain the command's alphabetical ordering check.
+	if err := gdb.Create(&models.Domain{Name: "unsigned.example"}).Error; err != nil {
+		t.Fatal("seed unsigned domain failed")
+	}
+	if err := gdb.Create(&models.Domain{Name: "signed.example", DKIMSelector: "mail", DKIMPrivateKey: stored}).Error; err != nil {
+		t.Fatal("seed encrypted domain failed")
+	}
+	// An existing schema with missing RBAC seeds must remain unseeded.
+	if err := gdb.Exec("TRUNCATE roles, capabilities, role_capabilities").Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []any{
+		&models.RefreshToken{Jti: "dns-observation-session", AccountID: 7, SessionID: "dns-observation-session", Status: models.RefreshTokenActive, ExpiresAt: time.Now().Add(time.Hour)},
+		&models.OneTimeToken{Purpose: models.OneTimeTokenResetAdmin, TokenHash: strings.Repeat("a", 64), ExpiresAt: time.Now().Add(time.Hour)},
+	} {
+		if err := gdb.Create(fixture).Error; err != nil {
+			t.Fatal("seed observation sentinel failed")
+		}
+	}
+	before := operatorDatabaseSnapshot(t, gdb)
+	setOperatorDatabaseReadOnly(t, gdb)
 
-	status, out, errOut := run("dns-records", "--mail-host", "mail.signed.example", "--ip", "203.0.113.5")
-	if status != exitOK {
-		t.Fatalf("status %d, stderr %s", status, errOut)
+	var out, errOut string
+	for _, debug := range []string{"", "1"} {
+		wrongKey := "a-different-master-key-for-refusal"
+		for _, configuredKey := range []string{wrongKey, masterKey} {
+			t.Setenv("RESTMAIL_OPERATOR_DEBUG", debug)
+			cmd := exec.Command(os.Args[0], "-test.run=^TestDNSRecords_DerivesDKIMFromTheStoredKey$")
+			cmd.Env = append(os.Environ(), "RESTMAIL_DNS_SUBPROCESS=1", "MASTER_KEY="+configuredKey)
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			err := cmd.Run()
+			out, errOut = stdout.String(), stderr.String()
+			for _, secret := range []string{privPEM, stored, masterKey, wrongKey, "-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----"} {
+				if strings.Contains(out+errOut, secret) {
+					t.Fatal("operator output contains confidential key material")
+				}
+			}
+			if err != nil {
+				t.Fatalf("read-only operator subprocess failed: %v", err)
+			}
+			if !json.Valid([]byte(out)) {
+				t.Fatal("stdout is not just the JSON result")
+			}
+			if debug == "" && errOut != "" {
+				t.Fatal("quiet operator wrote to stderr")
+			}
+			if debug != "" && !strings.Contains(errOut, "SELECT") {
+				t.Fatal("debug SQL logging was lost")
+			}
+			if configuredKey == wrongKey {
+				if !strings.Contains(out, `"problem":"DKIM key unreadable:`) || strings.Contains(out, "mail._domainkey.signed.example") {
+					t.Fatal("unreadable encrypted key did not retain its problem without publishing DKIM")
+				}
+			}
+		}
+	}
+	if after := operatorDatabaseSnapshot(t, gdb); before != after {
+		t.Fatal("dns-records changed schema or rows, including RBAC seeds")
 	}
 	var got struct {
 		Domains []struct {
@@ -187,13 +249,33 @@ func TestDNSRecords_DerivesDKIMFromTheStoredKey(t *testing.T) {
 		} `json:"domains"`
 	}
 	if err := json.Unmarshal([]byte(out), &got); err != nil || len(got.Domains) != 2 {
-		t.Fatalf("output = %q", out)
+		t.Fatal("output does not contain the expected two domains")
 	}
-	want, _ := dkim.RecordValue(pubPEM)
+	want, err := dkim.RecordValue(pubPEM)
+	if err != nil {
+		t.Fatal("fixture public key is invalid")
+	}
 	signed := got.Domains[0]
 	found := map[string]string{}
 	for _, r := range signed.Records {
 		found[r.Type+" "+r.Name] = r.Value
+	}
+	// Decode the actual DNS p= value and compare its public DER to the fixture.
+	_, publicValue, ok := strings.Cut(found["TXT mail._domainkey.signed.example"], "p=")
+	if !ok {
+		t.Fatal("DKIM record has no public key")
+	}
+	publicValue = strings.TrimSpace(publicValue)
+	der, err := base64.StdEncoding.DecodeString(publicValue)
+	if err != nil {
+		t.Fatal("DNS public key is not base64 DER")
+	}
+	if _, err := x509.ParsePKIXPublicKey(der); err != nil {
+		t.Fatal("DNS public key is not PKIX DER")
+	}
+	block, _ := pem.Decode([]byte(pubPEM))
+	if block == nil || !bytes.Equal(der, block.Bytes) {
+		t.Fatal("DNS public DER does not match encrypted fixture")
 	}
 	if found["TXT mail._domainkey.signed.example"] != want {
 		t.Errorf("DKIM record = %q, want the key's public half", found["TXT mail._domainkey.signed.example"])

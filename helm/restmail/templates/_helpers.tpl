@@ -231,9 +231,45 @@ dnsConfig:
 {{- end -}}
 
 {{/*
+Gateway workload kind, validated even for disabled gateways.
+Usage: {{ include "restmail.gatewayWorkloadKind" (list .Values.smtpGateway "smtpGateway") }}
+*/}}
+{{- define "restmail.gatewayWorkloadKind" -}}
+{{- $gateway := index . 0 -}}
+{{- $name := index . 1 -}}
+{{- $kind := "Deployment" -}}
+{{- if hasKey $gateway "workloadKind" -}}
+{{- $kind = $gateway.workloadKind -}}
+{{- end -}}
+{{- if not (has $kind (list "Deployment" "DaemonSet")) -}}
+{{- fail (printf "%s.workloadKind must be Deployment or DaemonSet (got %v)" $name $kind) -}}
+{{- end -}}
+{{- $kind -}}
+{{- end -}}
+
+{{/*
 Validate required production values.
 */}}
 {{- define "restmail.validate" -}}
+{{- range $name := list "smtpGateway" "imapGateway" "pop3Gateway" -}}
+{{- $_ := include "restmail.gatewayWorkloadKind" (list (index $.Values $name) $name) -}}
+{{- end -}}
+{{- $attachments := .Values.api.attachments -}}
+{{- if not (has $attachments.storageType (list "filesystem" "s3")) -}}
+{{- fail "api.attachments.storageType must be filesystem or s3" -}}
+{{- end -}}
+{{- if eq $attachments.storageType "s3" -}}
+{{- if not (and $attachments.s3.bucket $attachments.s3.region) -}}
+{{- fail "S3 attachments require api.attachments.s3.bucket and region" -}}
+{{- end -}}
+{{- if $attachments.s3.existingSecret -}}
+{{- if or $attachments.s3.accessKeyId $attachments.s3.secretAccessKey -}}
+{{- fail "use api.attachments.s3.existingSecret or inline S3 credentials, not both" -}}
+{{- end -}}
+{{- else if not (and $attachments.s3.accessKeyId $attachments.s3.secretAccessKey) -}}
+{{- fail "S3 attachments require api.attachments.s3.existingSecret or both accessKeyId and secretAccessKey" -}}
+{{- end -}}
+{{- end -}}
 {{- if not .Values.mailserver.hostname -}}
 {{- fail "mailserver.hostname is required (the public FQDN gateways announce)" -}}
 {{- end -}}

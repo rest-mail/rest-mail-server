@@ -47,7 +47,8 @@ export function LoginPage() {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <a href="#reset" className="text-sm underline">Use an account recovery token</a>
+          <form onSubmit={handleSubmit} className="space-y-3">
           {!totpRequired && (
             <>
               {/* Email field */}
