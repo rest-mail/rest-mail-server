@@ -435,7 +435,7 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		FilterType  string          `json:"filter_type"`
 		Direction   string          `json:"direction"`
 		Config      json.RawMessage `json:"config"`
-		Enabled     bool            `json:"enabled"`
+		Enabled     *bool           `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -462,15 +462,26 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		FilterType:  req.FilterType,
 		Direction:   req.Direction,
 		Config:      req.Config,
-		Enabled:     req.Enabled,
+		Enabled:     true,
 	}
 
-	if err := h.db.Create(&cf).Error; err != nil {
+	if req.Enabled != nil {
+		cf.Enabled = *req.Enabled
+	}
+
+	// A non-nil pointer preserves explicit false despite the model's
+	// default:true. Overlay only this insert so other creation paths retain
+	// that default, without a follow-up update or partial-write window.
+	row := struct {
+		models.CustomFilter
+		Enabled *bool
+	}{CustomFilter: cf, Enabled: &cf.Enabled}
+	if err := h.db.Table(cf.TableName()).Create(&row).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create custom filter")
 		return
 	}
 
-	respond.Data(w, http.StatusCreated, cf)
+	respond.Data(w, http.StatusCreated, row.CustomFilter)
 }
 
 // customFilterFieldErrors checks a custom filter's type and direction against
