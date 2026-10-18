@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -23,29 +24,42 @@ func NewDKIMHandler(db *gorm.DB, masterKey string) *DKIMHandler {
 	return &DKIMHandler{db: db, masterKey: masterKey}
 }
 
+// dkimEntry contains only public monitoring metadata. Unknown legacy key ages
+// are null; the domain's CreatedAt/UpdatedAt are not key timestamps.
+type dkimEntry struct {
+	DomainID   uint       `json:"domain_id"`
+	Domain     string     `json:"domain"`
+	Selector   string     `json:"selector"`
+	HasKey     bool       `json:"has_key"`
+	CreatedAt  *time.Time `json:"created_at"`
+	AgeSeconds *float64   `json:"age_seconds"`
+}
+
+func newDKIMEntry(domain models.Domain, now time.Time) dkimEntry {
+	entry := dkimEntry{
+		DomainID: domain.ID, Domain: domain.Name, Selector: domain.DKIMSelector,
+		HasKey: true, CreatedAt: domain.DKIMCreatedAt,
+	}
+	if domain.DKIMCreatedAt != nil {
+		age := max(0, now.Sub(*domain.DKIMCreatedAt).Seconds())
+		entry.AgeSeconds = &age
+	}
+	return entry
+}
+
 // ListKeys returns DKIM configuration for all domains (keys are redacted).
 // GET /api/v1/admin/dkim
 func (h *DKIMHandler) ListKeys(w http.ResponseWriter, r *http.Request) {
 	var domains []models.Domain
-	if err := h.db.Where("dkim_selector != '' AND dkim_private_key != ''").Find(&domains).Error; err != nil {
+	if err := h.db.WithContext(r.Context()).Select("id", "name", "dkim_selector", "dkim_created_at").Where("dkim_selector != '' AND dkim_private_key != ''").Find(&domains).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list DKIM keys")
 		return
 	}
 
-	type dkimEntry struct {
-		DomainID uint   `json:"domain_id"`
-		Domain   string `json:"domain"`
-		Selector string `json:"selector"`
-		HasKey   bool   `json:"has_key"`
-	}
-	var entries []dkimEntry
+	entries := make([]dkimEntry, 0, len(domains))
+	now := time.Now()
 	for _, d := range domains {
-		entries = append(entries, dkimEntry{
-			DomainID: d.ID,
-			Domain:   d.Name,
-			Selector: d.DKIMSelector,
-			HasKey:   d.DKIMPrivateKey != "",
-		})
+		entries = append(entries, newDKIMEntry(d, now))
 	}
 	respond.List(w, entries, nil)
 }
@@ -108,20 +122,26 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	createdAt := domain.DKIMCreatedAt
+	// Re-saving the same key must not make it appear younger. Legacy keys
+	// re-saved unchanged still have an unknown age.
+	previous, loadErr := models.LoadDKIMPrivateKey(domain.DKIMPrivateKey, h.masterKey)
+	if loadErr != nil || previous != req.PrivateKey {
+		now := time.Now().UTC()
+		createdAt = &now
+	}
 	if err := h.db.Model(&domain).Updates(map[string]interface{}{
 		"dkim_selector":    req.Selector,
 		"dkim_private_key": keyToStore,
+		"dkim_created_at":  createdAt,
 	}).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save the DKIM key")
 		return
 	}
 
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"domain_id": domain.ID,
-		"domain":    domain.Name,
-		"selector":  req.Selector,
-		"has_key":   true,
-	})
+	domain.DKIMSelector = req.Selector
+	domain.DKIMCreatedAt = createdAt
+	respond.Data(w, http.StatusOK, newDKIMEntry(domain, time.Now()))
 }
 
 // DeleteKey removes the DKIM key for a domain.
@@ -139,10 +159,14 @@ func (h *DKIMHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.db.Model(&domain).Updates(map[string]interface{}{
+	if err := h.db.Model(&domain).Updates(map[string]interface{}{
 		"dkim_selector":    "",
 		"dkim_private_key": "",
-	})
+		"dkim_created_at":  nil,
+	}).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete the DKIM key")
+		return
+	}
 
 	w.WriteHeader(http.StatusNoContent)
 }

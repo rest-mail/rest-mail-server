@@ -81,6 +81,9 @@ func TestDKIMEnsure_CreatesEncryptedAndRetriesWithoutWrites(t *testing.T) {
 	beforeSchema := strings.Split(operatorDatabaseSnapshot(t, database), "\n")[0]
 	first := ensureRun(t, true)
 	domain := readEnsureDomain(t, database)
+	if domain.DKIMCreatedAt == nil || domain.DKIMCreatedAt.After(time.Now()) {
+		t.Fatal("created key has no installation timestamp")
+	}
 	if !models.DKIMKeyIsEncrypted(domain.DKIMPrivateKey) || strings.Contains(domain.DKIMPrivateKey, "PRIVATE KEY") {
 		t.Fatal("key not encrypted at rest")
 	}

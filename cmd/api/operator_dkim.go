@@ -129,7 +129,7 @@ func ensureDKIMKey(database *gorm.DB, name, masterKey string) (dkimEnsureResult,
 		}
 		// NULL and empty strings mean absent in both the locked read and update.
 		update := tx.Model(&models.Domain{}).Where("id = ? AND COALESCE(dkim_private_key, '') = '' AND COALESCE(dkim_selector, '') = ''", domain.ID).
-			Updates(map[string]any{"dkim_selector": result.Selector, "dkim_private_key": stored})
+			Updates(map[string]any{"dkim_selector": result.Selector, "dkim_private_key": stored, "dkim_created_at": time.Now().UTC()})
 		if update.Error != nil {
 			return update.Error
 		}

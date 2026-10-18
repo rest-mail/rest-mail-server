@@ -3519,11 +3519,46 @@ export interface components {
             pattern: string;
             reason?: string;
         };
+        /**
+         * @description Current configured signing key for a domain, including domains not yet serving mail. No private key material is returned. Algorithm and size are not stored. Legacy key installation times are unknown, not inferred from domain timestamps.
+         * @example {
+         *       "domain_id": 1,
+         *       "domain": "example.com",
+         *       "selector": "mail",
+         *       "has_key": true,
+         *       "created_at": "2026-10-01T12:00:00Z",
+         *       "age_seconds": 86400
+         *     }
+         * @example {
+         *       "domain_id": 2,
+         *       "domain": "legacy.example.com",
+         *       "selector": "old",
+         *       "has_key": true,
+         *       "created_at": null,
+         *       "age_seconds": null
+         *     }
+         */
         DKIMEntry: {
+            /** @example 1 */
             domain_id: number;
+            /** @example example.com */
             domain: string;
+            /** @example mail */
             selector: string;
+            /** @example true */
             has_key: boolean;
+            /**
+             * Format: date-time
+             * @description When the current key was installed; null for legacy keys with unknown age. Re-saving the same PEM preserves this value.
+             * @example 2026-10-01T12:00:00Z
+             */
+            created_at: string | null;
+            /**
+             * Format: double
+             * @description Seconds since installation at response time, clamped to zero for future timestamps; null when created_at is unknown.
+             * @example 86400
+             */
+            age_seconds: number | null;
         };
         SetDKIMKeyRequest: {
             /** @description A DNS name; the key's record is `<selector>._domainkey.<domain>` */
