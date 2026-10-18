@@ -223,9 +223,8 @@ func TestTokens_StoredOnlyAsHashes(t *testing.T) {
 }
 
 // openScratchDatabase gives a test a whole database of its own, dropped
-// afterwards. For tests that need real concurrent connections, which the
-// rolled-back transaction of openBootstrapTestDB (one connection) cannot give,
-// without committing rows into the database other packages share.
+// afterwards. Tests that need concurrent connections use it directly; fresh-
+// install tests use openBootstrapTestDB's rolled-back transaction on top.
 func openScratchDatabase(t *testing.T) *gorm.DB {
 	t.Helper()
 	port, _ := strconv.Atoi(envOr("DB_PORT", "5432"))
