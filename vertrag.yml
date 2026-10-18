@@ -129,10 +129,10 @@ exclude-matching:
   - '> 403( >|$)'
   # Each needs a request of its own that provokes it (a named request example
   # paired with a named response example), which the spec does not have yet:
-  # #386. createDomain's 422 has its pair (name_missing) but stays excluded:
-  # the coverage phase probes every transaction sent, and valid-mode probes
-  # built from a refused request are refused too, which it counts as failures
-  # (tests/contract/README.md).
+  # #386. createDomain's and createAlias's 422s have their pairs (name_missing,
+  # source_missing) but stay excluded: the coverage phase probes every
+  # transaction sent, and valid-mode probes built from a refused request are
+  # refused too, which it counts as failures (tests/contract/README.md).
   - '> (400|404|409|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
   - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
