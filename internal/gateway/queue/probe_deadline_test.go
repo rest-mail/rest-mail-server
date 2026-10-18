@@ -60,7 +60,7 @@ func TestProbeRESTMAILHasIODeadline(t *testing.T) {
 
 	done := make(chan bool, 1)
 	go func() {
-		probed, _, _ := w.probeRESTMAIL(ln.Addr().String(), "silent.mx.test")
+		probed, _ := w.probeRESTMAIL(ln.Addr().String(), "silent.mx.test")
 		done <- probed
 	}()
 
