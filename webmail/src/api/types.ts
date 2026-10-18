@@ -6829,6 +6829,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The body is not a JSON object of the request's fields (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Request body failed validation */
             422: {
                 headers: {
