@@ -35,6 +35,9 @@ func NewMailboxHandler(db *gorm.DB, cache *grants.Cache, sessions *SessionCache)
 }
 
 func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "domain_id") {
+		return
+	}
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
 	query := h.db.Model(&models.Mailbox{})

@@ -24,6 +24,9 @@ func NewBanHandler(db *gorm.DB) *BanHandler {
 // ListBans returns all active bans with optional filtering.
 // GET /api/v1/admin/bans?protocol=smtp&active=true&limit=50&offset=0
 func (h *BanHandler) ListBans(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
+		return
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l

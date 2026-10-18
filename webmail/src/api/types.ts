@@ -5297,6 +5297,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Paginated list of messages */
             200: {
                 headers: {
@@ -6724,6 +6725,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Mailbox list */
             200: {
                 headers: {
@@ -6881,6 +6883,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Alias list */
             200: {
                 headers: {
@@ -7036,6 +7039,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Pipeline list */
             200: {
                 headers: {
@@ -7258,6 +7262,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Pipeline message traces */
             200: {
                 headers: {
@@ -7283,6 +7288,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Custom filter list */
             200: {
                 headers: {
@@ -7562,6 +7568,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Queue entries */
             200: {
                 headers: {
@@ -8262,6 +8269,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Ban list */
             200: {
                 headers: {
@@ -8945,6 +8953,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Grants */
             200: {
                 headers: {
@@ -9558,6 +9567,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Invalid domain_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
             /** @description TLS-RPT reports */
             200: {
                 headers: {

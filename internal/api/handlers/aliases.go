@@ -22,6 +22,9 @@ func NewAliasHandler(db *gorm.DB) *AliasHandler {
 }
 
 func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "domain_id") {
+		return
+	}
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
 	query := h.db.Model(&models.Alias{})
