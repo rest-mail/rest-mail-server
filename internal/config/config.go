@@ -352,6 +352,14 @@ type Config struct {
 	// trust anchor.
 	TrustedCACertPath string
 
+	// DNSBLConfigPath is the operator's DNSBL monitor config file
+	// (RESTMAIL_DNSBL_CONFIG; issue #148): the sending IPs, the blocklist
+	// zones and their answer codes, and the cadence. Empty, the default, means
+	// the monitor is off: no resolver, no query, no loop. The file is read and
+	// validated by dnsbl.LoadConfigFile at startup; a file that is set and will
+	// not load stops the API before it serves.
+	DNSBLConfigPath string
+
 	// ════════════════════════════════════════════════════════════════════
 	// TLS-RPT ingestion rate limit (issue #183) — appended additively; keep
 	// contiguous to ease rebasing alongside other in-flight config.go work.
@@ -801,6 +809,7 @@ func Load() (*Config, error) {
 	// De-hardcodes cmd/api's former literal "/certs/ca.crt"; the default is that
 	// exact path so the testbed's rendered/provisioned setup is unchanged.
 	cfg.TrustedCACertPath = getEnv("TRUSTED_CA_CERT", "/certs/ca.crt")
+	cfg.DNSBLConfigPath = strings.TrimSpace(getEnv("RESTMAIL_DNSBL_CONFIG", ""))
 	cfg.Attachments, err = loadAttachmentStorage()
 	if err != nil {
 		return nil, err
