@@ -22,6 +22,23 @@ python3 scripts/constellation.py repos --live
 python3 scripts/constellation.py issues --include-related --json
 ```
 
+For a terminal overview of the checked-in core repository snapshot, use Bash,
+authenticated `gh` and `jq` with these Chore tasks:
+
+```bash
+chore overview:summary  # One row per repository: issues, age and open/closed PR counts.
+chore overview:list     # Issues with links to closing or mentioning pull requests.
+chore overview:tsv      # Tab-separated issue rows.
+```
+
+The script also accepts project filters, for example
+`scripts/am-overview --summary --project rest-mail-server`. Its repository list
+is in `scripts/constellation-repositories.sh` and is checked against the manifest
+by CI. Fetch failures produce a visible incomplete result and exit 4; rate
+limits stop the run with exit 5. Use `repos --live` above to discover organization
+repositories not yet recorded in the snapshot. The linked-PR view inspects up
+to 20 closing references and 50 cross-reference events per issue.
+
 Both repository and issue queries follow all GitHub pages. A failed query exits
 nonzero instead of reporting an incomplete inventory as an empty queue. Archived
 repositories remain visible and are marked in JSON output.
