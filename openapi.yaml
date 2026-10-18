@@ -3363,6 +3363,8 @@ paths:
                     $ref: "#/components/schemas/Pipeline"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deletePipeline
       tags: ["Admin: Pipelines"]
