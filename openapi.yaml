@@ -3268,6 +3268,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePipelineRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  domain_id: 1
+                  direction: inbound
+                  filters:
+                    - name: header_validate
+                      config: {}
+              # No direction: refused before anything is stored.
+              direction_missing:
+                value:
+                  domain_id: 1
+                  filters:
+                    - name: header_validate
+                      config: {}
       responses:
         "201":
           description: Pipeline created
@@ -3279,6 +3296,19 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Pipeline"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      direction: inbound
+                      filters:
+                        - name: header_validate
+                          config: {}
+                      active: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             updatePipeline:
               operationId: updatePipeline
@@ -3289,7 +3319,20 @@ paths:
               parameters:
                 id: '$response.body#/data/id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                direction_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          direction: must be 'inbound' or 'outbound'
 
   /api/v1/admin/pipelines/{id}:
     parameters:
