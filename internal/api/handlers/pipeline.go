@@ -571,13 +571,16 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Config is not a pointer: a pointer leaves an explicit null nil, the same
+	// as an omitted config, so a null would be passed over instead of refused.
+	// Omitted, it is nil; null, it is the bytes "null".
 	var req struct {
-		Name        *string          `json:"name"`
-		Description *string          `json:"description"`
-		FilterType  *string          `json:"filter_type"`
-		Direction   *string          `json:"direction"`
-		Config      *json.RawMessage `json:"config"`
-		Enabled     *bool            `json:"enabled"`
+		Name        *string         `json:"name"`
+		Description *string         `json:"description"`
+		FilterType  *string         `json:"filter_type"`
+		Direction   *string         `json:"direction"`
+		Config      json.RawMessage `json:"config"`
+		Enabled     *bool           `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -597,7 +600,7 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 		cf.Direction = *req.Direction
 	}
 	if req.Config != nil {
-		cf.Config = *req.Config
+		cf.Config = req.Config
 	}
 	if req.Enabled != nil {
 		cf.Enabled = *req.Enabled
@@ -608,6 +611,12 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 	if errs := customFilterFieldErrors(cf.FilterType, cf.Direction); errs != nil {
 		respond.ValidationError(w, errs)
+		return
+	}
+	// A config, when sent, is an object (UpdateCustomFilterRequest, #388), as
+	// on create: null, an array or a scalar is refused, not stored.
+	if req.Config != nil && !isJSONObject(req.Config) {
+		respond.ValidationError(w, map[string]string{"config": "must be an object"})
 		return
 	}
 
