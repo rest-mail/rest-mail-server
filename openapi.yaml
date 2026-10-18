@@ -5024,6 +5024,23 @@ paths:
             application/xml:
               schema:
                 type: string
+        "400":
+          description: >-
+            No usable email address, refused before any domain is looked up. A
+            body that is not Autodiscover XML falls back to the emailaddress
+            query parameter: with neither, "invalid request". An Autodiscover
+            request without an EMailAddress gets "email address required", and
+            an address without an @ gets "invalid email address". Plain text,
+            ending in a newline.
+          content:
+            text/plain:
+              schema:
+                type: string
+                enum:
+                  - "invalid request\n"
+                  - "email address required\n"
+                  - "invalid email address\n"
+              example: "invalid request\n"
 
   /.well-known/mta-sts.txt:
     get:
