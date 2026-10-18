@@ -79,10 +79,18 @@ tasks:
         fi
       - |
         echo "  starting pop3-gateway ({{.POP3_GATEWAY_CONTAINER_NAME}} @ {{.POP3_GATEWAY_IP}}, mode {{.POP3_GATEWAY_MODE}})"
+        # Air executes /app/tmp binaries; Go needs executable build/temp space.
+        # Keep GOPATH (including sumdb state) and caches in bounded /tmp. Use
+        # the image's preloaded modules as a read-only proxy before the network.
         if [ "{{.POP3_GATEWAY_MODE}}" = "dev" ]; then
-          DEV_MOUNTS="-v $(pwd):/app --tmpfs /app/tmp:exec,uid=10001,gid=10001"
+          DEV_FLAGS="--read-only -v $(pwd):/app \
+            --tmpfs /app/tmp:rw,exec,nosuid,nodev,size=128m,mode=0700,uid=10001,gid=10001 \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777 \
+            -e GOPATH=/tmp/go -e GOMODCACHE=/tmp/go/pkg/mod \
+            -e GOCACHE=/tmp/go-build-cache \
+            -e GOPROXY=file:///go/pkg/mod/cache/download,https://proxy.golang.org,direct"
         else
-          DEV_MOUNTS=""
+          DEV_FLAGS=""
         fi
         docker rm -f {{.POP3_GATEWAY_CONTAINER_NAME}} >$OUTPUT 2>&1 || true
         # mailnet_only secondary instances skip host-port publishing.
@@ -96,8 +104,8 @@ tasks:
         # pid/mem/cpu ceilings. It binds 995 without NET_BIND_SERVICE because
         # the sysctl below lets any user bind any port in the container's own
         # network namespace (Docker's default too; said here so it is not assumed).
-        # Rootfs stays writable: dev mode builds with `air` and Go's cache lives
-        # in the home directory.
+        # Dev uses a read-only rootfs; Air and Go write only to bounded tmpfs
+        # mounts (in addition to the existing source and data mounts).
         HARDENING="--security-opt no-new-privileges:true \
           --user 10001:10001 --cap-drop ALL \
           --sysctl net.ipv4.ip_unprivileged_port_start=0 \
@@ -134,7 +142,7 @@ tasks:
           $PUBLISH $PROXY \
           -v {{.POP3_GATEWAY_OWN_CERTS_VOLUME}}:/certs:ro \
           -v {{.POP3_GATEWAY_LOGS_VOLUME}}:/var/log/restmail \
-          $DEV_MOUNTS \
+          $DEV_FLAGS \
           --health-cmd 'nc -z localhost {{.POP3_TLS_PORT}}' \
           --health-interval 10s \
           --health-timeout 5s \
