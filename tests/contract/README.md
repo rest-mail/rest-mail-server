@@ -41,20 +41,25 @@ example named like it, and a side naming no example pairs with everything.
 422, and `created` with its 201. `createAlias` is the second: its
 `source_missing` request (a destination address and no source) goes with its
 422, and `created` with its 201, whose links the rest of the alias chain
-follows.
-`internal/api/handlers/contract_examples_test.go` sends each request named on
-either 422 to the real handler, which has no database, and checks it gets the
-documented body: the refusal comes before anything is looked up or stored.
+follows. `createPipeline` is the third: its `direction_missing` request (the
+`created` one without its direction) goes with its 422, and `created` with its
+201; the hooks give the refused request the created domain but no direction.
+`internal/api/handlers/contract_examples_test.go` (and
+`contract_pipeline_examples_test.go`, for `createPipeline`) sends each request
+named on any of these 422s to the real handler, which has no database, and
+checks it gets the documented body: the refusal comes before anything is looked
+up or stored.
 
 Their 422s are still excluded, though vertrag sends them and the handlers
 answer as documented: the coverage phase probes every transaction sent, and
 judges valid-mode probes whenever the transaction's own request gets the status
 it documents. For a refusal that request is the refused one, so every valid
-probe built from it (`{}` with a `server_type`, or a destination address with
-no source, say) is refused as well, and each is counted as a failure on an
-operation the coverage baseline does not list (`createAlias` is not in it). The
-error responses come off `exclude-matching` once vertrag does not judge valid
-probes built from a documented refusal.
+probe built from it (`{}` with a `server_type`, a destination address with no
+source, or a pipeline with no direction, say) is refused as well, and each is
+counted as a failure on an operation the coverage baseline does not list
+(neither `createAlias` nor `createPipeline` is in it). The error responses come
+off `exclude-matching` once vertrag does not judge valid probes built from a
+documented refusal.
 
 vertrag is the released, checksum-pinned binary (v0.27.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
