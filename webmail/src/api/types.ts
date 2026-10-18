@@ -3574,7 +3574,7 @@ export interface components {
             reason?: string;
             /** @enum {string} */
             protocol: "smtp" | "imap" | "pop3" | "all";
-            /** @description Duration string (e.g. "24h", "7d"), omit for permanent */
+            /** @description Go duration string (e.g. "24h", "168h"), omit for permanent */
             duration?: string;
             created_by: string;
         };

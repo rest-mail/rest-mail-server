@@ -8568,6 +8568,7 @@ components:
       properties:
         ip:
           type: string
+          minLength: 1
         reason:
           type: string
         protocol:
@@ -8575,7 +8576,8 @@ components:
           enum: [smtp, imap, pop3, all]
         duration:
           type: string
-          description: Duration string (e.g. "24h", "7d"), omit for permanent
+          pattern: '^[+-]?(0|(([0-9]+(\.[0-9]*)?|\.[0-9]+)(ns|us|µs|μs|ms|s|m|h))+)$'
+          description: Go duration string (e.g. "24h", "168h"), omit for permanent
         created_by:
           type: string
 

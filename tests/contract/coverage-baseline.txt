@@ -14,8 +14,6 @@ bulkBounceQueue
 bulkDeleteQueue
 bulkRetryQueue
 createAccount
-createBan
-createContact
 createDomain
 deleteAlias
 deleteBan
