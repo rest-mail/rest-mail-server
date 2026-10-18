@@ -69,6 +69,12 @@ const operatorUsage = `restmail-api operator commands
       domain has a key. ADDRESS adds the mail host's A record and the PTR.
       Output: {"domains": [{"domain": ..., "records": [...]}]}
 
+  restmail-api dkim-key ensure --domain NAME
+      Create an encrypted DKIM key only when both key and selector are absent
+      on an existing domain. Retries preserve valid existing material; partial
+      or unreadable material is refused. Requires MASTER_KEY, even in development.
+      Output: {"domain": ..., "selector": ..., "created": ..., "publicDKIMTXT": ...}
+
   restmail-api owner-key add < owner.pub
       Register public recovery keys in PostgreSQL. Private keys are refused.
       Output: {"fingerprints": [...]}
@@ -91,7 +97,7 @@ const operatorUsage = `restmail-api operator commands
 Results are one JSON object on stdout. Errors: {"error": {"code": ...,
 "message": ...}} on stderr, with exit status 2 (usage), 4 (no_such_account) or
 1 (anything else). Nothing else is written to either;
-RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr.
+RESTMAIL_OPERATOR_DEBUG=1 adds server logs to stderr, except for dkim-key.
 Usually run for you: chore password:reset, chore sessions:revoke,
 chore dns:show.
 `
@@ -102,7 +108,7 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 	// program can read each whole. What the server code logs on the way (config
 	// warnings, say) goes nowhere unless RESTMAIL_OPERATOR_DEBUG is set.
 	logTo := io.Discard
-	if os.Getenv("RESTMAIL_OPERATOR_DEBUG") != "" {
+	if os.Getenv("RESTMAIL_OPERATOR_DEBUG") != "" && args[0] != "dkim-key" {
 		logTo = stderr
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(logTo, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -111,6 +117,11 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 	// still starting up then prints a connection error ahead of the result. It
 	// gets ours from the start.
 	gormlogger.Default = operatorDBLogger(stderr)
+	if args[0] == "dkim-key" {
+		// This command reads and writes private material: never log SQL or
+		// configuration, even when operator debugging is enabled.
+		gormlogger.Default = gormlogger.Discard
+	}
 
 	switch args[0] {
 	case "mint-token":
@@ -121,6 +132,8 @@ func runOperator(args []string, stdout, stderr io.Writer) int {
 		return revokeSessions(args[1:], stdout, stderr)
 	case "dns-records":
 		return dnsRecords(args[1:], stdout, stderr)
+	case "dkim-key":
+		return dkimKeyCommand(args[1:], stdout, stderr)
 	case "owner-key":
 		return ownerKeyCommand(args[1:], os.Stdin, stdout, stderr)
 
