@@ -101,6 +101,24 @@ func validateDuplicatePipelineFilters(raw json.RawMessage) error {
 	return nil
 }
 
+// isFilterObjectArray reports whether raw is a JSON array whose every item is an
+// object, the shape of a pipeline's filters. A missing or null list is not one,
+// nor is a null item; an empty list is. What the objects hold is left to the
+// Sieve and duplicate gates and to the build at delivery.
+func isFilterObjectArray(raw json.RawMessage) bool {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil || items == nil {
+		return false
+	}
+	for _, item := range items {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(item, &obj); err != nil || obj == nil {
+			return false
+		}
+	}
+	return true
+}
+
 type PipelineHandler struct {
 	db     *gorm.DB
 	engine *pipeline.Engine
@@ -223,6 +241,14 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 
 	if req.Direction != "inbound" && req.Direction != "outbound" {
 		respond.ValidationError(w, map[string]string{"direction": "must be 'inbound' or 'outbound'"})
+		return
+	}
+
+	// filters is required and is an array of objects (CreatePipelineRequest,
+	// #388). The column takes any JSON, so a missing or misshapen list would be
+	// stored as it came and fail only when the pipeline is built for delivery.
+	if !isFilterObjectArray(req.Filters) {
+		respond.ValidationError(w, map[string]string{"filters": "must be an array of filter objects"})
 		return
 	}
 
