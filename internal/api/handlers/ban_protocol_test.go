@@ -39,7 +39,7 @@ const banProtocolRefusal = `{"error":{"code":"validation_failed","message":"Requ
 func TestCreateBanProtocol_RefusesOutsideEnum(t *testing.T) {
 	for _, protocol := range []string{
 		"ftp", "SMTP", "All", "Imap", " smtp", "smtp ", "smtp\n", "\tall",
-		"smtp\u0000", "smtp,imap", "*", "any", "all​",
+		"smtp\u0000", "smtp,imap", "*", "any", "all\u200b",
 	} {
 		body := `{"ip":"192.0.2.10","reason":"Repeated failed sign-ins","protocol":` +
 			string(mustJSON(protocol)) + `,"duration":"1h","created_by":"admin@restmail.test"}`
