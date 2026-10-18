@@ -90,3 +90,33 @@ groups:
         annotations:
           summary: "Queue workers appear stalled"
           description: "No messages have been processed in the last 15 minutes despite {{ $value }} messages in the queue."
+
+      # DNSBL (issue #148): only when the operator has enabled the monitor.
+      # Reputation: a blocklist's last answer listed one of our sending IPs.
+      - alert: DNSBLSendingIPListed
+        expr: restmail_dnsbl_listed == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sending IP {{ $labels.ip }} is listed by {{ $labels.provider }}"
+          description: "The last answer from DNSBL provider {{ $labels.provider }} listed {{ $labels.ip }}. Mail sent from it may be refused. The API log line 'dnsbl: sending IP listed' carries the codes and reason."
+
+      # Operational, not reputation: a blocklist is not answering. The listing
+      # value is left as it was, so a listing is never cleared by errors.
+      - alert: DNSBLProviderNotAnswering
+        expr: sum by (provider) (increase(restmail_dnsbl_checks_total{status=~"provider_error|indeterminate"}[3h])) > 0 and sum by (provider) (increase(restmail_dnsbl_checks_total{status=~"listed|not_listed"}[3h])) == 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "DNSBL provider {{ $labels.provider }} has not answered for 3 hours"
+          description: "Every check against {{ $labels.provider }} in the last 3 hours failed (provider_error or indeterminate). The listing state for it is stale, not clean. Check the zone, its answer codes and the resolver."
+
+      # The last real answer for an IP and provider is old: the listing value
+      # is stale. Tune 6h to a few times the configured interval.
+      - alert: DNSBLAnswerStale
+        expr: time() - restmail_dnsbl_last_answer_timestamp_seconds > 6 * 3600
+        labels:
+          severity: warning
+        annotations:
+          summary: "No DNSBL answer for {{ $labels.ip }} from {{ $labels.provider }} in 6 hours"
+          description: "restmail_dnsbl_listed for this pair reflects an answer more than 6 hours old."
