@@ -230,6 +230,23 @@ jobs:
           python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
             tests/contract/coverage-baseline.txt
 
+      - name: Contract tests (authorization, report only)
+        # Every operation as every principal TestContractPrincipals made (none,
+        # admin, ordinary account, its app password), judged against the spec's
+        # security roles. It reports and never fails the run until every
+        # principal passes (#376); its matrix is in the log and its report is
+        # uploaded with the logs below. Last, because the admin's cells send
+        # every documented request again, deletes included.
+        if: always() && steps.contract.outcome != 'skipped'
+        continue-on-error: true
+        run: |
+          python3 tests/contract/authorization.py openapi.yaml vertrag.yml \
+            .cache/contract-principals.json .cache/contract/vertrag-authorization.yml \
+            .cache/contract/authorization.xml
+          vertrag run --config .cache/contract/vertrag-authorization.yml --phases authorization \
+            > "$RUNNER_TEMP/contract-authorization.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
+          cat "$RUNNER_TEMP/contract-authorization.log"
+
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed
         # (in the log). Exploratory, so it reports and never fails the run:

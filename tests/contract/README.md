@@ -84,6 +84,7 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   MTA-STS policy file is served by, and a fresh source folder for each rename
   probe (a successful rename consumes the previous one). Every other id comes
   from the spec's `links`.
+- `authorization.py`: writes the authorization phase's configuration.
 - `gate.py`: the coverage ratchet. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
@@ -109,10 +110,15 @@ authorization matrix with them (`TestContractPrincipals`):
 | no credentials | every request without one, and vertrag's `ignored-auth` check |
 
 The contract run itself signs in as the admin. The others are for the
-authorization matrix, which vertrag will check from the spec once it has an
-authorization phase (antimatter-studios/vertrag#71): each operation's
-`security` requirements name the capability it needs as OpenAPI 3.1 roles,
-for example `security: [{BearerAuth: [domains:read]}]`.
+authorization matrix: vertrag's authorization phase sends every operation as
+every principal and checks the answer against the operation's `security`
+requirements, which name the capability it needs as OpenAPI 3.1 roles, for
+example `security: [{BearerAuth: [domains:read]}]`. `authorization.py` writes
+its configuration after the E2E suite (the app password is new each run):
+`none`, `admin` holding every role the spec names, and `ordinary` and
+`app-password` holding none, since their mail capabilities cover only their own
+mailbox and the documented requests name the fixture's. CI runs it report-only
+after the gate, until every principal passes (#376).
 
 `internal/api/openapi_security_test.go` holds those roles to the router for
 every admin operation: holding exactly the documented capability reaches the

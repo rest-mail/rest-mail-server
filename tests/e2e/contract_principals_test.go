@@ -14,9 +14,9 @@ import (
 // The principals of the contract tests (#376): one of each kind of caller the
 // API has, made here so the run after this suite can act as each of them. The
 // contract run itself signs in as the admin; the others are for the
-// authorization matrix, which vertrag will check from the spec's security
-// roles once it has an authorization phase (antimatter-studios/vertrag#71).
-// Until then TestContractPrincipals checks a small matrix of its own.
+// authorization matrix, which vertrag's authorization phase checks from the
+// spec's security roles (tests/contract/authorization.py), and
+// TestContractPrincipals checks a small matrix of its own.
 //
 // There is no agent principal: the account model has none yet (#341), so
 // there is nothing to make.
