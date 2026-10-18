@@ -231,9 +231,29 @@ dnsConfig:
 {{- end -}}
 
 {{/*
+Gateway workload kind, validated even for disabled gateways.
+Usage: {{ include "restmail.gatewayWorkloadKind" (list .Values.smtpGateway "smtpGateway") }}
+*/}}
+{{- define "restmail.gatewayWorkloadKind" -}}
+{{- $gateway := index . 0 -}}
+{{- $name := index . 1 -}}
+{{- $kind := "Deployment" -}}
+{{- if hasKey $gateway "workloadKind" -}}
+{{- $kind = $gateway.workloadKind -}}
+{{- end -}}
+{{- if not (has $kind (list "Deployment" "DaemonSet")) -}}
+{{- fail (printf "%s.workloadKind must be Deployment or DaemonSet (got %v)" $name $kind) -}}
+{{- end -}}
+{{- $kind -}}
+{{- end -}}
+
+{{/*
 Validate required production values.
 */}}
 {{- define "restmail.validate" -}}
+{{- range $name := list "smtpGateway" "imapGateway" "pop3Gateway" -}}
+{{- $_ := include "restmail.gatewayWorkloadKind" (list (index $.Values $name) $name) -}}
+{{- end -}}
 {{- $attachments := .Values.api.attachments -}}
 {{- if not (has $attachments.storageType (list "filesystem" "s3")) -}}
 {{- fail "api.attachments.storageType must be filesystem or s3" -}}
