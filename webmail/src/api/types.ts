@@ -8164,7 +8164,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     deleteBan: {
