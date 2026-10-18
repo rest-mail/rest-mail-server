@@ -300,6 +300,9 @@ smtpGateway:
   # why. The API is a complete product without the protocol gateways; they are
   # how traditional clients reach it, not how it works.
   enabled: true
+  # Deployment (default) or DaemonSet for one gateway pod per eligible node.
+  workloadKind: Deployment
+  # Used only by Deployment.
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/smtp-gateway
@@ -352,6 +355,9 @@ smtpGateway:
 imapGateway:
   # See smtpGateway.enabled. Off means no IMAP clients, not a degraded API.
   enabled: true
+  # Deployment (default) or DaemonSet for one gateway pod per eligible node.
+  workloadKind: Deployment
+  # Used only by Deployment.
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/imap-gateway
@@ -382,6 +388,9 @@ imapGateway:
 pop3Gateway:
   # See smtpGateway.enabled. Off means no POP3 clients, not a degraded API.
   enabled: true
+  # Deployment (default) or DaemonSet for one gateway pod per eligible node.
+  workloadKind: Deployment
+  # Used only by Deployment.
   replicaCount: 1
   image:
     repository: ghcr.io/rest-mail/pop3-gateway

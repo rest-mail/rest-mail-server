@@ -1,12 +1,15 @@
 {{- if .Values.pop3Gateway.enabled -}}
+{{- $kind := include "restmail.gatewayWorkloadKind" (list .Values.pop3Gateway "pop3Gateway") -}}
 apiVersion: apps/v1
-kind: Deployment
+kind: {{ $kind }}
 metadata:
   name: {{ include "restmail.componentName" (list . "pop3-gateway") }}
   labels:
     {{- include "restmail.componentLabels" (list . "pop3-gateway") | nindent 4 }}
 spec:
+  {{- if eq $kind "Deployment" }}
   replicas: {{ .Values.pop3Gateway.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "restmail.componentSelectorLabels" (list . "pop3-gateway") | nindent 6 }}
