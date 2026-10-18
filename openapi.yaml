@@ -3417,6 +3417,10 @@ paths:
                 value:
                   domain_id: 1
                   direction: inbound
+              # An array, not an object: refused while the body is decoded,
+              # before any field is read (#388).
+              body_array:
+                value: []
       responses:
         "201":
           description: Pipeline created
@@ -3450,6 +3454,26 @@ paths:
               operationId: deletePipeline
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: >-
+            `bad_request` when the body does not decode as the request: not
+            JSON, an array, a string, a number or a boolean rather than an
+            object, or a field of the wrong JSON type. It is refused before any
+            field is validated; a `null` body decodes as an empty one and gets
+            the 422. Filters that pass validation are also refused with a 400:
+            `invalid_sieve` for a Sieve script that does not install,
+            `unsupported_filter` for a filter configured in a way it does not
+            support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:
