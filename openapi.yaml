@@ -4244,9 +4244,17 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateSenderRuleRequest"
-            example:
-              pattern: "@partner.example.com"
-              reason: A trusted partner
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  pattern: "@partner.example.com"
+                  reason: A trusted partner
+              # No pattern: refused before anything is looked up or stored.
+              pattern_missing:
+                value:
+                  reason: A trusted partner
       responses:
         "201":
           description: Entry added
@@ -4258,6 +4266,16 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainSenderRule"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      pattern: "@partner.example.com"
+                      list_type: allow
+                      reason: A trusted partner
+                      created_at: "2026-01-01T00:00:00Z"
           links:
             removeFromAllowlist:
               operationId: removeFromAllowlist
@@ -4266,6 +4284,21 @@ paths:
                 eid: '$response.body#/data/id'
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                pattern_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          pattern: required
 
   /api/v1/admin/domains/{id}/allowlist/{eid}:
     parameters:
