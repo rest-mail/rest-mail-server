@@ -114,10 +114,11 @@ func (r *recorder) Checked(o Observation) {
 	r.mu.Unlock()
 }
 
-func (r *recorder) Changed(tr Transition) {
+func (r *recorder) Changed(tr Transition) error {
 	r.mu.Lock()
 	r.changes = append(r.changes, tr)
 	r.mu.Unlock()
+	return nil
 }
 
 func (r *recorder) snapshot() ([]Observation, []Transition) {

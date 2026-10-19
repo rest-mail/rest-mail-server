@@ -61,6 +61,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.OutboundQueue{},
 		// Addresses a domain no longer sends to after a hard bounce (#141).
 		&models.Suppression{},
+		&models.DNSBLListingEvent{},
 		// Pipeline models
 		&models.Pipeline{},
 		&models.CustomFilter{},

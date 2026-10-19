@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/restmail/restmail/internal/dnsbl"
+	"gorm.io/gorm"
 )
 
 // dnsblStopGrace is how long stop waits past the check timeout for the
@@ -16,9 +17,11 @@ import (
 const dnsblStopGrace = 5 * time.Second
 
 // dnsblRuntime is the DNSBL monitor as the API runs it (issue #148). It is off
-// unless the operator's config file enables it, and its listing state is in
-// memory only: every start begins from unknown.
+// unless the operator's config file enables it. After database migration,
+// prepare restores its state and installs the durable observer before start.
 type dnsblRuntime struct {
+	cfg      dnsbl.MonitorConfig
+	checker  dnsbl.IPChecker
 	monitor  *dnsbl.Monitor
 	stopWait time.Duration
 	cancel   context.CancelFunc
@@ -60,7 +63,31 @@ func newDNSBLRuntime(path string, newResolver func() dnsbl.Resolver, obs dnsbl.O
 		"interval", cfg.Interval.String(),
 		"timeout", cfg.Timeout.String(),
 	)
-	return &dnsblRuntime{monitor: m, stopWait: cfg.Timeout + dnsblStopGrace}, nil
+	return &dnsblRuntime{monitor: m, cfg: cfg, checker: checker, stopWait: cfg.Timeout + dnsblStopGrace}, nil
+}
+
+// prepare must succeed after migration and before start. A failed seed must
+// stop startup: treating unreadable history as unknown would repeat listings
+// and miss recoveries. With monitoring disabled there is no database access.
+func (r *dnsblRuntime) prepare(database *gorm.DB) error {
+	if r == nil {
+		return nil
+	}
+	obs := dnsbl.NewEventObserver(database, r.cfg.Observer)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	known, err := obs.Known(ctx, r.cfg)
+	if err != nil {
+		return err
+	}
+	cfg := r.cfg
+	cfg.Observer, cfg.Known = obs, known
+	m, err := dnsbl.NewMonitor(r.checker, cfg)
+	if err != nil {
+		return err
+	}
+	r.monitor = m
+	return nil
 }
 
 // start runs the monitor on its own goroutine until stop or parent is done.
