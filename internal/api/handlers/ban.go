@@ -64,8 +64,8 @@ func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IP        string  `json:"ip"`
 		Reason    string  `json:"reason"`
-		Protocol  string  `json:"protocol"`   // "smtp", "imap", "pop3", "all"
-		Duration  *string `json:"duration"`    // e.g. "24h", "168h"; nil = permanent
+		Protocol  string  `json:"protocol"` // "smtp", "imap", "pop3", "all"
+		Duration  *string `json:"duration"` // e.g. "24h", "168h"; nil = permanent
 		CreatedBy string  `json:"created_by"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -76,8 +76,13 @@ func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"ip": "IP address is required"})
 		return
 	}
-	if req.Protocol == "" {
+	switch req.Protocol {
+	case "":
 		req.Protocol = "all"
+	case "smtp", "imap", "pop3", "all":
+	default:
+		respond.ValidationError(w, map[string]string{"protocol": "protocol must be one of smtp, imap, pop3, all"})
+		return
 	}
 
 	ban := models.Ban{

@@ -92,6 +92,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Ban{},
 		// MTA-STS (RFC 8461) policies
 		&models.MTASTSPolicy{},
+		// Outbound transport per sending domain: direct MX or an SMTP relay (#143)
+		&models.DomainRelay{},
 		// TLS-RPT (RFC 8460) reports
 		&models.TLSReport{},
 		// Calendar event lifecycle tracking

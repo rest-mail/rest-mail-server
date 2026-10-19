@@ -2,6 +2,7 @@ package filters
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -12,15 +13,51 @@ import (
 // dkimVerifyFilter verifies DKIM signatures on inbound messages. It records one
 // AuthResult per signature, with the signature's d=, for dmarc_check and the
 // other filters that act on it, and writes the matching Authentication-Results
-// entry for downstream scripts.
-type dkimVerifyFilter struct{}
+// entry for downstream scripts. By default a failed signature only tags the
+// message and DMARC decides; fail_action can make a DKIM fail reject or
+// quarantine it.
+type dkimVerifyFilter struct {
+	// failAction is what an overall DKIM fail does: continue ("tag", the
+	// default), reject or quarantine.
+	failAction pipeline.Action
+}
+
+// dkimVerifyConfig is the filter's configuration.
+type dkimVerifyConfig struct {
+	// FailAction is "tag" (or empty), "reject" or "quarantine". Only an overall
+	// fail acts: a signature that fails cryptographically and no signature that
+	// passes. none, neutral and the error results always continue, since a
+	// signature that cannot be verified is treated as no signature (RFC 6376
+	// §6.1).
+	FailAction string `json:"fail_action"`
+}
+
+// dkimVerify verifies the message's DKIM signatures; nil resolves keys with
+// system DNS. A package var so tests can stub the verdicts.
+var dkimVerify = dkim.Verify
 
 func init() {
 	pipeline.DefaultRegistry.Register("dkim_verify", NewDKIMVerify)
 }
 
-func NewDKIMVerify(_ []byte) (pipeline.Filter, error) {
-	return &dkimVerifyFilter{}, nil
+func NewDKIMVerify(config []byte) (pipeline.Filter, error) {
+	var cfg dkimVerifyConfig
+	if len(config) > 0 {
+		if err := json.Unmarshal(config, &cfg); err != nil {
+			return nil, err
+		}
+	}
+	f := &dkimVerifyFilter{failAction: pipeline.ActionContinue}
+	switch cfg.FailAction {
+	case "", "tag":
+	case "reject":
+		f.failAction = pipeline.ActionReject
+	case "quarantine":
+		f.failAction = pipeline.ActionQuarantine
+	default:
+		return nil, fmt.Errorf("dkim_verify: fail_action %q is not tag, reject or quarantine", cfg.FailAction)
+	}
+	return f, nil
 }
 
 func (f *dkimVerifyFilter) Name() string              { return "dkim_verify" }
@@ -47,7 +84,7 @@ func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	verdicts := []pipeline.AuthResult{{Method: pipeline.AuthDKIM, Result: dkim.ResultNone}}
 
 	if raw != "" {
-		results := dkim.Verify(ctx, []byte(raw), nil)
+		results := dkimVerify(ctx, []byte(raw), nil)
 		if len(results) > 0 {
 			result, detail, verdicts = summarizeDKIM(results)
 		}
@@ -68,7 +105,7 @@ func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 		pipeline.AuthResultsValue(verdicts),
 	)
 
-	return &pipeline.FilterResult{
+	res := &pipeline.FilterResult{
 		Type:    pipeline.FilterTypeTransform,
 		Action:  pipeline.ActionContinue,
 		Message: &modified,
@@ -77,7 +114,14 @@ func (f *dkimVerifyFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 			Result: result,
 			Detail: detail,
 		},
-	}, nil
+	}
+	if result == dkim.ResultFail && f.failAction != pipeline.ActionContinue {
+		res.Action = f.failAction
+		if f.failAction == pipeline.ActionReject {
+			res.RejectMsg = "550 5.7.20 DKIM signature verification failed"
+		}
+	}
+	return res, nil
 }
 
 // summarizeDKIM reduces one-or-more signature verdicts to an overall result,
