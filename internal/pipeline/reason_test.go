@@ -30,6 +30,9 @@ func TestReason_RealTerminalCases(t *testing.T) {
 		// defensive non-continue mapping still lands in spf_fail.
 		{"spf continue -> other", "spf_check", ActionContinue, "pass", ReasonOther},
 		{"spf reject (defensive)", "spf_check", ActionReject, "fail", ReasonSPFFail},
+		{"dkim reject", "dkim_verify", ActionReject, "fail", ReasonDKIMFail},
+		{"dkim quarantine", "dkim_verify", ActionQuarantine, "fail", ReasonDKIMFail},
+		{"dkim continue", "dkim_verify", ActionContinue, "fail", ReasonOther},
 
 		// Recognised policy/programmable built-ins with no dedicated code: a
 		// deliberate reject is custom_reject.

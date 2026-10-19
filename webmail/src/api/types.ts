@@ -2541,6 +2541,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/domains/{id}/relay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the domain's outbound transport
+         * @description How mail sent from this domain leaves the server: `direct` resolves
+         *     each recipient's MX, `relay` hands every message to the configured
+         *     SMTP relay. A domain with nothing configured is `direct`. The relay
+         *     password is never returned, only whether one is set.
+         */
+        get: operations["getDomainRelay"];
+        /**
+         * Set the domain's outbound transport
+         * @description Replaces the domain's outbound transport. Takes `domains:write` held
+         *     at `*`: the relay is dialled from inside the installation, so only the
+         *     operator chooses it. TLS is mandatory (`starttls` or `implicit`), and
+         *     credentials are only ever sent after a verified handshake. Leaving
+         *     `password` out keeps the stored one; an empty string clears it. The
+         *     password is encrypted at rest and refused (409) when the server has no
+         *     MASTER_KEY. `direct` drops any relay settings, credentials included.
+         */
+        put: operations["setDomainRelay"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/tls-reports": {
         parameters: {
             query?: never;
@@ -3769,6 +3808,37 @@ export interface components {
                 message?: string;
             }[];
         };
+        DomainRelay: {
+            domain_id: number;
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            /** @description Relay host name or IP address (relay only) */
+            host?: string;
+            port?: number;
+            /** @enum {string} */
+            tls_mode?: "starttls" | "implicit";
+            /** @description SMTP AUTH username; absent when the relay takes no AUTH */
+            username?: string;
+            /** @description Whether a relay password is stored. The password itself is never returned. */
+            password_set: boolean;
+        };
+        SetDomainRelayRequest: {
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            /** @description Bare host name or IP address, no scheme, port or path. Required for relay. */
+            host?: string;
+            /** @description Required for relay. */
+            port?: number;
+            /**
+             * @description Required for relay.
+             * @enum {string}
+             */
+            tls_mode?: "starttls" | "implicit";
+            /** @description Set together with a password, or neither. */
+            username?: string;
+            /** @description Left out keeps the stored password; an empty string clears it. */
+            password?: string;
+        };
         MTASTSPolicy: {
             id: number;
             domain_id: number;
@@ -4659,7 +4729,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
@@ -6440,18 +6512,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "from": "someone@ext-contract.test",
-                 *       "to": [
-                 *         "eve@restmail.test"
-                 *       ],
-                 *       "subject": "Delivered over RESTMAIL",
-                 *       "body_text": "Hello, Eve.",
-                 *       "message_id": "<restmail-delivery@ext-contract.test>",
-                 *       "date": "Sat, 17 Oct 2026 12:00:00 +0000"
-                 *     }
-                 */
                 "application/json": components["schemas"]["RestmailDeliverRequest"];
             };
         };
@@ -6467,7 +6527,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     listDomains: {
@@ -7057,6 +7125,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     testPipeline: {
@@ -7083,6 +7152,16 @@ export interface operations {
                     };
                 };
             };
+            /** @description The body is not JSON (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
         };
     };
     testFilter: {
@@ -7094,40 +7173,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "filter_name": "header_validate",
-                 *       "config": {},
-                 *       "email": {
-                 *         "envelope": {
-                 *           "mail_from": "someone@example.com",
-                 *           "rcpt_to": [
-                 *             "eve@restmail.test"
-                 *           ]
-                 *         },
-                 *         "headers": {
-                 *           "from": [
-                 *             {
-                 *               "name": "Someone",
-                 *               "address": "someone@example.com"
-                 *             }
-                 *           ],
-                 *           "to": [
-                 *             {
-                 *               "address": "eve@restmail.test"
-                 *             }
-                 *           ],
-                 *           "subject": "A filter test",
-                 *           "message-id": "<filter-test@example.com>",
-                 *           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
-                 *         },
-                 *         "body": {
-                 *           "content_type": "text/plain",
-                 *           "content": "Hello."
-                 *         }
-                 *       }
-                 *     }
-                 */
                 "application/json": components["schemas"]["TestFilterRequest"];
             };
         };
@@ -7141,6 +7186,15 @@ export interface operations {
                     "application/json": {
                         data: components["schemas"]["FilterResult"];
                     };
+                };
+            };
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
@@ -7212,18 +7266,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "name": "tag-invoices",
-                 *       "description": "Tags mail about invoices",
-                 *       "filter_type": "action",
-                 *       "direction": "inbound",
-                 *       "config": {
-                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-                 *       },
-                 *       "enabled": false
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateCustomFilterRequest"];
             };
         };
@@ -7239,7 +7281,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     validateCustomFilter: {
@@ -7773,12 +7823,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "pattern": "@partner.example.com",
-                 *       "reason": "A trusted partner"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -7795,6 +7839,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     removeFromAllowlist: {
@@ -8069,6 +8122,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description `bad_request`, before the domain is looked up: "Invalid request body" when the body is not JSON, is not an object (an array, a string, a number or a boolean), or holds a field of the wrong type; "domain_id, cert_pem, and key_pem are required" when the body (or a `null` one) leaves domain_id missing or 0, or cert_pem or key_pem missing or empty. A cert_pem that is not a PEM certificate is refused with `bad_request` too, after the domain is found. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             422: components["responses"]["ValidationError"];
         };
     };
@@ -8164,15 +8226,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "ip": "192.0.2.10",
-                 *       "reason": "Repeated failed sign-ins",
-                 *       "protocol": "all",
-                 *       "duration": "1h",
-                 *       "created_by": "admin@restmail.test"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateBanRequest"];
             };
         };
@@ -8545,6 +8598,16 @@ export interface operations {
                     "application/xml": string;
                 };
             };
+            /** @description No usable email address, refused before any domain is looked up. A body that is not Autodiscover XML falls back to the emailaddress query parameter: with neither, "invalid request". An Autodiscover request without an EMailAddress gets "email address required", and an address without an @ gets "invalid email address". Plain text, ending in a newline. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example invalid request */
+                    "text/plain": "invalid request\n" | "email address required\n" | "invalid email address\n";
+                };
+            };
         };
     };
     mtaStsPolicyFile: {
@@ -8583,46 +8646,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "organization-name": "Example Reporter",
-                 *       "contact-info": "tlsrpt@reporter.example.com",
-                 *       "report-id": "2026-10-17T00:00:00Z_restmail.test",
-                 *       "date-range": {
-                 *         "start-datetime": "2026-10-16T00:00:00Z",
-                 *         "end-datetime": "2026-10-16T23:59:59Z"
-                 *       },
-                 *       "policies": [
-                 *         {
-                 *           "policy": {
-                 *             "policy-type": "sts",
-                 *             "policy-string": [
-                 *               "version: STSv1",
-                 *               "mode: testing",
-                 *               "mx: mail.restmail.test",
-                 *               "max_age: 86400"
-                 *             ],
-                 *             "policy-domain": "restmail.test",
-                 *             "mx-host": [
-                 *               "mail.restmail.test"
-                 *             ]
-                 *           },
-                 *           "summary": {
-                 *             "total-successful-session-count": 12,
-                 *             "total-failure-session-count": 1
-                 *           },
-                 *           "failure-details": [
-                 *             {
-                 *               "result-type": "certificate-expired",
-                 *               "sending-mta-ip": "192.0.2.1",
-                 *               "receiving-mx-hostname": "mail.restmail.test",
-                 *               "failed-session-count": 1
-                 *             }
-                 *           ]
-                 *         }
-                 *       ]
-                 *     }
-                 */
                 "application/json": components["schemas"]["TLSRPTReport"];
             };
         };
@@ -8650,7 +8673,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     acmeChallenge: {
@@ -9376,6 +9407,83 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Outbound transport */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "data": {
+                     *         "domain_id": 1,
+                     *         "transport": "relay",
+                     *         "host": "smtp.example.net",
+                     *         "port": 587,
+                     *         "tls_mode": "starttls",
+                     *         "username": "apikey",
+                     *         "password_set": true
+                     *       }
+                     *     }
+                     */
+                    "application/json": {
+                        data: components["schemas"]["DomainRelay"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDomainRelayRequest"];
+            };
+        };
+        responses: {
+            /** @description Outbound transport saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DomainRelay"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
     listTlsReports: {
         parameters: {
             query?: {
@@ -9470,14 +9578,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "from": "postmaster@restmail.test",
-                 *       "to": "admin@restmail.test",
-                 *       "subject": "Test",
-                 *       "body": "A test message."
-                 *     }
-                 */
                 "application/json": {
                     /** Format: email */
                     from: string;
@@ -9514,7 +9614,15 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     verifyDelivery: {

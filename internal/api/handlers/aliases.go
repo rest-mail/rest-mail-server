@@ -138,6 +138,10 @@ func (h *AliasHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
 	}
+	if req.DestinationAddress != nil && rmail.ValidateAddress(*req.DestinationAddress) != nil {
+		respond.ValidationError(w, map[string]string{"destination_address": "must be a valid email address"})
+		return
+	}
 
 	updates := map[string]interface{}{}
 	if req.DestinationAddress != nil {

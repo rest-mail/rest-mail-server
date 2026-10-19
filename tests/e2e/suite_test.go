@@ -528,7 +528,7 @@ const e2eInboundFilters = `[
  {"name":"spf_check","type":"action","enabled":true,"config":{"fail_action":"tag"}},
  {"name":"dkim_verify","type":"transform","enabled":true,"config":{"fail_action":"tag"}},
  {"name":"arc_verify","type":"transform","enabled":true,"config":{}},
- {"name":"dmarc_check","type":"action","enabled":true,"config":{"fail_action":"quarantine"}},
+ {"name":"dmarc_check","type":"action","enabled":true,"config":{}},
  {"name":"domain_allowlist","type":"action","enabled":true,"config":{}},
  {"name":"contact_whitelist","type":"action","enabled":true,"config":{}},
  {"name":"header_validate","type":"action","enabled":true,"config":{}},
