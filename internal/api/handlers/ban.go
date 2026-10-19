@@ -24,6 +24,9 @@ func NewBanHandler(db *gorm.DB) *BanHandler {
 // ListBans returns all active bans with optional filtering.
 // GET /api/v1/admin/bans?protocol=smtp&active=true&limit=50&offset=0
 func (h *BanHandler) ListBans(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
+		return
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
@@ -66,7 +69,7 @@ func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
 		Reason    string  `json:"reason"`
 		Protocol  string  `json:"protocol"` // "smtp", "imap", "pop3", "all"
 		Duration  *string `json:"duration"` // e.g. "24h", "168h"; nil = permanent
-		CreatedBy string  `json:"created_by"`
+		CreatedBy *string `json:"created_by"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -76,9 +79,11 @@ func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, map[string]string{"ip": "IP address is required"})
 		return
 	}
+	if req.CreatedBy == nil {
+		respond.ValidationError(w, map[string]string{"created_by": "required"})
+		return
+	}
 	switch req.Protocol {
-	case "":
-		req.Protocol = "all"
 	case "smtp", "imap", "pop3", "all":
 	default:
 		respond.ValidationError(w, map[string]string{"protocol": "protocol must be one of smtp, imap, pop3, all"})
@@ -89,7 +94,7 @@ func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
 		IP:        req.IP,
 		Reason:    req.Reason,
 		Protocol:  req.Protocol,
-		CreatedBy: req.CreatedBy,
+		CreatedBy: *req.CreatedBy,
 	}
 
 	if req.Duration != nil {

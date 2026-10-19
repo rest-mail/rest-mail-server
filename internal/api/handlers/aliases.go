@@ -22,6 +22,9 @@ func NewAliasHandler(db *gorm.DB) *AliasHandler {
 }
 
 func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "domain_id") {
+		return
+	}
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
 	query := h.db.Model(&models.Alias{})
@@ -58,6 +61,8 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DestinationAddress == "" {
 		errors["destination_address"] = "required"
+	} else if rmail.ValidateAddress(req.DestinationAddress) != nil {
+		errors["destination_address"] = "must be a valid email address"
 	}
 	if len(errors) > 0 {
 		respond.ValidationError(w, errors)

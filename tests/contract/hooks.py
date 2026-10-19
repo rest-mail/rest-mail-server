@@ -15,6 +15,8 @@ import os
 import subprocess
 import tempfile
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 
 import vertrag_hooks as hooks
@@ -95,10 +97,15 @@ def on_the_created_domain(transaction, **fields):
 
 @hooks.before("createPipeline")
 def a_pipeline_on_the_created_domain(transaction):
+    body = hooks.get_json(transaction)
+    # The undecodable create (body_array, 400) is sent as documented: an
+    # array, with no object to put the domain in.
+    if not isinstance(body, dict):
+        return
     fields = {"active": False, "filters": [{"name": "header_validate", "config": {}}]}
     # The refused create (direction_missing, 422) is sent as documented, with
     # no direction.
-    if "direction" in hooks.get_json(transaction):
+    if "direction" in body:
         fields["direction"] = "inbound"
     on_the_created_domain(transaction, **fields)
 
@@ -172,6 +179,60 @@ def wait_for_the_trace(transaction):
     time.sleep(1)
 
 
+def created_folder_path(transaction):
+    body = hooks.get_json(transaction)
+    name = body.get("name") if isinstance(body, dict) else None
+    if not isinstance(name, str) or not name:
+        return None
+    return transaction["fullPath"].split("?")[0] + "/" + urllib.parse.quote(name, safe="")
+
+
+@hooks.before("createFolder")
+def remove_a_previous_folder_probe(transaction):
+    # Valid probes repeat the example's name. Only reuse destinations that
+    # were absent before this operation tried them, leaving requests untouched:
+    # rewriting its body would make vertrag skip the boundary being tested.
+    path = created_folder_path(transaction)
+    parent = transaction["fullPath"].split("?")[0]
+    account_id = parent.split("/")[-2]
+    if not path or not account_id.isdecimal() or int(account_id) < 1:
+        return
+    created = hooks.stash.get("created_folders", {})
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Authorization": basic(ADMIN, ADMIN_PASSWORD)}
+    if path not in created:
+        # Coverage runs before hooks only. Remember an absent destination
+        # before sending it, rather than relying on an after hook to run.
+        request = urllib.request.Request(origin + parent, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                existing = json.load(response).get("data") or []
+        except urllib.error.HTTPError as error:
+            if error.code in (400, 403, 404):
+                return  # Leave an invalid account ID for the real probe.
+            raise
+        name = hooks.get_json(transaction)["name"]
+        if name in ("INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"):
+            return
+        if any(folder.get("name") == name for folder in existing):
+            return
+        created[path] = True
+        hooks.stash["created_folders"] = created
+        return
+    request = urllib.request.Request(
+        origin + path,
+        headers=headers,
+        method="DELETE",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not remove the previous folder probe")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+
+
 @hooks.before("renameFolder")
 def give_each_rename_probe_a_folder(transaction):
     # A successful rename consumes its source folder. Each boundary probe
@@ -221,3 +282,50 @@ def sign_in_a_mail_client(transaction):
     app = principals()["app_password"]
     transaction["request"]["headers"]["Authorization"] = basic(app["address"], app["secret"])
     hooks.set_json(transaction, {"protocol": "imap"})
+
+
+@hooks.before("createContact")
+def remove_a_previous_contact_probe(transaction):
+    # Coverage calls before hooks only. Claim an absent email before its first
+    # create, then remove only that probe's contact when generated bodies repeat.
+    # Existing contacts and all generated request bytes stay untouched.
+    from urllib.error import HTTPError
+    from urllib.parse import urlencode
+
+    body = hooks.get_json(transaction)
+    email = body.get("email") if isinstance(body, dict) else None
+    parent = transaction["fullPath"].split("?")[0]
+    account_id = parent.split("/")[-2]
+    if not isinstance(email, str) or not email or not account_id.isdecimal() or int(account_id) < 1:
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Authorization": basic(ADMIN, ADMIN_PASSWORD)}
+    key = origin + parent + "\n" + email
+    owned = hooks.stash.get("created_contact_probes", {})
+    offset = 0
+    while True:
+        query = urlencode({"search": email, "limit": 200, "offset": offset})
+        request = urllib.request.Request(origin + parent + "?" + query, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                page = json.load(response)
+        except HTTPError as error:
+            if error.code in (400, 403, 404):
+                return  # Leave an invalid account ID to the actual probe.
+            raise
+        contacts = page.get("data") or []
+        contact = next((item for item in contacts if item.get("email") == email), None)
+        if contact:
+            if key not in owned:
+                return
+            request = urllib.request.Request(
+                origin + parent + "/" + str(contact["id"]), headers=headers, method="DELETE")
+            with urllib.request.urlopen(request, timeout=10) as response:
+                if response.status != 204:
+                    raise RuntimeError("could not remove the previous contact probe")
+            return
+        if not (page.get("pagination") or {}).get("has_more"):
+            owned[key] = True
+            hooks.stash["created_contact_probes"] = owned
+            return
+        offset += len(contacts)

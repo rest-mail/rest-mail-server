@@ -17,21 +17,29 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 
-Then `gate.py` reads vertrag's JUnit report and fails the job unless:
+Two gates judge the run:
 
-- **examples:** every operation not excluded in `vertrag.yml` was sent and
-  passed: every one of its transactions, with none skipped because the step it
-  follows failed. Each exclusion is printed with its reason. (The examples half
-  becomes `vertrag run --require-surface 100`: antimatter-studios/vertrag#70.)
-- **coverage, a ratchet:** `coverage-baseline.txt` lists the operations whose
-  boundary probes still fail (#388). A failing probe on any other operation
-  fails the job, and so does an operation in the baseline whose probes all
-  pass now. A fix takes its operation out of the baseline in the same change,
-  so the baseline only shrinks after its initial seeding in #376.
+- **examples, in vertrag:** `vertrag.yml`'s surface gate (`surface: {count:
+  passed, require: 100}`) counts an operation only when every documented
+  transaction of it was sent and passed, none failed, none skipped (because a
+  hook skipped it or the link it follows did not resolve), none answered 5xx,
+  and requires every operation it does not exclude. A shortfall exits 3, a
+  failed transaction 1, and the contract step fails on either. Each exclusion
+  is printed with its reason: the operations `exclude-operation-id` never
+  sends, and the documented statuses `exclude-matching` keeps back, which
+  `surface.exclude` mirrors.
+- **coverage, a ratchet, in `gate.py`:** `coverage-baseline.txt` lists the
+  operations whose boundary probes still fail (#388). A failing probe on any
+  other operation fails the job, and so does an operation in the baseline
+  whose probes all pass now. A fix takes its operation out of the baseline in
+  the same change, so the baseline only shrinks after its initial seeding in
+  #376. `gate.py` also fails when `exclude-operation-id` and
+  `surface.exclude` disagree about which operations are left out, or name one
+  the spec does not have.
 
 The documented error responses other than 401 are excluded by pattern in
-`vertrag.yml`: 403 needs a principal without the capability
-(antimatter-studios/vertrag#71), and 400, 404, 409 and 422 each need a request
+`vertrag.yml`: 403 needs a principal without the capability (the
+authorization phase, below), and 400, 404, 409 and 422 each need a request
 of their own that provokes them (#386).
 
 That request is a named request example, and the response it provokes carries
@@ -47,12 +55,16 @@ follows; its `body_array` request (`[]`, JSON but not an object) goes with its
 address) goes with its 422 naming `source_address`
 (`contract_alias_examples_test.go`). `createPipeline` is the third: its
 `direction_missing` request (the `created` one without its direction) goes with
-its 422, and `created` with its 201; the hooks give the refused request the created domain but no direction.
+its 422, and `created` with its 201; the hooks give the refused request the
+created domain but no direction. Its `body_array` request (`[]`) goes with its
+400, the `bad_request` the handler sends for a body it cannot decode, and is
+sent as it is: the hooks have no object to put the domain in.
 `internal/api/handlers/contract_examples_test.go` (and
 `contract_pipeline_examples_test.go`, for `createPipeline`) sends each request
 named on any of these 422s to the real handler, which has no database, and
 checks it gets the documented body: the refusal comes before anything is looked
-up or stored.
+up or stored. `contract_pipeline_body400_test.go` does the same for
+`body_array` and its 400.
 
 Their 422s are still excluded, though vertrag sends them and the handlers
 answer as documented: the coverage phase probes every transaction sent, and
@@ -65,19 +77,27 @@ counted as a failure on an operation the coverage baseline does not list
 off `exclude-matching` once vertrag does not judge valid probes built from a
 documented refusal.
 
-vertrag is the released, checksum-pinned binary (v0.27.0), not a Go
+`createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
+JSON but not an object) goes with the `bad_request` the handler answers before
+it reads any field (`contract_domain_body_examples_test.go`, which sends it to
+the real handler with no database). It stays excluded with the other 400s.
+
+vertrag is the released, checksum-pinned binary (v0.29.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
 
 ## Files
 
-- `../../vertrag.yml`: the run: endpoint, sign-in, exclusions with reasons.
+- `../../vertrag.yml`: the run: endpoint, sign-in, exclusions, and the
+  surface gate with each exclusion's reason.
 - `hooks.py`: only what the spec cannot hold: the fixture's passwords, the
   refresh token a sign-in hands out, a fresh key pair, the created domain's id
   where a request carries it in its body, and its name in the Host header the
-  MTA-STS policy file is served by, and a fresh source folder for each rename
-  probe (a successful rename consumes the previous one). Every other id comes
-  from the spec's `links`.
-- `gate.py`: the gate. `gate.py --failing-probes openapi.yaml <report>` prints
+  MTA-STS policy file is served by, cleanup of folders previously created by
+  create probes (so repeated valid names do not conflict), and a fresh source
+  folder for each rename probe (a successful rename consumes the previous one).
+  Folder create probes keep their generated bodies and account IDs unchanged.
+  Every other id comes from the spec's `links`.
+- `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
@@ -125,8 +145,15 @@ chore test:contract-fixtures
 vertrag doctor                          # sends nothing: does every setting reach something?
 mkdir -p .cache/contract                # the report's directory; vertrag makes none
 vertrag run --sequence --phases coverage
+echo "vertrag exited $?"                 # 0, or 2 for probe findings; 1 and 3 fail
 python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
   tests/contract/coverage-baseline.txt
 ```
 
 `vertrag run --dry-run --sequence` shows what would be sent, with nothing up.
+
+Contact create probes use a before hook to remove contacts made by earlier
+probes when an email is reused. It first checks that the email was absent,
+leaves pre-existing contacts alone, and preserves generated bodies, account IDs
+and headers. Coverage does not call after hooks, so ownership is recorded before
+the first create attempt.

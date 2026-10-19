@@ -335,9 +335,8 @@ cmd/
   imap-gateway/     IMAP protocol gateway
   pop3-gateway/     POP3 protocol gateway
   console/          Terminal admin UI (bubbletea) with RBAC
-  instance/         Config manifest renderer/scaffolder (see Instances)
+  instance/         Config manifest renderer/scaffolder, instance cert issuance (see Instances)
   migrate/          Database migration runner
-  certgen/          TLS/DKIM certificate generator
   rotate-key/       MASTER_KEY rotation tool
   seed/             Test data seeder (domain, accounts, the admin account)
   website/          Project website server
@@ -609,12 +608,12 @@ submission would break.
 | `INTERNAL_MTLS_CLIENT_KEY`  | *(empty)* | gateway | Gateway client key                       |
 
 Mint the material (dedicated CA + API server cert + gateway client cert) with
-the in-repo certgen — idempotent and CA-preserving (it re-mints the server leaf
+`instance mtls-issue` — idempotent and CA-preserving (it re-mints the server leaf
 if the requested SANs drift, e.g. the api IP changes on a persistent volume):
 
 ```
-go run ./cmd/certgen --internal-mtls --out /internal-mtls \
-  --server-ip 127.0.0.1,<api-ip> --server-dns api,localhost,<hostname>
+go run ./cmd/instance mtls-issue -out /internal-mtls \
+  -server-ip 127.0.0.1,<api-ip> -server-dns api,localhost,<hostname>
 ```
 
 That directory then holds the internal CA's private key, so mount it into

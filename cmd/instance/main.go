@@ -51,6 +51,10 @@ func main() {
 		dkimCheckCmd(os.Args[2:])
 	case "status":
 		statusCmd(os.Args[2:])
+	case "acme-issue":
+		acmeIssueCmd(os.Args[2:])
+	case "mtls-issue":
+		mtlsIssueCmd(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "instance: unknown subcommand %q\n\n", os.Args[1])
 		usage()
@@ -161,6 +165,17 @@ usage:
       Assert the DKIM selector provisioned in the DB for each served domain
       matches the selector the manifest declares; exit non-zero on drift. Run
       where the API is reachable (e.g. inside the api container).
+
+  instance acme-issue -out <dir> -domains <a,b,...> [-email e] [-directory URL] [-staging] [-listen :80]
+      Issue one certificate covering -domains from an ACME CA by HTTP-01,
+      serving the challenges on -listen meanwhile, and write it to
+      <dir>/<first domain>.{crt,key}. Nothing is written unless it succeeds.
+
+  instance mtls-issue -out <dir> [-server-dns api,localhost] [-server-ip 127.0.0.1] [-client-cn rest-mail-gateway]
+      Mint the gateway→API internal mTLS material into <dir>: a dedicated
+      internal CA, the API server cert and the gateway client cert.
+      Idempotent: an existing CA is reused, present leaves are kept unless
+      the server SANs changed.
 `)
 }
 

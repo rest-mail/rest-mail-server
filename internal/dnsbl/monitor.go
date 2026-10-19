@@ -28,8 +28,9 @@ type Observer interface {
 	// Checked is called once for every completed check, whatever its status.
 	Checked(Observation)
 	// Changed is called once per listing or recovery, after Checked for the
-	// check that caused it.
-	Changed(Transition)
+	// check that caused it. An error stops Run without accepting the new
+	// state, so a failed durable write is never silently forgotten.
+	Changed(Transition) error
 }
 
 // Observation is one completed check.
@@ -81,6 +82,9 @@ type MonitorConfig struct {
 	Timeout time.Duration
 	// Observer receives every check and every transition.
 	Observer Observer
+	// Known seeds the last authoritative state, with the time it began.
+	// Entries for pairs no longer configured (including changed zones) are ignored.
+	Known []Observation
 }
 
 // ErrInvalidMonitorConfig wraps every reason NewMonitor refuses a config.
@@ -93,10 +97,10 @@ var ErrMonitorRunning = errors.New("dnsbl: monitor is already running")
 // check at a time, and reports listings and recoveries.
 //
 // The listing state (last authoritative listed / not listed result per IP and
-// provider) is held in memory only: it is not durable, and a new Monitor or a
-// restart starts from unknown. An unknown pair that checks clean is not a
-// recovery; one that checks listed is a listing. Only an authoritative
-// not_listed recovers a listing: provider_error, indeterminate, unsupported
+// provider) starts from Known, or unknown when no seed is supplied. An unknown
+// pair that checks clean is not a recovery; one that checks listed is a listing.
+// Only an authoritative not_listed recovers a listing: provider_error,
+// indeterminate, unsupported
 // and checks abandoned by cancellation never change the state.
 type Monitor struct {
 	checker    IPChecker
@@ -192,6 +196,34 @@ func NewMonitor(checker IPChecker, cfg MonitorConfig) (*Monitor, error) {
 		providers = append(providers, p)
 	}
 
+	state := make(map[pairKey]pairState)
+	for _, known := range cfg.Known {
+		r := known.Result
+		r.IP = r.IP.Unmap()
+		if !seenIP[r.IP] {
+			continue
+		}
+		matches := false
+		for _, p := range providers {
+			if p.Name == r.Provider && strings.TrimSuffix(p.Zone, ".") == r.Zone {
+				matches = true
+				break
+			}
+		}
+		if !matches {
+			continue
+		}
+		if known.At.IsZero() || (r.Status != StatusListed && r.Status != StatusNotListed) {
+			return nil, fmt.Errorf("%w: invalid known state for %s/%s", ErrInvalidMonitorConfig, r.IP, r.Provider)
+		}
+		key := pairKey{ip: r.IP, provider: r.Provider}
+		if _, exists := state[key]; exists {
+			return nil, fmt.Errorf("%w: duplicate known state for %s/%s", ErrInvalidMonitorConfig, r.IP, r.Provider)
+		}
+		r.Codes = append([]netip.Addr(nil), r.Codes...)
+		state[key] = pairState{result: r, since: known.At}
+	}
+
 	return &Monitor{
 		checker:    checker,
 		ips:        ips,
@@ -202,7 +234,7 @@ func NewMonitor(checker IPChecker, cfg MonitorConfig) (*Monitor, error) {
 		observer:   cfg.Observer,
 		now:        time.Now,
 		newTimer:   func(d time.Duration) monitorTimer { return realTimer{time.NewTimer(d)} },
-		state:      make(map[pairKey]pairState),
+		state:      state,
 	}, nil
 }
 
@@ -250,8 +282,17 @@ func (m *Monitor) pass(ctx context.Context) error {
 			}
 			at := m.now()
 			m.observer.Checked(Observation{At: at, Result: res})
-			if tr, ok := m.apply(pairKey{ip: ip, provider: p.Name}, res, at); ok {
-				m.observer.Changed(tr)
+			key := pairKey{ip: ip, provider: p.Name}
+			prev, known := m.state[key]
+			if tr, ok := m.apply(key, res, at); ok {
+				if err := m.observer.Changed(tr); err != nil {
+					if known {
+						m.state[key] = prev
+					} else {
+						delete(m.state, key)
+					}
+					return fmt.Errorf("dnsbl: record transition: %w", err)
+				}
 			}
 		}
 	}

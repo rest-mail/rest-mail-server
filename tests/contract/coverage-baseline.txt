@@ -14,10 +14,7 @@ bulkBounceQueue
 bulkDeleteQueue
 bulkRetryQueue
 createAccount
-createBan
-createContact
 createDomain
-createFolder
 deleteAlias
 deleteBan
 deleteCustomFilter
@@ -32,16 +29,9 @@ getDomain
 getMailbox
 getQueueEntry
 importContacts
-listAliases
-listAuditEntries
 listBans
 listContacts
-listCustomFilters
-listGrants
-listMailboxes
-listMessages
 listPipelineLogs
-listPipelines
 listQueue
 listTlsReports
 logout

@@ -167,29 +167,7 @@ func (f *sieveFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pi
 		slog.Error("sieve: script evaluation error, keeping message (fail-safe)",
 			"error", outcome.Error)
 	}
-	return sieveResult(outcome, exec, scriptRequiresCopy(f.script), &modified), nil
-}
-
-// scriptRequiresCopy reports whether the script declared the RFC 3894 "copy"
-// extension. go-sieve v0.3.0 does not surface the per-action :copy flag to the
-// Executor (Executor.Redirect receives only the address) nor preserve the
-// implicit keep for a :copy redirect in its Outcome, so a `redirect :copy` and a
-// bare `redirect` are indistinguishable from the callbacks alone. The declared
-// "copy" capability is the signal we have: when a redirect-only script requires
-// "copy", the redirect is treated as keep-preserving (message forwarded AND kept
-// locally). This errs toward keeping the message — never losing mail — in the
-// uncommon script that mixes a bare and a :copy redirect. A future go-sieve that
-// exposes :copy on Executor.Redirect would let this be decided per redirect.
-func scriptRequiresCopy(s *sieve.Script) bool {
-	if s == nil {
-		return false
-	}
-	for _, r := range s.Requires() {
-		if strings.EqualFold(r, "copy") {
-			return true
-		}
-	}
-	return false
+	return sieveResult(outcome, exec, &modified), nil
 }
 
 // sieveResult maps a completed sieve evaluation onto a pipeline.FilterResult,
@@ -205,10 +183,11 @@ func scriptRequiresCopy(s *sieve.Script) bool {
 //     path to forward (RFC 5228 §4.2). A bare redirect cancels the implicit keep,
 //     so when the message has no other local destination redirect_suppress_keep is
 //     set and the delivery path forwards WITHOUT also keeping a local copy; a
-//     `redirect :copy` forwards AND keeps.
+//     `redirect :copy` does not cancel the implicit keep (RFC 3894 §3), so
+//     outcome.ImplicitKeep still stands and the message is forwarded AND kept.
 //   - A runtime error (outcome.Error — always reported as Continue+ImplicitKeep)
 //     fails safe to that implicit keep per §2.10.6: the message is kept.
-func sieveResult(outcome sieve.Outcome, exec *metadataExecutor, copyRequired bool, modified *pipeline.EmailJSON) *pipeline.FilterResult {
+func sieveResult(outcome sieve.Outcome, exec *metadataExecutor, modified *pipeline.EmailJSON) *pipeline.FilterResult {
 	var applied []string
 	var redirectTargets []string
 	hasLocalDelivery := false
@@ -237,7 +216,7 @@ func sieveResult(outcome sieve.Outcome, exec *metadataExecutor, copyRequired boo
 			Log: pipeline.FilterLog{
 				Filter: "sieve",
 				Result: "reject",
-				Detail: "sieve reject: " + outcome.RejectReason,
+				Detail: rejectVerb(outcome) + ": " + outcome.RejectReason,
 			},
 		}
 	}
@@ -247,15 +226,15 @@ func sieveResult(outcome sieve.Outcome, exec *metadataExecutor, copyRequired boo
 	//
 	// Redirect targets are handed to the delivery path as JSON in redirect_to.
 	// The local-keep decision (RFC 5228 §4.2 / RFC 3894): the message is kept
-	// locally when the implicit keep still stands, OR an explicit keep / fileinto
-	// delivered it locally, OR every redirect was keep-preserving (:copy). Only a
-	// bare redirect that was the message's sole destination cancels the local
-	// copy — signalled with redirect_suppress_keep so the delivery path forwards
-	// without also storing to INBOX.
+	// locally when the implicit keep still stands (go-sieve leaves it set after
+	// :copy redirects alone), OR an explicit keep / fileinto delivered it
+	// locally. Only a bare redirect that was the message's sole destination
+	// cancels the local copy — signalled with redirect_suppress_keep so the
+	// delivery path forwards without also storing to INBOX.
 	if len(redirectTargets) > 0 {
 		ensureMetadata(modified)
 		modified.Metadata["redirect_to"] = encodeRedirectTargets(redirectTargets)
-		localKeep := outcome.ImplicitKeep || hasLocalDelivery || copyRequired
+		localKeep := outcome.ImplicitKeep || hasLocalDelivery
 		if !localKeep {
 			modified.Metadata["redirect_suppress_keep"] = "true"
 		}
@@ -286,6 +265,15 @@ func sieveResult(outcome sieve.Outcome, exec *metadataExecutor, copyRequired boo
 			Detail: detail,
 		},
 	}
+}
+
+// rejectVerb names the refusal the script executed: RFC 5429 `ereject` or
+// `reject`. Both refuse the message with the script's reason.
+func rejectVerb(outcome sieve.Outcome) string {
+	if outcome.ExtendedReject {
+		return "sieve ereject"
+	}
+	return "sieve reject"
 }
 
 // encodeRedirectTargets serializes the redirect targets to the JSON array stored
@@ -395,7 +383,10 @@ func (e *metadataExecutor) FileInto(folder string, create bool) {
 	e.applied = append(e.applied, "fileinto:"+folder)
 }
 
-func (e *metadataExecutor) Redirect(addr string) {
+// Redirect forwards the message to addr. isCopy (RFC 3894 :copy) needs no
+// handling here: forwarding is the same either way, and whether the message is
+// also kept locally is decided by outcome.ImplicitKeep in sieveResult.
+func (e *metadataExecutor) Redirect(addr string, isCopy bool) {
 	if !e.redirectAllowed(addr) {
 		// Deny: do NOT record the target, so the delivery path never forwards the
 		// message off-domain. This is the OSI-13 exfiltration guard.
@@ -418,6 +409,10 @@ func (e *metadataExecutor) Redirect(addr string) {
 		return
 	}
 	e.redirectTargets = append(e.redirectTargets, addr)
+	if isCopy {
+		e.applied = append(e.applied, "redirect:copy:"+addr)
+		return
+	}
 	e.applied = append(e.applied, "redirect:"+addr)
 }
 
@@ -541,16 +536,16 @@ func (e *metadataExecutor) Flag(op string, flags []string) {
 func (e *metadataExecutor) Vacation(v sieve.Vacation) {
 	ensureMetadata(e.email)
 
-	// Determine the sender to reply to from the raw envelope (not the resolved
-	// override the library computed), preserving the previous behaviour.
-	replyTo := e.email.Envelope.MailFrom
-	if replyTo == "" && len(e.email.Headers.From) > 0 {
-		replyTo = e.email.Headers.From[0].Address
-	}
+	// go-sieve only calls Vacation when a reply is allowed (RFC 5230): the
+	// envelope sender is present, the recipient is addressed personally, and the
+	// message is not list, bulk or auto-submitted mail. ReplyTo is the envelope
+	// sender, never From or Reply-To, so there is nothing to recheck here.
+	replyTo := v.ReplyTo
 
-	// Dedup key: hash of the sender address. The downstream vacation filter or
-	// delivery agent enforces the actual time window.
-	dedupKey := vacationDedupKey(replyTo)
+	// Dedup key: hash of the sender address and the :handle, the RFC 5230 §4.2
+	// tracking identity. The downstream vacation filter or delivery agent
+	// enforces the actual time window.
+	dedupKey := vacationDedupKey(replyTo, v.Handle)
 	lastSentKey := "vacation_last_sent_" + dedupKey
 	if _, alreadySent := e.email.Metadata[lastSentKey]; alreadySent {
 		e.applied = append(e.applied, "vacation:dedup-suppressed")
@@ -558,8 +553,16 @@ func (e *metadataExecutor) Vacation(v sieve.Vacation) {
 	}
 
 	e.email.Metadata["vacation_reply_to"] = replyTo
-	e.email.Metadata["vacation_reply_subject"] = v.Subject
+	if v.SubjectSet {
+		e.email.Metadata["vacation_reply_subject"] = v.Subject
+	}
 	e.email.Metadata["vacation_reply_body"] = v.Body
+	if v.MIME {
+		e.email.Metadata["vacation_reply_mime"] = "true"
+	}
+	if v.From != "" {
+		e.email.Metadata["vacation_reply_from"] = v.From
+	}
 	// go-sieve now carries the resend interval as a duration (RFC 5230 :days /
 	// RFC 6131 :seconds). The downstream vacation agent keys off whole days, so
 	// convert; a sub-day :seconds interval rounds down to 0 and is omitted.
@@ -626,9 +629,10 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
-// vacationDedupKey returns a short hash for deduplication keyed on the sender address.
-func vacationDedupKey(sender string) string {
-	h := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(sender))))
+// vacationDedupKey returns a short hash for deduplication keyed on the sender
+// address and the vacation :handle.
+func vacationDedupKey(sender, handle string) string {
+	h := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(sender)) + "\x00" + handle))
 	return fmt.Sprintf("%x", h[:8])
 }
 
@@ -785,7 +789,7 @@ func (e *recordingExecutor) FileInto(folder string, create bool) {
 	e.actions = append(e.actions, "fileinto:"+folder)
 }
 
-func (e *recordingExecutor) Redirect(addr string) {
+func (e *recordingExecutor) Redirect(addr string, _ bool) {
 	e.actions = append(e.actions, "redirect:"+addr)
 	if domainOf(addr) == "" && e.err == nil {
 		e.err = fmt.Errorf("redirect target %q is not a valid email address (no domain)", addr)

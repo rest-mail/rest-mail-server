@@ -557,7 +557,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Compose and send a new message */
+        /**
+         * Compose and send a new message
+         * @description The sender domain's `sending_policy` decides whether the message carries `list_unsubscribe`: a `bulk` domain's message without it is refused with 422 `list_unsubscribe_required`, and a `transactional` domain's message with it is refused with 422 `list_unsubscribe_not_allowed`. With no policy, either is sent.
+         */
         post: operations["sendMessage"];
         delete?: never;
         options?: never;
@@ -1232,7 +1235,7 @@ export interface paths {
         head?: never;
         /**
          * Update a domain
-         * @description Setting `active` to true makes the domain live, and is refused with 409 `certificate_required` unless the domain has a currently valid certificate: mail for it is only ever carried over TLS. Setting `active` to false takes it out of service and is always allowed.
+         * @description Setting `active` to true makes the domain live, and is refused with 409 `certificate_required` unless the domain has a currently valid certificate: mail for it is only ever carried over TLS. Setting `active` to false takes it out of service and is always allowed. Setting `sending_policy` to `""` clears it; any value other than `transactional`, `bulk` or `""` is refused with 422 `validation_failed`.
          */
         patch: operations["updateDomain"];
         trace?: never;
@@ -3238,6 +3241,7 @@ export interface components {
             /** Format: int64 */
             default_quota_bytes: number;
             dkim_selector?: string;
+            sending_policy: components["schemas"]["DomainSendingPolicy"];
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3249,12 +3253,19 @@ export interface components {
             server_type: "traditional" | "restmail";
             /** Format: int64 */
             default_quota_bytes?: number;
+            sending_policy?: components["schemas"]["DomainSendingPolicy"];
         };
         UpdateDomainRequest: {
             active?: boolean;
             /** Format: int64 */
             default_quota_bytes?: number;
+            sending_policy?: components["schemas"]["DomainSendingPolicy"];
         };
+        /**
+         * @description What the send API expects of the domain's mail (RFC 2369, RFC 8058). `transactional`: mail one person asked for, such as receipts and password resets; it carries no List-Unsubscribe field, so a send with `list_unsubscribe` is refused with 422 `list_unsubscribe_not_allowed`. `bulk`: mail sent to a list, which receivers such as Gmail and Yahoo expect to say how to unsubscribe; a send without `list_unsubscribe` is refused with 422 `list_unsubscribe_required`. Empty: no rule, either is sent. The policy applies to the send API; SMTP submission, draft send and forward are not checked.
+         * @enum {string}
+         */
+        DomainSendingPolicy: "" | "transactional" | "bulk";
         /** @description An account, as the admin API shows it: a mailbox is the account. Its passwords, authenticators and app passwords are its credentials, never shown here; what it may do is its grants (/api/v1/admin/grants). */
         Mailbox: {
             id: number;
@@ -3508,11 +3519,46 @@ export interface components {
             pattern: string;
             reason?: string;
         };
+        /**
+         * @description Current configured signing key for a domain, including domains not yet serving mail. No private key material is returned. Algorithm and size are not stored. Legacy key installation times are unknown, not inferred from domain timestamps.
+         * @example {
+         *       "domain_id": 1,
+         *       "domain": "example.com",
+         *       "selector": "mail",
+         *       "has_key": true,
+         *       "created_at": "2026-10-01T12:00:00Z",
+         *       "age_seconds": 86400
+         *     }
+         * @example {
+         *       "domain_id": 2,
+         *       "domain": "legacy.example.com",
+         *       "selector": "old",
+         *       "has_key": true,
+         *       "created_at": null,
+         *       "age_seconds": null
+         *     }
+         */
         DKIMEntry: {
+            /** @example 1 */
             domain_id: number;
+            /** @example example.com */
             domain: string;
+            /** @example mail */
             selector: string;
+            /** @example true */
             has_key: boolean;
+            /**
+             * Format: date-time
+             * @description When the current key was installed; null for legacy keys with unknown age. Re-saving the same PEM preserves this value.
+             * @example 2026-10-01T12:00:00Z
+             */
+            created_at: string | null;
+            /**
+             * Format: double
+             * @description Seconds since installation at response time, clamped to zero for future timestamps; null when created_at is unknown.
+             * @example 86400
+             */
+            age_seconds: number | null;
         };
         SetDKIMKeyRequest: {
             /** @description A DNS name; the key's record is `<selector>._domainkey.<domain>` */
@@ -3563,7 +3609,7 @@ export interface components {
             reason?: string;
             /** @enum {string} */
             protocol: "smtp" | "imap" | "pop3" | "all";
-            /** @description Duration string (e.g. "24h", "7d"), omit for permanent */
+            /** @description Go duration string (e.g. "24h", "168h"), omit for permanent */
             duration?: string;
             created_by: string;
         };
@@ -5286,6 +5332,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Paginated list of messages */
             200: {
                 headers: {
@@ -6584,6 +6631,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The body is not a JSON object of the request's fields (`bad_request`), or the name is not a domain name (`invalid_domain`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             409: components["responses"]["Conflict"];
             /** @description Request body failed validation */
             422: {
@@ -6690,6 +6746,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     listMailboxes: {
@@ -6703,6 +6760,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Mailbox list */
             200: {
                 headers: {
@@ -6860,6 +6918,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Alias list */
             200: {
                 headers: {
@@ -7015,6 +7074,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Pipeline list */
             200: {
                 headers: {
@@ -7050,6 +7110,15 @@ export interface operations {
                     "application/json": {
                         data: components["schemas"]["Pipeline"];
                     };
+                };
+            };
+            /** @description `bad_request` when the body does not decode as the request: not JSON, an array, a string, a number or a boolean rather than an object, or a field of the wrong JSON type. It is refused before any field is validated; a `null` body decodes as an empty one and gets the 422. Filters that pass validation are also refused with a 400: `invalid_sieve` for a Sieve script that does not install, `unsupported_filter` for a filter configured in a way it does not support. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Request body failed validation */
@@ -7197,6 +7266,15 @@ export interface operations {
                     "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
+            /** @description `bad_request` when the body does not decode as the request: empty, not JSON, an array, a string, a number or a boolean rather than an object, or a `filter_name` or `email` of the wrong JSON type. It is refused before the required fields are checked and before any filter is made; `{}` and a `null` body decode as empty ones and get a 422 instead. A body that decodes is also refused with a 400, `filter_error`, when the named filter cannot be made from its config or fails on the email. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     listPipelineLogs: {
@@ -7219,6 +7297,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Pipeline message traces */
             200: {
                 headers: {
@@ -7244,6 +7323,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Custom filter list */
             200: {
                 headers: {
@@ -7523,6 +7603,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Queue entries */
             200: {
                 headers: {
@@ -7636,6 +7717,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Invalid JSON or a body that cannot be decoded into the request shape; no IDs and no filter; or more than 1000 IDs. Refused before any queue lookup. An empty filter object is accepted. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     bulkDeleteQueue: {
@@ -7647,13 +7737,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "ids": [
-                 *         987654
-                 *       ]
-                 *     }
-                 */
                 "application/json": components["schemas"]["BulkQueueRequest"];
             };
         };
@@ -7667,6 +7750,15 @@ export interface operations {
                     "application/json": {
                         data: components["schemas"]["BulkQueueResponse"];
                     };
+                };
+            };
+            /** @description The body selects no entries, by ids or by a filter (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -8212,6 +8304,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Ban list */
             200: {
                 headers: {
@@ -8895,6 +8988,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            422: components["responses"]["ValidationError"];
             /** @description Grants */
             200: {
                 headers: {
@@ -9508,6 +9602,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Invalid domain_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
             /** @description TLS-RPT reports */
             200: {
                 headers: {

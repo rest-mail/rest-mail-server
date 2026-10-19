@@ -23,6 +23,9 @@ func NewQueueHandler(db *gorm.DB) *QueueHandler {
 // ListQueue returns outbound queue entries with optional status filter.
 // GET /api/v1/admin/queue?status=pending&limit=50&offset=0
 func (h *QueueHandler) ListQueue(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
+		return
+	}
 	query := h.db.Model(&models.OutboundQueue{}).Order("created_at DESC")
 
 	if status := r.URL.Query().Get("status"); status != "" {

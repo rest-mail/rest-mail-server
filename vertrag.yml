@@ -38,27 +38,6 @@ auth:
     - '/api/v1/admin/audit/verify > Check the audit log''s hash chain > 401 > application/json'
     - '/api/v1/admin/grants > List grants, oldest first > 401 > application/json'
     - '/api/v1/admin/grants/mine > The caller''s own grants > 401 > application/json'
-    # Operations that take no credential, sent without one: holding the
-    # admin's, vertrag's ignored-auth check would send each again bare and report
-    # it for answering, though the spec says (security: []) that it should.
-    # Drop these once antimatter-studios/vertrag#73 is fixed.
-    - '/api/health > Health check > 200 > application/json'
-    - '/api/v1/auth/login > Sign an account in with its address and password > 200 > application/json'
-    - '/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
-    - '/api/v1/auth/refresh > Refresh the session (cookie, or body token for native clients) > 200 > application/json'
-    - '/api/v1/server > What this server is > 200 > application/json'
-    - '/restmail/capabilities > Get RESTMAIL server capabilities > 200 > application/json'
-    - '/restmail/mailboxes > Check if a recipient mailbox exists > 200 > application/json'
-    - '/restmail/messages > Deliver a message via RESTMAIL protocol > 201 > application/json'
-    - '/api > API discovery — name, version and key links > 200 > application/json'
-    - '/api/docs > Swagger UI documentation page > 200 > text/html'
-    - '/api/docs/openapi.yaml > This OpenAPI specification document > 200 > application/yaml'
-    - '/metrics > Prometheus metrics exposition > 200 > text/plain'
-    - '/mail/config-v1.1.xml > Mozilla/Thunderbird autoconfiguration > 200 > application/xml'
-    - '/.well-known/autoconfig/mail/config-v1.1.xml > Mozilla/Thunderbird autoconfiguration (well-known path) > 200 > application/xml'
-    - '/autodiscover/autodiscover.xml > Microsoft Outlook autodiscover > 200 > application/xml'
-    - '/.well-known/mta-sts.txt > MTA-STS policy file (RFC 8461) > 200 > text/plain'
-    - '/.well-known/smtp-tlsrpt > TLS-RPT report ingestion (RFC 8460) > 201 > application/json'
 
 checks:
   # The "no credentials" principal, for every operation: each authenticated
@@ -66,66 +45,41 @@ checks:
   # anyway is a failure.
   ignored-auth: true
 
-# Operations left out of every phase, each with its reason. The gate in
-# tests/contract/gate.py reads this list: every operation not on it must be
-# exercised and pass, and each one on it is printed with its reason.
+# Operations never sent, in any phase. Each one's reason is beside it under
+# surface.exclude below, which takes the same operations out of the surface
+# the run is held to; tests/contract/gate.py checks the two lists agree.
 exclude-operation-id:
-  # Push is off unless APNs is configured, and the E2E topology has no APNs
-  # credentials: every devices route answers 404.
   - listPushDevices
   - registerPushDevice
   - removePushDevice
-  # Served only on the internal mTLS listener, which the E2E topology turns on;
-  # the public listener vertrag reaches does not have them.
   - checkMailboxAddress
   - deliverMessage
-  # Served only when ACME is on; the E2E topology has no ACME.
   - acmeChallenge
-  # An event stream: it never ends, so there is no response to judge.
   - accountEvents
-  # Needs a single-use token minted by the operator command (restmail-api
-  # mint-token) or for an owner key.
   - resetAdmin
-  # Need an owner key in RESTMAIL_OWNER_KEYS, and a signature over the
-  # challenge; the E2E topology has no owner keys.
   - ownerChallenge
   - ownerToken
   - ownerStatus
-  # Replacing the password makes every session from before it stale, the run's
-  # own included, so everything after it would answer 401.
   - changeOwnPassword
-  # Needs a pending enrollment (POST /api/v1/auth/2fa/enroll, which the spec
-  # does not document) and a current code from its new authenticator; the
-  # fixture admin has neither.
   - confirmTwoFactor
-  # Needs two-factor authentication on, and a code from its authenticator or a
-  # recovery code; the fixture admin has none. Turning it off would also end
-  # every session, the run's own included, as changeOwnPassword does.
   - disableTwoFactor
-  # Need a session that signed in with a second factor, or a fresh code from an
-  # authenticator; the fixture admin has none.
   - createGrant
   - deleteGrant
   - activateGrant
   - deactivateGrant
   - makeGrantEligible
-  # Wipe the data the rest of the run depends on.
   - resetTestData
   - restoreTestSnapshot
-  # Need a message carrying a calendar invitation.
   - respondToCalendar
-  # Need a quarantined message.
   - releaseQuarantine
   - deleteQuarantine
-  # Need a suppressed recipient on the created domain; the contract chain
-  # does not send a message that hard-bounces from it.
   - clearSuppression
 
 # Documented responses the examples phase cannot provoke yet, by pattern. A
 # transaction is named "<title> > <path> > <summary> > <status>[ > <type>]".
 exclude-matching:
   # A refusal for a missing capability needs a principal without it: vertrag's
-  # authorization phase (antimatter-studios/vertrag#71), not the admin's run.
+  # authorization phase, not the admin's run.
   - '> 403( >|$)'
   # Each needs a request of its own that provokes it (a named request example
   # paired with a named response example), which the spec does not have yet:
@@ -138,6 +92,87 @@ exclude-matching:
   - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
   - '> (429|503)( >|$)'
+
+# What the run is held to (vertrag's surface gate, #376): every operation in
+# the spec, counted only when every documented transaction of it was sent in
+# the examples phase and passed, none failed, none skipped, none answered 5xx.
+# A shortfall exits 3. Taken out of the count, each with its reason: the
+# operations never sent (exclude-operation-id above), and the documented
+# statuses exclude-matching keeps back, which must stay in step with it.
+surface:
+  count: passed
+  require: 100
+  exclude:
+    - operation: listPushDevices
+      reason: "Push is off unless APNs is configured, and the E2E topology has no APNs credentials: every devices route answers 404."
+    - operation: registerPushDevice
+      reason: "Push is off unless APNs is configured, and the E2E topology has no APNs credentials: every devices route answers 404."
+    - operation: removePushDevice
+      reason: "Push is off unless APNs is configured, and the E2E topology has no APNs credentials: every devices route answers 404."
+    - operation: checkMailboxAddress
+      reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
+    - operation: deliverMessage
+      reason: "Served only on the internal mTLS listener, which the E2E topology turns on; the public listener vertrag reaches does not have it."
+    - operation: acmeChallenge
+      reason: "Served only when ACME is on; the E2E topology has no ACME."
+    - operation: accountEvents
+      reason: "An event stream: it never ends, so there is no response to judge."
+    - operation: resetAdmin
+      reason: "Needs a single-use token minted by the operator command (restmail-api mint-token) or for an owner key."
+    - operation: ownerChallenge
+      reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
+    - operation: ownerToken
+      reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
+    - operation: ownerStatus
+      reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
+    - operation: changeOwnPassword
+      reason: "Replacing the password makes every session from before it stale, the run's own included, so everything after it would answer 401."
+    - operation: confirmTwoFactor
+      reason: "Needs a pending enrollment (POST /api/v1/auth/2fa/enroll, which the spec does not document) and a current code from its new authenticator; the fixture admin has neither."
+    - operation: disableTwoFactor
+      reason: "Needs two-factor authentication on, and a code from its authenticator or a recovery code; the fixture admin has none. Turning it off would also end every session, the run's own included, as changeOwnPassword does."
+    - operation: createGrant
+      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
+    - operation: deleteGrant
+      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
+    - operation: activateGrant
+      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
+    - operation: deactivateGrant
+      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
+    - operation: makeGrantEligible
+      reason: "Needs a session that signed in with a second factor, or a fresh code from an authenticator; the fixture admin has none."
+    - operation: resetTestData
+      reason: "Wipe the data the rest of the run depends on."
+    - operation: restoreTestSnapshot
+      reason: "Wipe the data the rest of the run depends on."
+    - operation: respondToCalendar
+      reason: "Needs a message carrying a calendar invitation."
+    - operation: releaseQuarantine
+      reason: "Needs a quarantined message."
+    - operation: deleteQuarantine
+      reason: "Needs a quarantined message."
+    - operation: clearSuppression
+      reason: "Needs a suppressed recipient on the created domain; the contract chain does not send a message that hard-bounces from it."
+    - status: "403"
+      reason: "a refusal for a missing capability needs a principal without it: the authorization phase, not the admin's run"
+    - status: "400"
+      reason: "needs a request of its own that provokes it (#386)"
+    - status: "404"
+      reason: "needs a request of its own that provokes it (#386)"
+    - status: "409"
+      reason: "needs a request of its own that provokes it (#386)"
+    - status: "422"
+      reason: "needs a request of its own that provokes it (#386)"
+    - status: "429"
+      reason: "a rate limit: not reachable in a contract run"
+    - status: "503"
+      reason: "an unavailable sidecar: not reachable in a contract run"
+    - operation: login
+      status: "401"
+      reason: "a 401 for a wrong credential on an operation that takes none (#386)"
+    - operation: refreshToken
+      status: "401"
+      reason: "a 401 for a wrong credential on an operation that takes none (#386)"
 
 reporter: [cli, junit]
 output: ["", .cache/contract/examples.xml]

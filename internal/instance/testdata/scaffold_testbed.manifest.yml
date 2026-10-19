@@ -50,7 +50,7 @@ db:
 # (autoconfig, mta-sts, a vanity host) with extra_hostnames. cert_provider:
 #   testbed-certgen  (default) issue via the testbed reference-certgen
 #   manual                     drop <hostname>.{crt,key} into the certs volume yourself
-#   letsencrypt / acme         declare acme: below (ACME client not yet implemented)
+#   letsencrypt / acme         issue by ACME HTTP-01 (needs port 80); declare acme: below
 # Uncomment and edit:
 #
 # tls:

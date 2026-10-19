@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	acmeclient "github.com/restmail/restmail/internal/acme"
 	"github.com/restmail/restmail/internal/api/handlers"
@@ -340,7 +341,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// Prometheus metrics (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	r.Handle("/metrics", promhttp.Handler())
+	// Key inventory belongs to the API, rather than each protocol gateway.
+	// A router-local registry avoids retaining DB handles in the global registry.
+	dkimRegistry := prometheus.NewRegistry()
+	dkimRegistry.MustRegister(metrics.NewDKIMKeyAgeCollector(db))
+	r.Handle("/metrics", promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
+		promhttp.HandlerFor(prometheus.Gatherers{
+			prometheus.DefaultGatherer, dkimRegistry,
+		}, promhttp.HandlerOpts{})))
 
 	// ═══════════════════════════════════════════════════════════════
 	// Email client auto-configuration (no auth)

@@ -139,6 +139,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := dnsblMonitor.prepare(database); err != nil {
+		slog.Error("failed to restore DNSBL monitor state", "error", err)
+		os.Exit(1)
+	}
+
 	// A key list that does not parse would lock the owner out without a word;
 	// refuse to start instead.
 	if err := bootstrap.SeedOwnerKeys(database, cfg.OwnerKeys); err != nil {

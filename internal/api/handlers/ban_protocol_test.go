@@ -54,13 +54,11 @@ func TestCreateBanProtocol_RefusesOutsideEnum(t *testing.T) {
 	}
 }
 
-// Every documented protocol, and an omitted or empty one (which becomes all),
-// still passes validation and reaches the lookup of the IP.
-func TestCreateBanProtocol_EnumAndDefaultReachLookup(t *testing.T) {
+// Every documented protocol passes validation and reaches the lookup of the IP.
+func TestCreateBanProtocol_EnumReachesLookup(t *testing.T) {
 	for name, protocol := range map[string]string{
 		"smtp": `,"protocol":"smtp"`, "imap": `,"protocol":"imap"`,
 		"pop3": `,"protocol":"pop3"`, "all": `,"protocol":"all"`,
-		"empty": `,"protocol":""`, "omitted": "",
 	} {
 		for _, duration := range []string{`,"duration":"1h"`, ""} {
 			body := `{"ip":"192.0.2.10","reason":"Repeated failed sign-ins","created_by":"admin@restmail.test"` +
@@ -91,9 +89,9 @@ func TestCreateBanProtocol_KeepsOtherRefusals(t *testing.T) {
 	}{
 		{`{"protocol":"ftp","duration":"forever"}`, http.StatusUnprocessableEntity, ipMissing},
 		{`{"ip":"","protocol":"all"}`, http.StatusUnprocessableEntity, ipMissing},
-		{`{"ip":"192.0.2.10","protocol":"ftp","duration":"forever"}`, http.StatusUnprocessableEntity, banProtocolRefusal},
-		{`{"ip":"192.0.2.10","protocol":"smtp","duration":"forever"}`, http.StatusUnprocessableEntity, badDur},
-		{`{"ip":"192.0.2.10","duration":"7d"}`, http.StatusUnprocessableEntity, badDur},
+		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","protocol":"ftp","duration":"forever"}`, http.StatusUnprocessableEntity, banProtocolRefusal},
+		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","protocol":"smtp","duration":"forever"}`, http.StatusUnprocessableEntity, badDur},
+		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","duration":"7d"}`, http.StatusUnprocessableEntity, banProtocolRefusal},
 		{`{"ip":"192.0.2.10","protocol":7}`, http.StatusBadRequest, badRequest},
 		{`{"ip":"192.0.2.10","protocol":null`, http.StatusBadRequest, badRequest},
 	} {

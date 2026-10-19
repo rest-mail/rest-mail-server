@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -73,9 +74,9 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 }
 
 type createContactRequest struct {
-	Email      string `json:"email"`
-	Name       string `json:"name"`
-	TrustLevel string `json:"trust_level"`
+	Email      string  `json:"email"`
+	Name       string  `json:"name"`
+	TrustLevel *string `json:"trust_level"`
 }
 
 // CreateContact adds a new contact to a mailbox.
@@ -103,14 +104,21 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	if req.Email == "" {
 		errors["email"] = "required"
 	}
+	if address, err := mail.ParseAddress(req.Email); req.Email != "" && (err != nil || address.Address != req.Email) {
+		errors["email"] = "must be an email address"
+	}
+	trustLevel := "trusted"
+	if req.TrustLevel != nil {
+		trustLevel = *req.TrustLevel
+		switch trustLevel {
+		case "auto", "trusted", "blocked":
+		default:
+			errors["trust_level"] = "must be auto, trusted, or blocked"
+		}
+	}
 	if len(errors) > 0 {
 		respond.ValidationError(w, errors)
 		return
-	}
-
-	trustLevel := req.TrustLevel
-	if trustLevel == "" {
-		trustLevel = "trusted"
 	}
 
 	contact := models.Contact{

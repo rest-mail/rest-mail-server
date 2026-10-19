@@ -234,6 +234,9 @@ func (h *TLSReportHandler) ReceiveReport(w http.ResponseWriter, r *http.Request)
 // ListReports returns TLS-RPT reports with optional domain_id filtering and pagination.
 // GET /api/v1/admin/tls-reports?domain_id=X&limit=50&offset=0
 func (h *TLSReportHandler) ListReports(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 200, "limit", "offset") {
+		return
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l

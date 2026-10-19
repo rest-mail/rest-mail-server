@@ -1485,6 +1485,8 @@ paths:
           schema:
             type: string
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Paginated list of messages
           content:
@@ -1583,6 +1585,12 @@ paths:
         - BearerAuth: [mail:send]
         - BasicAuth: [mail:send]
       summary: Compose and send a new message
+      description: >-
+        The sender domain's `sending_policy` decides whether the message
+        carries `list_unsubscribe`: a `bulk` domain's message without it is
+        refused with 422 `list_unsubscribe_required`, and a `transactional`
+        domain's message with it is refused with 422
+        `list_unsubscribe_not_allowed`. With no policy, either is sent.
       requestBody:
         required: true
         content:
@@ -2828,6 +2836,10 @@ paths:
                 value:
                   name: example.org
                   server_type: restmail
+              # JSON, but an array where the request is an object: refused
+              # when it is read, before any field is looked at.
+              body_array:
+                value: []
               # No name: refused before anything is stored.
               name_missing:
                 value: {}
@@ -2837,6 +2849,12 @@ paths:
                 value:
                   name: example.org
                   server_type: external
+              # A sending policy that is not one: refused the same way.
+              sending_policy_invalid:
+                value:
+                  name: example.org
+                  server_type: restmail
+                  sending_policy: newsletter
       responses:
         "201":
           description: Domain created, not yet live
@@ -2857,6 +2875,7 @@ paths:
                       server_type: restmail
                       active: false
                       default_quota_bytes: 0
+                      sending_policy: ""
                       created_at: "2026-01-01T00:00:00Z"
                       updated_at: "2026-01-01T00:00:00Z"
           links:
@@ -2900,6 +2919,20 @@ paths:
               operationId: setMtaStsPolicy
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: >-
+            The body is not a JSON object of the request's fields
+            (`bad_request`), or the name is not a domain name (`invalid_domain`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
@@ -2925,6 +2958,14 @@ paths:
                       details:
                         fields:
                           server_type: "must be 'traditional' or 'restmail'"
+                sending_policy_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          sending_policy: must be 'transactional', 'bulk' or empty
 
   /api/v1/admin/domains/{id}:
     parameters:
@@ -2960,7 +3001,9 @@ paths:
         Setting `active` to true makes the domain live, and is refused with 409
         `certificate_required` unless the domain has a currently valid
         certificate: mail for it is only ever carried over TLS. Setting `active`
-        to false takes it out of service and is always allowed.
+        to false takes it out of service and is always allowed. Setting
+        `sending_policy` to `""` clears it; any value other than
+        `transactional`, `bulk` or `""` is refused with 422 `validation_failed`.
       requestBody:
         required: true
         content:
@@ -2986,6 +3029,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]
@@ -3016,6 +3061,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Mailbox list
           content:
@@ -3153,6 +3200,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Alias list
           content:
@@ -3352,6 +3401,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Pipeline list
           content:
@@ -3399,6 +3450,10 @@ paths:
                 value:
                   domain_id: 1
                   direction: inbound
+              # An array, not an object: refused while the body is decoded,
+              # before any field is read (#388).
+              body_array:
+                value: []
       responses:
         "201":
           description: Pipeline created
@@ -3432,6 +3487,26 @@ paths:
               operationId: deletePipeline
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: >-
+            `bad_request` when the body does not decode as the request: not
+            JSON, an array, a string, a number or a boolean rather than an
+            object, or a field of the wrong JSON type. It is refused before any
+            field is validated; a `null` body decodes as an empty one and gets
+            the 422. Filters that pass validation are also refused with a 400:
+            `invalid_sieve` for a Sieve script that does not install,
+            `unsupported_filter` for a filter configured in a way it does not
+            support.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:
@@ -3635,6 +3710,28 @@ paths:
                         fields:
                           filter_name: required
                           email: required
+        "400":
+          description: >-
+            `bad_request` when the body does not decode as the request: empty,
+            not JSON, an array, a string, a number or a boolean rather than an
+            object, or a `filter_name` or `email` of the wrong JSON type. It is
+            refused before the required fields are checked and before any
+            filter is made; `{}` and a `null` body decode as empty ones and get
+            a 422 instead. A body that decodes is also refused with a 400,
+            `filter_error`, when the named filter cannot be made from its
+            config or fails on the email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                # Refused while the body is decoded, before any field is read
+                # (#388).
+                invalid_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
 
   /api/v1/admin/pipelines/logs:
     get:
@@ -3690,6 +3787,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Pipeline message traces
           content:
@@ -3722,6 +3821,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Custom filter list
           content:
@@ -4099,6 +4200,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Queue entries
           content:
@@ -4235,6 +4338,31 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/BulkQueueResponse"
+        "400":
+          description: >-
+            Invalid JSON or a body that cannot be decoded into the request shape;
+            no IDs and no filter; or more than 1000 IDs. Refused before any queue
+            lookup. An empty filter object is accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                selection_missing:
+                  value:
+                    error:
+                      code: bad_request
+                      message: ids or filter required
+                too_many_ids:
+                  value:
+                    error:
+                      code: bad_request
+                      message: max 1000 IDs per request
 
   /api/v1/admin/queue/bulk-delete:
     delete:
@@ -4250,8 +4378,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
-            example:
-              ids: [987654]
+            examples:
+              by_ids:
+                value:
+                  ids: [987654]
+              # Neither ids nor a filter: refused before any entry is selected.
+              selection_missing:
+                value: {}
       responses:
         "200":
           description: Bulk delete result
@@ -4263,6 +4396,23 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/BulkQueueResponse"
+              examples:
+                by_ids:
+                  value:
+                    data:
+                      affected: 1
+        "400":
+          description: The body selects no entries, by ids or by a filter (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                selection_missing:
+                  value:
+                    error:
+                      code: bad_request
+                      message: ids or filter required
 
   /api/v1/admin/queue/{id}:
     parameters:
@@ -4851,6 +5001,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Ban list
           content:
@@ -5082,6 +5234,7 @@ paths:
           description: The account (mailbox) id
           schema:
             type: integer
+            minimum: 0
         - name: actor
           in: query
           description: Actor name (an address) contains this, in any case
@@ -5676,6 +5829,7 @@ paths:
           in: query
           schema:
             type: integer
+            minimum: 0
         - name: scope
           in: query
           description: Only the grants at this scope, e.g. `mailbox:chris@example.com`
@@ -5693,6 +5847,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Grants
           content:
@@ -6298,6 +6454,7 @@ paths:
           in: query
           schema:
             type: integer
+            minimum: 0
         - name: policy_type
           in: query
           schema:
@@ -6319,6 +6476,14 @@ paths:
             type: integer
             default: 0
       responses:
+        "400":
+          description: Invalid domain_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: TLS-RPT reports
           content:
@@ -7172,6 +7337,7 @@ components:
       properties:
         name:
           type: string
+          minLength: 1
 
     RenameFolderRequest:
       type: object
@@ -7777,7 +7943,7 @@ components:
     # ─────────────────────────────────────────────────────────────
     Domain:
       type: object
-      required: [id, name, server_type, active, default_quota_bytes, created_at, updated_at]
+      required: [id, name, server_type, active, default_quota_bytes, sending_policy, created_at, updated_at]
       properties:
         id:
           type: integer
@@ -7793,6 +7959,8 @@ components:
           format: int64
         dkim_selector:
           type: string
+        sending_policy:
+          $ref: "#/components/schemas/DomainSendingPolicy"
         created_at:
           type: string
           format: date-time
@@ -7812,6 +7980,8 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+        sending_policy:
+          $ref: "#/components/schemas/DomainSendingPolicy"
 
     UpdateDomainRequest:
       type: object
@@ -7821,6 +7991,22 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+        sending_policy:
+          $ref: "#/components/schemas/DomainSendingPolicy"
+
+    DomainSendingPolicy:
+      type: string
+      enum: ["", transactional, bulk]
+      description: >
+        What the send API expects of the domain's mail (RFC 2369, RFC 8058).
+        `transactional`: mail one person asked for, such as receipts and
+        password resets; it carries no List-Unsubscribe field, so a send with
+        `list_unsubscribe` is refused with 422 `list_unsubscribe_not_allowed`.
+        `bulk`: mail sent to a list, which receivers such as Gmail and Yahoo
+        expect to say how to unsubscribe; a send without `list_unsubscribe` is
+        refused with 422 `list_unsubscribe_required`. Empty: no rule, either is
+        sent. The policy applies to the send API; SMTP submission, draft send
+        and forward are not checked.
 
     # ─────────────────────────────────────────────────────────────
     # Mailbox
@@ -8302,16 +8488,51 @@ components:
     # ─────────────────────────────────────────────────────────────
     DKIMEntry:
       type: object
-      required: [domain_id, domain, selector, has_key]
+      description: >
+        Current configured signing key for a domain, including domains not yet
+        serving mail. No private key material is returned. Algorithm and size
+        are not stored. Legacy key installation times are unknown, not inferred
+        from domain timestamps.
+      required: [domain_id, domain, selector, has_key, created_at, age_seconds]
       properties:
         domain_id:
           type: integer
+          example: 1
         domain:
           type: string
+          example: example.com
         selector:
           type: string
+          example: mail
         has_key:
           type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current key was installed; null for legacy keys with unknown age. Re-saving the same PEM preserves this value.
+          example: "2026-10-01T12:00:00Z"
+        age_seconds:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          description: Seconds since installation at response time, clamped to zero for future timestamps; null when created_at is unknown.
+          example: 86400
+      examples:
+        - domain_id: 1
+          domain: example.com
+          selector: mail
+          has_key: true
+          created_at: "2026-10-01T12:00:00Z"
+          age_seconds: 86400
+        - domain_id: 2
+          domain: legacy.example.com
+          selector: old
+          has_key: true
+          created_at: null
+          age_seconds: null
 
     SetDKIMKeyRequest:
       type: object
@@ -8411,6 +8632,7 @@ components:
       properties:
         ip:
           type: string
+          minLength: 1
         reason:
           type: string
         protocol:
@@ -8418,7 +8640,8 @@ components:
           enum: [smtp, imap, pop3, all]
         duration:
           type: string
-          description: Duration string (e.g. "24h", "7d"), omit for permanent
+          pattern: '^[+-]?(0|(([0-9]+(\.[0-9]*)?|\.[0-9]+)(ns|us|µs|μs|ms|s|m|h))+)$'
+          description: Go duration string (e.g. "24h", "168h"), omit for permanent
         created_by:
           type: string
 

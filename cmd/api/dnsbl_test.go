@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -16,6 +17,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
+	"github.com/restmail/restmail/internal/config"
+	rmdb "github.com/restmail/restmail/internal/db"
+	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dnsbl"
 	"github.com/restmail/restmail/internal/metrics"
 )
@@ -35,6 +39,7 @@ type dnsblResolver struct {
 	mu      sync.Mutex
 	queries int
 	block   bool
+	clean   bool
 	asked   chan struct{}
 }
 
@@ -50,6 +55,9 @@ func (r *dnsblResolver) LookupNetIP(ctx context.Context, _, host string) ([]neti
 	if r.block {
 		<-ctx.Done()
 		return nil, &net.DNSError{Err: ctx.Err().Error(), Name: host}
+	}
+	if r.clean {
+		return nil, &net.DNSError{Err: "not found", Name: host, IsNotFound: true}
 	}
 	return []netip.Addr{netip.MustParseAddr("127.0.0.2")}, nil
 }
@@ -101,6 +109,9 @@ func TestDNSBLRuntimeOff(t *testing.T) {
 			}, obs)
 			if err != nil || rt != nil {
 				t.Fatalf("newDNSBLRuntime = %v, %v; want no monitor and no error", rt, err)
+			}
+			if err := rt.prepare(nil); err != nil {
+				t.Fatalf("disabled monitor accessed database: %v", err)
 			}
 		})
 	}
@@ -210,5 +221,100 @@ func TestDNSBLRuntimeStopDuringCheck(t *testing.T) {
 	}
 	if n := testutil.CollectAndCount(m.listed); n != 0 {
 		t.Fatalf("listed has %d series after an abandoned check, want none", n)
+	}
+}
+
+// TestDNSBLRuntimeDurableRestart exercises the API's prepare/start/stop path
+// across separate runtimes, using committed events rather than in-memory state.
+func TestDNSBLRuntimeDurableRestart(t *testing.T) {
+	if os.Getenv("DB_HOST") == "" || os.Getenv("DB_NAME") == "" {
+		t.Skip("set DB_HOST and DB_NAME to run the DNSBL database test")
+	}
+	port, err := strconv.Atoi(os.Getenv("DB_PORT"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	database, err := rmdb.Connect(&config.Config{
+		DBHost: os.Getenv("DB_HOST"), DBPort: port, DBName: os.Getenv("DB_NAME"),
+		DBUser: os.Getenv("DB_USER"), DBPass: os.Getenv("DB_PASS"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := database.AutoMigrate(&models.DNSBLListingEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	provider := "restart-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	path := writeDNSBLConfig(t, strings.Replace(dnsblTestConfig, `"name": "example"`, `"name": "`+provider+`"`, 1))
+	runPass := func(clean bool) {
+		t.Helper()
+		obs, metrics := newDNSBLTestObserver(t)
+		resolver := newDNSBLResolver(false)
+		resolver.clean = clean
+		rt, err := newDNSBLRuntime(path, func() dnsbl.Resolver { return resolver }, obs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rt.prepare(database); err != nil {
+			t.Fatal(err)
+		}
+		if resolver.count() != 0 {
+			t.Fatal("prepare sent a DNS query")
+		}
+		rt.start(context.Background())
+		status := dnsbl.StatusListed
+		if clean {
+			status = dnsbl.StatusNotListed
+		}
+		deadline := time.Now().Add(5 * time.Second)
+		for testutil.ToFloat64(metrics.checks.WithLabelValues(provider, string(status))) != 1 {
+			if time.Now().After(deadline) {
+				_ = rt.stop()
+				t.Fatal("runtime did not complete its first check")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := rt.stop(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows := func(want int) []models.DNSBLListingEvent {
+		t.Helper()
+		var events []models.DNSBLListingEvent
+		if err := database.Where("provider = ?", provider).Order("id").Find(&events).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(events) != want {
+			t.Fatalf("events = %+v, want %d", events, want)
+		}
+		return events
+	}
+	runPass(false)
+	first := rows(1)[0]
+	runPass(false)
+	rows(1)
+	runPass(true)
+	recovered := rows(2)[1]
+	if first.Kind != "listed" || recovered.Kind != "delisted" || !recovered.Since.Equal(first.At) {
+		t.Fatalf("listing = %+v, recovery = %+v", first, recovered)
+	}
+	if err := database.Where("provider = ?", provider).Delete(&models.DNSBLListingEvent{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	obs, _ := newDNSBLTestObserver(t)
+	rt, err := newDNSBLRuntime(path, func() dnsbl.Resolver { return newDNSBLResolver(false) }, obs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.prepare(database); err == nil {
+		t.Fatal("unreadable seed did not fail startup")
 	}
 }

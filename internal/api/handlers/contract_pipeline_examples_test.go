@@ -27,10 +27,10 @@ var pipelineCreateRefused = map[string]string{
 	"filters_missing":   "filters",
 }
 
-// The pairs vertrag compiles for createPipeline: created with the 201, and
-// direction_missing and filters_missing each with the 422 of its name, nothing
-// else. Each refused request is created without one field, so that field is
-// the only reason it is refused, and its 422 names that field alone.
+// The pairs vertrag compiles for createPipeline: created with the 201,
+// body_array with the 400, and direction_missing and filters_missing each with
+// the 422 of its name. Each 422 request is created without one field, so that
+// field is the only reason it is refused, and its 422 names that field alone.
 func TestPipelineCreate_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/pipelines", "createPipeline")
 	for _, problem := range pipelineCreatePairProblems(requests, responses) {
@@ -41,8 +41,9 @@ func TestPipelineCreate_ExamplePairs(t *testing.T) {
 func pipelineCreatePairProblems(requests map[string]interface{}, responses map[string]map[string]interface{}) []string {
 	var problems []string
 	want := map[string][]string{
-		"request": {"created", "direction_missing", "filters_missing"},
+		"request": {"body_array", "created", "direction_missing", "filters_missing"},
 		"201":     {"created"},
+		"400":     {"body_array"},
 		"422":     {"direction_missing", "filters_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}

@@ -112,7 +112,6 @@ jobs:
           - cmd/imap-gateway
           - cmd/pop3-gateway
           - cmd/console
-          - cmd/certgen
           - cmd/migrate
           - cmd/seed
     steps:

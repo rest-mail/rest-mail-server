@@ -126,6 +126,9 @@ func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !validateIntegerQuery(w, r, 0, "limit") {
+		return
+	}
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
@@ -501,6 +504,25 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	senderMailbox := *sender
+
+	// The sender domain's sending policy (#144): a transactional domain's mail
+	// carries no List-Unsubscribe field, and a bulk domain's always does. Either
+	// mismatch is refused, never silently dropped or sent without one.
+	var senderDomain models.Domain
+	if err := h.db.Select("sending_policy").First(&senderDomain, senderMailbox.DomainID).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the sender domain's sending policy")
+		return
+	}
+	switch {
+	case senderDomain.SendingPolicy == models.SendingPolicyBulk && req.ListUnsubscribe == nil:
+		respond.Error(w, http.StatusUnprocessableEntity, "list_unsubscribe_required",
+			"The sender domain sends bulk mail, so every message needs list_unsubscribe")
+		return
+	case senderDomain.SendingPolicy == models.SendingPolicyTransactional && req.ListUnsubscribe != nil:
+		respond.Error(w, http.StatusUnprocessableEntity, "list_unsubscribe_not_allowed",
+			"The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe")
+		return
+	}
 
 	// RFC 8058 §4: a one-click claim counts only under a DKIM signature that
 	// covers it. A sender domain with no key would send an unsigned claim, so
