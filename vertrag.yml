@@ -129,8 +129,7 @@ exclude-matching:
   - '> 403( >|$)'
   # Each needs a request of its own that provokes it (a named request example
   # paired with a named response example), which the spec does not have yet:
-  # #386. createDomain's, createAlias's and createPipeline's 422s have their
-  # pairs (name_missing, source_missing, direction_missing) but stay excluded:
+  # #386. An error response that has its pair stays excluded all the same:
   # the coverage phase probes every transaction sent, and valid-mode probes
   # built from a refused request are refused too, which it counts as failures
   # (tests/contract/README.md).

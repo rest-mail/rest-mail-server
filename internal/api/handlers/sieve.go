@@ -154,6 +154,13 @@ func (h *SieveHandler) DeleteScript(w http.ResponseWriter, r *http.Request) {
 // ValidateScript checks a Sieve script without saving it.
 // POST /api/v1/accounts/{id}/sieve/validate
 func (h *SieveHandler) ValidateScript(w http.ResponseWriter, r *http.Request) {
+	// The same check as PutScript (mail:write on the account): validating is
+	// part of changing the account's script, and nobody else may run it there.
+	if _, err := h.resolveMailboxID(r, chi.URLParam(r, "id")); err != nil {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
+
 	var req struct {
 		Script string `json:"script"`
 	}

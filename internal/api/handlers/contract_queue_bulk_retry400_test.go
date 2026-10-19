@@ -1,0 +1,142 @@
+package handlers
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/restmail/restmail"
+	yaml "go.yaml.in/yaml/v2"
+)
+
+const bulkRetry400Path = "/api/v1/admin/queue/bulk-retry"
+
+// A nil database makes any lookup panic. Every request here must return its
+// own 400 first; no valid, database-reaching request is sent (#388).
+func TestBulkRetryQueue400_PreLookupRefusals(t *testing.T) {
+	ids := make([]uint, 1001)
+	for i := range ids {
+		ids[i] = uint(i + 1)
+	}
+	oversized, err := json.Marshal(map[string]interface{}{"ids": ids})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversizedWithFilter, err := json.Marshal(map[string]interface{}{"ids": ids, "filter": map[string]string{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, body, message string
+	}{
+		{"empty_body", "", "Invalid request body"},
+		{"malformed", `{"ids":`, "Invalid request body"},
+		{"array_body", `[]`, "Invalid request body"},
+		{"string_body", `"ids"`, "Invalid request body"},
+		{"wrong_ids_shape", `{"ids":"1"}`, "Invalid request body"},
+		{"wrong_id_type", `{"ids":["1"]}`, "Invalid request body"},
+		{"wrong_filter_shape", `{"filter":[]}`, "Invalid request body"},
+		{"absent_selection", `{}`, "ids or filter required"},
+		{"null_body", `null`, "ids or filter required"},
+		{"empty_ids", `{"ids":[]}`, "ids or filter required"},
+		{"null_ids", `{"ids":null}`, "ids or filter required"},
+		{"null_filter", `{"filter":null}`, "ids or filter required"},
+		{"empty_ids_null_filter", `{"ids":[],"filter":null}`, "ids or filter required"},
+		{"1001_ids", string(oversized), "max 1000 IDs per request"},
+		{"1001_ids_with_filter", string(oversizedWithFilter), "max 1000 IDs per request"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			NewQueueHandler(nil).BulkRetry(rr, httptest.NewRequest(http.MethodPost, bulkRetry400Path, strings.NewReader(tc.body)))
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status %d, want 400; body %s", rr.Code, rr.Body)
+			}
+			if got := rr.Header().Get("Content-Type"); got != "application/json" {
+				t.Errorf("Content-Type %q, want application/json", got)
+			}
+			var got map[string]interface{}
+			if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			want := map[string]interface{}{"error": map[string]interface{}{"code": "bad_request", "message": tc.message}}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("response %s, want %v", rr.Body, want)
+			}
+		})
+	}
+}
+
+func TestBulkRetryQueue400_Spec(t *testing.T) {
+	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Paths map[string]struct {
+			Post struct {
+				OperationID string                `yaml:"operationId"`
+				Security    []map[string][]string `yaml:"security"`
+				RequestBody struct {
+					Required bool `yaml:"required"`
+					Content  map[string]struct {
+						Schema struct {
+							Ref string `yaml:"$ref"`
+						} `yaml:"schema"`
+					} `yaml:"content"`
+				} `yaml:"requestBody"`
+				Responses map[string]struct {
+					Content map[string]struct {
+						Schema struct {
+							Ref string `yaml:"$ref"`
+						} `yaml:"schema"`
+						Examples map[string]struct {
+							Value map[string]interface{} `yaml:"value"`
+						} `yaml:"examples"`
+					} `yaml:"content"`
+				} `yaml:"responses"`
+			} `yaml:"post"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(served, &doc); err != nil {
+		t.Fatal(err)
+	}
+	op := doc.Paths[bulkRetry400Path].Post
+	if op.OperationID != "bulkRetryQueue" {
+		t.Fatalf("operationId %q, want bulkRetryQueue", op.OperationID)
+	}
+	if !op.RequestBody.Required || op.RequestBody.Content["application/json"].Schema.Ref != "#/components/schemas/BulkQueueRequest" {
+		t.Error("request body must remain required and use BulkQueueRequest")
+	}
+	wantSecurity := []map[string][]string{{"CookieAuth": {"queue:manage"}}, {"BearerAuth": {"queue:manage"}}}
+	if !reflect.DeepEqual(op.Security, wantSecurity) {
+		t.Errorf("security %v, want %v", op.Security, wantSecurity)
+	}
+	if _, ok := op.Responses["200"]; !ok {
+		t.Error("missing existing 200 response")
+	}
+	if len(op.Responses) != 2 {
+		t.Errorf("responses %v, want only 200 and 400", op.Responses)
+	}
+	content := op.Responses["400"].Content["application/json"]
+	if content.Schema.Ref != "#/components/schemas/ErrorResponse" {
+		t.Errorf("400 schema %q, want ErrorResponse", content.Schema.Ref)
+	}
+	wantMessages := map[string]string{
+		"invalid_body":      "Invalid request body",
+		"selection_missing": "ids or filter required",
+		"too_many_ids":      "max 1000 IDs per request",
+	}
+	if len(content.Examples) != len(wantMessages) {
+		t.Errorf("400 has %d examples, want exactly three", len(content.Examples))
+	}
+	for name, message := range wantMessages {
+		// yaml/v2 decodes nested interface maps using interface keys.
+		want := map[string]interface{}{"error": map[interface{}]interface{}{"code": "bad_request", "message": message}}
+		if got := content.Examples[name].Value; !reflect.DeepEqual(got, want) {
+			t.Errorf("400 example %s = %v, want %v", name, got, want)
+		}
+	}
+}

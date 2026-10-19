@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -174,6 +175,8 @@ type Worker struct {
 	// signs an outbound message that arrived unsigned (SMTP submission, #171).
 	// Empty only when encryption is disabled (dev), where keys are plaintext.
 	masterKey string
+	// relayRoots replaces system trust for relay certificates; tests only.
+	relayRoots *x509.CertPool
 
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
 	// may be delivered into a single recipient mailbox within bounceWindow;
@@ -529,6 +532,16 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// fail it permanently rather than attempt delivery.
 	if rmail.ContainsControlChar(item.Sender) || rmail.ContainsControlChar(item.Recipient) {
 		return &SMTPError{Code: 550, Enhanced: "5.1.3", Message: "address contains control characters"}
+	}
+
+	// A sending domain configured to relay sends everything through its relay
+	// and nothing direct (#143). Not knowing which retries the message.
+	relay, err := w.relayRoute(item)
+	if err != nil {
+		return err
+	}
+	if relay != nil {
+		return w.deliverViaRelay(*relay, item)
 	}
 
 	// Look up MX records
