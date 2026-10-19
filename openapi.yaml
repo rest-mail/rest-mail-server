@@ -2828,6 +2828,10 @@ paths:
                 value:
                   name: example.org
                   server_type: restmail
+              # JSON, but an array where the request is an object: refused
+              # when it is read, before any field is looked at.
+              body_array:
+                value: []
               # No name: refused before anything is stored.
               name_missing:
                 value: {}
@@ -2900,6 +2904,20 @@ paths:
               operationId: setMtaStsPolicy
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: >-
+            The body is not a JSON object of the request's fields
+            (`bad_request`), or the name is not a domain name (`invalid_domain`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "409":
           $ref: "#/components/responses/Conflict"
         "422":

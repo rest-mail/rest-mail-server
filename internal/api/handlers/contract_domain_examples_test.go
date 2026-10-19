@@ -6,7 +6,8 @@ import (
 )
 
 // The pairs vertrag compiles for createDomain (#386): created with the 201,
-// and name_missing and server_type_invalid with the 422, nothing else.
+// body_array with the 400, and name_missing and server_type_invalid with the
+// 422, nothing else. contract_domain_body_examples_test.go checks body_array.
 // server_type_invalid is the created request with a server type that is
 // neither traditional nor restmail, so the server type is the only reason it
 // is refused. TestDomainCreate_DocumentedRefusals sends each 422's request to
@@ -15,8 +16,9 @@ func TestDomainCreate_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/domains", "createDomain")
 
 	want := map[string][]string{
-		"request": {"created", "name_missing", "server_type_invalid"},
+		"request": {"body_array", "created", "name_missing", "server_type_invalid"},
 		"201":     {"created"},
+		"400":     {"body_array"},
 		"422":     {"name_missing", "server_type_invalid"},
 	}
 	got := map[string][]string{"request": names(requests)}
