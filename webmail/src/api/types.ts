@@ -9615,14 +9615,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "from": "postmaster@restmail.test",
-                 *       "to": "admin@restmail.test",
-                 *       "subject": "Test",
-                 *       "body": "A test message."
-                 *     }
-                 */
                 "application/json": {
                     /** Format: email */
                     from: string;
@@ -9659,7 +9651,15 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     verifyDelivery: {

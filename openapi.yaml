@@ -6129,11 +6129,22 @@ paths:
                   type: string
                 body:
                   type: string
-            example:
-              from: postmaster@restmail.test
-              to: admin@restmail.test
-              subject: Test
-              body: A test message.
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  from: postmaster@restmail.test
+                  to: admin@restmail.test
+                  subject: Test
+                  body: A test message.
+              # No sender: refused before any mailbox is looked up. The
+              # refusal names both addresses whenever either is missing.
+              from_missing:
+                value:
+                  to: admin@restmail.test
+                  subject: Test
+                  body: A test message.
       responses:
         "201":
           description: Test message created
@@ -6156,12 +6167,35 @@ paths:
                         type: string
                       subject:
                         type: string
+              examples:
+                created:
+                  value:
+                    data:
+                      message_id: 1
+                      msg_id: "<0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d@restmail.test>"
+                      from: postmaster@restmail.test
+                      to: admin@restmail.test
+                      subject: Test
         "403":
           description: Disabled in production
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                from_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          from: sender address required
+                          to: recipient address required
 
   /api/v1/admin/test/verify:
     get:
