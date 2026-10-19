@@ -82,22 +82,13 @@ export const BUILTIN_FILTERS: FilterDefinition[] = [
   {
     name: 'dmarc_check',
     displayName: 'DMARC Verification',
-    description: 'Validates DMARC policy compliance',
+    description: "Applies the sender domain's published DMARC policy (p=, sp=)",
     type: 'action',
     direction: 'inbound',
     unskippable: false,
     category: 'authentication',
     icon: 'ShieldCheck',
-    configSchema: {
-      fail_action: {
-        type: 'select',
-        label: 'Action on DMARC Fail',
-        options: ['tag', 'quarantine', 'reject'],
-        default: 'quarantine',
-        required: true,
-        description: 'What to do when DMARC verification fails',
-      },
-    },
+    configSchema: {},
   },
   {
     name: 'domain_allowlist',
@@ -265,10 +256,10 @@ export const BUILTIN_FILTERS: FilterDefinition[] = [
       fail_action: {
         type: 'select',
         label: 'Action on DKIM Fail',
-        options: ['tag', 'reject'],
+        options: ['tag', 'reject', 'quarantine'],
         default: 'tag',
         required: true,
-        description: 'What to do when DKIM verification fails',
+        description: 'What to do when no DKIM signature passes and one fails; tag leaves it to DMARC',
       },
     },
   },
