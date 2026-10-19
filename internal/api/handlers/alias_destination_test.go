@@ -1,40 +1,16 @@
 package handlers
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"testing"
 )
 
-// createAliasNoDB sends body to the alias create handler, which has no
-// database: reached reports whether the request got past validation to the
-// first lookup (the nil database panics there) instead of being answered.
-func createAliasNoDB(t *testing.T, body map[string]string) (rr *httptest.ResponseRecorder, reached bool) {
-	t.Helper()
-	raw, err := json.Marshal(body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/aliases", bytes.NewReader(raw))
-	rr = httptest.NewRecorder()
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				reached = true
-			}
-		}()
-		NewAliasHandler(nil).Create(rr, req)
-	}()
-	return rr, reached
-}
-
 // assertAliasRefusal holds a create to the canonical 422 naming exactly fields.
 func assertAliasRefusal(t *testing.T, body map[string]string, fields map[string]interface{}) {
 	t.Helper()
-	rr, reached := createAliasNoDB(t, body)
+	rr, reached := createAliasNoDB(t, string(mustJSON(body)))
 	if reached {
 		t.Fatalf("%s reached the database before it was refused", mustJSON(body))
 	}
@@ -103,8 +79,8 @@ func TestAliasCreate_WellFormedDestinationReachesDatabase(t *testing.T) {
 		"subdomain and dots": "first.last@mail.restmail.test",
 	} {
 		t.Run(name, func(t *testing.T) {
-			rr, reached := createAliasNoDB(t,
-				map[string]string{"source_address": "sales@restmail.test", "destination_address": destination})
+			body := map[string]string{"source_address": "sales@restmail.test", "destination_address": destination}
+			rr, reached := createAliasNoDB(t, string(mustJSON(body)))
 			if !reached {
 				t.Fatalf("%q was answered %d before the domain lookup: %s", destination, rr.Code, rr.Body)
 			}
