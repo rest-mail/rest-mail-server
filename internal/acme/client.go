@@ -392,16 +392,66 @@ type dbCache struct {
 	client *Client
 }
 
-func (c *dbCache) Get(ctx context.Context, key string) ([]byte, error) {
-	var cert models.Certificate
-	err := c.client.db.Preload("Domain").
-		Joins("JOIN domains ON domains.id = certificates.domain_id").
-		Where("domains.name = ? AND certificates.issuer = ?", key, "letsencrypt").
-		Order("certificates.not_after DESC").
-		First(&cert).Error
+// certificateCacheKey accepts only autocert's canonical DNS certificate keys:
+// <domain> (ECDSA) and <domain>+rsa. Account and challenge keys are separate
+// namespaces and must never address certificate rows.
+func certificateCacheKey(key string) (domain string, algorithm x509.PublicKeyAlgorithm, err error) {
+	domain, algorithm = key, x509.ECDSA
+	if strings.HasSuffix(key, "+rsa") {
+		domain, algorithm = strings.TrimSuffix(key, "+rsa"), x509.RSA
+	}
+	if len(domain) > 253 || !strings.Contains(domain, ".") {
+		return "", 0, errors.New("acme: unsupported certificate cache key")
+	}
+	for _, label := range strings.Split(domain, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return "", 0, errors.New("acme: unsupported certificate cache key")
+		}
+		for _, ch := range label {
+			if !(ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '-') {
+				return "", 0, errors.New("acme: unsupported certificate cache key")
+			}
+		}
+	}
+	return domain, algorithm, nil
+}
+
+// cacheCertificates selects the requested algorithm from existing certificate
+// PEM, preserving StoreCertificate's schema and direct-store semantics. Filter
+// before choosing the newest row: another algorithm may expire later.
+func (c *dbCache) cacheCertificates(ctx context.Context, key string) ([]models.Certificate, error) {
+	domain, algorithm, err := certificateCacheKey(key)
 	if err != nil {
+		return nil, err
+	}
+	var certs []models.Certificate
+	if err := c.client.db.WithContext(ctx).
+		Joins("JOIN domains ON domains.id = certificates.domain_id").
+		Where("domains.name = ? AND certificates.issuer = ?", domain, "letsencrypt").
+		Order("certificates.not_after DESC, certificates.id DESC").
+		Find(&certs).Error; err != nil {
+		return nil, err
+	}
+	matching := certs[:0]
+	for _, cert := range certs {
+		block, _ := pem.Decode([]byte(cert.CertPEM))
+		if block == nil || block.Type != "CERTIFICATE" {
+			continue
+		}
+		leaf, err := x509.ParseCertificate(block.Bytes)
+		if err == nil && leaf.PublicKeyAlgorithm == algorithm {
+			matching = append(matching, cert)
+		}
+	}
+	return matching, nil
+}
+
+func (c *dbCache) Get(ctx context.Context, key string) ([]byte, error) {
+	certs, err := c.cacheCertificates(ctx, key)
+	if err != nil || len(certs) == 0 {
 		return nil, autocert.ErrCacheMiss
 	}
+	cert := certs[0]
 
 	// Decrypt private key if needed.
 	keyPEM := cert.KeyPEM
@@ -421,21 +471,44 @@ func (c *dbCache) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 func (c *dbCache) Put(ctx context.Context, key string, data []byte) error {
-	// autocert stores cert+key PEM concatenated. We need to split them.
+	domain, algorithm, err := certificateCacheKey(key)
+	if err != nil {
+		return err
+	}
+	// autocert stores the private key followed by the certificate chain.
 	certPEM, keyPEM, err := splitCertKey(data)
 	if err != nil {
 		return fmt.Errorf("acme: cache put: failed to split cert/key: %w", err)
 	}
+	leaf, err := validateCertificate(domain, certPEM, keyPEM, time.Now())
+	if err != nil {
+		return err
+	}
+	if leaf.PublicKeyAlgorithm != algorithm {
+		return errors.New("acme: certificate algorithm does not match cache key")
+	}
 
-	_, err = c.client.StoreCertificate(key, certPEM, keyPEM)
+	_, err = c.client.StoreCertificate(domain, certPEM, keyPEM)
 	return err
 }
 
 func (c *dbCache) Delete(ctx context.Context, key string) error {
-	result := c.client.db.
-		Where("domain_id IN (SELECT id FROM domains WHERE name = ?) AND issuer = ?", key, "letsencrypt").
-		Delete(&models.Certificate{})
-	return result.Error
+	// Unsupported keys have no certificate entry to delete.
+	if _, _, err := certificateCacheKey(key); err != nil {
+		return nil
+	}
+	certs, err := c.cacheCertificates(ctx, key)
+	if err != nil {
+		return err
+	}
+	if len(certs) == 0 {
+		return nil
+	}
+	ids := make([]uint, 0, len(certs))
+	for _, cert := range certs {
+		ids = append(ids, cert.ID)
+	}
+	return c.client.db.WithContext(ctx).Delete(&models.Certificate{}, ids).Error
 }
 
 // splitCertKey splits concatenated PEM data into certificate and key parts.
