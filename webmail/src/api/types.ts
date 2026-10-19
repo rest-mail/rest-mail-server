@@ -4729,7 +4729,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
@@ -7282,18 +7284,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "name": "tag-invoices",
-                 *       "description": "Tags mail about invoices",
-                 *       "filter_type": "action",
-                 *       "direction": "inbound",
-                 *       "config": {
-                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-                 *       },
-                 *       "enabled": false
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateCustomFilterRequest"];
             };
         };
@@ -7309,7 +7299,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     validateCustomFilter: {
