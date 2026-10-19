@@ -183,3 +183,139 @@ func TestSetDKIMKey_RefusesWhatCannotSign(t *testing.T) {
 		})
 	}
 }
+
+func TestListDKIMKeys_ReportsKnownAndUnknownAgeWithoutPrivateMaterial(t *testing.T) {
+	gdb := openAuthzTestDB(t)
+	tx, domain := seedDKIMDomain(t, gdb)
+	created := time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
+	if err := tx.Model(&domain).Update("dkim_created_at", created).Error; err != nil {
+		t.Fatal(err)
+	}
+	legacy := models.Domain{Name: "legacy-age.test", DKIMSelector: "legacy", DKIMPrivateKey: "private-sentinel"}
+	if err := tx.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Create(&models.Domain{Name: "no-key-age.test"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	before := time.Now()
+	NewDKIMHandler(tx, dkimTestMasterKey).ListKeys(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/dkim", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data []map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Data) != 2 {
+		t.Fatalf("got %d configured keys, want 2", len(resp.Data))
+	}
+	for _, entry := range resp.Data {
+		// An allowlist catches private_key, dkim_private_key, and future fields
+		// accidentally added by serializing the persistence model.
+		if len(entry) != 6 {
+			t.Fatalf("unexpected response fields: %v", entry)
+		}
+		for _, field := range []string{"domain_id", "domain", "selector", "has_key", "created_at", "age_seconds"} {
+			if _, ok := entry[field]; !ok {
+				t.Fatalf("missing %s", field)
+			}
+		}
+		for _, field := range []string{"private_key", "dkim_private_key"} {
+			if _, ok := entry[field]; ok {
+				t.Fatalf("response exposes %s", field)
+			}
+		}
+		var got dkimEntry
+		body, _ := json.Marshal(entry)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatal(err)
+		}
+		if !got.HasKey {
+			t.Fatal("configured key reported absent")
+		}
+		switch got.DomainID {
+		case domain.ID:
+			if got.Selector != "old" || got.CreatedAt == nil || !got.CreatedAt.Equal(created) ||
+				got.AgeSeconds == nil || *got.AgeSeconds < before.Sub(created).Seconds() || *got.AgeSeconds > time.Since(created).Seconds() {
+				t.Fatalf("incorrect known key metadata: %+v", got)
+			}
+		case legacy.ID:
+			if got.Selector != "legacy" || got.CreatedAt != nil || got.AgeSeconds != nil {
+				t.Fatalf("legacy age should be unknown: %+v", got)
+			}
+		default:
+			t.Fatalf("unexpected domain %d", got.DomainID)
+		}
+	}
+	for _, secret := range []string{domain.DKIMPrivateKey, "private-sentinel", models.DKIMKeyCipherPrefix, "PRIVATE KEY"} {
+		if strings.Contains(rr.Body.String(), secret) {
+			t.Fatal("response contains private material")
+		}
+	}
+}
+
+func TestSetDKIMKey_TracksInstallationAndDeleteClearsAge(t *testing.T) {
+	gdb := openAuthzTestDB(t)
+	tx, domain := seedDKIMDomain(t, gdb)
+	key, _, err := dkim.GenerateKey(2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().Add(-time.Second)
+	rr := putDKIMKey(t, tx, domain, "new", key)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
+	}
+	var response struct {
+		Data dkimEntry `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	got := response.Data
+	if got.Selector != "new" || got.CreatedAt == nil || got.CreatedAt.Before(before) || got.CreatedAt.After(time.Now()) ||
+		got.AgeSeconds == nil || *got.AgeSeconds < 0 || *got.AgeSeconds > time.Since(*got.CreatedAt).Seconds() {
+		t.Fatalf("incorrect installed key metadata: %+v", got)
+	}
+	if strings.Contains(rr.Body.String(), "private_key") || strings.Contains(rr.Body.String(), key) {
+		t.Fatal("PUT response exposes private key")
+	}
+	// Re-importing the same key (even under another selector) and unrelated
+	// domain updates must not reset a known key age.
+	created := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	if err := tx.Model(&domain).Updates(map[string]any{"dkim_created_at": created, "default_quota_bytes": 42}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rr := putDKIMKey(t, tx, domain, "renamed", key); rr.Code != http.StatusOK {
+		t.Fatalf("re-import status %d", rr.Code)
+	}
+	var stored models.Domain
+	if err := tx.First(&stored, domain.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.DKIMCreatedAt == nil || !stored.DKIMCreatedAt.Equal(created) || !models.DKIMKeyIsEncrypted(stored.DKIMPrivateKey) {
+		t.Fatal("re-import lost key age or encryption")
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/dkim/"+fmt.Sprint(domain.ID), nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", fmt.Sprint(domain.ID))
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr = httptest.NewRecorder()
+	NewDKIMHandler(tx, dkimTestMasterKey).DeleteKey(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("delete status %d", rr.Code)
+	}
+	stored = models.Domain{}
+	if err := tx.First(&stored, domain.ID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.DKIMCreatedAt != nil || stored.DKIMSelector != "" || stored.DKIMPrivateKey != "" {
+		t.Fatal("delete retained key metadata")
+	}
+}
