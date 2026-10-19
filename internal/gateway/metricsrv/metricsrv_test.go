@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/netallow"
@@ -99,13 +100,14 @@ func TestServerStartAndShutdown(t *testing.T) {
 	s.Start()
 	defer s.Shutdown()
 
-	// Poll briefly for the listener to come up.
+	// Poll for the listener to come up. Start listens in a goroutine, which
+	// under the race detector can take longer than 50 back-to-back dials.
 	var resp *http.Response
 	var err error
 	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/metrics"
-	for i := 0; i < 50; i++ {
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		resp, err = http.Get(url)
-		if err == nil {
+		if err == nil || time.Now().After(deadline) {
 			break
 		}
 	}
