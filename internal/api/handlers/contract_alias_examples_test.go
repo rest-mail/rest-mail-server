@@ -19,8 +19,14 @@ const aliasesPath = "/api/v1/admin/aliases"
 // a JSON object of its fields with: the canonical bad_request.
 const aliasBodyArrayRefused = `{"error":{"code":"bad_request","message":"Invalid request body"}}`
 
+// aliasSourceInvalidRefused is the body the handler answers a source that is
+// not one mail address with: the canonical 422 naming source_address.
+const aliasSourceInvalidRefused = `{"error":{"code":"validation_failed","message":"Request body failed validation",` +
+	`"details":{"fields":{"source_address":"must be a valid email address"}}}}`
+
 // The pairs vertrag compiles for createAlias: created with the 201,
-// body_array with the 400 and source_missing with the 422, nothing else.
+// body_array with the 400, source_missing and source_invalid with the 422s,
+// nothing else.
 // body_array is JSON, but an array where the request is an object, so it is
 // refused as it is read, before any field is looked at.
 func TestAliasCreate_ExamplePairs(t *testing.T) {
@@ -39,10 +45,10 @@ func aliasCreatePairProblems(t *testing.T, requests map[string]interface{}, resp
 	t.Helper()
 	var problems []string
 	want := map[string][]string{
-		"request": {"body_array", "created", "source_missing"},
+		"request": {"body_array", "created", "source_invalid", "source_missing"},
 		"201":     {"created"},
 		"400":     {"body_array"},
-		"422":     {"source_missing"},
+		"422":     {"source_invalid", "source_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -64,6 +70,14 @@ func aliasCreatePairProblems(t *testing.T, requests map[string]interface{}, resp
 		problems = append(problems, fmt.Sprintf("source_missing is %s, want created without its source_address",
 			mustJSON(requests["source_missing"])))
 	}
+	invalid := map[string]interface{}{
+		"source_address":      "not-an-email",
+		"destination_address": "admin@restmail.test",
+	}
+	if !reflect.DeepEqual(requests["source_invalid"], invalid) {
+		problems = append(problems, fmt.Sprintf("source_invalid is %s, want created with a source that is not an address %s",
+			mustJSON(requests["source_invalid"]), mustJSON(invalid)))
+	}
 	if !reflect.DeepEqual(requests["body_array"], []interface{}{}) {
 		problems = append(problems, fmt.Sprintf("body_array is %s, want the empty JSON array []",
 			mustJSON(requests["body_array"])))
@@ -78,6 +92,10 @@ func aliasCreatePairProblems(t *testing.T, requests map[string]interface{}, resp
 	if !reflect.DeepEqual(responses["422"]["source_missing"], parseShapeJSON(t, sourceMissing)) {
 		problems = append(problems, fmt.Sprintf("the 422 source_missing is %s, want %s",
 			mustJSON(responses["422"]["source_missing"]), sourceMissing))
+	}
+	if !reflect.DeepEqual(responses["422"]["source_invalid"], parseShapeJSON(t, aliasSourceInvalidRefused)) {
+		problems = append(problems, fmt.Sprintf("the 422 source_invalid is %s, want %s",
+			mustJSON(responses["422"]["source_invalid"]), aliasSourceInvalidRefused))
 	}
 	createdBody, _ := responses["201"]["created"].(map[string]interface{})
 	createdData, _ := createdBody["data"].(map[string]interface{})
@@ -173,8 +191,44 @@ func TestAliasCreate_BodyArrayRefused(t *testing.T) {
 	}
 }
 
-// Each way the body_array pair can be wrong is caught, and the existing pairs
-// with it: the request or the 400 missing or misnamed, the 400 documented
+// The real handler, with no database, answers source_invalid with exactly the
+// 422 the spec documents for it: after the required fields and before the
+// source's domain is looked up or anything is stored.
+func TestAliasCreate_SourceInvalidRefused(t *testing.T) {
+	requests, responses := postExamples(t, aliasesPath, "createAlias")
+	want := parseShapeJSON(t, aliasSourceInvalidRefused)
+	if !reflect.DeepEqual(responses["422"]["source_invalid"], want) {
+		t.Errorf("the spec documents source_invalid's 422 as %s, want %s",
+			mustJSON(responses["422"]["source_invalid"]), aliasSourceInvalidRefused)
+	}
+
+	body := string(mustJSON(requests["source_invalid"]))
+	rr, reached := createAliasNoDB(t, body)
+	if reached {
+		t.Fatalf("%s reached the database before it was refused", body)
+	}
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("%s: status %d, want 422; body %s", body, rr.Code, rr.Body)
+	}
+	got := decodeShapeBody(t, rr)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("%s answered %s, want %s", body, rr.Body, aliasSourceInvalidRefused)
+	}
+
+	// Controls: the answer is not source_missing's 422 (the field is named
+	// for being malformed, not for being absent), and the same request with a
+	// well-formed source is not refused at all but goes on to the lookup.
+	if reflect.DeepEqual(got, responses["422"]["source_missing"]) {
+		t.Error("source_invalid is answered with source_missing's 422")
+	}
+	valid := map[string]interface{}{"source_address": "sales@restmail.test", "destination_address": "admin@restmail.test"}
+	if rr, lookedUp := postAliasSource(t, mustJSON(valid)); !lookedUp {
+		t.Errorf("%s was answered %d %s before the domain lookup", mustJSON(valid), rr.Code, rr.Body)
+	}
+}
+
+// Each way the body_array and source_invalid pairs can be wrong is caught, and
+// the existing pairs with them: the request or the 400 missing or misnamed, the 400 documented
 // under another status, with another code, message or body, a request that is
 // not the empty array, created changed and source_missing dropped. The
 // mutations are made on copies, and the spec's examples are the same
@@ -188,6 +242,9 @@ func TestAliasCreate_ExamplePairMutations(t *testing.T) {
 
 	refused := func(res map[string]map[string]interface{}) map[string]interface{} {
 		return res["400"]["body_array"].(map[string]interface{})["error"].(map[string]interface{})
+	}
+	invalid422 := func(res map[string]map[string]interface{}) map[string]interface{} {
+		return res["422"]["source_invalid"].(map[string]interface{})["error"].(map[string]interface{})
 	}
 	mutations := map[string]func(map[string]interface{}, map[string]map[string]interface{}){
 		"request missing": func(req map[string]interface{}, _ map[string]map[string]interface{}) {
@@ -229,6 +286,51 @@ func TestAliasCreate_ExamplePairMutations(t *testing.T) {
 		"source_missing dropped": func(req map[string]interface{}, res map[string]map[string]interface{}) {
 			delete(req, "source_missing")
 			delete(res, "422")
+		},
+		"source_invalid request missing": func(req map[string]interface{}, _ map[string]map[string]interface{}) {
+			delete(req, "source_invalid")
+		},
+		"source_invalid request misnamed": func(req map[string]interface{}, _ map[string]map[string]interface{}) {
+			req["invalid_source"] = req["source_invalid"]
+			delete(req, "source_invalid")
+		},
+		"source_invalid request well-formed": func(req map[string]interface{}, _ map[string]map[string]interface{}) {
+			req["source_invalid"] = req["created"]
+		},
+		"source_invalid request destination dropped": func(req map[string]interface{}, _ map[string]map[string]interface{}) {
+			delete(req["source_invalid"].(map[string]interface{}), "destination_address")
+		},
+		"source_invalid 422 missing": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			delete(res["422"], "source_invalid")
+		},
+		"source_invalid 422 misnamed": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			res["422"]["invalid_source"] = res["422"]["source_invalid"]
+			delete(res["422"], "source_invalid")
+		},
+		"source_invalid 422 under 400": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			res["400"]["source_invalid"] = res["422"]["source_invalid"]
+			delete(res["422"], "source_invalid")
+		},
+		"source_invalid 422 code": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			invalid422(res)["code"] = "bad_request"
+		},
+		"source_invalid 422 message": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			invalid422(res)["message"] = "Invalid request body"
+		},
+		"source_invalid 422 field message": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			invalid422(res)["details"].(map[string]interface{})["fields"].(map[string]interface{})["source_address"] = "required"
+		},
+		"source_invalid 422 wrong field": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			fields := invalid422(res)["details"].(map[string]interface{})["fields"].(map[string]interface{})
+			fields["destination_address"] = fields["source_address"]
+			delete(fields, "source_address")
+		},
+		"source_invalid 422 body": func(_ map[string]interface{}, res map[string]map[string]interface{}) {
+			res["422"]["source_invalid"] = res["422"]["source_missing"]
+		},
+		"source_invalid pair dropped": func(req map[string]interface{}, res map[string]map[string]interface{}) {
+			delete(req, "source_invalid")
+			delete(res["422"], "source_invalid")
 		},
 		"created pair dropped": func(req map[string]interface{}, res map[string]map[string]interface{}) {
 			delete(req, "created")

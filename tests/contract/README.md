@@ -42,7 +42,9 @@ example named like it, and a side naming no example pairs with everything.
 `source_missing` request (a destination address and no source) goes with its
 422, and `created` with its 201, whose links the rest of the alias chain
 follows; its `body_array` request (`[]`, JSON but not an object) goes with its
-400, the `bad_request` the handler answers before it reads any field
+400, the `bad_request` the handler answers before it reads any field; its
+`source_invalid` request (the `created` one with a source that is not an
+address) goes with its 422 naming `source_address`
 (`contract_alias_examples_test.go`). `createPipeline` is the third: its
 `direction_missing` request (the `created` one without its direction) goes with
 its 422, and `created` with its 201; the hooks give the refused request the created domain but no direction.
