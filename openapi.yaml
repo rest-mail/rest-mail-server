@@ -2725,15 +2725,28 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RestmailDeliverRequest"
-            # A sender domain that publishes no DMARC record: example.com's
-            # p=reject would have the inbound pipeline reject the message.
-            example:
-              from: someone@ext-contract.test
-              to: [eve@restmail.test]
-              subject: Delivered over RESTMAIL
-              body_text: Hello, Eve.
-              message_id: <restmail-delivery@ext-contract.test>
-              date: "Sat, 17 Oct 2026 12:00:00 +0000"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              # A sender domain that publishes no DMARC record: example.com's
+              # p=reject would have the inbound pipeline reject the message.
+              delivered:
+                value:
+                  from: someone@ext-contract.test
+                  to: [eve@restmail.test]
+                  subject: Delivered over RESTMAIL
+                  body_text: Hello, Eve.
+                  message_id: <restmail-delivery@ext-contract.test>
+                  date: "Sat, 17 Oct 2026 12:00:00 +0000"
+              # No recipients: refused before the sender is looked up or
+              # anything is verified or stored.
+              recipients_missing:
+                value:
+                  from: someone@ext-contract.test
+                  subject: Delivered over RESTMAIL
+                  body_text: Hello, Eve.
+                  message_id: <restmail-delivery@ext-contract.test>
+                  date: "Sat, 17 Oct 2026 12:00:00 +0000"
       responses:
         "201":
           description: Delivery result
@@ -2745,8 +2758,27 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/RestmailDeliverResponse"
+              examples:
+                delivered:
+                  value:
+                    data:
+                      delivered: [eve@restmail.test]
+                      failed: []
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                recipients_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          to: at least one recipient required
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Domains
