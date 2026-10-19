@@ -574,16 +574,42 @@ The following were drafted as design + implementation plans on 2026-02-17 and 20
 
 ### 5.4 Future / deferred
 
-#### Backup & restore (BACKUP_PLAN.md)
-Design complete, nothing implemented. Targets:
-- **Simple (dev / single-instance):** daily `pg_dump -Fc`, 7-day retention, via a scheduled backup container / task.
-- **Production:** WAL archiving + pgBackRest or WAL-G; base backup weekly, continuous WAL to S3/GCS/Azure Blob, `archive_timeout = 60`. Near-zero RPO.
-- Attachments: tar snapshot daily or S3 versioning.
-- MASTER_KEY backup procedure — **critical; losing the key means losing access to every encrypted TLS/DKIM private key**. Not yet documented.
-- Weekly restore verification to a temp env with schema validation + attachment reference sampling + Prometheus alert.
-- Tasks to add: `chore backup:db`, `chore backup:attachments`, `chore restore:db`, `chore restore:attachments`.
-- Monitoring: backup-missed critical (> 25 h gap), WAL lag warning (> 5 min), verification-failed critical, storage-full warning (< 20 % free), MASTER_KEY-not-set critical at API start.
-- Open questions: storage target? Acceptable RPO? Backup encryption? Cross-region replication?
+#### Backup & restore — shipped as `chore backup:*`
+The first slice exists (PR #332, `tasks/backup.yml` and `tasks/lifecycle/backup.sh`; guide in [installing.md](installing.md#backups), design in [design/install-flow.md](design/install-flow.md)). It runs against a Helm/Pulumi install through `kubectl`, and writes **one tar file**: a `manifest.json` saying what it holds and what it does not, plus the parts asked for.
+
+| Command | What it takes |
+| --- | --- |
+| `chore backup:create --to DIR` | the database, the master key and the install's facts — everything except the attachments |
+| `chore backup:database` | the database alone |
+| `chore backup:keys` | the master key alone |
+| `chore backup:attachments` | the attachments volume alone — streamed through the cluster, so it can be large |
+| `chore backup:restore --from FILE` | puts a backup back into an install (below) |
+
+All take `--name` (Helm release, default `restmail`) and `--namespace` (default `rest-mail`); the `backup:*` creators also take `--to`.
+
+**What is captured**
+- `database.dump` — `pg_dump -Fc` of the chart's embedded Postgres: mail metadata, accounts, filters, the queue, and the encrypted DKIM and ACME keys. If the database is not the chart's own Postgres, the part is skipped and the manifest says why: back it up where it runs.
+- `keys.json` — `MASTER_KEY`, read from the Secret the API uses. **Critical:** without it the restored DKIM keys, ACME certificate keys and every admin's authenticator secret are unreadable — the server could not sign outbound mail or renew its certificate, and no admin would get past 2FA.
+- `facts.json` — release name, namespace, chart version and the release's Helm values, with the bootstrap admin password, JWT secret, master key and Postgres password removed: what you need to deploy again before you can restore into it.
+- `attachments.tar` — only from `backup:attachments`. `backup:create` measures the volume and names it in the manifest as "not in it", with its size and the command that takes it.
+
+**What is not captured**
+- The attachments, unless you ran `backup:attachments` too (a database restored without them gives working mail whose attachments are gone).
+- The JWT secret, on purpose: losing it only signs everyone out, and restoring it would have the new server honour sessions minted before whatever went wrong.
+- Anything else in the cluster: only the embedded Postgres and the attachments volume are read, so other Secrets (such as the internal mTLS certificates) are not in it.
+- Anything outside the cluster: DNS records and your Pulumi stack. Helm values appear only as filtered in `facts.json`.
+
+**The tar is a secret.** It contains the master key, so treat the file like a password: `chmod 600` is applied for you, and there is **no default destination** — pass `--to`, or record a place once on the release (`--set backupTarget=DIR`). It refuses a destination inside a git working tree that does not ignore it. The owner decided the tar is itself the secret, rather than encrypting it with a separate key: the original proposal in #145 was a key distinct from the master key, and that was not built. If you need encryption at rest, put the file in an encrypted store.
+
+**Restoring**
+```bash
+chore backup:restore --from FILE
+```
+It reads the manifest and says what the file holds, what it lacks, and which release and cluster context it is about to overwrite. It warns if the database is there without the key, or without the attachments. Then it asks you to **type a code** it has just made up — the same guard as `data:destroy`, because a restore replaces what the server holds now and cannot be undone. `--i-mean-it` skips the code for a script that genuinely means to; with no terminal and no `--i-mean-it` it refuses. After the code it takes the server offline, puts back the master key (patched into the Secret), the database (`pg_restore --clean --if-exists`) and the attachments (extracted into the volume through a helper pod; files not in the backup are not removed), brings the server online and runs `chore server:verify`. If the server was offline before it stays offline. The target install must already exist: deploy from the facts in the backup first.
+
+**Restore drills.** It isn't a backup until you've restored from it. Periodically restore the latest backup into a scratch install (or a throwaway namespace) and run `chore server:verify`: check that mail is there, attachments open, and an admin can sign in with their authenticator. Also check the file is somewhere that survives the loss of the cluster, and that the master key in it is the one you expect.
+
+**Not built yet:** scheduled backups and retention, WAL archiving/pgBackRest for near-zero RPO, a restore-drill job, and backup monitoring alerts. Today a backup is taken when you run the command, and `chore upgrade:*` offers one if none is less than a day old.
 
 #### Internationalized Email (EAI_PLAN.md)
 Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection* was part of the Instant Mail Check tool, which has since been extracted to the `rest-mail/instantmailcheck` repo — see §4.5 — so `internal/mailcheck/` no longer exists here.)
