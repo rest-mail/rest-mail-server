@@ -3190,6 +3190,13 @@ paths:
               source_missing:
                 value:
                   destination_address: admin@restmail.test
+              # A source that is not one mail address: refused after the
+              # required fields, before its domain is looked up or anything
+              # is stored.
+              source_invalid:
+                value:
+                  source_address: not-an-email
+                  destination_address: admin@restmail.test
               # JSON, but an array where the request is an object: refused
               # when it is read, before any field is looked at.
               body_array:
@@ -3255,6 +3262,14 @@ paths:
                       details:
                         fields:
                           source_address: required
+                source_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          source_address: must be a valid email address
 
   /api/v1/admin/aliases/{id}:
     parameters:
