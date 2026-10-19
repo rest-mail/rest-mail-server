@@ -7061,6 +7061,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description `bad_request` when the body does not decode as the request: not JSON, an array, a string, a number or a boolean rather than an object, or a field of the wrong JSON type. It is refused before any field is validated; a `null` body decodes as an empty one and gets the 422. Filters that pass validation are also refused with a 400: `invalid_sieve` for a Sieve script that does not install, `unsupported_filter` for a filter configured in a way it does not support. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Request body failed validation */
             422: {
                 headers: {

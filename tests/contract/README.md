@@ -47,12 +47,16 @@ follows; its `body_array` request (`[]`, JSON but not an object) goes with its
 address) goes with its 422 naming `source_address`
 (`contract_alias_examples_test.go`). `createPipeline` is the third: its
 `direction_missing` request (the `created` one without its direction) goes with
-its 422, and `created` with its 201; the hooks give the refused request the created domain but no direction.
+its 422, and `created` with its 201; the hooks give the refused request the
+created domain but no direction. Its `body_array` request (`[]`) goes with its
+400, the `bad_request` the handler sends for a body it cannot decode, and is
+sent as it is: the hooks have no object to put the domain in.
 `internal/api/handlers/contract_examples_test.go` (and
 `contract_pipeline_examples_test.go`, for `createPipeline`) sends each request
 named on any of these 422s to the real handler, which has no database, and
 checks it gets the documented body: the refusal comes before anything is looked
-up or stored.
+up or stored. `contract_pipeline_body400_test.go` does the same for
+`body_array` and its 400.
 
 Their 422s are still excluded, though vertrag sends them and the handlers
 answer as documented: the coverage phase probes every transaction sent, and

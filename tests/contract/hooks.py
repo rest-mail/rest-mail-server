@@ -95,10 +95,15 @@ def on_the_created_domain(transaction, **fields):
 
 @hooks.before("createPipeline")
 def a_pipeline_on_the_created_domain(transaction):
+    body = hooks.get_json(transaction)
+    # The undecodable create (body_array, 400) is sent as documented: an
+    # array, with no object to put the domain in.
+    if not isinstance(body, dict):
+        return
     fields = {"active": False, "filters": [{"name": "header_validate", "config": {}}]}
     # The refused create (direction_missing, 422) is sent as documented, with
     # no direction.
-    if "direction" in hooks.get_json(transaction):
+    if "direction" in body:
         fields["direction"] = "inbound"
     on_the_created_domain(transaction, **fields)
 
