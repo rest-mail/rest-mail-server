@@ -1,0 +1,8 @@
+# Actions are pinned to commit SHAs. Dependabot proposes SHA updates as pull
+# requests so new releases can be reviewed and checked by CI.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
