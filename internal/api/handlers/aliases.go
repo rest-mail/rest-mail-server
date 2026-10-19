@@ -64,6 +64,14 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The source must be one mail address, as the spec's format: email says,
+	// before its domain is looked up (#388): an "@" alone let "@domain",
+	// "local@", two addresses and CR/LF-injected values through.
+	if rmail.ValidateAddress(req.SourceAddress) != nil {
+		respond.ValidationError(w, map[string]string{"source_address": "must be a valid email address"})
+		return
+	}
+
 	parts := strings.SplitN(req.SourceAddress, "@", 2)
 	if len(parts) != 2 {
 		respond.ValidationError(w, map[string]string{"source_address": "must be a valid email address"})
