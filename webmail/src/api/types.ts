@@ -7156,6 +7156,16 @@ export interface operations {
                     };
                 };
             };
+            /** @description The body is not JSON (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
         };
     };
     testFilter: {

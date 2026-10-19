@@ -3489,6 +3489,14 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/ExecutionResult"
+        "400":
+          description: The body is not JSON (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/admin/pipelines/test-filter:
     post:
