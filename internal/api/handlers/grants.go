@@ -99,6 +99,9 @@ func toGrantResponses(db *gorm.DB, rows []models.Grant, now time.Time) ([]grantR
 // those at one scope.
 // GET /api/v1/admin/grants?holder_kind=account&holder_id=3&scope=mailbox:chris@example.com
 func (h *GrantHandler) List(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 200, "limit", "offset") {
+		return
+	}
 	q := h.db.Model(&models.Grant{})
 	if kind := r.URL.Query().Get("holder_kind"); kind != "" {
 		q = q.Where("holder_kind = ?", kind)

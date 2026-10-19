@@ -1485,6 +1485,8 @@ paths:
           schema:
             type: string
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Paginated list of messages
           content:
@@ -3059,6 +3061,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Mailbox list
           content:
@@ -3196,6 +3200,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Alias list
           content:
@@ -3395,6 +3401,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Pipeline list
           content:
@@ -3779,6 +3787,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Pipeline message traces
           content:
@@ -3811,6 +3821,8 @@ paths:
           schema:
             type: integer
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Custom filter list
           content:
@@ -4188,6 +4200,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Queue entries
           content:
@@ -4987,6 +5001,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Ban list
           content:
@@ -5218,6 +5234,7 @@ paths:
           description: The account (mailbox) id
           schema:
             type: integer
+            minimum: 0
         - name: actor
           in: query
           description: Actor name (an address) contains this, in any case
@@ -5812,6 +5829,7 @@ paths:
           in: query
           schema:
             type: integer
+            minimum: 0
         - name: scope
           in: query
           description: Only the grants at this scope, e.g. `mailbox:chris@example.com`
@@ -5829,6 +5847,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Grants
           content:
@@ -6434,6 +6454,7 @@ paths:
           in: query
           schema:
             type: integer
+            minimum: 0
         - name: policy_type
           in: query
           schema:
@@ -6455,6 +6476,14 @@ paths:
             type: integer
             default: 0
       responses:
+        "400":
+          description: Invalid domain_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: TLS-RPT reports
           content:

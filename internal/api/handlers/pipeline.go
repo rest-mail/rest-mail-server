@@ -137,6 +137,9 @@ const jsSidecarRefused = "JS filter sidecar refused the API's token (JS_FILTER_T
 
 // ListPipelines returns all pipelines for a domain.
 func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "domain_id") {
+		return
+	}
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
@@ -162,6 +165,9 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 // pipeline_id, direction, action (the trace's final_action column), and on
 // rfc_message_id / outcome / reason_code for message-lifecycle drill-down.
 func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 200, "pipeline_id", "limit", "offset") {
+		return
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
@@ -444,6 +450,9 @@ func (h *PipelineHandler) TestFilter(w http.ResponseWriter, r *http.Request) {
 
 // ListCustomFilters returns custom filters for a domain.
 func (h *PipelineHandler) ListCustomFilters(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "domain_id") {
+		return
+	}
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
