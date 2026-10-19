@@ -4182,6 +4182,31 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/BulkQueueResponse"
+        "400":
+          description: >-
+            Invalid JSON or a body that cannot be decoded into the request shape;
+            no IDs and no filter; or more than 1000 IDs. Refused before any queue
+            lookup. An empty filter object is accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                selection_missing:
+                  value:
+                    error:
+                      code: bad_request
+                      message: ids or filter required
+                too_many_ids:
+                  value:
+                    error:
+                      code: bad_request
+                      message: max 1000 IDs per request
 
   /api/v1/admin/queue/bulk-bounce:
     post:
