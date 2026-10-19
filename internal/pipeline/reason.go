@@ -17,6 +17,7 @@ const (
 	ReasonDMARCReject      ReasonCode = "dmarc_reject"
 	ReasonDMARCQuarantine  ReasonCode = "dmarc_quarantine"
 	ReasonSPFFail          ReasonCode = "spf_fail"
+	ReasonDKIMFail         ReasonCode = "dkim_fail"
 	ReasonGreylistDefer    ReasonCode = "greylist_defer"
 	ReasonSizeExceeded     ReasonCode = "size_exceeded"
 	ReasonRateLimited      ReasonCode = "rate_limited"
@@ -66,6 +67,13 @@ func Reason(filterName string, action Action, result string) ReasonCode {
 		// enforces.
 		if action != ActionContinue {
 			return ReasonSPFFail
+		}
+	case "dkim_verify":
+		// dkim_verify terminates only when its fail_action is reject or
+		// quarantine and the DKIM result is fail; by default it continues and
+		// DMARC enforces.
+		if action != ActionContinue {
+			return ReasonDKIMFail
 		}
 	case "size_check":
 		if action == ActionReject {
