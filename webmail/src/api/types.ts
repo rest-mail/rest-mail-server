@@ -8598,6 +8598,16 @@ export interface operations {
                     "application/xml": string;
                 };
             };
+            /** @description No usable email address, refused before any domain is looked up. A body that is not Autodiscover XML falls back to the emailaddress query parameter: with neither, "invalid request". An Autodiscover request without an EMailAddress gets "email address required", and an address without an @ gets "invalid email address". Plain text, ending in a newline. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @example invalid request */
+                    "text/plain": "invalid request\n" | "email address required\n" | "invalid email address\n";
+                };
+            };
         };
     };
     mtaStsPolicyFile: {
