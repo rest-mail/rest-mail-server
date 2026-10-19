@@ -911,10 +911,19 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateAccountRequest"
-            example:
-              address: new-account@restmail.test
-              display_name: New Account
-              password: correct-horse-battery
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              created:
+                value:
+                  address: new-account@restmail.test
+                  display_name: New Account
+                  password: correct-horse-battery
+              # No address: refused before anything is looked up or stored.
+              address_missing:
+                value:
+                  display_name: New Account
+                  password: correct-horse-battery
       responses:
         "201":
           description: Created
@@ -926,6 +935,14 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 2
+                      address: new-account@restmail.test
+                      display_name: New Account
+                      is_primary: false
           links:
             getMailbox:
               operationId: getMailbox
@@ -947,6 +964,19 @@ paths:
           description: An account with this address exists
         "422":
           description: Not an address, a password under 12 characters, or a domain this server does not host
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                address_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
 
   /api/v1/accounts/link:
     post:
@@ -3582,17 +3612,32 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateCustomFilterRequest"
-            example:
-              name: tag-invoices
-              description: Tags mail about invoices
-              filter_type: action
-              direction: inbound
-              config:
-                script: |
-                  function filter(email) {
-                    return { action: "continue" };
-                  }
-              enabled: false
+            # Pair each request only with the response bearing its name (#386).
+            examples:
+              created:
+                value:
+                  name: tag-invoices
+                  description: Tags mail about invoices
+                  filter_type: action
+                  direction: inbound
+                  config:
+                    script: |
+                      function filter(email) {
+                        return { action: "continue" };
+                      }
+                  enabled: false
+              filter_type_invalid:
+                value:
+                  name: tag-invoices
+                  description: Tags mail about invoices
+                  filter_type: invalid
+                  direction: inbound
+                  config:
+                    script: |
+                      function filter(email) {
+                        return { action: "continue" };
+                      }
+                  enabled: false
       responses:
         "201":
           description: Custom filter created
@@ -3604,6 +3649,24 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CustomFilter"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      name: tag-invoices
+                      description: Tags mail about invoices
+                      filter_type: action
+                      direction: inbound
+                      config:
+                        script: |
+                          function filter(email) {
+                            return { action: "continue" };
+                          }
+                      enabled: false
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             getCustomFilter:
               operationId: getCustomFilter
@@ -3618,7 +3681,20 @@ paths:
               parameters:
                 id: '$response.body#/data/id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                filter_type_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          filter_type: must be action or transform
 
   /api/v1/admin/custom-filters/validate:
     post:
