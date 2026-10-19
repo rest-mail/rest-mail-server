@@ -83,9 +83,11 @@ dependency: it needs Go 1.26 and this module is on 1.25.
 - `hooks.py`: only what the spec cannot hold: the fixture's passwords, the
   refresh token a sign-in hands out, a fresh key pair, the created domain's id
   where a request carries it in its body, and its name in the Host header the
-  MTA-STS policy file is served by, and a fresh source folder for each rename
-  probe (a successful rename consumes the previous one). Every other id comes
-  from the spec's `links`.
+  MTA-STS policy file is served by, cleanup of folders previously created by
+  create probes (so repeated valid names do not conflict), and a fresh source
+  folder for each rename probe (a successful rename consumes the previous one).
+  Folder create probes keep their generated bodies and account IDs unchanged.
+  Every other id comes from the spec's `links`.
 - `gate.py`: the gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.

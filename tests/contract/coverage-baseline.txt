@@ -17,7 +17,6 @@ createAccount
 createBan
 createContact
 createDomain
-createFolder
 deleteAlias
 deleteBan
 deleteCustomFilter
