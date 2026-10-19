@@ -281,11 +281,12 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 	// A non-nil pointer keeps GORM from replacing explicit false with the
 	// model's default:true. Overlay it for this single insert only; other
 	// creation paths retain the model default, with no follow-up update needed.
+	// The embedded Pipeline supplies the table name.
 	row := struct {
 		models.Pipeline
 		Active *bool
 	}{Pipeline: p, Active: &p.Active}
-	if err := h.db.Table(p.TableName()).Create(&row).Error; err != nil {
+	if err := h.db.Create(&row).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create pipeline")
 		return
 	}
