@@ -7166,40 +7166,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "filter_name": "header_validate",
-                 *       "config": {},
-                 *       "email": {
-                 *         "envelope": {
-                 *           "mail_from": "someone@example.com",
-                 *           "rcpt_to": [
-                 *             "eve@restmail.test"
-                 *           ]
-                 *         },
-                 *         "headers": {
-                 *           "from": [
-                 *             {
-                 *               "name": "Someone",
-                 *               "address": "someone@example.com"
-                 *             }
-                 *           ],
-                 *           "to": [
-                 *             {
-                 *               "address": "eve@restmail.test"
-                 *             }
-                 *           ],
-                 *           "subject": "A filter test",
-                 *           "message-id": "<filter-test@example.com>",
-                 *           "date": "Sat, 17 Oct 2026 12:00:00 +0000"
-                 *         },
-                 *         "body": {
-                 *           "content_type": "text/plain",
-                 *           "content": "Hello."
-                 *         }
-                 *       }
-                 *     }
-                 */
                 "application/json": components["schemas"]["TestFilterRequest"];
             };
         };
@@ -7213,6 +7179,15 @@ export interface operations {
                     "application/json": {
                         data: components["schemas"]["FilterResult"];
                     };
+                };
+            };
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
@@ -7841,12 +7816,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "pattern": "@partner.example.com",
-                 *       "reason": "A trusted partner"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -7863,6 +7832,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     removeFromAllowlist: {
@@ -9615,14 +9593,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "from": "postmaster@restmail.test",
-                 *       "to": "admin@restmail.test",
-                 *       "subject": "Test",
-                 *       "body": "A test message."
-                 *     }
-                 */
                 "application/json": {
                     /** Format: email */
                     from: string;
@@ -9659,7 +9629,15 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     verifyDelivery: {
