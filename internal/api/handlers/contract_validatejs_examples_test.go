@@ -46,15 +46,16 @@ func postValidateJS(t *testing.T, h *PipelineHandler, request interface{}) *http
 }
 
 // The pairs vertrag compiles for validateCustomFilter (#386): valid with the
-// 200 and script_missing with the 422, nothing else. valid is the script the
-// spec has always shown, and script_missing is valid without its script, so
-// the script is the only reason it is refused.
+// 200, body_array with the 400 and script_missing with the 422, nothing else.
+// valid is the script the spec has always shown, and script_missing is valid
+// without its script, so the script is the only reason it is refused.
 func TestValidateCustomFilter_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, validateJSPath, "validateCustomFilter")
 
 	want := map[string][]string{
-		"request": {"script_missing", "valid"},
+		"request": {"body_array", "script_missing", "valid"},
 		"200":     {"valid"},
+		"400":     {"body_array"},
 		"422":     {"script_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}

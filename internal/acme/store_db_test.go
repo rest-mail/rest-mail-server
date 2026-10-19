@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -112,6 +113,12 @@ func keyPEMFor(t *testing.T, key crypto.Signer) string {
 		return string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}))
 	case *rsa.PrivateKey:
 		return string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}))
+	case ed25519.PrivateKey:
+		der, err := x509.MarshalPKCS8PrivateKey(k)
+		if err != nil {
+			t.Fatalf("marshal Ed25519 key: %v", err)
+		}
+		return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 	}
 	t.Fatalf("unsupported key type %T", key)
 	return ""
@@ -260,13 +267,10 @@ func TestStoreCertificate_StoresAndRoundTripsValidPairs(t *testing.T) {
 		domain string
 		key    crypto.Signer
 		sans   []string
-		// autocert looks RSA certificates up under "<domain>+rsa", a key the
-		// cache does not map to a domain yet, so it can only serve ECDSA ones.
-		viaAutocert bool
 	}{
-		{"ECDSA", "acme-ec.test", newECKey(t), []string{"acme-ec.test"}, true},
-		{"RSA, domain as a later SAN", "acme-rsa.test", newRSAKey(t), []string{"mail.acme-rsa.test", "acme-rsa.test"}, false},
-		{"wildcard covering a subdomain", "mx.acme-wild.test", newECKey(t), []string{"*.acme-wild.test"}, true},
+		{"ECDSA", "acme-ec.test", newECKey(t), []string{"acme-ec.test"}},
+		{"RSA, domain as a later SAN", "acme-rsa.test", newRSAKey(t), []string{"mail.acme-rsa.test", "acme-rsa.test"}},
+		{"wildcard covering a subdomain", "mx.acme-wild.test", newECKey(t), []string{"*.acme-wild.test"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -276,8 +280,14 @@ func TestStoreCertificate_StoresAndRoundTripsValidPairs(t *testing.T) {
 			certPEM := certFor(t, tc.key, tc.sans[0], tc.sans, time.Now().Add(60*24*time.Hour))
 			keyPEM := keyPEMFor(t, tc.key)
 
+			cacheKey := tc.domain
+			cipherSuite := uint16(tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256)
+			if _, ok := tc.key.(*rsa.PrivateKey); ok {
+				cacheKey += "+rsa"
+				cipherSuite = tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+			}
 			// autocert hands the cache the key first, then the chain.
-			if err := cache.Put(context.Background(), tc.domain, []byte(keyPEM+certPEM)); err != nil {
+			if err := cache.Put(context.Background(), cacheKey, []byte(keyPEM+certPEM)); err != nil {
 				t.Fatalf("dbCache.Put: %v", err)
 			}
 
@@ -296,7 +306,7 @@ func TestStoreCertificate_StoresAndRoundTripsValidPairs(t *testing.T) {
 				t.Fatalf("stored key does not decrypt to the key put (err %v)", err)
 			}
 
-			data, err := cache.Get(context.Background(), tc.domain)
+			data, err := cache.Get(context.Background(), cacheKey)
 			if err != nil {
 				t.Fatalf("dbCache.Get: %v", err)
 			}
@@ -311,9 +321,6 @@ func TestStoreCertificate_StoresAndRoundTripsValidPairs(t *testing.T) {
 				t.Fatal("cached data does not start with the private key, as autocert requires")
 			}
 
-			if !tc.viaAutocert {
-				return
-			}
 			// autocert itself must serve the cached pair. The directory is an
 			// unreachable loopback address, so a cache miss fails instead of
 			// reaching an ACME server.
@@ -325,7 +332,7 @@ func TestStoreCertificate_StoresAndRoundTripsValidPairs(t *testing.T) {
 			}
 			served, err := m.GetCertificate(&tls.ClientHelloInfo{
 				ServerName:   tc.domain,
-				CipherSuites: []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
+				CipherSuites: []uint16{cipherSuite},
 			})
 			if err != nil {
 				t.Fatalf("autocert could not serve the cached certificate: %v", err)
@@ -381,6 +388,167 @@ func assertRowsUnchanged(t *testing.T, before, after []certRow) {
 		if a.ID != b.ID || a.CertPEM != b.CertPEM || a.KeyPEM != b.KeyPEM ||
 			!a.NotAfter.Equal(b.NotAfter) || !a.UpdatedAt.Equal(b.UpdatedAt) {
 			t.Fatalf("certificate row %d changed after a refused store", b.ID)
+		}
+	}
+}
+
+// Existing direct stores and autocert writes share rows, but the RSA and ECDSA
+// cache entries must remain independent even when the other algorithm is newer.
+func TestDBCache_AlgorithmIsolation(t *testing.T) {
+	gdb := openStoreTestDB(t)
+	ecKey, rsaKey := newECKey(t), newRSAKey(t)
+	_, edKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate Ed25519 key: %v", err)
+	}
+	const domain, other = "acme-isolation.test", "acme-other.test"
+	expiry := time.Now().Add(60 * 24 * time.Hour)
+	ecCert := certFor(t, ecKey, domain, []string{domain}, expiry)
+	rsaCert := certFor(t, rsaKey, domain, []string{domain}, expiry.Add(24*time.Hour))
+	ecPEM, rsaPEM := keyPEMFor(t, ecKey), keyPEMFor(t, rsaKey)
+	edCert := certFor(t, edKey, domain, []string{domain}, expiry.Add(96*time.Hour))
+	edPEM := keyPEMFor(t, edKey)
+
+	for _, deleteRSA := range []bool{false, true} {
+		name := "delete ECDSA"
+		if deleteRSA {
+			name = "delete RSA"
+		}
+		t.Run(name, func(t *testing.T) {
+			tx := gdb.Begin()
+			t.Cleanup(func() { tx.Rollback() })
+			for _, d := range []string{domain, other} {
+				if err := tx.Create(&models.Domain{Name: d, ServerType: "traditional", Active: true}).Error; err != nil {
+					t.Fatalf("create domain: %v", err)
+				}
+			}
+			client := NewClient(ClientConfig{DB: tx, MasterKey: testMasterKey})
+			cache := &dbCache{client: client}
+			ctx := context.Background()
+			// Legacy direct StoreCertificate rows are selected by their leaf's
+			// algorithm, without migrating or changing their domain identity.
+			for _, pair := range []struct{ cert, key string }{{ecCert, ecPEM}, {rsaCert, rsaPEM}, {edCert, edPEM}} {
+				if _, err := client.StoreCertificate(domain, pair.cert, pair.key); err != nil {
+					t.Fatalf("direct store: %v", err)
+				}
+			}
+			assertCachedPair(t, cache, domain+"+rsa", rsaCert, rsaPEM)
+			assertCachedPair(t, cache, domain, ecCert, ecPEM)
+
+			// Put both variants while they coexist, first making ECDSA newest,
+			// then RSA newest. Each Get must still select its own latest row.
+			ecNew := certFor(t, ecKey, domain, []string{domain}, expiry.Add(48*time.Hour))
+			if err := cache.Put(ctx, domain, []byte(ecPEM+ecNew)); err != nil {
+				t.Fatalf("put ECDSA: %v", err)
+			}
+			assertCachedPair(t, cache, domain+"+rsa", rsaCert, rsaPEM)
+			rsaNew := certFor(t, rsaKey, domain, []string{domain}, expiry.Add(72*time.Hour))
+			if err := cache.Put(ctx, domain+"+rsa", []byte(rsaPEM+rsaNew)); err != nil {
+				t.Fatalf("put RSA: %v", err)
+			}
+			assertCachedPair(t, cache, domain, ecNew, ecPEM)
+			assertCachedPair(t, cache, domain+"+rsa", rsaNew, rsaPEM)
+
+			for _, key := range []crypto.Signer{ecKey, rsaKey} {
+				cert := certFor(t, key, other, []string{other}, expiry)
+				if _, err := client.StoreCertificate(other, cert, keyPEMFor(t, key)); err != nil {
+					t.Fatalf("store other domain: %v", err)
+				}
+			}
+			manual, err := client.StoreCertificate(domain, ecNew, ecPEM)
+			if err != nil {
+				t.Fatalf("store manual fixture: %v", err)
+			}
+			if err := tx.Model(manual).Update("issuer", "manual").Error; err != nil {
+				t.Fatalf("set fixture issuer: %v", err)
+			}
+
+			before := certRows(t, tx)
+			for _, bad := range []struct{ key, data string }{
+				{domain, rsaPEM + rsaNew},
+				{domain + "+rsa", ecPEM + ecNew},
+				{domain, edPEM + edCert},
+				{domain + "+rsa", edPEM + edCert},
+				{other + "+rsa", rsaPEM + rsaNew}, // actual hostname must match
+			} {
+				if err := cache.Put(ctx, bad.key, []byte(bad.data)); err == nil {
+					t.Fatalf("accepted wrong algorithm or hostname under %q", bad.key)
+				} else {
+					assertNoKeyMaterial(t, err, rsaPEM)
+					assertNoKeyMaterial(t, err, ecPEM)
+				}
+				assertRowsUnchanged(t, before, certRows(t, tx))
+			}
+			for _, key := range []string{"acme_account+key", "acme_account.key", domain + "+token", domain + "+http-01", domain + "+unknown", domain + "+rsa+rsa", "+rsa", ""} {
+				if _, err := cache.Get(ctx, key); err != autocert.ErrCacheMiss {
+					t.Fatalf("unsupported key %q: Get error = %v", key, err)
+				}
+				if err := cache.Put(ctx, key, []byte(rsaPEM+rsaNew)); err == nil {
+					t.Fatalf("unsupported key %q: Put succeeded", key)
+				}
+				if err := cache.Delete(ctx, key); err != nil {
+					t.Fatalf("unsupported key %q: Delete: %v", key, err)
+				}
+				assertRowsUnchanged(t, before, certRows(t, tx))
+			}
+
+			deleteKey, keepKey, keepCert, keepPEM := domain, domain+"+rsa", rsaNew, rsaPEM
+			if deleteRSA {
+				deleteKey, keepKey, keepCert, keepPEM = domain+"+rsa", domain, ecNew, ecPEM
+			}
+			if err := cache.Delete(ctx, deleteKey); err != nil {
+				t.Fatalf("delete: %v", err)
+			}
+			if _, err := cache.Get(ctx, deleteKey); err != autocert.ErrCacheMiss {
+				t.Fatalf("deleted variant Get error = %v, want cache miss", err)
+			}
+			assertCachedPair(t, cache, keepKey, keepCert, keepPEM)
+			var kept []certRow
+			for _, row := range before {
+				deleted := row.CertPEM == ecCert || row.CertPEM == ecNew
+				if deleteRSA {
+					deleted = row.CertPEM == rsaCert || row.CertPEM == rsaNew
+				}
+				if row.ID != manual.ID && deleted {
+					continue
+				}
+				kept = append(kept, row)
+			}
+			assertRowsUnchanged(t, kept, certRows(t, tx))
+		})
+	}
+}
+
+func assertCachedPair(t *testing.T, cache *dbCache, key, certPEM, keyPEM string) {
+	t.Helper()
+	data, err := cache.Get(context.Background(), key)
+	if err != nil {
+		t.Fatalf("cache Get(%q): %v", key, err)
+	}
+	cert, private, err := splitCertKey(data)
+	if err != nil || cert != certPEM || private != keyPEM {
+		t.Fatalf("cache Get(%q) returned a different pair (err %v)", key, err)
+	}
+}
+
+func TestCertificateCacheKey(t *testing.T) {
+	for _, tc := range []struct {
+		key       string
+		domain    string
+		algorithm x509.PublicKeyAlgorithm
+	}{
+		{"example.test", "example.test", x509.ECDSA},
+		{"example.test+rsa", "example.test", x509.RSA},
+		{"xn--bcher-kva.example+rsa", "xn--bcher-kva.example", x509.RSA},
+	} {
+		domain, algorithm, err := certificateCacheKey(tc.key)
+		if err != nil || domain != tc.domain || algorithm != tc.algorithm {
+			t.Errorf("certificateCacheKey(%q) = (%q, %v, %v)", tc.key, domain, algorithm, err)
+		}
+	}
+	for _, key := range []string{"", "acme_account+key", "acme_account.key", "example.test+token", "example.test+http-01", "example.test+ecdsa", "example.test+rsa+rsa", "+rsa", "example.test.", "EXAMPLE.test", "-bad.test", "bad-.test", "a..test", "*.example.test", "a/other.test", strings.Repeat("a", 64) + ".test"} {
+		if _, _, err := certificateCacheKey(key); err == nil {
+			t.Errorf("certificateCacheKey(%q) accepted unsupported key", key)
 		}
 	}
 }
