@@ -95,7 +95,7 @@ func defaultInboundFilters() []FilterConfig {
 			Type:        FilterTypeAction,
 			Enabled:     true,
 			Unskippable: true,
-			Config:      json.RawMessage(`{"fail_action": "quarantine"}`),
+			Config:      json.RawMessage(`{}`),
 		},
 		{
 			Name:    "domain_allowlist",
