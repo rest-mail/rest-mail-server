@@ -7683,13 +7683,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "ids": [
-                 *         987654
-                 *       ]
-                 *     }
-                 */
                 "application/json": components["schemas"]["BulkQueueRequest"];
             };
         };
@@ -7703,6 +7696,15 @@ export interface operations {
                     "application/json": {
                         data: components["schemas"]["BulkQueueResponse"];
                     };
+                };
+            };
+            /** @description The body selects no entries, by ids or by a filter (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

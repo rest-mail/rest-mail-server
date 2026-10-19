@@ -4339,8 +4339,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
-            example:
-              ids: [987654]
+            examples:
+              by_ids:
+                value:
+                  ids: [987654]
+              # Neither ids nor a filter: refused before any entry is selected.
+              selection_missing:
+                value: {}
       responses:
         "200":
           description: Bulk delete result
@@ -4352,6 +4357,23 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/BulkQueueResponse"
+              examples:
+                by_ids:
+                  value:
+                    data:
+                      affected: 1
+        "400":
+          description: The body selects no entries, by ids or by a filter (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                selection_missing:
+                  value:
+                    error:
+                      code: bad_request
+                      message: ids or filter required
 
   /api/v1/admin/queue/{id}:
     parameters:
