@@ -58,16 +58,17 @@ func postTestFilter(t *testing.T, h *PipelineHandler, request interface{}) *http
 	return rr
 }
 
-// The pairs vertrag compiles for testFilter (#386): valid with the 200 and
-// filter_name_missing with the 422, nothing else. valid is the request the
-// spec has always shown, and filter_name_missing is valid without its filter
-// name, so the name is the only reason it is refused.
+// The pairs vertrag compiles for testFilter (#386): valid with the 200,
+// invalid_body with the 400, and filter_name_missing with the 422. valid is
+// the request the spec has always shown, and filter_name_missing is valid
+// without its filter name, so the name is the only reason it is refused.
 func TestTestFilter_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, testFilterPath, "testFilter")
 
 	want := map[string][]string{
 		"request": {"filter_name_missing", "valid"},
 		"200":     {"valid"},
+		"400":     {"invalid_body"},
 		"422":     {"filter_name_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}

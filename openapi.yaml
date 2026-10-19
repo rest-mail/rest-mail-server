@@ -3677,6 +3677,28 @@ paths:
                         fields:
                           filter_name: required
                           email: required
+        "400":
+          description: >-
+            `bad_request` when the body does not decode as the request: empty,
+            not JSON, an array, a string, a number or a boolean rather than an
+            object, or a `filter_name` or `email` of the wrong JSON type. It is
+            refused before the required fields are checked and before any
+            filter is made; `{}` and a `null` body decode as empty ones and get
+            a 422 instead. A body that decodes is also refused with a 400,
+            `filter_error`, when the named filter cannot be made from its
+            config or fails on the email.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                # Refused while the body is decoded, before any field is read
+                # (#388).
+                invalid_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
 
   /api/v1/admin/pipelines/logs:
     get:
