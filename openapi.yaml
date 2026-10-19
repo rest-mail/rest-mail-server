@@ -2799,6 +2799,12 @@ paths:
               # No name: refused before anything is stored.
               name_missing:
                 value: {}
+              # The created request with a server type that is neither
+              # traditional nor restmail: refused before anything is stored.
+              server_type_invalid:
+                value:
+                  name: example.org
+                  server_type: external
       responses:
         "201":
           description: Domain created, not yet live
@@ -2879,6 +2885,14 @@ paths:
                       details:
                         fields:
                           name: required
+                server_type_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          server_type: "must be 'traditional' or 'restmail'"
 
   /api/v1/admin/domains/{id}:
     parameters:
