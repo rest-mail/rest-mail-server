@@ -239,7 +239,7 @@ vacation :days 7 :subject "OOO" "Away.";`
 	}
 
 	// Verify the dedup key was set.
-	dedupKey := vacationDedupKey("sender@example.com")
+	dedupKey := vacationDedupKey("sender@example.com", "")
 	lastSentKey := "vacation_last_sent_" + dedupKey
 	if result.Message.Metadata[lastSentKey] != "pending" {
 		t.Errorf("expected dedup key %q=pending, got %q", lastSentKey, result.Message.Metadata[lastSentKey])
@@ -254,6 +254,83 @@ vacation :subject "Out" "Away.";`
 	result := runSieve(t, script, email)
 	if result.Message.Metadata["vacation_reply_to"] != "envelope-sender@test.com" {
 		t.Errorf("expected vacation_reply_to from envelope, got %q", result.Message.Metadata["vacation_reply_to"])
+	}
+}
+
+// go-sieve v0.4.0 replies to the envelope sender only: with no reverse-path
+// (a bounce) there is no reply, and the From header is never used instead.
+func TestSieve_Vacation_NoEnvelopeSenderNoReply(t *testing.T) {
+	script := `require "vacation";
+vacation :subject "Out" "Away.";`
+	email := sieveEmail()
+	email.Envelope.MailFrom = ""
+	result := runSieve(t, script, email)
+	if got, ok := result.Message.Metadata["vacation_reply_to"]; ok {
+		t.Errorf("expected no vacation reply without an envelope sender, got vacation_reply_to=%q", got)
+	}
+}
+
+// List mail draws no vacation reply (RFC 5230 §5.6), enforced by go-sieve.
+func TestSieve_Vacation_ListMailNoReply(t *testing.T) {
+	script := `require "vacation";
+vacation :subject "Out" "Away.";`
+	email := sieveEmail()
+	email.Headers.Raw = map[string][]string{"List-Id": {"<announce.example.com>"}}
+	result := runSieve(t, script, email)
+	if got, ok := result.Message.Metadata["vacation_reply_to"]; ok {
+		t.Errorf("expected no vacation reply to list mail, got vacation_reply_to=%q", got)
+	}
+}
+
+// The :handle is part of the reply-tracking identity (RFC 5230 §4.2), and the
+// :from and :mime arguments reach the reply metadata.
+func TestSieve_Vacation_HandleFromMIME(t *testing.T) {
+	script := "require \"vacation\";\r\n" +
+		"vacation :handle \"trip\" :from \"me@example.com\" :mime \"Content-Type: text/plain\r\n\r\nAway.\";"
+	result := runSieve(t, script, sieveEmail())
+	m := result.Message.Metadata
+	if m["vacation_reply_from"] != "me@example.com" {
+		t.Errorf("vacation_reply_from = %q, want me@example.com", m["vacation_reply_from"])
+	}
+	if m["vacation_reply_mime"] != "true" {
+		t.Errorf("vacation_reply_mime = %q, want true", m["vacation_reply_mime"])
+	}
+	if _, ok := m["vacation_reply_subject"]; ok {
+		t.Errorf("no :subject given, so vacation_reply_subject must be unset, got %q", m["vacation_reply_subject"])
+	}
+	if m["vacation_last_sent_"+vacationDedupKey("sender@example.com", "trip")] != "pending" {
+		t.Error("expected the dedup key to include the :handle")
+	}
+	if vacationDedupKey("sender@example.com", "trip") == vacationDedupKey("sender@example.com", "") {
+		t.Error("different handles must give different dedup keys")
+	}
+}
+
+func TestSieve_Ereject(t *testing.T) {
+	script := `require "ereject";
+ereject "Go away";`
+	result := runSieve(t, script, sieveEmail())
+	if result.Action != pipeline.ActionReject {
+		t.Fatalf("expected ActionReject, got %q", result.Action)
+	}
+	if result.RejectMsg != "550 Go away" {
+		t.Errorf("RejectMsg = %q, want %q", result.RejectMsg, "550 Go away")
+	}
+	if result.Log.Detail != "sieve ereject: Go away" {
+		t.Errorf("Log.Detail = %q, want %q", result.Log.Detail, "sieve ereject: Go away")
+	}
+}
+
+func TestValidateSieve_V040Rules(t *testing.T) {
+	for _, script := range []string{
+		`keep "x";`,
+		`require "reject"; reject;`,
+		`require ["vacation", "reject"]; reject "no"; vacation "Away.";`,
+		`require "vacation"; vacation :days 7;`,
+	} {
+		if err := ValidateSieve(script); err == nil {
+			t.Errorf("ValidateSieve(%q) = nil, want an error", script)
+		}
 	}
 }
 
@@ -378,7 +455,7 @@ func TestSieve_EvaluationError_KeepsFailSafe(t *testing.T) {
 		ImplicitKeep: true,
 		Error:        errors.New("executor callback panicked"),
 	}
-	r := sieveResult(outcome, nil, false, msg)
+	r := sieveResult(outcome, nil, msg)
 	if r.Action != pipeline.ActionContinue {
 		t.Fatalf("runtime error must fail safe to keep (ActionContinue), got %q", r.Action)
 	}
@@ -407,24 +484,24 @@ vacation :days 3 :subject "OOO" "Away.";`
 // ── vacationDedupKey tests ───────────────────────────────────────────
 
 func TestVacationDedupKey_Deterministic(t *testing.T) {
-	k1 := vacationDedupKey("sender@example.com")
-	k2 := vacationDedupKey("sender@example.com")
+	k1 := vacationDedupKey("sender@example.com", "")
+	k2 := vacationDedupKey("sender@example.com", "")
 	if k1 != k2 {
 		t.Errorf("expected deterministic dedup key, got %q and %q", k1, k2)
 	}
 }
 
 func TestVacationDedupKey_CaseInsensitive(t *testing.T) {
-	k1 := vacationDedupKey("Sender@Example.COM")
-	k2 := vacationDedupKey("sender@example.com")
+	k1 := vacationDedupKey("Sender@Example.COM", "")
+	k2 := vacationDedupKey("sender@example.com", "")
 	if k1 != k2 {
 		t.Errorf("expected case-insensitive dedup key, got %q and %q", k1, k2)
 	}
 }
 
 func TestVacationDedupKey_Different(t *testing.T) {
-	k1 := vacationDedupKey("alice@example.com")
-	k2 := vacationDedupKey("bob@example.com")
+	k1 := vacationDedupKey("alice@example.com", "")
+	k2 := vacationDedupKey("bob@example.com", "")
 	if k1 == k2 {
 		t.Error("expected different dedup keys for different senders")
 	}

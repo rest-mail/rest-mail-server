@@ -23,10 +23,12 @@
 // scripts exist; repair: unrepairable scripts remain).
 //
 // go-sieve version: this tool validates with whatever go-sieve the module is
-// pinned to (see validateScript). It is currently pinned to v0.2.0, which
-// already enforces `require`, so the scan is meaningful today. If/when the
-// server bumps go-sieve (e.g. to v0.3.0), no logic here changes — re-run the
-// scanner after the bump to catch anything the newer parser rejects.
+// pinned to (see validateScript). No logic here changes when the server bumps
+// go-sieve — re-run the scanner after the bump to catch anything the newer
+// parser rejects. v0.4.0 newly refuses `keep` with an argument, `reject` or
+// `ereject` without a reason, `vacation` without a reason, and `reject` with
+// `vacation` on one path; --repair cannot fix those, so it reports them as
+// unrepairable for the owner to edit.
 package main
 
 import (

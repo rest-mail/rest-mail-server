@@ -84,6 +84,26 @@ redirect "b@example.com";`
 	}
 }
 
+// TestSieveRedirect_MixedBareAndCopyCancelsLocalKeep: go-sieve v0.4.0 reports
+// :copy per redirect, so a script that requires "copy" but also has a bare
+// redirect no longer keeps by guesswork: the bare redirect cancels the implicit
+// keep (RFC 5228 §4.2) and both targets are forwarded without a local copy.
+func TestSieveRedirect_MixedBareAndCopyCancelsLocalKeep(t *testing.T) {
+	script := `require ["copy"];
+redirect :copy "a@example.com";
+redirect "b@example.com";`
+	r := runSieve(t, script, sieveEmail())
+
+	got := decodeRedirectTargets(t, r.Message.Metadata["redirect_to"])
+	if len(got) != 2 {
+		t.Fatalf("redirect_to = %v, want both targets", got)
+	}
+	if r.Message.Metadata["redirect_suppress_keep"] != "true" {
+		t.Errorf("a bare redirect cancels the local keep; redirect_suppress_keep = %q, want true",
+			r.Message.Metadata["redirect_suppress_keep"])
+	}
+}
+
 // TestSieveRedirect_LoopSuppressed_DeliveredTo: a redirect to an address already
 // in the message's Delivered-To chain is suppressed (no forward), and the message
 // is kept locally rather than lost (RFC 5228 §4.2 loop suppression).

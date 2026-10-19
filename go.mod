@@ -27,8 +27,8 @@ require (
 	github.com/rest-mail/go-imap v0.4.0
 	github.com/rest-mail/go-mtasts v0.3.0
 	github.com/rest-mail/go-pop3 v0.2.0
-	github.com/rest-mail/go-sieve v0.3.0
-	github.com/rest-mail/go-smtp v0.29.0
+	github.com/rest-mail/go-sieve v0.4.0
+	github.com/rest-mail/go-smtp v0.30.0
 	github.com/rest-mail/go-spf v0.1.0
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.55.0
