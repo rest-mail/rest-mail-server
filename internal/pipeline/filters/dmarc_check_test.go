@@ -176,3 +176,39 @@ func TestDMARC_RecordsVerdict(t *testing.T) {
 		})
 	}
 }
+
+// TestDMARC_PolicyIsTheOnlyAuthority proves a DMARC fail does what the From
+// domain's published policy asks and nothing else. dmarc_check has no setting
+// of its own (#396): the admin UI's old "Action on DMARC Fail" was never read,
+// and a pipeline that still stores fail_action can neither weaken p=reject or
+// p=quarantine nor turn p=none into an enforcement.
+func TestDMARC_PolicyIsTheOnlyAuthority(t *testing.T) {
+	cases := []struct {
+		policy, config string
+		want           pipeline.Action
+	}{
+		{"reject", `{"fail_action":"tag"}`, pipeline.ActionReject},
+		{"reject", `{}`, pipeline.ActionReject},
+		{"quarantine", `{"fail_action":"tag"}`, pipeline.ActionQuarantine},
+		{"quarantine", `{"fail_action":"reject"}`, pipeline.ActionQuarantine},
+		{"none", `{"fail_action":"reject"}`, pipeline.ActionContinue},
+		{"none", `{"fail_action":"quarantine"}`, pipeline.ActionContinue},
+	}
+	for _, tc := range cases {
+		t.Run(tc.policy+" "+tc.config, func(t *testing.T) {
+			stubDMARC(t, func(string) string { return "v=DMARC1; p=" + tc.policy })
+			f, err := NewDMARCCheck([]byte(tc.config))
+			if err != nil {
+				t.Fatalf("NewDMARCCheck(%s): %v", tc.config, err)
+			}
+			ctx := authCtx(spfVerdict("fail", "example.test"), dkimVerdict("fail", "example.test"))
+			res, err := f.Execute(ctx, fromExampleTest())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Action != tc.want || res.Log.Result != "fail" {
+				t.Fatalf("action %q result %q, want %q and fail", res.Action, res.Log.Result, tc.want)
+			}
+		})
+	}
+}
