@@ -109,7 +109,7 @@ This produces four records:
 | TXT | `example.com` | `v=spf1 ip4:1.2.3.4 -all` |
 | TXT | `_dmarc.example.com` | `v=DMARC1; p=reject; rua=mailto:postmaster@example.com` |
 
-DKIM records are not included here because they are generated separately by the `certgen` tool and require the public key material.
+DKIM records are not included here because they are generated separately (`instance dkim-keygen`, or `instance dkim-provision` against a running instance) and require the public key material.
 
 A companion helper, `FullRequiredRecords(domain, mailIP, apiIP)`, returns the core four plus the records needed for a fully-configured mail domain: `autoconfig`/`autodiscover` A records, `SRV` service-discovery records (`_submission`, `_imap`, `_imaps`, `_pop3`, `_pop3s`), MTA-STS (RFC 8461: `_mta-sts` TXT + `mta-sts` A), and TLS-RPT (RFC 8460: `_smtp._tls` TXT). If `apiIP` is empty it defaults to `mailIP`.
 

@@ -382,7 +382,7 @@ tasks:
 
   build:
     desc: Build all Go binaries
-    deps: [build:api, build:smtp-gateway, build:imap-gateway, build:pop3-gateway, build:console, build:certgen, build:migrate, build:seed]
+    deps: [build:api, build:smtp-gateway, build:imap-gateway, build:pop3-gateway, build:console, build:migrate, build:seed]
 
   build:api:
     desc: Build the REST API server
@@ -497,19 +497,8 @@ tasks:
     deps: [build:console:darwin-arm64, build:console:darwin-amd64, build:console:linux-arm64, build:console]
 
   build:tools:
-    desc: Build all tool binaries (certgen, migrate, seed, website)
-    deps: [build:certgen, build:migrate, build:seed, build:website]
-
-  build:certgen:
-    desc: Build the certificate generator
-    cmds:
-      - go build -o build/tools/certgen ./cmd/certgen
-    sources:
-      - cmd/certgen/**/*.go
-      - go.mod
-      - go.sum
-    generates:
-      - build/tools/certgen
+    desc: Build all tool binaries (migrate, seed, website)
+    deps: [build:migrate, build:seed, build:website]
 
   build:migrate:
     desc: Build the migration runner
@@ -1330,10 +1319,32 @@ tasks:
               done
             ' _ "{{.CERT_SANS}}"
             ;;
-          acme|letsencrypt|letsencrypt-http01|letsencrypt-dns01)
-            echo "cert_provider={{.CERT_PROVIDER}}: ACME/Let's Encrypt issuance is not yet implemented (PR5 wires the tls.acme: manifest fields through; the ACME client is a later PR)." >&2
-            echo "  Use cert_provider: manual (drop cert/key into the certs volume) or testbed-certgen (the testbed reference CA) for now." >&2
-            echo "  Declared SAN set: {{.CERT_SANS}}" >&2
+          acme|letsencrypt|letsencrypt-http01)
+            # One-shot ACME HTTP-01 issuance (internal/acme.Issue via `instance
+            # acme-issue`): one cert covering every CERT_SANS name, written to
+            # <primary>.{crt,key} in the certs volume, exactly where the manual
+            # provider expects it, so everything downstream is unchanged. The
+            # CA validates each name over http://<name>:80, so every SAN must
+            # resolve to this host and port 80 must be free and reachable while
+            # it runs. tls.acme.staging: true uses Let's Encrypt staging (and
+            # overrides tls.acme.directory). Re-running re-issues; renewal is
+            # re-running this task.
+            docker run --rm \
+              -p 80:80 \
+              -v "{{.CERTS_VOLUME}}:/certs" \
+              -v "{{.ROOT_DIR}}:/src" -w /src \
+              -v "$(go env GOMODCACHE):/go/pkg/mod:ro" \
+              -v rest-mail-e2e-gocache:/root/.cache/go-build \
+              -e GOFLAGS=-buildvcs=false \
+              golang:1.25 \
+              go run ./cmd/instance acme-issue -out /certs -listen :80 \
+                -domains "{{.CERT_SANS}}" \
+                -email "{{.RESTMAIL_TLS_ACME_EMAIL | default ""}}" \
+                -directory "{{.RESTMAIL_TLS_ACME_DIRECTORY | default ""}}" \
+                -staging="{{.RESTMAIL_TLS_ACME_STAGING | default "false"}}"
+            ;;
+          letsencrypt-dns01)
+            echo "cert_provider={{.CERT_PROVIDER}}: DNS-01 issuance is not implemented yet; use cert_provider: acme (HTTP-01, needs port 80) or manual." >&2
             exit 2
             ;;
           *)
@@ -1347,7 +1358,7 @@ tasks:
     vars:
       # A volume of their own, not the testbed's certs volume: it holds the
       # internal CA's key, and the reference servers mount testbed_certs whole.
-      # Only certgen mounts it read-write; each service's `up` copies out the
+      # Only `instance mtls-issue` mounts it read-write; each service's `up` copies out the
       # files that service needs (tasks/stage-certs.sh), so none mounts it (#193).
       INTERNAL_MTLS_VOLUME: '{{.RESTMAIL_PROJECT}}-internal-mtls'
       # tls.internal.ca_source (render.go → RESTMAIL_INTERNAL_CA_SOURCE) selects
@@ -1360,9 +1371,9 @@ tasks:
           testbed-certgen)
             # Default (testbed): mint a DEDICATED internal CA + an API server cert
             # (SANs cover the api container IP + localhost + the instance hostname)
-            # + a gateway client cert into the internal mTLS volume, using the
-            # in-repo certgen (built inside a golang container so it is arch-correct
-            # for the volume). Idempotent: an existing internal CA is reused and
+            # + a gateway client cert into the internal mTLS volume, using
+            # `instance mtls-issue` (built inside a golang container so it is
+            # arch-correct for the volume). Idempotent: an existing internal CA is reused and
             # leaves already present are skipped, so it is safe to re-run and safe to
             # run even when the instance has not enabled internal mTLS (the certs
             # simply go unused).
@@ -1373,9 +1384,9 @@ tasks:
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.25 \
-              go run ./cmd/certgen --internal-mtls --out /internal-mtls \
-                --server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
-                --server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}
+              go run ./cmd/instance mtls-issue -out /internal-mtls \
+                -server-ip 127.0.0.1,{{.RESTMAIL_API_IP}} \
+                -server-dns api,localhost,{{.RESTMAIL_HOSTNAME}}
             ;;
           manual)
             # The deployer provisions the internal trust domain out of band (their

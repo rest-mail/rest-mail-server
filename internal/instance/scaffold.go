@@ -299,7 +299,7 @@ db:
 # (autoconfig, mta-sts, a vanity host) with extra_hostnames. cert_provider:
 #   testbed-certgen  (default) issue via the testbed reference-certgen
 #   manual                     drop <hostname>.{crt,key} into the certs volume yourself
-#   letsencrypt / acme         declare acme: below (ACME client not yet implemented)
+#   letsencrypt / acme         issue by ACME HTTP-01 (needs port 80); declare acme: below
 # Uncomment and edit:
 #
 # tls:
@@ -358,7 +358,7 @@ network:       {{.Slug}}_net
 certs_volume:  {{.Slug}}_certs
 dns_provider:  manual    # you manage DNS at your registrar/provider
 cert_provider: manual    # drop <hostname>.{crt,key} into the certs volume;
-                         #   switch to acme once the ACME client lands
+                         #   or acme: issue by ACME HTTP-01 (needs port 80)
 
 # ── image source ────────────────────────────────────────────────────────
 registry:  ""          # REQUIRED: set to your image registry, e.g. registry.example.com/yourorg
@@ -392,8 +392,9 @@ db:
 # <hostname>.{crt,key} into the certs volume; ` + "`task instance:certs:issue`" + ` only
 # validates it (no issuance). The cert must cover every served domain's mail
 # hostname; add MORE SANs (autoconfig, mta-sts, a vanity host) with
-# extra_hostnames. Switch cert_provider to acme/letsencrypt and declare acme:
-# below once the ACME client lands. Uncomment and edit:
+# extra_hostnames. Or switch cert_provider to acme to issue it by ACME HTTP-01
+# (every SAN must resolve here, port 80 reachable) and declare acme: below.
+# Uncomment and edit:
 #
 # tls:
 #   extra_hostnames: [autoconfig.{{.Domain}}, mta-sts.{{.Domain}}]

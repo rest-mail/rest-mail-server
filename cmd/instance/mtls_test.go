@@ -170,6 +170,6 @@ func TestServerCertSANsMatch(t *testing.T) {
 func TestGenerateInternalMTLS_RejectsBadIP(t *testing.T) {
 	dir := t.TempDir()
 	if err := generateInternalMTLS(dir, "api", "not-an-ip", "gw"); err == nil {
-		t.Fatal("expected error for invalid --server-ip, got nil")
+		t.Fatal("expected error for invalid -server-ip, got nil")
 	}
 }

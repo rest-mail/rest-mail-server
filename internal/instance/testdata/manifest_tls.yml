@@ -35,8 +35,7 @@ db:
 # ── public TLS (optional) ───────────────────────────────────────────────
 # extra_hostnames are additional SANs the serving cert must cover on top of the
 # served-domain mail hostnames (autoconfig, mta-sts, ...). The acme: sub-block
-# declares how a public CA would issue the cert (the ACME client itself is not
-# implemented yet — cert_provider: acme returns a not-yet-implemented error).
+# holds the inputs cert_provider: acme uses to issue the cert by ACME HTTP-01.
 tls:
   extra_hostnames:
     - autoconfig.mail3.test
