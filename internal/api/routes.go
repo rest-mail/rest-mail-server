@@ -180,6 +180,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	certH := handlers.NewCertificateHandler(db, cfg.MasterKey)
 	testH := handlers.NewTestHandler(db, cfg)
 	mtastsH := handlers.NewMTASTSHandler(db)
+	relayH := handlers.NewRelayHandler(db, cfg.MasterKey)
 	tlsrptH := handlers.NewTLSReportHandler(db)
 	statsH := handlers.NewStatsHandler(db)
 	auditH := handlers.NewAuditHandler(db)
@@ -790,6 +791,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
 		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
 		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
+
+		// Outbound transport: direct MX or an SMTP relay (#143). Setting it takes
+		// domains:write at "*": the relay host is dialled from inside the
+		// installation and may be private, so only the operator chooses it, never
+		// a domain-scoped admin.
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/relay", relayH.Get)
+		r.With(needs(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/relay", relayH.Set)
 
 		// TLS-RPT reports (domain deliverability telemetry → domains:read)
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)

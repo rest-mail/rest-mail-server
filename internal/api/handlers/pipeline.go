@@ -307,6 +307,13 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.Filters != nil {
+		// A supplied list has the same shape as CreatePipeline's (#388); null is
+		// not one, as UpdatePipelineRequest's filters are not nullable. Only an
+		// omitted list leaves the stored one as it was.
+		if !isFilterObjectArray(req.Filters) {
+			respond.ValidationError(w, map[string]string{"filters": "must be an array of filter objects"})
+			return
+		}
 		// Same install-time Sieve gate as CreatePipeline: reject a broken embedded
 		// Sieve with HTTP 400 and leave the stored config untouched.
 		if err := validateSievePipelineFilters(req.Filters); err != nil {
