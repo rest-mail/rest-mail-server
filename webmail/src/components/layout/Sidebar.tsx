@@ -119,7 +119,12 @@ export function Sidebar() {
     <>
       {/* Logo area */}
       <div className="h-12 flex items-center justify-between px-4 shrink-0">
-        <h1 className="font-heading-oswald text-lg font-semibold text-primary tracking-wider">
+        <h1 className="flex items-center gap-2 font-heading-oswald text-lg font-semibold text-primary tracking-wider">
+          <img
+            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            alt=""
+            className="w-6 h-6"
+          />
           REST MAIL
         </h1>
         <Button
