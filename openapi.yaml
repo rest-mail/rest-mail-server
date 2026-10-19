@@ -3475,22 +3475,43 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TestFilterRequest"
-            example:
-              filter_name: header_validate
-              config: {}
-              email:
-                envelope:
-                  mail_from: someone@example.com
-                  rcpt_to: [eve@restmail.test]
-                headers:
-                  from: [{name: Someone, address: someone@example.com}]
-                  to: [{address: eve@restmail.test}]
-                  subject: A filter test
-                  message-id: <filter-test@example.com>
-                  date: "Sat, 17 Oct 2026 12:00:00 +0000"
-                body:
-                  content_type: text/plain
-                  content: Hello.
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              valid:
+                value:
+                  filter_name: header_validate
+                  config: {}
+                  email:
+                    envelope:
+                      mail_from: someone@example.com
+                      rcpt_to: [eve@restmail.test]
+                    headers:
+                      from: [{name: Someone, address: someone@example.com}]
+                      to: [{address: eve@restmail.test}]
+                      subject: A filter test
+                      message-id: <filter-test@example.com>
+                      date: "Sat, 17 Oct 2026 12:00:00 +0000"
+                    body:
+                      content_type: text/plain
+                      content: Hello.
+              # No filter name: refused before any filter is made.
+              filter_name_missing:
+                value:
+                  config: {}
+                  email:
+                    envelope:
+                      mail_from: someone@example.com
+                      rcpt_to: [eve@restmail.test]
+                    headers:
+                      from: [{name: Someone, address: someone@example.com}]
+                      to: [{address: eve@restmail.test}]
+                      subject: A filter test
+                      message-id: <filter-test@example.com>
+                      date: "Sat, 17 Oct 2026 12:00:00 +0000"
+                    body:
+                      content_type: text/plain
+                      content: Hello.
       responses:
         "200":
           description: Filter execution result
@@ -3502,6 +3523,34 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FilterResult"
+              examples:
+                # header_validate's answer for an email with its From and Date.
+                valid:
+                  value:
+                    data:
+                      type: action
+                      action: continue
+                      log:
+                        filter: header_validate
+                        result: pass
+                        detail: all headers valid
+        "422":
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                # The handler names both fields when either is missing.
+                filter_name_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          filter_name: required
+                          email: required
 
   /api/v1/admin/pipelines/logs:
     get:
