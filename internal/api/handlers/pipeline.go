@@ -101,6 +101,24 @@ func validateDuplicatePipelineFilters(raw json.RawMessage) error {
 	return nil
 }
 
+// isFilterObjectArray reports whether raw is a JSON array whose every item is an
+// object, the shape of a pipeline's filters. A missing or null list is not one,
+// nor is a null item; an empty list is. What the objects hold is left to the
+// Sieve and duplicate gates and to the build at delivery.
+func isFilterObjectArray(raw json.RawMessage) bool {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil || items == nil {
+		return false
+	}
+	for _, item := range items {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(item, &obj); err != nil || obj == nil {
+			return false
+		}
+	}
+	return true
+}
+
 type PipelineHandler struct {
 	db     *gorm.DB
 	engine *pipeline.Engine
@@ -223,6 +241,14 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 
 	if req.Direction != "inbound" && req.Direction != "outbound" {
 		respond.ValidationError(w, map[string]string{"direction": "must be 'inbound' or 'outbound'"})
+		return
+	}
+
+	// filters is required and is an array of objects (CreatePipelineRequest,
+	// #388). The column takes any JSON, so a missing or misshapen list would be
+	// stored as it came and fail only when the pipeline is built for delivery.
+	if !isFilterObjectArray(req.Filters) {
+		respond.ValidationError(w, map[string]string{"filters": "must be an array of filter objects"})
 		return
 	}
 
@@ -445,7 +471,7 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		FilterType  string          `json:"filter_type"`
 		Direction   string          `json:"direction"`
 		Config      json.RawMessage `json:"config"`
-		Enabled     bool            `json:"enabled"`
+		Enabled     *bool           `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -464,6 +490,13 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		respond.ValidationError(w, errs)
 		return
 	}
+	// config is required and is an object (CreateCustomFilterRequest, #388).
+	// The column takes any JSON, so a missing or misshapen config would be
+	// stored as it came. What the object holds is the filter's own concern.
+	if !isJSONObject(req.Config) {
+		respond.ValidationError(w, map[string]string{"config": "must be an object"})
+		return
+	}
 
 	cf := models.CustomFilter{
 		DomainID:    req.DomainID,
@@ -472,15 +505,26 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		FilterType:  req.FilterType,
 		Direction:   req.Direction,
 		Config:      req.Config,
-		Enabled:     req.Enabled,
+		Enabled:     true,
 	}
 
-	if err := h.db.Create(&cf).Error; err != nil {
+	if req.Enabled != nil {
+		cf.Enabled = *req.Enabled
+	}
+
+	// A non-nil pointer preserves explicit false despite the model's
+	// default:true. Overlay only this insert so other creation paths retain
+	// that default, without a follow-up update or partial-write window.
+	row := struct {
+		models.CustomFilter
+		Enabled *bool
+	}{CustomFilter: cf, Enabled: &cf.Enabled}
+	if err := h.db.Table(cf.TableName()).Create(&row).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create custom filter")
 		return
 	}
 
-	respond.Data(w, http.StatusCreated, cf)
+	respond.Data(w, http.StatusCreated, row.CustomFilter)
 }
 
 // customFilterFieldErrors checks a custom filter's type and direction against
@@ -497,6 +541,13 @@ func customFilterFieldErrors(filterType, direction string) map[string]string {
 		return nil
 	}
 	return errs
+}
+
+// isJSONObject reports whether raw is a JSON object, the shape of a custom
+// filter's config. A missing or null config is not one; an empty object is.
+func isJSONObject(raw json.RawMessage) bool {
+	var obj map[string]json.RawMessage
+	return json.Unmarshal(raw, &obj) == nil && obj != nil
 }
 
 // GetCustomFilter returns a single custom filter by ID.
@@ -530,13 +581,16 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Config is not a pointer: a pointer leaves an explicit null nil, the same
+	// as an omitted config, so a null would be passed over instead of refused.
+	// Omitted, it is nil; null, it is the bytes "null".
 	var req struct {
-		Name        *string          `json:"name"`
-		Description *string          `json:"description"`
-		FilterType  *string          `json:"filter_type"`
-		Direction   *string          `json:"direction"`
-		Config      *json.RawMessage `json:"config"`
-		Enabled     *bool            `json:"enabled"`
+		Name        *string         `json:"name"`
+		Description *string         `json:"description"`
+		FilterType  *string         `json:"filter_type"`
+		Direction   *string         `json:"direction"`
+		Config      json.RawMessage `json:"config"`
+		Enabled     *bool           `json:"enabled"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -556,7 +610,7 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 		cf.Direction = *req.Direction
 	}
 	if req.Config != nil {
-		cf.Config = *req.Config
+		cf.Config = req.Config
 	}
 	if req.Enabled != nil {
 		cf.Enabled = *req.Enabled
@@ -567,6 +621,12 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 	}
 	if errs := customFilterFieldErrors(cf.FilterType, cf.Direction); errs != nil {
 		respond.ValidationError(w, errs)
+		return
+	}
+	// A config, when sent, is an object (UpdateCustomFilterRequest, #388), as
+	// on create: null, an array or a scalar is refused, not stored.
+	if req.Config != nil && !isJSONObject(req.Config) {
+		respond.ValidationError(w, map[string]string{"config": "must be an object"})
 		return
 	}
 
