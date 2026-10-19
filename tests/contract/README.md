@@ -141,3 +141,9 @@ python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples
 ```
 
 `vertrag run --dry-run --sequence` shows what would be sent, with nothing up.
+
+Contact create probes use a before hook to remove contacts made by earlier
+probes when an email is reused. It first checks that the email was absent,
+leaves pre-existing contacts alone, and preserves generated bodies, account IDs
+and headers. Coverage does not call after hooks, so ownership is recorded before
+the first create attempt.

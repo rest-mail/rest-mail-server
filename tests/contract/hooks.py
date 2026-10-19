@@ -282,3 +282,50 @@ def sign_in_a_mail_client(transaction):
     app = principals()["app_password"]
     transaction["request"]["headers"]["Authorization"] = basic(app["address"], app["secret"])
     hooks.set_json(transaction, {"protocol": "imap"})
+
+
+@hooks.before("createContact")
+def remove_a_previous_contact_probe(transaction):
+    # Coverage calls before hooks only. Claim an absent email before its first
+    # create, then remove only that probe's contact when generated bodies repeat.
+    # Existing contacts and all generated request bytes stay untouched.
+    from urllib.error import HTTPError
+    from urllib.parse import urlencode
+
+    body = hooks.get_json(transaction)
+    email = body.get("email") if isinstance(body, dict) else None
+    parent = transaction["fullPath"].split("?")[0]
+    account_id = parent.split("/")[-2]
+    if not isinstance(email, str) or not email or not account_id.isdecimal() or int(account_id) < 1:
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Authorization": basic(ADMIN, ADMIN_PASSWORD)}
+    key = origin + parent + "\n" + email
+    owned = hooks.stash.get("created_contact_probes", {})
+    offset = 0
+    while True:
+        query = urlencode({"search": email, "limit": 200, "offset": offset})
+        request = urllib.request.Request(origin + parent + "?" + query, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                page = json.load(response)
+        except HTTPError as error:
+            if error.code in (400, 403, 404):
+                return  # Leave an invalid account ID to the actual probe.
+            raise
+        contacts = page.get("data") or []
+        contact = next((item for item in contacts if item.get("email") == email), None)
+        if contact:
+            if key not in owned:
+                return
+            request = urllib.request.Request(
+                origin + parent + "/" + str(contact["id"]), headers=headers, method="DELETE")
+            with urllib.request.urlopen(request, timeout=10) as response:
+                if response.status != 204:
+                    raise RuntimeError("could not remove the previous contact probe")
+            return
+        if not (page.get("pagination") or {}).get("has_more"):
+            owned[key] = True
+            hooks.stash["created_contact_probes"] = owned
+            return
+        offset += len(contacts)
