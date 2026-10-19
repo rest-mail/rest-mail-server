@@ -3347,6 +3347,11 @@ paths:
                   filters:
                     - name: header_validate
                       config: {}
+              # No filters: refused before anything is stored.
+              filters_missing:
+                value:
+                  domain_id: 1
+                  direction: inbound
       responses:
         "201":
           description: Pipeline created
@@ -3395,6 +3400,14 @@ paths:
                       details:
                         fields:
                           direction: must be 'inbound' or 'outbound'
+                filters_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          filters: must be an array of filter objects
 
   /api/v1/admin/pipelines/{id}:
     parameters:
