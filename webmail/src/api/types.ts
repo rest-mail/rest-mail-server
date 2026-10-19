@@ -8631,46 +8631,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "organization-name": "Example Reporter",
-                 *       "contact-info": "tlsrpt@reporter.example.com",
-                 *       "report-id": "2026-10-17T00:00:00Z_restmail.test",
-                 *       "date-range": {
-                 *         "start-datetime": "2026-10-16T00:00:00Z",
-                 *         "end-datetime": "2026-10-16T23:59:59Z"
-                 *       },
-                 *       "policies": [
-                 *         {
-                 *           "policy": {
-                 *             "policy-type": "sts",
-                 *             "policy-string": [
-                 *               "version: STSv1",
-                 *               "mode: testing",
-                 *               "mx: mail.restmail.test",
-                 *               "max_age: 86400"
-                 *             ],
-                 *             "policy-domain": "restmail.test",
-                 *             "mx-host": [
-                 *               "mail.restmail.test"
-                 *             ]
-                 *           },
-                 *           "summary": {
-                 *             "total-successful-session-count": 12,
-                 *             "total-failure-session-count": 1
-                 *           },
-                 *           "failure-details": [
-                 *             {
-                 *               "result-type": "certificate-expired",
-                 *               "sending-mta-ip": "192.0.2.1",
-                 *               "receiving-mx-hostname": "mail.restmail.test",
-                 *               "failed-session-count": 1
-                 *             }
-                 *           ]
-                 *         }
-                 *       ]
-                 *     }
-                 */
                 "application/json": components["schemas"]["TLSRPTReport"];
             };
         };
@@ -8698,7 +8658,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     acmeChallenge: {
