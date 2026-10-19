@@ -33,9 +33,11 @@ export function LoginPage() {
         {/* Header */}
         <div className="flex flex-col items-center gap-2">
           {/* Icon */}
-          <div className="w-10 h-10 rounded-2xl bg-secondary flex items-center justify-center text-lg">
-            ✉
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}favicon.svg`}
+            alt=""
+            className="w-10 h-10"
+          />
           {/* Title */}
           <h1 className="font-heading-oswald text-2xl font-bold tracking-wider text-foreground">
             REST MAIL
