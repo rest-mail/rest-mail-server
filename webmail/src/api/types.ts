@@ -2541,6 +2541,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/domains/{id}/relay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the domain's outbound transport
+         * @description How mail sent from this domain leaves the server: `direct` resolves
+         *     each recipient's MX, `relay` hands every message to the configured
+         *     SMTP relay. A domain with nothing configured is `direct`. The relay
+         *     password is never returned, only whether one is set.
+         */
+        get: operations["getDomainRelay"];
+        /**
+         * Set the domain's outbound transport
+         * @description Replaces the domain's outbound transport. Takes `domains:write` held
+         *     at `*`: the relay is dialled from inside the installation, so only the
+         *     operator chooses it. TLS is mandatory (`starttls` or `implicit`), and
+         *     credentials are only ever sent after a verified handshake. Leaving
+         *     `password` out keeps the stored one; an empty string clears it. The
+         *     password is encrypted at rest and refused (409) when the server has no
+         *     MASTER_KEY. `direct` drops any relay settings, credentials included.
+         */
+        put: operations["setDomainRelay"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/tls-reports": {
         parameters: {
             query?: never;
@@ -3769,6 +3808,37 @@ export interface components {
                 message?: string;
             }[];
         };
+        DomainRelay: {
+            domain_id: number;
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            /** @description Relay host name or IP address (relay only) */
+            host?: string;
+            port?: number;
+            /** @enum {string} */
+            tls_mode?: "starttls" | "implicit";
+            /** @description SMTP AUTH username; absent when the relay takes no AUTH */
+            username?: string;
+            /** @description Whether a relay password is stored. The password itself is never returned. */
+            password_set: boolean;
+        };
+        SetDomainRelayRequest: {
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            /** @description Bare host name or IP address, no scheme, port or path. Required for relay. */
+            host?: string;
+            /** @description Required for relay. */
+            port?: number;
+            /**
+             * @description Required for relay.
+             * @enum {string}
+             */
+            tls_mode?: "starttls" | "implicit";
+            /** @description Set together with a password, or neither. */
+            username?: string;
+            /** @description Left out keeps the stored password; an empty string clears it. */
+            password?: string;
+        };
         MTASTSPolicy: {
             id: number;
             domain_id: number;
@@ -4659,7 +4729,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
@@ -6829,6 +6901,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description The body is not a JSON object of the request's fields (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Request body failed validation */
             422: {
                 headers: {
@@ -7203,18 +7284,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "name": "tag-invoices",
-                 *       "description": "Tags mail about invoices",
-                 *       "filter_type": "action",
-                 *       "direction": "inbound",
-                 *       "config": {
-                 *         "script": "function filter(email) {\n  return { action: \"continue\" };\n}\n"
-                 *       },
-                 *       "enabled": false
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateCustomFilterRequest"];
             };
         };
@@ -7230,7 +7299,15 @@ export interface operations {
                     };
                 };
             };
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     validateCustomFilter: {
@@ -7260,6 +7337,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description The body is not a JSON object, or a field has the wrong type (`bad_request`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Request body failed validation */
@@ -7755,12 +7841,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "pattern": "@partner.example.com",
-                 *       "reason": "A trusted partner"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -7777,6 +7857,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     removeFromAllowlist: {
@@ -7852,12 +7941,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "pattern": "spam@spammer.example.com",
-                 *       "reason": "Sends spam"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateSenderRuleRequest"];
             };
         };
@@ -7874,6 +7957,15 @@ export interface operations {
                 };
             };
             409: components["responses"]["Conflict"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     removeFromBlocklist: {
@@ -9355,6 +9447,83 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Outbound transport */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "data": {
+                     *         "domain_id": 1,
+                     *         "transport": "relay",
+                     *         "host": "smtp.example.net",
+                     *         "port": 587,
+                     *         "tls_mode": "starttls",
+                     *         "username": "apikey",
+                     *         "password_set": true
+                     *       }
+                     *     }
+                     */
+                    "application/json": {
+                        data: components["schemas"]["DomainRelay"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDomainRelayRequest"];
+            };
+        };
+        responses: {
+            /** @description Outbound transport saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DomainRelay"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
     listTlsReports: {
         parameters: {
             query?: {
@@ -9449,14 +9618,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "from": "postmaster@restmail.test",
-                 *       "to": "admin@restmail.test",
-                 *       "subject": "Test",
-                 *       "body": "A test message."
-                 *     }
-                 */
                 "application/json": {
                     /** Format: email */
                     from: string;
@@ -9493,7 +9654,15 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            422: components["responses"]["ValidationError"];
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
         };
     };
     verifyDelivery: {
