@@ -2541,6 +2541,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/domains/{id}/relay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the domain's outbound transport
+         * @description How mail sent from this domain leaves the server: `direct` resolves
+         *     each recipient's MX, `relay` hands every message to the configured
+         *     SMTP relay. A domain with nothing configured is `direct`. The relay
+         *     password is never returned, only whether one is set.
+         */
+        get: operations["getDomainRelay"];
+        /**
+         * Set the domain's outbound transport
+         * @description Replaces the domain's outbound transport. Takes `domains:write` held
+         *     at `*`: the relay is dialled from inside the installation, so only the
+         *     operator chooses it. TLS is mandatory (`starttls` or `implicit`), and
+         *     credentials are only ever sent after a verified handshake. Leaving
+         *     `password` out keeps the stored one; an empty string clears it. The
+         *     password is encrypted at rest and refused (409) when the server has no
+         *     MASTER_KEY. `direct` drops any relay settings, credentials included.
+         */
+        put: operations["setDomainRelay"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/tls-reports": {
         parameters: {
             query?: never;
@@ -3768,6 +3807,37 @@ export interface components {
                 value?: string;
                 message?: string;
             }[];
+        };
+        DomainRelay: {
+            domain_id: number;
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            /** @description Relay host name or IP address (relay only) */
+            host?: string;
+            port?: number;
+            /** @enum {string} */
+            tls_mode?: "starttls" | "implicit";
+            /** @description SMTP AUTH username; absent when the relay takes no AUTH */
+            username?: string;
+            /** @description Whether a relay password is stored. The password itself is never returned. */
+            password_set: boolean;
+        };
+        SetDomainRelayRequest: {
+            /** @enum {string} */
+            transport: "direct" | "relay";
+            /** @description Bare host name or IP address, no scheme, port or path. Required for relay. */
+            host?: string;
+            /** @description Required for relay. */
+            port?: number;
+            /**
+             * @description Required for relay.
+             * @enum {string}
+             */
+            tls_mode?: "starttls" | "implicit";
+            /** @description Set together with a password, or neither. */
+            username?: string;
+            /** @description Left out keeps the stored password; an empty string clears it. */
+            password?: string;
         };
         MTASTSPolicy: {
             id: number;
@@ -9372,6 +9442,83 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    getDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Outbound transport */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "data": {
+                     *         "domain_id": 1,
+                     *         "transport": "relay",
+                     *         "host": "smtp.example.net",
+                     *         "port": 587,
+                     *         "tls_mode": "starttls",
+                     *         "username": "apikey",
+                     *         "password_set": true
+                     *       }
+                     *     }
+                     */
+                    "application/json": {
+                        data: components["schemas"]["DomainRelay"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setDomainRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetDomainRelayRequest"];
+            };
+        };
+        responses: {
+            /** @description Outbound transport saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DomainRelay"];
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listTlsReports: {

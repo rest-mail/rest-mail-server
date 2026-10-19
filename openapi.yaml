@@ -5894,6 +5894,96 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/admin/domains/{id}/relay:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getDomainRelay
+      tags: ["Admin: Domains"]
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
+      summary: Get the domain's outbound transport
+      description: |
+        How mail sent from this domain leaves the server: `direct` resolves
+        each recipient's MX, `relay` hands every message to the configured
+        SMTP relay. A domain with nothing configured is `direct`. The relay
+        password is never returned, only whether one is set.
+      responses:
+        "200":
+          description: Outbound transport
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DomainRelay"
+              example:
+                data:
+                  domain_id: 1
+                  transport: relay
+                  host: smtp.example.net
+                  port: 587
+                  tls_mode: starttls
+                  username: apikey
+                  password_set: true
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: setDomainRelay
+      tags: ["Admin: Domains"]
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
+      summary: Set the domain's outbound transport
+      description: |
+        Replaces the domain's outbound transport. Takes `domains:write` held
+        at `*`: the relay is dialled from inside the installation, so only the
+        operator chooses it. TLS is mandatory (`starttls` or `implicit`), and
+        credentials are only ever sent after a verified handshake. Leaving
+        `password` out keeps the stored one; an empty string clears it. The
+        password is encrypted at rest and refused (409) when the server has no
+        MASTER_KEY. `direct` drops any relay settings, credentials included.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetDomainRelayRequest"
+            examples:
+              relay:
+                summary: Send through an authenticated relay
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: 587
+                  tls_mode: starttls
+                  username: apikey
+                  password: relay-password
+              direct:
+                summary: Deliver straight to each recipient's MX
+                value:
+                  transport: direct
+      responses:
+        "200":
+          description: Outbound transport saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DomainRelay"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   # ═══════════════════════════════════════════════════════════════
   # Admin: TLS Reports
   # ═══════════════════════════════════════════════════════════════
@@ -8422,6 +8512,60 @@ components:
     # ─────────────────────────────────────────────────────────────
     # Admin: MTA-STS
     # ─────────────────────────────────────────────────────────────
+    DomainRelay:
+      type: object
+      required: [domain_id, transport, password_set]
+      properties:
+        domain_id:
+          type: integer
+        transport:
+          type: string
+          enum: [direct, relay]
+        host:
+          type: string
+          description: Relay host name or IP address (relay only)
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        tls_mode:
+          type: string
+          enum: [starttls, implicit]
+        username:
+          type: string
+          description: SMTP AUTH username; absent when the relay takes no AUTH
+        password_set:
+          type: boolean
+          description: Whether a relay password is stored. The password itself is never returned.
+
+    SetDomainRelayRequest:
+      type: object
+      required: [transport]
+      properties:
+        transport:
+          type: string
+          enum: [direct, relay]
+        host:
+          type: string
+          description: Bare host name or IP address, no scheme, port or path. Required for relay.
+        port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          description: Required for relay.
+        tls_mode:
+          type: string
+          enum: [starttls, implicit]
+          description: Required for relay.
+        username:
+          type: string
+          maxLength: 255
+          description: Set together with a password, or neither.
+        password:
+          type: string
+          writeOnly: true
+          description: Left out keeps the stored password; an empty string clears it.
+
     MTASTSPolicy:
       type: object
       required: [id, domain_id, mode, max_age, active]

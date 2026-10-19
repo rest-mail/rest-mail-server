@@ -17,6 +17,7 @@ import (
 
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
+	"gorm.io/gorm"
 )
 
 type relayTLSMode string
@@ -27,9 +28,8 @@ const (
 )
 
 // relaySettings describes an explicitly operator-selected endpoint, not an MX
-// discovered from recipient input. Credentials exist only in memory here. A
-// future caller must load them from encrypted storage and prepare the message
-// once before calling deliverToRelay. This adapter does not enable relay routing.
+// discovered from recipient input. relayRoute builds it from the sending
+// domain's DomainRelay row, decrypting the password into memory only.
 type relaySettings struct {
 	host     string
 	port     int
@@ -40,25 +40,7 @@ type relaySettings struct {
 	roots *x509.CertPool
 }
 
-func validRelayHost(host string) bool {
-	if net.ParseIP(host) != nil {
-		return true
-	}
-	if len(host) == 0 || len(host) > 253 {
-		return false
-	}
-	for _, label := range strings.Split(host, ".") {
-		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
-			return false
-		}
-		for _, c := range label {
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
-				return false
-			}
-		}
-	}
-	return true
-}
+func validRelayHost(host string) bool { return models.ValidRelayHost(host) }
 
 func (s relaySettings) validate() error {
 	if !validRelayHost(s.host) || s.port < 1 || s.port > 65535 {
@@ -219,4 +201,57 @@ func relayNonASCII(s string) bool {
 		}
 	}
 	return false
+}
+
+// relayRoute returns the relay a message must go through, or nil when its
+// sender's domain sends direct (#143). Anything short of a clear answer — the
+// settings cannot be read, or the stored password cannot be decrypted — is an
+// error, so the message is retried rather than sent direct or unauthenticated.
+func (w *Worker) relayRoute(item models.OutboundQueue) (*relaySettings, error) {
+	domain := rmail.DomainFromAddress(item.Sender)
+	if domain == "" {
+		return nil, nil
+	}
+	var rel models.DomainRelay
+	err := w.db.Joins("JOIN domains ON domains.id = domain_relays.domain_id").
+		Where("LOWER(domains.name) = LOWER(?)", domain).
+		First(&rel).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("relay: load settings for %s: %w", domain, err)
+	}
+	if rel.Transport != models.OutboundTransportRelay {
+		return nil, nil
+	}
+	password, err := models.LoadRelayPassword(rel.PasswordEnc, w.masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("relay: credentials for %s: %w", domain, err)
+	}
+	mode := relaySTARTTLS
+	if rel.TLSMode == models.RelayTLSImplicit {
+		mode = relayImplicitTLS
+	} else if rel.TLSMode != models.RelayTLSStartTLS {
+		return nil, fmt.Errorf("relay: invalid TLS mode for %s", domain)
+	}
+	return &relaySettings{
+		host:     rel.Host,
+		port:     rel.Port,
+		mode:     mode,
+		username: rel.Username,
+		password: password,
+		roots:    w.relayRoots,
+	}, nil
+}
+
+// deliverViaRelay prepares the message once, exactly as the direct path does,
+// and hands it to the relay. There is no RESTMAIL probe and no fallback to MX.
+func (w *Worker) deliverViaRelay(settings relaySettings, item models.OutboundQueue) error {
+	prepared, err := w.prepareOutbound(item)
+	if err != nil {
+		return fmt.Errorf("prepare outbound message: %w", err)
+	}
+	item.RawMessage = prepared
+	return w.deliverToRelay(context.Background(), settings, item)
 }
