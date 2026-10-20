@@ -83,12 +83,19 @@ exclude-matching:
   - '> 403( >|$)'
   # Each needs a request of its own that provokes it (a named request example
   # paired with a named response example), which the spec does not have yet:
-  # #386. An error response that has its pair is still excluded here: the
-  # coverage phase probes every transaction sent, and valid-mode probes built
-  # from a refused request are refused too. tests/contract/gate.py does not
-  # judge those, so each pair can come off this pattern next
-  # (tests/contract/README.md).
-  - '> (400|404|409|422)( >|$)'
+  # #386. The 400s and 422s are excluded by path rather than everywhere, so the
+  # operations whose refusals have their pair are sent: createDomain,
+  # createAlias and createPipeline (POST /api/v1/admin/{domains,aliases,
+  # pipelines}). Their coverage probes built from the refused request are
+  # refused too; tests/contract/gate.py does not judge those
+  # (tests/contract/README.md). Each operation paired next comes off these
+  # patterns the same way. A path in a segment none of them names is sent.
+  - '> (404|409)( >|$)'
+  - '^/api/v1/(accounts|auth|devices|messages)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(audit|bans|certificates|custom-filters|dkim|grants|mailboxes|queue|test|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(aliases|domains|pipelines)/.* > (400|422)( >|$)'
+  - '^/api/v1/admin/(aliases|pipelines) > List [a-z]+, optionally filtered by domain > (400|422)( >|$)'
+  - '^/(\.well-known|autodiscover|restmail)/.* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
   - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.

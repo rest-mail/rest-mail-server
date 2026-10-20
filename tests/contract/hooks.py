@@ -125,11 +125,13 @@ def a_pipeline_on_the_created_domain(transaction):
     # array, with no object to put the domain in.
     if not isinstance(body, dict):
         return
-    fields = {"active": False, "filters": [{"name": "header_validate", "config": {}}]}
-    # The refused create (direction_missing, 422) is sent as documented, with
-    # no direction.
+    fields = {"active": False}
+    # The refused creates (direction_missing and filters_missing, 422) are
+    # sent as documented, each without the field it is named for.
     if "direction" in body:
         fields["direction"] = "inbound"
+    if "filters" in body:
+        fields["filters"] = [{"name": "header_validate", "config": {}}]
     on_the_created_domain(transaction, **fields)
 
 
