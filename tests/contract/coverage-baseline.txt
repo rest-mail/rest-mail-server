@@ -29,7 +29,6 @@ getDomain
 getMailbox
 getQueueEntry
 importContacts
-listBans
 listContacts
 listPipelineLogs
 listQueue

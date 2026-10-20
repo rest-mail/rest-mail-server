@@ -67,15 +67,16 @@ up or stored. `contract_pipeline_body400_test.go` does the same for
 `body_array` and its 400.
 
 Their 422s are still excluded, though vertrag sends them and the handlers
-answer as documented: the coverage phase probes every transaction sent, and
+answer as documented. The coverage phase probes every transaction sent, and
 judges valid-mode probes whenever the transaction's own request gets the status
 it documents. For a refusal that request is the refused one, so every valid
 probe built from it (`{}` with a `server_type`, a destination address with no
-source, or a pipeline with no direction, say) is refused as well, and each is
-counted as a failure on an operation the coverage baseline does not list
-(neither `createAlias` nor `createPipeline` is in it). The error responses come
-off `exclude-matching` once vertrag does not judge valid probes built from a
-documented refusal.
+source, or a pipeline with no direction, say) is refused as well, and vertrag
+reports each as a failed probe. `gate.py` does not judge a probe built from a
+refusal (a transaction whose status is 4xx), so those failures do not count
+against the coverage ratchet (`test_gate.py`). What is left is taking each
+paired error response off `exclude-matching`, and its status off
+`surface.exclude`, one operation at a time.
 
 `createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
 JSON but not an object) goes with the `bad_request` the handler answers before
@@ -104,6 +105,7 @@ dependency: it needs Go 1.26 and this module is on 1.25.
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
+- `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
