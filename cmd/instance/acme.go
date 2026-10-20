@@ -51,8 +51,9 @@ const acmeTimeout = 10 * time.Minute
 // issueACME obtains one certificate covering domains from the ACME CA in cfg by
 // HTTP-01, serving the challenges on listen (":80" in production: the CA always
 // connects to port 80), and writes it to <outputDir>/<domains[0]>.{crt,key},
-// the files the manual provider expects and SNICertLoader serves. Nothing is
-// written unless issuance succeeds.
+// the files the manual provider expects and SNICertLoader serves. No serving
+// pair is written unless issuance succeeds. The account key is saved
+// in outputDir before contacting the CA and retained even if issuance fails.
 func issueACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConfig) error {
 	if len(cfg.Domains) == 0 {
 		return errors.New("-domains is required")
@@ -66,6 +67,12 @@ func issueACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConf
 	srv := &http.Server{Handler: responder, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = srv.Serve(ln) }()
 	defer func() { _ = srv.Close() }()
+	if cfg.AccountKey == nil {
+		cfg.AccountKey, err = loadACMEAccountKey(outputDir, cfg.Directory)
+		if err != nil {
+			return err
+		}
+	}
 	slog.Info("acme: serving HTTP-01 challenges", "addr", ln.Addr().String(), "directory", cfg.Directory, "domains", cfg.Domains)
 
 	ctx, cancel := context.WithTimeout(ctx, acmeTimeout)
