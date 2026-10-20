@@ -31,7 +31,6 @@ getQueueEntry
 importContacts
 listContacts
 listPipelineLogs
-listQueue
 listTlsReports
 logout
 probeServices
