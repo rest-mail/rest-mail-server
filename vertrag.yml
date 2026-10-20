@@ -92,6 +92,8 @@ exclude-matching:
   - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
   - '> (429|503)( >|$)'
+  # Discovery's database-outage response needs a fault-injected database.
+  - '^/\.well-known/restmail > .* > 500( >|$)'
 
 # What the run is held to (vertrag's surface gate, #376): every operation in
 # the spec, counted only when every documented transaction of it was sent in
