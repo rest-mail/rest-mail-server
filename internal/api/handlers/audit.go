@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/restmail/restmail/internal/api/respond"
@@ -121,13 +123,46 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Verify walks the whole chain from its lowest seq and reports whether every
 // entry holds, or the first that does not.
-// GET /api/v1/admin/audit/verify
+// GET /api/v1/admin/audit/verify?anchor_seq=&anchor_hash=
+//
+// Given an anchor (both parameters, a (seq, hash) kept outside the server),
+// the chain must also still hold that entry with that hash: a log rewritten
+// and rehashed by whoever owns the database holds as a chain, but not to the
+// anchor.
 func (h *AuditHandler) Verify(w http.ResponseWriter, r *http.Request) {
-	res, err := audit.VerifyDB(h.db.WithContext(r.Context()))
+	anchor, invalid := parseAuditAnchor(r)
+	if len(invalid) > 0 {
+		respond.ValidationError(w, invalid)
+		return
+	}
+	res, err := audit.VerifyDBAnchored(h.db.WithContext(r.Context()), anchor)
 	if err != nil {
 		slog.Error("verifying the audit log failed", "error", err)
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the audit log")
 		return
 	}
 	respond.Data(w, http.StatusOK, res)
+}
+
+// parseAuditAnchor reads an optional anchor: anchor_seq and anchor_hash, both
+// or neither. The hash is 64 hex digits, either case.
+func parseAuditAnchor(r *http.Request) (*audit.Anchor, map[string]string) {
+	q := r.URL.Query()
+	seqParam, hashParam := q.Get("anchor_seq"), q.Get("anchor_hash")
+	if seqParam == "" && hashParam == "" {
+		return nil, nil
+	}
+	invalid := map[string]string{}
+	seq, err := strconv.ParseInt(seqParam, 10, 64)
+	if err != nil || seq <= 0 {
+		invalid["anchor_seq"] = "must be a positive whole number, given with anchor_hash"
+	}
+	hash := strings.ToLower(hashParam)
+	if b, err := hex.DecodeString(hash); err != nil || len(b) != 32 {
+		invalid["anchor_hash"] = "must be 64 hex digits, given with anchor_seq"
+	}
+	if len(invalid) > 0 {
+		return nil, invalid
+	}
+	return &audit.Anchor{Seq: seq, Hash: hash}, nil
 }

@@ -5315,8 +5315,25 @@ paths:
         follows the one before (seq one higher, `prev_hash` its hash) and hashes
         to its own `hash`. Stops at the first entry that does not hold. If the
         log does not start at seq 1, the walk starts from the first entry's own
-        `prev_hash` and says so in `note`. This read is itself recorded
-        (`audit.read`).
+        `prev_hash` and says so in `note`. Given an anchor (`anchor_seq` and
+        `anchor_hash` together, a copy of one entry kept outside the server),
+        the log must also still hold that entry with that hash; a log rewritten
+        and rehashed from some entry on holds as a chain, but not to an anchor
+        taken before the rewrite. This read is itself recorded (`audit.read`).
+      parameters:
+        - name: anchor_seq
+          in: query
+          description: The anchored entry's seq; requires anchor_hash
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: anchor_hash
+          in: query
+          description: The anchored entry's hash, 64 hex digits; requires anchor_seq
+          schema:
+            type: string
+            pattern: "^[0-9a-fA-F]{64}$"
       responses:
         "200":
           description: What the check found
@@ -5336,6 +5353,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   # ═══════════════════════════════════════════════════════════════
   # System / Discovery (no auth)
@@ -8753,6 +8772,16 @@ components:
         note:
           type: string
           description: Set when the log does not start at seq 1
+        anchor:
+          type: object
+          description: The anchor the log was checked against, when one was given
+          required: [seq, hash]
+          properties:
+            seq:
+              type: integer
+              format: int64
+            hash:
+              type: string
 
     # ─────────────────────────────────────────────────────────────
     # Generic helpers

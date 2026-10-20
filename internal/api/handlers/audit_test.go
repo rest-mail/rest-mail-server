@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -145,10 +146,10 @@ func TestAuditAPI_ListFiltersAndPages(t *testing.T) {
 func TestAuditAPI_Verify(t *testing.T) {
 	db := openAuditTestDB(t)
 	h := NewAuditHandler(db)
-	verify := func() audit.Result {
+	verify := func(query ...string) audit.Result {
 		t.Helper()
 		rr := httptest.NewRecorder()
-		h.Verify(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify", nil))
+		h.Verify(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify?"+strings.Join(query, "&"), nil))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("verify: %d %s", rr.Code, rr.Body.String())
 		}
@@ -172,6 +173,15 @@ func TestAuditAPI_Verify(t *testing.T) {
 	if !res.OK || res.Checked != 3 || res.FirstSeq != 1 || res.LastSeq != 3 || len(res.LastHash) != 64 {
 		t.Fatalf("three entries: %+v", res)
 	}
+	// The latest (seq, hash), as an anchor kept outside the server, holds; in
+	// capitals too.
+	anchor := fmt.Sprintf("anchor_seq=%d&anchor_hash=%s", res.LastSeq, strings.ToUpper(res.LastHash))
+	if a := verify(anchor); !a.OK || a.Anchor == nil || a.Anchor.Seq != 3 || a.Anchor.Hash != res.LastHash {
+		t.Fatalf("against its own anchor: %+v", a)
+	}
+	if a := verify("anchor_seq=4&anchor_hash=" + res.LastHash); a.OK || a.BrokenAtSeq == nil || *a.BrokenAtSeq != 4 {
+		t.Fatalf("against an anchor past the end: %+v", a)
+	}
 
 	// Whoever owns the database can switch the guard off and edit an entry;
 	// the chain shows it.
@@ -184,5 +194,26 @@ func TestAuditAPI_Verify(t *testing.T) {
 	res = verify()
 	if res.OK || res.BrokenAtSeq == nil || *res.BrokenAtSeq != 2 || res.Checked != 1 || res.Reason == "" {
 		t.Fatalf("after an edit: %+v", res)
+	}
+}
+
+// An anchor is both parameters or neither, and each must parse: a check
+// against a mistyped anchor must never read as a check of the chain alone.
+func TestAuditAPI_VerifyRefusesABadAnchor(t *testing.T) {
+	h := NewAuditHandler(nil)
+	hash := strings.Repeat("ab", 32)
+	for _, query := range []string{
+		"anchor_seq=3",
+		"anchor_hash=" + hash,
+		"anchor_seq=0&anchor_hash=" + hash,
+		"anchor_seq=x&anchor_hash=" + hash,
+		"anchor_seq=3&anchor_hash=" + hash[:62],
+		"anchor_seq=3&anchor_hash=" + strings.Repeat("zz", 32),
+	} {
+		rr := httptest.NewRecorder()
+		h.Verify(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify?"+query, nil))
+		if rr.Code != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status %d, want 422", query, rr.Code)
+		}
 	}
 }
