@@ -15,9 +15,10 @@ import (
 )
 
 type listQuerySchema struct {
-	Type    string `yaml:"type"`
-	Minimum *int64 `yaml:"minimum"`
-	Maximum *int64 `yaml:"maximum"`
+	Type    string   `yaml:"type"`
+	Enum    []string `yaml:"enum"`
+	Minimum *int64   `yaml:"minimum"`
+	Maximum *int64   `yaml:"maximum"`
 }
 
 type listQueryOperation struct {
