@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -98,8 +97,9 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 	if !validRelayHost(w.hostname) {
 		return errors.New("relay: invalid EHLO hostname")
 	}
-	if !utf8.ValidString(item.Sender) || !utf8.ValidString(item.Recipient) {
-		return errors.New("relay: invalid envelope encoding")
+	sender, recipient, err := smtpEnvelope(item)
+	if err != nil {
+		return err
 	}
 	budget := w.sendDeadline
 	if budget == nil {
@@ -160,14 +160,13 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 	if ok, _ := client.Extension("8BITMIME"); !ok && messageRequires8BitTransport(item.BodyType, item.RawMessage) {
 		return &SMTPError{Code: 550, Enhanced: "5.6.3", Message: "relay requires 8BITMIME", RemoteMTA: settings.host}
 	}
-	headers, _, _ := strings.Cut(item.RawMessage, "\r\n\r\n")
-	if ok, _ := client.Extension("SMTPUTF8"); !ok && relayNonASCII(item.Sender+item.Recipient+headers) {
-		return &SMTPError{Code: 550, Enhanced: "5.6.7", Message: "relay requires SMTPUTF8", RemoteMTA: settings.host}
+	if err := checkSMTPUTF8(client, sender, recipient, item.RawMessage, settings.host); err != nil {
+		return err
 	}
-	if err := client.Mail(item.Sender); err != nil {
+	if err := client.Mail(sender); err != nil {
 		return fail("MAIL", err)
 	}
-	if err := client.Rcpt(item.Recipient); err != nil {
+	if err := client.Rcpt(recipient); err != nil {
 		return fail("RCPT", err)
 	}
 	data, err := client.Data()
@@ -188,15 +187,6 @@ func (w *Worker) deliverToRelay(parent context.Context, settings relaySettings, 
 func relayHasMechanism(list, want string) bool {
 	for _, mechanism := range strings.Fields(list) {
 		if strings.EqualFold(mechanism, want) {
-			return true
-		}
-	}
-	return false
-}
-
-func relayNonASCII(s string) bool {
-	for i := range len(s) {
-		if s[i] >= 0x80 {
 			return true
 		}
 	}
