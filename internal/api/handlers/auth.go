@@ -400,7 +400,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// account with no password and a wrong password are indistinguishable by
 	// timing or message (OSI-24 user-enumeration defense-in-depth).
 	var account models.Mailbox
-	lookupErr := h.db.Where("address = ?", strings.ToLower(strings.TrimSpace(req.Email))).First(&account).Error
+	lookupErr := repositories.FindMailboxByAddress(h.db, req.Email, &account)
 	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
 		return

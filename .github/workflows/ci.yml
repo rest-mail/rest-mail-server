@@ -360,6 +360,39 @@ jobs:
           grep -Eqi '^content-type:[[:space:]]*(application|text)/(javascript|ecmascript)' "$RUNNER_TEMP/asset-headers"
           test -s "$RUNNER_TEMP/bundle.js"
 
+      - name: Dev server on a read-only root filesystem
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          docker build --target dev -t "restmail-$APP:dev-smoke" "$APP"
+          container=$(docker run -d --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --pids-limit 512 --memory 1g --cpus 1.5 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777 \
+            -v "$PWD/$APP:/app" -v /app/node_modules \
+            -e VITE_BASE_PATH=/ -p 127.0.0.1::3000 "restmail-$APP:dev-smoke")
+          trap 'docker logs "$container"; docker rm -fv "$container" >/dev/null; rm -f "$APP/src/hardening-smoke.ts"' EXIT
+          origin="http://$(docker port "$container" 3000/tcp)"
+          # docker-proxy accepts the connection and then resets it until Vite
+          # listens, so retry every error, not only refused connections.
+          curl --fail --silent --show-error --retry 60 --retry-all-errors --retry-delay 1 \
+            "$origin/" -o "$RUNNER_TEMP/dev-index.html"
+          grep -q '/@vite/client' "$RUNNER_TEMP/dev-index.html"
+          curl --fail --silent --show-error "$origin/src/main.tsx" -o "$RUNNER_TEMP/dev-main.js"
+          test -s "$RUNNER_TEMP/dev-main.js"
+          # A real source transform exercises Vite/esbuild and writable caches;
+          # a second request must see source edits through the bind mount.
+          printf 'export const marker = "readonly-first";\n' > "$APP/src/hardening-smoke.ts"
+          curl --fail --silent --show-error "$origin/src/hardening-smoke.ts" | grep -q readonly-first
+          printf 'export const marker = "readonly-edited";\n' > "$APP/src/hardening-smoke.ts"
+          curl --fail --silent --show-error "$origin/src/hardening-smoke.ts?hardening=edited" | grep -q readonly-edited
+          docker exec "$container" sh -ec 'touch /tmp/scratch; touch /app/node_modules/.scratch; rm /app/node_modules/.scratch'
+          if docker exec "$container" touch /rootfs-write-must-fail; then
+            echo "::error::dev root filesystem is writable" >&2
+            exit 1
+          fi
+
   ci:
     name: CI
     needs: [lint, test, attachments-s3, build, helm, webmail, admin, js-filter, first-start, webapp-images]
