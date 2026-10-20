@@ -2,6 +2,7 @@ package acme
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -74,12 +75,15 @@ type IssueConfig struct {
 	Domains []string
 	// HTTPClient talks to the CA; nil means http.DefaultClient.
 	HTTPClient *http.Client
+	// AccountKey identifies an existing account; nil generates a new account key.
+	// Callers that renew certificates should persist and reuse this key.
+	AccountKey crypto.Signer
 }
 
 // Issue obtains one certificate covering every name in cfg.Domains by HTTP-01,
 // publishing the challenge responses through responder, and returns the chain
-// and its fresh ECDSA P-256 key as PEM. It registers a new account each time
-// and touches no database or disk: the caller decides where the pair goes.
+// and its fresh ECDSA P-256 key as PEM. It registers or reuses cfg.AccountKey's
+// account and touches no database or disk: the caller persists keys and certs.
 func Issue(ctx context.Context, cfg IssueConfig, responder *HTTP01Responder) (certPEM, keyPEM string, err error) {
 	if len(cfg.Domains) == 0 {
 		return "", "", errors.New("acme: no domains to issue for")
@@ -92,9 +96,12 @@ func Issue(ctx context.Context, cfg IssueConfig, responder *HTTP01Responder) (ce
 		dir = LetsEncryptProduction
 	}
 
-	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return "", "", fmt.Errorf("acme: failed to generate account key: %w", err)
+	accountKey := cfg.AccountKey
+	if accountKey == nil {
+		accountKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return "", "", fmt.Errorf("acme: failed to generate account key: %w", err)
+		}
 	}
 	client := &acme.Client{Key: accountKey, DirectoryURL: dir, HTTPClient: cfg.HTTPClient}
 
@@ -102,7 +109,7 @@ func Issue(ctx context.Context, cfg IssueConfig, responder *HTTP01Responder) (ce
 	if cfg.Email != "" {
 		acct.Contact = []string{"mailto:" + cfg.Email}
 	}
-	if _, err := client.Register(ctx, acct, acme.AcceptTOS); err != nil {
+	if _, err := client.Register(ctx, acct, acme.AcceptTOS); err != nil && !errors.Is(err, acme.ErrAccountAlreadyExists) {
 		return "", "", fmt.Errorf("acme: failed to register account: %w", err)
 	}
 
