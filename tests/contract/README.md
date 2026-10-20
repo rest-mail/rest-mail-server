@@ -41,7 +41,8 @@ Two gates judge the run:
 The documented error responses other than 401 are excluded by pattern in
 `vertrag.yml`: 403 needs a principal without the capability (the
 authorization phase, below), and 400, 404, 409 and 422 each need a request
-of their own that provokes them (#386).
+of their own that provokes them (#386), except where the spec pairs one
+with its request (below).
 
 That request is a named request example, and the response it provokes carries
 an example of the same name: vertrag pairs a request only with the response
@@ -67,22 +68,28 @@ checks it gets the documented body: the refusal comes before anything is looked
 up or stored. `contract_pipeline_body400_test.go` does the same for
 `body_array` and its 400.
 
-Their 422s are still excluded, though vertrag sends them and the handlers
-answer as documented. The coverage phase probes every transaction sent, and
-judges valid-mode probes whenever the transaction's own request gets the status
-it documents. For a refusal that request is the refused one, so every valid
-probe built from it (`{}` with a `server_type`, a destination address with no
-source, or a pipeline with no direction, say) is refused as well, and vertrag
-reports each as a failed probe. `gate.py` does not judge a probe built from a
-refusal (a transaction whose status is 4xx), so those failures do not count
-against the coverage ratchet (`test_gate.py`). What is left is taking each
-paired error response off `exclude-matching`, and its status off
-`surface.exclude`, one operation at a time.
-
 `createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
 JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
-the real handler with no database). It stays excluded with the other 400s.
+the real handler with no database).
+
+These three operations' 400s and 422s are sent and judged: `vertrag.yml`
+excludes 400 and 422 by path, naming every path segment but the three
+operations' own, rather than everywhere. A transaction sent and refused other
+than as documented fails the examples phase like any other.
+`test_gate.py` checks that the documented 400s and 422s sent are exactly
+those three operations', so an operation paired next comes off those patterns
+in the same change. The statuses stay in `surface.exclude`: the surface gate
+cannot take an exclusion off one operation only.
+
+The coverage phase probes every transaction sent, and judges valid-mode probes
+whenever the transaction's own request gets the status it documents. For a
+refusal that request is the refused one, so every valid probe built from it
+(`{}` with a `server_type`, a destination address with no source, or a
+pipeline with no direction, say) is refused as well, and vertrag reports each
+as a failed probe. `gate.py` does not judge a probe built from a refusal (a
+transaction whose status is 4xx), so those failures do not count against the
+coverage ratchet (`test_gate.py`).
 
 vertrag is the released, checksum-pinned binary (v0.29.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
