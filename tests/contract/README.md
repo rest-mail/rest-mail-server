@@ -97,6 +97,10 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   create probes (so repeated valid names do not conflict), and a fresh source
   folder for each rename probe (a successful rename consumes the previous one).
   Folder create probes keep their generated bodies and account IDs unchanged.
+  Folder and contact setup signs in as the fixture admin with a separate bearer
+  session, cached per endpoint. It leaves the request's own credentials intact,
+  including when the principal has no credentials; Basic auth is reserved for
+  app passwords, not the fixture admin's account password.
   Every other id comes from the spec's `links`.
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
