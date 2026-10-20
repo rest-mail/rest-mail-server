@@ -477,6 +477,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// but delivery is authenticated at the handler (OSI-3): trusted-peer network
 	// or DKIM alignment, refusing spoofed local-domain injection.
 	// ═══════════════════════════════════════════════════════════════
+	restmailDiscoveryH := handlers.NewRestmailDiscoveryHandler(db, cfg.GatewayHostname)
+	r.Get("/.well-known/restmail", restmailDiscoveryH.Discover)
 	r.Get("/restmail/capabilities", restmailH.Capabilities)
 	r.Get("/restmail/mailboxes", restmailH.CheckMailbox)
 	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
