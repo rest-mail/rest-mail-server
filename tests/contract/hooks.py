@@ -40,6 +40,29 @@ def basic(address, password):
     return "Basic " + token
 
 
+def admin_token(origin):
+    """Sign in for fixture setup without changing the transaction's principal.
+
+    Basic auth accepts app passwords, not the admin's account password. Cache
+    the setup session per origin so repeated probes do not exhaust login limits.
+    """
+    tokens = hooks.stash.get("setup_admin_tokens", {})
+    if origin not in tokens:
+        request = urllib.request.Request(
+            origin + "/api/v1/auth/login",
+            data=json.dumps({"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            token = (json.load(response).get("data") or {}).get("access_token")
+        if not isinstance(token, str) or not token:
+            raise RuntimeError("fixture admin sign-in returned no access token")
+        tokens[origin] = token
+        hooks.stash["setup_admin_tokens"] = tokens
+    return tokens[origin]
+
+
 @hooks.before("login")
 def sign_in_as_the_fixture_admin(transaction):
     hooks.set_json(transaction, {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"})
@@ -199,7 +222,7 @@ def remove_a_previous_folder_probe(transaction):
         return
     created = hooks.stash.get("created_folders", {})
     origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Authorization": basic(ADMIN, ADMIN_PASSWORD)}
+    headers = {"Authorization": "Bearer " + admin_token(origin)}
     if path not in created:
         # Coverage runs before hooks only. Remember an absent destination
         # before sending it, rather than relying on an after hook to run.
@@ -251,7 +274,7 @@ def give_each_rename_probe_a_folder(transaction):
     request = urllib.request.Request(
         origin + parent,
         data=json.dumps({"name": folder}).encode(),
-        headers={"Content-Type": "application/json", "Authorization": basic(ADMIN, ADMIN_PASSWORD)},
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -299,7 +322,7 @@ def remove_a_previous_contact_probe(transaction):
     if not isinstance(email, str) or not email or not account_id.isdecimal() or int(account_id) < 1:
         return
     origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
-    headers = {"Authorization": basic(ADMIN, ADMIN_PASSWORD)}
+    headers = {"Authorization": "Bearer " + admin_token(origin)}
     key = origin + parent + "\n" + email
     owned = hooks.stash.get("created_contact_probes", {})
     offset = 0
