@@ -272,7 +272,7 @@ func (r *CredentialRepository) VerifyBasic(address, secret string, now time.Time
 
 func (r *CredentialRepository) verifyPassword(address, password string, now time.Time, memo PasswordMemo) (*models.Credential, *models.Mailbox, error) {
 	var mailbox models.Mailbox
-	err := r.db.Where("address = ?", strings.ToLower(strings.TrimSpace(address))).Take(&mailbox).Error
+	err := FindMailboxByAddress(r.db, address, &mailbox)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil, err
 	}
@@ -338,8 +338,13 @@ func (r *CredentialRepository) VerifyAppPassword(address, password string, now t
 	if err != nil {
 		return nil, nil, err
 	}
+	var addressed models.Mailbox
+	addressErr := FindMailboxByAddress(r.db, address, &addressed)
+	if addressErr != nil && !errors.Is(addressErr, gorm.ErrRecordNotFound) {
+		return nil, nil, addressErr
+	}
 	switch {
-	case !strings.EqualFold(mailbox.Address, strings.TrimSpace(address)):
+	case addressErr != nil || addressed.ID != mailbox.ID:
 		return nil, nil, refused(auth.CredentialWrongAddress)
 	case cred.RevokedAt != nil:
 		return nil, nil, refused(auth.CredentialRevoked)

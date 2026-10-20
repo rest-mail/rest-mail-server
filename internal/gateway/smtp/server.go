@@ -181,6 +181,9 @@ func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
 	srv.TLSConfig = s.tlsConfig
 	srv.MaxMessageBytes = s.maxMessageBytes
 	srv.MaxRecipients = maxRecipients
+	// go-smtp parses the MAIL parameter; session enforces UTF-8 use for the
+	// envelope and headers. 8BITMIME is advertised by go-smtp alongside it.
+	srv.EnableSMTPUTF8 = true
 	// go-smtp v0.28.3 applies MaxLineLength to COMMAND lines only: the per-line
 	// limit is disabled for the duration of the DATA body read (mirroring BDAT),
 	// so a message with unwrapped long lines (8-bit text, HTML — Postfix wraps

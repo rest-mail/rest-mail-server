@@ -612,13 +612,13 @@ It reads the manifest and says what the file holds, what it lacks, and which rel
 **Not built yet:** scheduled backups and retention, WAL archiving/pgBackRest for near-zero RPO, a restore-drill job, and backup monitoring alerts. Today a backup is taken when you run the command, and `chore upgrade:*` offers one if none is less than a day old.
 
 #### Internationalized Email (EAI_PLAN.md)
-Four phases, none implemented in this codebase. (SMTPUTF8 capability *detection* was part of the Instant Mail Check tool, which has since been extracted to the `rest-mail/instantmailcheck` repo — see §4.5 — so `internal/mailcheck/` no longer exists here.)
-- **Phase A — IDN domains** (lowest risk): `golang.org/x/net/idna`, store Unicode, convert to Punycode for DNS/SMTP.
-- **Phase B — SMTPUTF8 gateway** (medium risk): advertise capability, accept UTF-8 in MAIL FROM / RCPT TO / DATA, MIME parser RFC 6532 update, outbound capability detection + RFC 6857 message downgrading.
-- **Phase C — IMAP/POP3**: advertise `UTF8=ACCEPT` (IMAP) and `UTF8` (POP3), return raw UTF-8 headers when enabled, UTF-8 folder names.
-- **Phase D — full-stack validation**: API regex update, Unicode normalization (NFC), EAI test cases, interop testing with Gmail / Outlook.com.
+Implemented in slices; issue #153 remains open.
+- **IDN domains:** domain provisioning and outbound SMTP support IDNA conversion. Hosted domains retain the existing lowercase Punycode storage format; Unicode domain display/storage and the remaining DNS/protocol boundaries are unfinished.
+- **SMTPUTF8:** inbound and submission advertise the capability and accept negotiated UTF-8 envelopes and top-level headers. Outbound delivery checks peer capabilities and refuses unsupported EAI delivery. Internationalized DSNs and MIME/header downgrading remain unfinished.
+- **Hosted account identities:** `POST /api/v1/accounts` accepts UTF-8 local parts and Unicode domains, stores lowercase NFC local parts with Punycode domains, and checks permissions against that canonical domain. Linking, REST login, and protocol password/app-password sign-in accept equivalent Unicode/Punycode domains and NFC local parts. Existing exact account spellings retain precedence; a unique NFC-equivalent legacy account can be found without rewriting its address or grants. Ambiguous legacy equivalents are refused, and provisioning rejects new NFC-equivalent duplicates. This identity policy does not rewrite remote SMTP local parts or message headers.
+- **Still planned:** IMAP `UTF8=ACCEPT`, POP3 `UTF8`, delivery/recipient lookup normalization, webmail input/display, and full-stack interoperability tests.
 - Relevant RFCs: 6530 (overview), 6531 (SMTPUTF8), 6532 (headers), 6533 (DSN), 6855 (IMAP), 6856 (POP3), 6857 (downgrade), 5891 (IDNA 2008).
-- Risk: most servers don't support SMTPUTF8 → bounce non-ASCII local parts where remote can't accept.
+- Non-ASCII local parts cannot be converted to Punycode; unsupported outbound EAI delivery fails through the queue's existing failure handling.
 - Database already UTF-8; consider ICU collation for sorting, `pg_trgm`/ICU-aware `LOWER()` indexes.
 
 #### Phase-6+ items from original PLAN.md
