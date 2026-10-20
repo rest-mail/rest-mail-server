@@ -26,6 +26,15 @@ func (h *QueueHandler) ListQueue(w http.ResponseWriter, r *http.Request) {
 	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
 		return
 	}
+	params := r.URL.Query()
+	if params.Has("status") {
+		switch params.Get("status") {
+		case "pending", "delivering", "deferred", "delivered", "bounced", "expired":
+		default:
+			respond.ValidationError(w, map[string]string{"status": "must be one of pending, delivering, deferred, delivered, bounced, expired"})
+			return
+		}
+	}
 	query := h.db.Model(&models.OutboundQueue{}).Order("created_at DESC")
 
 	if status := r.URL.Query().Get("status"); status != "" {
