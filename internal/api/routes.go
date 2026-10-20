@@ -3,6 +3,7 @@ package api
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -410,7 +411,16 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// in. Throttled like login: it guesses at a secret.
 	r.With(authThrottle, auditLog("auth.reset", middleware.AuditStartedSession())).Post("/api/v1/auth/reset", authH.Reset)
 	// Self-service password reset with the authenticator and a recovery code
-	// the account set up in advance (#124). Throttled like login.
+	// the account set up in advance (#124). Throttled like login, and each
+	// address may be refused only 5 times, then once per 15 minutes, so
+	// guesses spread across many IPs still cannot add up against one account.
+	if cfg.AuthRateLimitEnabled {
+		authH.SetRecoverFailures(middleware.NewFailureBudget(middleware.RateLimitConfig{
+			RPS:   1.0 / (15 * 60),
+			Burst: 5,
+			TTL:   2 * time.Hour,
+		}))
+	}
 	r.With(authThrottle, auditLog("auth.recover", middleware.AuditStartedSession())).Post("/api/v1/auth/recover", authH.Recover)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
