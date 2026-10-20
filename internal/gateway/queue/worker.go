@@ -533,6 +533,9 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	if rmail.ContainsControlChar(item.Sender) || rmail.ContainsControlChar(item.Recipient) {
 		return &SMTPError{Code: 550, Enhanced: "5.1.3", Message: "address contains control characters"}
 	}
+	if _, _, err := smtpEnvelope(item); err != nil {
+		return err
+	}
 
 	// A sending domain configured to relay sends everything through its relay
 	// and nothing direct (#143). Not knowing which retries the message.
@@ -544,8 +547,13 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		return w.deliverViaRelay(*relay, item)
 	}
 
-	// Look up MX records
-	mxRecords, err := net.LookupMX(item.Domain)
+	// Keep the queue's Unicode domain for storage/cache identity, but use its
+	// IDNA ASCII form for DNS, implicit MX and MTA-STS discovery (#153).
+	dnsDomain, err := rmail.DomainASCII(item.Domain)
+	if err != nil {
+		return &SMTPError{Code: 550, Enhanced: "5.1.2", Message: "invalid recipient domain"}
+	}
+	mxRecords, err := net.LookupMX(dnsDomain)
 	if err != nil {
 		// RFC 5321 implicit MX: a domain with no MX records is still
 		// deliverable via its A/AAAA record. Go's LookupMX reports "no such
@@ -557,7 +565,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 		// (e.g. resolver unreachable) still defer here.
 		var dnsErr *net.DNSError
 		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-			mxRecords = []*net.MX{{Host: item.Domain, Pref: 0}}
+			mxRecords = []*net.MX{{Host: dnsDomain, Pref: 0}}
 		} else {
 			return fmt.Errorf("MX lookup failed for %s: %w", item.Domain, err)
 		}
@@ -565,7 +573,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 
 	if len(mxRecords) == 0 {
 		// Fall back to A record
-		mxRecords = []*net.MX{{Host: item.Domain, Pref: 0}}
+		mxRecords = []*net.MX{{Host: dnsDomain, Pref: 0}}
 	}
 	// A null MX (RFC 7505) says the domain accepts no mail. Its host is "." —
 	// left alone, that would be dialed as ":25", this machine.
@@ -582,7 +590,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// nil and delivery proceeds with ordinary opportunistic TLS.
 	var stsPolicy *mtasts.Policy
 	stsCtx, stsCancel := context.WithTimeout(context.Background(), 15*time.Second)
-	policy, err := w.sts.Resolve(stsCtx, item.Domain)
+	policy, err := w.sts.Resolve(stsCtx, dnsDomain)
 	stsCancel()
 	if err != nil {
 		slog.Debug("queue: MTA-STS not available, proceeding normally",
@@ -1194,6 +1202,12 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 //   - testing / none / no policy: opportunistic TLS as before; a would-fail
 //     under "testing" is logged but delivery proceeds.
 func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
+	return w.deliverSMTP(net.JoinHostPort(host, "25"), host, item, stsPolicy)
+}
+
+// deliverSMTP keeps the socket address separate from the MX identity used for
+// EHLO/TLS policy, as probeRESTMAIL does. Production uses the MX's port 25.
+func (w *Worker) deliverSMTP(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy) error {
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(item)
@@ -1201,6 +1215,10 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 		return fmt.Errorf("prepare outbound message: %w", err)
 	}
 	item.RawMessage = prepared
+	sender, recipient, err := smtpEnvelope(item)
+	if err != nil {
+		return err
+	}
 
 	// Size-aware whole-attempt budget (OSI-7): the fixed 30 s could not transfer
 	// a large-but-permitted message's DATA phase. The deadline scales with the
@@ -1212,8 +1230,6 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 	attemptDeadline := time.Now().Add(w.sendDeadline(int64(len(item.RawMessage))))
 	ctx, cancel := context.WithDeadline(context.Background(), attemptDeadline)
 	defer cancel()
-
-	addr := host + ":25"
 
 	// Effective MTA-STS mode. When enforcement is disabled an enforce policy is
 	// downgraded to testing (attempt TLS, log would-fail, still deliver).
@@ -1320,15 +1336,19 @@ func (w *Worker) deliverToHost(host string, item models.OutboundQueue, stsPolicy
 		}
 	}
 
+	if err := checkSMTPUTF8(client, sender, recipient, item.RawMessage, host); err != nil {
+		return err
+	}
+
 	// Set sender
-	if err := client.Mail(item.Sender); err != nil {
+	if err := client.Mail(sender); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se
 	}
 
 	// Set recipient
-	if err := client.Rcpt(item.Recipient); err != nil {
+	if err := client.Rcpt(recipient); err != nil {
 		se := parseSMTPError(err)
 		se.RemoteMTA = host
 		return se

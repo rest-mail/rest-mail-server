@@ -7,8 +7,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -46,7 +44,10 @@ type Client struct {
 	email     string
 	directory string
 	manager   *autocert.Manager
-	mu        sync.Mutex
+	// responder serves the HTTP-01 answers of ObtainCertificate's orders.
+	responder  *HTTP01Responder
+	httpClient *http.Client
+	mu         sync.Mutex
 }
 
 // ClientConfig holds configuration for creating a new ACME client.
@@ -56,6 +57,8 @@ type ClientConfig struct {
 	Email     string
 	Directory string // ACME directory URL; defaults to LetsEncryptProduction
 	Staging   bool   // if true, overrides Directory to use staging
+	// HTTPClient talks to the CA; nil means http.DefaultClient.
+	HTTPClient *http.Client
 }
 
 // NewClient creates a new ACME client configured with the given options.
@@ -69,10 +72,12 @@ func NewClient(cfg ClientConfig) *Client {
 	}
 
 	c := &Client{
-		db:        cfg.DB,
-		masterKey: cfg.MasterKey,
-		email:     cfg.Email,
-		directory: dir,
+		db:         cfg.DB,
+		masterKey:  cfg.MasterKey,
+		email:      cfg.Email,
+		directory:  dir,
+		responder:  NewHTTP01Responder(),
+		httpClient: cfg.HTTPClient,
 	}
 
 	c.manager = &autocert.Manager{
@@ -88,118 +93,31 @@ func NewClient(cfg ClientConfig) *Client {
 	return c
 }
 
-// HTTPHandler returns an http.Handler that serves ACME HTTP-01 challenge
-// responses on /.well-known/acme-challenge/. Any non-challenge request
-// is passed through to the fallback handler.
-func (c *Client) HTTPHandler(fallback http.Handler) http.Handler {
-	return c.manager.HTTPHandler(fallback)
-}
-
-// ChallengeHandler returns an http.HandlerFunc specifically for serving
-// ACME HTTP-01 challenge tokens. Wire this into the router at
-// /.well-known/acme-challenge/{token}.
-func (c *Client) ChallengeHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// The autocert Manager HTTPHandler handles challenge paths itself.
-		// We delegate to it, using nil as fallback which returns 403 for
-		// non-challenge paths.
-		c.manager.HTTPHandler(nil).ServeHTTP(w, r)
-	}
+// ChallengeHandler returns an http.Handler serving the HTTP-01 key
+// authorizations of the challenges ObtainCertificate is answering, and 404 for
+// everything else. Wire it into the router at /.well-known/acme-challenge/.
+func (c *Client) ChallengeHandler() http.Handler {
+	return c.responder
 }
 
 // ObtainCertificate requests a new certificate for the given domain via ACME
-// and stores it in the database. It uses the autocert Manager to perform the
-// challenge and obtain the certificate.
+// HTTP-01 and stores it in the database. The CA validates the challenge by
+// fetching it from ChallengeHandler, which must be reachable on port 80 of
+// domain while this runs.
 func (c *Client) ObtainCertificate(ctx context.Context, domain string) (*models.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	slog.Info("acme: obtaining certificate", "domain", domain)
 
-	// Generate a new ECDSA private key for this certificate.
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	certPEM, keyPEM, err := Issue(ctx, IssueConfig{
+		Directory:  c.directory,
+		Email:      c.email,
+		Domains:    []string{domain},
+		HTTPClient: c.httpClient,
+	}, c.responder)
 	if err != nil {
-		return nil, fmt.Errorf("acme: failed to generate private key: %w", err)
-	}
-
-	// Create a new ACME client for the actual certificate request.
-	acmeClient := &acme.Client{
-		DirectoryURL: c.directory,
-	}
-
-	// Generate an account key if we do not already have one.
-	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("acme: failed to generate account key: %w", err)
-	}
-	acmeClient.Key = accountKey
-
-	// Register the account.
-	acct := &acme.Account{
-		Contact: []string{"mailto:" + c.email},
-	}
-	if _, err := acmeClient.Register(ctx, acct, autocert.AcceptTOS); err != nil {
-		return nil, fmt.Errorf("acme: failed to register account: %w", err)
-	}
-
-	// Begin the order.
-	order, err := acmeClient.AuthorizeOrder(ctx, acme.DomainIDs(domain))
-	if err != nil {
-		return nil, fmt.Errorf("acme: failed to authorize order: %w", err)
-	}
-
-	// Process authorizations - handle HTTP-01 challenges.
-	for _, authzURL := range order.AuthzURLs {
-		authz, err := acmeClient.GetAuthorization(ctx, authzURL)
-		if err != nil {
-			return nil, fmt.Errorf("acme: failed to get authorization: %w", err)
-		}
-
-		if authz.Status == acme.StatusValid {
-			continue
-		}
-
-		// Find and accept the HTTP-01 challenge.
-		var challenge *acme.Challenge
-		for _, ch := range authz.Challenges {
-			if ch.Type == "http-01" {
-				challenge = ch
-				break
-			}
-		}
-		if challenge == nil {
-			return nil, fmt.Errorf("acme: no http-01 challenge available for %s", domain)
-		}
-
-		// Accept the challenge.
-		if _, err := acmeClient.Accept(ctx, challenge); err != nil {
-			return nil, fmt.Errorf("acme: failed to accept challenge: %w", err)
-		}
-
-		// Wait for authorization to complete.
-		if _, err := acmeClient.WaitAuthorization(ctx, authzURL); err != nil {
-			return nil, fmt.Errorf("acme: authorization failed: %w", err)
-		}
-	}
-
-	// Create a CSR.
-	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-		DNSNames: []string{domain},
-	}, privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("acme: failed to create CSR: %w", err)
-	}
-
-	// Finalize the order and get the certificate.
-	derChain, _, err := acmeClient.CreateOrderCert(ctx, order.FinalizeURL, csr, true)
-	if err != nil {
-		return nil, fmt.Errorf("acme: failed to finalize order: %w", err)
-	}
-
-	// Convert to PEM.
-	certPEM, keyPEM, err := encodeCertAndKey(derChain, privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("acme: failed to encode cert/key: %w", err)
+		return nil, err
 	}
 
 	// Store in database.
