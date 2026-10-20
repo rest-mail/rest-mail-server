@@ -129,6 +129,19 @@ jobs:
           go-version: "1.25.10"
           cache: true
 
+      # A cold build cache can still need modules unused by the test job.
+      # Retry downloads after transient proxy errors before compiling once.
+      - name: Download build dependencies
+        run: |
+          for attempt in 1 2 3; do
+            if go mod download; then
+              exit 0
+            fi
+            echo "::warning::Dependency download attempt ${attempt}/3 failed"
+          done
+          echo "::error::Dependency downloads failed after three attempts"
+          exit 1
+
       - name: Build ${{ matrix.target }}
         run: CGO_ENABLED=0 go build ./${{ matrix.target }}
 
