@@ -162,6 +162,7 @@ func TestValidateTLSRPTReport(t *testing.T) {
 		_, _, verr := validateTLSRPTReport(makeReport("example.test", tlsRPTMaxPolicies+1))
 		if verr == nil {
 			t.Fatal("over-cap report accepted, want rejection")
+			return
 		}
 		if verr.status != http.StatusRequestEntityTooLarge || verr.code != "too_many_policies" {
 			t.Fatalf("verr = %+v, want status 413 code too_many_policies", verr)
