@@ -4,10 +4,15 @@
 Run: python3 -m unittest discover -s tests/contract -p 'test_gate.py'
 """
 import os
+import re
 import tempfile
 import unittest
 
+import yaml
+
 import gate
+
+ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 
 SPEC = """
 paths:
@@ -74,6 +79,33 @@ class Gate(unittest.TestCase):
             case("coverage: /api/v1/admin/domains > Create a domain > 201 > application/json · body · name missing", False),
         ]
         self.assertEqual(self.run_gate(cases, ["createDomain"]), 1)
+
+
+class PairedRefusals(unittest.TestCase):
+    """vertrag.yml sends a documented 400 or 422 only where the spec pairs it
+    with a request that provokes it (#386), and every one of those."""
+
+    # The operations whose 400 and 422 each have their named request example.
+    PAIRED = {"createDomain", "createAlias", "createPipeline"}
+
+    def test_exclude_matching_sends_exactly_the_paired_refusals(self):
+        spec = yaml.safe_load(open(os.path.join(ROOT, "openapi.yaml")))
+        config = yaml.safe_load(open(os.path.join(ROOT, "vertrag.yml")))
+        patterns = [re.compile(p) for p in config["exclude-matching"]]
+        never = set(config["exclude-operation-id"])
+        sent = set()
+        for path, item in spec["paths"].items():
+            for method in gate.METHODS:
+                op = item.get(method)
+                if op is None or op["operationId"] in never:
+                    continue
+                for status in ("400", "422"):
+                    if status not in op["responses"]:
+                        continue
+                    name = "%s > %s > %s > application/json" % (path, op["summary"], status)
+                    if not any(p.search(name) for p in patterns):
+                        sent.add((op["operationId"], status))
+        self.assertEqual(sent, {(op, status) for op in self.PAIRED for status in ("400", "422")})
 
 
 if __name__ == "__main__":
