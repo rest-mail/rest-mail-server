@@ -20,6 +20,7 @@ import (
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
 	rmime "github.com/restmail/restmail/internal/mime"
@@ -951,7 +952,7 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	} else if req.Address != "" {
-		if err := h.db.Where("address = ? AND active = ?", req.Address, true).First(&mailbox).Error; err != nil {
+		if err := repositories.FindActiveMailboxByAddress(h.db, req.Address, &mailbox); err != nil {
 			respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 			return
 		}
