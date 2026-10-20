@@ -18,6 +18,7 @@ func parseCertFile(t *testing.T, path string) *x509.Certificate {
 	block, _ := pem.Decode(data)
 	if block == nil {
 		t.Fatalf("no PEM in %s", path)
+		return nil
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {

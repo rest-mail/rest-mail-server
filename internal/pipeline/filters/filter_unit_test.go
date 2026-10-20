@@ -184,7 +184,7 @@ func TestUnitSizeCheck_ExactlyAtLimitPasses(t *testing.T) {
 	email := &pipeline.EmailJSON{
 		Headers: pipeline.Headers{
 			From:    []pipeline.Address{{Address: "a@b.c"}}, // len("a@b.c")+0+20 = 25
-			Subject: "",                                      // 0+20 = 20
+			Subject: "",                                     // 0+20 = 20
 		},
 		Body: pipeline.Body{Content: ""},
 	}
@@ -523,11 +523,11 @@ func TestUnitHeaderCleanup_RemovesAllInternalRawHeaders(t *testing.T) {
 	email := unitEmail()
 	email.Headers.Raw = map[string][]string{
 		"X-RestMail-Internal": {"secret-data"},
-		"X-Pipeline-ID":      {"pipe-001"},
-		"X-Queue-ID":         {"queue-999"},
-		"Bcc":                {"bcc-raw@example.com"},
-		"X-Mailer":           {"RestMail/1.0"},
-		"Received":           {"from mx.example.com"},
+		"X-Pipeline-ID":       {"pipe-001"},
+		"X-Queue-ID":          {"queue-999"},
+		"Bcc":                 {"bcc-raw@example.com"},
+		"X-Mailer":            {"RestMail/1.0"},
+		"Received":            {"from mx.example.com"},
 	}
 
 	result, err := f.Execute(context.Background(), email)
@@ -595,6 +595,7 @@ func TestUnitHeaderCleanup_PreservesOtherFields(t *testing.T) {
 	msg := result.Message
 	if msg == nil {
 		t.Fatal("expected non-nil transformed message")
+		return
 	}
 
 	// Other header fields should be unchanged.
