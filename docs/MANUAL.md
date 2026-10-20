@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-20 — Self-service password reset
+An account that set up two-factor authentication can reset a forgotten password itself: `POST /api/v1/auth/recover` with its address, a current code from its authenticator, one of its recovery codes (spent) and the new password (12+ characters). Both factors are required, because mail cannot carry a reset link to someone locked out of the mailbox it would go to; the authenticator is checked first, so a wrong code never spends a recovery code. The account keeps its authenticator, its app passwords are revoked and every session ends, as for a password change, and the answer is a fresh session. Every refusal is the same 401 `recovery_failed`. An account without two-factor authentication has no self-service path: an admin resets it. [§3.3](#33-auth).
+
 ### 2026-10-17 — Mailboxes are the accounts
 There is one kind of account: a mailbox, signing in by its address (`POST /api/v1/auth/login` takes `email`; there are no usernames). Admin users, webmail accounts, linked accounts and the two-factor tables are gone. An account's passwords, authenticator, recovery codes and app passwords are all credentials (0..n of each; an account may have no password), and what it may do comes from grants on it: admins hold roles at `*`, and `GET /api/v1/accounts` lists the session's own account first, then each account it holds a mail grant on, by mailbox id. `POST /api/v1/accounts` creates an account (`mailboxes:write` on its domain) and makes the creator its `owner`; `POST /api/v1/accounts/link` gives `owner` on an existing one by proving its password; unlinking removes the grant. Every gateway signs in through `POST /api/v1/auth/protocol-sign-in`. The first account of a fresh install is `admin@<mailserver.domain>` (`RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS`); the sign-in link, `restmail reset-admin`, `restmail-api mint-token` and the owner endpoints name accounts by address. No migration: a server from before this change is reinstalled from an empty database. [§3.3](#33-auth), [§4.1](#41-rest-api).
 
@@ -669,6 +672,18 @@ Implemented in slices; issue #153 remains open.
 | `ACME_DIRECTORY` | `https://acme-v02.api.letsencrypt.org/directory` | ACME directory URL |
 | `ACME_STAGING` | `false` | Use staging directory |
 
+For manifest deployments using `cert_provider: acme`, `chore instance:certs:issue`
+issues through HTTP-01 and saves the serving pair in the certs volume. Every
+certificate name must resolve to the host, with port 80 reachable during issuance.
+Re-run the task to renew these files. The command preserves a private (0600)
+`.acme-account-<directory-hash>.key` in the same volume and reuses that CA account
+on subsequent runs, including after failed orders. Include this hidden file in
+volume backups. Staging and custom CA directories each use a separate key;
+changing the contact email does not create a new account or update its contact.
+A corrupt account key stops issuance rather than silently creating a new identity.
+This file account storage applies to the instance command; the API's
+`ACME_ENABLED` renewal manager stores certificates in the database separately.
+
 ### 6.3 Gateways
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -876,6 +891,10 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 
 **Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart, set `api.bootstrapAdminPassword` (the chart puts it in the API Secret it makes), or put a `BOOTSTRAP_ADMIN_PASSWORD` key in your own Secret (`api.existingSecret`). Read it back with
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
+
+#### A forgotten password: `POST /api/v1/auth/recover`
+
+An account with two-factor authentication resets its own password with a current authenticator code and one of its recovery codes, both (`email`, `totp_code`, `recovery_code`, `new_password`, optional `client: "native"`). The authenticator stays; app passwords and sessions end; the answer is a new session. Without two-factor authentication there is no self-service path: an admin resets the password, or, for an admin who has lost every way in, the token below.
 
 #### Getting back in, and handing a server over: `restmail reset-admin`
 

@@ -57,6 +57,7 @@ exclude-operation-id:
   - acmeChallenge
   - accountEvents
   - resetAdmin
+  - recoverAccount
   - ownerChallenge
   - ownerToken
   - ownerStatus
@@ -129,6 +130,8 @@ surface:
       reason: "An event stream: it never ends, so there is no response to judge."
     - operation: resetAdmin
       reason: "Needs a single-use token minted by the operator command (restmail-api mint-token) or for an owner key."
+    - operation: recoverAccount
+      reason: "Needs a current code from the account's authenticator and one of its recovery codes; the fixture admin has no 2FA."
     - operation: ownerChallenge
       reason: "Needs an owner key in RESTMAIL_OWNER_KEYS, and a signature over the challenge; the E2E topology has no owner keys."
     - operation: ownerToken

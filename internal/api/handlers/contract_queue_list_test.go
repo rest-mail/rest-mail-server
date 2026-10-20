@@ -53,6 +53,11 @@ func TestListQueue_ContractStatusFilters(t *testing.T) {
 		t.Fatal(tx.Error)
 	}
 	t.Cleanup(func() { tx.Rollback() })
+	// Other packages' tests commit queue rows concurrently; block their writes
+	// until rollback so the counts below see only this test's rows.
+	if err := tx.Exec("LOCK TABLE outbound_queue IN EXCLUSIVE MODE").Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := tx.Where("1 = 1").Delete(&models.OutboundQueue{}).Error; err != nil {
 		t.Fatal(err)
 	}
