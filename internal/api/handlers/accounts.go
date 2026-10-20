@@ -149,12 +149,12 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
 	}
-	address := strings.ToLower(strings.TrimSpace(req.Address))
-	local, domainName, ok := strings.Cut(address, "@")
+	address, addressErr := rmail.CanonicalMailboxAddress(req.Address)
+	local, domainName, _ := strings.Cut(address, "@")
 	problems := map[string]string{}
-	if address == "" {
+	if strings.TrimSpace(req.Address) == "" {
 		problems["address"] = "required"
-	} else if !ok || local == "" || rmail.ValidateAddress(address) != nil || strings.ContainsAny(local, " \t\r\n<>()[],;:\\\"") {
+	} else if addressErr != nil {
 		problems["address"] = "must be a mail address: local@domain"
 	} else if _, err := grants.ParseScope(grants.Mailbox(address)); err != nil {
 		problems["address"] = "must be a mail address: local@domain"
@@ -212,7 +212,9 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	errExists := errors.New("exists")
 	err = h.db.Transaction(func(tx *gorm.DB) error {
 		var count int64
-		if err := tx.Model(&models.Mailbox{}).Where("address = ?", address).Count(&count).Error; err != nil {
+		// Earlier versions could store decomposed local parts. Do not create a
+		// second identity equivalent to one of those existing accounts.
+		if err := tx.Model(&models.Mailbox{}).Where("domain_id = ? AND normalize(address, NFC) = ?", domain.ID, address).Count(&count).Error; err != nil {
 			return err
 		}
 		if count > 0 {
@@ -315,7 +317,7 @@ func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 	// bcrypt comparison against a dummy hash, so an unknown address, an account
 	// with no password and a wrong password take the same time.
 	var account models.Mailbox
-	lookupErr := h.db.Where("address = ?", strings.ToLower(strings.TrimSpace(req.Address))).First(&account).Error
+	lookupErr := repositories.FindMailboxByAddress(h.db, req.Address, &account)
 	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
 		return
