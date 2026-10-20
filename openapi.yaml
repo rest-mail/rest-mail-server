@@ -2718,6 +2718,69 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   # RESTMAIL Protocol
   # ═══════════════════════════════════════════════════════════════
+  /.well-known/restmail:
+    get:
+      operationId: restmailDiscover
+      tags: [RESTMAIL]
+      summary: Discover RESTMAIL delivery for a hosted domain
+      description: |
+        Fetch from the recipient domain's MX host over HTTPS, verifying the
+        certificate against that MX host. The response names the HTTPS base URL
+        for RESTMAIL; append /messages to deliver. The endpoint uses the configured
+        GATEWAY_HOSTNAME, never request Host or forwarding headers. This is a
+        per-domain lookup and reveals no mailbox information. Active hosted
+        domains are supported regardless of their server_type.
+
+        The response is a protocol document without a data envelope. Responses
+        use Cache-Control: no-store. A verified 404 means the domain is not hosted
+        here; configuration or database failures return 503 or 500, never 404.
+        Sender discovery and peer memory are implemented separately.
+      security: []
+      parameters:
+        - name: domain
+          in: query
+          required: true
+          description: Exactly one recipient domain; mailbox addresses are invalid. Case and IDNs are normalized as for domain creation.
+          schema:
+            type: string
+          example: restmail.test
+      responses:
+        "200":
+          description: Delivery base URL for this domain
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [endpoint]
+                additionalProperties: false
+                properties:
+                  endpoint:
+                    type: string
+                    format: uri
+                    pattern: '^https://'
+              example:
+                endpoint: https://restmail.test/restmail
+        "400":
+          description: Missing, duplicate or invalid domain query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          description: Domain lookup failed; retry discovery
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: GATEWAY_HOSTNAME must be configured as a fully qualified hostname
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /restmail/capabilities:
     get:
       operationId: restmailCapabilities
