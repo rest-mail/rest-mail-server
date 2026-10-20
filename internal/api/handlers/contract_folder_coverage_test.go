@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/api/middleware"
+	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	yaml "go.yaml.in/yaml/v2"
@@ -64,6 +65,7 @@ func TestCreateFolder_ContractProbes(t *testing.T) {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
+	router.Post("/api/v1/auth/login", contractSetupLogin(t))
 	router.Post("/api/v1/accounts/{id}/folders", h.CreateFolder)
 	router.Get("/api/v1/accounts/{id}/folders", h.ListFolders)
 	router.Delete("/api/v1/accounts/{id}/folders/{folder}", h.DeleteFolder)
@@ -95,6 +97,27 @@ func TestCreateFolder_ContractProbes(t *testing.T) {
 				t.Errorf("status %d, want %d", result.Status, result.Want)
 			}
 		})
+	}
+}
+
+// These handler-only servers inject claims instead of running authentication.
+// Give the real Python hook a setup session through the same login exchange it
+// uses in E2E; scripts/tests/test_contract_setup_auth.py checks credential isolation.
+func contractSetupLogin(t *testing.T) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode setup sign-in: %v", err)
+			http.Error(w, "invalid sign-in", http.StatusBadRequest)
+			return
+		}
+		if body["email"] != "admin@restmail.test" || body["password"] != "admin123!@" || body["client"] != "native" {
+			t.Errorf("setup sign-in did not use the fixture admin")
+			http.Error(w, "invalid sign-in", http.StatusUnauthorized)
+			return
+		}
+		respond.Data(w, http.StatusOK, map[string]string{"access_token": "handler-test-session"})
 	}
 }
 

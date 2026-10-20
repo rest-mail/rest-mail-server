@@ -47,6 +47,7 @@ func TestCreateContact_ContractProbes(t *testing.T) {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
+	router.Post("/api/v1/auth/login", contractSetupLogin(t))
 	router.Post("/api/v1/accounts/{id}/contacts", h.CreateContact)
 	router.Get("/api/v1/accounts/{id}/contacts", h.ListContacts)
 	router.Delete("/api/v1/accounts/{id}/contacts/{cid}", h.DeleteContact)
