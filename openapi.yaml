@@ -5472,8 +5472,18 @@ paths:
         follows the one before (seq one higher, `prev_hash` its hash) and hashes
         to its own `hash`. Stops at the first entry that does not hold. If the
         log does not start at seq 1, the walk starts from the first entry's own
-        `prev_hash` and says so in `note`. This read is itself recorded
-        (`audit.read`).
+        `prev_hash` and says so in `note`. Given an `anchor` (one entry's seq
+        and hash, a copy kept outside the server), the log must also still
+        hold that entry with that hash; a log rewritten and rehashed from some
+        entry on holds as a chain, but not to an anchor taken before the
+        rewrite. This read is itself recorded (`audit.read`).
+      parameters:
+        - name: anchor
+          in: query
+          description: The anchored entry as `<seq>:<hash>`, its seq and its hash in 64 hex digits
+          schema:
+            type: string
+            pattern: "^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$"
       responses:
         "200":
           description: What the check found
@@ -5493,6 +5503,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   # ═══════════════════════════════════════════════════════════════
   # System / Discovery (no auth)
@@ -8924,6 +8936,16 @@ components:
         note:
           type: string
           description: Set when the log does not start at seq 1
+        anchor:
+          type: object
+          description: The anchor the log was checked against, when one was given
+          required: [seq, hash]
+          properties:
+            seq:
+              type: integer
+              format: int64
+            hash:
+              type: string
 
     # ─────────────────────────────────────────────────────────────
     # Generic helpers

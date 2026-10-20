@@ -6,7 +6,8 @@
 // finds it. Inside REST Mail nothing can change an entry: Postgres refuses
 // UPDATE, DELETE and TRUNCATE on the table. Below REST Mail, whoever runs the
 // database could recompute every hash after an edit; anchoring the latest
-// hash somewhere they do not control is what catches that, and comes later.
+// (seq, hash) somewhere they do not control is what catches that. Verify
+// checks the chain against such an Anchor; publishing anchors comes later.
 package audit
 
 import (
