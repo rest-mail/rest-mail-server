@@ -320,6 +320,8 @@ func accessRoutes(domainID, mailboxID uint) []accessRoute {
 		{"POST", "/api/v1/admin/bans", `{}`, "bans:write"},
 		{"DELETE", "/api/v1/admin/bans/999999", "", "bans:delete"},
 		{"GET", "/api/v1/admin/dkim", "", "domains:read"},
+		{"GET", "/api/v1/admin/dkim/" + d + "/rotation", "", "domains:read"},
+		{"PUT", "/api/v1/admin/dkim/" + d + "/rotation", `{"rotation_interval_days":90}`, "domains:write"},
 		{"GET", "/api/v1/admin/logs/delivery", "", "messages:read"},
 		{"GET", "/api/v1/admin/audit", "", "audit:read"},
 		{"GET", "/api/v1/admin/audit/verify", "", "audit:read"},

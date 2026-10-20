@@ -20,6 +20,11 @@ jobs:
       - name: Check constellation inventory
         run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 
+      - name: Test contract tooling
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 -m unittest discover -s tests/contract -p 'test_*.py'
+
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
