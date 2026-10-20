@@ -72,13 +72,21 @@ JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
 the real handler with no database).
 
-These three operations' 400s and 422s are sent and judged: `vertrag.yml`
-excludes 400 and 422 by path, naming every path segment but the three
-operations' own, rather than everywhere. A transaction sent and refused other
-than as documented fails the examples phase like any other.
-`test_gate.py` checks that the documented 400s and 422s sent are exactly
-those three operations', so an operation paired next comes off those patterns
-in the same change. The statuses stay in `surface.exclude`: the surface gate
+`createBan` (`ip_missing`, `duration_invalid`), `createCustomFilter`
+(`filter_type_invalid`), `validateCustomFilter` (`body_array` with its 400,
+`script_missing` with its 422) and `sendTestEmail` (`from_missing`) are paired
+the same way, each checked against the real handler with no database
+(`contract_ban_examples_test.go`, `contract_customfilter_examples_test.go`,
+`contract_validatejs_examples_test.go`, `contract_validatejs_body400_test.go`,
+`contract_testsend_examples_test.go`).
+
+These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
+400 and 422 by path, naming every path but the paired operations' own,
+rather than everywhere. A transaction sent and refused other than as
+documented fails the examples phase like any other. `test_gate.py` checks
+that the documented 400s and 422s sent are exactly the paired operations'
+(its `PAIRED`), so an operation paired next comes off those patterns in the
+same change. The statuses stay in `surface.exclude`: the surface gate
 cannot take an exclusion off one operation only.
 
 The coverage phase probes every transaction sent, and judges valid-mode probes
