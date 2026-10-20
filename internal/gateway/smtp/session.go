@@ -72,6 +72,8 @@ type session struct {
 	// queue row so the delivery worker never relays 8-bit content to a next hop
 	// that does not advertise 8BITMIME (RFC 6152). Reset on every MAIL.
 	bodyType string
+	// smtpUTF8 applies only to this MAIL transaction, not the connection.
+	smtpUTF8 bool
 }
 
 // tarpitReject records one connection-level rejection (an invalid inbound RCPT
@@ -363,6 +365,9 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 			Message:      "Authentication required",
 		}
 	}
+	if err := validateUTF8Address(from, opts != nil && opts.UTF8, 550); err != nil {
+		return err
+	}
 
 	// A session signed in with an app password holds it only while it lasts:
 	// revoked, or expired, it sends nothing more.
@@ -408,6 +413,7 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 	// Remember the declared BODY= type so the outbound path can honor RFC 6152
 	// (never relay 8-bit content to a 7-bit-only next hop). Reset per transaction.
 	s.bodyType = ""
+	s.smtpUTF8 = opts != nil && opts.UTF8
 	if opts != nil {
 		s.bodyType = string(opts.Body)
 	}
@@ -461,6 +467,9 @@ func (s *session) mayAlsoSendAs(addr string) (bool, error) {
 // always accepted; unknown recipients are accepted for outbound queueing on
 // authenticated submission and rejected 550 on inbound.
 func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
+	if err := validateUTF8Address(to, s.smtpUTF8, 553); err != nil {
+		return err
+	}
 	resp, err := s.api.CheckMailbox(to)
 	if err != nil {
 		// If the API is unreachable, temp fail.
@@ -481,7 +490,7 @@ func (s *session) Rcpt(to string, _ *gosmtp.RcptOptions) error {
 		return &gosmtp.SMTPError{
 			Code:         550,
 			EnhancedCode: gosmtp.EnhancedCode{5, 1, 1},
-			Message:      fmt.Sprintf("No such user - %s", to),
+			Message:      "No such user",
 		}
 	}
 
@@ -521,6 +530,12 @@ func (s *session) Data(r io.Reader) error {
 			EnhancedCode: gosmtp.EnhancedCode{4, 3, 0},
 			Message:      "Error reading message data",
 		}
+	}
+
+	// Validate before parsing, rate accounting, or any delivery/queue write.
+	// The MIME body may contain arbitrary 8-bit data without SMTPUTF8.
+	if err := validateUTF8Headers(data, s.smtpUTF8); err != nil {
+		return err
 	}
 
 	// Per-account submission rate limit (#171): a compromised credential must not
@@ -580,7 +595,7 @@ func (s *session) Data(r io.Reader) error {
 		From:      s.conn.Hostname(),
 		RemoteIP:  extractIP(s.remoteAddr()),
 		By:        s.hostname,
-		With:      receivedWith(isTLS, s.authenticated),
+		With:      receivedWith(isTLS, s.authenticated, s.smtpUTF8),
 		ID:        rmail.GenerateQueueID(),
 		For:       singleRecipient(s.rcptTo),
 		Timestamp: time.Now(),
@@ -781,6 +796,8 @@ func (s *session) Data(r io.Reader) error {
 func (s *session) Reset() {
 	s.mailFrom = ""
 	s.rcptTo = nil
+	s.bodyType = ""
+	s.smtpUTF8 = false
 }
 
 // Logout is called when the connection is closed.
