@@ -3,6 +3,7 @@
 // server actually reads, or a "successful" rotation silently breaks signing/login:
 //
 //   - domains.dkim_private_key   — the live DKIM signing keys (dkim:v1: form)
+//   - dkim_rotation_keys.private_key — staged and previous DKIM keys
 //   - credentials.encrypted_secret — TOTP secrets
 //   - certificates.key_pem        — ACME/TLS private keys
 package main
@@ -64,9 +65,9 @@ func main() {
 		log.Fatalf("key rotation failed: %v", err)
 	}
 
-	fmt.Printf("\nMaster key rotation complete: %d domain DKIM keys, %d 2FA secrets, "+
+	fmt.Printf("\nMaster key rotation complete: %d domain DKIM keys, %d rotation DKIM keys, %d 2FA secrets, "+
 		"%d certificates processed.\n",
-		summary.DomainDKIM, summary.TwoFactor, summary.Certificates)
+		summary.DomainDKIM, summary.RotationDKIM, summary.TwoFactor, summary.Certificates)
 	if summary.Failures > 0 {
 		fmt.Printf("WARNING: %d secrets could not be decrypted with the old key and were left "+
 			"untouched (see warnings above).\n", summary.Failures)
@@ -77,6 +78,7 @@ func main() {
 // rotateSummary counts what a rotation touched.
 type rotateSummary struct {
 	DomainDKIM   int
+	RotationDKIM int
 	TwoFactor    int
 	Certificates int
 	Failures     int
@@ -96,6 +98,11 @@ func rotate(database *gorm.DB, oldKey, newKey string) (rotateSummary, error) {
 	}
 	s.Failures += failures
 
+	if s.RotationDKIM, failures, err = rotateRotationDKIM(database, oldKey, newKey); err != nil {
+		return s, err
+	}
+	s.Failures += failures
+
 	if s.TwoFactor, failures, err = rotateTwoFactorSecrets(database, oldKey, newKey); err != nil {
 		return s, err
 	}
@@ -107,6 +114,32 @@ func rotate(database *gorm.DB, oldKey, newKey string) (rotateSummary, error) {
 	s.Failures += failures
 
 	return s, nil
+}
+
+// rotateRotationDKIM keeps pending activation and rollback keys readable after
+// a master-key change, without changing their publication/retirement metadata.
+func rotateRotationDKIM(database *gorm.DB, oldKey, newKey string) (processed, failures int, err error) {
+	var keys []models.DKIMRotationKey
+	if err := database.Find(&keys).Error; err != nil {
+		return 0, 0, fmt.Errorf("query DKIM rotation keys: %w", err)
+	}
+	for i := range keys {
+		key := &keys[i]
+		plain, err := models.LoadDKIMPrivateKey(key.PrivateKey, oldKey)
+		if err != nil {
+			log.Printf("WARN: failed to decrypt DKIM rotation key (id=%d, domain=%d)", key.ID, key.DomainID)
+			failures++
+			continue
+		}
+		if err := key.SetPrivateKey(plain, newKey); err != nil {
+			return processed, failures, fmt.Errorf("re-encrypt DKIM rotation key id=%d: %w", key.ID, err)
+		}
+		if err := database.Model(key).Update("private_key", key.PrivateKey).Error; err != nil {
+			return processed, failures, fmt.Errorf("update DKIM rotation key id=%d: %w", key.ID, err)
+		}
+		processed++
+	}
+	return processed, failures, nil
 }
 
 // rotateDomainDKIM re-encrypts domains.dkim_private_key — the live DKIM signing

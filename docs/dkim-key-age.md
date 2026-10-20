@@ -66,5 +66,36 @@ Installing or deleting a signing key preserves the saved interval.
 
 These endpoints persist policy for the planned worker; **scheduled rotation is
 not implemented yet**. A nonzero interval does not currently generate keys,
-publish DNS records or switch signing. The rotation worker, staged and previous
-keys, DNS TTL handling, rollback and rotation status remain tracked in #151.
+publish DNS records or switch signing. The rotation worker, use of staged and
+previous keys, DNS TTL handling, rollback and rotation status remain tracked
+in #151.
+
+## Durable rotation key slots
+
+The additive startup migration creates `dkim_rotation_keys` for the planned
+worker. The current signing key stays in `domains`; writing a rotation row
+cannot change signing. There are no worker or HTTP operations on these slots
+yet.
+
+Each domain can retain one `staged` key and one `previous` key. A database
+constraint rejects other slots, and unique indexes prevent duplicate slots or
+reuse of a selector (case-insensitively) across these two slots for the same
+domain. Each row stores its selector, private key, original installation time
+(nullable for legacy keys), DNS publication time, DNS TTL in seconds, retirement deadline and row
+creation/update times. An unpublished key has a null publication time. A staged
+key has no retirement deadline; a previous key requires one. TTLs must be
+between 1 and 2147483647 seconds. These fields record state; the future worker
+must enforce the waits and verify propagation before activation.
+
+Private material uses the existing `dkim:v1:` encryption helpers and is excluded
+from JSON. The model's `SetPrivateKey` helper follows the current key's
+`MASTER_KEY` policy, including the existing development mode without encryption.
+The `rotate-key` command re-encrypts both slots along with current DKIM keys,
+preserving lifecycle metadata and leaving undecryptable rows untouched while
+reporting a failure count. An explicit cascading foreign key removes the slots
+when their domain is deleted. No existing domain or key is backfilled or
+changed by the migration.
+
+Activation, retirement and rollback transactions still need to be implemented.
+They must lock the domain, keep staged/previous selectors distinct from the
+current selector, and preserve published records throughout their TTL overlap.
