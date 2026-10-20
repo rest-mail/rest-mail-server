@@ -484,6 +484,13 @@ then falls back to the public Go proxy and direct downloads for new dependencies
 Certificate, attachment, and log mounts retain their existing permissions and
 locations. These dev flags do not change the `prod` launch commands.
 
+The webmail and admin Vite dev containers also use a read-only root
+filesystem, with a 128 MiB non-executable tmpfs at `/tmp`. Their source overlay
+at `/app` and named `/app/node_modules` volume stay writable for generated
+routes and Vite caches. The separate dependency installer still populates the
+modules volume before startup. Scratch space counts toward the existing memory
+limit and resets when the container is recreated.
+
 Every container has its own `tasks/<service>.yml`, so you can iterate on one service without restarting the whole stack. `MODE=dev` (the default) builds dev-target images with hot-reload bind mounts; `MODE=prod` builds the prod target with no bind mounts.
 
 ### Code Quality
