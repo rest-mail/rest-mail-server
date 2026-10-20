@@ -262,6 +262,9 @@ func TestListDKIMKeys_ReportsKnownAndUnknownAgeWithoutPrivateMaterial(t *testing
 func TestSetDKIMKey_TracksInstallationAndDeleteClearsAge(t *testing.T) {
 	gdb := openAuthzTestDB(t)
 	tx, domain := seedDKIMDomain(t, gdb)
+	if err := tx.Model(&domain).Update("dkim_rotation_interval_days", 90).Error; err != nil {
+		t.Fatal(err)
+	}
 	key, _, err := dkim.GenerateKey(2048)
 	if err != nil {
 		t.Fatal(err)
@@ -301,6 +304,9 @@ func TestSetDKIMKey_TracksInstallationAndDeleteClearsAge(t *testing.T) {
 	if stored.DKIMCreatedAt == nil || !stored.DKIMCreatedAt.Equal(created) || !models.DKIMKeyIsEncrypted(stored.DKIMPrivateKey) {
 		t.Fatal("re-import lost key age or encryption")
 	}
+	if stored.DKIMRotationIntervalDays != 90 {
+		t.Fatal("re-import changed rotation policy")
+	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/dkim/"+fmt.Sprint(domain.ID), nil)
 	rctx := chi.NewRouteContext()
@@ -317,5 +323,8 @@ func TestSetDKIMKey_TracksInstallationAndDeleteClearsAge(t *testing.T) {
 	}
 	if stored.DKIMCreatedAt != nil || stored.DKIMSelector != "" || stored.DKIMPrivateKey != "" {
 		t.Fatal("delete retained key metadata")
+	}
+	if stored.DKIMRotationIntervalDays != 90 {
+		t.Fatal("delete changed rotation policy")
 	}
 }
