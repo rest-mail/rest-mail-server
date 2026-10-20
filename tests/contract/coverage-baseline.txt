@@ -31,7 +31,6 @@ getQueueEntry
 importContacts
 listContacts
 listPipelineLogs
-listTlsReports
 logout
 probeServices
 putSieveScript
