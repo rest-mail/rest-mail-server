@@ -409,6 +409,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// mint-token) or for an owner key: reset an admin who has lost every way
 	// in. Throttled like login: it guesses at a secret.
 	r.With(authThrottle, auditLog("auth.reset", middleware.AuditStartedSession())).Post("/api/v1/auth/reset", authH.Reset)
+	// Self-service password reset with the authenticator and a recovery code
+	// the account set up in advance (#124). Throttled like login.
+	r.With(authThrottle, auditLog("auth.recover", middleware.AuditStartedSession())).Post("/api/v1/auth/recover", authH.Recover)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
