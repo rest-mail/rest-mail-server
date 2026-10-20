@@ -170,6 +170,9 @@ surface:
       reason: "a rate limit: not reachable in a contract run"
     - status: "503"
       reason: "an unavailable sidecar: not reachable in a contract run"
+    - operation: restmailDiscover
+      status: "500"
+      reason: "Discovery's database-outage response needs a fault-injected database."
     - operation: login
       status: "401"
       reason: "a 401 for a wrong credential on an operation that takes none (#386)"
