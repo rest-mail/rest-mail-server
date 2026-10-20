@@ -22,13 +22,20 @@ type Domain struct {
 	// DKIMCreatedAt is when the current key was installed, not the domain age.
 	// Legacy keys have no known installation time and remain NULL.
 	DKIMCreatedAt *time.Time `json:"-"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	// DKIMRotationIntervalDays is the requested key lifetime; zero disables
+	// scheduled rotation. Exposed only through the DKIM settings API.
+	DKIMRotationIntervalDays int       `gorm:"not null;default:0;check:dkim_rotation_interval_range,dkim_rotation_interval_days >= 0 AND dkim_rotation_interval_days <= 3650" json:"-"`
+	CreatedAt                time.Time `json:"created_at"`
+	UpdatedAt                time.Time `json:"updated_at"`
 
 	// Associations
 	Mailboxes []Mailbox `gorm:"foreignKey:DomainID" json:"mailboxes,omitempty"`
 	Aliases   []Alias   `gorm:"foreignKey:DomainID" json:"aliases,omitempty"`
 }
+
+// MaxDKIMRotationIntervalDays bounds configuration and keeps conversion to a
+// time.Duration safe. Keep the domains check constraint in sync.
+const MaxDKIMRotationIntervalDays = 3650
 
 // A domain's sending policies (Domain.SendingPolicy, #144).
 const (
