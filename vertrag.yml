@@ -83,9 +83,10 @@ exclude-matching:
   - '> 403( >|$)'
   # Each needs a request of its own that provokes it (a named request example
   # paired with a named response example), which the spec does not have yet:
-  # #386. An error response that has its pair stays excluded all the same:
-  # the coverage phase probes every transaction sent, and valid-mode probes
-  # built from a refused request are refused too, which it counts as failures
+  # #386. An error response that has its pair is still excluded here: the
+  # coverage phase probes every transaction sent, and valid-mode probes built
+  # from a refused request are refused too. tests/contract/gate.py does not
+  # judge those, so each pair can come off this pattern next
   # (tests/contract/README.md).
   - '> (400|404|409|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
