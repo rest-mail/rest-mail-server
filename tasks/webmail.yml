@@ -106,7 +106,9 @@ tasks:
         # capabilities — nothing here binds a privileged port, since prod runs
         # the unprivileged nginx image on :8080 as uid 101 and the dev Vite
         # server listens on :3000 — plus pid/mem/cpu ceilings. Serves static
-        # assets only, no secrets in env.
+        # assets only, no secrets in env. Dev keeps source and node_modules
+        # writable for Vite (including generated routes and caches), with a
+        # read-only rootfs and bounded, non-executable /tmp scratch space.
         HARDENING="--security-opt no-new-privileges:true \
           --cap-drop ALL \
           --pids-limit 512 --memory 1g --cpus 1.5"
@@ -128,6 +130,8 @@ tasks:
             --restart unless-stopped \
             --network {{.WEBMAIL_NETWORK}} \
             --ip {{.WEBMAIL_IP}} \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777 \
             -v "$(pwd)/webmail:/app" \
             -v {{.WEBMAIL_MODULES_VOLUME}}:/app/node_modules \
             -e VITE_BASE_PATH={{.WEBMAIL_BASE_PATH}} \
