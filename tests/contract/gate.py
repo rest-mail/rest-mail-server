@@ -14,7 +14,10 @@ Coverage phase, a ratchet: tests/contract/coverage-baseline.txt lists the
 operations whose boundary probes still fail (#388). A failing probe on any
 operation not in the baseline fails the gate, and so does an operation in the
 baseline whose probes all pass now: the fix takes it out of the baseline in the
-same change. So the baseline only shrinks.
+same change. So the baseline only shrinks. A probe built from a documented
+refusal (a transaction whose status is 4xx) is not judged: its request is the
+refused one, so a valid-mode probe built from it is refused too, which says
+nothing about the operation's validation (#386).
 
 Usage: gate.py <openapi.yaml> <vertrag.yml> <junit.xml> <coverage-baseline.txt>
        gate.py --failing-probes <openapi.yaml> <junit.xml>
@@ -62,11 +65,18 @@ def baseline(path):
     return ids
 
 
+def refusal(status):
+    """Whether a documented status is a refusal (4xx): a probe built from its
+    transaction starts from a request the operation already refuses."""
+    return status[:1] == "4"
+
+
 def results(report_path, ops):
-    """Which operations were probed, and which had a probe fail.
+    """Which operations were probed, and which had a probe fail, counting only
+    probes built from a transaction that is not a refusal.
 
     A probe is named "coverage: <path> > <summary> > <status>[ > <type>] ·
-    <where> · <what>".
+    <where> · <what>", the transaction it was built from first.
     """
     probed, probes_failed = set(), set()
     for case in ET.parse(report_path).getroot().iter("testcase"):
@@ -75,7 +85,7 @@ def results(report_path, ops):
             continue
         parts = name[len(PROBE):].split(" · ", 1)[0].split(" > ")
         op = ops.get((parts[0], parts[1])) if len(parts) >= 3 else None
-        if op is None:
+        if op is None or refusal(parts[2]):
             continue
         probed.add(op)
         if any(case.find(tag) is not None for tag in ("failure", "error")):
