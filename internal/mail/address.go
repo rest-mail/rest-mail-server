@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"unicode/utf8"
 )
 
 // ContainsControlChar reports whether s contains an ASCII control character
@@ -49,12 +50,15 @@ func SanitizeHeaderValue(s string) string {
 
 // ValidateAddress rejects an address that cannot be safely written into a
 // message header or an SMTP envelope command. It rejects the empty string, any
-// address containing a control character (defeating CR/LF header- and
+// invalid UTF-8, any address containing a control character (defeating CR/LF header- and
 // SMTP-command injection), and any address that net/mail cannot parse as a
 // single RFC 5322 address. It is the validation applied at the API boundary to
 // every recipient / Cc / Bcc / From / organizer address before the address is
 // serialized into headers or queued for delivery.
 func ValidateAddress(addr string) error {
+	if !utf8.ValidString(addr) {
+		return errors.New("invalid address encoding")
+	}
 	if strings.TrimSpace(addr) == "" {
 		return errors.New("empty address")
 	}

@@ -52,19 +52,20 @@ func relayTestCertificate(t *testing.T, mismatch bool) (tls.Certificate, *x509.C
 }
 
 type relayPeerOptions struct {
-	implicit       bool
-	noSTARTTLS     bool
-	breakTLS       bool
-	noAUTH         bool
-	no8BIT         bool
-	noUTF8         bool
-	requireAUTH    bool
-	rejectAt       string
-	reply          string
-	silentAt       string
-	preTLSAUTH     bool
-	authChallenge  string
-	authMechanisms string
+	implicit          bool
+	noSTARTTLS        bool
+	breakTLS          bool
+	noAUTH            bool
+	no8BIT            bool
+	noUTF8            bool
+	utf8BeforeTLSOnly bool
+	requireAUTH       bool
+	rejectAt          string
+	reply             string
+	silentAt          string
+	preTLSAUTH        bool
+	authChallenge     string
+	authMechanisms    string
 }
 
 type relayPeerResult struct {
@@ -160,7 +161,7 @@ func relayTestPeer(t *testing.T, cert tls.Certificate, opts relayPeerOptions) (r
 				if !opts.no8BIT {
 					caps = append(caps, "8BITMIME")
 				}
-				if !opts.noUTF8 {
+				if !opts.noUTF8 && (!opts.utf8BeforeTLSOnly || !tlsActive) {
 					caps = append(caps, "SMTPUTF8")
 				}
 				for i, capability := range caps {

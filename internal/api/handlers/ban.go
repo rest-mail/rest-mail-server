@@ -27,6 +27,19 @@ func (h *BanHandler) ListBans(w http.ResponseWriter, r *http.Request) {
 	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
 		return
 	}
+	params := r.URL.Query()
+	if params.Has("protocol") {
+		switch params.Get("protocol") {
+		case "smtp", "imap", "pop3", "all":
+		default:
+			respond.ValidationError(w, map[string]string{"protocol": "protocol must be one of smtp, imap, pop3, all"})
+			return
+		}
+	}
+	if params.Has("active") && params.Get("active") != "true" && params.Get("active") != "false" {
+		respond.ValidationError(w, map[string]string{"active": "must be true or false"})
+		return
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
