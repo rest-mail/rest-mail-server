@@ -237,6 +237,15 @@ func (h *TLSReportHandler) ListReports(w http.ResponseWriter, r *http.Request) {
 	if !validateIntegerQuery(w, r, 200, "limit", "offset") {
 		return
 	}
+	params := r.URL.Query()
+	if params.Has("policy_type") {
+		switch params.Get("policy_type") {
+		case "sts", "tlsa", "no-policy":
+		default:
+			respond.ValidationError(w, map[string]string{"policy_type": "must be one of sts, tlsa, no-policy"})
+			return
+		}
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
