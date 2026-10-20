@@ -24,6 +24,7 @@ func TestNew(t *testing.T) {
 	c := New("http://localhost:8080")
 	if c == nil {
 		t.Fatal("expected non-nil client")
+		return
 	}
 	if c.baseURL != "http://localhost:8080" {
 		t.Fatalf("expected baseURL 'http://localhost:8080', got %q", c.baseURL)
