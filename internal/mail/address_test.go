@@ -19,6 +19,8 @@ func TestValidateAddress_RejectsCRLFInjection(t *testing.T) {
 		"",
 		"   ",
 		"not-an-address",
+		"us\xffer@example.com",
+		"user@ex\xffample.com",
 	}
 	for _, a := range rejected {
 		if err := ValidateAddress(a); err == nil {
@@ -30,6 +32,8 @@ func TestValidateAddress_RejectsCRLFInjection(t *testing.T) {
 		"user@example.com",
 		"First Last <user@example.com>",
 		"mailer-daemon@mx.example.org",
+		"用户@例え.jp",
+		"München <münchen@städte.de>",
 	}
 	for _, a := range accepted {
 		if err := ValidateAddress(a); err != nil {

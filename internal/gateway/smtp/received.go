@@ -1,26 +1,27 @@
 package smtp
 
 // receivedWith returns the RFC 3848 "with" protocol keyword recorded in the
-// Received header for a reception, given the connection's transport security and
-// whether the client authenticated. go-smtp always speaks the extended (EHLO)
-// protocol, so the base keyword is ESMTP; the S and A suffixes are added for a
+// Received header for a reception, given the connection's transport security,
+// authentication, and transaction's SMTPUTF8 parameter. The base keyword is
+// ESMTP, or UTF8SMTP (RFC 6531); the S and A suffixes are added for a
 // TLS-protected and/or authenticated session:
 //
 //	ESMTP    plain, unauthenticated (inbound MX, no STARTTLS)
 //	ESMTPS   TLS, unauthenticated
 //	ESMTPA   authenticated, no TLS
 //	ESMTPSA  TLS + authenticated (typical submission)
-func receivedWith(isTLS, authenticated bool) string {
-	switch {
-	case isTLS && authenticated:
-		return "ESMTPSA"
-	case isTLS:
-		return "ESMTPS"
-	case authenticated:
-		return "ESMTPA"
-	default:
-		return "ESMTP"
+func receivedWith(isTLS, authenticated, smtpUTF8 bool) string {
+	protocol := "ESMTP"
+	if smtpUTF8 {
+		protocol = "UTF8SMTP"
 	}
+	if isTLS {
+		protocol += "S"
+	}
+	if authenticated {
+		protocol += "A"
+	}
+	return protocol
 }
 
 // singleRecipient returns the sole recipient of a transaction, or "" when there
