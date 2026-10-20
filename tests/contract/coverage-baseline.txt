@@ -30,7 +30,6 @@ getMailbox
 getQueueEntry
 importContacts
 listContacts
-listPipelineLogs
 logout
 probeServices
 putSieveScript

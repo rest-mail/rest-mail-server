@@ -3019,6 +3019,14 @@ paths:
               operationId: setDKIMKey
               parameters:
                 id: '$response.body#/data/id'
+            getDKIMRotation:
+              operationId: getDKIMRotation
+              parameters:
+                id: '$response.body#/data/id'
+            setDKIMRotation:
+              operationId: setDKIMRotation
+              parameters:
+                id: '$response.body#/data/id'
             domainDNSCheck:
               operationId: domainDNSCheck
               parameters:
@@ -4879,6 +4887,92 @@ paths:
                     items:
                       $ref: "#/components/schemas/DKIMEntry"
 
+  /api/v1/admin/dkim/{id}/rotation:
+    parameters:
+      - $ref: "#/components/parameters/ResourceId"
+    get:
+      operationId: getDKIMRotation
+      tags: ["Admin: DKIM"]
+      security:
+        - CookieAuth: [domains:read]
+        - BearerAuth: [domains:read]
+      summary: Read a domain's DKIM rotation interval
+      description: >
+        Available even before a domain has a signing key. The capability must
+        cover this domain. This records policy for the planned rotation worker;
+        scheduled key rotation is not implemented yet.
+      responses:
+        "200":
+          description: DKIM rotation settings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DKIMRotationSettings"
+        "400":
+          description: Invalid domain ID (`bad_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: setDKIMRotation
+      tags: ["Admin: DKIM"]
+      security:
+        - CookieAuth: [domains:write]
+        - BearerAuth: [domains:write]
+      summary: Set a domain's DKIM rotation interval
+      description: >
+        Stores the requested interval without changing signing material or key
+        age. Zero disables rotation; 1 through 3650 specifies the key lifetime
+        in days of 24 hours. The capability must cover this domain. This records
+        policy for the planned rotation worker; scheduled key rotation is not
+        implemented yet. Unknown fields and trailing JSON are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [rotation_interval_days]
+              properties:
+                rotation_interval_days:
+                  type: integer
+                  minimum: 0
+                  maximum: 3650
+                  example: 90
+      responses:
+        "200":
+          description: DKIM rotation settings saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DKIMRotationSettings"
+        "400":
+          description: Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Missing, null, or out-of-range interval (`validation_failed`); details.fields.rotation_interval_days describes the requirement.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+
   /api/v1/admin/dkim/{id}:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
@@ -5423,8 +5517,18 @@ paths:
         follows the one before (seq one higher, `prev_hash` its hash) and hashes
         to its own `hash`. Stops at the first entry that does not hold. If the
         log does not start at seq 1, the walk starts from the first entry's own
-        `prev_hash` and says so in `note`. This read is itself recorded
-        (`audit.read`).
+        `prev_hash` and says so in `note`. Given an `anchor` (one entry's seq
+        and hash, a copy kept outside the server), the log must also still
+        hold that entry with that hash; a log rewritten and rehashed from some
+        entry on holds as a chain, but not to an anchor taken before the
+        rewrite. This read is itself recorded (`audit.read`).
+      parameters:
+        - name: anchor
+          in: query
+          description: The anchored entry as `<seq>:<hash>`, its seq and its hash in 64 hex digits
+          schema:
+            type: string
+            pattern: "^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$"
       responses:
         "200":
           description: What the check found
@@ -5444,6 +5548,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   # ═══════════════════════════════════════════════════════════════
   # System / Discovery (no auth)
@@ -8642,6 +8748,20 @@ components:
           created_at: null
           age_seconds: null
 
+    DKIMRotationSettings:
+      type: object
+      required: [domain_id, rotation_interval_days]
+      properties:
+        domain_id:
+          type: integer
+          example: 1
+        rotation_interval_days:
+          type: integer
+          minimum: 0
+          maximum: 3650
+          description: Requested key lifetime in 24-hour days; zero disables rotation. Defaults to zero for new and existing domains. The scheduled worker is not implemented yet.
+          example: 90
+
     SetDKIMKeyRequest:
       type: object
       required: [selector, private_key]
@@ -8861,6 +8981,16 @@ components:
         note:
           type: string
           description: Set when the log does not start at seq 1
+        anchor:
+          type: object
+          description: The anchor the log was checked against, when one was given
+          required: [seq, hash]
+          properties:
+            seq:
+              type: integer
+              format: int64
+            hash:
+              type: string
 
     # ─────────────────────────────────────────────────────────────
     # Generic helpers

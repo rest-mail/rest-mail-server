@@ -35,3 +35,36 @@ process metrics; key inventory is exported only by the API process.
 The nullable `domains.dkim_created_at` column is added by the API's existing
 additive migration on startup. There is no backfill or configuration change.
 Key rotation, DNS publishing and alert rules are separate work tracked in #151.
+
+## Per-domain rotation policy
+
+`GET /api/v1/admin/dkim/{id}/rotation` returns the domain's saved settings:
+
+```json
+{"data":{"domain_id":1,"rotation_interval_days":90}}
+```
+
+`PUT /api/v1/admin/dkim/{id}/rotation` accepts a single JSON object:
+
+```json
+{"rotation_interval_days":90}
+```
+
+The integer is a requested key lifetime in days of 24 hours. Zero disables
+rotation; values from 1 through 3650 are accepted. Missing, null, negative and
+out-of-range values return 422 with `details.fields.rotation_interval_days`.
+Malformed JSON, noninteger values, unknown fields and trailing JSON return 400.
+Reading requires `domains:read`, writing requires `domains:write`, and the
+grant must cover the requested domain. Settings can be saved before a signing
+key is installed. Responses contain only the domain ID and the interval.
+
+The API's additive startup migration adds `domains.dkim_rotation_interval_days`
+with a non-null default of zero and a database range constraint. New and
+existing domains therefore start with rotation disabled. Changing the interval
+preserves the current selector, encrypted key and installation timestamp.
+Installing or deleting a signing key preserves the saved interval.
+
+These endpoints persist policy for the planned worker; **scheduled rotation is
+not implemented yet**. A nonzero interval does not currently generate keys,
+publish DNS records or switch signing. The rotation worker, staged and previous
+keys, DNS TTL handling, rollback and rotation status remain tracked in #151.

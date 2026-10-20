@@ -671,6 +671,18 @@ Implemented in slices; issue #153 remains open.
 | `ACME_DIRECTORY` | `https://acme-v02.api.letsencrypt.org/directory` | ACME directory URL |
 | `ACME_STAGING` | `false` | Use staging directory |
 
+For manifest deployments using `cert_provider: acme`, `chore instance:certs:issue`
+issues through HTTP-01 and saves the serving pair in the certs volume. Every
+certificate name must resolve to the host, with port 80 reachable during issuance.
+Re-run the task to renew these files. The command preserves a private (0600)
+`.acme-account-<directory-hash>.key` in the same volume and reuses that CA account
+on subsequent runs, including after failed orders. Include this hidden file in
+volume backups. Staging and custom CA directories each use a separate key;
+changing the contact email does not create a new account or update its contact.
+A corrupt account key stops issuance rather than silently creating a new identity.
+This file account storage applies to the instance command; the API's
+`ACME_ENABLED` renewal manager stores certificates in the database separately.
+
 ### 6.3 Gateways
 | Variable | Default | Purpose |
 |----------|---------|---------|

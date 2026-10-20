@@ -817,6 +817,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// DKIM key management (domain signing material → domains:* capabilities)
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/dkim", dkimH.ListKeys)
+		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/dkim/{id}/rotation", dkimH.GetRotation)
+		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/dkim/{id}/rotation", dkimH.SetRotation)
 		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
 		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
 

@@ -276,4 +276,27 @@ func TestVerifyDB_AcrossBatches(t *testing.T) {
 	if !res.OK || res.Checked != verifyBatch+5 || res.LastSeq != verifyBatch+5 {
 		t.Fatalf("verify: %+v", res)
 	}
+
+	// An anchor in the second batch is found there, and an anchor past the
+	// end is reported once the last batch is read.
+	var anchored models.AuditEntry
+	if err := db.Where("seq = ?", verifyBatch+2).First(&anchored).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		anchor Anchor
+		ok     bool
+	}{
+		{Anchor{Seq: anchored.Seq, Hash: anchored.Hash}, true},
+		{Anchor{Seq: anchored.Seq, Hash: GenesisHash}, false},
+		{Anchor{Seq: verifyBatch + 6, Hash: anchored.Hash}, false},
+	} {
+		res, err := VerifyDBAnchored(db, &tc.anchor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.OK != tc.ok || (!tc.ok && (res.BrokenAtSeq == nil || *res.BrokenAtSeq != tc.anchor.Seq)) {
+			t.Errorf("anchor %+v: %+v", tc.anchor, res)
+		}
+	}
 }

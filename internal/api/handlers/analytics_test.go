@@ -151,8 +151,8 @@ func TestPipelineAnalytics_WindowSum(t *testing.T) {
 	}
 
 	now := time.Now().UTC().Truncate(time.Hour)
-	inA := now.Add(-1 * time.Hour) // in a 24h window
-	inB := now.Add(-2 * time.Hour) // same series as inA, different bucket → sums
+	inA := now.Add(-1 * time.Hour)  // in a 24h window
+	inB := now.Add(-2 * time.Hour)  // same series as inA, different bucket → sums
 	out := now.Add(-48 * time.Hour) // outside a 24h window → excluded
 
 	// tls received: two in-window buckets (30+20=50) plus one out-of-window (999).
