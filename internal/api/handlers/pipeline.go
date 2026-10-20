@@ -168,6 +168,31 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 	if !validateIntegerQuery(w, r, 200, "pipeline_id", "limit", "offset") {
 		return
 	}
+	params := r.URL.Query()
+	if params.Has("direction") {
+		switch params.Get("direction") {
+		case "inbound", "outbound":
+		default:
+			respond.ValidationError(w, map[string]string{"direction": "must be one of inbound, outbound"})
+			return
+		}
+	}
+	if params.Has("action") {
+		switch params.Get("action") {
+		case "continue", "reject", "quarantine", "discard", "defer":
+		default:
+			respond.ValidationError(w, map[string]string{"action": "must be one of continue, reject, quarantine, discard, defer"})
+			return
+		}
+	}
+	if params.Has("outcome") {
+		switch params.Get("outcome") {
+		case "delivered", "queued", "rejected", "quarantined", "discarded", "deferred":
+		default:
+			respond.ValidationError(w, map[string]string{"outcome": "must be one of delivered, queued, rejected, quarantined, discarded, deferred"})
+			return
+		}
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l
