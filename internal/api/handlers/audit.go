@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -123,12 +123,11 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Verify walks the whole chain from its lowest seq and reports whether every
 // entry holds, or the first that does not.
-// GET /api/v1/admin/audit/verify?anchor_seq=&anchor_hash=
+// GET /api/v1/admin/audit/verify?anchor=<seq>:<hash>
 //
-// Given an anchor (both parameters, a (seq, hash) kept outside the server),
-// the chain must also still hold that entry with that hash: a log rewritten
-// and rehashed by whoever owns the database holds as a chain, but not to the
-// anchor.
+// Given an anchor (a (seq, hash) kept outside the server), the chain must also
+// still hold that entry with that hash: a log rewritten and rehashed by
+// whoever owns the database holds as a chain, but not to the anchor.
 func (h *AuditHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	anchor, invalid := parseAuditAnchor(r)
 	if len(invalid) > 0 {
@@ -144,25 +143,21 @@ func (h *AuditHandler) Verify(w http.ResponseWriter, r *http.Request) {
 	respond.Data(w, http.StatusOK, res)
 }
 
-// parseAuditAnchor reads an optional anchor: anchor_seq and anchor_hash, both
-// or neither. The hash is 64 hex digits, either case.
+// auditAnchorPattern is the anchor parameter's pattern in openapi.yaml.
+var auditAnchorPattern = regexp.MustCompile(`^([1-9][0-9]{0,17}):([0-9a-fA-F]{64})$`)
+
+// parseAuditAnchor reads an optional anchor, "<seq>:<hash>": seq a positive
+// whole number, hash 64 hex digits, either case. One parameter rather than two
+// so the pair cannot be half given.
 func parseAuditAnchor(r *http.Request) (*audit.Anchor, map[string]string) {
-	q := r.URL.Query()
-	seqParam, hashParam := q.Get("anchor_seq"), q.Get("anchor_hash")
-	if seqParam == "" && hashParam == "" {
+	param := r.URL.Query().Get("anchor")
+	if param == "" {
 		return nil, nil
 	}
-	invalid := map[string]string{}
-	seq, err := strconv.ParseInt(seqParam, 10, 64)
-	if err != nil || seq <= 0 {
-		invalid["anchor_seq"] = "must be a positive whole number, given with anchor_hash"
+	m := auditAnchorPattern.FindStringSubmatch(param)
+	if m == nil {
+		return nil, map[string]string{"anchor": "must be <seq>:<hash>, a positive whole number and 64 hex digits"}
 	}
-	hash := strings.ToLower(hashParam)
-	if b, err := hex.DecodeString(hash); err != nil || len(b) != 32 {
-		invalid["anchor_hash"] = "must be 64 hex digits, given with anchor_seq"
-	}
-	if len(invalid) > 0 {
-		return nil, invalid
-	}
-	return &audit.Anchor{Seq: seq, Hash: hash}, nil
+	seq, _ := strconv.ParseInt(m[1], 10, 64) // at most 18 digits: fits
+	return &audit.Anchor{Seq: seq, Hash: strings.ToLower(m[2])}, nil
 }

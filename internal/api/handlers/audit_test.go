@@ -175,11 +175,11 @@ func TestAuditAPI_Verify(t *testing.T) {
 	}
 	// The latest (seq, hash), as an anchor kept outside the server, holds; in
 	// capitals too.
-	anchor := fmt.Sprintf("anchor_seq=%d&anchor_hash=%s", res.LastSeq, strings.ToUpper(res.LastHash))
+	anchor := fmt.Sprintf("anchor=%d:%s", res.LastSeq, strings.ToUpper(res.LastHash))
 	if a := verify(anchor); !a.OK || a.Anchor == nil || a.Anchor.Seq != 3 || a.Anchor.Hash != res.LastHash {
 		t.Fatalf("against its own anchor: %+v", a)
 	}
-	if a := verify("anchor_seq=4&anchor_hash=" + res.LastHash); a.OK || a.BrokenAtSeq == nil || *a.BrokenAtSeq != 4 {
+	if a := verify("anchor=4:" + res.LastHash); a.OK || a.BrokenAtSeq == nil || *a.BrokenAtSeq != 4 {
 		t.Fatalf("against an anchor past the end: %+v", a)
 	}
 
@@ -197,18 +197,24 @@ func TestAuditAPI_Verify(t *testing.T) {
 	}
 }
 
-// An anchor is both parameters or neither, and each must parse: a check
+// An anchor is a seq and a hash, both, and each must parse: a check
 // against a mistyped anchor must never read as a check of the chain alone.
 func TestAuditAPI_VerifyRefusesABadAnchor(t *testing.T) {
 	h := NewAuditHandler(nil)
 	hash := strings.Repeat("ab", 32)
 	for _, query := range []string{
-		"anchor_seq=3",
-		"anchor_hash=" + hash,
-		"anchor_seq=0&anchor_hash=" + hash,
-		"anchor_seq=x&anchor_hash=" + hash,
-		"anchor_seq=3&anchor_hash=" + hash[:62],
-		"anchor_seq=3&anchor_hash=" + strings.Repeat("zz", 32),
+		"anchor=3",
+		"anchor=3:",
+		"anchor=" + hash,
+		"anchor=:" + hash,
+		"anchor=0:" + hash,
+		"anchor=-1:" + hash,
+		"anchor=+3:" + hash,
+		"anchor=03:" + hash,
+		"anchor=x:" + hash,
+		"anchor=3:" + hash[:62],
+		"anchor=3:" + strings.Repeat("zz", 32),
+		"anchor=3:" + hash + ":" + hash,
 	} {
 		rr := httptest.NewRecorder()
 		h.Verify(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify?"+query, nil))

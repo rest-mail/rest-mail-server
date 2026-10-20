@@ -5315,25 +5315,18 @@ paths:
         follows the one before (seq one higher, `prev_hash` its hash) and hashes
         to its own `hash`. Stops at the first entry that does not hold. If the
         log does not start at seq 1, the walk starts from the first entry's own
-        `prev_hash` and says so in `note`. Given an anchor (`anchor_seq` and
-        `anchor_hash` together, a copy of one entry kept outside the server),
-        the log must also still hold that entry with that hash; a log rewritten
-        and rehashed from some entry on holds as a chain, but not to an anchor
-        taken before the rewrite. This read is itself recorded (`audit.read`).
+        `prev_hash` and says so in `note`. Given an `anchor` (one entry's seq
+        and hash, a copy kept outside the server), the log must also still
+        hold that entry with that hash; a log rewritten and rehashed from some
+        entry on holds as a chain, but not to an anchor taken before the
+        rewrite. This read is itself recorded (`audit.read`).
       parameters:
-        - name: anchor_seq
+        - name: anchor
           in: query
-          description: The anchored entry's seq; requires anchor_hash
-          schema:
-            type: integer
-            format: int64
-            minimum: 1
-        - name: anchor_hash
-          in: query
-          description: The anchored entry's hash, 64 hex digits; requires anchor_seq
+          description: The anchored entry as `<seq>:<hash>`, its seq and its hash in 64 hex digits
           schema:
             type: string
-            pattern: "^[0-9a-fA-F]{64}$"
+            pattern: "^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$"
       responses:
         "200":
           description: What the check found
