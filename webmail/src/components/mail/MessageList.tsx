@@ -1,6 +1,8 @@
 import { useEffect, useCallback } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useUIStore } from '@/stores/uiStore';
+import { getThemePack, TYPEFACE_CLASS, avatarTint, initialsOf } from '@/theme/packs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { Mail, X, Paperclip } from 'lucide-react';
@@ -19,6 +21,8 @@ export function MessageList() {
     searchResults, searchQuery, clearSearch,
   } = useMailStore();
   const { density } = useSettingsStore();
+  const pack = useUIStore(s => getThemePack(s.theme));
+  const v = pack.variants;
   const unreadCount = useUnreadCount();
 
   const isInSearch = searchResults !== null;
@@ -86,11 +90,11 @@ export function MessageList() {
   if (displayMessages.length === 0) {
     if (isInSearch) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
-          <p className="font-mono text-sm">// no_results for "{searchQuery}"</p>
+        <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
+          <p className="text-sm">// no_results for "{searchQuery}"</p>
           <button
             onClick={clearSearch}
-            className="font-mono text-xs text-primary hover:underline"
+            className="text-xs text-primary hover:underline"
           >
             [clear_search]
           </button>
@@ -98,26 +102,29 @@ export function MessageList() {
       );
     }
     return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-3">
-        <p className="font-mono text-sm">// no_messages in {activeFolder?.toLowerCase()}</p>
+      <div className={cn('flex flex-col items-center justify-center h-full text-muted-foreground gap-3', TYPEFACE_CLASS[v.listType])}>
+        <p className="text-sm">// no_messages in {activeFolder?.toLowerCase()}</p>
       </div>
     );
   }
 
   return (
-    <ScrollArea className="h-full">
-      <div className="flex flex-col">
+    <ScrollArea className={cn('h-full', TYPEFACE_CLASS[v.listType])}>
+      <div className={cn('flex flex-col', v.surface === 'cards' && 'py-1')}>
         {/* List header */}
         <div className="flex items-center justify-between h-8 px-3 shrink-0">
-          <span className="font-heading-oswald text-sm font-semibold tracking-wide text-muted-foreground">
+          <span className={cn(
+            "text-sm text-muted-foreground",
+            v.listType === 'serif' ? 'font-semibold italic' : 'font-heading-oswald font-semibold tracking-wide',
+          )}>
             {isInSearch ? 'SEARCH' : activeFolder}
           </span>
           {isInSearch ? (
-            <button onClick={clearSearch} className="flex items-center gap-1 font-mono text-[9px] font-medium text-primary">
+            <button onClick={clearSearch} className="flex items-center gap-1 text-[9px] font-medium text-primary">
               <X className="w-3 h-3" /> clear
             </button>
           ) : unreadCount > 0 ? (
-            <span className="font-mono text-[9px] font-medium text-primary">
+            <span className="text-[9px] font-medium text-primary">
               // {unreadCount}_UNREAD
             </span>
           ) : null}
@@ -135,8 +142,25 @@ export function MessageList() {
                 "w-full text-left px-3 flex items-start gap-2 transition-all duration-150",
                 density === 'compact' ? 'py-1.5' : 'py-2',
                 selectedMessageId === msg.id ? "bg-secondary" : "hover:bg-secondary/30",
+                (v.surface === 'rules' || v.surface === 'dense') && 'border-t border-border',
+                v.surface === 'dense' && !msg.is_read && 'bg-secondary/40',
+                v.surface === 'cards' && 'mx-2 my-1 rounded-xl border border-border bg-card',
+                v.unread === 'rail' && !msg.is_read && 'unread-rail',
               )}
             >
+              {/* Sender identity chip (packs that want one) */}
+              {v.identity !== 'none' && (
+                <span
+                  className={cn(
+                    "mt-0.5 w-6 h-6 shrink-0 flex items-center justify-center text-[9px] font-bold text-white select-none",
+                    v.identity === 'circle' ? 'rounded-full' : 'rounded-lg',
+                  )}
+                  style={{ background: avatarTint(msg.sender) }}
+                >
+                  {initialsOf(msg.sender_name || msg.sender)}
+                </span>
+              )}
+
               {/* Star */}
               <span className={cn(
                 "text-xs mt-0.5 shrink-0",
@@ -149,18 +173,21 @@ export function MessageList() {
               <div className="flex-1 min-w-0 space-y-0.5">
                 <div className="flex items-center justify-between gap-2">
                   <span className={cn(
-                    "font-mono text-xs truncate",
+                    "text-xs truncate flex items-center gap-1.5 min-w-0",
                     !msg.is_read ? "font-semibold text-foreground" : "text-muted-foreground"
                   )}>
-                    {msg.sender_name || msg.sender}
+                    {v.unread === 'dot' && !msg.is_read && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                    )}
+                    <span className="truncate">{msg.sender_name || msg.sender}</span>
                   </span>
-                  <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap">
+                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                     {formatDate(msg.received_at)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={cn(
-                    "font-mono text-[13px] truncate",
+                    "text-[13px] truncate",
                     !msg.is_read ? "font-medium text-foreground" : "text-muted-foreground"
                   )}>
                     {msg.subject || '(no subject)'}
@@ -172,7 +199,7 @@ export function MessageList() {
               </div>
             </button>
             {/* Divider between messages */}
-            {i < displayMessages.length - 1 && (
+            {v.surface === 'dividers' && i < displayMessages.length - 1 && (
               <div className="h-px bg-border/50" />
             )}
           </div>
@@ -181,7 +208,7 @@ export function MessageList() {
         {hasMore && (
           <button
             onClick={() => loadMoreMessages()}
-            className="w-full py-3 font-mono text-xs text-primary hover:bg-secondary/30 transition-colors"
+            className="w-full py-3 text-xs text-primary hover:bg-secondary/30 transition-colors"
           >
             [load_more...]
           </button>

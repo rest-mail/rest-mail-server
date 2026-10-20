@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
+import { getThemePack, TYPEFACE_CLASS, type ActionStyle } from '@/theme/packs';
 import * as api from '@/api/client';
 import { listAttachments, getAttachmentUrl } from '@/api/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,6 +16,7 @@ import { toast } from 'sonner';
 import type { Attachment, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
 import { HtmlMessageBody } from './HtmlMessageBody';
+import { cn } from '@/lib/utils';
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -41,9 +43,37 @@ function ActionBtn({ onClick, title, children }: { onClick: () => void; title: s
   );
 }
 
+/** Word-labelled action button: 'keyed' shows a [k] hint, 'words' is plain
+ *  small-caps — the two non-icon action styles a theme pack can pin. */
+function ActionWord({ k, label, style, onClick }: {
+  k: string;
+  label: string;
+  style: Extract<ActionStyle, 'words' | 'keyed'>;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "h-7 px-2 flex items-center gap-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-background transition-colors shrink-0",
+        style === 'words'
+          ? "uppercase tracking-[0.14em] text-[10px] font-semibold"
+          : "text-xs font-medium",
+      )}
+    >
+      {style === 'keyed' && (
+        <kbd className="px-1 py-0.5 border border-border rounded bg-background text-[9px]">{k}</kbd>
+      )}
+      {label}
+    </button>
+  );
+}
+
 export function MessageViewer() {
   const { selectedMessage, loadingMessage, markRead, markFlagged, deleteMsg, accounts, refresh, folders, activeFolder, activeAccountId, selectMessage } = useMailStore();
   const { startCompose } = useUIStore();
+  const pack = useUIStore(s => getThemePack(s.theme));
+  const v = pack.variants;
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loadingAttachments, setLoadingAttachments] = useState(false);
   const [showThread, setShowThread] = useState(false);
@@ -220,20 +250,31 @@ export function MessageViewer() {
 
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* Action bar — compact icon buttons */}
+      {/* Action bar — style pinned by the active theme pack */}
       <div className="flex items-center gap-1.5 h-10 px-3 bg-secondary shrink-0">
-        <ActionBtn onClick={handleReply} title="Reply">
-          <Reply className="w-3.5 h-3.5" />
-        </ActionBtn>
-        <ActionBtn onClick={handleForward} title="Forward">
-          <Forward className="w-3.5 h-3.5" />
-        </ActionBtn>
-        <ActionBtn onClick={() => handleMove('Archive')} title="Archive">
-          <Archive className="w-3.5 h-3.5" />
-        </ActionBtn>
-        <ActionBtn onClick={() => deleteMsg(msg.id)} title="Delete">
-          <Trash2 className="w-3.5 h-3.5" />
-        </ActionBtn>
+        {v.actions === 'icons' ? (
+          <>
+            <ActionBtn onClick={handleReply} title="Reply">
+              <Reply className="w-3.5 h-3.5" />
+            </ActionBtn>
+            <ActionBtn onClick={handleForward} title="Forward">
+              <Forward className="w-3.5 h-3.5" />
+            </ActionBtn>
+            <ActionBtn onClick={() => handleMove('Archive')} title="Archive">
+              <Archive className="w-3.5 h-3.5" />
+            </ActionBtn>
+            <ActionBtn onClick={() => deleteMsg(msg.id)} title="Delete">
+              <Trash2 className="w-3.5 h-3.5" />
+            </ActionBtn>
+          </>
+        ) : (
+          <>
+            <ActionWord k="r" label="reply" style={v.actions} onClick={handleReply} />
+            <ActionWord k="f" label="forward" style={v.actions} onClick={handleForward} />
+            <ActionWord k="e" label="archive" style={v.actions} onClick={() => handleMove('Archive')} />
+            <ActionWord k="x" label="delete" style={v.actions} onClick={() => deleteMsg(msg.id)} />
+          </>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />
@@ -241,9 +282,18 @@ export function MessageViewer() {
         {/* More actions dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="w-7 h-7 rounded-2xl bg-background flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
-              <MoreHorizontal className="w-3.5 h-3.5" />
-            </button>
+            {v.actions === 'icons' ? (
+              <button className="w-7 h-7 rounded-2xl bg-background flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors">
+                <MoreHorizontal className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <button className={cn(
+                "h-7 px-2 rounded-md bg-background text-muted-foreground hover:text-foreground transition-colors",
+                v.actions === 'words' ? "uppercase tracking-[0.14em] text-[10px] font-semibold" : "text-xs font-medium",
+              )}>
+                more
+              </button>
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handleReplyAll}>
@@ -276,20 +326,33 @@ export function MessageViewer() {
       {/* Message content */}
       <ScrollArea className="flex-1">
         <div className="px-5 py-4">
-          {/* Subject — Oswald uppercase */}
-          <h2 className="font-heading-oswald text-xl font-bold mb-3 text-foreground">
+          {/* Subject — typeface pinned by the pack */}
+          <h2 className={cn(
+            "mb-3 text-foreground",
+            v.readerType === 'serif'
+              ? "typeface-serif text-2xl font-medium"
+              : v.readerType === 'sans'
+                ? "typeface-sans text-xl font-semibold tracking-tight"
+                : "font-heading-oswald text-xl font-bold",
+          )}>
             {msg.subject || '(no subject)'}
           </h2>
 
           {/* Sender row */}
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-2xl bg-primary flex items-center justify-center font-mono text-xs font-bold text-primary-foreground shrink-0">
+            <div className={cn(
+              "w-8 h-8 bg-primary flex items-center justify-center text-xs font-bold text-primary-foreground shrink-0",
+              TYPEFACE_CLASS[v.readerType],
+              v.identity === 'circle' ? 'rounded-full' : v.identity === 'squircle' ? 'rounded-lg' : 'rounded-2xl',
+            )}>
               {(msg.sender_name || msg.sender).slice(0, 1).toUpperCase()}
             </div>
-            <div className="font-mono text-xs space-y-0.5 text-muted-foreground flex-1 min-w-0">
-              <p>
+            <div className={cn("text-xs space-y-0.5 text-muted-foreground flex-1 min-w-0", TYPEFACE_CLASS[v.readerType])}>
+              <p className="flex flex-wrap items-center gap-1.5">
                 <span className="font-medium text-foreground">from:</span>{' '}
-                {msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender}
+                <span className="min-w-0 break-all">
+                  {msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender}
+                </span>
               </p>
               <p>
                 <span className="font-medium text-foreground">date:</span>{' '}
@@ -308,7 +371,7 @@ export function MessageViewer() {
           {msg.thread_id && msg.thread_id.length > 0 && (
             <div className="mt-2">
               <button
-                className="font-mono text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                className={cn("text-xs text-muted-foreground hover:text-foreground flex items-center gap-1", TYPEFACE_CLASS[v.readerType])}
                 onClick={handleToggleThread}
                 disabled={loadingThread}
               >
@@ -320,7 +383,7 @@ export function MessageViewer() {
                   {threadMessages.map(tm => (
                     <button
                       key={tm.id}
-                      className="block w-full text-left font-mono text-xs py-2 px-3 rounded-2xl border bg-card hover:bg-accent transition-colors"
+                      className={cn("block w-full text-left text-xs py-2 px-3 rounded-2xl border bg-card hover:bg-accent transition-colors", TYPEFACE_CLASS[v.readerType])}
                       onClick={() => selectMessage(tm.id)}
                     >
                       <span className="font-medium">{tm.subject || '(no subject)'}</span>
@@ -333,7 +396,7 @@ export function MessageViewer() {
                 </div>
               )}
               {showThread && threadMessages.length === 0 && (
-                <p className="font-mono text-xs text-muted-foreground mt-1 ml-1">// no_other_messages</p>
+                <p className={cn("text-xs text-muted-foreground mt-1 ml-1", TYPEFACE_CLASS[v.readerType])}>// no_other_messages</p>
               )}
             </div>
           )}
@@ -344,7 +407,7 @@ export function MessageViewer() {
           {/* Attachments */}
           {msg.has_attachments && (
             <div className="mb-4">
-              <div className="flex items-center gap-1.5 font-mono text-xs font-medium text-muted-foreground mb-2">
+              <div className={cn("flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-2", TYPEFACE_CLASS[v.readerType])}>
                 <Paperclip className="w-3.5 h-3.5" />
                 <span>// attachments</span>
               </div>
@@ -362,7 +425,7 @@ export function MessageViewer() {
                       target="_blank"
                       rel="noopener noreferrer"
                       download={att.filename}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-2xl font-mono text-xs font-medium bg-secondary hover:bg-secondary/80 text-foreground transition-colors"
+                      className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-2xl text-xs font-medium bg-secondary hover:bg-secondary/80 text-foreground transition-colors", TYPEFACE_CLASS[v.readerType])}
                     >
                       {attachmentIcon(att.content_type || '')}
                       {att.filename}
@@ -384,7 +447,7 @@ export function MessageViewer() {
           {msg.body_html ? (
             <HtmlMessageBody html={msg.body_html} />
           ) : (
-            <pre className="font-mono text-[13px] whitespace-pre-wrap text-foreground leading-relaxed">
+            <pre className={cn("text-[13px] whitespace-pre-wrap text-foreground leading-relaxed", TYPEFACE_CLASS[v.readerType])}>
               {msg.body_text}
             </pre>
           )}
