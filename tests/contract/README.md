@@ -192,6 +192,10 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   including when the principal has no credentials; Basic auth is reserved for
   app passwords, not the fixture admin's account password.
   Every other id comes from the spec's `links`.
+  `deleteDomain` deletes only the domain the run created: a probe naming any
+  other domain (coverage's in-range id 1 is the fixture admin's) is skipped,
+  since the server refuses a domain that still has accounts with 409
+  (`test_hooks_delete_domain.py`).
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `authorization.py`: builds a private configuration from the E2E principals

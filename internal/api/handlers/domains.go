@@ -280,6 +280,22 @@ func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A domain still holding accounts or aliases stays (#388): deleting it
+	// left them pointing at no domain, and every send from such an account
+	// then failed with a 500 on its domain's sending policy.
+	for _, held := range []interface{}{&models.Mailbox{}, &models.Alias{}} {
+		var n int64
+		if err := h.db.Model(held).Where("domain_id = ?", domain.ID).Count(&n).Error; err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the domain's addresses")
+			return
+		}
+		if n > 0 {
+			respond.Error(w, http.StatusConflict, "domain_not_empty",
+				"The domain still has accounts or aliases: delete them first")
+			return
+		}
+	}
+
 	if err := h.db.Delete(&domain).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete domain")
 		return
