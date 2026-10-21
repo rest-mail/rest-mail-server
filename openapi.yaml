@@ -1829,8 +1829,6 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/ScheduledSend"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/messages/scheduled/{id}:
     parameters:
