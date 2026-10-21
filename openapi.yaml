@@ -1471,8 +1471,18 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateFolderRequest"
-            example:
-              name: Receipts
+            examples:
+              created:
+                value:
+                  name: Receipts
+              name_missing:
+                value: {}
+              name_empty:
+                value:
+                  name: ""
+              name_wrong_type:
+                value:
+                  name: 12
       responses:
         "201":
           description: Folder created
@@ -1484,6 +1494,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+              examples:
+                created:
+                  value:
+                    data:
+                      name: Receipts
           links:
             renameFolder:
               operationId: renameFolder
@@ -1491,7 +1506,36 @@ paths:
                 id: '$request.path.id'
                 folder: '$response.body#/data/name'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Folder name is missing, empty, or not a string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                name_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
 
   /api/v1/accounts/{id}/folders/{folder}:
     parameters:

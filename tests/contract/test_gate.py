@@ -97,6 +97,7 @@ class PairedRefusals(unittest.TestCase):
         "validateCustomFilter",
         "sendTestEmail",
         "createAccount",
+        "createFolder",
         "restmailDeliver",
         "bulkDeleteQueue",
         "bulkRetryQueue",
