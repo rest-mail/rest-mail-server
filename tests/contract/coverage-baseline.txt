@@ -16,6 +16,9 @@ createDomain
 # omits the combinations of sender/date fields the delivery pipeline needs.
 restmailDeliver
 saveDraft
+# Never probed until its list_unsubscribe was inlined: vertrag 0.29 drops
+# every probe of a body whose schema holds a nested $ref. Its valid probes
+# send from the generated someone@example.com, which the admin may not own.
 sendMessage
 sendTestEmail
 # The schema states the rule (an enabled vacation needs a non-empty subject
