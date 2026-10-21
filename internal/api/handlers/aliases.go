@@ -3,11 +3,13 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"net/mail"
 	"strings"
 
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
+	"golang.org/x/text/unicode/norm"
 	"gorm.io/gorm"
 )
 
@@ -75,14 +77,25 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parts := strings.SplitN(req.SourceAddress, "@", 2)
-	if len(parts) != 2 {
+	// Alias sources are hosted identities, like mailbox addresses. Parse away
+	// display names and normalize the local identity before storing it so the
+	// recipient checks can find aliases submitted in an equivalent spelling.
+	// Destinations are remote addresses and must retain their original spelling.
+	parsed, _ := mail.ParseAddress(req.SourceAddress) // validated above
+	at := strings.LastIndexByte(parsed.Address, '@')
+	domainName, err := rmail.DomainASCII(parsed.Address[at+1:])
+	if err != nil {
 		respond.ValidationError(w, map[string]string{"source_address": "must be a valid email address"})
 		return
 	}
+	domainName = strings.TrimSuffix(domainName, ".")
+	parsed.Name = ""
+	parsed.Address = norm.NFC.String(strings.ToLower(parsed.Address[:at])) + "@" + domainName
+	// Address.String preserves quoting where the parsed local part needs it.
+	req.SourceAddress = strings.TrimSuffix(strings.TrimPrefix(parsed.String(), "<"), ">")
 
 	var domain models.Domain
-	if err := h.db.Where("name = ?", parts[1]).First(&domain).Error; err != nil {
+	if err := h.db.Where("name = ?", domainName).First(&domain).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "domain_not_found", "Domain not found for source address")
 		return
 	}
