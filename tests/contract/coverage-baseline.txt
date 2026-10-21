@@ -15,9 +15,7 @@ bulkDeleteQueue
 bulkRetryQueue
 createAccount
 createDomain
-getDeliveryLogs
 importContacts
-listContacts
 logout
 probeServices
 putSieveScript
@@ -25,7 +23,6 @@ putSieveScript
 # omits the combinations of sender/date fields the delivery pipeline needs.
 restmailDeliver
 saveDraft
-searchMessages
 sendMessage
 sendTestEmail
 setVacation

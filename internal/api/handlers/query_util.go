@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -48,6 +49,44 @@ func validateIntegerQuery(w http.ResponseWriter, r *http.Request, maxLimit int64
 			invalid[name] = "must be a whole number"
 		} else if name == "limit" && maxLimit > 0 && n > maxLimit {
 			invalid[name] = "exceeds the maximum page size"
+		}
+	}
+	if len(invalid) > 0 {
+		respond.ValidationError(w, invalid)
+		return false
+	}
+	return true
+}
+
+// validateBooleanQuery refuses boolean filters other than true and false
+// rather than treating any other value as false.
+func validateBooleanQuery(w http.ResponseWriter, r *http.Request, names ...string) bool {
+	invalid := map[string]string{}
+	for _, name := range names {
+		switch r.URL.Query().Get(name) {
+		case "", "true", "false":
+		default:
+			invalid[name] = "must be true or false"
+		}
+	}
+	if len(invalid) > 0 {
+		respond.ValidationError(w, invalid)
+		return false
+	}
+	return true
+}
+
+// validateDateTimeQuery refuses date-time filters that are not RFC 3339 rather
+// than dropping them, which would widen the result set.
+func validateDateTimeQuery(w http.ResponseWriter, r *http.Request, names ...string) bool {
+	invalid := map[string]string{}
+	for _, name := range names {
+		value := r.URL.Query().Get(name)
+		if value == "" {
+			continue
+		}
+		if _, err := time.Parse(time.RFC3339, value); err != nil {
+			invalid[name] = "must be an RFC 3339 date-time"
 		}
 	}
 	if len(invalid) > 0 {
