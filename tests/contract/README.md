@@ -172,6 +172,16 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`getDomain` also sends its 404. Its `missing` path-parameter example names
+an unused positive ID in the disposable fixture (2147483647), and the 404
+names the matching `domain_not_found` body. Vertrag 0.29 does not pair named
+parameter examples, and the create link supplies the new domain ID to both
+responses, so a hook selects the missing ID for the 404 alone. The linked
+200 and its boundary probes retain their original IDs. The handler test
+checks both lookups against PostgreSQL and verifies the existing domain
+is unchanged. All other 404s keep their exclusions; `test_gate.py` holds
+that set to exactly `getDomain`.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as

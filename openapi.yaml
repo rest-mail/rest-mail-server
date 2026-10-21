@@ -3426,6 +3426,19 @@ paths:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
       summary: Get a domain by ID
+      # Links supply the created ID; the hook selects missing for the 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Domain details
@@ -3438,7 +3451,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/Domain"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: No domain has this ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: domain_not_found
+                      message: Domain not found
     patch:
       operationId: updateDomain
       tags: ["Admin: Domains"]
