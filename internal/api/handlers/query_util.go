@@ -1,12 +1,29 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/restmail/restmail/internal/api/respond"
 )
+
+// errZeroID is pathID's refusal of an ID of 0.
+var errZeroID = errors.New("an ID starts at 1")
+
+// pathID parses the row ID in path parameter name. The spec's path IDs have a
+// minimum of 1 (#388) and no row has ID 0, so 0 is refused like a malformed ID:
+// otherwise a delete by ID 0 matches nothing and still reports success.
+func pathID(r *http.Request, name string) (uint64, error) {
+	id, err := strconv.ParseUint(chi.URLParam(r, name), 10, 32)
+	if err == nil && id == 0 {
+		return 0, errZeroID
+	}
+	return id, err
+}
 
 // Shared limit/offset pagination defaults. The maximum mirrors the hard cap the
 // queue, delivery-log, activity-log and TLS-report endpoints already apply, so no

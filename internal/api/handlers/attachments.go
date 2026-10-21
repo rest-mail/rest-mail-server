@@ -75,7 +75,7 @@ func (h *AttachmentHandler) GetAttachment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid attachment ID")
 		return

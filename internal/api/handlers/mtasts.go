@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -26,7 +24,7 @@ func NewMTASTSHandler(db *gorm.DB) *MTASTSHandler {
 // GetPolicy returns the MTA-STS policy for a domain.
 // GET /api/v1/admin/domains/{id}/mta-sts
 func (h *MTASTSHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -51,7 +49,7 @@ func (h *MTASTSHandler) GetPolicy(w http.ResponseWriter, r *http.Request) {
 // SetPolicy creates or updates the MTA-STS policy for a domain.
 // PUT /api/v1/admin/domains/{id}/mta-sts
 func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -138,7 +136,7 @@ func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
 // DeletePolicy removes the MTA-STS policy for a domain.
 // DELETE /api/v1/admin/domains/{id}/mta-sts
 func (h *MTASTSHandler) DeletePolicy(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return

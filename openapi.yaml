@@ -1253,6 +1253,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         example: 1
     delete:
       operationId: revokeCredential
@@ -2012,6 +2013,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         description: Attachment ID
         example: 1
     get:
@@ -2144,6 +2146,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         description: Contact ID
         example: 1
     patch:
@@ -2551,6 +2554,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         description: Quarantine entry ID
         example: 1
     post:
@@ -2592,6 +2596,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         description: Quarantine entry ID
         example: 1
     delete:
@@ -4736,6 +4741,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         description: Sender rule entry ID
         example: 1
     delete:
@@ -4851,6 +4857,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         description: Sender rule entry ID
         example: 1
     delete:
@@ -6449,6 +6456,7 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
         description: Suppression ID
         example: 1
     delete:
@@ -7139,6 +7147,7 @@ components:
       required: true
       schema:
         type: integer
+        minimum: 1
       description: Resource ID
       example: 1
     FolderName:

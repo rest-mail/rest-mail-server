@@ -243,7 +243,7 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 // Message row and is instead correlated via rfc_message_id on ListPipelineLogs).
 // A non-delivered or unknown id therefore has no trace here → 404.
 func (h *PipelineHandler) GetMessageTrace(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
 		return
@@ -327,7 +327,7 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 
 // UpdatePipeline updates a pipeline's configuration.
 func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid pipeline ID")
 		return
@@ -382,7 +382,7 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 
 // DeletePipeline removes a pipeline.
 func (h *PipelineHandler) DeletePipeline(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid pipeline ID")
 		return
@@ -594,7 +594,7 @@ func isJSONObject(raw json.RawMessage) bool {
 
 // GetCustomFilter returns a single custom filter by ID.
 func (h *PipelineHandler) GetCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
 		return
@@ -611,7 +611,7 @@ func (h *PipelineHandler) GetCustomFilter(w http.ResponseWriter, r *http.Request
 
 // UpdateCustomFilter updates a custom filter's properties (enable/disable, config, etc.).
 func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
 		return
@@ -682,7 +682,7 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 
 // DeleteCustomFilter removes a custom filter.
 func (h *PipelineHandler) DeleteCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
 		return
@@ -699,7 +699,7 @@ func (h *PipelineHandler) DeleteCustomFilter(w http.ResponseWriter, r *http.Requ
 // TestCustomFilter loads a custom filter from the DB and runs its script against a sample email
 // via the JS filter sidecar.
 func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
 		return
@@ -858,7 +858,7 @@ func (h *PipelineHandler) ReleaseQuarantine(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	mid, err := strconv.ParseUint(chi.URLParam(r, "mid"), 10, 32)
+	mid, err := pathID(r, "mid")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
 		return
@@ -919,7 +919,7 @@ func (h *PipelineHandler) DeleteQuarantine(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	mid, err := strconv.ParseUint(chi.URLParam(r, "mid"), 10, 32)
+	mid, err := pathID(r, "mid")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
 		return
