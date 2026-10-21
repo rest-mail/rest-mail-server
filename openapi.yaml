@@ -6024,14 +6024,19 @@ paths:
           application/xml:
             schema:
               type: string
-            example: |
-              <?xml version="1.0" encoding="utf-8"?>
-              <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
-                <Request>
-                  <EMailAddress>eve@restmail.test</EMailAddress>
-                  <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
-                </Request>
-              </Autodiscover>
+            # Named on both sides so the malformed XML pairs only with 400.
+            examples:
+              valid:
+                value: |
+                  <?xml version="1.0" encoding="utf-8"?>
+                  <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
+                    <Request>
+                      <EMailAddress>eve@restmail.test</EMailAddress>
+                      <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
+                    </Request>
+                  </Autodiscover>
+              malformed:
+                value: "<Autodiscover><Request>"
       responses:
         "200":
           description: Autodiscover XML response
@@ -6039,6 +6044,9 @@ paths:
             application/xml:
               schema:
                 type: string
+              examples:
+                valid:
+                  summary: XML settings for the requested mailbox
         "400":
           description: >-
             No usable email address, refused before any domain is looked up. A
@@ -6055,7 +6063,9 @@ paths:
                   - "invalid request\n"
                   - "email address required\n"
                   - "invalid email address\n"
-              example: "invalid request\n"
+              examples:
+                malformed:
+                  value: "invalid request\n"
 
   /.well-known/mta-sts.txt:
     get:
@@ -7253,7 +7263,9 @@ paths:
             default: 5s
       responses:
         "200":
-          description: Verification result (found true/false)
+          description: >-
+            Verification result (found true/false). An address with no
+            mailbox has had nothing delivered to it: found is false.
           content:
             application/json:
               schema:
@@ -7268,8 +7280,6 @@ paths:
                         type: boolean
         "403":
           description: Disabled in production
-        "404":
-          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -8967,12 +8977,22 @@ components:
       type: object
       description: >-
         Select entries by IDs (which take precedence) or by a filter. Nonempty
-        filter fields are combined with AND.
+        filter fields are combined with AND. At least one ID or a filter object
+        is required; an empty filter satisfies this requirement. At most 1000 IDs may
+        be supplied, including when a filter is also present.
+      anyOf:
+        - required: [ids]
+          properties:
+            ids:
+              minItems: 1
+        - required: [filter]
       properties:
         ids:
           type: array
+          maxItems: 1000
           items:
             type: integer
+            minimum: 0
         filter:
           type: object
           description: Filter criteria to select entries (alternative to ids)
