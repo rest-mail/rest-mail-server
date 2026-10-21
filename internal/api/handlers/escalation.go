@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -281,7 +279,7 @@ func ownGrant(tx *gorm.DB, accountID uint, id uint64, g *models.Grant) error {
 }
 
 func grantIDParam(w http.ResponseWriter, r *http.Request) (uint64, bool) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_id", "Invalid grant ID")
 		return 0, false

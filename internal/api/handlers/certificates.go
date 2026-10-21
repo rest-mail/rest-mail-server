@@ -6,9 +6,7 @@ import (
 	"encoding/pem"
 	"log/slog"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
@@ -43,7 +41,7 @@ func (h *CertificateHandler) ListCertificates(w http.ResponseWriter, r *http.Req
 // GetCertificate returns a single certificate, including CertPEM in the response.
 // GET /api/v1/admin/certificates/{id}
 func (h *CertificateHandler) GetCertificate(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid certificate ID")
 		return
@@ -163,7 +161,7 @@ func (h *CertificateHandler) CreateCertificate(w http.ResponseWriter, r *http.Re
 // DeleteCertificate removes a certificate.
 // DELETE /api/v1/admin/certificates/{id}
 func (h *CertificateHandler) DeleteCertificate(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid certificate ID")
 		return
