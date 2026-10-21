@@ -92,6 +92,7 @@ func TestSplitCertKey(t *testing.T) {
 	parsedCert, _ := pem.Decode([]byte(certPEM))
 	if parsedCert == nil {
 		t.Fatal("failed to decode cert PEM from splitCertKey result")
+		return
 	}
 	if parsedCert.Type != "CERTIFICATE" {
 		t.Errorf("cert block type = %q, want %q", parsedCert.Type, "CERTIFICATE")
@@ -100,6 +101,7 @@ func TestSplitCertKey(t *testing.T) {
 	parsedKey, _ := pem.Decode([]byte(keyPEM))
 	if parsedKey == nil {
 		t.Fatal("failed to decode key PEM from splitCertKey result")
+		return
 	}
 	if parsedKey.Type != "EC PRIVATE KEY" {
 		t.Errorf("key block type = %q, want %q", parsedKey.Type, "EC PRIVATE KEY")
@@ -269,9 +271,9 @@ func TestEncodeCertAndKey(t *testing.T) {
 func TestNewClient(t *testing.T) {
 	// Test that NewClient sets the correct directory URLs.
 	tests := []struct {
-		name      string
-		cfg       ClientConfig
-		wantDir   string
+		name    string
+		cfg     ClientConfig
+		wantDir string
 	}{
 		{
 			name: "default production directory",

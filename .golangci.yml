@@ -41,3 +41,10 @@ linters:
     rules:
       - linters: [staticcheck]
         text: "QF\\d+"
+      # SA5011 in tests: t.Fatal ends the test (runtime.Goexit), so a nil
+      # check that calls t.Fatal already guards the dereference after it.
+      # Staticcheck reports these on some runs and not others, which turned
+      # unrelated PRs red at random.
+      - path: _test\.go
+        linters: [staticcheck]
+        text: "SA5011"
