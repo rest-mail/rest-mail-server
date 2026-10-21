@@ -158,6 +158,15 @@ from it, and takes the policy off again for every other send and after the
 refusal (`contract_sendmessage_examples_test.go`). The other
 `/api/v1/messages` operations keep their exclusions.
 
+`createContact` names its `created` request with its 201, and
+`email_missing`, `email_invalid` (a display name and address) and
+`trust_level_invalid` with their paired 422s. The refusals use another address
+than `created`'s, because the `createContact` hook removes a contact an earlier
+request made at the same address, and `created`'s links still need it. The
+real handler refuses each for the account's own session and stores nothing
+(`contract_contact_examples_test.go`). The other `/api/v1/accounts/{id}`
+operations keep their exclusions.
+
 `protocolSignIn` uses the E2E fixture's app password with its named requests:
 `signed_in` (`{ "protocol": "imap" }`) gets 200, `invalid_body` (`[]`)
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
