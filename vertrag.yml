@@ -27,7 +27,9 @@ auth:
   except:
     - '/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
+    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 400 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401'
+    - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 422 > application/json'
     - '/api/v1/accounts > List the accounts this one reaches > 401 > application/json'
     - '/api/v1/accounts > Create an account > 401 > application/json'
     - '/api/v1/accounts/link > Link an existing account by proving its password > 401'
@@ -90,13 +92,15 @@ exclude-matching:
   # validateCustomFilter, sendTestEmail, createAccount, restmailDeliver,
   # bulkDeleteQueue, bulkRetryQueue, bulkBounceQueue, addToAllowlist,
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
-  # receiveTlsReport and createCertificate. Coverage probes built from a refused
-  # request are refused too; tests/contract/gate.py does not judge those
-  # (tests/contract/README.md).
+  # receiveTlsReport, createCertificate, protocolSignIn and sendMessage.
+  # Coverage probes built from a refused request are refused too;
+  # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
   # a segment none of them names is sent.
   - '> (404|409)( >|$)'
-  - '^/api/v1/(auth|devices|messages)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/auth/(login|logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
+  - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/.* > (400|422)( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
   - '^/api/v1/admin/(audit|dkim|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
