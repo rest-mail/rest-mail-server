@@ -204,7 +204,14 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
   folder for each rename probe (a successful rename consumes the previous one),
-  and a hosted domain and mailbox for each address a test send probe uses.
+  a hosted domain and mailbox for each address a test send probe uses, and,
+  for `createAccount`'s probes, their address's domain hosted and the
+  account a previous probe created removed (a generated address such as
+  `someone@example.com` is otherwise refused as on a domain this server does
+  not host, or as existing). A probe repeating the example's address removes
+  the account `getMailbox`, `updateMailbox` and `deleteMailbox` are linked to,
+  so those follow it to its current id, recreating it if a refused probe left
+  it removed.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -220,6 +227,8 @@ dependency: it needs Go 1.26 and this module is on 1.25.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
+- `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
+  (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
 - `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
