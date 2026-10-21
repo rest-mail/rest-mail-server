@@ -98,6 +98,7 @@ func TestAliasCreate_MalformedSourceRefused(t *testing.T) {
 		"CR only":            "sales@restmail.test\rBcc: eve@restmail.test",
 		"invalid IDN label":  "sales@bad_domain.test",
 		"leading hyphen":     "sales@-bad.test",
+		"trailing root dot":  "münchen+shop@städte.test.",
 	} {
 		t.Run(name, func(t *testing.T) {
 			assertAliasSourceAnswer(t,

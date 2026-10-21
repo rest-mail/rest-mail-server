@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -34,7 +35,6 @@ func TestAliasCreate_EAIIdentity(t *testing.T) {
 	for _, source := range []string{
 		"MU\u0308NCHEN+Shop@STA\u0308DTE.test",
 		"münchen+shop@XN--STDTE-HRA.TEST",
-		"münchen+shop@städte.test.",
 		"Shop <MU\u0308NCHEN+SHOP@städte.test>",
 	} {
 		t.Run(source, func(t *testing.T) {
@@ -54,6 +54,8 @@ func TestAliasCreate_EAIIdentity(t *testing.T) {
 			if alias.SourceAddress != "münchen+shop@"+domain.Name || alias.DomainID != domain.ID || alias.DestinationAddress != destination {
 				t.Fatalf("stored alias: %+v", alias)
 			}
+			// Create returns the in-memory timestamp; pgx stores only microseconds.
+			response.Data.CreatedAt = response.Data.CreatedAt.Truncate(time.Microsecond)
 			if !sameAlias(alias, response.Data) {
 				t.Fatalf("response differs from stored alias: %s", rr.Body)
 			}
