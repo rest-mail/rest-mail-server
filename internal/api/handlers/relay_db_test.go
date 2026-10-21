@@ -113,8 +113,8 @@ func TestRelaySettingsRoundTrip(t *testing.T) {
 	}
 }
 
-// The contract generator's relay enum probe needs the companions from the
-// schema's if/then branch. It must not require credentials for a relay.
+// A relay needs the companions the schema's anyOf relay branch requires, and
+// no credentials.
 func TestRelaySettingsContractTransportProbe(t *testing.T) {
 	srv, _, id := relayTestServer(t, relayTestMasterKey)
 	code, body := relayCall(t, srv, http.MethodPut, id,

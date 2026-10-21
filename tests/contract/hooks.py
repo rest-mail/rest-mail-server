@@ -300,24 +300,6 @@ def host_the_reported_policy_domains(transaction):
         hosted_domain_id(origin, headers, domain.rstrip("."))
 
 
-@hooks.before("setDomainRelay")
-def complete_the_relay_transport_probe(transaction):
-    # Vertrag does not read if/then: its valid enum probe switches direct to
-    # relay without supplying the fields that the relay branch requires.
-    # Supply those companions only for that probe; refusals and probes of
-    # the companion fields must keep their own bodies.
-    name = transaction.get("name", "")
-    if (not name.startswith("coverage: ") or " > 200 > " not in name or
-            not name.endswith(' · "transport" at enum member "relay"')):
-        return
-    body = hooks.get_json(transaction)
-    if not isinstance(body, dict) or body.get("transport") != "relay":
-        return
-    for field, value in (("host", "smtp.example.net"), ("port", 587), ("tls_mode", "starttls")):
-        body.setdefault(field, value)
-    hooks.set_json(transaction, body)
-
-
 def created_folder_path(transaction):
     body = hooks.get_json(transaction)
     name = body.get("name") if isinstance(body, dict) else None

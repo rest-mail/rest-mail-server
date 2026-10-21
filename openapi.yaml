@@ -9735,14 +9735,16 @@ components:
       type: object
       required: [transport]
       # A relay needs somewhere to dial: setDomainRelay refuses one without
-      # its host, port and TLS mode.
-      if:
-        required: [transport]
-        properties:
-          transport:
-            const: relay
-      then:
-        required: [host, port, tls_mode]
+      # its host, port and TLS mode. Stated as anyOf with an enum, which
+      # draft-04 and 2020-12 validators read alike (if/then is 2019-09+).
+      anyOf:
+        - properties:
+            transport:
+              enum: [direct]
+        - required: [host, port, tls_mode]
+          properties:
+            transport:
+              enum: [relay]
       properties:
         transport:
           type: string

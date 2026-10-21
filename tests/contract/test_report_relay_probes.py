@@ -1,4 +1,4 @@
-"""Keep valid report and conditional relay probes valid without masking refusals."""
+"""Keep valid report probes valid, and state the relay rule so vertrag reads it."""
 
 import copy
 import json
@@ -11,16 +11,13 @@ import yaml
 from test_hooks_delete_domain import load_hooks
 
 ROOT = Path(__file__).resolve().parents[2]
-RELAY_PROBE = ('coverage: /api/v1/admin/domains/{id}/relay > '
-               'Set the domain\'s outbound transport > 200 > application/json'
-               ' · body · "transport" at enum member "relay"')
 
 
 class ReportRelayProbes(unittest.TestCase):
     def setUp(self):
         self.module, self.hooks, registered = load_hooks()
         self.assertIn("receiveTlsReport", registered)
-        self.assertIn("setDomainRelay", registered)
+        self.assertNotIn("setDomainRelay", registered)
         self.hooks.get_json = lambda tx: json.loads(tx["request"]["body"])
         self.hooks.set_json = lambda tx, body: tx["request"].__setitem__("body", json.dumps(body))
 
@@ -54,29 +51,27 @@ class ReportRelayProbes(unittest.TestCase):
                 login.assert_not_called()
                 self.assertEqual(tx, original)
 
-    def test_relay_enum_probe_gets_only_its_missing_companions(self):
-        tx = self.transaction({"transport": "relay"}, RELAY_PROBE)
-        self.module.complete_the_relay_transport_probe(tx)
-        self.assertEqual(json.loads(tx["request"]["body"]), {
-            "transport": "relay", "host": "smtp.example.net", "port": 587, "tls_mode": "starttls"})
-        tx = self.transaction({"transport": "relay", "host": "another.example", "port": 465,
-                               "tls_mode": "implicit"}, RELAY_PROBE)
-        original = json.loads(tx["request"]["body"])
-        self.module.complete_the_relay_transport_probe(tx)
-        self.assertEqual(json.loads(tx["request"]["body"]), original)
+    def test_relay_rule_is_anyof_so_a_bare_relay_is_invalid(self):
+        # vertrag reads schemas as draft-04 and ignores if/then, so the rule
+        # that a relay needs host, port and tls_mode is stated as anyOf.
+        with open(ROOT / "openapi.yaml") as f:
+            relay = yaml.safe_load(f)["components"]["schemas"]["SetDomainRelayRequest"]
+        self.assertNotIn("if", relay)
+        self.assertNotIn("then", relay)
 
-    def test_other_relay_probes_and_documented_refusals_keep_their_bytes(self):
-        for name, body in (
-                (RELAY_PROBE.replace("coverage: ", ""), {"transport": "relay"}),
-                (RELAY_PROBE.replace(" > 200 > ", " > 422 > "), {"transport": "relay"}),
-                (RELAY_PROBE.replace('"transport" at enum member "relay"',
-                                     '"port" at one below minimum (0)'), {"transport": "relay", "port": 0}),
-                (RELAY_PROBE, {"transport": "bad"}), (RELAY_PROBE, [])):
-            with self.subTest(name=name, body=body):
-                tx = self.transaction(body, name)
-                original = copy.deepcopy(tx)
-                self.module.complete_the_relay_transport_probe(tx)
-                self.assertEqual(tx, original)
+        def permits(body):
+            for branch in relay["anyOf"]:
+                if all(field in body for field in branch.get("required", [])) and all(
+                        body.get(name) in rule["enum"]
+                        for name, rule in branch.get("properties", {}).items()):
+                    return True
+            return False
+
+        self.assertTrue(permits({"transport": "direct"}))
+        self.assertTrue(permits({"transport": "relay", "host": "smtp.example.net",
+                                 "port": 587, "tls_mode": "starttls"}))
+        self.assertFalse(permits({"transport": "relay"}))
+        self.assertFalse(permits({"transport": "relay", "host": "smtp.example.net", "port": 587}))
 
     def test_report_schema_requires_a_policy_domain_and_bounds_storage(self):
         with open(ROOT / "openapi.yaml") as f:
