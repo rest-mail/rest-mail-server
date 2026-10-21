@@ -189,7 +189,10 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   and, for `createAccount`'s probes, their address's domain hosted and the
   account a previous probe created removed (a generated address such as
   `someone@example.com` is otherwise refused as on a domain this server does
-  not host, or as existing).
+  not host, or as existing). A probe repeating the example's address removes
+  the account `getMailbox`, `updateMailbox` and `deleteMailbox` are linked to,
+  so those follow it to its current id, recreating it if a refused probe left
+  it removed.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -204,7 +207,7 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
-- `test_hooks.py`: the `createAccount` hook's tests, against a stub admin API
+- `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
   (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so

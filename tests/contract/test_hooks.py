@@ -53,6 +53,12 @@ class FixtureAPI(BaseHTTPRequestHandler):
             domain = {"id": len(state["domains"]) + 1, "name": name}
             state["domains"].append(domain)
             return self.answer(201, {"data": domain})
+        if self.path == "/api/v1/accounts":
+            address = self.read_body()["address"]
+            domain = next(d for d in state["domains"] if d["name"] == address.split("@")[1])
+            account = {"id": 100 + len(state["accounts"]) + len(state["deleted"]), "domain_id": domain["id"], "address": address}
+            state["accounts"].append(account)
+            return self.answer(201, {"data": account})
         self.answer(404)
 
     def do_GET(self):
@@ -73,7 +79,7 @@ class FixtureAPI(BaseHTTPRequestHandler):
         self.answer(204)
 
 
-class CreateAccountProbes(unittest.TestCase):
+class AdminAPITestCase(unittest.TestCase):
     def setUp(self):
         vertrag_hooks.stash.clear()
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
@@ -99,8 +105,10 @@ class CreateAccountProbes(unittest.TestCase):
         """What a successful probe leaves behind."""
         state = self.server.state
         domain = next(d for d in state["domains"] if d["name"] == address.split("@")[1])
-        state["accounts"].append({"id": 100 + len(state["accounts"]), "domain_id": domain["id"], "address": address})
+        state["accounts"].append({"id": 100 + len(state["accounts"]) + len(state["deleted"]), "domain_id": domain["id"], "address": address})
 
+
+class CreateAccountProbes(AdminAPITestCase):
     def test_hosts_the_domain_and_removes_only_its_own_repeated_probe(self):
         self.probe({"address": "someone@example.com"})
         self.assertIn("example.com", [d["name"] for d in self.server.state["domains"]])
@@ -122,6 +130,52 @@ class CreateAccountProbes(unittest.TestCase):
             self.probe(body)
         self.assertEqual([d["name"] for d in self.server.state["domains"]], ["restmail.test"])
         self.assertEqual(self.server.state["deleted"], [])
+
+
+class LinkedAccount(AdminAPITestCase):
+    """The example's account, which getMailbox and friends are linked to."""
+
+    EXAMPLE = {"address": "new-account@restmail.test", "password": "correct-horse-battery"}
+
+    def setUp(self):
+        super().setUp()
+        self.probe(self.EXAMPLE)
+        self.create(self.EXAMPLE["address"])
+        hooks.keep_the_created_account({
+            "request": {"body": json.dumps(self.EXAMPLE)},
+            "real": {"body": json.dumps({"data": {"id": 101}})},
+        })
+
+    def linked(self, account_id):
+        transaction = {
+            "protocol": "http:", "host": "127.0.0.1", "port": self.server.server_port,
+            "fullPath": "/api/v1/admin/mailboxes/%s" % account_id,
+        }
+        hooks.on_the_created_account(transaction)
+        return transaction["fullPath"]
+
+    def test_keeps_the_link_while_the_account_stands(self):
+        self.assertEqual(self.linked(101), "/api/v1/admin/mailboxes/101")
+
+    def test_follows_the_account_a_repeated_probe_replaced(self):
+        self.probe(dict(self.EXAMPLE, display_name=""))
+        self.assertEqual(self.server.state["deleted"], [101])
+        self.create(self.EXAMPLE["address"])
+        self.assertEqual(self.linked(101), "/api/v1/admin/mailboxes/102")
+
+    def test_recreates_the_account_a_refused_probe_removed(self):
+        self.probe(dict(self.EXAMPLE, password="short"))
+        self.assertEqual(self.linked(101), "/api/v1/admin/mailboxes/102")
+        self.assertEqual(self.server.state["deleted"], [101])
+        self.assertEqual([a["address"] for a in self.server.state["accounts"]],
+                         ["admin@restmail.test", "new-account@restmail.test"])
+
+    def test_leaves_other_ids_alone(self):
+        self.probe(dict(self.EXAMPLE, display_name=""))
+        for account_id in ("1", "0", "999999", "abc"):
+            self.assertEqual(self.linked(account_id), "/api/v1/admin/mailboxes/" + account_id)
+        hooks.hooks.stash.pop("created_account")
+        self.assertEqual(self.linked(101), "/api/v1/admin/mailboxes/101")
 
 
 if __name__ == "__main__":

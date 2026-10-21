@@ -469,3 +469,47 @@ def host_the_account_probe_domain(transaction):
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.status != 204:
             raise RuntimeError("could not remove the previous account probe")
+
+
+@hooks.after("createAccount")
+def keep_the_created_account(transaction):
+    # Only the example runs after hooks, and its id is what getMailbox,
+    # updateMailbox and deleteMailbox are linked to. Probes repeating its
+    # address remove that account above, so remember what to restore.
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    if not data.get("id"):
+        return
+    hooks.stash["created_account"] = {"id": data["id"], "body": hooks.get_json(transaction)}
+
+
+@hooks.before("getMailbox")
+@hooks.before("updateMailbox")
+@hooks.before("deleteMailbox")
+def on_the_created_account(transaction):
+    # Follow the linked account to its current id, recreating it when a
+    # probe removed it without a successful create of its own to replace it.
+    # Any other id (the 404 examples, path parameter probes) is left alone.
+    created = hooks.stash.get("created_account")
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, account_id = path.rpartition("/")
+    if not created or account_id != str(created["id"]):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    address = created["body"]["address"]
+    request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        domains = json.load(response).get("data") or []
+    domain_id = next(d["id"] for d in domains if d.get("name") == address.split("@")[1])
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes?domain_id=%d" % domain_id, headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        accounts = json.load(response).get("data") or []
+    account = next((a for a in accounts if (a.get("address") or "").lower() == address.lower()), None)
+    if account is None:
+        request = urllib.request.Request(
+            origin + "/api/v1/accounts", data=json.dumps(created["body"]).encode(),
+            headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=10) as response:
+            account = json.load(response)["data"]
+    transaction["fullPath"] = parent + "/" + str(account["id"]) + ("?" + query if query else "")
