@@ -3,13 +3,14 @@ import { useSettingsStore, type ReadingPane, type Density } from '@/stores/setti
 import { useMailStore } from '@/stores/mailStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
+import { THEME_PACKS } from '@/theme/packs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { VacationView } from '@/components/settings/VacationView';
 import { TwoFactorView } from '@/components/settings/TwoFactorView';
-import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, Trash2, ShieldCheck } from 'lucide-react';
+import { Settings, Bell, Users, LayoutPanelTop, MonitorCheck, Trash2, ShieldCheck, Palette, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Tab = 'general' | 'accounts' | 'security' | 'notifications';
@@ -64,6 +65,8 @@ function GeneralTab() {
 
   return (
     <div className="max-w-2xl space-y-6">
+      <ThemeCard />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -151,6 +154,56 @@ function GeneralTab() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+// ── Theme picker ──────────────────────────────────────────────────
+
+function ThemeCard() {
+  const { theme, setTheme } = useUIStore();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Palette className="w-4 h-4" /> Theme
+        </CardTitle>
+        <CardDescription>
+          A pack is a palette plus a layout voice: typeface, row surface, unread
+          signal and action style switch together.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {THEME_PACKS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setTheme(p.id)}
+              aria-pressed={theme === p.id}
+              className={cn(
+                "text-left rounded-lg border p-3 transition-colors",
+                theme === p.id
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:bg-accent"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <span className="relative w-6 h-6 rounded-full border border-border overflow-hidden shrink-0">
+                  <span className="absolute inset-0 left-0 w-1/2" style={{ background: p.swatch.bg }} />
+                  <span className="absolute inset-0 left-1/2" style={{ background: p.swatch.accent }} />
+                </span>
+                <span className="font-medium text-sm flex-1">{p.name}</span>
+                {theme === p.id && <Check className="w-4 h-4 text-primary shrink-0" />}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5 leading-snug">{p.tagline}</p>
+              <p className="font-mono text-[10px] text-muted-foreground mt-1.5">
+                {p.variants.listType} · {p.variants.surface} · {p.variants.unread} · {p.variants.actions}
+              </p>
+            </button>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
