@@ -75,7 +75,8 @@ in #151.
 The additive startup migration creates `dkim_rotation_keys` for the planned
 worker. The current signing key stays in `domains`; writing a rotation row
 cannot change signing. There are no worker or HTTP operations on these slots
-yet; `dkimrotate.Stage` (below) is the only code that writes the staged slot.
+yet; `dkimrotate.Stage` and `dkimrotate.Activate` (below) implement staging and
+activation for the future worker.
 
 Each domain can retain one `staged` key and one `previous` key. A database
 constraint rejects other slots, and unique indexes prevent duplicate slots or
@@ -109,6 +110,38 @@ selector that is not the current or previous selector, checks with
 in the staged slot with the TTL the caller gives. It never publishes DNS or
 changes the current key.
 
-Activation, retirement and rollback transactions still need to be implemented.
-They must lock the domain, keep staged/previous selectors distinct from the
-current selector, and preserve published records throughout their TTL overlap.
+## Activating a published key
+
+`dkimrotate.Activate` implements the signing switch; nothing calls it yet. It
+locks the domain row, rechecks that rotation is enabled and the current key is
+still due, and requires a staged key whose publication time is recorded and at
+least one staged TTL in the past. It then decrypts and checks both keys for
+signability and uses `Published` with the caller's resolver to confirm that the
+staged selector resolves to the matching public key. A missing or mismatched
+record returns `ErrNotPublished`; the signing key stays unchanged.
+
+On success a single transaction copies the current selector, ciphertext and
+original installation time (including unknown legacy times) to the previous
+slot, sets its retirement deadline to the signing switch time plus the
+staged TTL, installs the staged selector/ciphertext with a new installation
+time, and removes the staged slot. Database failures roll back all three
+changes. The caller supplies `time.Now` as the clock and a bounded context for
+the DNS lookup and transaction. The clock is read again after DNS verification
+so a slow lookup does not consume the old key's retention overlap. Private key
+material is neither returned nor logged.
+
+An existing previous slot returns `ErrPreviousKeyRetained`, even when its
+retirement deadline has passed: activation never silently discards a rollback
+key. A staged selector matching the current selector case-insensitively returns
+`ErrSelectorConflict` for explicit reconciliation. Disabling rotation or
+replacing the current key with a fresh key prevents activation; existing
+staged state is retained for later reconciliation.
+
+The scheduled worker, DNS publication and publication timestamps, retirement,
+rollback, manual-key reconciliation, and rotation status still need to be
+implemented. DNS publication must preserve the entire existing record set:
+the current dnsmasq and external-dns providers replace their output when
+`EnsureRecords` runs, so passing only a staged TXT record would lose existing
+records. Successful provider submission alone also does not prove propagation;
+the resolver check is mandatory before activation. During both TTL overlaps,
+the worker must preserve the current, staged and retained previous TXT records.

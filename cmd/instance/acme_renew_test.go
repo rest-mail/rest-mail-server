@@ -102,8 +102,8 @@ func TestRenewACME_SkipsWithoutListenerAccountOrCA(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(dir)
-	if err != nil || len(entries) != 2 {
-		t.Fatalf("skipped renewal changed directory: %d files, %v", len(entries), err)
+	if err != nil || len(entries) != 3 {
+		t.Fatalf("want pair plus issuer lock after skipped renewal: %d files, %v", len(entries), err)
 	}
 	for suffix, want := range map[string]string{".crt": cert, ".key": key} {
 		got, err := os.ReadFile(filepath.Join(dir, primary+suffix))
@@ -138,8 +138,8 @@ func TestRenewACME_FailedOrderPreservesPair(t *testing.T) {
 			// Reaching the CA requires a persisted account, proving issuance
 			// was attempted even when the old certificate is still valid.
 			entries, err := os.ReadDir(dir)
-			if err != nil || len(entries) != 3 {
-				t.Fatalf("want pair plus account key, got %d files: %v", len(entries), err)
+			if err != nil || len(entries) != 4 {
+				t.Fatalf("want pair plus account key and issuer lock, got %d files: %v", len(entries), err)
 			}
 			for suffix, want := range map[string]string{".crt": cert, ".key": key} {
 				got, err := os.ReadFile(filepath.Join(dir, primary+suffix))

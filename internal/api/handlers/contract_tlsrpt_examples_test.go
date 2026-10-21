@@ -1,12 +1,19 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 )
 
 const tlsReportPath = "/.well-known/smtp-tlsrpt"
+
+// tlsReportBodyRefused is the 400 ReceiveReport sends for a body that does not
+// decode as a report.
+const tlsReportBodyRefused = `{"error":{"code":"bad_request","message":"Invalid TLS-RPT JSON"}}`
 
 // receiveTlsReport's organization_missing request (#386) is refused by the
 // real handler with exactly its documented 422, before any domain is looked up
@@ -15,16 +22,17 @@ func TestTLSReportReceive_DocumentedRefusals(t *testing.T) {
 	documentedRefusals(t, tlsReportPath, "receiveTlsReport", NewTLSReportHandler(nil).ReceiveReport)
 }
 
-// The pairs vertrag compiles for receiveTlsReport: stored with the 201 and
-// organization_missing with the 422, nothing else. organization_missing is
-// the stored report without its organization-name, so the name is the only
-// reason it is refused.
+// The pairs vertrag compiles for receiveTlsReport: stored with the 201,
+// body_array with the 400 and organization_missing with the 422, nothing
+// else. organization_missing is the stored report without its
+// organization-name, so the name is the only reason it is refused.
 func TestTLSReportReceive_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, tlsReportPath, "receiveTlsReport")
 
 	want := map[string][]string{
-		"request": {"organization_missing", "stored"},
+		"request": {"body_array", "organization_missing", "stored"},
 		"201":     {"stored"},
+		"400":     {"body_array"},
 		"422":     {"organization_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}
@@ -95,5 +103,69 @@ func TestTLSReportReceive_ExamplePairs(t *testing.T) {
 	}
 	if want := map[string]interface{}{"data": map[string]interface{}{"stored": float64(1)}}; !reflect.DeepEqual(responses["201"]["stored"], want) {
 		t.Errorf("the 201 example is %s, want %s", mustJSON(responses["201"]["stored"]), mustJSON(want))
+	}
+}
+
+// receiveTLSReportNoDB sends body to the real handler, which has no database,
+// and reports whether it got as far as the database.
+func receiveTLSReportNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, reached bool) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, tlsReportPath, bytes.NewReader([]byte(body)))
+	rr = httptest.NewRecorder()
+	func() {
+		defer func() {
+			if recover() != nil {
+				reached = true
+			}
+		}()
+		NewTLSReportHandler(nil).ReceiveReport(rr, req)
+	}()
+	return rr, reached
+}
+
+// receiveTlsReport's body_array request (#386) is refused by the real handler,
+// which has no database, with exactly the 400 the spec documents for it: an
+// array is not a report, so it is refused as it is decoded, before any field
+// is checked or any domain looked up.
+func TestTLSReportReceive_BodyArrayRefused(t *testing.T) {
+	requests, responses := postExamples(t, tlsReportPath, "receiveTlsReport")
+	want := parseShapeJSON(t, tlsReportBodyRefused)
+	if !reflect.DeepEqual(responses["400"]["body_array"], want) {
+		t.Errorf("the spec documents body_array's 400 as %s, want %s",
+			mustJSON(responses["400"]["body_array"]), tlsReportBodyRefused)
+	}
+
+	body := string(mustJSON(requests["body_array"]))
+	if body != "[]" {
+		t.Fatalf("body_array is sent as %s, want []", body)
+	}
+	rr, reached := receiveTLSReportNoDB(t, body)
+	if reached {
+		t.Fatalf("%s reached the database before it was refused", body)
+	}
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("%s: status %d, want 400; body %s", body, rr.Code, rr.Body)
+	}
+	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("%s: Content-Type %q, want application/json", body, ct)
+	}
+	if got := decodeShapeBody(t, rr); !reflect.DeepEqual(got, want) {
+		t.Errorf("%s answered %s, want %s", body, rr.Body, tlsReportBodyRefused)
+	}
+
+	// Controls. An array is refused whatever it holds, the stored report in
+	// one too: the 400 is the array's, not its emptiness'. And
+	// organization_missing is decoded and refused on its field with its
+	// documented 422, not body_array's 400.
+	wrapped := "[" + string(mustJSON(requests["stored"])) + "]"
+	if rr, reached := receiveTLSReportNoDB(t, wrapped); reached || rr.Code != http.StatusBadRequest ||
+		!reflect.DeepEqual(decodeShapeBody(t, rr), want) {
+		t.Errorf("%s answered %d %s, want body_array's 400", wrapped, rr.Code, rr.Body)
+	}
+	object := string(mustJSON(requests["organization_missing"]))
+	if rr, reached := receiveTLSReportNoDB(t, object); reached || rr.Code != http.StatusUnprocessableEntity ||
+		!reflect.DeepEqual(decodeShapeBody(t, rr), responses["422"]["organization_missing"]) {
+		t.Errorf("organization_missing answered %d %s, want its documented 422, not body_array's 400",
+			rr.Code, rr.Body)
 	}
 }

@@ -103,6 +103,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset a forgotten password with the authenticator and a recovery code
+         * @description Self-service password reset for an account that set up two-factor authentication in advance: a current code from its authenticator and one of its recovery codes, both. The authenticator is checked first, so a wrong code never spends a recovery code. The account gets the new password and keeps its authenticator; its app passwords are revoked and every token it was issued is dead at once, as for a password change. Answers with a fresh session. An account without two-factor authentication has no self-service path: an admin resets it. Every refusal is the same 401, whether the address exists or not. Each address may be refused 5 times, then once per 15 minutes, from any client; past that it is answered 429 without a check.
+         */
+        post: operations["recoverAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/server": {
         parameters: {
             query?: never;
@@ -134,7 +154,7 @@ export interface paths {
         put?: never;
         /**
          * A challenge for an owner key to sign
-         * @description The first half of proving ownership of the server with a key listed in RESTMAIL_OWNER_KEYS (what `restmail reset-admin` does), or of reading its status with a key listed in RESTMAIL_STATUS_KEYS (what `restmail status --key` does). The challenge is stateless, valid two minutes, and answered once. Throttled like login.
+         * @description The first half of proving ownership of the server with a public key registered in PostgreSQL (what `restmail reset-admin` does), or of reading its status with a key listed in RESTMAIL_STATUS_KEYS (what `restmail status --key` does). The challenge is stateless, valid two minutes, and answered once. Throttled like login.
          */
         post: operations["ownerChallenge"];
         delete?: never;
@@ -154,7 +174,7 @@ export interface paths {
         put?: never;
         /**
          * Trade a signed challenge for a reset-admin token
-         * @description `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge`, so a signature for one request cannot be presented for another. `public_key` must be listed in RESTMAIL_OWNER_KEYS; a status key (RESTMAIL_STATUS_KEYS) is refused. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
+         * @description `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + purpose + "\n" + address + "\n" + challenge`, so a signature for one request cannot be presented for another. `public_key` must be listed in the PostgreSQL owner-key registry; a status key (RESTMAIL_STATUS_KEYS) is refused. Ed25519, ECDSA, and RSA with rsa-sha2-256/512 are accepted; ssh-rsa (SHA-1) signatures are not. The token is redeemed at `/api/v1/auth/reset`; the app's link is `rest-mail://reset?server=…&token=…`.
          */
         post: operations["ownerToken"];
         delete?: never;
@@ -174,7 +194,7 @@ export interface paths {
         put?: never;
         /**
          * Trade a signed challenge for what the server runs
-         * @description How a deploy is confirmed from outside (`restmail status --key`). `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + "status" + "\n" + "" + "\n" + challenge`: the owner scheme with the purpose `status` and no address, so a signature made to reset an admin does not read the status, nor the other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or RESTMAIL_OWNER_KEYS. A status key reads this and can do nothing else. The challenge is spent, so an answer works once. Keys and signatures as for `/api/v1/auth/owner/token`. Throttled with the owner endpoints.
+         * @description How a deploy is confirmed from outside (`restmail status --key`). `signature` is the SSH wire-format signature (base64) by the private half of `public_key` over the bytes `"restmail-owner-v1\n" + "status" + "\n" + "" + "\n" + challenge`: the owner scheme with the purpose `status` and no address, so a signature made to reset an admin does not read the status, nor the other way round. `public_key` must be listed in RESTMAIL_STATUS_KEYS or the PostgreSQL owner-key registry. A status key reads this and can do nothing else. The challenge is spent, so an answer works once. Keys and signatures as for `/api/v1/auth/owner/token`. Throttled with the owner endpoints.
          */
         post: operations["ownerStatus"];
         delete?: never;
@@ -1137,6 +1157,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/.well-known/restmail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Discover RESTMAIL delivery for a hosted domain
+         * @description Fetch from the recipient domain's MX host over HTTPS, verifying the
+         *     certificate against that MX host. The response names the HTTPS base URL
+         *     for RESTMAIL; append /messages to deliver. The endpoint uses the configured
+         *     GATEWAY_HOSTNAME, never request Host or forwarding headers. This is a
+         *     per-domain lookup and reveals no mailbox information. Active hosted
+         *     domains are supported regardless of their server_type.
+         *
+         *     The response is a protocol document without a data envelope. Responses
+         *     use Cache-Control: no-store. A verified 404 means the domain is not hosted
+         *     here; configuration or database failures return 503 or 500, never 404.
+         *     Sender discovery and peer memory are implemented separately.
+         */
+        get: operations["restmailDiscover"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/restmail/capabilities": {
         parameters: {
             query?: never;
@@ -1818,6 +1868,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dkim/{id}/rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a domain's DKIM rotation interval
+         * @description Available even before a domain has a signing key. The capability must cover this domain. This records policy for the planned rotation worker; scheduled key rotation is not implemented yet.
+         */
+        get: operations["getDKIMRotation"];
+        /**
+         * Set a domain's DKIM rotation interval
+         * @description Stores the requested interval without changing signing material or key age. Zero disables rotation; 1 through 3650 specifies the key lifetime in days of 24 hours. The capability must cover this domain. This records policy for the planned rotation worker; scheduled key rotation is not implemented yet. Unknown fields and trailing JSON are rejected.
+         */
+        put: operations["setDKIMRotation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dkim/{id}": {
         parameters: {
             query?: never;
@@ -1997,7 +2077,7 @@ export interface paths {
         };
         /**
          * Check the audit log's hash chain
-         * @description Walks the whole log from its lowest seq and checks that every entry follows the one before (seq one higher, `prev_hash` its hash) and hashes to its own `hash`. Stops at the first entry that does not hold. If the log does not start at seq 1, the walk starts from the first entry's own `prev_hash` and says so in `note`. This read is itself recorded (`audit.read`).
+         * @description Walks the whole log from its lowest seq and checks that every entry follows the one before (seq one higher, `prev_hash` its hash) and hashes to its own `hash`. Stops at the first entry that does not hold. If the log does not start at seq 1, the walk starts from the first entry's own `prev_hash` and says so in `note`. Given an `anchor` (one entry's seq and hash, a copy kept outside the server), the log must also still hold that entry with that hash; a log rewritten and rehashed from some entry on holds as a chain, but not to an anchor taken before the rewrite. This read is itself recorded (`audit.read`).
          */
         get: operations["verifyAuditLog"];
         put?: never;
@@ -3560,6 +3640,15 @@ export interface components {
              */
             age_seconds: number | null;
         };
+        DKIMRotationSettings: {
+            /** @example 1 */
+            domain_id: number;
+            /**
+             * @description Requested key lifetime in 24-hour days; zero disables rotation. Defaults to zero for new and existing domains. The scheduled worker is not implemented yet.
+             * @example 90
+             */
+            rotation_interval_days: number;
+        };
         SetDKIMKeyRequest: {
             /** @description A DNS name; the key's record is `<selector>._domainkey.<domain>` */
             selector: string;
@@ -3684,6 +3773,12 @@ export interface components {
             reason?: string;
             /** @description Set when the log does not start at seq 1 */
             note?: string;
+            /** @description The anchor the log was checked against, when one was given */
+            anchor?: {
+                /** Format: int64 */
+                seq: number;
+                hash: string;
+            };
         };
         StatusResponse: {
             data: {
@@ -4264,6 +4359,60 @@ export interface operations {
             };
         };
     };
+    recoverAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    email: string;
+                    totp_code: string;
+                    recovery_code: string;
+                    new_password: string;
+                    /** @enum {string} */
+                    client?: "native";
+                };
+            };
+        };
+        responses: {
+            /** @description Password reset; a new session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["LoginResponse"];
+                    };
+                };
+            };
+            /** @description recovery_failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A field missing, or a password under 12 characters (no code is spent) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many attempts from this client, or too many refusals for this address */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     describeServer: {
         parameters: {
             query?: never;
@@ -4733,13 +4882,6 @@ export interface operations {
         };
         requestBody: {
             content: {
-                /**
-                 * @example {
-                 *       "address": "new-account@restmail.test",
-                 *       "display_name": "New Account",
-                 *       "password": "correct-horse-battery"
-                 *     }
-                 */
                 "application/json": components["schemas"]["CreateAccountRequest"];
             };
         };
@@ -5332,7 +5474,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Paginated list of messages */
             200: {
                 headers: {
@@ -5345,6 +5486,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     getMessage: {
@@ -6503,6 +6645,68 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
+    restmailDiscover: {
+        parameters: {
+            query: {
+                /**
+                 * @description Exactly one recipient domain; mailbox addresses are invalid. Case and IDNs are normalized as for domain creation.
+                 * @example restmail.test
+                 */
+                domain: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Delivery base URL for this domain */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "endpoint": "https://restmail.test/restmail"
+                     *     }
+                     */
+                    "application/json": {
+                        /** Format: uri */
+                        endpoint: string;
+                    };
+                };
+            };
+            /** @description Missing, duplicate or invalid domain query parameter */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Domain lookup failed; retry discovery */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description GATEWAY_HOSTNAME must be configured as a fully qualified hostname */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     restmailCapabilities: {
         parameters: {
             query?: never;
@@ -6760,7 +6964,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Mailbox list */
             200: {
                 headers: {
@@ -6772,6 +6975,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     getMailbox: {
@@ -6918,7 +7122,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Alias list */
             200: {
                 headers: {
@@ -6930,6 +7133,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     createAlias: {
@@ -7061,6 +7265,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listPipelines: {
@@ -7074,7 +7279,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Pipeline list */
             200: {
                 headers: {
@@ -7086,6 +7290,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     createPipeline: {
@@ -7257,15 +7462,6 @@ export interface operations {
                     };
                 };
             };
-            /** @description Request body failed validation */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ValidationErrorResponse"];
-                };
-            };
             /** @description `bad_request` when the body does not decode as the request: empty, not JSON, an array, a string, a number or a boolean rather than an object, or a `filter_name` or `email` of the wrong JSON type. It is refused before the required fields are checked and before any filter is made; `{}` and a `null` body decode as empty ones and get a 422 instead. A body that decodes is also refused with a 400, `filter_error`, when the named filter cannot be made from its config or fails on the email. */
             400: {
                 headers: {
@@ -7273,6 +7469,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request body failed validation */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
@@ -7297,7 +7502,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Pipeline message traces */
             200: {
                 headers: {
@@ -7310,6 +7514,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     listCustomFilters: {
@@ -7323,7 +7528,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Custom filter list */
             200: {
                 headers: {
@@ -7335,6 +7539,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     createCustomFilter: {
@@ -7603,7 +7808,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Queue entries */
             200: {
                 headers: {
@@ -7620,6 +7824,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     getQueueStats: {
@@ -8103,6 +8308,98 @@ export interface operations {
             };
         };
     };
+    getDKIMRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description DKIM rotation settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DKIMRotationSettings"];
+                    };
+                };
+            };
+            /** @description Invalid domain ID (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setDKIMRotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Resource ID
+                 * @example 1
+                 */
+                id: components["parameters"]["ResourceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @example 90 */
+                    rotation_interval_days: number;
+                };
+            };
+        };
+        responses: {
+            /** @description DKIM rotation settings saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        data: components["schemas"]["DKIMRotationSettings"];
+                    };
+                };
+            };
+            /** @description Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Missing, null, or out-of-range interval (`validation_failed`); details.fields.rotation_interval_days describes the requirement. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
     setDKIMKey: {
         parameters: {
             query?: never;
@@ -8304,7 +8601,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Ban list */
             200: {
                 headers: {
@@ -8317,6 +8613,7 @@ export interface operations {
                     };
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     createBan: {
@@ -8488,7 +8785,10 @@ export interface operations {
     };
     verifyAuditLog: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The anchored entry as `<seq>:<hash>`, its seq and its hash in 64 hex digits */
+                anchor?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8516,6 +8816,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     apiRoot: {
@@ -8988,7 +9289,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            422: components["responses"]["ValidationError"];
             /** @description Grants */
             200: {
                 headers: {
@@ -9002,6 +9302,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationError"];
         };
     };
     createGrant: {
@@ -9602,16 +9903,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Invalid domain_id */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            422: components["responses"]["ValidationError"];
             /** @description TLS-RPT reports */
             200: {
                 headers: {
@@ -9624,6 +9915,16 @@ export interface operations {
                     };
                 };
             };
+            /** @description Invalid domain_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            422: components["responses"]["ValidationError"];
         };
     };
     getPipelineAnalytics: {
