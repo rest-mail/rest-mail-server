@@ -14,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"gorm.io/gorm"
 )
 
 // fakeRESTMAILMX starts an SMTP listener that answers EHLO with restmailLine
@@ -57,14 +58,6 @@ func fakeRESTMAILMX(t *testing.T, restmailLine string) string {
 	return ln.Addr().String()
 }
 
-func TestRESTMAILEndpointForMX(t *testing.T) {
-	for _, mx := range []string{"mx1.example.test", "mx1.example.test."} {
-		if got, want := restmailEndpointForMX(mx), "https://mx1.example.test/restmail"; got != want {
-			t.Errorf("restmailEndpointForMX(%q) = %q, want %q", mx, got, want)
-		}
-	}
-}
-
 // TestProbeRESTMAILKeywordIsAHint verifies #291: the probe reports only whether
 // the MX speaks REST. A bare keyword with no address still counts, and whatever
 // address the keyword carries never leaves the probe.
@@ -78,12 +71,10 @@ func TestProbeRESTMAILKeywordIsAHint(t *testing.T) {
 	}
 }
 
-// TestTryRESTMAILIgnoresAdvertisedEndpoint is the red-green guard for #291. The
-// MX's EHLO advertises an endpoint on a host the attacker controls (an httptest
-// TLS server). Before the fix the worker cached that address and POSTed the
-// message to it; now the endpoint is derived from the MX host name, so the
-// attacker's server sees nothing and the cache holds the derived endpoint.
-func TestTryRESTMAILIgnoresAdvertisedEndpoint(t *testing.T) {
+// restmailTestDB connects to the test database and clears the capability row
+// for domain before and after the test.
+func restmailTestDB(t *testing.T, domain string) *gorm.DB {
+	t.Helper()
 	cfg := &config.Config{
 		DBHost: envOr("DB_HOST", "localhost"),
 		DBPort: envIntOr("DB_PORT", 5432),
@@ -98,6 +89,19 @@ func TestTryRESTMAILIgnoresAdvertisedEndpoint(t *testing.T) {
 	if err := rmdb.AutoMigrate(gdb); err != nil {
 		t.Skipf("RESTMAIL endpoint DB test skipped: migrate failed (%v)", err)
 	}
+	gdb.Where("domain = ?", domain).Delete(&models.RESTMAILCapability{})
+	t.Cleanup(func() { gdb.Where("domain = ?", domain).Delete(&models.RESTMAILCapability{}) })
+	return gdb
+}
+
+// TestTryRESTMAILIgnoresAdvertisedEndpoint is the red-green guard for #291. The
+// MX's EHLO advertises an endpoint on a host the attacker controls (an httptest
+// TLS server). Before the fix the worker cached that address and POSTed the
+// message to it; now the endpoint is asked of the MX host's discovery endpoint,
+// so the attacker's server sees nothing and the cache holds no endpoint.
+func TestTryRESTMAILIgnoresAdvertisedEndpoint(t *testing.T) {
+	const domain = "restmail-291.test"
+	gdb := restmailTestDB(t, domain)
 
 	var hits atomic.Int32
 	attacker := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -106,12 +110,9 @@ func TestTryRESTMAILIgnoresAdvertisedEndpoint(t *testing.T) {
 	}))
 	defer attacker.Close()
 
-	const domain = "restmail-291.test"
-	// .invalid never resolves (RFC 2606), so the derived endpoint fails to dial
-	// and the test touches nothing real.
+	// .invalid never resolves (RFC 2606), so discovery at the MX host fails to
+	// dial and the test touches nothing real.
 	const mxHost = "mx.restmail-291.invalid"
-	gdb.Where("domain = ?", domain).Delete(&models.RESTMAILCapability{})
-	t.Cleanup(func() { gdb.Where("domain = ?", domain).Delete(&models.RESTMAILCapability{}) })
 
 	// tlsInsecure would accept the attacker's self-signed certificate and
 	// allowPrivateDest the loopback address, so only the endpoint choice stops it.
@@ -120,22 +121,86 @@ func TestTryRESTMAILIgnoresAdvertisedEndpoint(t *testing.T) {
 	item.Domain = domain
 
 	addr := fakeRESTMAILMX(t, "RESTMAIL "+attacker.URL+"/restmail")
-	upgraded, err := w.tryRESTMAILAt(addr, mxHost, item, nil, false)
+	upgraded, err := w.tryRESTMAILAt(addr, restmailDiscoveryURL(mxHost, domain), mxHost, item, nil, false)
 
 	if n := hits.Load(); n != 0 {
-		t.Fatalf("worker POSTed %d time(s) to the endpoint the MX advertised; it must derive it from the MX host (#291)", n)
+		t.Fatalf("worker sent %d request(s) to the endpoint the MX advertised; it must ask the MX host (#291)", n)
 	}
 	if !upgraded || err == nil {
-		t.Fatalf("upgraded=%v err=%v: want a REST attempt at the derived endpoint, failing to resolve", upgraded, err)
+		t.Fatalf("upgraded=%v err=%v: want a REST attempt at the MX host's discovery endpoint, failing to resolve", upgraded, err)
 	}
 	if !strings.Contains(err.Error(), mxHost) {
-		t.Errorf("error %q does not name the derived endpoint host %q", err, mxHost)
+		t.Errorf("error %q does not name the MX host %q", err, mxHost)
 	}
 	var cap models.RESTMAILCapability
 	if err := gdb.Where("domain = ?", domain).First(&cap).Error; err != nil {
 		t.Fatalf("capability not cached: %v", err)
 	}
-	if want := restmailEndpointForMX(mxHost); cap.EndpointURL != want || cap.MXHost != mxHost || !cap.Supported {
-		t.Errorf("cached %+v, want supported endpoint %q for MX %q", cap, want, mxHost)
+	if cap.EndpointURL != "" || cap.MXHost != mxHost || !cap.Supported {
+		t.Errorf("cached %+v, want supported for MX %q with no stored endpoint", cap, mxHost)
+	}
+}
+
+// TestTryRESTMAILDeliversToDiscoveredEndpoint: the message goes to the endpoint
+// the verified discovery answer names, which may be another host (#291).
+func TestTryRESTMAILDeliversToDiscoveredEndpoint(t *testing.T) {
+	const domain = "restmail-291-fleet.test"
+	gdb := restmailTestDB(t, domain)
+
+	var posted atomic.Value
+	final := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		posted.Store(r.Method + " " + r.URL.Path)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer final.Close()
+	var askedDomain atomic.Value
+	discovery, w := discoveryServer(t, func(rw http.ResponseWriter, r *http.Request) {
+		askedDomain.Store(r.URL.Query().Get("domain"))
+		fmt.Fprintf(rw, `{"endpoint":%q}`, final.URL+"/restmail")
+	})
+	w.db = gdb
+	// Final-hop verification still follows tlsInsecure until it is always on.
+	w.tlsInsecure = true
+	item := testItem()
+	item.Domain = domain
+
+	addr := fakeRESTMAILMX(t, "RESTMAIL https://attacker.test/restmail")
+	upgraded, err := w.tryRESTMAILAt(addr, discovery.URL+"/.well-known/restmail?domain="+domain, "mx.test", item, nil, false)
+	if !upgraded || err != nil {
+		t.Fatalf("upgraded=%v err=%v, want REST delivery", upgraded, err)
+	}
+	if got, _ := askedDomain.Load().(string); got != domain {
+		t.Errorf("discovery asked for domain %q, want %q", got, domain)
+	}
+	if got, _ := posted.Load().(string); got != "POST /restmail/messages" {
+		t.Errorf("final endpoint got %q, want POST /restmail/messages", got)
+	}
+}
+
+// TestTryRESTMAILVerifiedNotHosted: a verified 404 from discovery means the MX
+// does not take REST mail for the domain, so the worker records that and uses
+// SMTP without a REST attempt.
+func TestTryRESTMAILVerifiedNotHosted(t *testing.T) {
+	const domain = "restmail-291-gone.test"
+	gdb := restmailTestDB(t, domain)
+
+	discovery, w := discoveryServer(t, func(rw http.ResponseWriter, _ *http.Request) {
+		rw.WriteHeader(http.StatusNotFound)
+	})
+	w.db = gdb
+	item := testItem()
+	item.Domain = domain
+
+	addr := fakeRESTMAILMX(t, "RESTMAIL")
+	upgraded, err := w.tryRESTMAILAt(addr, discovery.URL+"/.well-known/restmail?domain="+domain, "mx.test", item, nil, false)
+	if upgraded || err != nil {
+		t.Fatalf("upgraded=%v err=%v, want no REST attempt", upgraded, err)
+	}
+	var cap models.RESTMAILCapability
+	if err := gdb.Where("domain = ?", domain).First(&cap).Error; err != nil {
+		t.Fatalf("capability not cached: %v", err)
+	}
+	if cap.Supported || cap.MXHost != "mx.test" {
+		t.Errorf("cached %+v, want unsupported for mx.test", cap)
 	}
 }

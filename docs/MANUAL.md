@@ -305,8 +305,10 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 - 4xx temporary → increment attempts, retry with exponential backoff until `ExpiresAt`
 
 #### RESTMAIL protocol upgrade
-- Outbound worker probes each recipient domain: if EHLO response contains `RESTMAIL https://...`, drops SMTP and delivers via `POST /restmail/messages` over HTTPS.
-- Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes.
+- Outbound worker probes the recipient domain's primary MX: the EHLO `RESTMAIL` keyword is only a hint, and any address it carries is ignored (#291).
+- It then asks `GET https://<mx-host>/.well-known/restmail?domain=<domain>` where to deliver, always verifying the certificate against the MX host name (even in development), through the SSRF-guarded dialer, with no redirects and a 4 KiB answer cap. The answer `{"endpoint":"https://…/restmail"}` may name any host; it must be https with no credentials, query or fragment. The message goes to `POST <endpoint>/messages`.
+- A 404 or 410 from discovery is a verified "not hosted": the domain is recorded as not REST and delivery uses SMTP. Other discovery failures currently still fall back to SMTP (no-fallback is a later #291 slice).
+- Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes. It records only whether the MX speaks REST; the endpoint is discovered on every delivery.
 
 #### TLS / SNI
 - Per-domain cert/key pairs via `TLS_CERT_DIR`. SNI-based lookup at handshake time.
