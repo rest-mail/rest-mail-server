@@ -70,6 +70,7 @@ class FixtureAPI(BaseHTTPRequestHandler):
         body = self.read_body()
         if not body.get("private_key", "").startswith("-----BEGIN"):
             return self.answer(400)
+        self.server.state["signing"].add(int(self.path.rsplit("/", 1)[1]))
         self.answer(200, {"data": {"selector": body["selector"]}})
 
     def do_GET(self):
@@ -78,6 +79,9 @@ class FixtureAPI(BaseHTTPRequestHandler):
         url = urllib.parse.urlparse(self.path)
         if url.path == "/api/v1/admin/domains":
             return self.answer(200, {"data": state["domains"]})
+        if url.path == "/api/v1/admin/dkim":
+            return self.answer(200, {"data": [{"domain_id": d["id"], "domain": d["name"], "has_key": True}
+                                              for d in state["domains"] if d["id"] in state["signing"]]})
         if url.path == "/api/v1/admin/mailboxes":
             domain_id = int(urllib.parse.parse_qs(url.query)["domain_id"][0])
             return self.answer(200, {"data": [m for m in state["mailboxes"] if m["domain_id"] == domain_id]})
@@ -88,7 +92,7 @@ class SendMessageProbes(unittest.TestCase):
     def setUp(self):
         self.hooks, self.stub = load_hooks()
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureAPI)
-        self.server.state = {"calls": [], "domains": [{"id": 1, "name": "restmail.test"}],
+        self.server.state = {"calls": [], "domains": [{"id": 1, "name": "restmail.test"}], "signing": {1},
                              "mailboxes": [{"id": 7, "domain_id": 1, "address": "admin@restmail.test"}]}
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
@@ -114,6 +118,15 @@ class SendMessageProbes(unittest.TestCase):
         self.assertEqual([m["address"] for m in state["mailboxes"]], ["admin@restmail.test", "someone@example.com"])
         self.assertEqual(state["calls"].count("PUT /api/v1/admin/dkim/2"), 1)
         self.assertEqual(state["calls"].count("POST /api/v1/accounts"), 1)
+
+    def test_a_domain_hosted_without_a_key_gets_one(self):
+        # The createAccount hook hosts probe domains too, without a key.
+        self.server.state["domains"].append({"id": 2, "name": "example.com"})
+        self.send({"from": "someone@example.com", "to": ["someone@example.com"]})
+        state = self.server.state
+        self.assertNotIn("POST /api/v1/admin/domains", state["calls"])
+        self.assertEqual(state["calls"].count("PUT /api/v1/admin/dkim/2"), 1)
+        self.assertEqual([m["address"] for m in state["mailboxes"]], ["admin@restmail.test", "someone@example.com"])
 
     def test_a_hosted_sender_is_left_alone(self):
         self.send({"from": "admin@restmail.test", "to": ["someone@example.com"]})
