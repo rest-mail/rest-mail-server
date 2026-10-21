@@ -2,10 +2,8 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -26,7 +24,7 @@ func NewSuppressionHandler(db *gorm.DB) *SuppressionHandler {
 // expired one no longer suppresses, so it isn't listed.
 // GET /api/v1/admin/domains/{id}/suppressions
 func (h *SuppressionHandler) List(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -47,12 +45,12 @@ func (h *SuppressionHandler) List(w http.ResponseWriter, r *http.Request) {
 // tried again.
 // DELETE /api/v1/admin/domains/{id}/suppressions/{sid}
 func (h *SuppressionHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
-	suppressionID, err := strconv.ParseUint(chi.URLParam(r, "sid"), 10, 32)
+	suppressionID, err := pathID(r, "sid")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid suppression ID")
 		return

@@ -88,8 +88,8 @@ exclude-matching:
   # operations whose refusals have their pair are sent: createDomain,
   # createAlias, createPipeline, createBan, createCustomFilter,
   # validateCustomFilter, sendTestEmail, createAccount, restmailDeliver,
-  # bulkDeleteQueue, addToAllowlist and addToBlocklist. Their coverage probes
-  # built from the refused request are refused too; tests/contract/gate.py does not judge
+  # bulkDeleteQueue, addToAllowlist, addToBlocklist and testFilter. Coverage
+  # probes built from a refused request are refused too; tests/contract/gate.py does not judge
   # those (tests/contract/README.md). Each operation paired next comes off
   # these patterns the same way. A path in a segment none of them names is sent.
   - '> (404|409)( >|$)'
@@ -99,7 +99,8 @@ exclude-matching:
   - '^/api/v1/admin/(audit|certificates|dkim|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue/(bulk-retry|bulk-bounce|stats|\{id\})(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/(aliases|pipelines)/.* > (400|422)( >|$)'
+  - '^/api/v1/admin/aliases/.* > (400|422)( >|$)'
+  - '^/api/v1/admin/pipelines/(\{id\}|test|logs|analytics)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\} > .* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(dns|suppressions|mta-sts|relay)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'

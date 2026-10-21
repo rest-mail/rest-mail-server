@@ -1,8 +1,12 @@
 package handlers
 
 import (
+	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // TestParsePagination covers the shared limit/offset clamping used by the list
@@ -40,6 +44,70 @@ func TestParsePagination(t *testing.T) {
 			}
 			if offset != tc.wantOffset {
 				t.Errorf("offset = %d, want %d", offset, tc.wantOffset)
+			}
+		})
+	}
+}
+
+// TestPathID covers the shared path ID parser: the spec's path IDs have a
+// minimum of 1 (#388), so 0, a negative number, a fraction, a word and a value
+// past 32 bits are refused, and an ID from 1 up is returned.
+func TestPathID(t *testing.T) {
+	cases := []struct {
+		value  string
+		want   uint64
+		wantOK bool
+	}{
+		{"1", 1, true},
+		{"42", 42, true},
+		{"4294967295", 4294967295, true},
+		{"0", 0, false},
+		{"-1", 0, false},
+		{"1.5", 0, false},
+		{"abc", 0, false},
+		{"", 0, false},
+		{"4294967296", 0, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.value, func(t *testing.T) {
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("id", tc.value)
+			req := httptest.NewRequest("GET", "/x", nil)
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+			got, err := pathID(req, "id")
+			if (err == nil) != tc.wantOK {
+				t.Fatalf("pathID(%q) error = %v, want ok %v", tc.value, err, tc.wantOK)
+			}
+			if tc.wantOK && got != tc.want {
+				t.Errorf("pathID(%q) = %d, want %d", tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestDeleteByIDZeroRefused pins the probe #388 found: a delete by ID 0 matched
+// no row and still answered success. It is refused before the database (the
+// handlers have none here), as the schema's minimum of 1 says.
+func TestDeleteByIDZeroRefused(t *testing.T) {
+	handlers := map[string]http.HandlerFunc{
+		"deleteBan":          (&BanHandler{}).DeleteBan,
+		"deletePipeline":     (&PipelineHandler{}).DeletePipeline,
+		"deleteCustomFilter": (&PipelineHandler{}).DeleteCustomFilter,
+		"deleteQueueEntry":   (&QueueHandler{}).DeleteQueueEntry,
+	}
+	for name, h := range handlers {
+		t.Run(name, func(t *testing.T) {
+			rctx := chi.NewRouteContext()
+			rctx.URLParams.Add("id", "0")
+			req := httptest.NewRequest("DELETE", "/x/0", nil)
+			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+			rec := httptest.NewRecorder()
+
+			h(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 			}
 		})
 	}

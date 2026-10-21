@@ -100,6 +100,7 @@ class PairedRefusals(unittest.TestCase):
         "bulkDeleteQueue",
         "addToAllowlist",
         "addToBlocklist",
+        "testFilter",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):

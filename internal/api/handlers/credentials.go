@@ -235,7 +235,7 @@ func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "credential_id"), 10, 32)
+	id, err := pathID(r, "credential_id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid credential ID")
 		return
