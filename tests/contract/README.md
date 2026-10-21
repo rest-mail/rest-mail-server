@@ -163,6 +163,14 @@ refusal (`contract_sendmessage_examples_test.go`). The other
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setDKIMRotation` pairs `configured` with 200, `body_array`,
+`interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
+`interval_null`, `interval_negative` and `interval_too_large` with 422.
+The domain ID comes from `createDomain`'s link. The handler tests send each
+refusal before and after saving a valid interval and verify the entire domain
+is preserved, including its signing material. Other DKIM operations keep
+their exclusions.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
