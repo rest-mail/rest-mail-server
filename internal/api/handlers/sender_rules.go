@@ -3,9 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -27,7 +25,7 @@ func NewSenderRuleHandler(db *gorm.DB) *SenderRuleHandler {
 // ListAllowlist returns all sender rules where list_type="allow" for a domain.
 // GET /api/v1/admin/domains/{id}/allowlist
 func (h *SenderRuleHandler) ListAllowlist(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -52,7 +50,7 @@ type addSenderRuleRequest struct {
 // AddToAllowlist creates a new sender rule with list_type="allow" for a domain.
 // POST /api/v1/admin/domains/{id}/allowlist
 func (h *SenderRuleHandler) AddToAllowlist(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -98,13 +96,13 @@ func (h *SenderRuleHandler) AddToAllowlist(w http.ResponseWriter, r *http.Reques
 // RemoveFromAllowlist deletes an allowlist rule for a domain.
 // DELETE /api/v1/admin/domains/{id}/allowlist/{eid}
 func (h *SenderRuleHandler) RemoveFromAllowlist(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
 
-	ruleID, err := strconv.ParseUint(chi.URLParam(r, "eid"), 10, 32)
+	ruleID, err := pathID(r, "eid")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid rule ID")
 		return
@@ -130,7 +128,7 @@ func (h *SenderRuleHandler) RemoveFromAllowlist(w http.ResponseWriter, r *http.R
 // ListBlocklist returns all sender rules where list_type="block" for a domain.
 // GET /api/v1/admin/domains/{id}/blocklist
 func (h *SenderRuleHandler) ListBlocklist(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -150,7 +148,7 @@ func (h *SenderRuleHandler) ListBlocklist(w http.ResponseWriter, r *http.Request
 // AddToBlocklist creates a new sender rule with list_type="block" for a domain.
 // POST /api/v1/admin/domains/{id}/blocklist
 func (h *SenderRuleHandler) AddToBlocklist(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -196,13 +194,13 @@ func (h *SenderRuleHandler) AddToBlocklist(w http.ResponseWriter, r *http.Reques
 // RemoveFromBlocklist deletes a blocklist rule for a domain.
 // DELETE /api/v1/admin/domains/{id}/blocklist/{eid}
 func (h *SenderRuleHandler) RemoveFromBlocklist(w http.ResponseWriter, r *http.Request) {
-	domainID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	domainID, err := pathID(r, "id")
 	if err != nil || domainID == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
 	}
 
-	ruleID, err := strconv.ParseUint(chi.URLParam(r, "eid"), 10, 32)
+	ruleID, err := pathID(r, "eid")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid rule ID")
 		return

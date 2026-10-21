@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -21,7 +19,7 @@ type dkimRotationSettings struct {
 
 // rotationDomain loads only public configuration, never the signing key.
 func (h *DKIMHandler) rotationDomain(w http.ResponseWriter, r *http.Request) (*models.Domain, bool) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil || id == 0 {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return nil, false

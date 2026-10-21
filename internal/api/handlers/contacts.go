@@ -157,7 +157,7 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contactID, err := strconv.ParseUint(chi.URLParam(r, "cid"), 10, 32)
+	contactID, err := pathID(r, "cid")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid contact ID")
 		return
@@ -209,7 +209,7 @@ func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contactID, err := strconv.ParseUint(chi.URLParam(r, "cid"), 10, 32)
+	contactID, err := pathID(r, "cid")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid contact ID")
 		return

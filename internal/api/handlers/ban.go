@@ -148,7 +148,7 @@ func (h *BanHandler) CreateBan(w http.ResponseWriter, r *http.Request) {
 // DeleteBan removes a ban by ID (unbans the IP).
 // DELETE /api/v1/admin/bans/{id}
 func (h *BanHandler) DeleteBan(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid ban ID")
 		return

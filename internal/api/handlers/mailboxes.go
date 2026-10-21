@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -57,7 +55,7 @@ func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *MailboxHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
 		return
@@ -92,7 +90,7 @@ var mailboxUpdatableColumns = map[string]bool{
 }
 
 func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
 		return
@@ -186,7 +184,7 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 // too, so a new account at the same address inherits nobody. Each removal has
 // its audit entry, in the same transaction.
 func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
 		return
@@ -249,7 +247,7 @@ func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // password keeps working, and is revoked on its own.
 // DELETE /api/v1/admin/mailboxes/{id}/sessions
 func (h *MailboxHandler) EndSessions(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
 		return
