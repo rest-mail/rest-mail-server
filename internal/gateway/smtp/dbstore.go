@@ -28,6 +28,17 @@ func NewStore(db *gorm.DB, masterKey string) Store {
 	return &dbStore{db: db, masterKey: masterKey}
 }
 
+func (s *dbStore) SenderMatchesAccount(accountID uint, from string) (bool, error) {
+	var mb models.Mailbox
+	if err := repositories.FindMailboxByAddress(s.db, from, &mb); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return mb.ID == accountID, nil
+}
+
 // SenderAuthorized reads the account's grants, as the API's send path does:
 // the account may send as from when from is an account it holds mail:send on.
 // from is resolved to its hosted identity first, so a Unicode domain or
