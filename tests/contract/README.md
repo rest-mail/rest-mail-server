@@ -113,6 +113,15 @@ spec's malformed request to the real handler with no database. The 200's
 named example declares no fixed response body: the XML contains the requested
 mailbox's settings. This route's 400 is now sent and judged.
 
+`updateMailbox` sends its `password_short` request (a five-character
+password) with its paired 422 naming `password`, and `updated` with its 200,
+both to the account `createAccount`'s link names. The refusal comes before any
+password is hashed or stored: the account keeps its fields, credential epoch
+and password (`contract_mailbox_update_examples_test.go`, which sends both
+requests to the real handler on a scratch database). The other
+`/api/v1/admin/mailboxes` refusals (`listMailboxes`' 422) keep their
+exclusion.
+
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
 is made; `valid` still runs `header_validate` and gets the documented 200
