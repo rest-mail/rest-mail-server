@@ -88,6 +88,7 @@ class PairedRefusals(unittest.TestCase):
     # The operations whose documented 400s and 422s each have their named
     # request example.
     PAIRED = {
+        "updateAlias",
         "sendMessage",
         "microsoftAutodiscover",
         "createDomain",

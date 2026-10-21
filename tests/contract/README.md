@@ -163,6 +163,12 @@ refusal (`contract_sendmessage_examples_test.go`). The other
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`updateAlias` pairs its `destination_invalid` request (`not-an-email`) with
+its 422 naming `destination_address`. Its valid `updated` request pairs only
+with the 200. The alias ID comes from `createAlias`'s existing link. A handler
+test sends the examples to a stored alias, checks the documented refusal body,
+and verifies that the refusal leaves the stored alias unchanged.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
