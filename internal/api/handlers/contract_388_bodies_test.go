@@ -98,8 +98,8 @@ func TestVacationConfig_ContractSchema(t *testing.T) {
 	type rule struct {
 		Required   []string `yaml:"required"`
 		Properties map[string]struct {
-			Const     *bool `yaml:"const"`
-			MinLength int   `yaml:"minLength"`
+			Const     interface{} `yaml:"const"`
+			MinLength int         `yaml:"minLength"`
 		} `yaml:"properties"`
 	}
 	var doc struct {
@@ -114,7 +114,7 @@ func TestVacationConfig_ContractSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	schema := doc.Components.Schemas["VacationConfig"]
-	if enabled := schema.If.Properties["enabled"].Const; enabled == nil || !*enabled {
+	if enabled := schema.If.Properties["enabled"].Const; enabled != true {
 		t.Errorf("VacationConfig if: enabled const = %v, want true", enabled)
 	}
 	if !reflect.DeepEqual(schema.If.Required, []string{"enabled"}) {

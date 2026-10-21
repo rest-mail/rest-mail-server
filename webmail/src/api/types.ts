@@ -4041,10 +4041,11 @@ export interface components {
                 "end-datetime": string;
             };
             policies: {
-                policy?: {
+                policy: {
                     "policy-type"?: string;
                     "policy-string"?: string[];
-                    "policy-domain"?: string;
+                    /** Format: hostname */
+                    "policy-domain": string;
                     "mx-host"?: string[];
                 };
                 summary?: {

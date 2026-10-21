@@ -9879,11 +9879,14 @@ components:
         policies:
           type: array
           minItems: 1
+          maxItems: 100
           items:
             type: object
+            required: [policy]
             properties:
               policy:
                 type: object
+                required: [policy-domain]
                 properties:
                   policy-type:
                     type: string
@@ -9893,6 +9896,8 @@ components:
                       type: string
                   policy-domain:
                     type: string
+                    minLength: 1
+                    format: hostname
                   mx-host:
                     type: array
                     items:

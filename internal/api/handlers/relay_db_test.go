@@ -113,6 +113,21 @@ func TestRelaySettingsRoundTrip(t *testing.T) {
 	}
 }
 
+// The contract generator's relay enum probe needs the companions from the
+// schema's if/then branch. It must not require credentials for a relay.
+func TestRelaySettingsContractTransportProbe(t *testing.T) {
+	srv, _, id := relayTestServer(t, relayTestMasterKey)
+	code, body := relayCall(t, srv, http.MethodPut, id,
+		`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls"}`)
+	if code != http.StatusOK || !strings.Contains(body, `"password_set":false`) {
+		t.Fatalf("relay enum with companions: %d %s; want 200 without credentials", code, body)
+	}
+	code, body = relayCall(t, srv, http.MethodPut, id, `{"transport":"relay"}`)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("relay enum without companions: %d %s; want 422", code, body)
+	}
+}
+
 func TestRelaySettingsValidation(t *testing.T) {
 	srv, _, id := relayTestServer(t, relayTestMasterKey)
 	cases := map[string]struct {

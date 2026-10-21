@@ -201,7 +201,14 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   probe's domain hosted first. The entries `removeFromAllowlist`,
   `removeFromBlocklist`, `getAlias`, `updateAlias` and `deleteAlias` are linked
   to are followed to their current id, and added again if a probe left none.
-  TLS-RPT reports are sent a second apart: the route is rate-limited.
+  TLS-RPT reports are sent a second apart: the route is rate-limited. Their
+  schema requires a policy domain and caps the array at 100 policies, matching
+  the storage limit. The hook hosts generated policy domains before sending
+  each report, leaving its generated request unchanged.
+  The valid relay transport enum probe gets the host, port and TLS mode that
+  its `if/then` branch requires; vertrag v0.29 does not generate those
+  conditional companions. Other relay probes and documented refusals keep
+  their bodies.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
