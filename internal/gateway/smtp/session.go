@@ -392,10 +392,10 @@ func (s *session) Mail(from string, opts *gosmtp.MailOptions) error {
 		}
 	}
 
-	if s.isSubmission && s.authenticated && from != s.authEmail {
-		// Another account it may send as. A lookup error is treated as "not
-		// authorized".
-		authorized, err := s.mayAlsoSendAs(from)
+	if s.isSubmission && s.authenticated {
+		// Resolve the account identity before considering grants. A lookup
+		// error is treated as "not authorized".
+		authorized, err := s.maySendAs(from)
 		if err != nil || !authorized {
 			// OSI-5: mask the addresses — a mismatching MAIL FROM is a spoofing
 			// attempt and both values are logged in the clear otherwise.
@@ -437,10 +437,7 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 			Message:      "A valid From header is required",
 		}
 	}
-	if fromAddr == s.authEmail {
-		return nil
-	}
-	authorized, err := s.mayAlsoSendAs(fromAddr)
+	authorized, err := s.maySendAs(fromAddr)
 	if err != nil || !authorized {
 		slog.Warn("smtp: From header not authorized",
 			"auth_user", maskEmail(s.authEmail), "header_from", maskEmail(fromAddr), "error", err)
@@ -453,10 +450,17 @@ func (s *session) authorizeFromHeader(fromAddr string) error {
 	return nil
 }
 
-// mayAlsoSendAs reports whether the account may send as addr, an address other
-// than the one it signed in as: an account it owns or has linked. A session
-// signed in with an app password never may.
-func (s *session) mayAlsoSendAs(addr string) (bool, error) {
+// maySendAs accepts the login spelling or another spelling that resolves to
+// the same mailbox ID. Only a password session may use grants to send as a
+// different mailbox; app passwords remain scoped to their own identity.
+func (s *session) maySendAs(addr string) (bool, error) {
+	if addr == s.authEmail {
+		return true, nil
+	}
+	same, err := s.store.SenderMatchesAccount(s.accountID, addr)
+	if err != nil || same {
+		return same, err
+	}
 	if s.credentialKind != "password" {
 		return false, nil
 	}
