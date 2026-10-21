@@ -180,6 +180,12 @@ keep their IDs. The real-handler test checks the missing ID and a successful
 lookup, including the domain association, and proves neither changes storage.
 All other documented 404s retain their exclusions; `test_gate.py` checks this set.
 
+`createFolder` pairs `created` with 201 and `name_missing`, `name_empty`, and
+`name_wrong_type` with 422. The real handler tests use an authorized account
+on a scratch database and compare each example's status and full response
+body. The folder hook leaves the invalid bodies unchanged and only removes
+previously created valid probe folders.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
