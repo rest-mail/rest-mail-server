@@ -2089,6 +2089,8 @@ paths:
           schema:
             type: string
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Contact list
           content:

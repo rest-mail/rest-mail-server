@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/restmail/restmail"
@@ -16,6 +18,7 @@ import (
 
 type listQuerySchema struct {
 	Type    string   `yaml:"type"`
+	Format  string   `yaml:"format"`
 	Enum    []string `yaml:"enum"`
 	Minimum *int64   `yaml:"minimum"`
 	Maximum *int64   `yaml:"maximum"`
@@ -164,6 +167,92 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 			}
 			if count == 0 {
 				t.Fatal("no integer query probes ran")
+			}
+		})
+	}
+}
+
+// Replay the enum, boolean and date-time probes against real handlers and
+// PostgreSQL: a value the schema allows is answered, any other is refused with
+// a field-specific 422 instead of being dropped or passed to SQL.
+func TestListQueryTypedContractProbes(t *testing.T) {
+	db, err := connectTestDB()
+	if err != nil {
+		t.Skipf("contract list DB tests require PostgreSQL: %v", err)
+	}
+	modelsToMigrate := append([]interface{}{}, accountModels...)
+	modelsToMigrate = append(modelsToMigrate, &models.Message{}, &models.OutboundQueue{}, &models.Contact{})
+	if err := db.AutoMigrate(modelsToMigrate...); err != nil {
+		t.Fatal(err)
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	t.Cleanup(func() { tx.Rollback() })
+	fx := seedMsgDeleteFixture(t, tx, 0)
+	handlers := map[string]http.HandlerFunc{
+		"listContacts":    NewContactHandler(tx).ListContacts,
+		"searchMessages":  NewSearchHandler(tx).Search,
+		"getDeliveryLogs": NewLogHandler(tx).DeliveryLog,
+	}
+	ops := listQueryOperations(t)
+	for op, handler := range handlers {
+		t.Run(op, func(t *testing.T) {
+			count := 0
+			for _, param := range ops[op].Parameters {
+				var valid, invalid []string
+				switch {
+				case param.In != "query":
+					continue
+				case len(param.Schema.Enum) > 0:
+					valid, invalid = param.Schema.Enum, []string{"vertrag-outside-enum", strings.ToUpper(param.Schema.Enum[0])}
+				case param.Schema.Type == "boolean":
+					valid, invalid = []string{"true", "false"}, []string{"vertrag-not-a-boolean", "1", "yes"}
+				case param.Schema.Format == "date-time":
+					valid, invalid = []string{"2026-10-21T09:00:00Z", "2026-10-21T10:00:00+01:00"}, []string{"vertrag-not-a-date", "2026-10-21", "2026-10-21 09:00:00"}
+				default:
+					continue
+				}
+				count++
+				for _, value := range append(valid, invalid...) {
+					want := http.StatusOK
+					if slices.Contains(invalid, value) {
+						want = http.StatusUnprocessableEntity
+					}
+					t.Run(param.Name+"="+value, func(t *testing.T) {
+						query := url.Values{param.Name: []string{value}}
+						req := authzRequest(http.MethodGet, "/?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID)}, "")
+						rr := httptest.NewRecorder()
+						handler(rr, req)
+						if rr.Code != want {
+							t.Fatalf("status = %d, want %d; body %s", rr.Code, want, rr.Body.String())
+						}
+						if want == http.StatusOK {
+							return
+						}
+						if _, ok := ops[op].Responses["422"]; !ok {
+							t.Fatal("refusal 422 is not documented")
+						}
+						var body struct {
+							Error struct {
+								Code    string `json:"code"`
+								Details struct {
+									Fields map[string]string `json:"fields"`
+								} `json:"details"`
+							} `json:"error"`
+						}
+						if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+							t.Fatal(err)
+						}
+						if body.Error.Code != "validation_failed" || body.Error.Details.Fields[param.Name] == "" {
+							t.Fatalf("error = %+v", body.Error)
+						}
+					})
+				}
+			}
+			if count == 0 {
+				t.Fatal("no typed query probes ran")
 			}
 		})
 	}

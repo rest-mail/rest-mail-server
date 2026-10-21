@@ -40,6 +40,14 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
 		return
 	}
+	if params := r.URL.Query(); params.Has("trust_level") {
+		switch params.Get("trust_level") {
+		case "auto", "trusted", "blocked":
+		default:
+			respond.ValidationError(w, map[string]string{"trust_level": "must be one of auto, trusted, blocked"})
+			return
+		}
+	}
 
 	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailRead)
 	if err != nil {
