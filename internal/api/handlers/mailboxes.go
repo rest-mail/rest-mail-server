@@ -276,7 +276,7 @@ func (h *MailboxHandler) CheckAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mailbox models.Mailbox
-	if err := h.db.Where("address = ? AND active = ?", address, true).First(&mailbox).Error; err != nil {
+	if err := repositories.FindActiveMailboxByAddress(h.db, address, &mailbox); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// "Not local" is a valid answer to this query, not an error. The
 			// SMTP gateway's apiclient (and its tests) expect 200 + exists=false

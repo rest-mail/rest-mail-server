@@ -253,3 +253,71 @@ func TestVerify_LogStartingAboveOne(t *testing.T) {
 		t.Error("a check that does not start at seq 1 must say so")
 	}
 }
+
+// Whoever owns the database can rewrite an entry and recompute every hash
+// after it: the chain holds, but not to an anchor taken before the rewrite.
+func TestVerifyAnchored_CatchesARehashedRewrite(t *testing.T) {
+	original := chainOf(6)
+	anchor := &Anchor{Seq: 4, Hash: original[3].Hash}
+
+	if res := VerifyAnchored(original, anchor); !res.OK || res.Checked != 6 || res.Anchor == nil || *res.Anchor != *anchor {
+		t.Fatalf("untouched log against its anchor: %+v", res)
+	}
+
+	rewritten := chainOf(6)
+	rewritten[1].ActorName = "someone else"
+	for i := 1; i < len(rewritten); i++ {
+		rewritten[i].PrevHash = rewritten[i-1].Hash
+		rewritten[i].Hash = Hash(&rewritten[i])
+	}
+	if res := Verify(rewritten); !res.OK {
+		t.Fatalf("a rehashed rewrite holds as a chain, so only the anchor can catch it: %+v", res)
+	}
+	res := VerifyAnchored(rewritten, anchor)
+	if res.OK || res.BrokenAtSeq == nil || *res.BrokenAtSeq != 4 || res.Checked != 3 || res.Reason == "" {
+		t.Fatalf("rewrite against the anchor: %+v", res)
+	}
+
+	// An anchor on the edited entry itself, or on any after it, catches it too.
+	for _, seq := range []int64{2, 6} {
+		a := &Anchor{Seq: seq, Hash: original[seq-1].Hash}
+		if res := VerifyAnchored(rewritten, a); res.OK || res.BrokenAtSeq == nil || *res.BrokenAtSeq != seq {
+			t.Errorf("anchor at seq %d: %+v", seq, res)
+		}
+	}
+	// One taken before the edit still holds: those entries were not touched.
+	if res := VerifyAnchored(rewritten, &Anchor{Seq: 1, Hash: original[0].Hash}); !res.OK {
+		t.Errorf("anchor before the edit: %+v", res)
+	}
+}
+
+// An anchored entry that is no longer in the log fails the check: entries
+// were removed from the end, from the start, or all of them.
+func TestVerifyAnchored_AnchoredEntryGone(t *testing.T) {
+	full := chainOf(6)
+	cases := []struct {
+		name    string
+		entries []models.AuditEntry
+		anchor  Anchor
+	}{
+		{"the tail cut off", full[:3], Anchor{Seq: 5, Hash: full[4].Hash}},
+		{"the head cut off", full[3:], Anchor{Seq: 2, Hash: full[1].Hash}},
+		{"an emptied log", nil, Anchor{Seq: 1, Hash: full[0].Hash}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := VerifyAnchored(tc.entries, &tc.anchor)
+			if res.OK || res.BrokenAtSeq == nil || *res.BrokenAtSeq != tc.anchor.Seq || res.Reason == "" {
+				t.Fatalf("%+v", res)
+			}
+		})
+	}
+
+	// A chain that breaks before the anchor reports the break, not the anchor.
+	broken := chainOf(6)
+	broken[1].ActorName = "someone else"
+	res := VerifyAnchored(broken, &Anchor{Seq: 5, Hash: full[4].Hash})
+	if res.OK || res.BrokenAtSeq == nil || *res.BrokenAtSeq != 2 {
+		t.Fatalf("break before the anchor: %+v", res)
+	}
+}
