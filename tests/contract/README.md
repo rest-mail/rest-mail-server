@@ -172,6 +172,18 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`login` pairs `wrong_password` with 401 and `email_missing`,
+`password_missing` and `client_invalid` with their 422s. Its 200 is named
+`signed_in`. `refreshToken` pairs `invalid_token` and `token_missing` with
+their 401s and `refreshed` with 200. The hooks replace only the explicit
+`fixture-password` and `fixture-refresh-token` placeholders; wrong credentials,
+missing fields and coverage mutations survive. Refusals keep the saved refresh
+token intact. The real handler tests check the exact refusal bodies, that no
+session is created or rotated by a refusal, and that the valid requests still
+sign in and rotate (`contract_auth_examples_test.go`). `test_auth_hooks.py`
+checks the hooks against the spec examples and the exclusions. Both operations'
+401s are now counted by the surface gate.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as

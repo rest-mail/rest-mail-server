@@ -280,6 +280,17 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/LoginRequest"
+            examples:
+              signed_in:
+                value: {email: admin@restmail.test, password: fixture-password, client: native}
+              wrong_password:
+                value: {email: admin@restmail.test, password: contract-wrong-password, client: native}
+              email_missing:
+                value: {password: fixture-password, client: native}
+              password_missing:
+                value: {email: admin@restmail.test, client: native}
+              client_invalid:
+                value: {email: admin@restmail.test, password: fixture-password, client: desktop}
       responses:
         "200":
           description: Login successful
@@ -291,10 +302,53 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/LoginResponse"
+              examples:
+                signed_in:
+                  value:
+                    data:
+                      expires_in: 900
+                      user: {id: 1, email: admin@restmail.test, display_name: Admin}
+                      access_token: example-access-token
+                      refresh_token: example-refresh-token
+                      refresh_expires_in: 604800
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                wrong_password:
+                  value:
+                    error: {code: unauthorized, message: Invalid email or password}
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                email_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {email: "required: the account's address"}
+                password_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {password: required}
+                client_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {client: 'must be "native" or omitted'}
 
   /api/v1/auth/logout:
     post:
@@ -342,6 +396,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RefreshRequest"
+            examples:
+              refreshed:
+                value: {refresh_token: fixture-refresh-token}
+              invalid_token:
+                value: {refresh_token: contract-invalid-token}
+              token_missing:
+                value: {}
       responses:
         "200":
           description: Token refreshed
@@ -353,8 +414,28 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/RefreshResponse"
+              examples:
+                refreshed:
+                  value:
+                    data:
+                      expires_in: 900
+                      user: {id: 1, email: admin@restmail.test, display_name: Admin}
+                      access_token: example-access-token
+                      refresh_token: example-refresh-token
+                      refresh_expires_in: 604800
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: Missing, invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_token:
+                  value:
+                    error: {code: unauthorized, message: Invalid or expired refresh token}
+                token_missing:
+                  value:
+                    error: {code: unauthorized, message: No refresh token}
 
   /api/v1/auth/reset:
     post:

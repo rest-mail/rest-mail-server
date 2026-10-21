@@ -65,7 +65,12 @@ def admin_token(origin):
 
 @hooks.before("login")
 def sign_in_as_the_fixture_admin(transaction):
-    hooks.set_json(transaction, {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"})
+    body = hooks.get_json(transaction)
+    # Replace only the fixture placeholder. Wrong passwords, missing fields
+    # and coverage mutations must reach the handler unchanged.
+    if isinstance(body, dict) and body.get("password") == "fixture-password":
+        body["password"] = ADMIN_PASSWORD
+        hooks.set_json(transaction, body)
 
 
 @hooks.after("login")
@@ -77,7 +82,10 @@ def keep_the_refresh_token(transaction):
 
 @hooks.before("refreshToken")
 def refresh_the_sign_in(transaction):
-    hooks.set_json(transaction, {"refresh_token": hooks.stash.get("refresh_token", ""), "client": "native"})
+    body = hooks.get_json(transaction)
+    if isinstance(body, dict) and body.get("refresh_token") == "fixture-refresh-token":
+        body["refresh_token"] = hooks.stash.get("refresh_token", "")
+        hooks.set_json(transaction, body)
 
 
 @hooks.after("refreshToken")
