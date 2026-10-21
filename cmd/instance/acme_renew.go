@@ -24,6 +24,13 @@ func renewACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConf
 	if len(cfg.Domains) == 0 {
 		return errors.New("-domains is required")
 	}
+	// Hold the volume lock through the reuse check, order and publication. A
+	// concurrent issuer may be between renames, so even reuse needs the lock.
+	lock, err := lockACMEIssuer(outputDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lock.Close() }()
 	if renewBefore > 0 {
 		current, err := reusableACMEPair(outputDir, cfg.Domains, renewBefore, time.Now())
 		if err != nil {
