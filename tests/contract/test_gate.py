@@ -112,6 +112,7 @@ class PairedRefusals(unittest.TestCase):
         "protocolSignIn",
         "putSieveScript",
         "validateSieveScript",
+        "createContact",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
