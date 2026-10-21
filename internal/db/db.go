@@ -53,6 +53,7 @@ func AutoMigrate(db *gorm.DB) error {
 
 	err := db.AutoMigrate(
 		&models.Domain{},
+		&models.DKIMRotationKey{},
 		&models.Mailbox{},
 		&models.Alias{},
 		&models.Message{},
@@ -125,6 +126,13 @@ func AutoMigrate(db *gorm.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("auto-migration failed: %w", err)
+	}
+	// Connect disables implicit foreign-key migration. Rotation keys must not
+	// outlive their domain, so create this additive constraint explicitly.
+	if !db.Migrator().HasConstraint(&models.DKIMRotationKey{}, "Domain") {
+		if err := db.Migrator().CreateConstraint(&models.DKIMRotationKey{}, "Domain"); err != nil {
+			return fmt.Errorf("DKIM rotation domain constraint: %w", err)
+		}
 	}
 
 	// The audit log, and what makes it append-only. Unlike the indexes below, a
