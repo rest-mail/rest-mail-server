@@ -75,35 +75,37 @@ func TestBulkBounceQueue400_Spec(t *testing.T) {
 		t.Fatal(err)
 	}
 	var doc struct {
-		Paths map[string]struct {
-			Post struct {
-				OperationID string                `yaml:"operationId"`
-				Security    []map[string][]string `yaml:"security"`
-				RequestBody struct {
-					Required bool `yaml:"required"`
-					Content  map[string]struct {
-						Schema struct {
-							Ref string `yaml:"$ref"`
-						} `yaml:"schema"`
-					} `yaml:"content"`
-				} `yaml:"requestBody"`
-				Responses map[string]struct {
-					Content map[string]struct {
-						Schema struct {
-							Ref string `yaml:"$ref"`
-						} `yaml:"schema"`
-						Examples map[string]struct {
-							Value map[string]interface{} `yaml:"value"`
-						} `yaml:"examples"`
-					} `yaml:"content"`
-				} `yaml:"responses"`
-			} `yaml:"post"`
+		Paths struct {
+			Queue struct {
+				Post struct {
+					OperationID string                `yaml:"operationId"`
+					Security    []map[string][]string `yaml:"security"`
+					RequestBody struct {
+						Required bool `yaml:"required"`
+						Content  map[string]struct {
+							Schema struct {
+								Ref string `yaml:"$ref"`
+							} `yaml:"schema"`
+						} `yaml:"content"`
+					} `yaml:"requestBody"`
+					Responses map[string]struct {
+						Content map[string]struct {
+							Schema struct {
+								Ref string `yaml:"$ref"`
+							} `yaml:"schema"`
+							Examples map[string]struct {
+								Value map[string]interface{} `yaml:"value"`
+							} `yaml:"examples"`
+						} `yaml:"content"`
+					} `yaml:"responses"`
+				} `yaml:"post"`
+			} `yaml:"/api/v1/admin/queue/bulk-bounce"`
 		} `yaml:"paths"`
 	}
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatal(err)
 	}
-	op := doc.Paths[bulkBounce400Path].Post
+	op := doc.Paths.Queue.Post
 	if op.OperationID != "bulkBounceQueue" {
 		t.Fatalf("operationId %q, want bulkBounceQueue", op.OperationID)
 	}
