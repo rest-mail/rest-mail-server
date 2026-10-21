@@ -107,8 +107,14 @@ before any domain is looked up or report stored
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
 is made; `valid` still runs `header_validate` and gets the documented 200
-(`contract_testfilter_examples_test.go`). No hook rewrites these requests;
-other pipeline operations keep their exclusions.
+(`contract_testfilter_examples_test.go`). No hook rewrites these requests.
+
+`testPipeline` sends its `invalid_body` request (`[]`) with its paired 400 and
+`email_missing` (a pipeline id and no email) with its paired 422. Both are
+refused before any pipeline is looked up; the hooks give only `valid` the
+created pipeline's id, and it gets the documented 200
+(`contract_testpipeline_examples_test.go`). Other pipeline operations keep
+their exclusions.
 
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
