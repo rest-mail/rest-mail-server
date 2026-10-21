@@ -15,6 +15,8 @@ createDomain
 # First reached in #376: the schema permits an empty recipient list and
 # omits the combinations of sender/date fields the delivery pipeline needs.
 restmailDeliver
+# Omitting from now matches the handler's own-mailbox default. Generated
+# non-empty senders can still name mailboxes the principal cannot write to.
 saveDraft
 sendMessage
 sendTestEmail
