@@ -1834,11 +1834,7 @@ paths:
 
   /api/v1/messages/scheduled/{id}:
     parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: integer
+      - $ref: "#/components/parameters/MessageId"
     delete:
       operationId: cancelScheduledMessage
       tags: [Messages]

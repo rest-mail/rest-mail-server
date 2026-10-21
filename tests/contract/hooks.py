@@ -240,6 +240,42 @@ def no_sending_policy_after_the_refusal(transaction):
     set_the_admin_domains_policy(transaction, "")
 
 
+def schedule_a_message(transaction):
+    """Store a scheduled message through the API and return its id, so the
+    list and cancel examples have something of their own to act on."""
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    body = {
+        "from": ADMIN,
+        "to": [ADMIN],
+        "subject": "contract scheduled message",
+        "body_text": "Contract fixture.",
+        "scheduled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600)),
+    }
+    request = urllib.request.Request(
+        origin + "/api/v1/messages/send",
+        data=json.dumps(body).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 202:
+            raise RuntimeError("could not schedule a contract message: HTTP %d" % response.status)
+        return (json.load(response).get("data") or {}).get("id")
+
+
+@hooks.before("listScheduledMessages")
+def list_has_a_message_to_show(transaction):
+    schedule_a_message(transaction)
+
+
+@hooks.before("cancelScheduledMessage")
+def cancel_a_message_we_made(transaction):
+    scheduled_id = schedule_a_message(transaction)
+    if isinstance(scheduled_id, int):
+        transaction["fullPath"] = "/api/v1/messages/scheduled/%d" % scheduled_id
+
+
 @hooks.before("listQueue")
 def list_the_sent_messages_queue_entry(transaction):
     # The example asks for status=pending (the enum's first value), and the
