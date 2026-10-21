@@ -49,6 +49,11 @@ type Routers struct {
 	// lifecycle (cmd/api) must call Routers.Close on shutdown to flush it.
 	Recorder *trace.Recorder
 
+	// Messages is the mail handler, exposed so the server can start the
+	// scheduled-send loop it owns. Not started here: route tests, which have
+	// no mail to send, must not start a background sender.
+	Messages *handlers.MessageHandler
+
 	// push is push notifications, when configured; its dispatcher owns a
 	// goroutine that Routers.Close stops.
 	push *pushService
@@ -621,6 +626,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Patch("/api/v1/messages/{id}", messageH.UpdateMessage)
 		r.Delete("/api/v1/messages/{id}", messageH.DeleteMessage)
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
+		r.Get("/api/v1/messages/scheduled", messageH.ListScheduledSends)
+		r.Delete("/api/v1/messages/scheduled/{id}", messageH.CancelScheduledSend)
 		r.Get("/api/v1/messages/{id}/raw", messageH.GetRawMessage)
 		r.Post("/api/v1/messages/{id}/forward", messageH.ForwardMessage)
 		r.Post("/api/v1/messages/{id}/calendar-reply", messageH.RespondToCalendar)
@@ -862,7 +869,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
 	})
 
-	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc}
+	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH}
 
 	// Dedicated internal mTLS handler. Only built when enabled; served on a
 	// separate listener whose TLS layer requires a verified gateway client
