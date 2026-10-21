@@ -28,15 +28,16 @@ import (
 // path is config-driven (config.TrustedCACertPath / TRUSTED_CA_CERT) and defaults
 // to the historical "/certs/ca.crt", so existing deployments are byte-for-byte
 // unchanged. An empty path skips the extra trust; a missing/unreadable file is
-// not fatal — the gateway falls back to the system roots.
-func loadCACert(path string) {
+// not fatal — the gateway falls back to the system roots. The returned pool
+// also configures the queue's guarded RESTMAIL transports.
+func loadCACert(path string) *x509.CertPool {
 	if path == "" {
-		return
+		return nil
 	}
 	caCert, err := os.ReadFile(path)
 	if err != nil {
 		slog.Info("no custom CA cert found, using system defaults", "path", path)
-		return
+		return nil
 	}
 	pool, err := x509.SystemCertPool()
 	if err != nil {
@@ -47,6 +48,7 @@ func loadCACert(path string) {
 		RootCAs: pool,
 	}
 	slog.Info("loaded custom CA certificate", "path", path)
+	return pool
 }
 
 func main() {
@@ -66,7 +68,7 @@ func main() {
 	// Trust the operator/testbed CA for the gateway's outbound HTTP client. The
 	// path is config-driven and defaults to the historical /certs/ca.crt, so the
 	// testbed is unchanged; empty or missing → system roots only.
-	loadCACert(cfg.TrustedCACertPath)
+	restmailRoots := loadCACert(cfg.TrustedCACertPath)
 
 	switch cfg.LogLevel {
 	case "debug":
@@ -222,6 +224,7 @@ func main() {
 	}
 
 	queueWorker := queue.NewWorker(database, cfg.GatewayHostname, cfg.QueueWorkers, cfg.QueuePollInterval)
+	queueWorker.SetRESTMAILRootCAs(restmailRoots)
 	// #171: the worker DKIM-signs outbound mail that arrived unsigned (SMTP
 	// submission), which needs the key to decrypt the domain's at-rest DKIM key.
 	queueWorker.SetMasterKey(cfg.MasterKey)
@@ -245,7 +248,7 @@ func main() {
 		// MTA-STS enforce requires real certificate verification, which is
 		// disabled here; downgrade enforcement so dev/test delivery still works.
 		queueWorker.SetMTASTSEnforce(false)
-		slog.Info("queue worker TLS verification disabled; MTA-STS enforcement off", "environment", cfg.Environment)
+		slog.Info("queue worker SMTP TLS verification disabled; RESTMAIL TLS verified; MTA-STS enforcement off", "environment", cfg.Environment)
 	}
 	// Outbound SSRF guard (#167): by default the worker refuses to dial
 	// non-public (loopback/link-local/private/metadata) MX or RESTMAIL endpoint

@@ -306,7 +306,7 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 
 #### RESTMAIL protocol upgrade
 - Outbound worker probes the recipient domain's primary MX: the EHLO `RESTMAIL` keyword is only a hint, and any address it carries is ignored (#291).
-- It then asks `GET https://<mx-host>/.well-known/restmail?domain=<domain>` where to deliver, always verifying the certificate against the MX host name (even in development), through the SSRF-guarded dialer, with no redirects and a 4 KiB answer cap. The answer `{"endpoint":"https://…/restmail"}` may name any host; it must be https with no credentials, query or fragment. The message goes to `POST <endpoint>/messages`.
+- It then asks `GET https://<mx-host>/.well-known/restmail?domain=<domain>` where to deliver, always verifying the certificate against the MX host name (even in development), through the SSRF-guarded dialer, with no redirects and a 4 KiB answer cap. The answer `{"endpoint":"https://…/restmail"}` may name any host; it must be https with no credentials, query or fragment. The message goes to `POST <endpoint>/messages`, always verifying the final endpoint's certificate against its host name too. Neither HTTPS hop honours `QUEUE_TLS_INSECURE` or development mode. Both use system roots plus the operator/testbed CA from `TRUSTED_CA_CERT` (default `/certs/ca.crt`).
 - A 404 or 410 from discovery is a verified "not hosted": the domain is recorded as not REST and delivery uses SMTP. Other discovery failures currently still fall back to SMTP (no-fallback is a later #291 slice).
 - Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes. It records only whether the MX speaks REST; the endpoint is discovered on every delivery.
 
@@ -685,6 +685,20 @@ changing the contact email does not create a new account or update its contact.
 A corrupt account key stops issuance rather than silently creating a new identity.
 This file account storage applies to the instance command; the API's
 `ACME_ENABLED` renewal manager stores certificates in the database separately.
+
+To avoid unnecessary orders when repeating the instance task, use
+`CONFIG=<name> chore instance:certs:issue CERT_RENEW_BEFORE=720h` (30 days).
+The underlying `instance acme-issue -renew-before 720h` command reuses a matching
+certificate/key pair only if it is valid now, covers every requested name, and
+expires more than 720 hours from now. Otherwise it attempts issuance; a failed
+order preserves the existing serving files. A reusable pair is checked before
+the command opens its HTTP listener or contacts the CA. The Docker task still
+reserves host port 80 when starting its container, even if issuance is skipped.
+The default `CERT_RENEW_BEFORE=0s` always issues. Use that default when switching
+between staging, production or custom CAs: reuse checks do not establish the
+existing certificate's CA provenance or trust. This option does not install a
+scheduler or reload serving gateways; periodic invocation and deploying the
+renewed files to running gateways remain the operator's responsibility.
 
 ### 6.3 Gateways
 | Variable | Default | Purpose |

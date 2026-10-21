@@ -177,8 +177,8 @@ type Worker struct {
 	masterKey string
 	// relayRoots replaces system trust for relay certificates; tests only.
 	relayRoots *x509.CertPool
-	// restmailRoots replaces system trust for RESTMAIL discovery certificates;
-	// tests only.
+	// restmailRoots holds system roots plus any configured operator/testbed CA
+	// for both RESTMAIL discovery and delivery. Nil uses system roots.
 	restmailRoots *x509.CertPool
 
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
@@ -258,9 +258,16 @@ func logSTSRefreshFailed(domain string, cached *mtasts.Policy, err error) {
 		"domain", domain, "mode", cached.Mode, "error", err)
 }
 
-// SetTLSInsecure sets whether to skip TLS certificate verification for outbound delivery.
+// SetTLSInsecure sets whether to skip TLS certificate verification for SMTP
+// delivery. RESTMAIL discovery and delivery always verify certificates (#291).
 func (w *Worker) SetTLSInsecure(insecure bool) {
 	w.tlsInsecure = insecure
+}
+
+// SetRESTMAILRootCAs sets the trusted roots for RESTMAIL discovery and delivery.
+// Pass system roots augmented with the operator CA; nil uses system roots.
+func (w *Worker) SetRESTMAILRootCAs(roots *x509.CertPool) {
+	w.restmailRoots = roots
 }
 
 // SetAllowPrivateDestinations opts the worker in to dialing non-public
@@ -626,7 +633,7 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 			discoveryURL := restmailDiscoveryURL(firstHost, dnsDomain)
 			if restmailUpgradePermitted(discoveryURL, stsPolicy, enforcing) {
 				slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "mx", firstHost)
-				err := w.deliverRESTMAILDiscovered(discoveryURL, item, enforcing)
+				err := w.deliverRESTMAILDiscovered(discoveryURL, item)
 				if err == nil {
 					return nil
 				}
@@ -771,11 +778,10 @@ func (w *Worker) cacheCapability(domain, mxHost string, supported bool) {
 
 // deliverRESTMAILHTTPS sends the message via HTTPS POST to a known RESTMAIL endpoint.
 //
-// forceTLSVerify forces server-certificate verification on regardless of the
-// worker's tlsInsecure dev flag. The caller sets it when delivering under an
-// enforce-mode MTA-STS policy (#168), so the "verified HTTPS" half of the enforce
-// guarantee holds on the RESTMAIL hop just as it does on the STARTTLS SMTP path.
-func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQueue, forceTLSVerify bool) error {
+// The endpoint comes from verified MX discovery. Its certificate must also be
+// verified against its own host, in every environment (#291). The SMTP-only
+// tlsInsecure flag never applies to either RESTMAIL HTTPS connection.
+func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQueue) error {
 	// Strip Bcc and DKIM-sign before transmission (#171). Fail closed on a key
 	// that cannot be loaded so the send retries rather than going out unsigned.
 	prepared, err := w.prepareOutbound(item)
@@ -796,9 +802,8 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 		messagesURL = "https://" + messagesURL
 	}
 
-	// Require HTTPS (#167). The endpoint URL comes from an MX's RESTMAIL EHLO
-	// keyword, i.e. it is attacker-influenced; the raw message must never be
-	// POSTed in cleartext, nor over any non-HTTP(S) scheme.
+	// Require HTTPS (#167). Even a discovered endpoint is remote input; the
+	// raw message must never be POSTed in cleartext or over a non-HTTP(S) scheme.
 	parsed, err := url.Parse(messagesURL)
 	if err != nil {
 		return fmt.Errorf("RESTMAIL endpoint %q invalid: %w", endpointURL, err)
@@ -808,7 +813,7 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 	}
 
 	// Guarded dialer refuses non-public resolved addresses (#167) unless opted in
-	// — the RESTMAIL host is attacker-advertised and could point at loopback,
+	// — the discovered RESTMAIL host could point at loopback,
 	// link-local metadata, or internal relays. The check runs on the resolved IP,
 	// so it also defeats DNS rebinding.
 	dialer := w.newGuardedDialer(10 * time.Second)
@@ -819,7 +824,7 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 		Timeout: w.sendDeadline(int64(len(item.RawMessage))),
 		Transport: &http.Transport{
 			DialContext:         dialer.DialContext,
-			TLSClientConfig:     &tls.Config{InsecureSkipVerify: w.tlsInsecure && !forceTLSVerify}, //nolint:gosec // enforce path forces verification
+			TLSClientConfig:     &tls.Config{RootCAs: w.restmailRoots, MinVersion: tls.VersionTLS12},
 			TLSHandshakeTimeout: 10 * time.Second,
 		},
 		// Do not follow redirects (#167): a 30x could otherwise downgrade
@@ -839,8 +844,7 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 		return nil
 	}
 
-	// Cap the error body read: the endpoint is attacker-advertised (an MX's
-	// RESTMAIL EHLO keyword), so an unbounded read would let a hostile endpoint
+	// Cap the error body read: an unbounded read would let a hostile endpoint
 	// exhaust worker memory with a huge response (#169).
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxRESTMAILErrorBody))
 	return fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
@@ -850,13 +854,13 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 // discovery endpoint (#291) — where to deliver, then POSTs the message there.
 // errRESTMAILNotHosted means the MX verifiably does not take REST mail for the
 // domain.
-func (w *Worker) deliverRESTMAILDiscovered(discoveryURL string, item models.OutboundQueue, enforcing bool) error {
+func (w *Worker) deliverRESTMAILDiscovered(discoveryURL string, item models.OutboundQueue) error {
 	endpointURL, err := w.discoverRESTMAILEndpoint(discoveryURL)
 	if err != nil {
 		return err
 	}
 	slog.Info("queue: RESTMAIL endpoint discovered", "discovery", discoveryURL, "endpoint", endpointURL)
-	return w.deliverRESTMAILHTTPS(endpointURL, item, enforcing)
+	return w.deliverRESTMAILHTTPS(endpointURL, item)
 }
 
 // tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found — and the
@@ -901,7 +905,7 @@ func (w *Worker) tryRESTMAILAt(addr, discoveryURL, host string, item models.Outb
 		return false, nil
 	}
 
-	err = w.deliverRESTMAILDiscovered(discoveryURL, item, enforcing)
+	err = w.deliverRESTMAILDiscovered(discoveryURL, item)
 	if errors.Is(err, errRESTMAILNotHosted) {
 		w.cacheCapability(item.Domain, host, false)
 		return false, nil

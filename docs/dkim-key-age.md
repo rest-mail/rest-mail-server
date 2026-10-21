@@ -75,7 +75,7 @@ in #151.
 The additive startup migration creates `dkim_rotation_keys` for the planned
 worker. The current signing key stays in `domains`; writing a rotation row
 cannot change signing. There are no worker or HTTP operations on these slots
-yet.
+yet; `dkimrotate.Stage` (below) is the only code that writes the staged slot.
 
 Each domain can retain one `staged` key and one `previous` key. A database
 constraint rejects other slots, and unique indexes prevent duplicate slots or
@@ -95,6 +95,19 @@ preserving lifecycle metadata and leaving undecryptable rows untouched while
 reporting a failure count. An explicit cascading foreign key removes the slots
 when their domain is deleted. No existing domain or key is backfilled or
 changed by the migration.
+
+## Staging the next key
+
+`dkimrotate.Stage` is the first step of a rotation; nothing calls it yet. Under
+a lock on the domain row it does nothing when the domain has no current key,
+its interval is zero, or its key is younger than the interval (a key with an
+unknown installation time is due). When a staged key already exists it returns
+that key unchanged, so an interrupted rotation resumes with the same key.
+Otherwise it generates a 2048-bit RSA key, chooses the next `restmail-<n>`
+selector that is not the current or previous selector, checks with
+`outbound.CheckDKIMKey` that the domain can sign with it, and saves it encrypted
+in the staged slot with the TTL the caller gives. It never publishes DNS or
+changes the current key.
 
 Activation, retirement and rollback transactions still need to be implemented.
 They must lock the domain, keep staged/previous selectors distinct from the
