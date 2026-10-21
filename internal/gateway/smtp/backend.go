@@ -26,6 +26,10 @@ type Backend interface {
 // The production implementation is dbStore (see dbstore.go), wired in
 // cmd/smtp-gateway. Tests substitute an in-memory Store.
 type Store interface {
+	// SenderMatchesAccount reports whether from resolves to the authenticated
+	// mailbox ID. It preserves exact legacy identities when NFC-equivalent
+	// accounts coexist; string normalization alone cannot establish ownership.
+	SenderMatchesAccount(accountID uint, from string) (bool, error)
 	// SenderAuthorized reports whether the authenticated account may send as
 	// the given MAIL FROM address, another account's: whether it holds
 	// mail:send on that account (it owns or has linked it). An error is

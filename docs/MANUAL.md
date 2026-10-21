@@ -622,8 +622,8 @@ Implemented in slices; issue #153 remains open.
 - **SMTPUTF8:** inbound and submission advertise the capability and accept negotiated UTF-8 envelopes and top-level headers. Outbound delivery checks peer capabilities and refuses unsupported EAI delivery. Internationalized DSNs and MIME/header downgrading remain unfinished.
 - **Hosted account identities:** `POST /api/v1/accounts` accepts UTF-8 local parts and Unicode domains, stores lowercase NFC local parts with Punycode domains, and checks permissions against that canonical domain. Linking, REST login, and protocol password/app-password sign-in accept equivalent Unicode/Punycode domains and NFC local parts. Existing exact account spellings retain precedence; a unique NFC-equivalent legacy account can be found without rewriting its address or grants. Ambiguous legacy equivalents are refused, and provisioning rejects new NFC-equivalent duplicates. This identity policy does not rewrite remote SMTP local parts or message headers.
 - **Hosted recipients:** gateway and RESTMAIL recipient checks, address-based inbound delivery, and the recipient-check pipeline resolve the same NFC/IDNA mailbox identities. Exact legacy spellings retain precedence, inactive exact accounts do not redirect to active equivalents, and ambiguous legacy equivalents are refused. Quotas apply to the resolved mailbox; original message addresses and plus-address tags are preserved. RESTMAIL selects the hosted inbound pipeline for equivalent Unicode/Punycode domains. Legacy normalized fallback is scoped to the hosted domain.
-- **Hosted senders:** SMTP submission checks an alternate From/MAIL FROM against the `mail:send` grant on the resolved hosted identity, records the submission in that mailbox's Sent folder, and bounces failed deliveries back to it. The submitted spelling stays on the message and envelope. Matching the signed-in address itself is still literal, so an app-password session must send as the spelling it signed in with.
-- **Still planned:** equivalent-spelling matching of the signed-in address, the REST API's outbound local-recipient paths, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
+- **Hosted senders:** SMTP submission accepts alternate Unicode/Punycode, case, and NFC spellings that resolve to the signed-in mailbox ID, including for app passwords. Distinct legacy accounts with NFC-equivalent names remain separate. Password sessions may also use a `mail:send` grant on another resolved hosted identity; app passwords remain scoped to their own mailbox. Submission records the message in the sender mailbox's Sent folder and bounces failed deliveries back to it. The submitted spelling stays on the message and envelope.
+- **Still planned:** the REST API's outbound local-recipient paths, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
 - Relevant RFCs: 6530 (overview), 6531 (SMTPUTF8), 6532 (headers), 6533 (DSN), 6855 (IMAP), 6856 (POP3), 6857 (downgrade), 5891 (IDNA 2008).
 - Non-ASCII local parts cannot be converted to Punycode; unsupported outbound EAI delivery fails through the queue's existing failure handling.
 - Database already UTF-8; consider ICU collation for sorting, `pg_trgm`/ICU-aware `LOWER()` indexes.
@@ -704,8 +704,15 @@ renewed files to running gateways remain the operator's responsibility.
 Serving files are staged together before publication. If replacing the
 certificate fails after replacing the key, the command restores the previous
 key (or removes the new key on first issuance). If restoration also fails, the
-error identifies the retained private backup for recovery. Run only one issuer
-per certs volume. The two file renames are not an atomic pair swap: readers can
+error identifies the retained private backup for recovery. Instance issuers
+take an advisory filesystem lock on `.acme-issue.lock` in the certs volume
+before checking for reuse and hold it through issuance and publication. An
+overlapping invocation fails immediately; retry after the active issuer finishes.
+The lock is released on command or process exit. The empty lock file remains:
+do not delete it while issuers may be running. The volume must support `flock`;
+lock errors stop issuance. Other tools writing serving files must be serialized
+separately because this lock is advisory.
+The two file renames are not an atomic pair swap: readers can
 briefly observe a mismatch, and a process crash between renames still requires
 operator recovery. This safeguard handles reported filesystem errors; it does
 not provide crash recovery or gateway reloads.
