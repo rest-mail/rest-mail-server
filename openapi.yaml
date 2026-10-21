@@ -2300,6 +2300,33 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateContactRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386). Each refused
+            # one has one field missing or wrong, and is refused before
+            # anything is stored. Their address is not created's: the
+            # createContact hook removes a contact an earlier request made
+            # with the same address, and created's links still need it.
+            examples:
+              created:
+                value:
+                  email: someone@example.com
+                  name: Someone
+                  trust_level: trusted
+              email_missing:
+                value:
+                  name: Someone
+                  trust_level: trusted
+              # A display name and address, not a bare address.
+              email_invalid:
+                value:
+                  email: Refused <refused@example.com>
+                  name: Someone
+                  trust_level: trusted
+              trust_level_invalid:
+                value:
+                  email: refused@example.com
+                  name: Someone
+                  trust_level: friend
       responses:
         "201":
           description: Contact created
@@ -2311,6 +2338,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Contact"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      mailbox_id: 1
+                      email: someone@example.com
+                      name: Someone
+                      trust_level: trusted
+                      source: manual
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             updateContact:
               operationId: updateContact
@@ -2323,7 +2362,36 @@ paths:
                 id: '$request.path.id'
                 cid: '$response.body#/data/id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                email_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          email: required
+                email_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          email: must be an email address
+                trust_level_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          trust_level: "must be auto, trusted, or blocked"
 
   /api/v1/accounts/{id}/contacts/{cid}:
     parameters:
