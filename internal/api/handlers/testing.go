@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -168,9 +169,18 @@ func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
 		timeout = 30 * time.Second
 	}
 
+	// No mailbox at the address means nothing was delivered to it: that is an
+	// answer (found: false), not a missing resource (#388).
 	var mailbox models.Mailbox
 	if err := h.db.Where("address = ?", to).First(&mailbox).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "recipient mailbox not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respond.Data(w, http.StatusOK, map[string]any{
+				"found":   false,
+				"message": "no mailbox at that address",
+			})
+			return
+		}
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to look up the recipient mailbox")
 		return
 	}
 
