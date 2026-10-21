@@ -2442,10 +2442,27 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ImportContactsRequest"
-            example:
-              contacts:
-                - email: carol@example.org
-                  name: Carol
+            examples:
+              imported:
+                value:
+                  contacts:
+                    - email: carol@example.org
+                      name: Carol
+              body_array:
+                value: []
+              contacts_missing:
+                value: {}
+              contacts_empty:
+                value: {contacts: []}
+              email_missing:
+                value: {contacts: [{}]}
+              email_invalid:
+                value: {contacts: [{email: not-an-email}]}
+              mixed_batch:
+                value:
+                  contacts:
+                    - {email: valid-import@example.org, name: Must not be imported}
+                    - {email: not-an-email}
       responses:
         "200":
           description: Import result
@@ -2461,8 +2478,55 @@ paths:
                     properties:
                       imported:
                         type: integer
+              examples:
+                imported:
+                  value: {data: {imported: 1}}
+        "400":
+          description: Request body is not a JSON object of contact import fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value: {error: {code: bad_request, message: Invalid request body}}
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Contacts missing or empty, or an entry has a missing or invalid email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                contacts_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {contacts: required}}
+                contacts_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {contacts: required}}
+                email_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {"contacts[0].email": required}}
+                email_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {"contacts[0].email": must be an email address}}
+                mixed_batch:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {"contacts[1].email": must be an email address}}
 
   /api/v1/accounts/{id}/contacts/suggest:
     parameters:
