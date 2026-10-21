@@ -95,6 +95,11 @@ class PairedRefusals(unittest.TestCase):
         "createCustomFilter",
         "validateCustomFilter",
         "sendTestEmail",
+        "createAccount",
+        "restmailDeliver",
+        "bulkDeleteQueue",
+        "addToAllowlist",
+        "addToBlocklist",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
@@ -118,6 +123,28 @@ class PairedRefusals(unittest.TestCase):
                         sent.add((op["operationId"], status))
         self.assertEqual({op for op, _ in paired}, self.PAIRED)
         self.assertEqual(sent, paired)
+
+    def test_each_sent_refusal_has_a_named_request_pair(self):
+        with open(os.path.join(ROOT, "openapi.yaml")) as f:
+            spec = yaml.safe_load(f)
+        for item in spec["paths"].values():
+            for method in gate.METHODS:
+                op = item.get(method)
+                if op is None or op["operationId"] not in self.PAIRED:
+                    continue
+                requests = op["requestBody"]["content"]["application/json"]
+                for status in ("400", "422"):
+                    if status not in op["responses"]:
+                        continue
+                    with self.subTest(operation=op["operationId"], status=status):
+                        response = op["responses"][status]["content"]["application/json"]
+                        # An unnamed side pairs with every example on the other
+                        # side, including requests meant to succeed.
+                        self.assertNotIn("example", requests)
+                        self.assertNotIn("example", response)
+                        examples = response.get("examples", {})
+                        self.assertTrue(examples)
+                        self.assertLessEqual(set(examples), set(requests.get("examples", {})))
 
 
 if __name__ == "__main__":

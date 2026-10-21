@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
 import { ImageOff } from 'lucide-react';
 import { useUIStore } from '@/stores/uiStore';
+import { getThemePack, type FramePalette } from '@/theme/packs';
 
 /**
  * HtmlMessageBody renders untrusted email HTML with defence-in-depth against
@@ -73,23 +74,7 @@ function hasRemoteResources(html: string): boolean {
   }
 }
 
-interface Palette {
-  scheme: 'light' | 'dark';
-  bg: string;
-  fg: string;
-  link: string;
-  border: string;
-  muted: string;
-}
-
-function palette(dark: boolean): Palette {
-  return dark
-    ? { scheme: 'dark', bg: '#181a1f', fg: '#e6e6e6', link: '#7aa2f7', border: '#2c3038', muted: '#9aa0a6' }
-    : { scheme: 'light', bg: '#ffffff', fg: '#1a1a1a', link: '#2563eb', border: '#e5e7eb', muted: '#666666' };
-}
-
-function buildSrcDoc(sanitized: string, allowRemote: boolean, dark: boolean): string {
-  const p = palette(dark);
+function buildSrcDoc(sanitized: string, allowRemote: boolean, p: FramePalette): string {
   const img = allowRemote ? 'http: https: data:' : 'data:';
   const csp = [
     "default-src 'none'",
@@ -116,7 +101,7 @@ function buildSrcDoc(sanitized: string, allowRemote: boolean, dark: boolean): st
   body {
     background: ${p.bg};
     color: ${p.fg};
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: ${p.font};
     font-size: 13px;
     line-height: 1.6;
     padding: 2px 2px 8px;
@@ -139,11 +124,9 @@ function buildSrcDoc(sanitized: string, allowRemote: boolean, dark: boolean): st
 </head><body>${sanitized}</body></html>`;
 }
 
-const DARK_THEMES = ['midnight', 'forest', 'slate', 'dusk', 'neon', 'aurora', 'industrial'];
-
 export function HtmlMessageBody({ html }: { html: string }) {
   // Subscribing to the theme re-renders (and recomputes the palette) on switch.
-  const dark = useUIStore((s) => DARK_THEMES.includes(s.theme));
+  const frame = useUIStore((s) => getThemePack(s.theme).frame);
 
   const [allowRemote, setAllowRemote] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -157,8 +140,8 @@ export function HtmlMessageBody({ html }: { html: string }) {
   const sanitized = useMemo(() => sanitize(html), [html]);
   const remotePresent = useMemo(() => hasRemoteResources(sanitized), [sanitized]);
   const srcDoc = useMemo(
-    () => buildSrcDoc(sanitized, allowRemote, dark),
-    [sanitized, allowRemote, dark],
+    () => buildSrcDoc(sanitized, allowRemote, frame),
+    [sanitized, allowRemote, frame],
   );
 
   // Auto-size the frame to its content. `allow-same-origin` (granted without
