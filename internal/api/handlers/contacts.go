@@ -364,12 +364,24 @@ func (h *ContactHandler) ImportContacts(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Validate the whole batch before writing so a bad entry cannot leave a
+	// partially imported request behind.
+	errors := map[string]string{}
+	for i, entry := range req.Contacts {
+		field := fmt.Sprintf("contacts[%d].email", i)
+		if entry.Email == "" {
+			errors[field] = "required"
+		} else if address, err := mail.ParseAddress(entry.Email); err != nil || address.Address != entry.Email {
+			errors[field] = "must be an email address"
+		}
+	}
+	if len(errors) > 0 {
+		respond.ValidationError(w, errors)
+		return
+	}
+
 	imported := 0
 	for _, entry := range req.Contacts {
-		if entry.Email == "" {
-			continue
-		}
-
 		contact := models.Contact{
 			MailboxID:  mailboxID,
 			Email:      entry.Email,
