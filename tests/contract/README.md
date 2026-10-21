@@ -128,6 +128,15 @@ with their paired 400s, both refused before the domain lookup. Its `valid`
 request pairs only with 201; the hook supplies a fresh certificate and key on
 the created domain, leaving malformed and incomplete requests unchanged
 (`contract_certificate_examples_test.go`, `test_contract_certificate_hook.py`).
+
+`registerPushDevice` names its `registered` request with its 201, and
+`platform_unsupported`, `token_invalid`, `environment_invalid` and
+`app_id_mismatch` (each `registered` with that one field wrong) with their
+paired 422s. Its 200 is named `already_registered` so it pairs with no
+request. The real handler refuses each for a password session before anything
+is looked up or stored (`contract_device_examples_test.go`). The devices
+routes stay excluded in the E2E run: it has no APNs credentials, so they
+answer 404.
 The previously documented 422 was removed: this handler never returns it;
 invalid PEM and missing fields return 400.
 
