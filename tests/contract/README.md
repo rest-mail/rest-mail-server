@@ -163,6 +163,13 @@ refusal (`contract_sendmessage_examples_test.go`). The other
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setVacation` pairs `configured` with 200, `body_array` with 400, and
+`enabled_missing`, `subject_missing`, `body_missing`, `reply_missing` and
+`dates_reversed` with their 422s. No hook changes these requests. The handler
+checks each refusal after authorizing the account and before changing its
+stored vacation setting; the tests send the spec examples to the real handler
+and verify that refused updates preserve a previously configured reply.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
