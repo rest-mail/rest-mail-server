@@ -88,9 +88,14 @@ its paired 400. Their existing handler tests check these refusals before any
 database access (`contract_account_examples_test.go`,
 `contract_restmail_examples_test.go`, `contract_allowlist_examples_test.go`,
 `contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
-No before hook rewrites these requests. Sibling operations remain excluded;
-`receiveTlsReport` still needs a request example paired with its documented
-400 before its exclusion can be lifted.
+No before hook rewrites these requests. Sibling operations remain excluded.
+
+`receiveTlsReport` sends its `organization_missing` request with its paired
+422 and its `body_array` request (`[]`) with its paired 400, the `bad_request`
+the handler sends for a body that does not decode as a report. Both are refused
+before any domain is looked up or report stored
+(`contract_tlsrpt_examples_test.go`). The other `/.well-known` and
+`/autodiscover` paths keep their exclusions.
 
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
