@@ -24,4 +24,3 @@ sendTestEmail
 # handler rightly answers 422.
 setVacation
 testFilter
-verifyDelivery

@@ -5978,14 +5978,19 @@ paths:
           application/xml:
             schema:
               type: string
-            example: |
-              <?xml version="1.0" encoding="utf-8"?>
-              <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
-                <Request>
-                  <EMailAddress>eve@restmail.test</EMailAddress>
-                  <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
-                </Request>
-              </Autodiscover>
+            # Named on both sides so the malformed XML pairs only with 400.
+            examples:
+              valid:
+                value: |
+                  <?xml version="1.0" encoding="utf-8"?>
+                  <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
+                    <Request>
+                      <EMailAddress>eve@restmail.test</EMailAddress>
+                      <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
+                    </Request>
+                  </Autodiscover>
+              malformed:
+                value: "<Autodiscover><Request>"
       responses:
         "200":
           description: Autodiscover XML response
@@ -5993,6 +5998,9 @@ paths:
             application/xml:
               schema:
                 type: string
+              examples:
+                valid:
+                  summary: XML settings for the requested mailbox
         "400":
           description: >-
             No usable email address, refused before any domain is looked up. A
@@ -6009,7 +6017,9 @@ paths:
                   - "invalid request\n"
                   - "email address required\n"
                   - "invalid email address\n"
-              example: "invalid request\n"
+              examples:
+                malformed:
+                  value: "invalid request\n"
 
   /.well-known/mta-sts.txt:
     get:
@@ -7207,7 +7217,9 @@ paths:
             default: 5s
       responses:
         "200":
-          description: Verification result (found true/false)
+          description: >-
+            Verification result (found true/false). An address with no
+            mailbox has had nothing delivered to it: found is false.
           content:
             application/json:
               schema:
@@ -7222,8 +7234,6 @@ paths:
                         type: boolean
         "403":
           description: Disabled in production
-        "404":
-          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
 
