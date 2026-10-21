@@ -48,14 +48,16 @@ func readAutodiscoverSpec(t *testing.T) autodiscoverSpec {
 		t.Fatalf("read the spec: %v", err)
 	}
 	var doc struct {
-		Paths map[string]struct {
-			Post *autodiscoverSpec `yaml:"post"`
+		Paths struct {
+			Autodiscover struct {
+				Post *autodiscoverSpec `yaml:"post"`
+			} `yaml:"/autodiscover/autodiscover.xml"`
 		} `yaml:"paths"`
 	}
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	op := doc.Paths[autodiscoverPath].Post
+	op := doc.Paths.Autodiscover.Post
 	if op == nil || op.OperationID != "microsoftAutodiscover" {
 		t.Fatalf("the spec has no microsoftAutodiscover POST on %s", autodiscoverPath)
 	}
