@@ -66,7 +66,7 @@ func TestTestFilter_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, testFilterPath, "testFilter")
 
 	want := map[string][]string{
-		"request": {"filter_name_missing", "valid"},
+		"request": {"filter_name_missing", "invalid_body", "valid"},
 		"200":     {"valid"},
 		"400":     {"invalid_body"},
 		"422":     {"filter_name_missing"},
@@ -77,6 +77,10 @@ func TestTestFilter_ExamplePairs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("testFilter's named examples are %v, want %v", got, want)
+	}
+
+	if want := []interface{}{}; !reflect.DeepEqual(requests["invalid_body"], want) {
+		t.Errorf("invalid_body is %s, want []", mustJSON(requests["invalid_body"]))
 	}
 
 	var valid map[string]interface{}
@@ -99,38 +103,29 @@ func TestTestFilter_ExamplePairs(t *testing.T) {
 	}
 }
 
-// filter_name_missing is refused by the real handler with exactly its
-// documented 422 before the engine is asked, and valid runs the real
-// header_validate, made once with the request's config, and gets the
+// invalid_body and filter_name_missing are refused by the real handler with
+// exactly their documented 400 and 422 before the engine is asked; valid runs
+// the real header_validate, made once with the request's config, and gets the
 // documented 200. The handler has no database.
 func TestTestFilter_DocumentedAnswers(t *testing.T) {
 	requests, responses := postExamples(t, testFilterPath, "testFilter")
-	if len(responses["422"]) == 0 || len(responses["200"]) == 0 {
-		t.Fatalf("testFilter's 200 and 422 must each name an example, got %v", responses)
+	if len(responses["400"]) == 0 || len(responses["422"]) == 0 || len(responses["200"]) == 0 {
+		t.Fatalf("testFilter's 200, 400 and 422 must each name an example, got %v", responses)
 	}
 
-	for name, want := range responses["422"] {
-		t.Run(name, func(t *testing.T) {
-			request, ok := requests[name]
-			if !ok {
-				t.Fatalf("the 422 example %q has no request example of the same name", name)
-			}
-			// No engine: a request that reached it would panic, not be refused.
-			h := NewPipelineHandler(nil, nil, filters.JSSidecar{})
-			var rr *httptest.ResponseRecorder
-			func() {
-				defer func() {
-					if r := recover(); r != nil {
-						t.Fatalf("%s reached the engine before it was refused: %v", mustJSON(request), r)
-					}
-				}()
-				rr = postTestFilter(t, h, request)
-			}()
-			if rr.Code != http.StatusUnprocessableEntity {
-				t.Fatalf("%s: status %d, want 422; body %s", mustJSON(request), rr.Code, rr.Body)
-			}
-			assertDocumentedBody(t, request, rr, want)
-		})
+	for status, code := range map[string]int{"400": http.StatusBadRequest, "422": http.StatusUnprocessableEntity} {
+		for name, want := range responses[status] {
+			t.Run(status+"/"+name, func(t *testing.T) {
+				request, ok := requests[name]
+				if !ok {
+					t.Fatalf("the %s example %q has no request example of the same name", status, name)
+				}
+				rr, reached := testFilterNoEngine(t, string(mustJSON(request)))
+				for _, problem := range testFilterAnswerProblems(rr, reached, code, want) {
+					t.Errorf("%s: %s", mustJSON(request), problem)
+				}
+			})
+		}
 	}
 
 	for name, want := range responses["200"] {

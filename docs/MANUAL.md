@@ -686,6 +686,20 @@ A corrupt account key stops issuance rather than silently creating a new identit
 This file account storage applies to the instance command; the API's
 `ACME_ENABLED` renewal manager stores certificates in the database separately.
 
+To avoid unnecessary orders when repeating the instance task, use
+`CONFIG=<name> chore instance:certs:issue CERT_RENEW_BEFORE=720h` (30 days).
+The underlying `instance acme-issue -renew-before 720h` command reuses a matching
+certificate/key pair only if it is valid now, covers every requested name, and
+expires more than 720 hours from now. Otherwise it attempts issuance; a failed
+order preserves the existing serving files. A reusable pair is checked before
+the command opens its HTTP listener or contacts the CA. The Docker task still
+reserves host port 80 when starting its container, even if issuance is skipped.
+The default `CERT_RENEW_BEFORE=0s` always issues. Use that default when switching
+between staging, production or custom CAs: reuse checks do not establish the
+existing certificate's CA provenance or trust. This option does not install a
+scheduler or reload serving gateways; periodic invocation and deploying the
+renewed files to running gateways remain the operator's responsibility.
+
 ### 6.3 Gateways
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -895,6 +909,8 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
 
 #### A forgotten password: `POST /api/v1/auth/recover`
+
+Webmail and the admin sign-in page offer **Forgot password?**. Enter the account address, a current authenticator code, an unused recovery code saved during two-factor setup, and the new password twice. Success signs you in with the new password; your authenticator stays enabled. If either factor is unavailable, contact the server administrator for an assisted reset. **Use an account recovery token** remains the separate path for a token supplied by the operator.
 
 An account with two-factor authentication resets its own password with a current authenticator code and one of its recovery codes, both (`email`, `totp_code`, `recovery_code`, `new_password`, optional `client: "native"`). The authenticator stays; app passwords and sessions end; the answer is a new session. Refusals are budgeted per address as well as per IP: 5, then one per 15 minutes, then 429. Without two-factor authentication there is no self-service path: an admin resets the password, or, for an admin who has lost every way in, the token below.
 
