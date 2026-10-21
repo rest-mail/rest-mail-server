@@ -1684,15 +1684,36 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SendMessageRequest"
-            # imap.restmail.test resolves in the testbed but takes no mail on
-            # port 25: the delivery is refused for now and the queue entry is
-            # deferred, so the queue operations' links have one to retry. A
-            # domain that does not resolve bounces at once.
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test, someone@imap.restmail.test]
-              subject: Hello
-              body_text: Sent through the REST API.
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              # imap.restmail.test resolves in the testbed but takes no mail
+              # on port 25: the delivery is refused for now and the queue
+              # entry is deferred, so the queue operations' links have one to
+              # retry. A domain that does not resolve bounces at once.
+              valid:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test, someone@imap.restmail.test]
+                  subject: Hello
+                  body_text: Sent through the REST API.
+              # No from: refused before the sender is looked up.
+              from_missing:
+                value:
+                  to: [admin@restmail.test, someone@imap.restmail.test]
+                  subject: Hello
+                  body_text: Sent through the REST API.
+              # A List-Unsubscribe target from a transactional domain. The
+              # contract run makes restmail.test transactional for this
+              # request alone (tests/contract/hooks.py).
+              unsubscribe_not_allowed:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test, someone@imap.restmail.test]
+                  subject: Hello
+                  body_text: Sent through the REST API.
+                  list_unsubscribe:
+                    mailto: unsubscribe@restmail.test
       responses:
         "201":
           description: Message sent
@@ -1704,6 +1725,25 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+              examples:
+                # The sender's copy, filed in its Sent folder.
+                valid:
+                  value:
+                    data:
+                      id: 1
+                      mailbox_id: 1
+                      folder: Sent
+                      sender: admin@restmail.test
+                      subject: Hello
+                      body_text: Sent through the REST API.
+                      is_read: true
+                      is_flagged: false
+                      is_starred: false
+                      is_draft: false
+                      is_deleted: false
+                      received_at: "2026-10-21T12:00:00Z"
+                      created_at: "2026-10-21T12:00:00Z"
+                      updated_at: "2026-10-21T12:00:00Z"
           links:
             getMessage:
               operationId: getMessage
@@ -1735,8 +1775,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                from_missing:
+                  value:
+                    error:
+                      code: bad_request
+                      message: from is required
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: The sender domain's sending_policy refuses the message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                unsubscribe_not_allowed:
+                  value:
+                    error:
+                      code: list_unsubscribe_not_allowed
+                      message: "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
 
   /api/v1/messages/{id}/raw:
     parameters:
