@@ -166,12 +166,14 @@ usage:
       matches the selector the manifest declares; exit non-zero on drift. Run
       where the API is reachable (e.g. inside the api container).
 
-  instance acme-issue -out <dir> -domains <a,b,...> [-email e] [-directory URL] [-staging] [-listen :80] [-renew-before 720h]
+  instance acme-issue -out <dir> -domains <a,b,...> [-email e] [-directory URL] [-staging] [-listen :80] [-renew-before 720h] [-check-interval 12h]
       Issue one certificate covering -domains from an ACME CA by HTTP-01,
       serving the challenges on -listen meanwhile, and write it to
       <dir>/<first domain>.{crt,key}. With -renew-before, reuse a matching,
       currently valid pair until that long before expiry; 0 always issues.
       Failed issuance preserves the serving pair and retains the account key.
+      With -check-interval, repeat checks until SIGINT/SIGTERM; requires a
+      positive -renew-before. Failed checks retry after the interval.
 
   instance mtls-issue -out <dir> [-server-dns api,localhost] [-server-ip 127.0.0.1] [-client-cn rest-mail-gateway]
       Mint the gateway→API internal mTLS material into <dir>: a dedicated

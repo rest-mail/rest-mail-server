@@ -9,7 +9,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/restmail/restmail/internal/acme"
@@ -28,19 +30,24 @@ func acmeIssueCmd(args []string) {
 	staging := fs.Bool("staging", false, "use the Let's Encrypt staging directory, overriding -directory")
 	listen := fs.String("listen", ":80", "address to serve HTTP-01 challenges on; the CA connects to port 80")
 	renewBefore := fs.Duration("renew-before", 0, "reuse a valid matching pair until this long before expiry (e.g. 720h); 0 always issues")
+	checkInterval := fs.Duration("check-interval", 0, "repeat expiry-aware checks this long after each attempt (e.g. 12h); requires positive -renew-before; 0 runs once")
 	_ = fs.Parse(args)
 
-	if *out == "" || fs.NArg() != 0 {
+	names := splitList(*domains)
+	if *out == "" || len(names) == 0 || fs.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "instance acme-issue: -out and -domains are required, and nothing else")
 		os.Exit(2)
 	}
-	names := splitList(*domains)
 	// Staging overrides the directory, as in acme.NewClient.
 	if *staging {
 		*directory = acme.LetsEncryptStaging
 	}
 	cfg := acme.IssueConfig{Directory: *directory, Email: *email, Domains: names}
-	if err := renewACME(context.Background(), *out, *listen, cfg, *renewBefore); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := runACMEChecks(ctx, *renewBefore, *checkInterval, func(ctx context.Context) error {
+		return renewACME(ctx, *out, *listen, cfg, *renewBefore)
+	}); err != nil {
 		fatal("acme-issue: %v", err)
 	}
 }

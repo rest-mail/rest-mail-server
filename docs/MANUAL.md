@@ -697,9 +697,25 @@ the command opens its HTTP listener or contacts the CA. The Docker task still
 reserves host port 80 when starting its container, even if issuance is skipped.
 The default `CERT_RENEW_BEFORE=0s` always issues. Use that default when switching
 between staging, production or custom CAs: reuse checks do not establish the
-existing certificate's CA provenance or trust. This option does not install a
-scheduler or reload serving gateways; periodic invocation and deploying the
-renewed files to running gateways remain the operator's responsibility.
+existing certificate's CA provenance or trust.
+
+For opt-in continuous checks, run
+`CONFIG=<name> chore instance:certs:issue CERT_RENEW_BEFORE=720h CERT_CHECK_INTERVAL=12h`.
+This stays in the foreground: it checks immediately, then waits 12 hours after
+each completed attempt. A positive renewal window is required in periodic mode
+to avoid ordering a new certificate on every check. Failed checks are logged
+and retried after the same interval; they do not stop the process. Supervise
+this long-running task with your deployment's process manager and alert on its
+error logs. The default `CERT_CHECK_INTERVAL=0s` retains one-shot behavior,
+including returning issuance failures as a nonzero exit status.
+
+The underlying command accepts `-check-interval 12h -renew-before 720h` and stops
+on SIGINT or SIGTERM, canceling any active CA request. The volume lock is held
+only during each check, so manual one-shot issuers can run between checks.
+The Docker task reserves host port 80 for its entire lifetime in periodic mode,
+including while waiting. Do not run it alongside another service on that port.
+This does not reload serving gateways or install a host scheduler: deploying the
+renewed files to running gateways remains the operator's responsibility.
 
 Serving files are staged together before publication. If replacing the
 certificate fails after replacing the key, the command restores the previous
