@@ -128,6 +128,11 @@ exclude-matching:
   - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
   - '> (429|503)( >|$)'
+  # The send example sends immediately. The scheduled branch needs a request
+  # carrying scheduled_at, which the examples phase does not have; the handler
+  # and DB tests cover it. Only the 202 is held back, so the ordinary send is
+  # still judged.
+  - '^/api/v1/messages/send > .* > 202( >|$)'
   # Discovery's database-outage response needs a fault-injected database.
   - '^/\.well-known/restmail > .* > 500( >|$)'
 
@@ -193,6 +198,9 @@ surface:
       reason: "Needs a quarantined message."
     - operation: clearSuppression
       reason: "Needs a suppressed recipient on the created domain; the contract chain does not send a message that hard-bounces from it."
+    - operation: sendMessage
+      status: "202"
+      reason: "The contract's send example sends immediately; a scheduled request is not part of the examples phase. The scheduled branch is covered by the handler and DB tests, and the ordinary send is still counted."
     - status: "403"
       reason: "a refusal for a missing capability needs a principal without it: the authorization phase, not the admin's run"
     - status: "400"
