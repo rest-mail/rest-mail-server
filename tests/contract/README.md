@@ -68,6 +68,14 @@ checks it gets the documented body: the refusal comes before anything is looked
 up or stored. `contract_pipeline_body400_test.go` does the same for
 `body_array` and its 400.
 
+The Sieve operations `putSieveScript` and `validateSieveScript` send
+`script_missing` and `script_null` requests with matching 422 examples.
+Their successful responses are named `valid`; PUT keeps its 201-before-200
+order to create the script before replacing it. The account link supplies
+the authorized account ID. Handler tests send the spec examples against a
+database and check the exact refusals and unchanged stored script
+(`contract_sieve_examples_test.go`).
+
 `createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
 JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to

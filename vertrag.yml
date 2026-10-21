@@ -102,7 +102,9 @@ exclude-matching:
   - '^/api/v1/auth/(login|logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/accounts/.* > (400|422)( >|$)'
+  - '^/api/v1/accounts/.* > 400( >|$)'
+  # Sieve's missing/null script 422s have named request/response pairs.
+  - '^/api/v1/accounts/(link|\{id\}(/(credentials|folders|threads|quota|search|contacts|vacation|quarantine|events|calendar-events)(/[^ >]*)?)?) > .* > 422( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
   - '^/api/v1/admin/(audit|dkim|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
