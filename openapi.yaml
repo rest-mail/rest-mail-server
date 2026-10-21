@@ -3791,6 +3791,9 @@ paths:
                     body:
                       content_type: text/plain
                       content: Hello.
+              # JSON but not a request object: refused before any filter is made.
+              invalid_body:
+                value: []
       responses:
         "200":
           description: Filter execution result
