@@ -5813,6 +5813,10 @@ paths:
                           sending-mta-ip: 192.0.2.1
                           receiving-mx-hostname: mail.restmail.test
                           failed-session-count: 1
+              # JSON, but not a report object: refused as it is decoded,
+              # before any field is looked at.
+              body_array:
+                value: []
       responses:
         "201":
           description: Report stored
@@ -5839,6 +5843,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid TLS-RPT JSON
         "422":
           description: Request body failed validation
           content:

@@ -827,24 +827,26 @@ tasks:
         docker run --rm --network testbed_mailnet alpine:3.20 sh -c "$probe"
 
   health:wait:
-    desc: Wait for the API to answer its health endpoint (up to 60s)
+    desc: Wait for the API to answer its health endpoint (up to 180s)
     # Probed on the mailnet, from inside the network — the same path the gateways
     # use. It used to curl localhost:8080 from the host, which only worked because
     # the API published a host port; that publishing is gone (an HTTP service with a
     # proxy route has no business on 0.0.0.0), and probing through the proxy instead
     # would make this depend on ddt running, which CI does not have.
+    # Cold CI builds compile the API inside the container before it can listen.
+    # Allow time for dependency downloads, compilation, and initial migrations.
     cmds:
       - |
         probe='
           i=0
-          while [ $i -lt 60 ]; do
+          while [ $i -lt 180 ]; do
             if wget -q -O /dev/null "http://{{.RESTMAIL_API_IP}}:{{.RESTMAIL_API_PORT}}/api/health"; then
               echo "  api healthy"
               exit 0
             fi
             sleep 1; i=$((i+1))
           done
-          echo "ERROR: api did not become healthy within 60s" >&2
+          echo "ERROR: api did not become healthy within 180s" >&2
           exit 1'
         docker run --rm --network {{.RESTMAIL_NETWORK}} alpine:3.20 sh -c "$probe"
 
