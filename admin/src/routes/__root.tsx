@@ -67,7 +67,10 @@ function RootComponent() {
   return (
     <>
       <AccountAccess apiBase={apiV1.url('')} email={user?.email} steps={setupRequired}
-        onSession={acceptSession}
+        onSession={session => {
+          acceptSession(session)
+          if (!session.setup_required?.length) void navigate({ to: '/dashboard' })
+        }}
         onSignOut={() => { logout(); void navigate({ to: '/login' }) }}>
         <Outlet />
       </AccountAccess>

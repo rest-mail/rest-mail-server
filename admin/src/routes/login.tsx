@@ -72,6 +72,7 @@ function LoginPage() {
           </div>
         )}
 
+        <a href="#recover" className="text-sm underline">Forgot password?</a>
         <a href="#reset" className="text-sm underline">Use an account recovery token</a>
 
         {/* Login Form */}
