@@ -31,6 +31,9 @@ func renewACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConf
 		return err
 	}
 	defer func() { _ = lock.Close() }()
+	if err := recoverACMEServingKey(outputDir, cfg.Domains[0]); err != nil {
+		return err
+	}
 	if renewBefore > 0 {
 		current, err := reusableACMEPair(outputDir, cfg.Domains, renewBefore, time.Now())
 		if err != nil {
