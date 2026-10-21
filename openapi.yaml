@@ -409,7 +409,9 @@ paths:
         every token it was issued is dead at once, as for a password change.
         Answers with a fresh session. An account without two-factor
         authentication has no self-service path: an admin resets it. Every
-        refusal is the same 401, whether the address exists or not.
+        refusal is the same 401, whether the address exists or not. Each
+        address may be refused 5 times, then once per 15 minutes, from any
+        client; past that it is answered 429 without a check.
       security: []
       requestBody:
         required: true
@@ -439,6 +441,8 @@ paths:
           description: recovery_failed
         "422":
           description: A field missing, or a password under 12 characters (no code is spent)
+        "429":
+          description: Too many attempts from this client, or too many refusals for this address
 
   /api/v1/server:
     get:

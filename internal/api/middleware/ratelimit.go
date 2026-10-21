@@ -167,3 +167,28 @@ func writeRateLimited(w http.ResponseWriter, retry time.Duration) {
 	w.Header().Set("Retry-After", strconv.Itoa(secs))
 	writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many requests; please slow down")
 }
+
+// FailureBudget is a token bucket per key that charges only for failures: a
+// handler asks Available before the work and calls Charge when it fails, so
+// whatever succeeds costs nothing. It is for budgets a handler keys on
+// something only it knows, such as the account a request names.
+type FailureBudget struct {
+	rl *rateLimiter
+}
+
+// NewFailureBudget builds a FailureBudget. cfg.TTL must outlast a full refill
+// (Burst/RPS seconds), or an idle key is swept, and starts over full, early.
+func NewFailureBudget(cfg RateLimitConfig) *FailureBudget {
+	return &FailureBudget{rl: newRateLimiter(cfg)}
+}
+
+// Available reports whether key may fail once more now. When it may not, it
+// returns the estimated wait until it can (for Retry-After).
+func (b *FailureBudget) Available(key string) (bool, time.Duration) {
+	return b.rl.available(key)
+}
+
+// Charge spends one of key's failures.
+func (b *FailureBudget) Charge(key string) {
+	b.rl.allow(key)
+}

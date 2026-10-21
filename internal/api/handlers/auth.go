@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -145,12 +147,21 @@ type AuthHandler struct {
 	// sessions is the cache RejectStaleSessions reads; a password change or
 	// a reset ends the account's sessions, and empties its entry.
 	sessions *SessionCache
+	// recoverFailures is the budget of refused recoveries per address (#124),
+	// on top of the per-IP auth throttle. Nil leaves it unlimited.
+	recoverFailures *middleware.FailureBudget
 }
 
 // sessionDevices is what a logout needs of the push device store: to delete
 // the devices of a session once it has ended.
 type sessionDevices interface {
 	SessionEnded(sid string, now time.Time) (int, error)
+}
+
+// SetRecoverFailures sets the budget of refused recoveries per address. Call
+// before the router serves traffic.
+func (h *AuthHandler) SetRecoverFailures(budget *middleware.FailureBudget) {
+	h.recoverFailures = budget
 }
 
 // SetPushDevices makes a logout delete the push devices of the session it
@@ -884,7 +895,21 @@ func (h *AuthHandler) Recover(w http.ResponseWriter, r *http.Request) {
 		respond.ValidationError(w, problems)
 		return
 	}
+	// Refusals are charged to the address, known or not, so the budget says
+	// nothing about which addresses exist; once it is spent, the address is
+	// answered 429 without a check, from any IP.
+	address := strings.ToLower(strings.TrimSpace(req.Email))
+	if h.recoverFailures != nil {
+		if ok, retry := h.recoverFailures.Available(address); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(max(1, int(math.Ceil(retry.Seconds())))))
+			respond.Error(w, http.StatusTooManyRequests, "rate_limited", "Too many failed recoveries for this address; try again later")
+			return
+		}
+	}
 	refuse := func() {
+		if h.recoverFailures != nil {
+			h.recoverFailures.Charge(address)
+		}
 		respond.Error(w, http.StatusUnauthorized, "recovery_failed", "Invalid address, authenticator code or recovery code")
 	}
 	if h.twoFactorStore == nil {
@@ -893,7 +918,7 @@ func (h *AuthHandler) Recover(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var account models.Mailbox
-	err := h.db.Where("address = ?", strings.ToLower(strings.TrimSpace(req.Email))).First(&account).Error
+	err := h.db.Where("address = ?", address).First(&account).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		refuse()
 		return
