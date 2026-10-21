@@ -21,6 +21,5 @@ restmailDeliver
 saveDraft
 sendMessage
 sendTestEmail
-setVacation
 testFilter
 verifyDelivery
