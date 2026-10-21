@@ -101,8 +101,17 @@ still check that refusal (`contract_queue_bulk_pairs_test.go`).
 422 and its `body_array` request (`[]`) with its paired 400, the `bad_request`
 the handler sends for a body that does not decode as a report. Both are refused
 before any domain is looked up or report stored
-(`contract_tlsrpt_examples_test.go`). The other `/.well-known` and
-`/autodiscover` paths keep their exclusions.
+(`contract_tlsrpt_examples_test.go`). The other `/.well-known` paths keep
+their exclusions.
+
+`microsoftAutodiscover` pairs its `malformed` XML request with its plain-text
+400 (`invalid request\n`), and `valid` with its XML 200. Vertrag v0.29.0
+pairs XML examples by name but does not serialize their request bodies, so
+the hook supplies the matching XML for each status. The hook test checks both
+bodies against the spec; `contract_autodiscover_body400_test.go` sends the
+spec's malformed request to the real handler with no database. The 200's
+named example declares no fixed response body: the XML contains the requested
+mailbox's settings. This route's 400 is now sent and judged.
 
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter

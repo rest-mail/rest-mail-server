@@ -352,9 +352,12 @@ AUTODISCOVER_REQUEST = """<?xml version="1.0" encoding="utf-8"?>
 
 @hooks.before("microsoftAutodiscover")
 def an_outlook_autodiscover_request(transaction):
-    # The spec's XML example, which vertrag 0.27 does not send (it sends
-    # JSON request examples only).
-    transaction["request"]["body"] = AUTODISCOVER_REQUEST
+    # Vertrag 0.29 pairs the named examples but does not serialize XML.
+    # Keep the malformed request on its 400; the 200 needs the valid XML.
+    transaction["request"]["body"] = (
+        "<Autodiscover><Request>" if " > 400 > " in transaction["name"]
+        else AUTODISCOVER_REQUEST
+    )
 
 
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
