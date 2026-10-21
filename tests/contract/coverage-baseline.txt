@@ -16,8 +16,6 @@ bulkRetryQueue
 createAccount
 createDomain
 importContacts
-logout
-probeServices
 # First reached in #376: the schema permits an empty recipient list and
 # omits the combinations of sender/date fields the delivery pipeline needs.
 restmailDeliver

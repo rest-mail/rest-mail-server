@@ -208,6 +208,11 @@ func (h *TestHandler) VerifyDelivery(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// probeableServices are the services ProbeServices knows how to reach.
+var probeableServices = map[string]bool{
+	"smtp": true, "smtp_submission": true, "imap": true, "pop3": true, "dns": true, "db": true,
+}
+
 // ProbeServices checks connectivity to SMTP, IMAP, POP3, and DNS services.
 // POST /api/v1/admin/test/probe
 func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
@@ -226,6 +231,14 @@ func (h *TestHandler) ProbeServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, svc := range req.Services {
+		if !probeableServices[strings.ToLower(svc)] {
+			respond.ValidationError(w, map[string]string{
+				"services": fmt.Sprintf("unknown service %q: want smtp, smtp_submission, imap, pop3, dns or db", svc),
+			})
+			return
+		}
+	}
 	if len(req.Services) == 0 {
 		req.Services = []string{"smtp", "imap", "pop3", "dns", "db"}
 	}
