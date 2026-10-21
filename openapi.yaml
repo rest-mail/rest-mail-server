@@ -8695,13 +8695,33 @@ components:
 
     RestmailDeliverRequest:
       type: object
-      required: [to]
+      description: >-
+        Recipients come from a non-empty to list, otherwise a non-empty
+        recipients list, otherwise the To header parsed from raw_message.
+        A raw message must contain a parseable To header when neither list
+        supplies recipients; an empty or missing recipient set is refused.
+      anyOf:
+        - required: [to]
+          properties:
+            to:
+              type: array
+              minItems: 1
+        - required: [recipients]
+          properties:
+            recipients:
+              type: array
+              minItems: 1
+        - required: [raw_message]
+          properties:
+            raw_message:
+              type: string
+              minLength: 1
       properties:
         from:
           type: string
           format: email
         to:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8731,7 +8751,7 @@ components:
           format: email
           description: Alias for 'from'
         recipients:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
