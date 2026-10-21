@@ -462,3 +462,12 @@ def remove_a_previous_contact_probe(transaction):
             hooks.stash["created_contact_probes"] = owned
             return
         offset += len(contacts)
+
+
+@hooks.before("getAlias")
+def get_a_missing_alias(transaction):
+    # Parameter example names are not paired by vertrag 0.29, and the create
+    # link supplies its real ID to both responses. Only the 404 selects the
+    # spec's missing ID; the success and its coverage probes keep their IDs.
+    if " > 404 > " in transaction.get("name", ""):
+        transaction["fullPath"] = "/api/v1/admin/aliases/2147483647"

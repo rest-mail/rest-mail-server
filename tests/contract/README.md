@@ -172,6 +172,14 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`getAlias` documents a `missing` path ID (`2147483647`) and its exact 404
+refusal. Its hook selects that ID only for the 404 transaction because vertrag
+0.29 does not pair parameter example names and the create link supplies its
+created ID to both responses. Successful lookups and their coverage probes
+keep their IDs. The real-handler test checks the missing ID and a successful
+lookup, including the domain association, and proves neither changes storage.
+All other documented 404s retain their exclusions; `test_gate.py` checks this set.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
