@@ -187,8 +187,10 @@ func (h *QueueHandler) QueueStats(w http.ResponseWriter, r *http.Request) {
 type bulkQueueRequest struct {
 	IDs    []uint `json:"ids"`
 	Filter *struct {
-		Status string `json:"status"`
-		Domain string `json:"domain"`
+		Status    string `json:"status"`
+		Domain    string `json:"domain"`
+		Sender    string `json:"sender"`
+		Recipient string `json:"recipient"`
 	} `json:"filter"`
 }
 
@@ -203,6 +205,12 @@ func (h *QueueHandler) buildBulkQuery(req bulkQueueRequest) *gorm.DB {
 		}
 		if req.Filter.Domain != "" {
 			query = query.Where("domain = ?", req.Filter.Domain)
+		}
+		if req.Filter.Sender != "" {
+			query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(req.Filter.Sender)+"%")
+		}
+		if req.Filter.Recipient != "" {
+			query = query.Where("recipient ILIKE ? ESCAPE '\\'", "%"+escapeLike(req.Filter.Recipient)+"%")
 		}
 	}
 	return query
