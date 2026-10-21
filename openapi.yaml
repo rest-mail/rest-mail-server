@@ -1561,8 +1561,18 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateFolderRequest"
-            example:
-              name: Receipts
+            examples:
+              created:
+                value:
+                  name: Receipts
+              name_missing:
+                value: {}
+              name_empty:
+                value:
+                  name: ""
+              name_wrong_type:
+                value:
+                  name: 12
       responses:
         "201":
           description: Folder created
@@ -1574,6 +1584,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+              examples:
+                created:
+                  value:
+                    data:
+                      name: Receipts
           links:
             renameFolder:
               operationId: renameFolder
@@ -1581,7 +1596,36 @@ paths:
                 id: '$request.path.id'
                 folder: '$response.body#/data/name'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Folder name is missing, empty, or not a string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                name_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
 
   /api/v1/accounts/{id}/folders/{folder}:
     parameters:
@@ -1859,6 +1903,16 @@ paths:
               operationId: getMessageTrace
               parameters:
                 id: '$response.body#/data/id'
+        "202":
+          description: Accepted and scheduled for the time in `scheduled_at`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ScheduledSend"
         "400":
           description: A field is missing or invalid, including an unsafe list_unsubscribe target
           content:
@@ -1883,6 +1937,56 @@ paths:
                     error:
                       code: list_unsubscribe_not_allowed
                       message: "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
+
+  /api/v1/messages/scheduled:
+    get:
+      operationId: listScheduledMessages
+      tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
+      summary: Messages waiting to be sent later
+      description: >-
+        The pending and in-flight scheduled sends for this account, soonest
+        first. A message that has been sent or cancelled is no longer listed.
+      responses:
+        "200":
+          description: Scheduled messages, soonest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ScheduledSend"
+
+  /api/v1/messages/scheduled/{id}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    delete:
+      operationId: cancelScheduledMessage
+      tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
+      summary: Cancel a message that has not been sent yet
+      description: >-
+        Only a message still waiting can be called back. One already being
+        sent is not in the list and cannot be cancelled.
+      responses:
+        "204":
+          description: Cancelled
+        "404":
+          description: No waiting scheduled message with that id belongs to this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/messages/{id}/raw:
     parameters:
@@ -1957,17 +2061,26 @@ paths:
         - BearerAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Save a new draft
+      description: >
+        All draft fields are optional. Without `from`, the draft is saved in
+        the signed-in account's mailbox with an empty sender. When `from` is
+        supplied, the caller needs mail:write on that mailbox.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DraftRequest"
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test]
-              subject: Draft
-              body_text: Not sent yet.
+            examples:
+              with_sender:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test]
+                  subject: Draft
+                  body_text: Not sent yet.
+              empty:
+                summary: Start an empty draft in the signed-in account
+                value: {}
       responses:
         "201":
           description: Draft saved
@@ -2300,6 +2413,33 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateContactRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386). Each refused
+            # one has one field missing or wrong, and is refused before
+            # anything is stored. Their address is not created's: the
+            # createContact hook removes a contact an earlier request made
+            # with the same address, and created's links still need it.
+            examples:
+              created:
+                value:
+                  email: someone@example.com
+                  name: Someone
+                  trust_level: trusted
+              email_missing:
+                value:
+                  name: Someone
+                  trust_level: trusted
+              # A display name and address, not a bare address.
+              email_invalid:
+                value:
+                  email: Refused <refused@example.com>
+                  name: Someone
+                  trust_level: trusted
+              trust_level_invalid:
+                value:
+                  email: refused@example.com
+                  name: Someone
+                  trust_level: friend
       responses:
         "201":
           description: Contact created
@@ -2311,6 +2451,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Contact"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      mailbox_id: 1
+                      email: someone@example.com
+                      name: Someone
+                      trust_level: trusted
+                      source: manual
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             updateContact:
               operationId: updateContact
@@ -2323,7 +2475,36 @@ paths:
                 id: '$request.path.id'
                 cid: '$response.body#/data/id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                email_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          email: required
+                email_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          email: must be an email address
+                trust_level_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          trust_level: "must be auto, trusted, or blocked"
 
   /api/v1/accounts/{id}/contacts/{cid}:
     parameters:
@@ -8057,8 +8238,54 @@ components:
           type: string
         in_reply_to:
           type: string
+        scheduled_at:
+          type: string
+          format: date-time
+          description: >-
+            Send the message at this time instead of now (at least one
+            minute ahead, and within a year). The response is 202 with the
+            stored scheduled message, and the message is not sent until then.
+            Omit it to send immediately.
         list_unsubscribe:
           $ref: "#/components/schemas/ListUnsubscribe"
+
+    ScheduledSend:
+      type: object
+      required: [id, account_id, from, to, subject, scheduled_at, status, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        account_id:
+          type: integer
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, sending, sent, failed, cancelled]
+        attempts:
+          type: integer
+        sent_message_id:
+          type: integer
+          nullable: true
+        last_error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     ListUnsubscribe:
       type: object
@@ -8115,7 +8342,6 @@ components:
     # ─────────────────────────────────────────────────────────────
     DraftRequest:
       type: object
-      required: [from]
       properties:
         from:
           type: string
