@@ -3,8 +3,10 @@
 // server actually reads, or a "successful" rotation silently breaks signing/login:
 //
 //   - domains.dkim_private_key   — the live DKIM signing keys (dkim:v1: form)
+//   - dkim_rotation_keys.private_key — staged and previous DKIM keys
 //   - credentials.encrypted_secret — TOTP secrets
 //   - certificates.key_pem        — ACME/TLS private keys
+//   - acme_accounts.key_pem       — the API's ACME account keys
 package main
 
 import (
@@ -24,7 +26,8 @@ import (
 func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: ROTATE_OLD_MASTER_KEY=… ROTATE_NEW_MASTER_KEY=… %s\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "\nRe-encrypts all at-rest secrets (DKIM signing keys, TOTP 2FA secrets,\n")
-	fmt.Fprintf(os.Stderr, "and TLS/ACME private keys) in the database under the new master key.\n")
+	fmt.Fprintf(os.Stderr, "TLS/ACME private keys and ACME account keys) in the database under the\n")
+	fmt.Fprintf(os.Stderr, "new master key.\n")
 	fmt.Fprintf(os.Stderr, "\nThe keys are read only from the environment, never from arguments, which\n")
 	fmt.Fprintf(os.Stderr, "ps(1) output and shell history would show.\n")
 	fmt.Fprintf(os.Stderr, "\nDatabase environment variables: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASS\n")
@@ -64,9 +67,9 @@ func main() {
 		log.Fatalf("key rotation failed: %v", err)
 	}
 
-	fmt.Printf("\nMaster key rotation complete: %d domain DKIM keys, %d 2FA secrets, "+
-		"%d certificates processed.\n",
-		summary.DomainDKIM, summary.TwoFactor, summary.Certificates)
+	fmt.Printf("\nMaster key rotation complete: %d domain DKIM keys, %d rotation DKIM keys, %d 2FA secrets, "+
+		"%d certificates, %d ACME accounts processed.\n",
+		summary.DomainDKIM, summary.RotationDKIM, summary.TwoFactor, summary.Certificates, summary.ACMEAccounts)
 	if summary.Failures > 0 {
 		fmt.Printf("WARNING: %d secrets could not be decrypted with the old key and were left "+
 			"untouched (see warnings above).\n", summary.Failures)
@@ -77,8 +80,10 @@ func main() {
 // rotateSummary counts what a rotation touched.
 type rotateSummary struct {
 	DomainDKIM   int
+	RotationDKIM int
 	TwoFactor    int
 	Certificates int
+	ACMEAccounts int
 	Failures     int
 }
 
@@ -96,6 +101,11 @@ func rotate(database *gorm.DB, oldKey, newKey string) (rotateSummary, error) {
 	}
 	s.Failures += failures
 
+	if s.RotationDKIM, failures, err = rotateRotationDKIM(database, oldKey, newKey); err != nil {
+		return s, err
+	}
+	s.Failures += failures
+
 	if s.TwoFactor, failures, err = rotateTwoFactorSecrets(database, oldKey, newKey); err != nil {
 		return s, err
 	}
@@ -106,7 +116,38 @@ func rotate(database *gorm.DB, oldKey, newKey string) (rotateSummary, error) {
 	}
 	s.Failures += failures
 
+	if s.ACMEAccounts, failures, err = rotateACMEAccounts(database, oldKey, newKey); err != nil {
+		return s, err
+	}
+	s.Failures += failures
+
 	return s, nil
+}
+
+// rotateRotationDKIM keeps pending activation and rollback keys readable after
+// a master-key change, without changing their publication/retirement metadata.
+func rotateRotationDKIM(database *gorm.DB, oldKey, newKey string) (processed, failures int, err error) {
+	var keys []models.DKIMRotationKey
+	if err := database.Find(&keys).Error; err != nil {
+		return 0, 0, fmt.Errorf("query DKIM rotation keys: %w", err)
+	}
+	for i := range keys {
+		key := &keys[i]
+		plain, err := models.LoadDKIMPrivateKey(key.PrivateKey, oldKey)
+		if err != nil {
+			log.Printf("WARN: failed to decrypt DKIM rotation key (id=%d, domain=%d)", key.ID, key.DomainID)
+			failures++
+			continue
+		}
+		if err := key.SetPrivateKey(plain, newKey); err != nil {
+			return processed, failures, fmt.Errorf("re-encrypt DKIM rotation key id=%d: %w", key.ID, err)
+		}
+		if err := database.Model(key).Update("private_key", key.PrivateKey).Error; err != nil {
+			return processed, failures, fmt.Errorf("update DKIM rotation key id=%d: %w", key.ID, err)
+		}
+		processed++
+	}
+	return processed, failures, nil
 }
 
 // rotateDomainDKIM re-encrypts domains.dkim_private_key — the live DKIM signing
@@ -206,6 +247,34 @@ func rotateCertificates(database *gorm.DB, oldKey, newKey string) (processed, fa
 		}
 		processed++
 		log.Printf("rotated certificate key (id=%d, issuer=%s)", cert.ID, cert.Issuer)
+	}
+	return processed, failures, nil
+}
+
+// rotateACMEAccounts re-encrypts acme_accounts.key_pem, the API's account key
+// per CA directory. One left under the old key stops every ACME order.
+func rotateACMEAccounts(database *gorm.DB, oldKey, newKey string) (processed, failures int, err error) {
+	var accounts []models.ACMEAccount
+	if err := database.Find(&accounts).Error; err != nil {
+		return 0, 0, fmt.Errorf("query ACME accounts: %w", err)
+	}
+	for i := range accounts {
+		account := &accounts[i]
+		plain, derr := crypto.DecryptString(account.KeyPEM, oldKey)
+		if derr != nil {
+			log.Printf("WARN: failed to decrypt ACME account key (directory=%s): %v", account.Directory, derr)
+			failures++
+			continue
+		}
+		enc, eerr := crypto.EncryptString(plain, newKey)
+		if eerr != nil {
+			return processed, failures, fmt.Errorf("re-encrypt ACME account key for %s: %w", account.Directory, eerr)
+		}
+		if uerr := database.Model(account).Update("key_pem", enc).Error; uerr != nil {
+			return processed, failures, fmt.Errorf("update ACME account key for %s: %w", account.Directory, uerr)
+		}
+		processed++
+		log.Printf("rotated ACME account key (directory=%s)", account.Directory)
 	}
 	return processed, failures, nil
 }

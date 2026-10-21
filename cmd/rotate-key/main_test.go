@@ -159,3 +159,53 @@ func TestRotate_ReEncryptsDKIMAndTwoFactor(t *testing.T) {
 		t.Fatal("2FA secret still decrypts under the OLD key after rotation — it was not re-encrypted")
 	}
 }
+
+// The API's ACME account key must rotate too: one left under the old key
+// stops every certificate order and renewal.
+func TestRotate_ReEncryptsACMEAccountKeys(t *testing.T) {
+	base := openRotateTestDB(t)
+
+	const (
+		oldKey     = "rotate-test-old-master-key"
+		newKey     = "rotate-test-new-master-key"
+		accountPEM = "-----BEGIN EC PRIVATE KEY-----\nMIIrotateKeyTestFakeACMEAccountKey\n-----END EC PRIVATE KEY-----\n"
+		directory  = "https://acme.rotate-test.example/directory"
+	)
+
+	tx := base.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin tx: %v", tx.Error)
+	}
+	defer tx.Rollback()
+
+	stored, err := crypto.EncryptString(accountPEM, oldKey)
+	if err != nil {
+		t.Fatalf("EncryptString: %v", err)
+	}
+	if err := tx.Create(&models.ACMEAccount{Directory: directory, KeyPEM: stored}).Error; err != nil {
+		t.Fatalf("create ACME account: %v", err)
+	}
+
+	summary, err := rotate(tx, oldKey, newKey)
+	if err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	if summary.ACMEAccounts != 1 || summary.Failures != 0 {
+		t.Fatalf("summary = %+v, want one ACME account and no failures", summary)
+	}
+
+	var got models.ACMEAccount
+	if err := tx.Where("directory = ?", directory).First(&got).Error; err != nil {
+		t.Fatalf("reload ACME account: %v", err)
+	}
+	plain, err := crypto.DecryptString(got.KeyPEM, newKey)
+	if err != nil {
+		t.Fatalf("ACME account key does not decrypt under the new key after rotation: %v", err)
+	}
+	if plain != accountPEM {
+		t.Fatalf("rotated ACME account key mismatch")
+	}
+	if _, err := crypto.DecryptString(got.KeyPEM, oldKey); err == nil {
+		t.Fatal("ACME account key still decrypts under the OLD key after rotation — it was not re-encrypted")
+	}
+}
