@@ -7307,6 +7307,17 @@ paths:
                   type: string
                 timeout:
                   type: string
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              probed:
+                value:
+                  services: [db]
+              # A service the handler cannot probe: refused before anything
+              # is reached.
+              service_unknown:
+                value:
+                  services: [ftp]
       responses:
         "200":
           description: Per-service probe results
@@ -7321,10 +7332,30 @@ paths:
                     additionalProperties:
                       type: object
                       additionalProperties: true
+              examples:
+                probed:
+                  value:
+                    data:
+                      db:
+                        status: ok
+                        latency: 1.2ms
         "403":
           description: Disabled in production
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                service_unknown:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          services: 'unknown service "ftp": want smtp, smtp_submission, imap, pop3, dns or db'
 
   /api/v1/admin/test/reset:
     post:

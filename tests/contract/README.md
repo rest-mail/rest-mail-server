@@ -113,6 +113,13 @@ spec's malformed request to the real handler with no database. The 200's
 named example declares no fixed response body: the XML contains the requested
 mailbox's settings. This route's 400 is now sent and judged.
 
+`probeServices` sends its `service_unknown` request (`ftp`, a service it
+cannot probe) with its paired 422 naming `services`, and `probed` (only the
+database) with its 200. The refusal comes before any service is reached
+(`contract_probe_examples_test.go`, which sends both requests to the real
+handler). The other `/api/v1/admin/test` refusals (`verifyDelivery`'s 422)
+keep their exclusion.
+
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
 is made; `valid` still runs `header_validate` and gets the documented 200
