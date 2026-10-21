@@ -109,6 +109,7 @@ exclude-matching:
   - '^/api/v1/admin/custom-filters/\{id\}(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
+  - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
   - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/autodiscover/.* > (400|422)( >|$)'
