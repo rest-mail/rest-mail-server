@@ -158,6 +158,15 @@ from it, and takes the policy off again for every other send and after the
 refusal (`contract_sendmessage_examples_test.go`). The other
 `/api/v1/messages` operations keep their exclusions.
 
+`createContact` names its `created` request with its 201, and
+`email_missing`, `email_invalid` (a display name and address) and
+`trust_level_invalid` with their paired 422s. The refusals use another address
+than `created`'s, because the `createContact` hook removes a contact an earlier
+request made at the same address, and `created`'s links still need it. The
+real handler refuses each for the account's own session and stores nothing
+(`contract_contact_examples_test.go`). The other `/api/v1/accounts/{id}`
+operations keep their exclusions.
+
 `protocolSignIn` uses the E2E fixture's app password with its named requests:
 `signed_in` (`{ "protocol": "imap" }`) gets 200, `invalid_body` (`[]`)
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
@@ -194,7 +203,8 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   where a request carries it in its body, and its name in the Host header the
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
-  folder for each rename probe (a successful rename consumes the previous one).
+  folder for each rename probe (a successful rename consumes the previous one),
+  and a hosted domain and mailbox for each address a test send probe uses.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -209,6 +219,7 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
@@ -297,3 +308,10 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+Test send probes (sendTestEmail) send from and to a generated address
+(`someone@example.com`) that has no mailbox. A before hook hosts its domain and
+creates its account through the admin API the first time an address appears,
+then leaves both in place: a test send only adds a message. Malformed addresses
+and domains the server will not host are left to the probe, and the request is
+never rewritten.

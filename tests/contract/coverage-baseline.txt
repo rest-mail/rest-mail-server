@@ -17,5 +17,4 @@ createDomain
 restmailDeliver
 saveDraft
 sendMessage
-sendTestEmail
 testFilter
