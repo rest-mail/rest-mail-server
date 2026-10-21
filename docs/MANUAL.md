@@ -50,6 +50,9 @@ docs/                 This manual + reference docs (adapter-filters,
 
 Dates below reflect when the corresponding feature/plan was merged, implemented, or last verified.
 
+### 2026-10-20 — Self-service password reset
+An account that set up two-factor authentication can reset a forgotten password itself: `POST /api/v1/auth/recover` with its address, a current code from its authenticator, one of its recovery codes (spent) and the new password (12+ characters). Both factors are required, because mail cannot carry a reset link to someone locked out of the mailbox it would go to; the authenticator is checked first, so a wrong code never spends a recovery code. The account keeps its authenticator, its app passwords are revoked and every session ends, as for a password change, and the answer is a fresh session. Every refusal is the same 401 `recovery_failed`. An account without two-factor authentication has no self-service path: an admin resets it. [§3.3](#33-auth).
+
 ### 2026-10-17 — Mailboxes are the accounts
 There is one kind of account: a mailbox, signing in by its address (`POST /api/v1/auth/login` takes `email`; there are no usernames). Admin users, webmail accounts, linked accounts and the two-factor tables are gone. An account's passwords, authenticator, recovery codes and app passwords are all credentials (0..n of each; an account may have no password), and what it may do comes from grants on it: admins hold roles at `*`, and `GET /api/v1/accounts` lists the session's own account first, then each account it holds a mail grant on, by mailbox id. `POST /api/v1/accounts` creates an account (`mailboxes:write` on its domain) and makes the creator its `owner`; `POST /api/v1/accounts/link` gives `owner` on an existing one by proving its password; unlinking removes the grant. Every gateway signs in through `POST /api/v1/auth/protocol-sign-in`. The first account of a fresh install is `admin@<mailserver.domain>` (`RESTMAIL_BOOTSTRAP_ADMIN_ADDRESS`); the sign-in link, `restmail reset-admin`, `restmail-api mint-token` and the owner endpoints name accounts by address. No migration: a server from before this change is reinstalled from an empty database. [§3.3](#33-auth), [§4.1](#41-rest-api).
 
@@ -302,8 +305,10 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 - 4xx temporary → increment attempts, retry with exponential backoff until `ExpiresAt`
 
 #### RESTMAIL protocol upgrade
-- Outbound worker probes each recipient domain: if EHLO response contains `RESTMAIL https://...`, drops SMTP and delivers via `POST /restmail/messages` over HTTPS.
-- Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes.
+- Outbound worker probes the recipient domain's primary MX: the EHLO `RESTMAIL` keyword is only a hint, and any address it carries is ignored (#291).
+- It then asks `GET https://<mx-host>/.well-known/restmail?domain=<domain>` where to deliver, always verifying the certificate against the MX host name (even in development), through the SSRF-guarded dialer, with no redirects and a 4 KiB answer cap. The answer `{"endpoint":"https://…/restmail"}` may name any host; it must be https with no credentials, query or fragment. The message goes to `POST <endpoint>/messages`.
+- A 404 or 410 from discovery is a verified "not hosted": the domain is recorded as not REST and delivery uses SMTP. Other discovery failures currently still fall back to SMTP (no-fallback is a later #291 slice).
+- Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes. It records only whether the MX speaks REST; the endpoint is discovered on every delivery.
 
 #### TLS / SNI
 - Per-domain cert/key pairs via `TLS_CERT_DIR`. SNI-based lookup at handshake time.
@@ -616,7 +621,8 @@ Implemented in slices; issue #153 remains open.
 - **IDN domains:** domain provisioning and outbound SMTP support IDNA conversion. Hosted domains retain the existing lowercase Punycode storage format; Unicode domain display/storage and the remaining DNS/protocol boundaries are unfinished.
 - **SMTPUTF8:** inbound and submission advertise the capability and accept negotiated UTF-8 envelopes and top-level headers. Outbound delivery checks peer capabilities and refuses unsupported EAI delivery. Internationalized DSNs and MIME/header downgrading remain unfinished.
 - **Hosted account identities:** `POST /api/v1/accounts` accepts UTF-8 local parts and Unicode domains, stores lowercase NFC local parts with Punycode domains, and checks permissions against that canonical domain. Linking, REST login, and protocol password/app-password sign-in accept equivalent Unicode/Punycode domains and NFC local parts. Existing exact account spellings retain precedence; a unique NFC-equivalent legacy account can be found without rewriting its address or grants. Ambiguous legacy equivalents are refused, and provisioning rejects new NFC-equivalent duplicates. This identity policy does not rewrite remote SMTP local parts or message headers.
-- **Still planned:** IMAP `UTF8=ACCEPT`, POP3 `UTF8`, delivery/recipient lookup normalization, webmail input/display, and full-stack interoperability tests.
+- **Hosted recipients:** gateway and RESTMAIL recipient checks, address-based inbound delivery, and the recipient-check pipeline resolve the same NFC/IDNA mailbox identities. Exact legacy spellings retain precedence, inactive exact accounts do not redirect to active equivalents, and ambiguous legacy equivalents are refused. Quotas apply to the resolved mailbox; original message addresses and plus-address tags are preserved. RESTMAIL selects the hosted inbound pipeline for equivalent Unicode/Punycode domains. Legacy normalized fallback is scoped to the hosted domain.
+- **Still planned:** SMTP sender authorization/attribution and other outbound local-recipient paths, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
 - Relevant RFCs: 6530 (overview), 6531 (SMTPUTF8), 6532 (headers), 6533 (DSN), 6855 (IMAP), 6856 (POP3), 6857 (downgrade), 5891 (IDNA 2008).
 - Non-ASCII local parts cannot be converted to Punycode; unsupported outbound EAI delivery fails through the queue's existing failure handling.
 - Database already UTF-8; consider ICU collation for sorting, `pg_trgm`/ICU-aware `LOWER()` indexes.
@@ -667,6 +673,18 @@ Implemented in slices; issue #153 remains open.
 | `ACME_EMAIL` | *(empty)* | Contact email |
 | `ACME_DIRECTORY` | `https://acme-v02.api.letsencrypt.org/directory` | ACME directory URL |
 | `ACME_STAGING` | `false` | Use staging directory |
+
+For manifest deployments using `cert_provider: acme`, `chore instance:certs:issue`
+issues through HTTP-01 and saves the serving pair in the certs volume. Every
+certificate name must resolve to the host, with port 80 reachable during issuance.
+Re-run the task to renew these files. The command preserves a private (0600)
+`.acme-account-<directory-hash>.key` in the same volume and reuses that CA account
+on subsequent runs, including after failed orders. Include this hidden file in
+volume backups. Staging and custom CA directories each use a separate key;
+changing the contact email does not create a new account or update its contact.
+A corrupt account key stops issuance rather than silently creating a new identity.
+This file account storage applies to the instance command; the API's
+`ACME_ENABLED` renewal manager stores certificates in the database separately.
 
 ### 6.3 Gateways
 | Variable | Default | Purpose |
@@ -875,6 +893,10 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 
 **Setting the password.** Generate it at deploy time and keep it out of version control. With the Helm chart, set `api.bootstrapAdminPassword` (the chart puts it in the API Secret it makes), or put a `BOOTSTRAP_ADMIN_PASSWORD` key in your own Secret (`api.existingSecret`). Read it back with
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
+
+#### A forgotten password: `POST /api/v1/auth/recover`
+
+An account with two-factor authentication resets its own password with a current authenticator code and one of its recovery codes, both (`email`, `totp_code`, `recovery_code`, `new_password`, optional `client: "native"`). The authenticator stays; app passwords and sessions end; the answer is a new session. Without two-factor authentication there is no self-service path: an admin resets the password, or, for an admin who has lost every way in, the token below.
 
 #### Getting back in, and handing a server over: `restmail reset-admin`
 

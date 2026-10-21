@@ -2,9 +2,12 @@ package filters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 	"gorm.io/gorm"
@@ -30,20 +33,33 @@ type mailboxInfo struct {
 }
 
 // lookupMailbox finds a mailbox by local part and domain name. A zero ID means
-// no such mailbox exists; a non-nil error is a real database failure.
+// no such mailbox exists. ErrMailboxUnavailable blocks fallback to another
+// identity; any other non-nil error is a database failure.
 //
 // A domain that is not live is not served at all: it has no usable certificate,
 // so mail for it cannot be carried over TLS (issues #289, #290). Its mailboxes
 // are therefore invisible here, and mail addressed to them is refused like any
 // other unknown recipient.
 func (f *recipientCheckFilter) lookupMailbox(localPart, domain string) (mailboxInfo, error) {
-	var mb mailboxInfo
-	err := f.db.Table("mailboxes").
-		Select("mailboxes.id, mailboxes.quota_bytes, mailboxes.quota_used_bytes").
-		Joins("JOIN domains ON domains.id = mailboxes.domain_id").
-		Where("mailboxes.local_part = ? AND domains.name = ? AND domains.active", localPart, domain).
-		Scan(&mb).Error
-	return mb, err
+	var mailbox models.Mailbox
+	err := repositories.FindActiveMailboxByAddress(f.db, localPart+"@"+domain, &mailbox)
+	if errors.Is(err, repositories.ErrMailboxUnavailable) {
+		return mailboxInfo{}, err
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return mailboxInfo{}, nil
+	}
+	if err != nil {
+		return mailboxInfo{}, err
+	}
+	var live int64
+	if err := f.db.Model(&models.Domain{}).Where("id = ? AND active", mailbox.DomainID).Count(&live).Error; err != nil {
+		return mailboxInfo{}, err
+	}
+	if live == 0 {
+		return mailboxInfo{}, nil
+	}
+	return mailboxInfo{ID: mailbox.ID, QuotaBytes: mailbox.QuotaBytes, QuotaUsedBytes: mailbox.QuotaUsedBytes}, nil
 }
 
 func (f *recipientCheckFilter) deferResult(err error) *pipeline.FilterResult {
@@ -60,12 +76,20 @@ func (f *recipientCheckFilter) deferResult(err error) *pipeline.FilterResult {
 
 func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	for _, rcpt := range email.Envelope.RcptTo {
-		parts := strings.SplitN(rcpt, "@", 2)
-		if len(parts) != 2 {
-			continue
+		canonical, validationErr := rmail.CanonicalMailboxAddress(rcpt)
+		if validationErr != nil || rmail.ContainsControlChar(rcpt) {
+			return &pipeline.FilterResult{
+				Type: pipeline.FilterTypeAction, Action: pipeline.ActionReject,
+				RejectMsg: "550 5.1.1 Invalid recipient",
+				Log:       pipeline.FilterLog{Filter: "recipient_check", Result: "reject", Detail: "invalid recipient address"},
+			}, nil
 		}
+		parts := strings.SplitN(rcpt, "@", 2)
 
 		mb, err := f.lookupMailbox(parts[0], parts[1])
+		if errors.Is(err, repositories.ErrMailboxUnavailable) {
+			return f.rejectRecipient(rcpt), nil
+		}
 		if err != nil {
 			return f.deferResult(err), nil
 		}
@@ -76,7 +100,7 @@ func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJ
 			var aliasCount int64
 			f.db.Table("aliases").
 				Joins("JOIN domains ON domains.id = aliases.domain_id").
-				Where("aliases.source_address = ? AND domains.active", rcpt).
+				Where("aliases.source_address IN ? AND domains.active", []string{rcpt, canonical}).
 				Count(&aliasCount)
 
 			if aliasCount == 0 {
@@ -86,6 +110,9 @@ func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJ
 				if base, _, tagged := rmail.StripSubaddress(rcpt); tagged {
 					if bp := strings.SplitN(base, "@", 2); len(bp) == 2 {
 						mb, err = f.lookupMailbox(bp[0], bp[1])
+						if errors.Is(err, repositories.ErrMailboxUnavailable) {
+							return f.rejectRecipient(rcpt), nil
+						}
 						if err != nil {
 							return f.deferResult(err), nil
 						}
@@ -99,16 +126,7 @@ func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJ
 					// is no local mailbox to quota-check here.
 					continue
 				}
-				return &pipeline.FilterResult{
-					Type:      pipeline.FilterTypeAction,
-					Action:    pipeline.ActionReject,
-					RejectMsg: fmt.Sprintf("550 5.1.1 <%s>: Recipient not found", rcpt),
-					Log: pipeline.FilterLog{
-						Filter: "recipient_check",
-						Result: "reject",
-						Detail: fmt.Sprintf("recipient %s not found", rcpt),
-					},
-				}, nil
+				return f.rejectRecipient(rcpt), nil
 			}
 		}
 
@@ -136,4 +154,16 @@ func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJ
 			Detail: fmt.Sprintf("all %d recipients valid", len(email.Envelope.RcptTo)),
 		},
 	}, nil
+}
+
+func (f *recipientCheckFilter) rejectRecipient(rcpt string) *pipeline.FilterResult {
+	return &pipeline.FilterResult{
+		Type:      pipeline.FilterTypeAction,
+		Action:    pipeline.ActionReject,
+		RejectMsg: fmt.Sprintf("550 5.1.1 <%s>: Recipient not found", rcpt),
+		Log: pipeline.FilterLog{
+			Filter: "recipient_check", Result: "reject",
+			Detail: fmt.Sprintf("recipient %s not found", rcpt),
+		},
+	}
 }

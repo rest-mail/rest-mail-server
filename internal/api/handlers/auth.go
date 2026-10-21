@@ -839,3 +839,101 @@ func SessionCurrent(db *gorm.DB) middleware.SessionCurrent {
 		return sessionCurrent(account, epoch, time.Now()), nil
 	}
 }
+
+// recoverRequest is the body of POST /api/v1/auth/recover.
+type recoverRequest struct {
+	Email        string `json:"email"`
+	TOTPCode     string `json:"totp_code"`
+	RecoveryCode string `json:"recovery_code"`
+	NewPassword  string `json:"new_password"`
+	Client       string `json:"client,omitempty"`
+}
+
+// Recover is self-service password reset (#124). Mail cannot carry a reset
+// link to someone locked out of the mailbox it would go to, so it accepts only
+// what the account set up in advance: a code from its authenticator and one of
+// its recovery codes, both. The authenticator is checked first, so a wrong one
+// never spends a recovery code. Success sets the new password and ends every
+// session and app password, like a password change, and signs in; the
+// authenticator stays. An account without 2FA has no self-service path: an
+// admin resets it. Every refusal looks the same, so it says nothing about
+// which addresses exist or have 2FA.
+func (h *AuthHandler) Recover(w http.ResponseWriter, r *http.Request) {
+	var req recoverRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+	problems := map[string]string{}
+	if strings.TrimSpace(req.Email) == "" {
+		problems["email"] = "required: the account's address"
+	}
+	if req.TOTPCode == "" {
+		problems["totp_code"] = "required: a code from the account's authenticator"
+	}
+	if req.RecoveryCode == "" {
+		problems["recovery_code"] = "required: one of the account's recovery codes"
+	}
+	if len(req.NewPassword) < minChosenPasswordLength {
+		problems["new_password"] = fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)
+	}
+	if req.Client != "" && req.Client != clientNative {
+		problems["client"] = `must be "native" or omitted`
+	}
+	if len(problems) > 0 {
+		respond.ValidationError(w, problems)
+		return
+	}
+	refuse := func() {
+		respond.Error(w, http.StatusUnauthorized, "recovery_failed", "Invalid address, authenticator code or recovery code")
+	}
+	if h.twoFactorStore == nil {
+		refuse()
+		return
+	}
+
+	var account models.Mailbox
+	err := h.db.Where("address = ?", strings.ToLower(strings.TrimSpace(req.Email))).First(&account).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		refuse()
+		return
+	}
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the account")
+		return
+	}
+	if !account.Active ||
+		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, req.TOTPCode, "") ||
+		!verifyTOTPOrRecovery(h.twoFactorStore, h.masterKey, account.ID, "", req.RecoveryCode) {
+		refuse()
+		return
+	}
+
+	hash, err := hashPassword(req.NewPassword)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
+		return
+	}
+	now := time.Now()
+	err = h.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Mailbox{}).Where("id = ?", account.ID).Updates(map[string]interface{}{
+			"last_password_change":     now,
+			"password_change_required": false,
+			"bootstrap_expires_at":     nil,
+		}).Error; err != nil {
+			return err
+		}
+		return setAccountPassword(tx, r, account.ID, hash, &account.ID, now)
+	})
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set password")
+		return
+	}
+	h.sessions.Forget(account.ID)
+	// The new session carries the moved-on credential epoch.
+	if err := h.db.First(&account, account.ID).Error; err != nil {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the account")
+		return
+	}
+	h.startSession(w, &account, req.Client == clientNative, signInMethods(true))
+}
