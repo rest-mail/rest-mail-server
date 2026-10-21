@@ -57,21 +57,32 @@ func TestCreatePipelineFilterShape_Refused(t *testing.T) {
 	want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Request body failed validation",`+
 		`"details":{"fields":{"filters":"must be an array of filter objects"}}}}`)
 	for name, filters := range map[string]string{
-		"missing":       ``,
-		"null":          `,"filters":null`,
-		"object":        `,"filters":{"name":"header_validate","config":{}}`,
-		"empty object":  `,"filters":{}`,
-		"string":        `,"filters":"header_validate"`,
-		"number":        `,"filters":1`,
-		"true":          `,"filters":true`,
-		"false":         `,"filters":false`,
-		"null item":     `,"filters":[null]`,
-		"string item":   `,"filters":["header_validate"]`,
-		"number item":   `,"filters":[1]`,
-		"boolean item":  `,"filters":[true]`,
-		"array item":    `,"filters":[[]]`,
-		"one bad item":  `,"filters":[{"name":"header_validate","config":{}},null]`,
-		"nested arrays": `,"filters":[[{"name":"header_validate"}]]`,
+		"missing":        ``,
+		"null":           `,"filters":null`,
+		"object":         `,"filters":{"name":"header_validate","config":{}}`,
+		"empty object":   `,"filters":{}`,
+		"string":         `,"filters":"header_validate"`,
+		"number":         `,"filters":1`,
+		"true":           `,"filters":true`,
+		"false":          `,"filters":false`,
+		"null item":      `,"filters":[null]`,
+		"string item":    `,"filters":["header_validate"]`,
+		"number item":    `,"filters":[1]`,
+		"boolean item":   `,"filters":[true]`,
+		"array item":     `,"filters":[[]]`,
+		"one bad item":   `,"filters":[{"name":"header_validate","config":{}},null]`,
+		"nested arrays":  `,"filters":[[{"name":"header_validate"}]]`,
+		"numeric name":   `,"filters":[{"name":12345}]`,
+		"null name":      `,"filters":[{"name":null}]`,
+		"boolean name":   `,"filters":[{"name":true}]`,
+		"object name":    `,"filters":[{"name":{}}]`,
+		"array name":     `,"filters":[{"name":[]}]`,
+		"null config":    `,"filters":[{"config":null}]`,
+		"string config":  `,"filters":[{"config":"bad"}]`,
+		"numeric config": `,"filters":[{"config":12345}]`,
+		"boolean config": `,"filters":[{"config":true}]`,
+		"array config":   `,"filters":[{"config":[]}]`,
+		"bad later name": `,"filters":[{"name":"header_validate","config":{}},{"name":12345}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			body := `{"domain_id":1,"direction":"inbound"` + filters + `}`
@@ -93,10 +104,12 @@ func TestCreatePipelineFilterShape_Refused(t *testing.T) {
 // are all the documented shape: each gets as far as storing the pipeline.
 func TestCreatePipelineFilterShape_Accepted(t *testing.T) {
 	for name, filters := range map[string]string{
-		"empty":        `[]`,
-		"empty object": `[{}]`,
-		"documented":   `[{"name":"header_validate","config":{}}]`,
-		"extra keys":   `[{"name":"header_validate","type":"check","enabled":true,"config":{}}]`,
+		"empty":            `[]`,
+		"empty object":     `[{}]`,
+		"empty name":       `[{"name":"","config":{}}]`,
+		"arbitrary config": `[{"config":{"nested":[null,1,"x"],"enabled":false}}]`,
+		"documented":       `[{"name":"header_validate","config":{}}]`,
+		"extra keys":       `[{"name":"header_validate","type":"check","enabled":true,"config":{}}]`,
 		"several": `[{"name":"header_validate","config":{}},` +
 			`{"name":"duplicate","enabled":false,"config":{"webhook_url":"https://example.com/hook"}}]`,
 	} {

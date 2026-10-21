@@ -154,20 +154,31 @@ func TestUpdatePipelineFilterShape_ScratchDB(t *testing.T) {
 		want := parseShapeJSON(t, `{"error":{"code":"validation_failed","message":"Request body failed validation",`+
 			`"details":{"fields":{"filters":"must be an array of filter objects"}}}}`)
 		for name, filters := range map[string]string{
-			"null":          `null`,
-			"object":        `{"name":"header_validate","config":{}}`,
-			"empty object":  `{}`,
-			"string":        `"header_validate"`,
-			"number":        `1`,
-			"true":          `true`,
-			"false":         `false`,
-			"null item":     `[null]`,
-			"string item":   `["header_validate"]`,
-			"number item":   `[1]`,
-			"boolean item":  `[true]`,
-			"array item":    `[[]]`,
-			"one bad item":  `[{"name":"header_validate","config":{}},null]`,
-			"nested arrays": `[[{"name":"header_validate"}]]`,
+			"null":           `null`,
+			"object":         `{"name":"header_validate","config":{}}`,
+			"empty object":   `{}`,
+			"string":         `"header_validate"`,
+			"number":         `1`,
+			"true":           `true`,
+			"false":          `false`,
+			"null item":      `[null]`,
+			"string item":    `["header_validate"]`,
+			"number item":    `[1]`,
+			"boolean item":   `[true]`,
+			"array item":     `[[]]`,
+			"one bad item":   `[{"name":"header_validate","config":{}},null]`,
+			"nested arrays":  `[[{"name":"header_validate"}]]`,
+			"numeric name":   `[{"name":12345}]`,
+			"null name":      `[{"name":null}]`,
+			"boolean name":   `[{"name":true}]`,
+			"object name":    `[{"name":{}}]`,
+			"array name":     `[{"name":[]}]`,
+			"null config":    `[{"config":null}]`,
+			"string config":  `[{"config":"bad"}]`,
+			"numeric config": `[{"config":12345}]`,
+			"boolean config": `[{"config":true}]`,
+			"array config":   `[{"config":[]}]`,
+			"bad later name": `[{"name":"header_validate","config":{}},{"name":12345}]`,
 		} {
 			t.Run(name, func(t *testing.T) {
 				before := reset(t)
@@ -188,10 +199,12 @@ func TestUpdatePipelineFilterShape_ScratchDB(t *testing.T) {
 	// config are the documented shape: each is stored, and so is active:false.
 	t.Run("accepted", func(t *testing.T) {
 		for name, filters := range map[string]string{
-			"empty":        `[]`,
-			"empty object": `[{}]`,
-			"documented":   `[{"name":"spf_check","config":{}}]`,
-			"extra keys":   `[{"name":"header_validate","type":"check","enabled":true,"config":{}}]`,
+			"empty":            `[]`,
+			"empty object":     `[{}]`,
+			"empty name":       `[{"name":"","config":{}}]`,
+			"arbitrary config": `[{"config":{"nested":[null,1,"x"],"enabled":false}}]`,
+			"documented":       `[{"name":"spf_check","config":{}}]`,
+			"extra keys":       `[{"name":"header_validate","type":"check","enabled":true,"config":{}}]`,
 			"several": `[{"name":"header_validate","config":{}},` +
 				`{"name":"duplicate","enabled":false,"config":{"webhook_url":"https://example.com/hook"}}]`,
 		} {

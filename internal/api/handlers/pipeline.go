@@ -102,9 +102,10 @@ func validateDuplicatePipelineFilters(raw json.RawMessage) error {
 }
 
 // isFilterObjectArray reports whether raw is a JSON array whose every item is an
-// object, the shape of a pipeline's filters. A missing or null list is not one,
-// nor is a null item; an empty list is. What the objects hold is left to the
-// Sieve and duplicate gates and to the build at delivery.
+// object with an optional string name and object config, as documented by the
+// create and update schemas. Missing properties and extra keys are allowed;
+// explicit nulls are not. Filter-specific rules remain with the Sieve and
+// duplicate gates and the build at delivery.
 func isFilterObjectArray(raw json.RawMessage) bool {
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil || items == nil {
@@ -114,6 +115,18 @@ func isFilterObjectArray(raw json.RawMessage) bool {
 		var obj map[string]json.RawMessage
 		if err := json.Unmarshal(item, &obj); err != nil || obj == nil {
 			return false
+		}
+		if name, ok := obj["name"]; ok {
+			var value *string
+			if err := json.Unmarshal(name, &value); err != nil || value == nil {
+				return false
+			}
+		}
+		if config, ok := obj["config"]; ok {
+			var value map[string]json.RawMessage
+			if err := json.Unmarshal(config, &value); err != nil || value == nil {
+				return false
+			}
 		}
 	}
 	return true
