@@ -2289,6 +2289,7 @@ paths:
         - BearerAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Bulk import contacts
+      description: Validates all entries before importing. Existing contacts are skipped.
       requestBody:
         required: true
         content:
@@ -2314,6 +2315,8 @@ paths:
                     properties:
                       imported:
                         type: integer
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/accounts/{id}/contacts/suggest:
     parameters:
@@ -8111,6 +8114,7 @@ components:
       properties:
         contacts:
           type: array
+          minItems: 1
           items:
             type: object
             required: [email]
