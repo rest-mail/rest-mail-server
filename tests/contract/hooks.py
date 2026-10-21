@@ -175,14 +175,20 @@ def a_fresh_signing_key(transaction):
 
 @hooks.before("createCertificate")
 def a_self_signed_certificate(transaction):
+    body = hooks.get_json(transaction)
+    # Leave malformed and incomplete requests intact: those are the paired
+    # 400 examples, and coverage probes must keep their missing fields too.
+    if not isinstance(body, dict) or not all(body.get(field) for field in ("domain_id", "cert_pem", "key_pem")):
+        return
     name = hooks.stash.get("domain") or "example.org"
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
         openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
                 "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
                 "-keyout", key, "-out", cert)
-        on_the_created_domain(transaction, cert_pem=open(cert).read(), key_pem=open(key).read(),
-                              auto_renew=False)
+        with open(cert) as cert_file, open(key) as key_file:
+            on_the_created_domain(transaction, cert_pem=cert_file.read(), key_pem=key_file.read(),
+                                  auto_renew=False)
 
 
 @hooks.before("mtaStsPolicyFile")
