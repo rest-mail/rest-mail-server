@@ -8877,12 +8877,22 @@ components:
       type: object
       description: >-
         Select entries by IDs (which take precedence) or by a filter. Nonempty
-        filter fields are combined with AND.
+        filter fields are combined with AND. At least one ID or a filter object
+        is required; an empty filter satisfies this requirement. At most 1000 IDs may
+        be supplied, including when a filter is also present.
+      anyOf:
+        - required: [ids]
+          properties:
+            ids:
+              minItems: 1
+        - required: [filter]
       properties:
         ids:
           type: array
+          maxItems: 1000
           items:
             type: integer
+            minimum: 0
         filter:
           type: object
           description: Filter criteria to select entries (alternative to ids)

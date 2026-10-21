@@ -10,9 +10,6 @@
 #
 # Regenerate the list (to shrink it) from a run's report:
 #   python3 tests/contract/gate.py --failing-probes openapi.yaml .cache/contract/examples.xml
-bulkBounceQueue
-bulkDeleteQueue
-bulkRetryQueue
 createAccount
 createDomain
 # First reached in #376: the schema permits an empty recipient list and
