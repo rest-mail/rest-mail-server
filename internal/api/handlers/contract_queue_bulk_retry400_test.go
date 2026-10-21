@@ -127,10 +127,9 @@ func TestBulkRetryQueue400_Spec(t *testing.T) {
 	wantMessages := map[string]string{
 		"invalid_body":      "Invalid request body",
 		"selection_missing": "ids or filter required",
-		"too_many_ids":      "max 1000 IDs per request",
 	}
 	if len(content.Examples) != len(wantMessages) {
-		t.Errorf("400 has %d examples, want exactly three", len(content.Examples))
+		t.Errorf("400 has %d examples, want exactly two", len(content.Examples))
 	}
 	for name, message := range wantMessages {
 		// yaml/v2 decodes nested interface maps using interface keys.

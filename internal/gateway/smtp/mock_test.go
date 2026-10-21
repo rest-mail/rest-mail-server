@@ -163,6 +163,9 @@ type mockStore struct {
 
 	authorized map[string]bool // MAIL FROM address -> allowed for the account
 	authErr    error           // forced SenderAuthorized error
+	// identities maps submitted spellings to resolved mailbox IDs.
+	identities  map[string]uint
+	identityErr error
 	// unusable marks credentials CredentialUsable reports as revoked;
 	// credentialErr is a forced CredentialUsable error.
 	unusable      map[uint]bool
@@ -209,6 +212,16 @@ func (s *mockStore) SenderAuthorized(_ uint, from string) (bool, error) {
 		return false, s.authErr
 	}
 	return s.authorized[from], nil
+}
+
+func (s *mockStore) SenderMatchesAccount(accountID uint, from string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.identityErr != nil {
+		return false, s.identityErr
+	}
+	id, ok := s.identities[from]
+	return ok && id == accountID, nil
 }
 
 func (s *mockStore) CredentialUsable(id uint) (bool, error) {

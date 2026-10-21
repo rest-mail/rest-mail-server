@@ -22,6 +22,9 @@ func NewLogHandler(db *gorm.DB) *LogHandler {
 // DeliveryLog returns a filtered view of outbound delivery history.
 // GET /api/v1/admin/logs/delivery?status=...&sender=...&recipient=...&since=...&until=...&limit=50&offset=0
 func (h *LogHandler) DeliveryLog(w http.ResponseWriter, r *http.Request) {
+	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
+		return
+	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
 		limit = l

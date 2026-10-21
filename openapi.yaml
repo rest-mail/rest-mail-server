@@ -1988,6 +1988,8 @@ paths:
           schema:
             type: string
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Search results
           content:
@@ -4400,8 +4402,16 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
-            example:
-              ids: [987654]
+            examples:
+              by_ids:
+                value:
+                  ids: [987654]
+              # Not an object: refused before any entry is selected.
+              invalid_body:
+                value: []
+              # Neither ids nor a filter: refused before any entry is selected.
+              selection_missing:
+                value: {}
       responses:
         "200":
           description: Bulk retry result
@@ -4413,6 +4423,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/BulkQueueResponse"
+              examples:
+                by_ids:
+                  value:
+                    data:
+                      affected: 1
         "400":
           description: >-
             Invalid JSON or a body that cannot be decoded into the request shape;
@@ -4433,11 +4448,6 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
-                too_many_ids:
-                  value:
-                    error:
-                      code: bad_request
-                      message: max 1000 IDs per request
 
   /api/v1/admin/queue/bulk-bounce:
     post:
@@ -4453,8 +4463,16 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BulkQueueRequest"
-            example:
-              ids: [987654]
+            examples:
+              by_ids:
+                value:
+                  ids: [987654]
+              # Not an object: refused before any entry is selected.
+              invalid_body:
+                value: []
+              # Neither ids nor a filter: refused before any entry is selected.
+              selection_missing:
+                value: {}
       responses:
         "200":
           description: Bulk bounce result
@@ -4466,6 +4484,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/BulkQueueResponse"
+              examples:
+                by_ids:
+                  value:
+                    data:
+                      affected: 1
         "400":
           description: >-
             Invalid JSON or a body that cannot be decoded into the request shape;
@@ -4486,11 +4509,6 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
-                too_many_ids:
-                  value:
-                    error:
-                      code: bad_request
-                      message: max 1000 IDs per request
 
   /api/v1/admin/queue/bulk-delete:
     delete:
@@ -5411,6 +5429,8 @@ paths:
             type: integer
             default: 0
       responses:
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "200":
           description: Delivery log entries
           content:
