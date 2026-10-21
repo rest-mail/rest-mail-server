@@ -96,7 +96,8 @@ func issueACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConf
 // <name>.crt. If publishing the certificate fails, it restores the previous key.
 // Each rename is atomic, but the pair is not a filesystem transaction: callers
 // must serialize issuance, and readers may see a mismatch between the renames.
-// A process crash between renames also requires operator recovery.
+// A process crash between renames leaves the backup for the next renewal
+// check to restore, if it still matches the serving certificate.
 func writeServingPair(dir, name, certPEM, keyPEM string) error {
 	stage, err := os.MkdirTemp(dir, ".acme-pair-*")
 	if err != nil {

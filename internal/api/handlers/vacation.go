@@ -88,11 +88,21 @@ func (h *VacationHandler) SetVacation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req vacationSetting
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// Enabled is a pointer so an omitted "enabled" is told apart from false.
+	var body struct {
+		vacationSetting
+		Enabled *bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
 	}
+	if body.Enabled == nil {
+		respond.ValidationError(w, map[string]string{"enabled": "required"})
+		return
+	}
+	req := body.vacationSetting
+	req.Enabled = *body.Enabled
 
 	// Validate that subject and body are non-empty when enabling vacation.
 	if req.Enabled {
