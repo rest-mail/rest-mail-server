@@ -130,6 +130,14 @@ func TestRelaySettingsValidation(t *testing.T) {
 		"user no password":  {`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls","username":"u"}`, "password"},
 		"password no user":  {`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls","password":"p"}`, "password"},
 		"CRLF in username":  {`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls","username":"u\r\nMAIL","password":"p"}`, "username"},
+		"relay no port":     {`{"transport":"relay","host":"smtp.example.net","tls_mode":"starttls"}`, "port"},
+		"relay no tls mode": {`{"transport":"relay","host":"smtp.example.net","port":587}`, "tls_mode"},
+		// Direct keeps none of a relay's fields, but each is still held to
+		// its schema (#388).
+		"direct port zero":     {`{"transport":"direct","port":0}`, "port"},
+		"direct port too high": {`{"transport":"direct","port":65536}`, "port"},
+		"direct tls mode":      {`{"transport":"direct","tls_mode":"none"}`, "tls_mode"},
+		"direct long username": {`{"transport":"direct","username":"` + strings.Repeat("u", 256) + `"}`, "username"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

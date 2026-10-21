@@ -9092,6 +9092,7 @@ components:
       properties:
         pattern:
           type: string
+          minLength: 1
           description: "Email address (spam@evil.com) or domain pattern (@evil.com)"
         reason:
           type: string
@@ -9733,6 +9734,15 @@ components:
     SetDomainRelayRequest:
       type: object
       required: [transport]
+      # A relay needs somewhere to dial: setDomainRelay refuses one without
+      # its host, port and TLS mode.
+      if:
+        required: [transport]
+        properties:
+          transport:
+            const: relay
+      then:
+        required: [host, port, tls_mode]
       properties:
         transport:
           type: string
@@ -9851,6 +9861,7 @@ components:
       properties:
         organization-name:
           type: string
+          minLength: 1
         contact-info:
           type: string
         report-id:
@@ -9867,6 +9878,7 @@ components:
               format: date-time
         policies:
           type: array
+          minItems: 1
           items:
             type: object
             properties:
