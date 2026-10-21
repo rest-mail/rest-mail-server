@@ -410,3 +410,59 @@ def remove_a_previous_contact_probe(transaction):
             hooks.stash["created_contact_probes"] = owned
             return
         offset += len(contacts)
+
+
+@hooks.before("createAccount")
+def host_the_account_probe_domain(transaction):
+    # Coverage probes address a domain the fixture does not host
+    # (someone@example.com), which the handler rightly refuses with 422.
+    # Host the domain, claim an absent address before its first create, and
+    # remove only that probe's account when generated bodies repeat it.
+    # Existing accounts and all generated request bytes stay untouched.
+    from urllib.error import HTTPError
+
+    body = hooks.get_json(transaction)
+    address = body.get("address") if isinstance(body, dict) else None
+    if not isinstance(address, str) or address.count("@") != 1:
+        return
+    local, domain = address.split("@")
+    if not local or "." not in domain:
+        return  # Leave a malformed address to the actual probe.
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        domains = json.load(response).get("data") or []
+    domain_id = next((d["id"] for d in domains if d.get("name") == domain), None)
+    if domain_id is None:
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/domains",
+            data=json.dumps({"name": domain, "server_type": "traditional"}).encode(),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                domain_id = (json.load(response).get("data") or {}).get("id")
+        except HTTPError as error:
+            if 400 <= error.code < 500:
+                return  # Not a domain the server can host: leave it to the probe.
+            raise
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes?domain_id=%d" % domain_id, headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        accounts = json.load(response).get("data") or []
+    account = next((a for a in accounts if (a.get("address") or "").lower() == address.lower()), None)
+    owned = hooks.stash.get("created_account_probes", {})
+    key = origin + "\n" + address.lower()
+    if account is None:
+        owned[key] = True
+        hooks.stash["created_account_probes"] = owned
+        return
+    if key not in owned:
+        return
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/mailboxes/%d" % account["id"], headers=headers, method="DELETE")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 204:
+            raise RuntimeError("could not remove the previous account probe")

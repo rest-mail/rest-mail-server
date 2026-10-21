@@ -176,7 +176,11 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   where a request carries it in its body, and its name in the Host header the
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
-  folder for each rename probe (a successful rename consumes the previous one).
+  folder for each rename probe (a successful rename consumes the previous one),
+  and, for `createAccount`'s probes, their address's domain hosted and the
+  account a previous probe created removed (a generated address such as
+  `someone@example.com` is otherwise refused as on a domain this server does
+  not host, or as existing).
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -191,6 +195,8 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks.py`: the `createAccount` hook's tests, against a stub admin API
+  (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
