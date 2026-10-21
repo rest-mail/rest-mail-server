@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	dkim "github.com/rest-mail/go-dkim"
+	rmail "github.com/restmail/restmail/internal/mail"
 )
 
 // RestmailDeliverAuthConfig is the wiring surface for the OSI-3 server-to-server
@@ -123,10 +124,12 @@ func dkimAlignedWith(ctx context.Context, raw, fromDomain string) bool {
 // domainsAligned implements a relaxed, DMARC-style alignment check: the domains
 // are equal, or one is a subdomain of the other (same organizational domain).
 func domainsAligned(a, b string) bool {
-	a = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(a), "."))
-	b = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(b), "."))
-	if a == "" || b == "" {
+	a, errA := rmail.DomainASCII(strings.TrimSpace(a))
+	b, errB := rmail.DomainASCII(strings.TrimSpace(b))
+	if errA != nil || errB != nil {
 		return false
 	}
+	a = strings.TrimSuffix(a, ".")
+	b = strings.TrimSuffix(b, ".")
 	return a == b || strings.HasSuffix(a, "."+b) || strings.HasSuffix(b, "."+a)
 }
