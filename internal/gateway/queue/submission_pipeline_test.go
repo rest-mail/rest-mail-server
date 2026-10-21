@@ -54,10 +54,10 @@ func TestSubmittedMailBccStrippedBeforeRelay(t *testing.T) {
 	var gotTo []string
 	srv := captureRESTMAILServer(t, &gotRaw, &gotTo)
 
-	// tlsInsecure accepts the httptest self-signed cert; allowPrivateDest permits
+	// Trust the httptest certificate; allowPrivateDest permits
 	// the loopback endpoint. No db => no DKIM key => unsigned relay, isolating the
 	// Bcc-strip behavior.
-	w := &Worker{sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
+	w := &Worker{sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true}
 
 	item := models.OutboundQueue{
 		Sender:    "alice@example.com",
@@ -70,7 +70,7 @@ func TestSubmittedMailBccStrippedBeforeRelay(t *testing.T) {
 			"hello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item, false); err != nil {
+	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err != nil {
 		t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestSubmittedMailSignedBeforeRelay(t *testing.T) {
 	var gotTo []string
 	srv := captureRESTMAILServer(t, &gotRaw, &gotTo)
 
-	w := &Worker{db: tx, masterKey: masterKey, sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
+	w := &Worker{db: tx, masterKey: masterKey, sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true}
 
 	item := models.OutboundQueue{
 		Sender:    "alice@" + domainName,
@@ -115,7 +115,7 @@ func TestSubmittedMailSignedBeforeRelay(t *testing.T) {
 			"hello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item, false); err != nil {
+	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err != nil {
 		t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 	}
 	if !strings.Contains(gotRaw, "DKIM-Signature:") {
@@ -141,7 +141,7 @@ func TestSubmittedMailFailsClosedWithoutMasterKey(t *testing.T) {
 	var gotTo []string
 	srv := captureRESTMAILServer(t, &gotRaw, &gotTo)
 
-	w := &Worker{db: tx, masterKey: "", sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
+	w := &Worker{db: tx, masterKey: "", sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true}
 
 	item := models.OutboundQueue{
 		Sender:     "alice@" + domainName,
@@ -149,7 +149,7 @@ func TestSubmittedMailFailsClosedWithoutMasterKey(t *testing.T) {
 		RawMessage: "From: alice@" + domainName + "\r\nTo: bob@example.net\r\nSubject: hi\r\n\r\nhello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item, false); err == nil {
+	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err == nil {
 		t.Fatal("expected fail-closed error without a MASTER_KEY, got nil (message would go out unsigned)")
 	}
 	if gotRaw != "" {
@@ -172,7 +172,7 @@ func TestSubmittedMailFailsClosedOnWrongMasterKey(t *testing.T) {
 	srv := captureRESTMAILServer(t, &gotRaw, &gotTo)
 
 	// A DIFFERENT master key: decryption is attempted and fails.
-	w := &Worker{db: tx, masterKey: "a-different-master-key", sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
+	w := &Worker{db: tx, masterKey: "a-different-master-key", sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true}
 
 	item := models.OutboundQueue{
 		Sender:     "alice@" + domainName,
@@ -180,7 +180,7 @@ func TestSubmittedMailFailsClosedOnWrongMasterKey(t *testing.T) {
 		RawMessage: "From: alice@" + domainName + "\r\nTo: bob@example.net\r\nSubject: hi\r\n\r\nhello\r\n",
 	}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item, false); err == nil {
+	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err == nil {
 		t.Fatal("expected fail-closed error on an undecryptable key, got nil (message would go out unsigned)")
 	}
 }
@@ -194,7 +194,7 @@ func TestAlreadySignedMailPassesThroughUnchanged(t *testing.T) {
 	var gotTo []string
 	srv := captureRESTMAILServer(t, &gotRaw, &gotTo)
 
-	w := &Worker{sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
+	w := &Worker{sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true}
 
 	raw := "DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=sel; h=from:to:subject; b=abc\r\n" +
 		"From: alice@example.com\r\n" +
@@ -204,7 +204,7 @@ func TestAlreadySignedMailPassesThroughUnchanged(t *testing.T) {
 		"hello\r\n"
 	item := models.OutboundQueue{Sender: "alice@example.com", Recipient: "bob@example.net", RawMessage: raw}
 
-	if err := w.deliverRESTMAILHTTPS(srv.URL, item, false); err != nil {
+	if err := w.deliverRESTMAILHTTPS(srv.URL, item); err != nil {
 		t.Fatalf("deliverRESTMAILHTTPS: %v", err)
 	}
 	if gotRaw != raw {
