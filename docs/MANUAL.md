@@ -735,9 +735,16 @@ do not delete it while issuers may be running. The volume must support `flock`;
 lock errors stop issuance. Other tools writing serving files must be serialized
 separately because this lock is advisory.
 The two file renames are not an atomic pair swap: readers can
-briefly observe a mismatch, and a process crash between renames still requires
-operator recovery. This safeguard handles reported filesystem errors; it does
-not provide crash recovery or gateway reloads.
+briefly observe a mismatch. After a process crash between renames, the next
+instance issuance/renewal check restores a retained `.acme-pair-*/previous.key`
+only if it matches the serving certificate still on disk. Recovery runs under
+the volume lock, before checking reuse or contacting the CA, and never rolls
+back a complete matching pair. This can restore service even if the CA is
+unavailable. It does not recover a lost certificate, a lost backup, or guarantee
+durability after a host/filesystem failure. Keep interrupted staging directories
+until recovery is verified; remove them manually afterward, with issuers stopped.
+The recovery check retains these backups and does not install a startup hook for
+gateways: run the instance task before restarting a gateway with a broken pair.
 
 ### 6.3 Gateways
 | Variable | Default | Purpose |
