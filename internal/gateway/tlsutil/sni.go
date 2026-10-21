@@ -17,13 +17,49 @@ import (
 // per-domain certificate/key pairs from a directory. Files are expected
 // as {domain}.crt and {domain}.key (e.g. example.test.crt, example.test.key).
 type SNICertLoader struct {
-	certDir  string
-	fallback *tls.Certificate
-	hosts    func(name string) (bool, error)
-	mu       sync.RWMutex
-	cache    map[string]*tls.Certificate
-	watcher  *fsnotify.Watcher
-	stopCh   chan struct{}
+	certDir         string
+	fallback        *tls.Certificate
+	fallbackCurrent func() *tls.Certificate
+	primaryName     string
+	hosts           func(name string) (bool, error)
+	mu              sync.RWMutex
+	cache           map[string]*tls.Certificate
+	watcher         *fsnotify.Watcher
+	stopCh          chan struct{}
+}
+
+// SetFallbackCurrent supplies a primary certificate that can change after
+// renewal. The original fallback remains the default for existing callers.
+func (l *SNICertLoader) SetFallbackCurrent(current func() *tls.Certificate) {
+	l.mu.Lock()
+	l.fallbackCurrent = current
+	l.mu.Unlock()
+}
+
+// SetPrimaryPaths identifies the primary pair when it is also in the SNI
+// directory. Its names must use the refreshed primary pair, not a cached copy.
+func (l *SNICertLoader) SetPrimaryPaths(certPath, keyPath string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if filepath.Dir(filepath.Clean(certPath)) != filepath.Clean(l.certDir) ||
+		filepath.Dir(filepath.Clean(keyPath)) != filepath.Clean(l.certDir) {
+		return
+	}
+	name := strings.TrimSuffix(filepath.Base(certPath), ".crt")
+	if name != filepath.Base(certPath) && filepath.Base(keyPath) == name+".key" {
+		l.primaryName = strings.ToLower(name)
+	}
+}
+
+func (l *SNICertLoader) currentFallback() *tls.Certificate {
+	l.mu.RLock()
+	current := l.fallbackCurrent
+	fallback := l.fallback
+	l.mu.RUnlock()
+	if current != nil {
+		return current()
+	}
+	return fallback
 }
 
 // SetHostedNames tells the loader which names this server is responsible for, so
@@ -52,11 +88,12 @@ func NewSNICertLoader(certDir string, fallback *tls.Certificate) *SNICertLoader 
 // verification anyway and teaches people to click through the warning (#290).
 func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	name := strings.ToLower(hello.ServerName)
+	fallback := l.currentFallback()
 	if name == "" {
 		// Other mail servers commonly reach port 25 without SNI. They get this
 		// server's own certificate, the one for its MX host name.
-		if l.fallback != nil {
-			return l.fallback, nil
+		if fallback != nil {
+			return fallback, nil
 		}
 		return nil, fmt.Errorf("no SNI and no fallback certificate")
 	}
@@ -65,7 +102,14 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 	l.mu.RLock()
 	cert, cached := l.cache[name]
 	hosts := l.hosts
+	primary := l.primaryName == name
 	l.mu.RUnlock()
+	if primary {
+		if certCovers(fallback, name) {
+			return fallback, nil
+		}
+		return nil, l.refuse(name, hosts, fmt.Errorf("primary certificate does not cover this name"))
+	}
 	if cached {
 		return cert, nil
 	}
@@ -78,16 +122,16 @@ func (l *SNICertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certifi
 		// A single keypair whose SANs list this installation's host names is the
 		// usual arrangement, and for those names it is the right answer, not a
 		// substitute for one.
-		if certCovers(l.fallback, name) {
-			return l.fallback, nil
+		if certCovers(fallback, name) {
+			return fallback, nil
 		}
 		return nil, l.refuse(name, hosts, fmt.Errorf("no certificate file: %w", err))
 	}
 
 	loaded, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
-		if certCovers(l.fallback, name) {
-			return l.fallback, nil
+		if certCovers(fallback, name) {
+			return fallback, nil
 		}
 		return nil, l.refuse(name, hosts, fmt.Errorf("loading the certificate and key: %w", err))
 	}

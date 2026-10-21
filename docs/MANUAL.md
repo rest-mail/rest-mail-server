@@ -311,6 +311,11 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 - Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes. It records only whether the MX speaks REST; the endpoint is discovered on every delivery.
 
 #### TLS / SNI
+- The primary `TLS_CERT_PATH` / `TLS_KEY_PATH` pair is checked on each new TLS
+  handshake. When renewal replaces both files, SMTP, IMAP, and POP3 serve the new
+  pair without a restart, including connections without SNI. During the two
+  file renames, a mismatched pair leaves the last complete pair in service and
+  is retried on the next handshake.
 - Per-domain cert/key pairs via `TLS_CERT_DIR`. SNI-based lookup at handshake time.
 - Hot reload via `fsnotify`: [internal/gateway/tlsutil/sni.go](../internal/gateway/tlsutil/sni.go) watches cert directory, invalidates cache entry on WRITE/CREATE. `StartWatching()` / `Stop()` lifecycle called from each gateway's main.go.
 
@@ -668,8 +673,8 @@ Implemented in slices; issue #153 remains open.
 ### 6.2 TLS / certs
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `TLS_CERT_PATH` | *(empty)* | Single cert file |
-| `TLS_KEY_PATH` | *(empty)* | Single key file |
+| `TLS_CERT_PATH` | *(empty)* | Primary cert file; renewed pairs reload on new handshakes |
+| `TLS_KEY_PATH` | *(empty)* | Matching primary key file |
 | `TLS_CERT_DIR` | *(empty)* | Per-domain cert/key directory for SNI |
 | `ACME_ENABLED` | `false` | Let's Encrypt auto-renewal |
 | `ACME_EMAIL` | *(empty)* | Contact email |
