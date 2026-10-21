@@ -218,6 +218,7 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks_update_domain.py`: the updateDomain certificate hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
@@ -306,3 +307,10 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+Update probes (updateDomain) that set `active` to true would meet 409
+`certificate_required`: no created domain has a certificate when they run. A
+before hook gives the domain in the path a self-signed certificate through the
+admin API the first time such a request appears, then leaves it in place. The
+request is never rewritten, and a domain that does not exist is left to the
+probe's 404.

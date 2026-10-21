@@ -3339,7 +3339,11 @@ export interface components {
             active?: boolean;
             /** Format: int64 */
             default_quota_bytes?: number;
-            sending_policy?: components["schemas"]["DomainSendingPolicy"];
+            /**
+             * @description The domain's sending policy (DomainSendingPolicy); `""` clears it.
+             * @enum {string}
+             */
+            sending_policy?: "" | "transactional" | "bulk";
         };
         /**
          * @description What the send API expects of the domain's mail (RFC 2369, RFC 8058). `transactional`: mail one person asked for, such as receipts and password resets; it carries no List-Unsubscribe field, so a send with `list_unsubscribe` is refused with 422 `list_unsubscribe_not_allowed`. `bulk`: mail sent to a list, which receivers such as Gmail and Yahoo expect to say how to unsubscribe; a send without `list_unsubscribe` is refused with 422 `list_unsubscribe_required`. Empty: no rule, either is sent. The policy applies to the send API; SMTP submission, draft send and forward are not checked.
