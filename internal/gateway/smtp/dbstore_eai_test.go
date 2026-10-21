@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -11,6 +12,79 @@ import (
 	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
+
+func TestDBStore_SenderMatchesAccount(t *testing.T) {
+	db := openStoreTestDB(t).Begin()
+	if db.Error != nil {
+		t.Fatal(db.Error)
+	}
+	t.Cleanup(func() { db.Rollback() })
+
+	unicodeDomain := fmt.Sprintf("bücher-identity-%d.test", time.Now().UnixNano())
+	asciiDomain, err := rmail.DomainASCII(unicodeDomain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dom := models.Domain{Name: asciiDomain, Active: true}
+	if err := db.Create(&dom).Error; err != nil {
+		t.Fatal(err)
+	}
+	seed := func(local string) models.Mailbox {
+		t.Helper()
+		mb := models.Mailbox{DomainID: dom.ID, LocalPart: local, Address: local + "@" + asciiDomain, Active: true}
+		if err := db.Create(&mb).Error; err != nil {
+			t.Fatal(err)
+		}
+		return mb
+	}
+	sender, other := seed("josé"), seed("ana")
+	legacy := seed("cafe\u0301")
+	store := NewStore(db, "")
+	for _, tc := range []struct {
+		address string
+		account uint
+		want    bool
+	}{
+		{sender.Address, sender.ID, true},
+		{"josé@" + unicodeDomain, sender.ID, true},
+		{"JOSE\u0301@" + unicodeDomain, sender.ID, true},
+		{"café@" + unicodeDomain, legacy.ID, true},
+		{other.Address, sender.ID, false},
+		{"unknown@" + unicodeDomain, sender.ID, false},
+		{"bad\xff@" + unicodeDomain, sender.ID, false},
+		{"josé@" + unicodeDomain, 0, false},
+	} {
+		ok, err := store.SenderMatchesAccount(tc.account, tc.address)
+		if err != nil || ok != tc.want {
+			t.Errorf("SenderMatchesAccount(%d, %q) = %v, %v; want %v", tc.account, tc.address, ok, err, tc.want)
+		}
+	}
+
+	// Two pre-existing NFC-equivalent accounts remain distinct. The exact
+	// decomposed identity must never authorize a session for the composed one.
+	twin := seed("jose\u0301")
+	for _, account := range []uint{sender.ID, twin.ID} {
+		ok, err := store.SenderMatchesAccount(account, "jose\u0301@"+unicodeDomain)
+		if err != nil || ok != (account == twin.ID) {
+			t.Errorf("legacy twin for %d = %v, %v", account, ok, err)
+		}
+	}
+	first, second := seed("a\u0301\u0323"), seed("a\u0323\u0301")
+	for _, account := range []uint{first.ID, second.ID} {
+		ok, err := store.SenderMatchesAccount(account, "ạ\u0301@"+unicodeDomain)
+		if err != nil || ok {
+			t.Errorf("ambiguous identity for %d = %v, %v; want false, nil", account, ok, err)
+		}
+	}
+
+	// Unexpected lookup errors are surfaced to the session to fail closed.
+	broken := &dbStore{db: db.Session(&gorm.Session{NewDB: true})}
+	lookupErr := errors.New("identity lookup unavailable")
+	_ = broken.db.AddError(lookupErr)
+	if ok, err := broken.SenderMatchesAccount(sender.ID, sender.Address); ok || !errors.Is(err, lookupErr) {
+		t.Errorf("lookup failure = %v, %v; want false, lookup error", ok, err)
+	}
+}
 
 // openStoreRBACTestDB is openStoreTestDB with the full schema and the built-in
 // roles, which SenderAuthorized reads grants through.
