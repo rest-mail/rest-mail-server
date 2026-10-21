@@ -172,6 +172,15 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setDKIMKey` pairs `installed` with 200, `body_array`, `selector_missing`
+and `private_key_missing` with 400, and `selector_invalid` and
+`private_key_invalid` with 422. The hook replaces only the explicit
+`fixture-signing-key` placeholder, preserving malformed bodies, missing
+fields and invalid selectors or keys. The existing createDomain link supplies
+the domain ID. Refusals leave the stored domain unchanged
+(`contract_dkim_key_examples_test.go`, `test_contract_dkim_hook.py`). DKIM
+rotation retains its own exclusions.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as

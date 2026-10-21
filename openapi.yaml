@@ -5381,6 +5381,19 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SetDKIMKeyRequest"
+            examples:
+              installed:
+                value: {selector: contract, private_key: fixture-signing-key}
+              body_array:
+                value: []
+              selector_missing:
+                value: {private_key: fixture-signing-key}
+              private_key_missing:
+                value: {selector: contract}
+              selector_invalid:
+                value: {selector: invalid_selector, private_key: fixture-signing-key}
+              private_key_invalid:
+                value: {selector: contract, private_key: not a key}
       responses:
         "200":
           description: DKIM key set
@@ -5392,13 +5405,37 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMEntry"
+              examples:
+                installed:
+                  value:
+                    data:
+                      domain_id: 1
+                      domain: example.com
+                      selector: contract
+                      has_key: true
+                      created_at: "2026-10-01T12:00:00Z"
+                      age_seconds: 0
           links:
             deleteDKIMKey:
               operationId: deleteDKIMKey
               parameters:
                 id: '$request.path.id'
         "400":
-          description: The body is not JSON, or lacks `selector` or `private_key` (`bad_request`)
+          description: The body cannot be decoded, or lacks `selector` or `private_key` (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                selector_missing:
+                  value:
+                    error: {code: bad_request, message: selector and private_key are required}
+                private_key_missing:
+                  value:
+                    error: {code: bad_request, message: selector and private_key are required}
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -5413,6 +5450,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                selector_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: 'selector "invalid_selector" is not a DNS label: use up to 63 letters, digits and hyphens, not starting or ending with a hyphen, with dots between labels'
+                      details:
+                        fields:
+                          selector: '"invalid_selector" is not a DNS label: use up to 63 letters, digits and hyphens, not starting or ending with a hyphen, with dots between labels'
+                private_key_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: private_key is not a PEM-encoded private key
+                      details:
+                        fields:
+                          private_key: is not a PEM-encoded private key
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
