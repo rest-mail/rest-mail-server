@@ -8,6 +8,7 @@ package handlers
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/restmail/restmail/internal/db/models"
@@ -29,6 +30,43 @@ func sieveRowCount(t *testing.T, h *SieveHandler, mailboxID uint) int64 {
 	var n int64
 	h.db.Model(&models.SieveScript{}).Where("mailbox_id = ?", mailboxID).Count(&n)
 	return n
+}
+
+func TestSieveScriptRequiredByContract(t *testing.T) {
+	db := openAuthzTestDB(t)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	fx := seedAuthzFixture(t, tx)
+	h := NewSieveHandler(tx)
+
+	for _, body := range []string{`{}`, `{"script":null}`} {
+		t.Run(body, func(t *testing.T) {
+			put := putSieve(t, h, fx.ownerMailbox.ID, body)
+			if put.Code != http.StatusUnprocessableEntity {
+				t.Errorf("PUT: want 422, got %d (%s)", put.Code, put.Body.String())
+			}
+			if !strings.Contains(put.Body.String(), `"script":"required"`) {
+				t.Errorf("PUT: missing script field error: %s", put.Body.String())
+			}
+			validate := httptest.NewRecorder()
+			h.ValidateScript(validate, authzRequest(http.MethodPost, "/sieve/validate", fx.ownerMailbox.ID,
+				map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}, body))
+			if validate.Code != http.StatusUnprocessableEntity {
+				t.Errorf("validate: want 422, got %d (%s)", validate.Code, validate.Body.String())
+			}
+			if !strings.Contains(validate.Body.String(), `"script":"required"`) {
+				t.Errorf("validate: missing script field error: %s", validate.Body.String())
+			}
+		})
+	}
+	if n := sieveRowCount(t, h, fx.ownerMailbox.ID); n != 0 {
+		t.Fatalf("missing script must not be stored, found %d row(s)", n)
+	}
+
+	// An explicit empty string satisfies the required field and means no rules.
+	if rr := putSieve(t, h, fx.ownerMailbox.ID, `{"script":""}`); rr.Code != http.StatusCreated {
+		t.Fatalf("explicit empty script: want 201, got %d (%s)", rr.Code, rr.Body.String())
+	}
 }
 
 // (a) An invalid script (uses fileinto without require) is rejected at install

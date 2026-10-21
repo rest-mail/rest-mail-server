@@ -2452,6 +2452,8 @@ paths:
               operationId: getSieveScript
               parameters:
                 id: '$request.path.id'
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteSieveScript
       tags: [Sieve]
@@ -2521,6 +2523,8 @@ paths:
                         type: boolean
                       message:
                         type: string
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   # ═══════════════════════════════════════════════════════════════
   # Quarantine
@@ -3729,6 +3733,21 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TestPipelineRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              valid:
+                value:
+                  pipeline_id: 1
+                  email: {}
+              # JSON but not a request object: refused before any pipeline is
+              # looked up.
+              invalid_body:
+                value: []
+              # No email: refused before any pipeline is looked up.
+              email_missing:
+                value:
+                  pipeline_id: 1
       responses:
         "200":
           description: Pipeline execution result
@@ -3740,14 +3759,54 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/ExecutionResult"
+              examples:
+                # The contract run's pipeline (header_validate alone) on the
+                # empty email: it has no From and no Date. Durations are in
+                # nanoseconds.
+                valid:
+                  value:
+                    data:
+                      final_action: reject
+                      reject_message: "550 Invalid headers: missing From header, missing Date header"
+                      steps:
+                        - filter_name: header_validate
+                          filter_type: action
+                          action: reject
+                          log:
+                            filter: header_validate
+                            result: reject
+                            detail: missing From header; missing Date header
+                          duration_ms: 4000
+                      duration_ms: 12000
         "400":
           description: The body is not JSON (`bad_request`)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                # Refused while the body is decoded, before any field is read
+                # (#388).
+                invalid_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                email_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          email: required
 
   /api/v1/admin/pipelines/test-filter:
     post:
