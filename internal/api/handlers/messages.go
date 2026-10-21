@@ -834,7 +834,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 
 	for _, rcpt := range allRecipients {
 		var recipientMailbox models.Mailbox
-		if err := h.db.Where("address = ? AND active = ?", rcpt, true).First(&recipientMailbox).Error; err == nil {
+		if err := repositories.FindActiveMailboxByAddress(h.db, rcpt, &recipientMailbox); err == nil {
 			// Local delivery with full inbound pipeline
 			_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
 				Mailbox:      recipientMailbox,
@@ -1811,7 +1811,7 @@ func (h *MessageHandler) RespondToCalendar(w http.ResponseWriter, r *http.Reques
 
 	// Deliver to organizer if local, else queue for remote delivery
 	var recipientMailbox models.Mailbox
-	if err := h.db.Where("address = ? AND active = ?", organizer, true).First(&recipientMailbox).Error; err == nil {
+	if err := repositories.FindActiveMailboxByAddress(h.db, organizer, &recipientMailbox); err == nil {
 		_, deliverErr := h.deliverToLocal(r.Context(), localDeliveryParams{
 			Mailbox:      recipientMailbox,
 			Sender:       req.From,

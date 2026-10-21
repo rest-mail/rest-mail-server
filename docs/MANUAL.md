@@ -623,7 +623,8 @@ Implemented in slices; issue #153 remains open.
 - **Hosted account identities:** `POST /api/v1/accounts` accepts UTF-8 local parts and Unicode domains, stores lowercase NFC local parts with Punycode domains, and checks permissions against that canonical domain. Linking, REST login, and protocol password/app-password sign-in accept equivalent Unicode/Punycode domains and NFC local parts. Existing exact account spellings retain precedence; a unique NFC-equivalent legacy account can be found without rewriting its address or grants. Ambiguous legacy equivalents are refused, and provisioning rejects new NFC-equivalent duplicates. This identity policy does not rewrite remote SMTP local parts or message headers.
 - **Hosted recipients:** gateway and RESTMAIL recipient checks, address-based inbound delivery, and the recipient-check pipeline resolve the same NFC/IDNA mailbox identities. Exact legacy spellings retain precedence, inactive exact accounts do not redirect to active equivalents, and ambiguous legacy equivalents are refused. Quotas apply to the resolved mailbox; original message addresses and plus-address tags are preserved. RESTMAIL selects the hosted inbound pipeline for equivalent Unicode/Punycode domains. Legacy normalized fallback is scoped to the hosted domain.
 - **Hosted senders:** SMTP submission accepts alternate Unicode/Punycode, case, and NFC spellings that resolve to the signed-in mailbox ID, including for app passwords. Distinct legacy accounts with NFC-equivalent names remain separate. Password sessions may also use a `mail:send` grant on another resolved hosted identity; app passwords remain scoped to their own mailbox. Submission records the message in the sender mailbox's Sent folder and bounces failed deliveries back to it. The submitted spelling stays on the message and envelope.
-- **Still planned:** the REST API's outbound local-recipient paths, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
+- **REST API sends:** `POST /api/v1/messages/send`, sending a draft, and calendar replies deliver locally to a recipient (or organizer) that resolves to an active hosted mailbox through the same identity policy, instead of queueing it for outbound relay. Inactive exact accounts are not redirected to active equivalents. The submitted recipient spellings stay on the message.
+- **Still planned:** RESTMAIL deliver-auth sender-domain IDNA consistency, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
 - Relevant RFCs: 6530 (overview), 6531 (SMTPUTF8), 6532 (headers), 6533 (DSN), 6855 (IMAP), 6856 (POP3), 6857 (downgrade), 5891 (IDNA 2008).
 - Non-ASCII local parts cannot be converted to Punycode; unsupported outbound EAI delivery fails through the queue's existing failure handling.
 - Database already UTF-8; consider ICU collation for sorting, `pg_trgm`/ICU-aware `LOWER()` indexes.
@@ -697,9 +698,25 @@ the command opens its HTTP listener or contacts the CA. The Docker task still
 reserves host port 80 when starting its container, even if issuance is skipped.
 The default `CERT_RENEW_BEFORE=0s` always issues. Use that default when switching
 between staging, production or custom CAs: reuse checks do not establish the
-existing certificate's CA provenance or trust. This option does not install a
-scheduler or reload serving gateways; periodic invocation and deploying the
-renewed files to running gateways remain the operator's responsibility.
+existing certificate's CA provenance or trust.
+
+For opt-in continuous checks, run
+`CONFIG=<name> chore instance:certs:issue CERT_RENEW_BEFORE=720h CERT_CHECK_INTERVAL=12h`.
+This stays in the foreground: it checks immediately, then waits 12 hours after
+each completed attempt. A positive renewal window is required in periodic mode
+to avoid ordering a new certificate on every check. Failed checks are logged
+and retried after the same interval; they do not stop the process. Supervise
+this long-running task with your deployment's process manager and alert on its
+error logs. The default `CERT_CHECK_INTERVAL=0s` retains one-shot behavior,
+including returning issuance failures as a nonzero exit status.
+
+The underlying command accepts `-check-interval 12h -renew-before 720h` and stops
+on SIGINT or SIGTERM, canceling any active CA request. The volume lock is held
+only during each check, so manual one-shot issuers can run between checks.
+The Docker task reserves host port 80 for its entire lifetime in periodic mode,
+including while waiting. Do not run it alongside another service on that port.
+This does not reload serving gateways or install a host scheduler: deploying the
+renewed files to running gateways remains the operator's responsibility.
 
 Serving files are staged together before publication. If replacing the
 certificate fails after replacing the key, the command restores the previous
