@@ -147,7 +147,13 @@ def keep_the_created_pipeline(transaction):
 
 @hooks.before("testPipeline")
 def test_the_created_pipeline(transaction):
-    hooks.set_json(transaction, {"pipeline_id": hooks.stash.get("pipeline_id"), "email": {}})
+    body = hooks.get_json(transaction)
+    # The refused requests (invalid_body, 400, and email_missing, 422) are
+    # sent as documented: each is refused before any pipeline is looked up.
+    if not isinstance(body, dict) or "email" not in body:
+        return
+    body["pipeline_id"] = hooks.stash.get("pipeline_id")
+    hooks.set_json(transaction, body)
 
 
 @hooks.before("createCustomFilter")

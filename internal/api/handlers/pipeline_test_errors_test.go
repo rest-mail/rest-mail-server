@@ -88,8 +88,7 @@ func TestPipelineTestErrorContract_NoEmailIs422(t *testing.T) {
 }
 
 // The spec documents exactly those two refusals beside the 200: the 400 as an
-// ErrorResponse and the 422 as the shared ValidationError, whose schema is the
-// ValidationErrorResponse the 422 above is.
+// ErrorResponse and the 422 as the ValidationErrorResponse the 422 above is.
 func TestPipelineTestErrorContract_Documented(t *testing.T) {
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
@@ -99,8 +98,7 @@ func TestPipelineTestErrorContract_Documented(t *testing.T) {
 		Schema map[string]interface{} `yaml:"schema"`
 	}
 	type response struct {
-		Ref     string `yaml:"$ref"`
-		Content media  `yaml:"content"`
+		Content media `yaml:"content"`
 	}
 	var doc struct {
 		Paths map[string]struct {
@@ -109,9 +107,6 @@ func TestPipelineTestErrorContract_Documented(t *testing.T) {
 				Responses   map[string]response `yaml:"responses"`
 			} `yaml:"post"`
 		} `yaml:"paths"`
-		Components struct {
-			Responses map[string]response `yaml:"responses"`
-		} `yaml:"components"`
 	}
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
@@ -136,10 +131,7 @@ func TestPipelineTestErrorContract_Documented(t *testing.T) {
 	if got := schemaRef(op.Responses["400"]); got != "#/components/schemas/ErrorResponse" {
 		t.Errorf("testPipeline's 400 is %v, want an ErrorResponse", got)
 	}
-	if got := op.Responses["422"].Ref; got != "#/components/responses/ValidationError" {
-		t.Errorf("testPipeline's 422 is %q, want the shared ValidationError", got)
-	}
-	if got := schemaRef(doc.Components.Responses["ValidationError"]); got != "#/components/schemas/ValidationErrorResponse" {
-		t.Errorf("the shared ValidationError is %v, want a ValidationErrorResponse", got)
+	if got := schemaRef(op.Responses["422"]); got != "#/components/schemas/ValidationErrorResponse" {
+		t.Errorf("testPipeline's 422 is %v, want a ValidationErrorResponse", got)
 	}
 }

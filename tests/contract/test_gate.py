@@ -103,6 +103,7 @@ class PairedRefusals(unittest.TestCase):
         "addToAllowlist",
         "addToBlocklist",
         "testFilter",
+        "testPipeline",
         "receiveTlsReport",
     }
 
