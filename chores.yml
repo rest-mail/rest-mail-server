@@ -1329,7 +1329,9 @@ tasks:
             # resolve to this host and port 80 must be free and reachable while
             # it runs. tls.acme.staging: true uses Let's Encrypt staging (and
             # overrides tls.acme.directory). Re-running re-issues; renewal is
-            # re-running this task.
+            # re-running this task. The 0600 .acme-account-<directory-hash>.key
+            # in the certs volume preserves the CA account across runs. Keep
+            # it with the volume backups; staging uses a separate account.
             docker run --rm \
               -p 80:80 \
               -v "{{.CERTS_VOLUME}}:/certs" \

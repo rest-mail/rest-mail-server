@@ -4,7 +4,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:where(.midnight, .midnight *, .forest, .forest *, .slate, .slate *, .dusk, .dusk *, .neon, .neon *, .aurora, .aurora *, .industrial, .industrial *));
+@custom-variant dark (&:where(.midnight, .midnight *, .forest, .forest *, .slate, .slate *, .dusk, .dusk *, .neon, .neon *, .aurora, .aurora *, .industrial, .industrial *, .nightops, .nightops *));
 
 /* ── Dawn (light, blue accent) ──────────────────────────────────── */
 :root,
@@ -444,6 +444,141 @@
   --sidebar-ring: oklch(0.65 0.2 45);
 }
 
+/* ── Brand (light, REST Mail navy + yellow) ─────────────────────── */
+.brand {
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f4f6fa;
+  --color-bg-tertiary: #e4e9f1;
+  --color-text: #12203a;
+  --color-text-secondary: #61708b;
+  --color-border: #e4e9f1;
+  --color-primary: #a67c00;
+  --color-primary-hover: #8a6600;
+  --color-danger: #c0392b;
+  --color-success: #1e8a50;
+  --color-sidebar: #f7f8fb;
+  --color-selected: #fff6d6;
+  --color-hover: #f4f6fa;
+  --color-unread: #12203a;
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.27 0.05 262);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.27 0.05 262);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.27 0.05 262);
+  --primary: oklch(0.85 0.15 95);
+  --primary-foreground: oklch(0.27 0.05 262);
+  --secondary: oklch(0.97 0.006 250);
+  --secondary-foreground: oklch(0.27 0.05 262);
+  --muted: oklch(0.97 0.006 250);
+  --muted-foreground: oklch(0.52 0.03 255);
+  --accent: oklch(0.97 0.006 250);
+  --accent-foreground: oklch(0.27 0.05 262);
+  --destructive: oklch(0.55 0.2 25);
+  --border: oklch(0.93 0.01 250);
+  --input: oklch(0.93 0.01 250);
+  --ring: oklch(0.45 0.08 260);
+  --sidebar: oklch(0.985 0.004 250);
+  --sidebar-foreground: oklch(0.27 0.05 262);
+  --sidebar-primary: oklch(0.4 0.08 262);
+  --sidebar-primary-foreground: oklch(0.98 0.01 95);
+  --sidebar-accent: oklch(0.97 0.006 250);
+  --sidebar-accent-foreground: oklch(0.27 0.05 262);
+  --sidebar-border: oklch(0.93 0.01 250);
+  --sidebar-ring: oklch(0.45 0.08 260);
+}
+
+/* ── Ledger (editorial paper, oxblood accent) ───────────────────── */
+.ledger {
+  --color-bg: #faf7f0;
+  --color-bg-secondary: #f1ece0;
+  --color-bg-tertiary: #e4ddcd;
+  --color-text: #1a1b17;
+  --color-text-secondary: #6f6a5c;
+  --color-border: #e4ddcd;
+  --color-primary: #96351f;
+  --color-primary-hover: #7c2b19;
+  --color-danger: #96351f;
+  --color-success: #4a6741;
+  --color-sidebar: #f4efe3;
+  --color-selected: #f0e6d2;
+  --color-hover: #f1ece0;
+  --color-unread: #1a1b17;
+  --radius: 0.25rem;
+  --background: oklch(0.975 0.012 80);
+  --foreground: oklch(0.2 0.01 80);
+  --card: oklch(0.968 0.012 80);
+  --card-foreground: oklch(0.2 0.01 80);
+  --popover: oklch(0.975 0.012 80);
+  --popover-foreground: oklch(0.2 0.01 80);
+  --primary: oklch(0.45 0.13 35);
+  --primary-foreground: oklch(0.98 0.005 80);
+  --secondary: oklch(0.93 0.015 80);
+  --secondary-foreground: oklch(0.2 0.01 80);
+  --muted: oklch(0.93 0.015 80);
+  --muted-foreground: oklch(0.5 0.02 75);
+  --accent: oklch(0.93 0.015 80);
+  --accent-foreground: oklch(0.2 0.01 80);
+  --destructive: oklch(0.45 0.13 35);
+  --border: oklch(0.9 0.02 80);
+  --input: oklch(0.9 0.02 80);
+  --ring: oklch(0.45 0.13 35);
+  --sidebar: oklch(0.96 0.014 80);
+  --sidebar-foreground: oklch(0.2 0.01 80);
+  --sidebar-primary: oklch(0.45 0.13 35);
+  --sidebar-primary-foreground: oklch(0.98 0.005 80);
+  --sidebar-accent: oklch(0.93 0.015 80);
+  --sidebar-accent-foreground: oklch(0.2 0.01 80);
+  --sidebar-border: oklch(0.9 0.02 80);
+  --sidebar-ring: oklch(0.45 0.13 35);
+}
+
+/* ── Night Ops (terminal dark, amber accent) ────────────────────── */
+.nightops {
+  --color-bg: #0b0d12;
+  --color-bg-secondary: #11161d;
+  --color-bg-tertiary: #1c232d;
+  --color-text: #d9e1eb;
+  --color-text-secondary: #7a8494;
+  --color-border: #1c232d;
+  --color-primary: #ffb020;
+  --color-primary-hover: #e59a0f;
+  --color-danger: #ff6259;
+  --color-success: #3dd68c;
+  --color-sidebar: #07090d;
+  --color-selected: #201808;
+  --color-hover: #11161d;
+  --color-unread: #f2f5f9;
+  --radius: 0.375rem;
+  --background: oklch(0.13 0.01 260);
+  --foreground: oklch(0.9 0.01 250);
+  --card: oklch(0.17 0.012 260);
+  --card-foreground: oklch(0.9 0.01 250);
+  --popover: oklch(0.17 0.012 260);
+  --popover-foreground: oklch(0.9 0.01 250);
+  --primary: oklch(0.8 0.15 75);
+  --primary-foreground: oklch(0.2 0.02 75);
+  --secondary: oklch(0.19 0.012 260);
+  --secondary-foreground: oklch(0.9 0.01 250);
+  --muted: oklch(0.19 0.012 260);
+  --muted-foreground: oklch(0.6 0.015 250);
+  --accent: oklch(0.19 0.012 260);
+  --accent-foreground: oklch(0.9 0.01 250);
+  --destructive: oklch(0.65 0.2 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.8 0.15 75);
+  --sidebar: oklch(0.1 0.008 260);
+  --sidebar-foreground: oklch(0.9 0.01 250);
+  --sidebar-primary: oklch(0.8 0.15 75);
+  --sidebar-primary-foreground: oklch(0.2 0.02 75);
+  --sidebar-accent: oklch(0.19 0.012 260);
+  --sidebar-accent-foreground: oklch(0.9 0.01 250);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.8 0.15 75);
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -462,6 +597,33 @@ html, body, #root {
   font-family: 'Oswald', sans-serif;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+/* Theme typeface axes — packs pin one per list / reader. Serifs are system
+   stacks on purpose: no new webfont, so the strict font-src 'self' CSP holds. */
+.typeface-mono {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.typeface-sans {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.typeface-serif {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+}
+
+/* Unread rail: left accent bar for packs whose unread signal is 'rail' */
+.unread-rail {
+  position: relative;
+}
+.unread-rail::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-primary);
 }
 
 ::-webkit-scrollbar {

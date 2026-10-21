@@ -40,9 +40,8 @@ func TestWriteServingPair(t *testing.T) {
 	}
 }
 
-// TestIssueACME_FailureWritesNothing proves a failed issuance (here: no CA
-// listening) leaves the certs directory untouched.
-func TestIssueACME_FailureWritesNothing(t *testing.T) {
+// A failed issuance preserves the account identity but writes no serving pair.
+func TestIssueACME_FailurePreservesAccountOnly(t *testing.T) {
 	dir := t.TempDir()
 	err := issueACME(context.Background(), dir, "127.0.0.1:0", acme.IssueConfig{
 		Directory: "http://127.0.0.1:1/directory",
@@ -51,8 +50,12 @@ func TestIssueACME_FailureWritesNothing(t *testing.T) {
 	if err == nil {
 		t.Fatal("issueACME succeeded without a CA")
 	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-		t.Errorf("failed issuance wrote %d files", len(entries))
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("want only the account key after failure, got %d files (%v)", len(entries), err)
+	}
+	if _, err := readACMEAccountKey(filepath.Join(dir, entries[0].Name())); err != nil {
+		t.Fatalf("account key not preserved: %v", err)
 	}
 }
 

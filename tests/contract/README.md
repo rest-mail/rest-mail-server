@@ -15,6 +15,7 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `examples` | Each documented request gets its documented answer. Ordered by the spec's links (`--sequence`), so a read, an update or a delete addresses what its create made. | Gate |
 | `coverage` | Every boundary each schema implies (the maximum, one past it, a required property missing) gets a 4xx, never a 2xx or a 5xx. | Gate, as a ratchet (below) |
 | `ignored-auth` check | Every authenticated request, sent again with no credential, is refused. | Gate |
+| `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. | Report only, after the gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 
 Two gates judge the run:
@@ -72,14 +73,34 @@ JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
 the real handler with no database).
 
-These three operations' 400s and 422s are sent and judged: `vertrag.yml`
-excludes 400 and 422 by path, naming every path segment but the three
-operations' own, rather than everywhere. A transaction sent and refused other
-than as documented fails the examples phase like any other.
-`test_gate.py` checks that the documented 400s and 422s sent are exactly
-those three operations', so an operation paired next comes off those patterns
-in the same change. The statuses stay in `surface.exclude`: the surface gate
-cannot take an exclusion off one operation only.
+`createBan` (`ip_missing`, `duration_invalid`), `createCustomFilter`
+(`filter_type_invalid`), `validateCustomFilter` (`body_array` with its 400,
+`script_missing` with its 422) and `sendTestEmail` (`from_missing`) are paired
+the same way, each checked against the real handler with no database
+(`contract_ban_examples_test.go`, `contract_customfilter_examples_test.go`,
+`contract_validatejs_examples_test.go`, `contract_validatejs_body400_test.go`,
+`contract_testsend_examples_test.go`).
+
+`createAccount` (`address_missing`), `restmailDeliver` (`recipients_missing`),
+`addToAllowlist` and `addToBlocklist` (`pattern_missing`) now send their paired
+422s too. `bulkDeleteQueue` sends its `selection_missing` request (`{}`) with
+its paired 400. Their existing handler tests check these refusals before any
+database access (`contract_account_examples_test.go`,
+`contract_restmail_examples_test.go`, `contract_allowlist_examples_test.go`,
+`contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
+No before hook rewrites these requests. Sibling operations remain excluded;
+in particular, `testFilter` and `receiveTlsReport` still need request examples
+paired with their documented 400s before their exclusions can be lifted.
+
+These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
+400 and 422 by path, naming every path but the paired operations' own,
+rather than everywhere. A transaction sent and refused other than as
+documented fails the examples phase like any other. `test_gate.py` checks
+that the documented 400s and 422s sent are exactly the paired operations'
+(its `PAIRED`), so an operation paired next comes off those patterns in the
+same change. It also checks that each sent refusal has named response examples
+with matching request examples. The statuses stay in `surface.exclude`: the
+surface gate cannot take an exclusion off one operation only.
 
 The coverage phase probes every transaction sent, and judges valid-mode probes
 whenever the transaction's own request gets the status it documents. For a
@@ -111,6 +132,10 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   Every other id comes from the spec's `links`.
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
+- `authorization.py`: builds a private configuration from the E2E principals
+  for the report-only authorization phase. Its JUnit report and log are
+  included in `e2e-container-logs`; the generated credential-bearing YAML is
+  removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
@@ -134,11 +159,42 @@ authorization matrix with them (`TestContractPrincipals`):
 | agent | none: the account model has no agents yet (#341) |
 | no credentials | every request without one, and vertrag's `ignored-auth` check |
 
-The contract run itself signs in as the admin. The others are for the
-authorization matrix, which vertrag will check from the spec once it has an
-authorization phase (antimatter-studios/vertrag#71): each operation's
-`security` requirements name the capability it needs as OpenAPI 3.1 roles,
-for example `security: [{BearerAuth: [domains:read]}]`.
+The examples and coverage run signs in as the admin. The authorization run
+uses vertrag v0.29.0's authorization phase: each operation's `security`
+requirements name the capability it needs as OpenAPI 3.1 roles, for example
+`security: [{BearerAuth: [domains:read]}]`. `authorization.py` configures `none`,
+`admin`, `ordinary`, and `app-password` from the fresh E2E fixture. The owned
+account has no separate sign-in credential; its access through the admin is
+checked by `TestContractPrincipals`. Agents remain unavailable (#341).
+
+The full matrix is **report-only** until its fixture and scope expectations
+are resolved. The provisional admin expectation lists every role in the spec;
+ordinary and app-password list none, since their mail rights cover their own
+mailbox rather than arbitrary example IDs. These flat roles cannot express
+resource ownership or grants. In particular, admin access to other mailboxes
+and out-of-scope 404 versus 403 still need a policy decision. The authorization
+phase uses literal example IDs instead of lifecycle links (vertrag#81), so
+deleted or absent resources, reused refresh tokens and hooks that replace a
+credential also cause failures or unsent cells. This report does not establish
+that every operation or principal passes. The existing examples and coverage
+gates keep their configuration and exclusions.
+
+Run the matrix locally after the examples and coverage gates. vertrag always
+runs examples first, even with `--phases authorization`; this diagnostic run
+repeats them with lifecycle ordering, then sends the matrix. Both can repeat
+destructive requests, so run it last on the disposable topology:
+
+```sh
+python3 tests/contract/authorization.py openapi.yaml vertrag.yml \
+  .cache/contract-principals.json .cache/contract/vertrag-authorization.yml \
+  .cache/contract/authorization.xml
+vertrag run --config .cache/contract/vertrag-authorization.yml --sequence --phases authorization
+rm -f .cache/contract/vertrag-authorization.yml
+```
+
+`python3 -m unittest discover -s tests/contract -p 'test_*.py'` checks the
+configuration generator and coverage gate (requires PyYAML); CI runs it in
+the lint job.
 
 `internal/api/openapi_security_test.go` holds those roles to the router for
 every admin operation: holding exactly the documented capability reaches the

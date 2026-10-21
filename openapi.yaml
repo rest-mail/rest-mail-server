@@ -395,6 +395,51 @@ paths:
         "422":
           description: Password under 12 characters (the token is not spent)
 
+  /api/v1/auth/recover:
+    post:
+      operationId: recoverAccount
+      tags: [Auth]
+      summary: Reset a forgotten password with the authenticator and a recovery code
+      description: >
+        Self-service password reset for an account that set up two-factor
+        authentication in advance: a current code from its authenticator and
+        one of its recovery codes, both. The authenticator is checked first,
+        so a wrong code never spends a recovery code. The account gets the new
+        password and keeps its authenticator; its app passwords are revoked and
+        every token it was issued is dead at once, as for a password change.
+        Answers with a fresh session. An account without two-factor
+        authentication has no self-service path: an admin resets it. Every
+        refusal is the same 401, whether the address exists or not.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, totp_code, recovery_code, new_password]
+              properties:
+                email: {type: string}
+                totp_code: {type: string}
+                recovery_code: {type: string}
+                new_password: {type: string, minLength: 12}
+                client: {type: string, enum: [native]}
+      responses:
+        "200":
+          description: Password reset; a new session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: recovery_failed
+        "422":
+          description: A field missing, or a password under 12 characters (no code is spent)
+
   /api/v1/server:
     get:
       operationId: describeServer
@@ -5472,8 +5517,18 @@ paths:
         follows the one before (seq one higher, `prev_hash` its hash) and hashes
         to its own `hash`. Stops at the first entry that does not hold. If the
         log does not start at seq 1, the walk starts from the first entry's own
-        `prev_hash` and says so in `note`. This read is itself recorded
-        (`audit.read`).
+        `prev_hash` and says so in `note`. Given an `anchor` (one entry's seq
+        and hash, a copy kept outside the server), the log must also still
+        hold that entry with that hash; a log rewritten and rehashed from some
+        entry on holds as a chain, but not to an anchor taken before the
+        rewrite. This read is itself recorded (`audit.read`).
+      parameters:
+        - name: anchor
+          in: query
+          description: The anchored entry as `<seq>:<hash>`, its seq and its hash in 64 hex digits
+          schema:
+            type: string
+            pattern: "^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$"
       responses:
         "200":
           description: What the check found
@@ -5493,6 +5548,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   # ═══════════════════════════════════════════════════════════════
   # System / Discovery (no auth)
@@ -8924,6 +8981,16 @@ components:
         note:
           type: string
           description: Set when the log does not start at seq 1
+        anchor:
+          type: object
+          description: The anchor the log was checked against, when one was given
+          required: [seq, hash]
+          properties:
+            seq:
+              type: integer
+              format: int64
+            hash:
+              type: string
 
     # ─────────────────────────────────────────────────────────────
     # Generic helpers
