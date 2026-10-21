@@ -203,7 +203,8 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   where a request carries it in its body, and its name in the Host header the
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
-  folder for each rename probe (a successful rename consumes the previous one).
+  folder for each rename probe (a successful rename consumes the previous one),
+  and a hosted domain and mailbox for each address a test send probe uses.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -219,6 +220,7 @@ dependency: it needs Go 1.26 and this module is on 1.25.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
 - `test_hooks_send_message.py`: the sendMessage sender hook's tests, against a stub admin API.
+- `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
@@ -314,3 +316,10 @@ the sender's domain with a DKIM key (an https unsubscribe target needs one) and
 creates its mailbox through the admin API the first time the address appears,
 then leaves them in place. Malformed senders and domains the server will not
 host are left to the probe, and the request is never rewritten.
+
+Test send probes (sendTestEmail) send from and to a generated address
+(`someone@example.com`) that has no mailbox. A before hook hosts its domain and
+creates its account through the admin API the first time an address appears,
+then leaves both in place: a test send only adds a message. Malformed addresses
+and domains the server will not host are left to the probe, and the request is
+never rewritten.
