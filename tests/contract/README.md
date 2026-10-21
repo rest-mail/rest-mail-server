@@ -163,6 +163,13 @@ refusal (`contract_sendmessage_examples_test.go`). The other
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setDomainRelay` pairs `relay` and `direct` with 200; `body_array` and
+`port_wrong_type` with 400; and missing/invalid transport, invalid host,
+port, TLS mode, and mismatched credentials with 422. A createDomain link
+supplies the domain id. Refusals leave both absent and saved relay settings
+unchanged (`contract_relay_examples_test.go`). Missing-domain 404 and the
+409 that needs a server without MASTER_KEY remain excluded.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
