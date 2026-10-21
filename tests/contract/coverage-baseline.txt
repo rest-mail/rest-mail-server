@@ -24,5 +24,4 @@ sendMessage
 sendTestEmail
 setVacation
 testFilter
-updateMailbox
 verifyDelivery

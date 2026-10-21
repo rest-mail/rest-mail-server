@@ -3274,6 +3274,12 @@ paths:
                     $ref: "#/components/schemas/Mailbox"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          description: The new password is shorter than 12 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
     delete:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
@@ -8417,6 +8423,7 @@ components:
         password:
           type: string
           format: password
+          minLength: 12
         display_name:
           type: string
         quota_bytes:
