@@ -218,6 +218,7 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks_send_message.py`: the sendMessage sender hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
@@ -306,3 +307,10 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+Send probes (sendMessage) send from a generated address (`someone@example.com`)
+that no mailbox holds, which the handler refuses with 403. A before hook hosts
+the sender's domain with a DKIM key (an https unsubscribe target needs one) and
+creates its mailbox through the admin API the first time the address appears,
+then leaves them in place. Malformed senders and domains the server will not
+host are left to the probe, and the request is never rewritten.
