@@ -258,10 +258,21 @@ def schedule_a_message(transaction):
         headers=headers,
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status != 202:
-            raise RuntimeError("could not schedule a contract message: HTTP %d" % response.status)
-        return (json.load(response).get("data") or {}).get("id")
+    # sendMessage's generated bodies spend the same account's submission
+    # budget, even when their sender is refused. Wait out one minute window
+    # for fixture setup only; the actual probes must see every refusal.
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                if response.status != 202:
+                    raise RuntimeError("could not schedule a contract message: HTTP %d" % response.status)
+                return (json.load(response).get("data") or {}).get("id")
+        except urllib.error.HTTPError as error:
+            retry_after = error.headers.get("Retry-After", "")
+            if attempt or error.code != 429 or not retry_after.isdecimal() or not 1 <= int(retry_after) <= 60:
+                raise
+            error.close()
+            time.sleep(int(retry_after))
 
 
 @hooks.before("listScheduledMessages")
