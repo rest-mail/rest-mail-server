@@ -703,8 +703,15 @@ renewed files to running gateways remain the operator's responsibility.
 Serving files are staged together before publication. If replacing the
 certificate fails after replacing the key, the command restores the previous
 key (or removes the new key on first issuance). If restoration also fails, the
-error identifies the retained private backup for recovery. Run only one issuer
-per certs volume. The two file renames are not an atomic pair swap: readers can
+error identifies the retained private backup for recovery. Instance issuers
+take an advisory filesystem lock on `.acme-issue.lock` in the certs volume
+before checking for reuse and hold it through issuance and publication. An
+overlapping invocation fails immediately; retry after the active issuer finishes.
+The lock is released on command or process exit. The empty lock file remains:
+do not delete it while issuers may be running. The volume must support `flock`;
+lock errors stop issuance. Other tools writing serving files must be serialized
+separately because this lock is advisory.
+The two file renames are not an atomic pair swap: readers can
 briefly observe a mismatch, and a process crash between renames still requires
 operator recovery. This safeguard handles reported filesystem errors; it does
 not provide crash recovery or gateway reloads.
