@@ -199,9 +199,13 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	fromDomain := rmail.DomainFromAddress(req.From)
 	fromLocal := false
 	if fromDomain != "" {
-		var d models.Domain
-		if h.db.Where("name = ?", fromDomain).First(&d).Error == nil {
-			fromLocal = true
+		// Hosted domains are stored as lowercase A-labels. Use the same IDNA
+		// form for the spoofing gate and DKIM alignment so a Unicode spelling
+		// cannot make a hosted From domain look external.
+		if ascii, err := rmail.DomainASCII(fromDomain); err == nil {
+			fromDomain = strings.TrimSuffix(ascii, ".")
+			var d models.Domain
+			fromLocal = h.db.Where("name = ?", fromDomain).First(&d).Error == nil
 		}
 	}
 	// DKIM verification does DNS lookups, so only pay for it when the decision
