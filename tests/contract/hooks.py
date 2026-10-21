@@ -24,7 +24,6 @@ import vertrag_hooks as hooks
 ADMIN = "admin@restmail.test"
 ADMIN_PASSWORD = "admin123!@"
 # A seeded account that nobody owns, to link (cmd/seed's fixture password).
-LINKABLE = "eve@restmail.test"
 LINKABLE_PASSWORD = "password123"
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
@@ -97,7 +96,12 @@ def confirm_with_the_admin_password(transaction):
 
 @hooks.before("linkAccount")
 def link_a_seeded_account(transaction):
-    hooks.set_json(transaction, {"address": LINKABLE, "password": LINKABLE_PASSWORD})
+    body = hooks.get_json(transaction)
+    # Supply only the fixture secret the named examples ask for. Preserve
+    # missing/empty fields and coverage mutations so their refusals are reachable.
+    if isinstance(body, dict) and body.get("password") == "supplied-by-contract-hook":
+        body["password"] = LINKABLE_PASSWORD
+        hooks.set_json(transaction, body)
 
 
 @hooks.after("createDomain")

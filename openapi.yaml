@@ -1091,6 +1091,25 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/LinkAccountRequest"
+            examples:
+              linked:
+                value:
+                  address: eve@restmail.test
+                  password: supplied-by-contract-hook
+              address_missing:
+                value:
+                  password: supplied-by-contract-hook
+              password_missing:
+                value:
+                  address: eve@restmail.test
+              address_blank:
+                value:
+                  address: "   "
+                  password: supplied-by-contract-hook
+              password_empty:
+                value:
+                  address: eve@restmail.test
+                  password: ""
       responses:
         "201":
           description: Linked
@@ -1102,6 +1121,14 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+              examples:
+                linked:
+                  value:
+                    data:
+                      id: 2
+                      address: eve@restmail.test
+                      display_name: Eve
+                      is_primary: false
           links:
             unlinkAccount:
               operationId: unlinkAccount
@@ -1122,7 +1149,48 @@ paths:
         "409":
           description: Already linked, or the session's own account
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Address or password missing or empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                address_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                password_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                address_blank:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                password_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
         "429":
           description: Too many attempts from this client
 
