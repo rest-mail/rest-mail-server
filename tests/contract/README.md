@@ -163,6 +163,13 @@ refusal (`contract_sendmessage_examples_test.go`). The other
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`updateDomain` sends `sending_policy_invalid` (`newsletter`) with its paired
+422 and `updated` (`transactional`) with its 200. The existing `createDomain`
+link supplies the stored domain ID. The handler tests send the spec's requests,
+check the exact refusal and unchanged stored domain, and verify that the success
+persists its policy (`contract_domain_update_examples_test.go`). Its 404 and 409
+remain excluded until they have requests of their own.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
