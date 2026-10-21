@@ -229,6 +229,10 @@ func main() {
 	routers := api.NewRouters(database, jwtService, cfg, dnsProvider, acmeClientPtr)
 	router := routers.Public
 
+	// Send messages the user asked for later. The loop only reads rows whose
+	// send_at has passed; nothing is sent here, it starts in the background.
+	scheduledSender := routers.Messages.StartScheduledSender()
+
 	// OSI-7: the whole-request read/write budget must accommodate a max-size
 	// inbound delivery body (POST /api/v1/messages/deliver, POST /restmail/messages)
 	// transferred at the internal floor throughput — a fixed 15 s stranded a large
@@ -412,6 +416,8 @@ func main() {
 	greylistPurger.Shutdown()
 	vacationPurger.Shutdown()
 	digestWorker.Shutdown()
+	// Stop sending scheduled mail before the trace recorder it reports to.
+	scheduledSender.Shutdown()
 	// Flush buffered per-message traces and stop the recorder goroutine.
 	routers.Close()
 
