@@ -116,6 +116,13 @@ created pipeline's id, and it gets the documented 200
 (`contract_testpipeline_examples_test.go`). Other pipeline operations keep
 their exclusions.
 
+`testCustomFilter` sends its `invalid_body` request (`[]`) with its paired
+400, the `bad_request` the handler sends for a body that does not decode,
+before the filter is looked up. Its `valid` request (`{}`, the built-in sample
+email) runs the created filter and gets the 200
+(`contract_testcustomfilter_examples_test.go`). The other
+`/custom-filters/{id}` operations keep their exclusions.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as

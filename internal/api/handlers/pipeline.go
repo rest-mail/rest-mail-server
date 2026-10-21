@@ -705,6 +705,16 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Accept optional sample email from request body. No body is fine; a body
+	// that does not decode is refused before the filter is looked up (#386).
+	var req struct {
+		Email *json.RawMessage `json:"email,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+		return
+	}
+
 	var cf models.CustomFilter
 	if err := h.db.First(&cf, id).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
@@ -719,12 +729,6 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Filter config does not contain a script")
 		return
 	}
-
-	// Accept optional sample email from request body
-	var req struct {
-		Email *json.RawMessage `json:"email,omitempty"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	// Build sidecar request
 	sidecarBody := map[string]any{"script": config.Script}
