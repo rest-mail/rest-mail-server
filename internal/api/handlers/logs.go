@@ -22,8 +22,16 @@ func NewLogHandler(db *gorm.DB) *LogHandler {
 // DeliveryLog returns a filtered view of outbound delivery history.
 // GET /api/v1/admin/logs/delivery?status=...&sender=...&recipient=...&since=...&until=...&limit=50&offset=0
 func (h *LogHandler) DeliveryLog(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 0, "limit", "offset") {
+	if !validateIntegerQuery(w, r, 0, "limit", "offset") || !validateDateTimeQuery(w, r, "since", "until") {
 		return
+	}
+	if params := r.URL.Query(); params.Has("status") {
+		switch params.Get("status") {
+		case "pending", "delivering", "deferred", "delivered", "bounced", "expired":
+		default:
+			respond.ValidationError(w, map[string]string{"status": "must be one of pending, delivering, deferred, delivered, bounced, expired"})
+			return
+		}
 	}
 	limit := 50
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
@@ -49,14 +57,12 @@ func (h *LogHandler) DeliveryLog(w http.ResponseWriter, r *http.Request) {
 		query = query.Where("recipient ILIKE ? ESCAPE '\\'", "%"+escapeLike(recipient)+"%")
 	}
 	if since := r.URL.Query().Get("since"); since != "" {
-		if t, err := time.Parse(time.RFC3339, since); err == nil {
-			query = query.Where("created_at >= ?", t)
-		}
+		t, _ := time.Parse(time.RFC3339, since)
+		query = query.Where("created_at >= ?", t)
 	}
 	if until := r.URL.Query().Get("until"); until != "" {
-		if t, err := time.Parse(time.RFC3339, until); err == nil {
-			query = query.Where("created_at <= ?", t)
-		}
+		t, _ := time.Parse(time.RFC3339, until)
+		query = query.Where("created_at <= ?", t)
 	}
 
 	var total int64

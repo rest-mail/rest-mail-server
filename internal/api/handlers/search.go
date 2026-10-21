@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
@@ -33,7 +34,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
 		return
 	}
-	if !validateIntegerQuery(w, r, 0, "limit") {
+	if !validateIntegerQuery(w, r, 0, "limit") || !validateBooleanQuery(w, r, "has_attachment") || !validateDateTimeQuery(w, r, "after", "before") {
 		return
 	}
 
@@ -64,10 +65,12 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	// Date filters
 	if after := r.URL.Query().Get("after"); after != "" {
-		query = query.Where("received_at >= ?", after)
+		t, _ := time.Parse(time.RFC3339, after)
+		query = query.Where("received_at >= ?", t)
 	}
 	if before := r.URL.Query().Get("before"); before != "" {
-		query = query.Where("received_at <= ?", before)
+		t, _ := time.Parse(time.RFC3339, before)
+		query = query.Where("received_at <= ?", t)
 	}
 
 	// Has attachment filter
