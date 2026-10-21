@@ -96,6 +96,8 @@ func TestAliasCreate_MalformedSourceRefused(t *testing.T) {
 		"CRLF header inject": "sales@restmail.test\r\nBcc: eve@restmail.test",
 		"LF header inject":   "sales@restmail.test\nBcc: eve@restmail.test",
 		"CR only":            "sales@restmail.test\rBcc: eve@restmail.test",
+		"invalid IDN label":  "sales@bad_domain.test",
+		"leading hyphen":     "sales@-bad.test",
 	} {
 		t.Run(name, func(t *testing.T) {
 			assertAliasSourceAnswer(t,
