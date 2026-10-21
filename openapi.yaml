@@ -1364,6 +1364,45 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RegisterPushDeviceRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386). Each refused
+            # one differs from registered in one field, and is refused before
+            # anything is looked up or stored.
+            examples:
+              registered:
+                value:
+                  platform: apns
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: production
+                  app_id: com.antimatterstudios.restmail
+              # A platform this server does not push to.
+              platform_unsupported:
+                value:
+                  platform: fcm
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: production
+                  app_id: com.antimatterstudios.restmail
+              # Not lowercase hex.
+              token_invalid:
+                value:
+                  platform: apns
+                  token: not-an-apns-token
+                  environment: production
+                  app_id: com.antimatterstudios.restmail
+              # Neither production nor sandbox.
+              environment_invalid:
+                value:
+                  platform: apns
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: staging
+                  app_id: com.antimatterstudios.restmail
+              # Another app's bundle id.
+              app_id_mismatch:
+                value:
+                  platform: apns
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: production
+                  app_id: com.example.other
       responses:
         "200":
           description: The session had already registered this token
@@ -1374,6 +1413,16 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/PushDevice"
+              # Named so it pairs with no request: it needs the token
+              # registered before.
+              examples:
+                already_registered:
+                  value:
+                    data:
+                      id: "12"
+                      platform: apns
+                      environment: production
+                      created_at: "2026-01-01T00:00:00Z"
         "201":
           description: Registered
           content:
@@ -1383,6 +1432,14 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/PushDevice"
+              examples:
+                registered:
+                  value:
+                    data:
+                      id: "12"
+                      platform: apns
+                      environment: production
+                      created_at: "2026-01-01T00:00:00Z"
         "400":
           description: The body is not JSON (`bad_request`)
         "422":
@@ -1396,6 +1453,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                platform_unsupported:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          platform: not configured on this server
+                token_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          token: "not an APNs device token: 64 or more lowercase hex digits"
+                environment_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          environment: 'must be "production" or "sandbox"'
+                app_id_mismatch:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          app_id: this server pushes to com.antimatterstudios.restmail only
         "401":
           description: Not signed in, or the session has ended (its access token outlived it)
           content:
