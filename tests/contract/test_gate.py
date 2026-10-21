@@ -89,6 +89,7 @@ class PairedRefusals(unittest.TestCase):
     # request example.
     PAIRED = {
         "sendMessage",
+        "microsoftAutodiscover",
         "createDomain",
         "createAlias",
         "createPipeline",
@@ -141,19 +142,21 @@ class PairedRefusals(unittest.TestCase):
                 op = item.get(method)
                 if op is None or op["operationId"] not in self.PAIRED:
                     continue
-                requests = op["requestBody"]["content"]["application/json"]
+                request_content = op["requestBody"]["content"]
+                self.assertEqual(len(request_content), 1)
+                requests = next(iter(request_content.values()))
                 for status in ("400", "422"):
                     if status not in op["responses"]:
                         continue
                     with self.subTest(operation=op["operationId"], status=status):
-                        response = op["responses"][status]["content"]["application/json"]
-                        # An unnamed side pairs with every example on the other
-                        # side, including requests meant to succeed.
-                        self.assertNotIn("example", requests)
-                        self.assertNotIn("example", response)
-                        examples = response.get("examples", {})
-                        self.assertTrue(examples)
-                        self.assertLessEqual(set(examples), set(requests.get("examples", {})))
+                        for response in op["responses"][status]["content"].values():
+                            # An unnamed side pairs with every example on the
+                            # other side, including requests meant to succeed.
+                            self.assertNotIn("example", requests)
+                            self.assertNotIn("example", response)
+                            examples = response.get("examples", {})
+                            self.assertTrue(examples)
+                            self.assertLessEqual(set(examples), set(requests.get("examples", {})))
 
 
 if __name__ == "__main__":
