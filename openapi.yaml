@@ -2061,17 +2061,26 @@ paths:
         - BearerAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Save a new draft
+      description: >
+        All draft fields are optional. Without `from`, the draft is saved in
+        the signed-in account's mailbox with an empty sender. When `from` is
+        supplied, the caller needs mail:write on that mailbox.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DraftRequest"
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test]
-              subject: Draft
-              body_text: Not sent yet.
+            examples:
+              with_sender:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test]
+                  subject: Draft
+                  body_text: Not sent yet.
+              empty:
+                summary: Start an empty draft in the signed-in account
+                value: {}
       responses:
         "201":
           description: Draft saved
@@ -8335,7 +8344,6 @@ components:
     # ─────────────────────────────────────────────────────────────
     DraftRequest:
       type: object
-      required: [from]
       properties:
         from:
           type: string
@@ -8689,13 +8697,33 @@ components:
 
     RestmailDeliverRequest:
       type: object
-      required: [to]
+      description: >-
+        Recipients come from a non-empty to list, otherwise a non-empty
+        recipients list, otherwise the To header parsed from raw_message.
+        A raw message must contain a parseable To header when neither list
+        supplies recipients; an empty or missing recipient set is refused.
+      anyOf:
+        - required: [to]
+          properties:
+            to:
+              type: array
+              minItems: 1
+        - required: [recipients]
+          properties:
+            recipients:
+              type: array
+              minItems: 1
+        - required: [raw_message]
+          properties:
+            raw_message:
+              type: string
+              minLength: 1
       properties:
         from:
           type: string
           format: email
         to:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8725,7 +8753,7 @@ components:
           format: email
           description: Alias for 'from'
         recipients:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
