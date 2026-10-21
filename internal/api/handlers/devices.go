@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -170,7 +169,7 @@ func (h *DeviceHandler) Remove(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 		return
 	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "device_id"), 10, 32)
+	id, err := pathID(r, "device_id")
 	if err != nil {
 		respond.Error(w, http.StatusNotFound, "not_found", "Device not found")
 		return

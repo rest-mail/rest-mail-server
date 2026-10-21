@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -221,7 +220,7 @@ func (h *GrantHandler) Create(w http.ResponseWriter, r *http.Request) {
 // DELETE /api/v1/admin/grants/{id}
 func (h *GrantHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_id", "Invalid grant ID")
 		return
@@ -386,7 +385,7 @@ func formatTime(t *time.Time) *string {
 // RequireCapability: a domain admin reaches only its own.
 func DomainScopeOf(db *gorm.DB) middleware.ScopeOf {
 	return func(r *http.Request) (string, bool, error) {
-		id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+		id, err := pathID(r, "id")
 		if err != nil {
 			return "", false, nil
 		}
@@ -405,7 +404,7 @@ func DomainScopeOf(db *gorm.DB) middleware.ScopeOf {
 // RequireCapability: covered by a grant on the mailbox or on its domain.
 func MailboxScopeOf(db *gorm.DB) middleware.ScopeOf {
 	return func(r *http.Request) (string, bool, error) {
-		id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+		id, err := pathID(r, "id")
 		if err != nil {
 			return "", false, nil
 		}
