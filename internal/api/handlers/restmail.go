@@ -575,7 +575,7 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, from string, to []string, sub
 // stripped (so the caller can record a Delivered-To header preserving the tag
 // for downstream Sieve filters), and "" otherwise.
 func (h *RestmailHandler) resolveRecipientMailbox(rcpt string) (mailbox models.Mailbox, deliveredTo string, ok bool) {
-	canonical, err := rmail.CanonicalMailboxAddress(rcpt)
+	_, err := rmail.CanonicalMailboxAddress(rcpt)
 	if err != nil || rmail.ContainsControlChar(rcpt) {
 		return models.Mailbox{}, "", false
 	}
@@ -592,9 +592,8 @@ func (h *RestmailHandler) resolveRecipientMailbox(rcpt string) (mailbox models.M
 
 	// An explicit alias for the full "+detail" address claims it — do not fall
 	// back to the base mailbox (explicit alias wins over subaddressing).
-	var aliasCount int64
-	h.db.Model(&models.Alias{}).Where("source_address IN ?", []string{rcpt, canonical}).Count(&aliasCount)
-	if aliasCount > 0 {
+	aliasClaims, err := repositories.AliasClaimsAddress(h.db, rcpt, false)
+	if err != nil || aliasClaims {
 		return models.Mailbox{}, "", false
 	}
 
