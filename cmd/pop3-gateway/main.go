@@ -66,18 +66,21 @@ func main() {
 	// Kept so the database, once open, can tell the file loader which names this
 	// server is responsible for.
 	var sniLoader *tlsutil.SNICertLoader
+	var primaryLoader *tlsutil.FileCertLoader
 	if cfg.TLSCertPath != "" && cfg.TLSKeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.TLSCertPath, cfg.TLSKeyPath)
+		primaryLoader, err = tlsutil.NewFileCertLoader(cfg.TLSCertPath, cfg.TLSKeyPath)
 		if err != nil {
 			slog.Error("failed to load TLS certificate", "error", err)
 			os.Exit(1)
 		}
 		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS12,
+			MinVersion:     tls.VersionTLS12,
+			GetCertificate: primaryLoader.GetCertificate,
 		}
 		if cfg.TLSCertDir != "" {
-			loader := tlsutil.NewSNICertLoader(cfg.TLSCertDir, &cert)
+			loader := tlsutil.NewSNICertLoader(cfg.TLSCertDir, primaryLoader.Current())
+			loader.SetFallbackCurrent(primaryLoader.Current)
+			loader.SetPrimaryPaths(cfg.TLSCertPath, cfg.TLSKeyPath)
 			sniLoader = loader
 			tlsConfig.GetCertificate = loader.GetCertificate
 			slog.Info("TLS configured with SNI", "cert", cfg.TLSCertPath, "cert_dir", cfg.TLSCertDir)
@@ -101,8 +104,8 @@ func main() {
 
 	// Wire DB-backed certificate loading for SNI
 	if tlsConfig != nil && database != nil {
-		fallbackCert := &tlsConfig.Certificates[0]
-		dbCertLoader := tlsutil.NewDBCertLoader(database, cfg.MasterKey, fallbackCert)
+		dbCertLoader := tlsutil.NewDBCertLoader(database, cfg.MasterKey, primaryLoader.Current())
+		dbCertLoader.SetFallbackCurrent(primaryLoader.Current)
 		if sniLoader != nil {
 			sniLoader.SetHostedNames(tlsutil.HostedInDatabase(database))
 		}

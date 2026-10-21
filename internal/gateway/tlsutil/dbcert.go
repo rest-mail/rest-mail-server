@@ -18,12 +18,25 @@ import (
 // DBCertLoader loads TLS certificates from the database, decrypting private
 // keys with the master key. Certificates are cached in memory with a TTL.
 type DBCertLoader struct {
-	db        *gorm.DB
-	masterKey string
-	fallback  *tls.Certificate
-	mu        sync.RWMutex
-	cache     map[string]*dbCertEntry
-	cacheTTL  time.Duration
+	db              *gorm.DB
+	masterKey       string
+	fallback        *tls.Certificate
+	fallbackCurrent func() *tls.Certificate
+	mu              sync.RWMutex
+	cache           map[string]*dbCertEntry
+	cacheTTL        time.Duration
+}
+
+// SetFallbackCurrent supplies a primary certificate that can change after renewal.
+func (l *DBCertLoader) SetFallbackCurrent(current func() *tls.Certificate) {
+	l.fallbackCurrent = current
+}
+
+func (l *DBCertLoader) currentFallback() *tls.Certificate {
+	if l.fallbackCurrent != nil {
+		return l.fallbackCurrent()
+	}
+	return l.fallback
 }
 
 type dbCertEntry struct {
@@ -64,11 +77,12 @@ func NewDBCertLoader(db *gorm.DB, masterKey string, fallback *tls.Certificate) *
 // verification anyway and teaches people to click through the warning (#290).
 func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	name := strings.ToLower(hello.ServerName)
+	fallback := l.currentFallback()
 	if name == "" {
 		// Other mail servers commonly reach port 25 without SNI. They get this
 		// server's own certificate, the one for its MX host name.
-		if l.fallback != nil {
-			return l.fallback, nil
+		if fallback != nil {
+			return fallback, nil
 		}
 		return nil, errors.New("no SNI and no fallback certificate")
 	}
@@ -124,8 +138,9 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 // whose SANs list its host names is the usual arrangement, and for those names that
 // certificate is the right answer rather than a substitute for one (issue #290).
 func (l *DBCertLoader) answerOrRefuse(name string, cause error) (*tls.Certificate, error) {
-	if certCovers(l.fallback, name) {
-		return l.fallback, nil
+	fallback := l.currentFallback()
+	if certCovers(fallback, name) {
+		return fallback, nil
 	}
 	return nil, l.refuse(name, cause)
 }
