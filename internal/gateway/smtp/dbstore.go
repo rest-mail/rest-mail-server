@@ -30,16 +30,21 @@ func NewStore(db *gorm.DB, masterKey string) Store {
 
 // SenderAuthorized reads the account's grants, as the API's send path does:
 // the account may send as from when from is an account it holds mail:send on.
+// from is resolved to its hosted identity first, so a Unicode domain or
+// NFC-equivalent spelling is checked against the grant on the stored address.
 func (s *dbStore) SenderAuthorized(accountID uint, from string) (bool, error) {
-	var count int64
-	if err := s.db.Model(&models.Mailbox{}).Where("address = ?", from).Count(&count).Error; err != nil || count == 0 {
+	var mb models.Mailbox
+	if err := repositories.FindMailboxByAddress(s.db, from, &mb); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
 		return false, err
 	}
 	held, err := grants.Load(s.db, accountID, time.Now())
 	if err != nil {
 		return false, err
 	}
-	return held.Allows(models.CapMailSend, grants.Mailbox(from)), nil
+	return held.Allows(models.CapMailSend, grants.Mailbox(mb.Address)), nil
 }
 
 // PersistSubmittedMessage records an authenticated submission as a message row
@@ -49,7 +54,7 @@ func (s *dbStore) SenderAuthorized(accountID uint, from string) (bool, error) {
 // so it returns (nil, nil) rather than an error.
 func (s *dbStore) PersistSubmittedMessage(msg SubmittedMessage) (*uint, error) {
 	var mb models.Mailbox
-	if err := s.db.Where("address = ? AND active = ?", msg.Sender, true).First(&mb).Error; err != nil {
+	if err := repositories.FindActiveMailboxByAddress(s.db, msg.Sender, &mb); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}

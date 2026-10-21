@@ -7,10 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
@@ -182,7 +180,7 @@ func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DomainHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -204,7 +202,7 @@ type updateDomainRequest struct {
 }
 
 func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -270,7 +268,7 @@ func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -293,7 +291,7 @@ func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
 // DNSCheck verifies DNS records for a domain (MX, SPF, DKIM, DMARC, MTA-STS).
 // GET /api/v1/admin/domains/:id/dns
 func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return

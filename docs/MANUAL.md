@@ -622,7 +622,8 @@ Implemented in slices; issue #153 remains open.
 - **SMTPUTF8:** inbound and submission advertise the capability and accept negotiated UTF-8 envelopes and top-level headers. Outbound delivery checks peer capabilities and refuses unsupported EAI delivery. Internationalized DSNs and MIME/header downgrading remain unfinished.
 - **Hosted account identities:** `POST /api/v1/accounts` accepts UTF-8 local parts and Unicode domains, stores lowercase NFC local parts with Punycode domains, and checks permissions against that canonical domain. Linking, REST login, and protocol password/app-password sign-in accept equivalent Unicode/Punycode domains and NFC local parts. Existing exact account spellings retain precedence; a unique NFC-equivalent legacy account can be found without rewriting its address or grants. Ambiguous legacy equivalents are refused, and provisioning rejects new NFC-equivalent duplicates. This identity policy does not rewrite remote SMTP local parts or message headers.
 - **Hosted recipients:** gateway and RESTMAIL recipient checks, address-based inbound delivery, and the recipient-check pipeline resolve the same NFC/IDNA mailbox identities. Exact legacy spellings retain precedence, inactive exact accounts do not redirect to active equivalents, and ambiguous legacy equivalents are refused. Quotas apply to the resolved mailbox; original message addresses and plus-address tags are preserved. RESTMAIL selects the hosted inbound pipeline for equivalent Unicode/Punycode domains. Legacy normalized fallback is scoped to the hosted domain.
-- **Still planned:** SMTP sender authorization/attribution and other outbound local-recipient paths, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
+- **Hosted senders:** SMTP submission checks an alternate From/MAIL FROM against the `mail:send` grant on the resolved hosted identity, records the submission in that mailbox's Sent folder, and bounces failed deliveries back to it. The submitted spelling stays on the message and envelope. Matching the signed-in address itself is still literal, so an app-password session must send as the spelling it signed in with.
+- **Still planned:** equivalent-spelling matching of the signed-in address, the REST API's outbound local-recipient paths, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
 - Relevant RFCs: 6530 (overview), 6531 (SMTPUTF8), 6532 (headers), 6533 (DSN), 6855 (IMAP), 6856 (POP3), 6857 (downgrade), 5891 (IDNA 2008).
 - Non-ASCII local parts cannot be converted to Punycode; unsupported outbound EAI delivery fails through the queue's existing failure handling.
 - Database already UTF-8; consider ICU collation for sorting, `pg_trgm`/ICU-aware `LOWER()` indexes.
@@ -699,6 +700,15 @@ between staging, production or custom CAs: reuse checks do not establish the
 existing certificate's CA provenance or trust. This option does not install a
 scheduler or reload serving gateways; periodic invocation and deploying the
 renewed files to running gateways remain the operator's responsibility.
+
+Serving files are staged together before publication. If replacing the
+certificate fails after replacing the key, the command restores the previous
+key (or removes the new key on first issuance). If restoration also fails, the
+error identifies the retained private backup for recovery. Run only one issuer
+per certs volume. The two file renames are not an atomic pair swap: readers can
+briefly observe a mismatch, and a process crash between renames still requires
+operator recovery. This safeguard handles reported filesystem errors; it does
+not provide crash recovery or gateway reloads.
 
 ### 6.3 Gateways
 | Variable | Default | Purpose |
@@ -909,6 +919,8 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 `kubectl -n <namespace> get secret restmail-api -o jsonpath='{.data.BOOTSTRAP_ADMIN_PASSWORD}' | base64 -d`.
 
 #### A forgotten password: `POST /api/v1/auth/recover`
+
+Webmail and the admin sign-in page offer **Forgot password?**. Enter the account address, a current authenticator code, an unused recovery code saved during two-factor setup, and the new password twice. Success signs you in with the new password; your authenticator stays enabled. If either factor is unavailable, contact the server administrator for an assisted reset. **Use an account recovery token** remains the separate path for a token supplied by the operator.
 
 An account with two-factor authentication resets its own password with a current authenticator code and one of its recovery codes, both (`email`, `totp_code`, `recovery_code`, `new_password`, optional `client: "native"`). The authenticator stays; app passwords and sessions end; the answer is a new session. Refusals are budgeted per address as well as per IP: 5, then one per 15 minutes, then 429. Without two-factor authentication there is no self-service path: an admin resets the password, or, for an admin who has lost every way in, the token below.
 

@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -76,7 +75,7 @@ func (h *QueueHandler) ListQueue(w http.ResponseWriter, r *http.Request) {
 // GetQueueEntry returns details for a single queue entry.
 // GET /api/v1/admin/queue/{id}
 func (h *QueueHandler) GetQueueEntry(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid queue entry ID")
 		return
@@ -94,7 +93,7 @@ func (h *QueueHandler) GetQueueEntry(w http.ResponseWriter, r *http.Request) {
 // RetryQueueEntry forces an immediate retry of a deferred queue entry.
 // POST /api/v1/admin/queue/{id}/retry
 func (h *QueueHandler) RetryQueueEntry(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid queue entry ID")
 		return
@@ -122,7 +121,7 @@ func (h *QueueHandler) RetryQueueEntry(w http.ResponseWriter, r *http.Request) {
 // BounceQueueEntry forces a bounce for a queue entry.
 // POST /api/v1/admin/queue/{id}/bounce
 func (h *QueueHandler) BounceQueueEntry(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid queue entry ID")
 		return
@@ -145,7 +144,7 @@ func (h *QueueHandler) BounceQueueEntry(w http.ResponseWriter, r *http.Request) 
 // DeleteQueueEntry silently removes a queue entry.
 // DELETE /api/v1/admin/queue/{id}
 func (h *QueueHandler) DeleteQueueEntry(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid queue entry ID")
 		return

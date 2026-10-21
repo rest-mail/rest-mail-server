@@ -3,10 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -105,7 +103,7 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AliasHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid alias ID")
 		return
@@ -126,7 +124,7 @@ type updateAliasRequest struct {
 }
 
 func (h *AliasHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid alias ID")
 		return
@@ -168,7 +166,7 @@ func (h *AliasHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AliasHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid alias ID")
 		return
