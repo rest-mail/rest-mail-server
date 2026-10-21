@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
-import { useUIStore, type Theme } from '@/stores/uiStore';
+import { useUIStore } from '@/stores/uiStore';
 import { useMailStore } from '@/stores/mailStore';
+import { THEME_PACKS, type ThemePack } from '@/theme/packs';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,44 +26,10 @@ function initials(email: string | undefined): string {
   return local.slice(0, 2).toUpperCase();
 }
 
-type PaletteGroup = { label: string; themes: { id: Theme; name: string; bg: string; accent: string }[] };
-
-const PALETTE_GROUPS: PaletteGroup[] = [
-  {
-    label: 'Tech',
-    themes: [
-      { id: 'industrial', name: 'Industrial', bg: '#1a1a1a', accent: '#FF6B35' },
-    ],
-  },
-  {
-    label: 'Light',
-    themes: [
-      { id: 'dawn',   name: 'Dawn',   bg: '#ffffff', accent: '#2563eb' },
-      { id: 'linen',  name: 'Linen',  bg: '#fdf6e3', accent: '#c27835' },
-    ],
-  },
-  {
-    label: 'Mid',
-    themes: [
-      { id: 'slate',  name: 'Slate',  bg: '#1e293b', accent: '#818cf8' },
-      { id: 'dusk',   name: 'Dusk',   bg: '#2a1f1a', accent: '#e07b4f' },
-    ],
-  },
-  {
-    label: 'Dark',
-    themes: [
-      { id: 'midnight', name: 'Midnight', bg: '#111827', accent: '#3b82f6' },
-      { id: 'forest',   name: 'Forest',   bg: '#0d1f0d', accent: '#4ade80' },
-    ],
-  },
-  {
-    label: 'Vivid',
-    themes: [
-      { id: 'neon',    name: 'Neon',    bg: '#0a0a1a', accent: '#06d6a0' },
-      { id: 'aurora',  name: 'Aurora',  bg: '#0d0d1a', accent: '#38bdf8' },
-    ],
-  },
-];
+const GROUP_ORDER: ThemePack['group'][] = ['Restmail', 'Light', 'Mid', 'Dark', 'Vivid', 'Tech'];
+const PALETTE_GROUPS = GROUP_ORDER
+  .map(label => ({ label, themes: THEME_PACKS.filter(p => p.group === label) }))
+  .filter(g => g.themes.length > 0);
 
 export function TopBar() {
   const { user, logout } = useAuthStore();
@@ -179,6 +146,7 @@ export function TopBar() {
                     <button
                       key={p.id}
                       onClick={() => setTheme(p.id)}
+                      title={p.tagline}
                       className={cn(
                         "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md font-mono text-sm transition-colors",
                         "hover:bg-accent hover:text-accent-foreground",
@@ -186,8 +154,8 @@ export function TopBar() {
                       )}
                     >
                       <span className="relative w-5 h-5 rounded-full border border-border overflow-hidden shrink-0">
-                        <span className="absolute inset-0 left-0 w-1/2" style={{ background: p.bg }} />
-                        <span className="absolute inset-0 left-1/2" style={{ background: p.accent }} />
+                        <span className="absolute inset-0 left-0 w-1/2" style={{ background: p.swatch.bg }} />
+                        <span className="absolute inset-0 left-1/2" style={{ background: p.swatch.accent }} />
                       </span>
                       {p.name}
                       {theme === p.id && <Check className="w-3.5 h-3.5 ml-auto" />}

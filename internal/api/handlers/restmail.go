@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
 	rmime "github.com/restmail/restmail/internal/mime"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -69,7 +71,7 @@ func (h *RestmailHandler) CheckMailbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var mailbox models.Mailbox
-	if err := h.db.Where("address = ? AND active = ?", address, true).First(&mailbox).Error; err != nil {
+	if err := repositories.FindActiveMailboxByAddress(h.db, address, &mailbox); err != nil {
 		// Negative lookup: tarpit the source to throttle recipient enumeration
 		// (OSI-1). The delay escalates per source and is capped; a positive
 		// lookup (below) skips it and returns promptly. Keyed on the request
@@ -236,8 +238,10 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 	// Look up inbound pipeline for the recipient domain
 	var domainName string
 	if len(req.To) > 0 {
-		if idx := strings.LastIndex(req.To[0], "@"); idx >= 0 {
-			domainName = req.To[0][idx+1:]
+		// Use the same identity policy as delivery, including whitespace, so an
+		// equivalent spelling cannot bypass the hosted inbound pipeline.
+		if canonical, err := rmail.CanonicalMailboxAddress(req.To[0]); err == nil {
+			_, domainName, _ = strings.Cut(canonical, "@")
 		}
 	}
 
@@ -559,15 +563,22 @@ func buildInboundEmail(parsed *pipeline.EmailJSON, from string, to []string, sub
 
 // resolveRecipientMailbox resolves an envelope recipient to a deliverable local
 // mailbox, applying RFC 5233 subaddressing ("plus addressing"). An exact
-// address match always wins. When none exists and the local part carries a
-// "+detail" tag, it retries against the base address — but only when no explicit
+// stored spelling always wins; otherwise a unique NFC/IDNA identity is used.
+// When none exists and the local part carries a "+detail" tag, it retries
+// against the base address — but only when no explicit
 // alias claims the full "+detail" address (an explicit alias wins over the base
 // fallback). deliveredTo is the original recipient when a "+detail" tag was
 // stripped (so the caller can record a Delivered-To header preserving the tag
 // for downstream Sieve filters), and "" otherwise.
 func (h *RestmailHandler) resolveRecipientMailbox(rcpt string) (mailbox models.Mailbox, deliveredTo string, ok bool) {
-	if err := h.db.Where("address = ? AND active = ?", rcpt, true).First(&mailbox).Error; err == nil {
+	canonical, err := rmail.CanonicalMailboxAddress(rcpt)
+	if err != nil || rmail.ContainsControlChar(rcpt) {
+		return models.Mailbox{}, "", false
+	}
+	if err := repositories.FindActiveMailboxByAddress(h.db, rcpt, &mailbox); err == nil {
 		return mailbox, "", true
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, repositories.ErrMailboxUnavailable) {
+		return models.Mailbox{}, "", false
 	}
 
 	base, _, tagged := rmail.StripSubaddress(rcpt)
@@ -578,12 +589,12 @@ func (h *RestmailHandler) resolveRecipientMailbox(rcpt string) (mailbox models.M
 	// An explicit alias for the full "+detail" address claims it — do not fall
 	// back to the base mailbox (explicit alias wins over subaddressing).
 	var aliasCount int64
-	h.db.Model(&models.Alias{}).Where("source_address = ?", rcpt).Count(&aliasCount)
+	h.db.Model(&models.Alias{}).Where("source_address IN ?", []string{rcpt, canonical}).Count(&aliasCount)
 	if aliasCount > 0 {
 		return models.Mailbox{}, "", false
 	}
 
-	if err := h.db.Where("address = ? AND active = ?", base, true).First(&mailbox).Error; err == nil {
+	if err := repositories.FindActiveMailboxByAddress(h.db, base, &mailbox); err == nil {
 		return mailbox, rcpt, true
 	}
 	return models.Mailbox{}, "", false

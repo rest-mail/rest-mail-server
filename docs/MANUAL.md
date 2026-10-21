@@ -305,8 +305,10 @@ At [internal/gateway/queue/worker.go](../internal/gateway/queue/worker.go). Poll
 - 4xx temporary → increment attempts, retry with exponential backoff until `ExpiresAt`
 
 #### RESTMAIL protocol upgrade
-- Outbound worker probes each recipient domain: if EHLO response contains `RESTMAIL https://...`, drops SMTP and delivers via `POST /restmail/messages` over HTTPS.
-- Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes.
+- Outbound worker probes the recipient domain's primary MX: the EHLO `RESTMAIL` keyword is only a hint, and any address it carries is ignored (#291).
+- It then asks `GET https://<mx-host>/.well-known/restmail?domain=<domain>` where to deliver, always verifying the certificate against the MX host name (even in development), through the SSRF-guarded dialer, with no redirects and a 4 KiB answer cap. The answer `{"endpoint":"https://…/restmail"}` may name any host; it must be https with no credentials, query or fragment. The message goes to `POST <endpoint>/messages`.
+- A 404 or 410 from discovery is a verified "not hosted": the domain is recorded as not REST and delivery uses SMTP. Other discovery failures currently still fall back to SMTP (no-fallback is a later #291 slice).
+- Capability cache table with atomic upserts (`Clauses(clause.OnConflict{...})`) to avoid races between concurrent probes. It records only whether the MX speaks REST; the endpoint is discovered on every delivery.
 
 #### TLS / SNI
 - Per-domain cert/key pairs via `TLS_CERT_DIR`. SNI-based lookup at handshake time.
@@ -619,7 +621,8 @@ Implemented in slices; issue #153 remains open.
 - **IDN domains:** domain provisioning and outbound SMTP support IDNA conversion. Hosted domains retain the existing lowercase Punycode storage format; Unicode domain display/storage and the remaining DNS/protocol boundaries are unfinished.
 - **SMTPUTF8:** inbound and submission advertise the capability and accept negotiated UTF-8 envelopes and top-level headers. Outbound delivery checks peer capabilities and refuses unsupported EAI delivery. Internationalized DSNs and MIME/header downgrading remain unfinished.
 - **Hosted account identities:** `POST /api/v1/accounts` accepts UTF-8 local parts and Unicode domains, stores lowercase NFC local parts with Punycode domains, and checks permissions against that canonical domain. Linking, REST login, and protocol password/app-password sign-in accept equivalent Unicode/Punycode domains and NFC local parts. Existing exact account spellings retain precedence; a unique NFC-equivalent legacy account can be found without rewriting its address or grants. Ambiguous legacy equivalents are refused, and provisioning rejects new NFC-equivalent duplicates. This identity policy does not rewrite remote SMTP local parts or message headers.
-- **Still planned:** IMAP `UTF8=ACCEPT`, POP3 `UTF8`, delivery/recipient lookup normalization, webmail input/display, and full-stack interoperability tests.
+- **Hosted recipients:** gateway and RESTMAIL recipient checks, address-based inbound delivery, and the recipient-check pipeline resolve the same NFC/IDNA mailbox identities. Exact legacy spellings retain precedence, inactive exact accounts do not redirect to active equivalents, and ambiguous legacy equivalents are refused. Quotas apply to the resolved mailbox; original message addresses and plus-address tags are preserved. RESTMAIL selects the hosted inbound pipeline for equivalent Unicode/Punycode domains. Legacy normalized fallback is scoped to the hosted domain.
+- **Still planned:** SMTP sender authorization/attribution and other outbound local-recipient paths, alias identity normalization/forwarding, IMAP `UTF8=ACCEPT`, POP3 `UTF8`, webmail input/display, and full-stack interoperability tests.
 - Relevant RFCs: 6530 (overview), 6531 (SMTPUTF8), 6532 (headers), 6533 (DSN), 6855 (IMAP), 6856 (POP3), 6857 (downgrade), 5891 (IDNA 2008).
 - Non-ASCII local parts cannot be converted to Punycode; unsupported outbound EAI delivery fails through the queue's existing failure handling.
 - Database already UTF-8; consider ICU collation for sorting, `pg_trgm`/ICU-aware `LOWER()` indexes.
