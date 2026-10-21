@@ -317,6 +317,8 @@ paths:
       responses:
         "204":
           description: Logged out
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/auth/refresh:
     post:
@@ -2360,6 +2362,8 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/VacationConfig"
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: disableVacation
       tags: [Vacation]
@@ -2452,6 +2456,8 @@ paths:
               operationId: getSieveScript
               parameters:
                 id: '$request.path.id'
+        "422":
+          $ref: "#/components/responses/ValidationError"
     delete:
       operationId: deleteSieveScript
       tags: [Sieve]
@@ -2521,6 +2527,8 @@ paths:
                         type: boolean
                       message:
                         type: string
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   # ═══════════════════════════════════════════════════════════════
   # Quarantine
@@ -7095,6 +7103,8 @@ paths:
                       additionalProperties: true
         "403":
           description: Disabled in production
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/admin/test/reset:
     post:

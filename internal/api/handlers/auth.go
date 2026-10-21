@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -495,7 +497,21 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	// exchanged (OSI-10: logout was previously client-side only). The token is
 	// the cookie, or for a native client the body. Best-effort: a missing or
 	// invalid token still clears client state below. Idempotent, so a double
-	// logout is harmless.
+	// logout is harmless. A body whose refresh_token is not a string is a
+	// client bug, refused with 422 rather than silently treated as no token.
+	if r.Body != nil {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+		if err != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+			return
+		}
+		var typeErr *json.UnmarshalTypeError
+		if err := json.Unmarshal(body, &refreshRequest{}); errors.As(err, &typeErr) {
+			respond.ValidationError(w, map[string]string{"refresh_token": "must be a string"})
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
 	if token, _ := presentedRefreshToken(r); token != "" && h.refreshStore != nil {
 		if claims, err := h.jwtService.ValidateRefreshToken(token); err == nil && claims.ID != "" {
 			_ = h.refreshStore.Revoke(claims.ID)
