@@ -89,8 +89,14 @@ database access (`contract_account_examples_test.go`,
 `contract_restmail_examples_test.go`, `contract_allowlist_examples_test.go`,
 `contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
 No before hook rewrites these requests. Sibling operations remain excluded;
-in particular, `testFilter` and `receiveTlsReport` still need request examples
-paired with their documented 400s before their exclusions can be lifted.
+`receiveTlsReport` still needs a request example paired with its documented
+400 before its exclusion can be lifted.
+
+`testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
+`filter_name_missing` with its paired 422. Both are refused before any filter
+is made; `valid` still runs `header_validate` and gets the documented 200
+(`contract_testfilter_examples_test.go`). No hook rewrites these requests;
+other pipeline operations keep their exclusions.
 
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
