@@ -101,8 +101,17 @@ still check that refusal (`contract_queue_bulk_pairs_test.go`).
 422 and its `body_array` request (`[]`) with its paired 400, the `bad_request`
 the handler sends for a body that does not decode as a report. Both are refused
 before any domain is looked up or report stored
-(`contract_tlsrpt_examples_test.go`). The other `/.well-known` and
-`/autodiscover` paths keep their exclusions.
+(`contract_tlsrpt_examples_test.go`). The other `/.well-known` paths keep
+their exclusions.
+
+`microsoftAutodiscover` pairs its `malformed` XML request with its plain-text
+400 (`invalid request\n`), and `valid` with its XML 200. Vertrag v0.29.0
+pairs XML examples by name but does not serialize their request bodies, so
+the hook supplies the matching XML for each status. The hook test checks both
+bodies against the spec; `contract_autodiscover_body400_test.go` sends the
+spec's malformed request to the real handler with no database. The 200's
+named example declares no fixed response body: the XML contains the requested
+mailbox's settings. This route's 400 is now sent and judged.
 
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
@@ -122,6 +131,37 @@ before the filter is looked up. Its `valid` request (`{}`, the built-in sample
 email) runs the created filter and gets the 200
 (`contract_testcustomfilter_examples_test.go`). The other
 `/custom-filters/{id}` operations keep their exclusions.
+
+`createCertificate` sends `invalid_body` (`[]`) and `fields_missing` (`{}`)
+with their paired 400s, both refused before the domain lookup. Its `valid`
+request pairs only with 201; the hook supplies a fresh certificate and key on
+the created domain, leaving malformed and incomplete requests unchanged
+(`contract_certificate_examples_test.go`, `test_contract_certificate_hook.py`).
+
+`registerPushDevice` names its `registered` request with its 201, and
+`platform_unsupported`, `token_invalid`, `environment_invalid` and
+`app_id_mismatch` (each `registered` with that one field wrong) with their
+paired 422s. Its 200 is named `already_registered` so it pairs with no
+request. The real handler refuses each for a password session before anything
+is looked up or stored (`contract_device_examples_test.go`). The devices
+routes stay excluded in the E2E run: it has no APNs credentials, so they
+answer 404.
+The previously documented 422 was removed: this handler never returns it;
+invalid PEM and missing fields return 400.
+
+`sendMessage` sends `from_missing` (`valid` without its from) with its paired
+400, refused before the sender is looked up, and `unsubscribe_not_allowed`
+(`valid` with a `list_unsubscribe`) with its paired 422. That 422 needs a
+transactional sender domain, so the `sendMessage` hook makes restmail.test
+transactional through the admin API for that request and the probes built
+from it, and takes the policy off again for every other send and after the
+refusal (`contract_sendmessage_examples_test.go`). The other
+`/api/v1/messages` operations keep their exclusions.
+
+`protocolSignIn` uses the E2E fixture's app password with its named requests:
+`signed_in` (`{ "protocol": "imap" }`) gets 200, `invalid_body` (`[]`)
+gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
+the Basic credential, so each request body reaches the handler unchanged.
 
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,

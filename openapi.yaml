@@ -779,6 +779,13 @@ paths:
                 protocol:
                   type: string
                   enum: [imap, pop3, smtp]
+            examples:
+              signed_in:
+                value: {protocol: imap}
+              invalid_body:
+                value: []
+              protocol_missing:
+                value: {}
       responses:
         "200":
           description: Signed in
@@ -813,8 +820,23 @@ paths:
                           An app password reaches only its own account's
                           mailbox; the account's password reaches what its
                           grants reach (sending as an account it owns, say).
+              examples:
+                signed_in:
+                  value:
+                    data:
+                      user: {id: 1, email: contract-ordinary@restmail.test, display_name: Contract Ordinary}
+                      credential_id: 1
+                      credential_kind: app_password
         "400":
           description: Not HTTP Basic (`basic_required`), or an invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_body:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
         "401":
           description: >
             `unauthorized` for a wrong address or password;
@@ -822,6 +844,19 @@ paths:
             two-factor authentication; `setup_required` for one still in setup.
         "422":
           description: protocol is not imap, pop3 or smtp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                protocol_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          protocol: 'must be "imap", "pop3" or "smtp"'
         "429":
           description: Too many refused credentials from this client, or too many sign-ins
 
@@ -1329,6 +1364,45 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/RegisterPushDeviceRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386). Each refused
+            # one differs from registered in one field, and is refused before
+            # anything is looked up or stored.
+            examples:
+              registered:
+                value:
+                  platform: apns
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: production
+                  app_id: com.antimatterstudios.restmail
+              # A platform this server does not push to.
+              platform_unsupported:
+                value:
+                  platform: fcm
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: production
+                  app_id: com.antimatterstudios.restmail
+              # Not lowercase hex.
+              token_invalid:
+                value:
+                  platform: apns
+                  token: not-an-apns-token
+                  environment: production
+                  app_id: com.antimatterstudios.restmail
+              # Neither production nor sandbox.
+              environment_invalid:
+                value:
+                  platform: apns
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: staging
+                  app_id: com.antimatterstudios.restmail
+              # Another app's bundle id.
+              app_id_mismatch:
+                value:
+                  platform: apns
+                  token: 5c1d7e0f3a9b2c4d6e8f0a1b3c5d7e9f1a2b4c6d8e0f2a3b5c7d9e1f3a4b6c8d
+                  environment: production
+                  app_id: com.example.other
       responses:
         "200":
           description: The session had already registered this token
@@ -1339,6 +1413,16 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/PushDevice"
+              # Named so it pairs with no request: it needs the token
+              # registered before.
+              examples:
+                already_registered:
+                  value:
+                    data:
+                      id: "12"
+                      platform: apns
+                      environment: production
+                      created_at: "2026-01-01T00:00:00Z"
         "201":
           description: Registered
           content:
@@ -1348,6 +1432,14 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/PushDevice"
+              examples:
+                registered:
+                  value:
+                    data:
+                      id: "12"
+                      platform: apns
+                      environment: production
+                      created_at: "2026-01-01T00:00:00Z"
         "400":
           description: The body is not JSON (`bad_request`)
         "422":
@@ -1361,6 +1453,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                platform_unsupported:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          platform: not configured on this server
+                token_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          token: "not an APNs device token: 64 or more lowercase hex digits"
+                environment_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          environment: 'must be "production" or "sandbox"'
+                app_id_mismatch:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          app_id: this server pushes to com.antimatterstudios.restmail only
         "401":
           description: Not signed in, or the session has ended (its access token outlived it)
           content:
@@ -1649,15 +1774,36 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SendMessageRequest"
-            # imap.restmail.test resolves in the testbed but takes no mail on
-            # port 25: the delivery is refused for now and the queue entry is
-            # deferred, so the queue operations' links have one to retry. A
-            # domain that does not resolve bounces at once.
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test, someone@imap.restmail.test]
-              subject: Hello
-              body_text: Sent through the REST API.
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              # imap.restmail.test resolves in the testbed but takes no mail
+              # on port 25: the delivery is refused for now and the queue
+              # entry is deferred, so the queue operations' links have one to
+              # retry. A domain that does not resolve bounces at once.
+              valid:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test, someone@imap.restmail.test]
+                  subject: Hello
+                  body_text: Sent through the REST API.
+              # No from: refused before the sender is looked up.
+              from_missing:
+                value:
+                  to: [admin@restmail.test, someone@imap.restmail.test]
+                  subject: Hello
+                  body_text: Sent through the REST API.
+              # A List-Unsubscribe target from a transactional domain. The
+              # contract run makes restmail.test transactional for this
+              # request alone (tests/contract/hooks.py).
+              unsubscribe_not_allowed:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test, someone@imap.restmail.test]
+                  subject: Hello
+                  body_text: Sent through the REST API.
+                  list_unsubscribe:
+                    mailto: unsubscribe@restmail.test
       responses:
         "201":
           description: Message sent
@@ -1669,6 +1815,25 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Message"
+              examples:
+                # The sender's copy, filed in its Sent folder.
+                valid:
+                  value:
+                    data:
+                      id: 1
+                      mailbox_id: 1
+                      folder: Sent
+                      sender: admin@restmail.test
+                      subject: Hello
+                      body_text: Sent through the REST API.
+                      is_read: true
+                      is_flagged: false
+                      is_starred: false
+                      is_draft: false
+                      is_deleted: false
+                      received_at: "2026-10-21T12:00:00Z"
+                      created_at: "2026-10-21T12:00:00Z"
+                      updated_at: "2026-10-21T12:00:00Z"
           links:
             getMessage:
               operationId: getMessage
@@ -1700,8 +1865,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                from_missing:
+                  value:
+                    error:
+                      code: bad_request
+                      message: from is required
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: The sender domain's sending_policy refuses the message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                unsubscribe_not_allowed:
+                  value:
+                    error:
+                      code: list_unsubscribe_not_allowed
+                      message: "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
 
   /api/v1/messages/{id}/raw:
     parameters:
@@ -2254,6 +2435,7 @@ paths:
         - BearerAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Bulk import contacts
+      description: Validates all entries before importing. Existing contacts are skipped.
       requestBody:
         required: true
         content:
@@ -2279,6 +2461,8 @@ paths:
                     properties:
                       imported:
                         type: integer
+        "422":
+          $ref: "#/components/responses/ValidationError"
 
   /api/v1/accounts/{id}/contacts/suggest:
     parameters:
@@ -3274,6 +3458,12 @@ paths:
                     $ref: "#/components/schemas/Mailbox"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          description: The new password is shorter than 12 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
     delete:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
@@ -5205,6 +5395,16 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateCertificateRequest"
+            examples:
+              valid:
+                summary: The hook supplies a fresh certificate and the created domain
+                value: {domain_id: 1, cert_pem: certificate, key_pem: key, auto_renew: false}
+              invalid_body:
+                summary: An array cannot decode as a certificate request
+                value: []
+              fields_missing:
+                summary: Required certificate fields are missing
+                value: {}
       responses:
         "201":
           description: Certificate created
@@ -5216,6 +5416,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Certificate"
+              examples:
+                valid:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      issuer: CN=contract.example.org
+                      not_before: "2026-01-01T00:00:00Z"
+                      not_after: "2026-01-31T00:00:00Z"
+                      auto_renew: false
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             getCertificate:
               operationId: getCertificate
@@ -5247,8 +5459,6 @@ paths:
                     error:
                       code: bad_request
                       message: domain_id, cert_pem, and key_pem are required
-        "422":
-          $ref: "#/components/responses/ValidationError"
 
   /api/v1/admin/certificates/{id}:
     parameters:
@@ -5814,14 +6024,19 @@ paths:
           application/xml:
             schema:
               type: string
-            example: |
-              <?xml version="1.0" encoding="utf-8"?>
-              <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
-                <Request>
-                  <EMailAddress>eve@restmail.test</EMailAddress>
-                  <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
-                </Request>
-              </Autodiscover>
+            # Named on both sides so the malformed XML pairs only with 400.
+            examples:
+              valid:
+                value: |
+                  <?xml version="1.0" encoding="utf-8"?>
+                  <Autodiscover xmlns="http://schemas.microsoft.com/exchange/autodiscover/outlook/requestschema/2006">
+                    <Request>
+                      <EMailAddress>eve@restmail.test</EMailAddress>
+                      <AcceptableResponseSchema>http://schemas.microsoft.com/exchange/autodiscover/outlook/responseschema/2006a</AcceptableResponseSchema>
+                    </Request>
+                  </Autodiscover>
+              malformed:
+                value: "<Autodiscover><Request>"
       responses:
         "200":
           description: Autodiscover XML response
@@ -5829,6 +6044,9 @@ paths:
             application/xml:
               schema:
                 type: string
+              examples:
+                valid:
+                  summary: XML settings for the requested mailbox
         "400":
           description: >-
             No usable email address, refused before any domain is looked up. A
@@ -5845,7 +6063,9 @@ paths:
                   - "invalid request\n"
                   - "email address required\n"
                   - "invalid email address\n"
-              example: "invalid request\n"
+              examples:
+                malformed:
+                  value: "invalid request\n"
 
   /.well-known/mta-sts.txt:
     get:
@@ -7043,7 +7263,9 @@ paths:
             default: 5s
       responses:
         "200":
-          description: Verification result (found true/false)
+          description: >-
+            Verification result (found true/false). An address with no
+            mailbox has had nothing delivered to it: found is false.
           content:
             application/json:
               schema:
@@ -7058,8 +7280,6 @@ paths:
                         type: boolean
         "403":
           description: Disabled in production
-        "404":
-          $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -8050,6 +8270,7 @@ components:
       properties:
         contacts:
           type: array
+          minItems: 1
           items:
             type: object
             required: [email]
@@ -8066,6 +8287,19 @@ components:
     VacationConfig:
       type: object
       required: [enabled, subject, body]
+      # An enabled auto-reply needs something to send: setVacation refuses an
+      # empty subject or body while enabled is true.
+      if:
+        required: [enabled]
+        properties:
+          enabled:
+            const: true
+      then:
+        properties:
+          subject:
+            minLength: 1
+          body:
+            minLength: 1
       properties:
         enabled:
           type: boolean
@@ -8417,6 +8651,7 @@ components:
         password:
           type: string
           format: password
+          minLength: 12
         display_name:
           type: string
         quota_bytes:
@@ -8742,12 +8977,22 @@ components:
       type: object
       description: >-
         Select entries by IDs (which take precedence) or by a filter. Nonempty
-        filter fields are combined with AND.
+        filter fields are combined with AND. At least one ID or a filter object
+        is required; an empty filter satisfies this requirement. At most 1000 IDs may
+        be supplied, including when a filter is also present.
+      anyOf:
+        - required: [ids]
+          properties:
+            ids:
+              minItems: 1
+        - required: [filter]
       properties:
         ids:
           type: array
+          maxItems: 1000
           items:
             type: integer
+            minimum: 0
         filter:
           type: object
           description: Filter criteria to select entries (alternative to ids)

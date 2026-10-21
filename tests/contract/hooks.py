@@ -175,20 +175,69 @@ def a_fresh_signing_key(transaction):
 
 @hooks.before("createCertificate")
 def a_self_signed_certificate(transaction):
+    body = hooks.get_json(transaction)
+    # Leave malformed and incomplete requests intact: those are the paired
+    # 400 examples, and coverage probes must keep their missing fields too.
+    if not isinstance(body, dict) or not all(body.get(field) for field in ("domain_id", "cert_pem", "key_pem")):
+        return
     name = hooks.stash.get("domain") or "example.org"
     with tempfile.TemporaryDirectory() as d:
         key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
         openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
                 "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
                 "-keyout", key, "-out", cert)
-        on_the_created_domain(transaction, cert_pem=open(cert).read(), key_pem=open(key).read(),
-                              auto_renew=False)
+        with open(cert) as cert_file, open(key) as key_file:
+            on_the_created_domain(transaction, cert_pem=cert_file.read(), key_pem=key_file.read(),
+                                  auto_renew=False)
 
 
 @hooks.before("mtaStsPolicyFile")
 def ask_for_the_created_domains_policy(transaction):
     # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.
     transaction["request"]["headers"]["Host"] = "mta-sts." + (hooks.stash.get("domain") or "")
+
+
+def set_the_admin_domains_policy(transaction, policy):
+    """Make restmail.test's sending_policy policy ("" for none), through the
+    admin API, unless it already is."""
+    if hooks.stash.get("admin_domain_policy", "") == policy:
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    domain_id = hooks.stash.get("admin_domain_id")
+    if domain_id is None:
+        request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            domains = json.load(response).get("data") or []
+        domain_id = next((d["id"] for d in domains if d.get("name") == ADMIN.split("@")[1]), None)
+        if domain_id is None:
+            raise RuntimeError("the fixture admin's domain is not listed")
+        hooks.stash["admin_domain_id"] = domain_id
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/domains/%d" % domain_id,
+        data=json.dumps({"sending_policy": policy}).encode(),
+        headers=headers,
+        method="PATCH",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 200:
+            raise RuntimeError("could not set the admin domain's sending policy")
+    hooks.stash["admin_domain_policy"] = policy
+
+
+@hooks.before("sendMessage")
+def a_sending_policy_for_the_send(transaction):
+    # unsubscribe_not_allowed (422) is refused by a transactional sender
+    # domain, and restmail.test has no policy: it is made transactional for
+    # that request, and the probes built from it, alone. Every other send,
+    # coverage probes included (they run no after hooks), finds no policy.
+    paired = " > 422 > " in transaction.get("name", "")
+    set_the_admin_domains_policy(transaction, "transactional" if paired else "")
+
+
+@hooks.after("/api/v1/messages/send > * > 422 > application/json")
+def no_sending_policy_after_the_refusal(transaction):
+    set_the_admin_domains_policy(transaction, "")
 
 
 @hooks.before("listQueue")
@@ -303,16 +352,20 @@ AUTODISCOVER_REQUEST = """<?xml version="1.0" encoding="utf-8"?>
 
 @hooks.before("microsoftAutodiscover")
 def an_outlook_autodiscover_request(transaction):
-    # The spec's XML example, which vertrag 0.27 does not send (it sends
-    # JSON request examples only).
-    transaction["request"]["body"] = AUTODISCOVER_REQUEST
+    # Vertrag 0.29 pairs the named examples but does not serialize XML.
+    # Keep the malformed request on its 400; the 200 needs the valid XML.
+    transaction["request"]["body"] = (
+        "<Autodiscover><Request>" if " > 400 > " in transaction["name"]
+        else AUTODISCOVER_REQUEST
+    )
 
 
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
+@hooks.before("/api/v1/auth/protocol-sign-in > * > 400 > application/json")
+@hooks.before("/api/v1/auth/protocol-sign-in > * > 422 > application/json")
 def sign_in_a_mail_client(transaction):
     app = principals()["app_password"]
     transaction["request"]["headers"]["Authorization"] = basic(app["address"], app["secret"])
-    hooks.set_json(transaction, {"protocol": "imap"})
 
 
 @hooks.before("createContact")
