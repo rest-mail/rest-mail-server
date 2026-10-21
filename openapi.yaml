@@ -8626,6 +8626,9 @@ components:
 
     BulkQueueRequest:
       type: object
+      description: >-
+        Select entries by IDs (which take precedence) or by a filter. Nonempty
+        filter fields are combined with AND.
       properties:
         ids:
           type: array
@@ -8641,8 +8644,10 @@ components:
               type: string
             sender:
               type: string
+              description: Case-insensitive literal substring of the sender address, as in the queue list
             recipient:
               type: string
+              description: Case-insensitive literal substring of the recipient address, as in the queue list
 
     BulkQueueResponse:
       type: object
