@@ -700,6 +700,15 @@ existing certificate's CA provenance or trust. This option does not install a
 scheduler or reload serving gateways; periodic invocation and deploying the
 renewed files to running gateways remain the operator's responsibility.
 
+Serving files are staged together before publication. If replacing the
+certificate fails after replacing the key, the command restores the previous
+key (or removes the new key on first issuance). If restoration also fails, the
+error identifies the retained private backup for recovery. Run only one issuer
+per certs volume. The two file renames are not an atomic pair swap: readers can
+briefly observe a mismatch, and a process crash between renames still requires
+operator recovery. This safeguard handles reported filesystem errors; it does
+not provide crash recovery or gateway reloads.
+
 ### 6.3 Gateways
 | Variable | Default | Purpose |
 |----------|---------|---------|

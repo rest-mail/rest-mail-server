@@ -85,17 +85,61 @@ func issueACME(ctx context.Context, outputDir, listen string, cfg acme.IssueConf
 	return writeServingPair(outputDir, cfg.Domains[0], certPEM, keyPEM)
 }
 
-// writeServingPair writes <name>.key (0600) and <name>.crt into dir, each via a
-// temporary file renamed into place, so a reader never sees a half-written file
-// and a failure leaves any previous pair untouched.
+// writeServingPair stages both files before publishing <name>.key (0600) and
+// <name>.crt. If publishing the certificate fails, it restores the previous key.
+// Each rename is atomic, but the pair is not a filesystem transaction: callers
+// must serialize issuance, and readers may see a mismatch between the renames.
+// A process crash between renames also requires operator recovery.
 func writeServingPair(dir, name, certPEM, keyPEM string) error {
-	if err := writeFileAtomic(filepath.Join(dir, name+".key"), []byte(keyPEM), 0600); err != nil {
+	stage, err := os.MkdirTemp(dir, ".acme-pair-*")
+	if err != nil {
+		return fmt.Errorf("stage serving pair: %w", err)
+	}
+	keepBackup := false
+	defer func() {
+		if !keepBackup {
+			_ = os.RemoveAll(stage)
+		}
+	}()
+	stagedKey := filepath.Join(stage, "new.key")
+	stagedCert := filepath.Join(stage, "new.crt")
+	if err := writeFileAtomic(stagedKey, []byte(keyPEM), 0600); err != nil {
 		return err
 	}
-	if err := writeFileAtomic(filepath.Join(dir, name+".crt"), []byte(certPEM), 0644); err != nil {
+	if err := writeFileAtomic(stagedCert, []byte(certPEM), 0644); err != nil {
 		return err
 	}
-	slog.Info("acme: certificate written", "cert", filepath.Join(dir, name+".crt"), "key", filepath.Join(dir, name+".key"))
+	keyPath := filepath.Join(dir, name+".key")
+	certPath := filepath.Join(dir, name+".crt")
+	backup := filepath.Join(stage, "previous.key")
+	// A hard link preserves the old inode and permissions without removing the
+	// serving key. The staging directory is on the same filesystem and is 0700.
+	hadKey := true
+	if err := os.Link(keyPath, backup); errors.Is(err, os.ErrNotExist) {
+		hadKey = false
+	} else if err != nil {
+		return fmt.Errorf("back up serving key: %w", err)
+	}
+	if err := os.Rename(stagedKey, keyPath); err != nil {
+		return fmt.Errorf("publish serving key: %w", err)
+	}
+	if err := os.Rename(stagedCert, certPath); err != nil {
+		publishErr := fmt.Errorf("publish serving certificate: %w", err)
+		var rollbackErr error
+		if hadKey {
+			if err := os.Rename(backup, keyPath); err != nil {
+				// Never delete the only backup if rollback itself fails.
+				keepBackup = true
+				rollbackErr = fmt.Errorf("restore serving key (backup %s): %w", backup, err)
+			}
+		} else {
+			if err := os.Remove(keyPath); err != nil {
+				rollbackErr = fmt.Errorf("remove newly published serving key: %w", err)
+			}
+		}
+		return errors.Join(publishErr, rollbackErr)
+	}
+	slog.Info("acme: certificate written", "cert", certPath, "key", keyPath)
 	return nil
 }
 
