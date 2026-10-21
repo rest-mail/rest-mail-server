@@ -107,6 +107,7 @@ class PairedRefusals(unittest.TestCase):
         "testCustomFilter",
         "receiveTlsReport",
         "createCertificate",
+        "protocolSignIn",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):

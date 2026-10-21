@@ -131,6 +131,11 @@ the created domain, leaving malformed and incomplete requests unchanged
 The previously documented 422 was removed: this handler never returns it;
 invalid PEM and missing fields return 400.
 
+`protocolSignIn` uses the E2E fixture's app password with its named requests:
+`signed_in` (`{ "protocol": "imap" }`) gets 200, `invalid_body` (`[]`)
+gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
+the Basic credential, so each request body reaches the handler unchanged.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as

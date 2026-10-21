@@ -779,6 +779,13 @@ paths:
                 protocol:
                   type: string
                   enum: [imap, pop3, smtp]
+            examples:
+              signed_in:
+                value: {protocol: imap}
+              invalid_body:
+                value: []
+              protocol_missing:
+                value: {}
       responses:
         "200":
           description: Signed in
@@ -813,8 +820,23 @@ paths:
                           An app password reaches only its own account's
                           mailbox; the account's password reaches what its
                           grants reach (sending as an account it owns, say).
+              examples:
+                signed_in:
+                  value:
+                    data:
+                      user: {id: 1, email: contract-ordinary@restmail.test, display_name: Contract Ordinary}
+                      credential_id: 1
+                      credential_kind: app_password
         "400":
           description: Not HTTP Basic (`basic_required`), or an invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_body:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
         "401":
           description: >
             `unauthorized` for a wrong address or password;
@@ -822,6 +844,19 @@ paths:
             two-factor authentication; `setup_required` for one still in setup.
         "422":
           description: protocol is not imap, pop3 or smtp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                protocol_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          protocol: 'must be "imap", "pop3" or "smtp"'
         "429":
           description: Too many refused credentials from this client, or too many sign-ins
 
