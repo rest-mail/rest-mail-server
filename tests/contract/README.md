@@ -207,6 +207,11 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   session, cached per endpoint. It leaves the request's own credentials intact,
   including when the principal has no credentials; Basic auth is reserved for
   app passwords, not the fixture admin's account password.
+  Login, refresh, account linking, app-password creation and protocol sign-in
+  share the API's default auth bucket (1 request/second, burst 15). Their before
+  hooks wait 1.1 seconds per request, including coverage probes and setup
+  logins, so a dense run cannot turn valid probes into 429s. The limiter stays
+  enabled; requests and the coverage baseline stay unchanged.
   Every other id comes from the spec's `links`.
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
