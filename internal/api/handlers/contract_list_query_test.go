@@ -103,6 +103,8 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 		"listBans":          NewBanHandler(tx).ListBans,
 		"listTlsReports":    NewTLSReportHandler(tx).ListReports,
 		"listAuditEntries":  NewAuditHandler(tx).List,
+		"searchMessages":    NewSearchHandler(tx).Search,
+		"getDeliveryLogs":   NewLogHandler(tx).DeliveryLog,
 	}
 	ops := listQueryOperations(t)
 	for op, handler := range handlers {

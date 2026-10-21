@@ -33,6 +33,9 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
 		return
 	}
+	if !validateIntegerQuery(w, r, 0, "limit") {
+		return
+	}
 
 	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, models.CapMailRead)
 	if err != nil {
