@@ -686,6 +686,20 @@ A corrupt account key stops issuance rather than silently creating a new identit
 This file account storage applies to the instance command; the API's
 `ACME_ENABLED` renewal manager stores certificates in the database separately.
 
+To avoid unnecessary orders when repeating the instance task, use
+`CONFIG=<name> chore instance:certs:issue CERT_RENEW_BEFORE=720h` (30 days).
+The underlying `instance acme-issue -renew-before 720h` command reuses a matching
+certificate/key pair only if it is valid now, covers every requested name, and
+expires more than 720 hours from now. Otherwise it attempts issuance; a failed
+order preserves the existing serving files. A reusable pair is checked before
+the command opens its HTTP listener or contacts the CA. The Docker task still
+reserves host port 80 when starting its container, even if issuance is skipped.
+The default `CERT_RENEW_BEFORE=0s` always issues. Use that default when switching
+between staging, production or custom CAs: reuse checks do not establish the
+existing certificate's CA provenance or trust. This option does not install a
+scheduler or reload serving gateways; periodic invocation and deploying the
+renewed files to running gateways remain the operator's responsibility.
+
 ### 6.3 Gateways
 | Variable | Default | Purpose |
 |----------|---------|---------|
