@@ -27,6 +27,7 @@ func acmeIssueCmd(args []string) {
 	directory := fs.String("directory", "", "ACME directory URL (default: Let's Encrypt production)")
 	staging := fs.Bool("staging", false, "use the Let's Encrypt staging directory, overriding -directory")
 	listen := fs.String("listen", ":80", "address to serve HTTP-01 challenges on; the CA connects to port 80")
+	renewBefore := fs.Duration("renew-before", 0, "reuse a valid matching pair until this long before expiry (e.g. 720h); 0 always issues")
 	_ = fs.Parse(args)
 
 	if *out == "" || fs.NArg() != 0 {
@@ -39,7 +40,7 @@ func acmeIssueCmd(args []string) {
 		*directory = acme.LetsEncryptStaging
 	}
 	cfg := acme.IssueConfig{Directory: *directory, Email: *email, Domains: names}
-	if err := issueACME(context.Background(), *out, *listen, cfg); err != nil {
+	if err := renewACME(context.Background(), *out, *listen, cfg, *renewBefore); err != nil {
 		fatal("acme-issue: %v", err)
 	}
 }

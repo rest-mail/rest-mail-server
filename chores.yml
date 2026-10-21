@@ -1328,8 +1328,10 @@ tasks:
             # CA validates each name over http://<name>:80, so every SAN must
             # resolve to this host and port 80 must be free and reachable while
             # it runs. tls.acme.staging: true uses Let's Encrypt staging (and
-            # overrides tls.acme.directory). Re-running re-issues; renewal is
-            # re-running this task. The 0600 .acme-account-<directory-hash>.key
+            # overrides tls.acme.directory). CERT_RENEW_BEFORE=720h reuses a
+            # valid matching pair until 30 days before expiry; default 0s
+            # always issues (also use 0s when switching CA/staging mode).
+            # The 0600 .acme-account-<directory-hash>.key
             # in the certs volume preserves the CA account across runs. Keep
             # it with the volume backups; staging uses a separate account.
             docker run --rm \
@@ -1341,6 +1343,7 @@ tasks:
               -e GOFLAGS=-buildvcs=false \
               golang:1.25 \
               go run ./cmd/instance acme-issue -out /certs -listen :80 \
+                -renew-before "{{.CERT_RENEW_BEFORE | default "0s"}}" \
                 -domains "{{.CERT_SANS}}" \
                 -email "{{.RESTMAIL_TLS_ACME_EMAIL | default ""}}" \
                 -directory "{{.RESTMAIL_TLS_ACME_DIRECTORY | default ""}}" \
