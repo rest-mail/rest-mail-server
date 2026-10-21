@@ -177,6 +177,9 @@ type Worker struct {
 	masterKey string
 	// relayRoots replaces system trust for relay certificates; tests only.
 	relayRoots *x509.CertPool
+	// restmailRoots replaces system trust for RESTMAIL discovery certificates;
+	// tests only.
+	restmailRoots *x509.CertPool
 
 	// Bounce/DSN anti-mailbomb controls (OSI-25). bounceMax caps how many DSNs
 	// may be delivered into a single recipient mailbox within bounceWindow;
@@ -608,41 +611,44 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	// RESTMAIL upgrade path, gated by the MTA-STS policy resolved above (#168). The
 	// capability cache entry is bound to the MX host that advertised it (OSI-20): a
 	// hit requires the stored row to be for THIS domain's current primary MX host
-	// and still within its TTL. The endpoint is derived from that MX host name
-	// (restmailEndpointForMX), never from a stored or advertised address (#291), so
-	// a row cached before #291 with an attacker-advertised endpoint_url is harmless.
-	// Under an enforce-mode policy restmailUpgradePermitted must still approve it —
-	// HTTPS and host named by the policy — before we deliver over it; otherwise we
-	// skip the upgrade and use the policy-guarded SMTP fallback.
+	// and still within its TTL. The cache only remembers that the MX speaks REST;
+	// the endpoint is asked of the MX host's verified discovery endpoint every
+	// time, never taken from a stored or advertised address (#291). Under an
+	// enforce-mode policy restmailUpgradePermitted must approve the MX host the
+	// discovery request goes to; otherwise we skip the upgrade and use the
+	// policy-guarded SMTP fallback.
 	var cap models.RESTMAILCapability
 	found := w.db.Where("domain = ?", item.Domain).First(&cap).Error == nil
 	cacheHit := found && capabilityApplies(cap, item.Domain, firstHost, time.Now())
 
 	if cacheHit {
 		if cap.Supported {
-			endpointURL := restmailEndpointForMX(firstHost)
-			if restmailUpgradePermitted(endpointURL, stsPolicy, enforcing) {
-				slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "url", endpointURL)
-				err := w.deliverRESTMAILHTTPS(endpointURL, item, enforcing)
+			discoveryURL := restmailDiscoveryURL(firstHost, dnsDomain)
+			if restmailUpgradePermitted(discoveryURL, stsPolicy, enforcing) {
+				slog.Info("queue: using cached RESTMAIL capability", "domain", item.Domain, "mx", firstHost)
+				err := w.deliverRESTMAILDiscovered(discoveryURL, item, enforcing)
 				if err == nil {
 					return nil
 				}
-				slog.Warn("queue: cached RESTMAIL delivery failed, invalidating cache",
-					"domain", item.Domain, "error", err)
-				w.db.Where("domain = ?", item.Domain).Delete(&models.RESTMAILCapability{})
+				if errors.Is(err, errRESTMAILNotHosted) {
+					w.cacheCapability(item.Domain, firstHost, false)
+				} else {
+					slog.Warn("queue: cached RESTMAIL delivery failed, invalidating cache",
+						"domain", item.Domain, "error", err)
+					w.db.Where("domain = ?", item.Domain).Delete(&models.RESTMAILCapability{})
+				}
 				// Fall through to SMTP
 			} else {
-				// Enforce-mode policy does not name this cleartext-advertised
-				// endpoint (or it is non-HTTPS): refuse the upgrade and deliver over
-				// the policy-guarded SMTP path instead of intercepting in cleartext.
-				slog.Warn("queue: MTA-STS enforce — cached RESTMAIL endpoint not permitted by policy, using SMTP",
-					"domain", item.Domain, "url", endpointURL)
+				// Enforce-mode policy does not name this MX host: refuse the
+				// upgrade and deliver over the policy-guarded SMTP path.
+				slog.Warn("queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
+					"domain", item.Domain, "url", discoveryURL)
 			}
 		}
 		// cap.Supported == false: skip RESTMAIL, go straight to SMTP
 	} else {
 		// No cache or expired — do EHLO probe (gated by the policy inside tryRESTMAIL).
-		upgraded, err := w.tryRESTMAIL(firstHost, item, stsPolicy, enforcing)
+		upgraded, err := w.tryRESTMAIL(firstHost, dnsDomain, item, stsPolicy, enforcing)
 		if upgraded && err == nil {
 			return nil // RESTMAIL delivery succeeded
 		}
@@ -691,24 +697,14 @@ func capabilityApplies(c models.RESTMAILCapability, domain, mxHost string, now t
 	return c.Domain == domain && c.MXHost == mxHost && c.ExpiresAt.After(now)
 }
 
-// restmailEndpointForMX returns the RESTMAIL endpoint for the MX host mxHost, a
-// name taken from the recipient domain's MX records (#291). The EHLO RESTMAIL
-// keyword is only a hint that the MX speaks REST: the address it carries arrives
-// over cleartext port 25, so anyone on the path could point it at a host they
-// hold a valid certificate for. Deriving the endpoint from the MX host instead
-// means the HTTPS certificate is checked against the MX host name, and a
-// tampered advertisement can at worst switch REST off.
-func restmailEndpointForMX(mxHost string) string {
-	return "https://" + strings.TrimSuffix(mxHost, ".") + "/restmail"
-}
-
 // restmailUpgradePermitted reports whether a RESTMAIL endpoint may be used for a
 // delivery under the recipient's MTA-STS policy (#168).
 //
 // The RESTMAIL capability keyword is learned over cleartext port 25, so it is
-// attacker-influenceable. The endpoint is now derived from the MX host name
-// (restmailEndpointForMX, #291) rather than taken from the keyword; this check
-// stays as defense in depth on whatever endpoint is chosen. When no enforce-mode policy is in
+// attacker-influenceable. The endpoint is now asked of the MX host's verified
+// discovery endpoint (#291) rather than taken from the keyword; this check is
+// applied to that discovery URL, so under enforce only an MX host named by the
+// policy is asked. When no enforce-mode policy is in
 // effect (enforcing == false) the upgrade is permitted, preserving opportunistic
 // behavior. Under an enforce-mode policy the endpoint is untrusted input and is
 // permitted only when it is served over HTTPS AND its host is named by the
@@ -749,8 +745,9 @@ func restmailUpgradePermitted(endpointURL string, stsPolicy *mtasts.Policy, enfo
 
 // cacheCapability stores a RESTMAIL capability probe result in the database,
 // bound to the MX host that advertised it (OSI-20). Only one row is kept per
-// domain; probing a new primary MX replaces the previous host's entry.
-func (w *Worker) cacheCapability(domain, mxHost string, supported bool, endpointURL string) {
+// domain; probing a new primary MX replaces the previous host's entry. No
+// endpoint is stored: it is discovered from the MX host on every delivery (#291).
+func (w *Worker) cacheCapability(domain, mxHost string, supported bool) {
 	now := time.Now()
 	ttl := 15 * time.Minute
 	if supported {
@@ -761,7 +758,7 @@ func (w *Worker) cacheCapability(domain, mxHost string, supported bool, endpoint
 		Domain:      domain,
 		MXHost:      mxHost,
 		Supported:   supported,
-		EndpointURL: endpointURL,
+		EndpointURL: "",
 		LastProbed:  now,
 		ExpiresAt:   now.Add(ttl),
 	}
@@ -849,46 +846,66 @@ func (w *Worker) deliverRESTMAILHTTPS(endpointURL string, item models.OutboundQu
 	return fmt.Errorf("RESTMAIL delivery got %d: %s", resp.StatusCode, string(body))
 }
 
-// tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found — and the
-// recipient's MTA-STS policy permits the upgrade (#168) — it delivers the message
-// via HTTPS POST instead of SMTP.
-// Returns (true, nil) on successful RESTMAIL delivery,
-// (true, err) if RESTMAIL was detected but delivery failed,
-// (false, nil) if the host does not support RESTMAIL, or an enforce-mode policy
-// does not permit the advertised endpoint (caller falls back to the SMTP path).
-func (w *Worker) tryRESTMAIL(host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
-	return w.tryRESTMAILAt(host+":25", host, item, stsPolicy, enforcing)
+// deliverRESTMAILDiscovered asks discoveryURL — the MX host's verified
+// discovery endpoint (#291) — where to deliver, then POSTs the message there.
+// errRESTMAILNotHosted means the MX verifiably does not take REST mail for the
+// domain.
+func (w *Worker) deliverRESTMAILDiscovered(discoveryURL string, item models.OutboundQueue, enforcing bool) error {
+	endpointURL, err := w.discoverRESTMAILEndpoint(discoveryURL)
+	if err != nil {
+		return err
+	}
+	slog.Info("queue: RESTMAIL endpoint discovered", "discovery", discoveryURL, "endpoint", endpointURL)
+	return w.deliverRESTMAILHTTPS(endpointURL, item, enforcing)
 }
 
-// tryRESTMAILAt is tryRESTMAIL with the probe address given separately from the
-// MX host name, so a test can probe a listener on another port.
-func (w *Worker) tryRESTMAILAt(addr, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
+// tryRESTMAIL probes a host for the RESTMAIL EHLO extension. If found — and the
+// recipient's MTA-STS policy permits the upgrade (#168) — it asks the host's
+// discovery endpoint for the domain's REST endpoint and delivers the message
+// via HTTPS POST instead of SMTP. dnsDomain is the recipient domain's IDNA
+// ASCII form.
+// Returns (true, nil) on successful RESTMAIL delivery,
+// (true, err) if RESTMAIL was detected but discovery or delivery failed,
+// (false, nil) if the host does not support RESTMAIL, its discovery endpoint
+// verifiably does not host the domain, or an enforce-mode policy does not name
+// the host (caller falls back to the SMTP path).
+func (w *Worker) tryRESTMAIL(host, dnsDomain string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
+	return w.tryRESTMAILAt(host+":25", restmailDiscoveryURL(host, dnsDomain), host, item, stsPolicy, enforcing)
+}
+
+// tryRESTMAILAt is tryRESTMAIL with the probe address and discovery URL given
+// separately from the MX host name, so a test can use listeners on other ports.
+func (w *Worker) tryRESTMAILAt(addr, discoveryURL, host string, item models.OutboundQueue, stsPolicy *mtasts.Policy, enforcing bool) (upgraded bool, err error) {
 	probed, ok := w.probeRESTMAIL(addr, host)
 	if !probed {
 		return false, nil // Can't connect / probe failed, let SMTP path handle it
 	}
 
 	if !ok {
-		w.cacheCapability(item.Domain, host, false, "")
+		w.cacheCapability(item.Domain, host, false)
 		return false, nil // No RESTMAIL support
 	}
 
-	// The keyword is only a hint: the endpoint comes from the MX host name, not
-	// from the address the MX advertised in cleartext (#291).
-	restmailURL := restmailEndpointForMX(host)
-	slog.Info("queue: RESTMAIL capability detected", "host", host, "url", restmailURL)
-	w.cacheCapability(item.Domain, host, true, restmailURL)
+	// The keyword is only a hint: the endpoint comes from the MX host's verified
+	// discovery endpoint, not from the address the MX advertised in cleartext
+	// (#291).
+	slog.Info("queue: RESTMAIL capability detected", "host", host)
+	w.cacheCapability(item.Domain, host, true)
 
-	// Under an enforce-mode MTA-STS policy only deliver to the endpoint when it is
-	// named by the policy and served over HTTPS (#168); otherwise report "not
-	// upgraded" so the caller delivers over the policy-guarded SMTP path.
-	if !restmailUpgradePermitted(restmailURL, stsPolicy, enforcing) {
-		slog.Warn("queue: MTA-STS enforce — probed RESTMAIL endpoint not permitted by policy, using SMTP",
-			"host", host, "url", restmailURL)
+	// Under an enforce-mode MTA-STS policy only ask an MX host named by the
+	// policy (#168); otherwise report "not upgraded" so the caller delivers over
+	// the policy-guarded SMTP path.
+	if !restmailUpgradePermitted(discoveryURL, stsPolicy, enforcing) {
+		slog.Warn("queue: MTA-STS enforce — RESTMAIL discovery host not permitted by policy, using SMTP",
+			"host", host, "url", discoveryURL)
 		return false, nil
 	}
 
-	err = w.deliverRESTMAILHTTPS(restmailURL, item, enforcing)
+	err = w.deliverRESTMAILDiscovered(discoveryURL, item, enforcing)
+	if errors.Is(err, errRESTMAILNotHosted) {
+		w.cacheCapability(item.Domain, host, false)
+		return false, nil
+	}
 	if err != nil {
 		return true, err
 	}
@@ -904,7 +921,7 @@ func (w *Worker) tryRESTMAILAt(addr, host string, item models.OutboundQueue, sts
 //     or handshake failed and the caller falls through to plain SMTP without
 //     caching a capability result.
 //   - supported carries the RESTMAIL extension result when probed. Any address
-//     the keyword carries is discarded (#291): see restmailEndpointForMX.
+//     the keyword carries is discarded (#291): see discoverRESTMAILEndpoint.
 //
 // The ENTIRE probe conversation is bounded by a single absolute deadline set on
 // the socket immediately after dial, before smtp.NewClient reads the greeting.
