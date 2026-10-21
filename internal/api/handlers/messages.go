@@ -390,6 +390,27 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// sendMessageRequest is the body of POST /api/v1/messages/send. It is kept as
+// a named type because a scheduled send stores the same body and replays it
+// through this handler when its time comes.
+type sendMessageRequest struct {
+	From          string                  `json:"from"`
+	To            []string                `json:"to"`
+	Cc            []string                `json:"cc"`
+	Bcc           []string                `json:"bcc"`
+	Subject       string                  `json:"subject"`
+	BodyText      string                  `json:"body_text"`
+	BodyHTML      string                  `json:"body_html"`
+	InReplyTo     string                  `json:"in_reply_to"`
+	CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
+	// ListUnsubscribe, when set, publishes where a recipient unsubscribes
+	// (#144). Absent, the message carries no List-Unsubscribe fields.
+	ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
+	// ScheduledAt asks the server to send the message at that time instead of
+	// now. It is not part of the replayed request; the stored copy omits it.
+	ScheduledAt *time.Time `json:"scheduled_at,omitempty"`
+}
+
 // SendMessage composes and sends a message from an authenticated user.
 func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
@@ -398,20 +419,7 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		From          string                  `json:"from"`
-		To            []string                `json:"to"`
-		Cc            []string                `json:"cc"`
-		Bcc           []string                `json:"bcc"`
-		Subject       string                  `json:"subject"`
-		BodyText      string                  `json:"body_text"`
-		BodyHTML      string                  `json:"body_html"`
-		InReplyTo     string                  `json:"in_reply_to"`
-		CalendarEvent *pipeline.CalendarEvent `json:"calendar_event,omitempty"`
-		// ListUnsubscribe, when set, publishes where a recipient unsubscribes
-		// (#144). Absent, the message carries no List-Unsubscribe fields.
-		ListUnsubscribe *listUnsubscribe `json:"list_unsubscribe,omitempty"`
-	}
+	var req sendMessageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
@@ -541,6 +549,48 @@ func (h *MessageHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 				"list_unsubscribe.https needs the sender domain to have a DKIM key: one-click unsubscribe must be DKIM signed")
 			return
 		}
+	}
+
+	// A message asked for later is stored now and sent through this same
+	// handler when due, so every check above (and below) applies then too.
+	// The stored body drops scheduled_at: replaying it must send, not
+	// schedule again.
+	if req.ScheduledAt != nil {
+		at := req.ScheduledAt.UTC()
+		now := time.Now().UTC()
+		if at.Before(now.Add(time.Minute)) {
+			respond.Error(w, http.StatusUnprocessableEntity, "validation_failed",
+				"scheduled_at must be at least a minute in the future")
+			return
+		}
+		if at.After(now.Add(365 * 24 * time.Hour)) {
+			respond.Error(w, http.StatusUnprocessableEntity, "validation_failed",
+				"scheduled_at must be within a year")
+			return
+		}
+		stored := req
+		stored.ScheduledAt = nil
+		body, err := json.Marshal(stored)
+		if err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
+			return
+		}
+		toJSON, _ := json.Marshal(req.To)
+		row := models.ScheduledSend{
+			AccountID: claims.AccountID,
+			From:      req.From,
+			To:        models.JSONB(toJSON),
+			Subject:   req.Subject,
+			SendAt:    at,
+			Status:    "pending",
+			Request:   models.JSONB(body),
+		}
+		if err := h.db.Create(&row).Error; err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to store the scheduled message")
+			return
+		}
+		respond.Data(w, http.StatusAccepted, row)
+		return
 	}
 
 	// ── Outbound pipeline execution ────────────────────────────────

@@ -184,6 +184,12 @@ sign in and rotate (`contract_auth_examples_test.go`). `test_auth_hooks.py`
 checks the hooks against the spec examples and the exclusions. Both operations'
 401s are now counted by the surface gate.
 
+`createFolder` pairs `created` with 201 and `name_missing`, `name_empty`, and
+`name_wrong_type` with 422. The real handler tests use an authorized account
+on a scratch database and compare each example's status and full response
+body. The folder hook leaves the invalid bodies unchanged and only removes
+previously created valid probe folders.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
@@ -215,7 +221,15 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   where a request carries it in its body, and its name in the Host header the
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
-  folder for each rename probe (a successful rename consumes the previous one).
+  folder for each rename probe (a successful rename consumes the previous one),
+  a hosted domain and mailbox for each address a test send probe uses, and,
+  for `createAccount`'s probes, their address's domain hosted and the
+  account a previous probe created removed (a generated address such as
+  `someone@example.com` is otherwise refused as on a domain this server does
+  not host, or as existing). A probe repeating the example's address removes
+  the account `getMailbox`, `updateMailbox` and `deleteMailbox` are linked to,
+  so those follow it to its current id, recreating it if a refused probe left
+  it removed.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -230,6 +244,9 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
+  (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
+- `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
@@ -318,3 +335,10 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+Test send probes (sendTestEmail) send from and to a generated address
+(`someone@example.com`) that has no mailbox. A before hook hosts its domain and
+creates its account through the admin API the first time an address appears,
+then leaves both in place: a test send only adds a message. Malformed addresses
+and domains the server will not host are left to the probe, and the request is
+never rewritten.

@@ -10,14 +10,12 @@
 #
 # Regenerate the list (to shrink it) from a run's report:
 #   python3 tests/contract/gate.py --failing-probes openapi.yaml .cache/contract/examples.xml
-createAccount
 createDomain
 # First reached in #376: the schema permits an empty recipient list and
 # omits the combinations of sender/date fields the delivery pipeline needs.
 restmailDeliver
 saveDraft
 sendMessage
-sendTestEmail
 # The schema states the rule (an enabled vacation needs a non-empty subject
 # and body) as if/then, which vertrag's boundary probes do not read: they
 # still offer the empty string as valid while enabled is true, and the
