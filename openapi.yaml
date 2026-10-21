@@ -4315,6 +4315,16 @@ paths:
                   description: >-
                     Optional sample email. When omitted a minimal built-in sample
                     is used.
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              # No email: the built-in sample is used.
+              valid:
+                value: {}
+              # JSON but not a request object: refused before the filter is
+              # looked up.
+              invalid_body:
+                value: []
       responses:
         "200":
           description: >-
@@ -4325,17 +4335,34 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+              examples:
+                # The contract run's filter, which lets every email through.
+                valid:
+                  value:
+                    result:
+                      action: continue
+                    logs: []
           links:
             deleteCustomFilter:
               operationId: deleteCustomFilter
               parameters:
                 id: '$request.path.id'
         "400":
-          description: Filter config contains no script, or invalid request
+          description: >-
+            The body is not JSON (`bad_request`), or the filter's config
+            contains no script
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                # Refused while the body is decoded, before the filter is
+                # looked up.
+                invalid_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
