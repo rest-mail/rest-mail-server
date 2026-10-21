@@ -135,9 +135,3 @@ func (m *Manager) checkAndRenew() {
 		cancel()
 	}
 }
-
-// CheckNow triggers an immediate check for certificates needing renewal.
-// This is useful for testing or manual trigger via an admin API.
-func (m *Manager) CheckNow() {
-	m.checkAndRenew()
-}
