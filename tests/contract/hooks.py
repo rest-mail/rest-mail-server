@@ -266,11 +266,24 @@ def schedule_a_message(transaction):
 
 @hooks.before("listScheduledMessages")
 def list_has_a_message_to_show(transaction):
+    # Boundary probes and the report-only authorization phase do not need a
+    # fixture; an empty list is still a valid answer. Only the examples
+    # transaction is given one.
+    name = transaction.get("name", "")
+    if name.startswith("coverage:") or " as " in name:
+        return
     schedule_a_message(transaction)
 
 
 @hooks.before("cancelScheduledMessage")
 def cancel_a_message_we_made(transaction):
+    # A boundary probe (0, a word, a fraction) must reach the handler with its
+    # own id, so its refusal is the one being judged. Only the examples
+    # transaction, and the valid probe built from it, get a real message.
+    path = transaction.get("fullPath", "").split("?")[0]
+    last = path.rsplit("/", 1)[-1]
+    if not last.isdigit() or int(last) < 1:
+        return
     scheduled_id = schedule_a_message(transaction)
     if isinstance(scheduled_id, int):
         transaction["fullPath"] = "/api/v1/messages/scheduled/%d" % scheduled_id
