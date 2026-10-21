@@ -81,14 +81,26 @@ the same way, each checked against the real handler with no database
 `contract_validatejs_examples_test.go`, `contract_validatejs_body400_test.go`,
 `contract_testsend_examples_test.go`).
 
+`createAccount` (`address_missing`), `restmailDeliver` (`recipients_missing`),
+`addToAllowlist` and `addToBlocklist` (`pattern_missing`) now send their paired
+422s too. `bulkDeleteQueue` sends its `selection_missing` request (`{}`) with
+its paired 400. Their existing handler tests check these refusals before any
+database access (`contract_account_examples_test.go`,
+`contract_restmail_examples_test.go`, `contract_allowlist_examples_test.go`,
+`contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
+No before hook rewrites these requests. Sibling operations remain excluded;
+in particular, `testFilter` and `receiveTlsReport` still need request examples
+paired with their documented 400s before their exclusions can be lifted.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
 documented fails the examples phase like any other. `test_gate.py` checks
 that the documented 400s and 422s sent are exactly the paired operations'
 (its `PAIRED`), so an operation paired next comes off those patterns in the
-same change. The statuses stay in `surface.exclude`: the surface gate
-cannot take an exclusion off one operation only.
+same change. It also checks that each sent refusal has named response examples
+with matching request examples. The statuses stay in `surface.exclude`: the
+surface gate cannot take an exclusion off one operation only.
 
 The coverage phase probes every transaction sent, and judges valid-mode probes
 whenever the transaction's own request gets the status it documents. For a

@@ -87,19 +87,29 @@ exclude-matching:
   # #386. The 400s and 422s are excluded by path rather than everywhere, so the
   # operations whose refusals have their pair are sent: createDomain,
   # createAlias, createPipeline, createBan, createCustomFilter,
-  # validateCustomFilter and sendTestEmail. Their coverage probes built from
-  # the refused request are refused too; tests/contract/gate.py does not judge
+  # validateCustomFilter, sendTestEmail, createAccount, restmailDeliver,
+  # bulkDeleteQueue, addToAllowlist and addToBlocklist. Their coverage probes
+  # built from the refused request are refused too; tests/contract/gate.py does not judge
   # those (tests/contract/README.md). Each operation paired next comes off
   # these patterns the same way. A path in a segment none of them names is sent.
   - '> (404|409)( >|$)'
-  - '^/api/v1/(accounts|auth|devices|messages)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/(audit|certificates|dkim|grants|mailboxes|queue|tls-reports)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/(aliases|domains|pipelines)/.* > (400|422)( >|$)'
+  - '^/api/v1/(auth|devices|messages)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/accounts/.* > (400|422)( >|$)'
+  - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
+  - '^/api/v1/admin/(audit|certificates|dkim|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/queue/(bulk-retry|bulk-bounce|stats|\{id\})(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(aliases|pipelines)/.* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\} > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions|mta-sts|relay)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist) > List .* > (400|422)( >|$)'
   - '^/api/v1/admin/custom-filters/\{id\}(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
-  - '^/(\.well-known|autodiscover|restmail)/.* > (400|422)( >|$)'
+  - '^/(\.well-known|autodiscover)/.* > (400|422)( >|$)'
+  - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
   - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
