@@ -8558,13 +8558,16 @@ components:
 
     CreateDomainRequest:
       type: object
-      required: [name, server_type]
+      required: [name]
       properties:
         name:
           type: string
+          minLength: 1
         server_type:
-          type: string
-          enum: [traditional, restmail]
+          type: [string, "null"]
+          enum: [traditional, restmail, "", null]
+          default: traditional
+          description: Omitted, empty or null selects traditional.
         default_quota_bytes:
           type: integer
           format: int64
