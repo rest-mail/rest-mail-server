@@ -136,3 +136,104 @@ describe('account setup and recovery', () => {
     expect(screen.queryByLabelText('Recovery token')).toBeNull()
   })
 })
+
+describe('self-service password reset', () => {
+  function recoveryForm() {
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'alice@example.com' } })
+    fireEvent.change(screen.getByLabelText('Authenticator code'), { target: { value: '123456' } })
+    fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: 'saved-recovery-code' } })
+    passwords()
+  }
+
+  it('opens from the login link hash without sending a request', () => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
+    mount()
+    window.history.replaceState(null, '', '/login#recover')
+    fireEvent(window, new HashChangeEvent('hashchange'))
+    expect(screen.getByRole('heading').textContent).toBe('Reset your password')
+    expect(screen.getByText(/contact your server administrator/)).toBeTruthy()
+    expect(screen.queryByLabelText('Recovery token')).toBeNull()
+    expect(screen.queryByLabelText('Current password')).toBeNull()
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(location.hash).toBe('')
+  })
+
+  it('requires both pre-registered factors before submitting', () => {
+    window.history.replaceState(null, '', '/login#recover')
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
+    mount(); passwords()
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'alice@example.com' } })
+    const form = screen.getByText('Set new password').closest('form')!
+    expect(form.checkValidity()).toBe(false)
+    fireEvent.click(screen.getByText('Set new password'))
+    expect(fetcher).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Authenticator code'), { target: { value: '123456' } })
+    expect(form.checkValidity()).toBe(false)
+    fireEvent.click(screen.getByText('Set new password'))
+    expect(fetcher).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Recovery code'), { target: { value: 'saved-recovery-code' } })
+    expect(form.checkValidity()).toBe(true)
+  })
+
+  it('posts both factors and the new password, then accepts the cookie session', async () => {
+    window.history.replaceState(null, '', '/login#recover')
+    const session = { user: { id: 1, email: 'alice@example.com' }, capabilities: ['mail.read'] }
+    const fetcher = vi.fn().mockResolvedValue(response({ data: session }))
+    vi.stubGlobal('fetch', fetcher)
+    const { onSession, onSignOut } = mount(); recoveryForm()
+    fireEvent.click(screen.getByText('Set new password'))
+    await waitFor(() => expect(onSession).toHaveBeenCalledWith(session))
+    expect(fetcher).toHaveBeenCalledOnce()
+    const [url, init] = fetcher.mock.calls[0]
+    expect(url).toBe('/api/v1/auth/recover')
+    expect(init.credentials).toBe('include')
+    expect(init.headers['X-CSRF-Token']).toBe('test-csrf')
+    expect(JSON.parse(init.body)).toEqual({
+      email: 'alice@example.com', totp_code: '123456', recovery_code: 'saved-recovery-code',
+      new_password: 'a password chosen by the owner',
+    })
+    expect(onSignOut).not.toHaveBeenCalled()
+    expect(screen.queryByLabelText('Recovery code')).toBeNull()
+    expect(localStorage.length).toBe(0); expect(sessionStorage.length).toBe(0)
+  })
+
+  it.each([
+    [401, 'Invalid address, authenticator code or recovery code'],
+    [429, 'Too many failed recoveries for this address; try again later'],
+  ])('keeps a %i refusal on the form without a session or automatic retry', async (status, message) => {
+    window.history.replaceState(null, '', '/login#recover')
+    const fetcher = vi.fn().mockResolvedValue(response({ error: { message } }, status))
+    vi.stubGlobal('fetch', fetcher)
+    const { onSession, onSignOut } = mount(); recoveryForm()
+    fireEvent.click(screen.getByText('Set new password'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(message))
+    expect(onSession).not.toHaveBeenCalled(); expect(onSignOut).not.toHaveBeenCalled()
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect((screen.getByLabelText('Email') as HTMLInputElement).value).toBe('alice@example.com')
+  })
+
+  it('rejects mismatched passwords before spending a recovery code', () => {
+    window.history.replaceState(null, '', '/login#recover')
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
+    mount(); recoveryForm()
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'a different long password' } })
+    fireEvent.click(screen.getByText('Set new password'))
+    expect(screen.getByRole('alert').textContent).toContain('do not match')
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('clears recovery secrets on cancellation and starts the next attempt empty', () => {
+    window.history.replaceState(null, '', '/login#recover')
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher)
+    const { onSignOut } = mount(); recoveryForm()
+    fireEvent.click(screen.getByText('Back to sign in'))
+    expect(onSignOut).toHaveBeenCalledOnce()
+    expect(screen.getByText('Private mailbox')).toBeTruthy()
+    window.history.replaceState(null, '', '/login#recover')
+    fireEvent(window, new HashChangeEvent('hashchange'))
+    for (const label of ['Email', 'Authenticator code', 'Recovery code', 'New password', 'Confirm new password'])
+      expect((screen.getByLabelText(label) as HTMLInputElement).value).toBe('')
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(localStorage.length).toBe(0); expect(sessionStorage.length).toBe(0)
+  })
+})
