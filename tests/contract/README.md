@@ -140,6 +140,11 @@ from it, and takes the policy off again for every other send and after the
 refusal (`contract_sendmessage_examples_test.go`). The other
 `/api/v1/messages` operations keep their exclusions.
 
+`protocolSignIn` uses the E2E fixture's app password with its named requests:
+`signed_in` (`{ "protocol": "imap" }`) gets 200, `invalid_body` (`[]`)
+gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
+the Basic credential, so each request body reaches the handler unchanged.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
