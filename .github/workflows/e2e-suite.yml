@@ -9,8 +9,8 @@ on:
     inputs:
       contract-phases:
         description: >-
-          "gate" runs the contract tests' examples and coverage phases and
-          fails on any finding; "fuzz" runs the fuzz phase, reports what it
+          "gate" runs the examples and coverage gates, then the authorization
+          matrix report-only; "fuzz" runs the fuzz phase, reports what it
           finds as an artifact, and fails nothing.
         type: string
         default: gate
@@ -229,6 +229,28 @@ jobs:
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
           python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
             tests/contract/coverage-baseline.txt
+
+      - name: Contract tests (authorization, report only)
+        # Examples always run first, then the matrix repeats destructive
+        # requests as the admin, so run after the gates.
+        # Scope expectations and lifecycle fixtures still need work
+        # (#376); failures and unsent cells are evidence, not a passing gate.
+        if: ${{ !cancelled() && steps.contract.outcome != 'skipped' && inputs.contract-phases == 'gate' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          mkdir -p .cache/contract
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          trap 'rm -f .cache/contract/vertrag-authorization.yml' EXIT
+          python3 tests/contract/authorization.py openapi.yaml vertrag.yml \
+            .cache/contract-principals.json .cache/contract/vertrag-authorization.yml \
+            .cache/contract/authorization.xml
+          code=0
+          vertrag run --config .cache/contract/vertrag-authorization.yml --sequence --phases authorization \
+            > "$RUNNER_TEMP/contract-authorization.log" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/contract-authorization.log"
+          echo "vertrag authorization exited $code (report only)"
+          exit "$code"
 
       - name: Contract tests (fuzz)
         # Values drawn from each schema, with shrinking and a replayable seed

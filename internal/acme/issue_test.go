@@ -21,6 +21,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	acmeprotocol "golang.org/x/crypto/acme"
 )
 
 // fakeCA is a minimal RFC 8555 server: enough of the protocol for
@@ -42,6 +44,7 @@ type fakeCA struct {
 	domains    []string
 	issued     []byte
 	nextID     int
+	accounts   map[string]bool
 }
 
 type fakeAuthz struct {
@@ -71,7 +74,7 @@ func newFakeCA(t *testing.T, responder http.Handler) *fakeCA {
 	}
 	caCert, _ := x509.ParseCertificate(der)
 	ca := &fakeCA{t: t, responder: responder, caCert: caCert, caKey: caKey,
-		fetched: map[string]string{}, authzs: map[string]*fakeAuthz{}}
+		fetched: map[string]string{}, authzs: map[string]*fakeAuthz{}, accounts: map[string]bool{}}
 	ca.srv = httptest.NewServer(http.HandlerFunc(ca.serve))
 	t.Cleanup(ca.srv.Close)
 	return ca
@@ -106,13 +109,19 @@ func (ca *fakeCA) serve(w http.ResponseWriter, r *http.Request) {
 		sum := sha256.Sum256([]byte(canon))
 		ca.thumbprint = base64.RawURLEncoding.EncodeToString(sum[:])
 		w.Header().Set("Location", ca.url("/account/1"))
-		writeJSON(w, http.StatusCreated, map[string]any{"status": "valid"})
+		status := http.StatusCreated
+		if ca.accounts[ca.thumbprint] {
+			status = http.StatusOK // RFC 8555: this key already has an account.
+		}
+		ca.accounts[ca.thumbprint] = true
+		writeJSON(w, status, map[string]any{"status": "valid"})
 	case r.URL.Path == "/new-order":
 		var req struct {
 			Identifiers []struct{ Type, Value string } `json:"identifiers"`
 		}
 		_ = json.Unmarshal(payload, &req)
 		ca.domains = nil
+		ca.issued = nil
 		for _, id := range req.Identifiers {
 			ca.nextID++
 			id2 := fmt.Sprint(ca.nextID)
@@ -281,5 +290,37 @@ func TestHTTP01Responder_ServesOnlyPendingTokens(t *testing.T) {
 		if rec.Code != want {
 			t.Errorf("GET %s = %d, want %d", path, rec.Code, want)
 		}
+	}
+}
+
+// A renewal uses the same account identity but obtains a fresh serving key.
+// The second registration returns 200 (ErrAccountAlreadyExists in x/crypto).
+func TestIssue_ReusesAccountKey(t *testing.T) {
+	responder := NewHTTP01Responder()
+	ca := newFakeCA(t, responder)
+	accountKey := newECKey(t)
+	thumbprint, err := acmeprotocol.JWKThumbprint(accountKey.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := IssueConfig{Directory: ca.url("/directory"), Domains: []string{"mail.example.test"}, AccountKey: accountKey}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var previousKey string
+	for i := 0; i < 2; i++ {
+		_, key, err := Issue(ctx, cfg, responder)
+		if err != nil {
+			t.Fatalf("issuance %d: %v", i+1, err)
+		}
+		if ca.thumbprint != thumbprint {
+			t.Fatal("issuance did not use supplied account key")
+		}
+		if key == previousKey {
+			t.Fatal("renewal reused the serving private key")
+		}
+		previousKey = key
+	}
+	if len(ca.accounts) != 1 {
+		t.Fatalf("created %d accounts, want one", len(ca.accounts))
 	}
 }
