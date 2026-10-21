@@ -90,6 +90,13 @@ database access (`contract_account_examples_test.go`,
 `contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
 No before hook rewrites these requests. Sibling operations remain excluded.
 
+`bulkRetryQueue` and `bulkBounceQueue` send their `invalid_body` (`[]`) and
+`selection_missing` (`{}`) requests with their paired 400s; their original
+request is named `by_ids`, with a matching 200 example, so neither refusal is
+paired with success. The 400s no longer carry a `too_many_ids` example: a
+request of 1001 ids is not worth a place in the spec, and the handler tests
+still check that refusal (`contract_queue_bulk_pairs_test.go`).
+
 `receiveTlsReport` sends its `organization_missing` request with its paired
 422 and its `body_array` request (`[]`) with its paired 400, the `bad_request`
 the handler sends for a body that does not decode as a report. Both are refused
