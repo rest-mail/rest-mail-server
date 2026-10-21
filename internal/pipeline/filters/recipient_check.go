@@ -76,7 +76,7 @@ func (f *recipientCheckFilter) deferResult(err error) *pipeline.FilterResult {
 
 func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJSON) (*pipeline.FilterResult, error) {
 	for _, rcpt := range email.Envelope.RcptTo {
-		canonical, validationErr := rmail.CanonicalMailboxAddress(rcpt)
+		_, validationErr := rmail.CanonicalMailboxAddress(rcpt)
 		if validationErr != nil || rmail.ContainsControlChar(rcpt) {
 			return &pipeline.FilterResult{
 				Type: pipeline.FilterTypeAction, Action: pipeline.ActionReject,
@@ -97,13 +97,12 @@ func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJ
 		if mb.ID == 0 {
 			// No exact mailbox. An explicit alias for the full address claims it
 			// (and wins over the subaddressing fallback below).
-			var aliasCount int64
-			f.db.Table("aliases").
-				Joins("JOIN domains ON domains.id = aliases.domain_id").
-				Where("aliases.source_address IN ? AND domains.active", []string{rcpt, canonical}).
-				Count(&aliasCount)
+			aliasClaims, err := repositories.AliasClaimsAddress(f.db, rcpt, true)
+			if err != nil {
+				return f.deferResult(err), nil
+			}
 
-			if aliasCount == 0 {
+			if !aliasClaims {
 				// RFC 5233 subaddressing: when the local part carries a "+detail"
 				// tag and no alias claims the full address, retry against the base
 				// mailbox (user+tag@domain -> user@domain).
@@ -121,7 +120,7 @@ func (f *recipientCheckFilter) Execute(_ context.Context, email *pipeline.EmailJ
 			}
 
 			if mb.ID == 0 {
-				if aliasCount > 0 {
+				if aliasClaims {
 					// An alias claims the address; it resolves elsewhere, so there
 					// is no local mailbox to quota-check here.
 					continue
