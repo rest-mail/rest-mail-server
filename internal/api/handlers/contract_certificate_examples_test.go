@@ -19,10 +19,31 @@ import (
 // body that reached the lookup would panic on the nil database instead.
 func TestCertificateCreate_DocumentedBadRequests(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/certificates", "createCertificate")
-	// No request names an example, so the contract run sends only the hook's
-	// certificate, and no request pairs with a 400 example.
-	if len(requests) != 0 {
-		t.Errorf("createCertificate's request names examples %v, want none", names(requests))
+	wantPairs := map[string][]string{
+		"request": {"fields_missing", "invalid_body", "valid"},
+		"201":     {"valid"},
+		"400":     {"fields_missing", "invalid_body"},
+	}
+	gotPairs := map[string][]string{"request": names(requests)}
+	for status, examples := range responses {
+		gotPairs[status] = names(examples)
+	}
+	if !reflect.DeepEqual(gotPairs, wantPairs) {
+		t.Fatalf("createCertificate's named examples are %v, want %v", gotPairs, wantPairs)
+	}
+	for name, want := range responses["400"] {
+		body := string(mustJSON(requests[name]))
+		rr, reachedDB := createCertificateWithoutDB(body)
+		if reachedDB || rr.Code != http.StatusBadRequest {
+			t.Fatalf("%s: reached database %v, status %d, want 400 before lookup", body, reachedDB, rr.Code)
+		}
+		var got interface{}
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s answered %s, want %s", body, rr.Body, mustJSON(want))
+		}
 	}
 
 	documented := responses["400"]
@@ -103,8 +124,8 @@ func TestCertificateCreate_CompleteBodyReachesTheLookup(t *testing.T) {
 	}
 }
 
-// The rest of the operation stays as it was: the 201 and its link, the 422,
-// and the 400 as the shared error envelope.
+// The success keeps its link, and the 400 keeps the shared error envelope.
+// No 422 is documented: the handler never sends one.
 func TestCertificateCreate_DocumentedResponses(t *testing.T) {
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
@@ -140,7 +161,7 @@ func TestCertificateCreate_DocumentedResponses(t *testing.T) {
 		statuses = append(statuses, status)
 	}
 	sort.Strings(statuses)
-	if want := []string{"201", "400", "422"}; !reflect.DeepEqual(statuses, want) {
+	if want := []string{"201", "400"}; !reflect.DeepEqual(statuses, want) {
 		t.Errorf("createCertificate documents %v, want %v", statuses, want)
 	}
 	if _, ok := op.Responses["201"].Links["getCertificate"]; !ok {
@@ -148,9 +169,6 @@ func TestCertificateCreate_DocumentedResponses(t *testing.T) {
 	}
 	if got, want := op.Responses["400"].Content["application/json"].Schema.Ref, "#/components/schemas/ErrorResponse"; got != want {
 		t.Errorf("the 400's schema is %q, want %q", got, want)
-	}
-	if got, want := op.Responses["422"].Ref, "#/components/responses/ValidationError"; got != want {
-		t.Errorf("the 422 is %q, want %q", got, want)
 	}
 }
 

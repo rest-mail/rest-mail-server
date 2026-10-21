@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/restmail/restmail/internal/db/models"
 )
 
 const (
@@ -15,45 +17,70 @@ const (
 	renewalTimeout = 5 * time.Minute
 )
 
+// renewer is the part of Client the manager drives, so tests can stand in for
+// the database and the CA.
+type renewer interface {
+	CertificatesNeedingRenewal() ([]models.Certificate, error)
+	RenewCertificate(ctx context.Context, cert *models.Certificate) error
+}
+
 // Manager periodically checks for certificates that need renewal and renews them.
 type Manager struct {
-	client   *Client
+	client   renewer
 	interval time.Duration
-	stop     chan struct{}
+	delay    time.Duration // before the first check, so the server can start
+	ctx      context.Context
+	cancel   context.CancelFunc
+	started  bool
+	done     chan struct{}
 }
 
 // NewManager creates a new certificate renewal manager.
 func NewManager(client *Client, interval time.Duration) *Manager {
+	return newManager(client, interval)
+}
+
+func newManager(client renewer, interval time.Duration) *Manager {
 	if interval == 0 {
 		interval = DefaultCheckInterval
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Manager{
 		client:   client,
 		interval: interval,
-		stop:     make(chan struct{}),
+		delay:    time.Minute,
+		ctx:      ctx,
+		cancel:   cancel,
+		done:     make(chan struct{}),
 	}
 }
 
 // Start begins the periodic renewal check loop in a background goroutine.
 func (m *Manager) Start() {
+	m.started = true
 	go m.run()
 	slog.Info("acme: renewal manager started", "interval", m.interval)
 }
 
-// Shutdown stops the renewal manager.
+// Shutdown stops the renewal manager. It cancels a renewal in flight, skips
+// the certificates not yet reached, and returns once the loop has exited, so
+// no CA order or certificate write outlives the server.
 func (m *Manager) Shutdown() {
-	close(m.stop)
+	m.cancel()
+	if m.started {
+		<-m.done
+	}
 	slog.Info("acme: renewal manager stopped")
 }
 
 func (m *Manager) run() {
-	// Run an initial check after a short delay to allow the server to start.
-	timer := time.NewTimer(1 * time.Minute)
+	defer close(m.done)
+	timer := time.NewTimer(m.delay)
 	defer timer.Stop()
 
 	for {
 		select {
-		case <-m.stop:
+		case <-m.ctx.Done():
 			return
 		case <-timer.C:
 			m.checkAndRenew()
@@ -78,17 +105,27 @@ func (m *Manager) checkAndRenew() {
 	slog.Info("acme: certificates needing renewal", "count", len(certs))
 
 	for i := range certs {
+		if m.ctx.Err() != nil {
+			return
+		}
 		cert := &certs[i]
-		ctx, cancel := context.WithTimeout(context.Background(), renewalTimeout)
+		ctx, cancel := context.WithTimeout(m.ctx, renewalTimeout)
 
-		if err := m.client.RenewCertificate(ctx, cert); err != nil {
+		err := m.client.RenewCertificate(ctx, cert)
+		switch {
+		case err != nil && m.ctx.Err() != nil:
+			slog.Info("acme: certificate renewal interrupted by shutdown",
+				"domain", cert.Domain.Name,
+				"cert_id", cert.ID,
+			)
+		case err != nil:
 			slog.Error("acme: certificate renewal failed",
 				"domain", cert.Domain.Name,
 				"cert_id", cert.ID,
 				"expires", cert.NotAfter,
 				"error", err,
 			)
-		} else {
+		default:
 			slog.Info("acme: certificate renewal succeeded",
 				"domain", cert.Domain.Name,
 				"cert_id", cert.ID,

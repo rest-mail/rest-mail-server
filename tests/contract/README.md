@@ -123,6 +123,14 @@ email) runs the created filter and gets the 200
 (`contract_testcustomfilter_examples_test.go`). The other
 `/custom-filters/{id}` operations keep their exclusions.
 
+`createCertificate` sends `invalid_body` (`[]`) and `fields_missing` (`{}`)
+with their paired 400s, both refused before the domain lookup. Its `valid`
+request pairs only with 201; the hook supplies a fresh certificate and key on
+the created domain, leaving malformed and incomplete requests unchanged
+(`contract_certificate_examples_test.go`, `test_contract_certificate_hook.py`).
+The previously documented 422 was removed: this handler never returns it;
+invalid PEM and missing fields return 400.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as

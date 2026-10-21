@@ -5211,6 +5211,16 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateCertificateRequest"
+            examples:
+              valid:
+                summary: The hook supplies a fresh certificate and the created domain
+                value: {domain_id: 1, cert_pem: certificate, key_pem: key, auto_renew: false}
+              invalid_body:
+                summary: An array cannot decode as a certificate request
+                value: []
+              fields_missing:
+                summary: Required certificate fields are missing
+                value: {}
       responses:
         "201":
           description: Certificate created
@@ -5222,6 +5232,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Certificate"
+              examples:
+                valid:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      issuer: CN=contract.example.org
+                      not_before: "2026-01-01T00:00:00Z"
+                      not_after: "2026-01-31T00:00:00Z"
+                      auto_renew: false
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             getCertificate:
               operationId: getCertificate
@@ -5253,8 +5275,6 @@ paths:
                     error:
                       code: bad_request
                       message: domain_id, cert_pem, and key_pem are required
-        "422":
-          $ref: "#/components/responses/ValidationError"
 
   /api/v1/admin/certificates/{id}:
     parameters:
