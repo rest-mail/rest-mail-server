@@ -306,3 +306,11 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+`getCustomFilter` sends its documented `missing` 404 using the missing-ID path
+parameter example. Vertrag 0.29 does not pair parameter example names, and the
+create link supplies the created ID to both responses, so a hook selects
+2147483647 only for the 404 transaction. The successful lookup and its boundary
+probes retain their original IDs. The handler test proves the missing row is
+absent, checks the exact refusal and successful lookup, and verifies no stored
+filter changes. Other missing-resource responses remain excluded (#386).
