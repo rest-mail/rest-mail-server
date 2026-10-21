@@ -80,12 +80,12 @@ func TestOutboundGuardedDialer(t *testing.T) {
 	defer ln.Close()
 
 	deny := &Worker{}
-	if _, err := deny.newGuardedDialer(2 * time.Second).Dial("tcp", ln.Addr().String()); err == nil {
+	if _, err := deny.newGuardedDialer(2*time.Second).Dial("tcp", ln.Addr().String()); err == nil {
 		t.Fatal("expected guarded dialer to refuse loopback SMTP dial")
 	}
 
 	allow := &Worker{allowPrivateDest: true}
-	conn, err := allow.newGuardedDialer(2 * time.Second).Dial("tcp", ln.Addr().String())
+	conn, err := allow.newGuardedDialer(2*time.Second).Dial("tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatalf("opt-in should allow loopback dial, got %v", err)
 	}
@@ -112,10 +112,10 @@ func TestDeliverRESTMAILHTTPSRefusesLoopbackHTTPS(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// tlsInsecure so the self-signed httptest cert is accepted — isolating the
+	// Trust the self-signed httptest cert — isolating the
 	// SSRF guard as the reason the call must fail, not certificate verification.
-	w := &Worker{sendDeadline: defaultSendDeadline, tlsInsecure: true}
-	if err := w.deliverRESTMAILHTTPS(srv.URL, testItem(), false); err == nil {
+	w := &Worker{sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs}
+	if err := w.deliverRESTMAILHTTPS(srv.URL, testItem()); err == nil {
 		t.Fatal("expected RESTMAIL POST to a loopback endpoint to be refused")
 	}
 }
@@ -129,8 +129,8 @@ func TestDeliverRESTMAILHTTPSAllowsLoopbackWhenOptedIn(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	w := &Worker{sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true}
-	if err := w.deliverRESTMAILHTTPS(srv.URL, testItem(), false); err != nil {
+	w := &Worker{sendDeadline: defaultSendDeadline, restmailRoots: srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true}
+	if err := w.deliverRESTMAILHTTPS(srv.URL, testItem()); err != nil {
 		t.Fatalf("opt-in should permit loopback RESTMAIL delivery, got %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestDeliverRESTMAILHTTPSAllowsLoopbackWhenOptedIn(t *testing.T) {
 // the endpoint URL is attacker-influenced (from an MX's RESTMAIL EHLO keyword).
 func TestDeliverRESTMAILHTTPSRejectsCleartext(t *testing.T) {
 	w := &Worker{sendDeadline: defaultSendDeadline, allowPrivateDest: true}
-	err := w.deliverRESTMAILHTTPS("http://example.com", testItem(), false)
+	err := w.deliverRESTMAILHTTPS("http://example.com", testItem())
 	if err == nil {
 		t.Fatal("expected cleartext http RESTMAIL endpoint to be refused")
 	}
