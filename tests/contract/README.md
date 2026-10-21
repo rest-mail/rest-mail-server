@@ -306,3 +306,11 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+`getCertificate` sends its documented 404 with the `missing` path parameter
+example. Vertrag 0.29 does not pair parameter example names, and the create
+link supplies its new ID to both responses, so a hook selects the missing ID
+only for the 404. Successful lookups and their boundary probes keep their
+original IDs. `contract_certificate_get_examples_test.go` checks the exact
+refusal, successful detail response, and unchanged stored certificate against
+PostgreSQL; `test_contract_missing_certificate.py` checks the hook.
