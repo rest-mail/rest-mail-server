@@ -34,6 +34,22 @@ func DomainASCII(domain string) (string, error) {
 	return ascii, nil
 }
 
+// DomainUnicode converts a domain to its Unicode (U-label) form under the same
+// mapping as DomainASCII. Protocols such as TLS SNI only carry A-labels, while a
+// hosted domain may be stored as the Unicode name it was entered with; this is
+// how such a name is matched against the stored one.
+func DomainUnicode(domain string) (string, error) {
+	ascii, err := DomainASCII(domain)
+	if err != nil {
+		return "", err
+	}
+	unicode, err := domainLookup.ToUnicode(ascii)
+	if err != nil {
+		return "", fmt.Errorf("invalid domain: %w", err)
+	}
+	return unicode, nil
+}
+
 // SMTPAddressASCII converts only the domain of an already validated, bare
 // envelope address to Punycode. Local parts are preserved byte-for-byte: their
 // normalization is a mailbox provisioning concern. Empty reverse paths and
