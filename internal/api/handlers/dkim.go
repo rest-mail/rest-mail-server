@@ -5,10 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/outbound"
@@ -69,7 +67,7 @@ func (h *DKIMHandler) ListKeys(w http.ResponseWriter, r *http.Request) {
 // saying which check failed.
 // PUT /api/v1/admin/dkim/{id}
 func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return
@@ -147,7 +145,7 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 // DeleteKey removes the DKIM key for a domain.
 // DELETE /api/v1/admin/dkim/{id}
 func (h *DKIMHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	id, err := pathID(r, "id")
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
 		return

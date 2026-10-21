@@ -919,6 +919,8 @@ The API **refuses to start** if a bootstrap admin would be created with a passwo
 
 #### A forgotten password: `POST /api/v1/auth/recover`
 
+Webmail and the admin sign-in page offer **Forgot password?**. Enter the account address, a current authenticator code, an unused recovery code saved during two-factor setup, and the new password twice. Success signs you in with the new password; your authenticator stays enabled. If either factor is unavailable, contact the server administrator for an assisted reset. **Use an account recovery token** remains the separate path for a token supplied by the operator.
+
 An account with two-factor authentication resets its own password with a current authenticator code and one of its recovery codes, both (`email`, `totp_code`, `recovery_code`, `new_password`, optional `client: "native"`). The authenticator stays; app passwords and sessions end; the answer is a new session. Refusals are budgeted per address as well as per IP: 5, then one per 15 minutes, then 429. Without two-factor authentication there is no self-service path: an admin resets the password, or, for an admin who has lost every way in, the token below.
 
 #### Getting back in, and handing a server over: `restmail reset-admin`
