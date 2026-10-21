@@ -315,10 +315,11 @@ def an_outlook_autodiscover_request(transaction):
 
 
 @hooks.before("/api/v1/auth/protocol-sign-in > * > 200 > application/json")
+@hooks.before("/api/v1/auth/protocol-sign-in > * > 400 > application/json")
+@hooks.before("/api/v1/auth/protocol-sign-in > * > 422 > application/json")
 def sign_in_a_mail_client(transaction):
     app = principals()["app_password"]
     transaction["request"]["headers"]["Authorization"] = basic(app["address"], app["secret"])
-    hooks.set_json(transaction, {"protocol": "imap"})
 
 
 @hooks.before("createContact")
