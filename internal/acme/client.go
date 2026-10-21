@@ -101,20 +101,25 @@ func (c *Client) ChallengeHandler() http.Handler {
 }
 
 // ObtainCertificate requests a new certificate for the given domain via ACME
-// HTTP-01 and stores it in the database. The CA validates the challenge by
-// fetching it from ChallengeHandler, which must be reachable on port 80 of
-// domain while this runs.
+// HTTP-01 under the stored account key, and stores it in the database. The CA
+// validates the challenge by fetching it from ChallengeHandler, which must be
+// reachable on port 80 of domain while this runs.
 func (c *Client) ObtainCertificate(ctx context.Context, domain string) (*models.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	slog.Info("acme: obtaining certificate", "domain", domain)
 
+	accountKey, err := c.accountKey(ctx)
+	if err != nil {
+		return nil, err
+	}
 	certPEM, keyPEM, err := Issue(ctx, IssueConfig{
 		Directory:  c.directory,
 		Email:      c.email,
 		Domains:    []string{domain},
 		HTTPClient: c.httpClient,
+		AccountKey: accountKey,
 	}, c.responder)
 	if err != nil {
 		return nil, err
