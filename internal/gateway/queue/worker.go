@@ -21,6 +21,7 @@ import (
 
 	"github.com/rest-mail/go-mtasts"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/outbound"
@@ -1019,13 +1020,10 @@ func (w *Worker) recentDSNCount(mailboxID uint) int64 {
 // generateBounce creates an RFC 3464 DSN (Delivery Status Notification)
 // and delivers it to the original sender's mailbox if the sender is local.
 func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
-	// Check if the sender has a local mailbox
-	var senderMailbox struct {
-		ID     uint
-		Active bool
-	}
-	result := w.db.Raw("SELECT id, active FROM mailboxes WHERE address = ? AND active = true LIMIT 1", item.Sender).Scan(&senderMailbox)
-	if result.Error != nil || result.RowsAffected == 0 {
+	// Check if the sender has a local mailbox, resolving its hosted identity as
+	// submission did when it attributed the message.
+	var senderMailbox models.Mailbox
+	if err := repositories.FindActiveMailboxByAddress(w.db, item.Sender, &senderMailbox); err != nil {
 		slog.Debug("queue: bounce sender not local, discarding DSN", "sender", item.Sender)
 		return
 	}
