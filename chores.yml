@@ -1333,6 +1333,9 @@ tasks:
             # overrides tls.acme.directory). CERT_RENEW_BEFORE=720h reuses a
             # valid matching pair until 30 days before expiry; default 0s
             # always issues (also use 0s when switching CA/staging mode).
+            # CERT_CHECK_INTERVAL=12h opts into continuous checks (requires
+            # positive CERT_RENEW_BEFORE), reserving port 80 while waiting too.
+            # Build then exec so the issuer directly receives stop signals.
             # The 0600 .acme-account-<directory-hash>.key
             # in the certs volume preserves the CA account across runs. Keep
             # it with the volume backups; staging uses a separate account.
@@ -1344,8 +1347,10 @@ tasks:
               -v rest-mail-e2e-gocache:/root/.cache/go-build \
               -e GOFLAGS=-buildvcs=false \
               golang:1.25 \
-              go run ./cmd/instance acme-issue -out /certs -listen :80 \
+              sh -ec 'go build -o /go/bin/instance ./cmd/instance && exec /go/bin/instance "$@"' _ \
+                acme-issue -out /certs -listen :80 \
                 -renew-before "{{.CERT_RENEW_BEFORE | default "0s"}}" \
+                -check-interval "{{.CERT_CHECK_INTERVAL | default "0s"}}" \
                 -domains "{{.CERT_SANS}}" \
                 -email "{{.RESTMAIL_TLS_ACME_EMAIL | default ""}}" \
                 -directory "{{.RESTMAIL_TLS_ACME_DIRECTORY | default ""}}" \
