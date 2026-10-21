@@ -145,6 +145,13 @@ refusal (`contract_sendmessage_examples_test.go`). The other
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`createAppPassword` sends `name_missing`, `name_empty`, `name_too_long` and
+`name_control` with their paired 422s; `created` pairs only with 201. The
+hook supplies the fixture admin's current password without changing the name.
+The real handler tests check every pair on a managed account and verify that
+refusals create no credential (`contract_credential_examples_test.go`). Other
+account operations keep their exclusions.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
