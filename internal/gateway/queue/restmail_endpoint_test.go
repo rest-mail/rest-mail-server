@@ -2,6 +2,7 @@ package queue
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -114,9 +115,9 @@ func TestTryRESTMAILIgnoresAdvertisedEndpoint(t *testing.T) {
 	// dial and the test touches nothing real.
 	const mxHost = "mx.restmail-291.invalid"
 
-	// tlsInsecure would accept the attacker's self-signed certificate and
-	// allowPrivateDest the loopback address, so only the endpoint choice stops it.
-	w := &Worker{db: gdb, sendDeadline: defaultSendDeadline, tlsInsecure: true, allowPrivateDest: true, hostname: "test.local"}
+	// Trust the attacker's certificate and allow loopback, so only the endpoint
+	// choice stops it, independently of the final-hop TLS verification.
+	w := &Worker{db: gdb, sendDeadline: defaultSendDeadline, restmailRoots: attacker.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs, allowPrivateDest: true, hostname: "test.local"}
 	item := testItem()
 	item.Domain = domain
 
@@ -147,11 +148,14 @@ func TestTryRESTMAILDeliversToDiscoveredEndpoint(t *testing.T) {
 	const domain = "restmail-291-fleet.test"
 	gdb := restmailTestDB(t, domain)
 
+	cert, _ := relayTestCertificate(t, false)
 	var posted atomic.Value
-	final := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	final := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		posted.Store(r.Method + " " + r.URL.Path)
 		w.WriteHeader(http.StatusCreated)
 	}))
+	final.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	final.StartTLS()
 	defer final.Close()
 	var askedDomain atomic.Value
 	discovery, w := discoveryServer(t, func(rw http.ResponseWriter, r *http.Request) {
@@ -159,8 +163,8 @@ func TestTryRESTMAILDeliversToDiscoveredEndpoint(t *testing.T) {
 		fmt.Fprintf(rw, `{"endpoint":%q}`, final.URL+"/restmail")
 	})
 	w.db = gdb
-	// Final-hop verification still follows tlsInsecure until it is always on.
-	w.tlsInsecure = true
+	// The fleet endpoint has a different certificate from the discovery host.
+	w.restmailRoots.AddCert(final.Certificate())
 	item := testItem()
 	item.Domain = domain
 
