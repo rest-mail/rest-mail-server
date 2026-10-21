@@ -1,6 +1,7 @@
 import { create } from 'zustand';
+import { THEME_IDS, DARK_THEME_IDS, type ThemeId } from '@/theme/packs';
 
-export type Theme = 'dawn' | 'linen' | 'slate' | 'dusk' | 'midnight' | 'forest' | 'neon' | 'aurora' | 'industrial';
+export type Theme = ThemeId;
 type View =
   | 'mail' | 'compose' | 'addAccount' | 'accountDetails'
   | 'vacation' | 'quarantine' | 'tlsReports'
@@ -34,22 +35,18 @@ interface UIState {
   toggleAccountCollapsed: (accountId: number) => void;
 }
 
-const DARK_THEMES: Theme[] = ['midnight', 'forest', 'slate', 'dusk', 'neon', 'aurora', 'industrial'];
-
 function getInitialTheme(): Theme {
   const stored = localStorage.getItem('restmail-theme');
-  const valid: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest', 'neon', 'aurora', 'industrial'];
-  if (stored && valid.includes(stored as Theme)) return stored as Theme;
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'industrial' : 'dawn';
+  if (stored && (THEME_IDS as string[]).includes(stored)) return stored as Theme;
+  return window.matchMedia('(prefers-color-scheme: dark').matches ? 'industrial' : 'dawn';
 }
 
 function applyTheme(theme: Theme) {
-  const all: Theme[] = ['dawn', 'linen', 'slate', 'dusk', 'midnight', 'forest', 'neon', 'aurora', 'industrial'];
   // Remove all palette classes, add the selected one
-  document.documentElement.classList.remove(...all, 'dark');
+  document.documentElement.classList.remove(...THEME_IDS, 'dark');
   document.documentElement.classList.add(theme);
   // Keep .dark for any shadcn components that use it directly
-  if (DARK_THEMES.includes(theme)) {
+  if (DARK_THEME_IDS.includes(theme)) {
     document.documentElement.classList.add('dark');
   }
   localStorage.setItem('restmail-theme', theme);
