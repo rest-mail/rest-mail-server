@@ -3762,6 +3762,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateDomainRequest"
+            examples:
+              updated:
+                value:
+                  sending_policy: transactional
+              sending_policy_invalid:
+                value:
+                  sending_policy: newsletter
       responses:
         "200":
           description: Domain updated
@@ -3773,6 +3780,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Domain"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 1
+                      name: example.org
+                      server_type: restmail
+                      active: false
+                      default_quota_bytes: 0
+                      sending_policy: transactional
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -3782,7 +3801,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                sending_policy_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          sending_policy: must be 'transactional', 'bulk' or empty
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]

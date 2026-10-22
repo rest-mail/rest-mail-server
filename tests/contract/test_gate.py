@@ -94,6 +94,7 @@ class PairedRefusals(unittest.TestCase):
         "sendMessage",
         "microsoftAutodiscover",
         "createDomain",
+        "updateDomain",
         "createAlias",
         "createPipeline",
         "createBan",
