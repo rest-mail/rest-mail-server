@@ -208,7 +208,7 @@ jobs:
         id: contract
         if: inputs.contract-phases == 'gate'
         run: |
-          set -o pipefail
+          set -euo pipefail
           # 1 is a failed transaction (or a run that could not be carried out)
           # and 3 an operation not exercised and passing (vertrag.yml's surface
           # gate): both fail here. 2 is a failed boundary probe, which the
@@ -216,7 +216,19 @@ jobs:
           code=0
           # vertrag writes its report here and makes no directories itself.
           mkdir -p .cache/contract
-          vertrag run --sequence --phases coverage 2>&1 | tee "$RUNNER_TEMP/contract.log" || code=$?
+          # Pins also replace named examples in vertrag 0.29. First enforce
+          # every example and the full surface gate with no generated pins.
+          vertrag run --sequence --phases examples 2>&1 | tee "$RUNNER_TEMP/contract-examples.log"
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          # The second process repeats create examples after the first one
+          # consumed its queue entry and left its folder and contact behind.
+          python3 tests/contract/repeat_fixtures.py vertrag.yml
+          chore test:contract-fixtures
+          trap 'rm -f .cache/contract/vertrag-probes.yml' EXIT
+          python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml \
+            .cache/contract/coverage.xml
+          vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases coverage \
+            2>&1 | tee "$RUNNER_TEMP/contract.log" || code=$?
           echo "vertrag exited $code"
           if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
 
@@ -227,7 +239,7 @@ jobs:
         if: always() && steps.contract.outcome != 'skipped'
         run: |
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
-          python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
+          python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/coverage.xml \
             tests/contract/coverage-baseline.txt
 
       - name: Contract tests (authorization, report only)
@@ -259,7 +271,11 @@ jobs:
         if: inputs.contract-phases == 'fuzz'
         run: |
           mkdir -p .cache/contract
-          vertrag run --sequence --phases fuzz --output .cache/contract/fuzz.xml --reporter junit \
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          trap 'rm -f .cache/contract/vertrag-probes.yml' EXIT
+          python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml \
+            .cache/contract/fuzz.xml
+          vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases fuzz \
             > "$RUNNER_TEMP/contract-fuzz.log" 2>&1 || echo "vertrag exited $?: findings are in the report"
           cat "$RUNNER_TEMP/contract-fuzz.log"
 

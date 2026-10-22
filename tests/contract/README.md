@@ -300,6 +300,37 @@ certificate when activation requires one. The query and caller's credential
 stay unchanged. Discovery therefore runs independently of `updateDomain`'s
 example, which updates only the sending policy.
 
+`setDKIMKey` pairs `installed` with 200; `body_array` and missing, empty or
+wrong-type selectors and private keys with 400; and `selector_invalid` and
+`private_key_invalid` with 422. The hook replaces only the explicit
+`fixture-signing-key` placeholder, preserving malformed bodies, missing
+fields and invalid selectors or keys. The existing createDomain link supplies
+the domain ID. Refusals leave the stored domain unchanged
+(`contract_dkim_key_examples_test.go`, `test_contract_dkim_hook.py`). DKIM
+rotation retains its own exclusions.
+
+Generated DKIM requests hold a public test-only Ed25519 key through
+`probes.py`'s `fuzz.pin.private_key`: schema generation cannot construct a signing key.
+Selector and body probes still run, with nonempty fields and DNS selector
+syntax described in the schema. Generated private-key mutations are held
+fixed; the named examples above exercise their refusals instead, including
+missing, empty, wrong-type and non-PEM keys. The placeholder hook leaves
+generated request bytes unchanged, and no coverage baseline or accepted-status
+exception is added.
+
+vertrag 0.29 applies pins to named examples too. CI first runs the complete,
+unpinned examples with the 100% surface gate. Then `probes.py` writes a separate
+configuration with the test key and no 4xx source transactions, whose probes
+the ratchet already ignores. It retains every success transaction and all
+checks. This second run writes `coverage.xml`, judged by the unchanged ratchet;
+the full example report remains `examples.xml`. The generated configuration
+also serves the report-only fuzz run.
+
+Before the second process repeats examples, `repeat_fixtures.py` removes only
+the fixture admin's `Receipts` folder and `spam@example.org` contact, and
+`chore test:contract-fixtures` supplies a new held queue entry. The first run's
+complete example report is already enforced; probe requests stay unchanged.
+
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.
@@ -392,6 +423,9 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   (`test_hooks_delete_domain.py`).
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
+- `probes.py`: prepares the coverage/fuzz configuration after the full examples
+  gate, holding only the public `fixtures/dkim-key.pem` signing key. Its tests
+  keep pins out of the examples gate and preserve all success probes.
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
@@ -485,9 +519,13 @@ principals):
 chore test:contract-fixtures
 vertrag doctor                          # sends nothing: does every setting reach something?
 mkdir -p .cache/contract                # the report's directory; vertrag makes none
-vertrag run --sequence --phases coverage
+vertrag run --sequence --phases examples
+python3 tests/contract/repeat_fixtures.py vertrag.yml
+chore test:contract-fixtures
+python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml .cache/contract/coverage.xml
+vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases coverage
 echo "vertrag exited $?"                 # 0, or 2 for probe findings; 1 and 3 fail
-python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
+python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/coverage.xml \
   tests/contract/coverage-baseline.txt
 ```
 

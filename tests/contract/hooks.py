@@ -293,10 +293,17 @@ def openssl(*args):
 
 @hooks.before("setDKIMKey")
 def a_fresh_signing_key(transaction):
+    body = hooks.get_json(transaction)
+    # Only substitute the spec's explicit key placeholder. Refused examples
+    # and coverage mutations must retain their bodies, selectors and types.
+    if not isinstance(body, dict) or body.get("private_key") != "fixture-signing-key":
+        return
     with tempfile.TemporaryDirectory() as d:
         key = os.path.join(d, "dkim.key")
         openssl("genrsa", "-out", key, "2048")
-        hooks.set_json(transaction, {"selector": "contract", "private_key": open(key).read()})
+        with open(key) as source:
+            body["private_key"] = source.read()
+        hooks.set_json(transaction, body)
 
 
 @hooks.before("createCertificate")
