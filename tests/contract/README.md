@@ -158,6 +158,15 @@ from it, and takes the policy off again for every other send and after the
 refusal (`contract_sendmessage_examples_test.go`). The other
 `/api/v1/messages` operations keep their exclusions.
 
+`createContact` names its `created` request with its 201, and
+`email_missing`, `email_invalid` (a display name and address) and
+`trust_level_invalid` with their paired 422s. The refusals use another address
+than `created`'s, because the `createContact` hook removes a contact an earlier
+request made at the same address, and `created`'s links still need it. The
+real handler refuses each for the account's own session and stores nothing
+(`contract_contact_examples_test.go`). The other `/api/v1/accounts/{id}`
+operations keep their exclusions.
+
 `protocolSignIn` uses the E2E fixture's app password with its named requests:
 `signed_in` (`{ "protocol": "imap" }`) gets 200, `invalid_body` (`[]`)
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
@@ -169,6 +178,19 @@ hook supplies the fixture admin's current password without changing the name.
 The real handler tests check every pair on a managed account and verify that
 refusals create no credential (`contract_credential_examples_test.go`). Other
 account operations keep their exclusions.
+`setDKIMRotation` pairs `configured` with 200, `body_array`,
+`interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
+`interval_null`, `interval_negative` and `interval_too_large` with 422.
+The domain ID comes from `createDomain`'s link. The handler tests send each
+refusal before and after saving a valid interval and verify the entire domain
+is preserved, including its signing material. Other DKIM operations keep
+their exclusions.
+
+`createFolder` pairs `created` with 201 and `name_missing`, `name_empty`, and
+`name_wrong_type` with 422. The real handler tests use an authorized account
+on a scratch database and compare each example's status and full response
+body. The folder hook leaves the invalid bodies unchanged and only removes
+previously created valid probe folders.
 
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
@@ -189,6 +211,13 @@ as a failed probe. `gate.py` does not judge a probe built from a refusal (a
 transaction whose status is 4xx), so those failures do not count against the
 coverage ratchet (`test_gate.py`).
 
+`saveDraft` includes an `empty` request (`{}`) as well as `with_sender`.
+Every draft field is optional: omitting `from` saves in the signed-in
+account's mailbox with an empty sender. An explicit sender still needs
+mail:write on that mailbox (`contract_draft_test.go`). The operation remains
+in the coverage baseline because generated sender addresses can name
+mailboxes the principal cannot write to.
+
 vertrag is the released, checksum-pinned binary (v0.29.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
 
@@ -201,7 +230,15 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   where a request carries it in its body, and its name in the Host header the
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
-  folder for each rename probe (a successful rename consumes the previous one).
+  folder for each rename probe (a successful rename consumes the previous one),
+  a hosted domain and mailbox for each address a test send probe uses, and,
+  for `createAccount`'s probes, their address's domain hosted and the
+  account a previous probe created removed (a generated address such as
+  `someone@example.com` is otherwise refused as on a domain this server does
+  not host, or as existing). A probe repeating the example's address removes
+  the account `getMailbox`, `updateMailbox` and `deleteMailbox` are linked to,
+  so those follow it to its current id, recreating it if a refused probe left
+  it removed.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -221,6 +258,9 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
+  (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
+- `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
@@ -309,3 +349,10 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+Test send probes (sendTestEmail) send from and to a generated address
+(`someone@example.com`) that has no mailbox. A before hook hosts its domain and
+creates its account through the admin API the first time an address appears,
+then leaves both in place: a test send only adds a message. Malformed addresses
+and domains the server will not host are left to the probe, and the request is
+never rewritten.
