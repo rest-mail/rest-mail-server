@@ -3029,13 +3029,19 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/PutSieveRequest"
-            example:
-              script: |
-                require ["fileinto"];
-                if header :contains "subject" "invoice" {
-                  fileinto "Invoices";
-                }
-              active: true
+            examples:
+              valid:
+                value:
+                  script: |
+                    require ["fileinto"];
+                    if header :contains "subject" "invoice" {
+                      fileinto "Invoices";
+                    }
+                  active: true
+              script_missing:
+                value: {active: true}
+              script_null:
+                value: {script: null, active: true}
       responses:
         # 201 first: the run creates the script, then replaces it.
         "201":
@@ -3048,6 +3054,9 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/SieveScript"
+              examples:
+                valid:
+                  value: {}
         "200":
           description: Sieve script replaced
           content:
@@ -3058,13 +3067,35 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/SieveScript"
+              examples:
+                valid:
+                  value: {}
           links:
             getSieveScript:
               operationId: getSieveScript
               parameters:
                 id: '$request.path.id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: The script field is missing or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                script_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {script: required}
+                script_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {script: required}
     delete:
       operationId: deleteSieveScript
       tags: [Sieve]
@@ -3111,12 +3142,18 @@ paths:
               properties:
                 script:
                   type: string
-            example:
-              script: |
-                require ["fileinto"];
-                if header :contains "subject" "invoice" {
-                  fileinto "Invoices";
-                }
+            examples:
+              valid:
+                value:
+                  script: |
+                    require ["fileinto"];
+                    if header :contains "subject" "invoice" {
+                      fileinto "Invoices";
+                    }
+              script_missing:
+                value: {}
+              script_null:
+                value: {script: null}
       responses:
         "200":
           description: Validation result
@@ -3134,8 +3171,33 @@ paths:
                         type: boolean
                       message:
                         type: string
+              examples:
+                valid:
+                  value:
+                    data:
+                      valid: true
+                      message: Script is valid
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: The script field is missing or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                script_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {script: required}
+                script_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {script: required}
 
   # ═══════════════════════════════════════════════════════════════
   # Quarantine
