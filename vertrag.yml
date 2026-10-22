@@ -94,6 +94,7 @@ exclude-matching:
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
   # createContact, sendMessage, microsoftAutodiscover and updateCustomFilter.
+  # createContact, sendMessage, microsoftAutodiscover and setDKIMRotation.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
@@ -108,7 +109,9 @@ exclude-matching:
   - '^/api/v1/accounts/\{id\}/contacts/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
-  - '^/api/v1/admin/(audit|dkim|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(audit|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/dkim/\{id\} > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/dkim/\{id\}/rotation > Read .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue/(stats|\{id\})(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/aliases/.* > (400|422)( >|$)'
