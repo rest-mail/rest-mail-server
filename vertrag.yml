@@ -19,17 +19,6 @@ language: python
 # admin login and both API requests in the hook deadline (ms).
 hooks-worker-timeout: 120000
 
-# Hold a public test-only Ed25519 key while generating selector/body probes:
-# a JSON schema generator cannot construct a cryptographically valid key.
-# This applies only to generated requests. Named examples still exercise
-# missing, empty, wrong-type and invalid private keys without substitution.
-fuzz:
-  pin:
-    private_key: |
-      -----BEGIN PRIVATE KEY-----
-      MC4CAQAwBQYDK2VwBCIEIJkOazWQPhrPbvAFhtZjircvF7T+fGdkE6JCaM8MGDi5
-      -----END PRIVATE KEY-----
-
 auth:
   login:
     path: /api/v1/auth/login

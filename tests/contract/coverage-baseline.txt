@@ -9,7 +9,7 @@
 # unreachable operations began running. After #376 merges, nothing is added.
 #
 # Regenerate the list (to shrink it) from a run's report:
-#   python3 tests/contract/gate.py --failing-probes openapi.yaml .cache/contract/examples.xml
+#   python3 tests/contract/gate.py --failing-probes openapi.yaml .cache/contract/coverage.xml
 createDomain
 # Omitting from now matches the handler's own-mailbox default. Generated
 # non-empty senders can still name mailboxes the principal cannot write to.

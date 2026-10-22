@@ -67,8 +67,8 @@ class ContractDKIMHookTests(unittest.TestCase):
     def test_generated_key_is_scoped_and_hook_leaves_it_unchanged(self):
         with (ROOT / "vertrag.yml").open() as source:
             config = yaml.safe_load(source)
-        pin = config["fuzz"]["pin"]
-        self.assertEqual(set(pin), {"private_key"})
+        self.assertFalse(config.get("fuzz", {}).get("pin"), "named error examples must not be pinned")
+        pin = {"private_key": (ROOT / "tests/contract/fixtures/dkim-key.pem").read_text()}
         with (ROOT / "openapi.yaml").open() as source:
             spec = yaml.safe_load(source)
         # Pins match declared property names globally. Catch any new schema

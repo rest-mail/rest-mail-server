@@ -133,22 +133,11 @@ func TestDKIMKeyContract_GeneratedFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	config, err := os.ReadFile("../../../vertrag.yml")
+	fixture, err := os.ReadFile("../../../tests/contract/fixtures/dkim-key.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var settings struct {
-		Fuzz struct {
-			Pin map[string]string `yaml:"pin"`
-		} `yaml:"fuzz"`
-	}
-	if err := yaml.Unmarshal(config, &settings); err != nil {
-		t.Fatal(err)
-	}
-	if len(settings.Fuzz.Pin) != 1 || settings.Fuzz.Pin["private_key"] == "" {
-		t.Fatal("hold only the public test signing key, leaving selectors and bodies generated")
-	}
-	key := settings.Fuzz.Pin["private_key"]
+	key := string(fixture)
 	for _, value := range []string{"x", "contract", "A1", "a-b", "alpha.beta", strings.Repeat("x", 63), "", "-", "-x", "x-", "invalid_selector", "a..b", "a\n", strings.Repeat("x", 64)} {
 		t.Run(fmt.Sprintf("selector_%q", value), func(t *testing.T) {
 			permitted := len(value) >= selector.MinLength && len(value) <= selector.MaxLength && pattern.MatchString(value)
