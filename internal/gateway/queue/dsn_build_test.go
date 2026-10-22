@@ -124,3 +124,91 @@ func TestBuildDSNMessage_SaysWhyInPlainWords(t *testing.T) {
 		t.Errorf("bounce text lost the remote's reply\n---\n%s", dsn.humanPart)
 	}
 }
+
+// TestBuildDSNMessage_InternationalizedRecipient covers RFC 6533 (#153): a
+// UTF-8 recipient is reported with the utf-8 address type inside a
+// message/global-delivery-status part, and UTF-8 original headers are returned
+// as message/global-headers.
+func TestBuildDSNMessage_InternationalizedRecipient(t *testing.T) {
+	item := dsnTestItem()
+	item.Recipient = "jörg+news@bücher.test"
+	item.RawMessage = "From: alice@local.test\r\nTo: jörg+news@bücher.test\r\nSubject: grüße\r\n\r\nbody\r\n"
+	now := time.Date(2026, 7, 25, 12, 30, 0, 0, time.UTC)
+
+	dsn := buildDSNMessage("mail.local.test", item, &SMTPError{Code: 553, Enhanced: "5.6.7", Message: "no SMTPUTF8"}, now, now)
+
+	for _, s := range []string{
+		"Content-Type: multipart/report; report-type=global-delivery-status;",
+		"Content-Type: message/global-delivery-status\r\n",
+		`Final-Recipient: utf-8; jörg\x{2B}news@bücher.test` + "\r\n",
+		"Content-Type: message/global-headers\r\n",
+		"Subject: grüße\r\n",
+	} {
+		if !strings.Contains(dsn.raw, s) {
+			t.Errorf("DSN missing %q\n---\n%s", s, dsn.raw)
+		}
+	}
+	for _, s := range []string{"message/delivery-status", "text/rfc822-headers", "rfc822; "} {
+		if strings.Contains(dsn.raw, s) {
+			t.Errorf("internationalized DSN still contains ASCII-only %q\n---\n%s", s, dsn.raw)
+		}
+	}
+}
+
+// TestBuildDSNMessage_ASCIIKeepsRFC3464Types verifies an all-ASCII failure keeps
+// the RFC 3464 media types and rfc822 address type, plus signs included.
+func TestBuildDSNMessage_ASCIIKeepsRFC3464Types(t *testing.T) {
+	item := dsnTestItem()
+	item.Recipient = "bob+tag@remote.test"
+	now := time.Now()
+
+	dsn := buildDSNMessage("mail.local.test", item, nil, now, now)
+
+	for _, s := range []string{
+		"report-type=delivery-status;",
+		"Content-Type: message/delivery-status\r\n",
+		"Final-Recipient: rfc822; bob+tag@remote.test\r\n",
+		"Content-Type: text/rfc822-headers\r\n",
+	} {
+		if !strings.Contains(dsn.raw, s) {
+			t.Errorf("DSN missing %q\n---\n%s", s, dsn.raw)
+		}
+	}
+	if strings.Contains(dsn.raw, "global-") {
+		t.Errorf("ASCII DSN used an RFC 6533 global type\n%s", dsn.raw)
+	}
+}
+
+// TestBuildDSNMessage_UTF8HeadersOnly checks each part is typed on its own: an
+// ASCII recipient with UTF-8 original headers keeps message/delivery-status but
+// returns the headers as message/global-headers.
+func TestBuildDSNMessage_UTF8HeadersOnly(t *testing.T) {
+	item := dsnTestItem()
+	item.RawMessage = "From: alice@local.test\r\nSubject: café\r\n\r\nbody\r\n"
+	now := time.Now()
+
+	dsn := buildDSNMessage("mail.local.test", item, nil, now, now)
+
+	if !strings.Contains(dsn.raw, "Content-Type: message/delivery-status\r\n") {
+		t.Errorf("ASCII status block not typed message/delivery-status\n%s", dsn.raw)
+	}
+	if !strings.Contains(dsn.raw, "Content-Type: message/global-headers\r\n") {
+		t.Errorf("UTF-8 headers not typed message/global-headers\n%s", dsn.raw)
+	}
+}
+
+// TestDSNRecipientField checks the RFC 6533 unitext escaping: "+", "=", "\" and
+// space become \x{HEX}; other printable ASCII and UTF-8 pass through.
+func TestDSNRecipientField(t *testing.T) {
+	cases := map[string]string{
+		"bob@remote.test":       "rfc822; bob@remote.test",
+		"用户@例え.jp":              "utf-8; 用户@例え.jp",
+		`"a b=c\d"@bücher.test`: `utf-8; "a\x{20}b\x{3D}c\x{5C}d"@bücher.test`,
+		"x+y@bücher.test":       `utf-8; x\x{2B}y@bücher.test`,
+	}
+	for in, want := range cases {
+		if got := dsnRecipientField(in); got != want {
+			t.Errorf("dsnRecipientField(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

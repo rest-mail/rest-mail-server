@@ -175,6 +175,17 @@ describe('self-service password reset', () => {
     expect(form.checkValidity()).toBe(true)
   })
 
+  // A browser's type="email" input rejects a non-ASCII local part, which would
+  // lock internationalized (RFC 6531) accounts out of recovery.
+  it('accepts an internationalized address', () => {
+    window.history.replaceState(null, '', '/login#recover')
+    vi.stubGlobal('fetch', vi.fn())
+    mount(); recoveryForm()
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'jörg@例え.jp' } })
+    const form = screen.getByText('Set new password').closest('form')!
+    expect(form.checkValidity()).toBe(true)
+  })
+
   it('posts both factors and the new password, then accepts the cookie session', async () => {
     window.history.replaceState(null, '', '/login#recover')
     const session = { user: { id: 1, email: 'alice@example.com' }, capabilities: ['mail.read'] }

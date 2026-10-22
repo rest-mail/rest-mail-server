@@ -1561,8 +1561,18 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateFolderRequest"
-            example:
-              name: Receipts
+            examples:
+              created:
+                value:
+                  name: Receipts
+              name_missing:
+                value: {}
+              name_empty:
+                value:
+                  name: ""
+              name_wrong_type:
+                value:
+                  name: 12
       responses:
         "201":
           description: Folder created
@@ -1574,6 +1584,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+              examples:
+                created:
+                  value:
+                    data:
+                      name: Receipts
           links:
             renameFolder:
               operationId: renameFolder
@@ -1581,7 +1596,36 @@ paths:
                 id: '$request.path.id'
                 folder: '$response.body#/data/name'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Folder name is missing, empty, or not a string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                name_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
 
   /api/v1/accounts/{id}/folders/{folder}:
     parameters:
@@ -1859,6 +1903,16 @@ paths:
               operationId: getMessageTrace
               parameters:
                 id: '$response.body#/data/id'
+        "202":
+          description: Accepted and scheduled for the time in `scheduled_at`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ScheduledSend"
         "400":
           description: A field is missing or invalid, including an unsafe list_unsubscribe target
           content:
@@ -1883,6 +1937,56 @@ paths:
                     error:
                       code: list_unsubscribe_not_allowed
                       message: "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
+
+  /api/v1/messages/scheduled:
+    get:
+      operationId: listScheduledMessages
+      tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
+      summary: Messages waiting to be sent later
+      description: >-
+        The pending and in-flight scheduled sends for this account, soonest
+        first. A message that has been sent or cancelled is no longer listed.
+      responses:
+        "200":
+          description: Scheduled messages, soonest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ScheduledSend"
+
+  /api/v1/messages/scheduled/{id}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    delete:
+      operationId: cancelScheduledMessage
+      tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
+      summary: Cancel a message that has not been sent yet
+      description: >-
+        Only a message still waiting can be called back. One already being
+        sent is not in the list and cannot be cancelled.
+      responses:
+        "204":
+          description: Cancelled
+        "404":
+          description: No waiting scheduled message with that id belongs to this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/messages/{id}/raw:
     parameters:
@@ -1957,17 +2061,26 @@ paths:
         - BearerAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Save a new draft
+      description: >
+        All draft fields are optional. Without `from`, the draft is saved in
+        the signed-in account's mailbox with an empty sender. When `from` is
+        supplied, the caller needs mail:write on that mailbox.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DraftRequest"
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test]
-              subject: Draft
-              body_text: Not sent yet.
+            examples:
+              with_sender:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test]
+                  subject: Draft
+                  body_text: Not sent yet.
+              empty:
+                summary: Start an empty draft in the signed-in account
+                value: {}
       responses:
         "201":
           description: Draft saved
@@ -5393,6 +5506,23 @@ paths:
                   minimum: 0
                   maximum: 3650
                   example: 90
+            examples:
+              configured:
+                value: {rotation_interval_days: 90}
+              body_array:
+                value: []
+              interval_wrong_type:
+                value: {rotation_interval_days: "90"}
+              field_unknown:
+                value: {rotation_interval_days: 90, private_key: injected}
+              interval_missing:
+                value: {}
+              interval_null:
+                value: {rotation_interval_days: null}
+              interval_negative:
+                value: {rotation_interval_days: -1}
+              interval_too_large:
+                value: {rotation_interval_days: 3651}
       responses:
         "200":
           description: DKIM rotation settings saved
@@ -5404,12 +5534,26 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMRotationSettings"
+              examples:
+                configured:
+                  value:
+                    data: {domain_id: 1, rotation_interval_days: 90}
         "400":
           description: Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                interval_wrong_type:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                field_unknown:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -5418,6 +5562,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                interval_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_negative:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_too_large:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
 
   /api/v1/admin/dkim/{id}:
     parameters:
@@ -8189,8 +8366,54 @@ components:
           type: string
         in_reply_to:
           type: string
+        scheduled_at:
+          type: string
+          format: date-time
+          description: >-
+            Send the message at this time instead of now (at least one
+            minute ahead, and within a year). The response is 202 with the
+            stored scheduled message, and the message is not sent until then.
+            Omit it to send immediately.
         list_unsubscribe:
           $ref: "#/components/schemas/ListUnsubscribe"
+
+    ScheduledSend:
+      type: object
+      required: [id, account_id, from, to, subject, scheduled_at, status, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+        account_id:
+          type: integer
+        from:
+          type: string
+          format: email
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, sending, sent, failed, cancelled]
+        attempts:
+          type: integer
+        sent_message_id:
+          type: integer
+          nullable: true
+        last_error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     ListUnsubscribe:
       type: object
@@ -8247,7 +8470,6 @@ components:
     # ─────────────────────────────────────────────────────────────
     DraftRequest:
       type: object
-      required: [from]
       properties:
         from:
           type: string
@@ -8420,18 +8642,19 @@ components:
       type: object
       required: [enabled, subject, body]
       # An enabled auto-reply needs something to send: setVacation refuses an
-      # empty subject or body while enabled is true.
-      if:
-        required: [enabled]
-        properties:
-          enabled:
-            const: true
-      then:
-        properties:
-          subject:
-            minLength: 1
-          body:
-            minLength: 1
+      # empty subject or body while enabled is true. Stated as anyOf with an
+      # enum rather than if/then and const, so every JSON Schema draft reads
+      # it the same: the contract tests' boundary probes judged an empty
+      # subject valid under the if/then form (#388).
+      anyOf:
+        - properties:
+            enabled:
+              enum: [false]
+        - properties:
+            subject:
+              minLength: 1
+            body:
+              minLength: 1
       properties:
         enabled:
           type: boolean
@@ -8601,13 +8824,33 @@ components:
 
     RestmailDeliverRequest:
       type: object
-      required: [to]
+      description: >-
+        Recipients come from a non-empty to list, otherwise a non-empty
+        recipients list, otherwise the To header parsed from raw_message.
+        A raw message must contain a parseable To header when neither list
+        supplies recipients; an empty or missing recipient set is refused.
+      anyOf:
+        - required: [to]
+          properties:
+            to:
+              type: array
+              minItems: 1
+        - required: [recipients]
+          properties:
+            recipients:
+              type: array
+              minItems: 1
+        - required: [raw_message]
+          properties:
+            raw_message:
+              type: string
+              minLength: 1
       properties:
         from:
           type: string
           format: email
         to:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8637,7 +8880,7 @@ components:
           format: email
           description: Alias for 'from'
         recipients:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8690,13 +8933,16 @@ components:
 
     CreateDomainRequest:
       type: object
-      required: [name, server_type]
+      required: [name]
       properties:
         name:
           type: string
+          minLength: 1
         server_type:
-          type: string
-          enum: [traditional, restmail]
+          type: [string, "null"]
+          enum: [traditional, restmail, "", null]
+          default: traditional
+          description: Omitted, empty or null selects traditional.
         default_quota_bytes:
           type: integer
           format: int64
@@ -8921,6 +9167,7 @@ components:
       properties:
         filter_name:
           type: string
+          minLength: 1
         config:
           type: object
         email:
