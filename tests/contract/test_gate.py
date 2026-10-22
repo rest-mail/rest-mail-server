@@ -88,6 +88,7 @@ class PairedRefusals(unittest.TestCase):
     # The operations whose documented 400s and 422s each have their named
     # request example.
     PAIRED = {
+        "setDKIMRotation",
         "sendMessage",
         "microsoftAutodiscover",
         "createDomain",
@@ -98,6 +99,7 @@ class PairedRefusals(unittest.TestCase):
         "validateCustomFilter",
         "sendTestEmail",
         "createAccount",
+        "createFolder",
         "restmailDeliver",
         "bulkDeleteQueue",
         "bulkRetryQueue",
@@ -110,6 +112,7 @@ class PairedRefusals(unittest.TestCase):
         "receiveTlsReport",
         "createCertificate",
         "protocolSignIn",
+        "createContact",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
