@@ -950,6 +950,7 @@ paths:
       security:
         - CookieAuth: []
         - BearerAuth: []
+        - APIKeyAuth: []
         - BasicAuth: []
       tags: [Accounts]
       summary: List the accounts this one reaches
@@ -1061,6 +1062,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:write]
         - BearerAuth: [mailboxes:write]
+        - APIKeyAuth: [mailboxes:write]
       summary: Create an account
       description: >
         The same for everyone. Needs `mailboxes:write` held at a scope covering
@@ -1284,6 +1286,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get an account this one may read
       responses:
@@ -1496,6 +1499,225 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           description: No such app password of this account, or already revoked
+
+  /api/v1/accounts/{id}/api-keys:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      operationId: listAPIKeys
+      tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
+      summary: List an account's API keys
+      description: >
+        The account's API keys that are not revoked, with their permissions;
+        expired ones are included. Never a key, its secret or its hash; the
+        answer is `Cache-Control: no-store`. `{id}` is the session's own
+        account, or one it holds `mailbox:manage` on; any other is answered
+        404. Needs a session from signing in with a password: an API key or
+        an app password cannot list keys.
+      responses:
+        "200":
+          description: The API keys
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/APIKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: createAPIKey
+      tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
+      summary: Make an API key
+      description: >
+        Makes an API key for an automation and answers with it, the only time
+        it is ever shown (`Cache-Control: no-store`); the server keeps only a
+        SHA-256 of its secret. The key is sent as `Authorization: Bearer
+        rmk_…` (see `APIKeyAuth`). It holds only the 1 to 64 `permissions`
+        given, each a named capability (never `*`) at a scope; each must be
+        within the current grants of both the session's account and the
+        account the key belongs to (`403 forbidden` otherwise). Every request
+        made with it is checked again against the owner's live grants, so a
+        key never does more than its owner can at that moment. `{id}` is the
+        session's own account or one it holds `mailbox:manage` on. Needs a
+        session from signing in with a password and a second factor
+        (`403 two_factor_required` otherwise, even for an account without
+        2FA), and the session's own current password, entered again in
+        `password`. A key cannot make or revoke keys, change passwords, 2FA
+        or credentials, or change its owner's own grants. `expires_at`
+        defaults to 90 days from now. Throttled like login, with the same
+        budget. Recorded in the audit log as `api_keys.create`, with the
+        name, id and public id; a refused attempt is recorded as denied. The
+        password is never stored, recorded or answered with.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, password, permissions]
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                  example: Invoice robot
+                password:
+                  type: string
+                  format: password
+                  writeOnly: true
+                  description: The session's own current password, entered again.
+                permissions:
+                  type: array
+                  minItems: 1
+                  maxItems: 64
+                  items:
+                    $ref: "#/components/schemas/ScopedPermission"
+                expires_at:
+                  type: string
+                  format: date-time
+                  description: When it stops working; in the future. Defaults to 90 days from now.
+            examples:
+              created:
+                value:
+                  name: Invoice robot
+                  password: current-password
+                  permissions:
+                    - {capability: "mail:read", scope: "mailbox:robot@example.com"}
+              name_missing:
+                value: {password: current-password, permissions: [{capability: "mail:read", scope: "mailbox:robot@example.com"}]}
+              permissions_missing:
+                value: {name: Invoice robot, password: current-password}
+              wildcard_capability:
+                value: {name: Invoice robot, password: current-password, permissions: [{capability: "*", scope: "*"}]}
+      responses:
+        "201":
+          description: Made; `token` is shown this once
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CreatedAPIKey"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 2
+                      name: Invoice robot
+                      kind: api_key
+                      public_id: 9Hm3yU1cNp5Q
+                      created_at: "2026-01-01T00:00:00Z"
+                      last_used_at: null
+                      expires_at: "2026-04-01T00:00:00Z"
+                      permissions:
+                        - {capability: "mail:read", scope: "mailbox:robot@example.com"}
+                      token: "rmk_9Hm3yU1cNp5Q_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          links:
+            revokeAPIKey:
+              operationId: revokeAPIKey
+              parameters:
+                id: '$request.path.id'
+                credential_id: '$response.body#/data/id'
+        "400":
+          description: The body is not valid JSON (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: >
+            The session's sign-in did not take a second factor
+            (`two_factor_required`); the current password was not given
+            (`reauth_required`) or is wrong (`invalid_password`), never a 401;
+            or a permission is beyond the session's or the account's current
+            grants (`forbidden`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: >
+            name missing, empty, longer than 100 characters or containing
+            control characters; permissions empty, more than 64, `*` or
+            malformed, or naming an unknown capability; or expires_at not in
+            the future
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many attempts from this client; shares login's budget
+
+  /api/v1/accounts/{id}/api-keys/{credential_id}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+      - name: credential_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        example: 2
+    delete:
+      operationId: revokeAPIKey
+      tags: [Credentials]
+      security:
+        - CookieAuth: [mailbox:manage]
+        - BearerAuth: [mailbox:manage]
+      summary: Revoke an API key
+      description: >
+        Revokes it: the next request made with it is refused. It stays in the
+        table, revoked, for the audit trail, and leaves the list. Needs a
+        session from signing in with a password and a second factor
+        (`403 two_factor_required` otherwise). Recorded in the audit log as
+        `api_keys.revoke`.
+      responses:
+        "204":
+          description: Revoked
+        "400":
+          description: The credential id is not a number (`bad_request`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The session's sign-in did not take a second factor (`two_factor_required`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No such API key of this account, or already revoked
 
   # ═══════════════════════════════════════════════════════════════
   # Push devices (#363)
@@ -1717,6 +1939,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: List folders for an account
       responses:
@@ -1738,6 +1961,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Create a new folder
       requestBody:
@@ -1822,6 +2046,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Rename a folder
       requestBody:
@@ -1857,6 +2082,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Delete a folder
       responses:
@@ -1878,6 +2104,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: List messages in a folder with cursor pagination
       parameters:
@@ -1917,6 +2144,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get a single message by ID
       responses:
@@ -1944,6 +2172,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Update message flags or move to another folder
       requestBody:
@@ -1974,6 +2203,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Delete a message
       responses:
@@ -1989,6 +2219,7 @@ paths:
       security:
         - CookieAuth: [mail:send]
         - BearerAuth: [mail:send]
+        - APIKeyAuth: [mail:send]
         - BasicAuth: [mail:send]
       summary: Compose and send a new message
       description: >-
@@ -2130,6 +2361,7 @@ paths:
       security:
         - CookieAuth: [mail:send]
         - BearerAuth: [mail:send]
+        - APIKeyAuth: [mail:send]
         - BasicAuth: [mail:send]
       summary: Messages waiting to be sent later
       description: >-
@@ -2158,6 +2390,7 @@ paths:
       security:
         - CookieAuth: [mail:send]
         - BearerAuth: [mail:send]
+        - APIKeyAuth: [mail:send]
         - BasicAuth: [mail:send]
       summary: Cancel a message that has not been sent yet
       description: >-
@@ -2182,6 +2415,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get the raw RFC 2822 message source
       responses:
@@ -2208,6 +2442,7 @@ paths:
       security:
         - CookieAuth: [mail:read, mail:send]
         - BearerAuth: [mail:read, mail:send]
+        - APIKeyAuth: [mail:read, mail:send]
         - BasicAuth: [mail:read, mail:send]
       summary: Forward a message
       requestBody:
@@ -2244,6 +2479,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Save a new draft
       description: >
@@ -2304,6 +2540,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Update an existing draft
       requestBody:
@@ -2345,6 +2582,7 @@ paths:
       security:
         - CookieAuth: [mail:write, mail:send]
         - BearerAuth: [mail:write, mail:send]
+        - APIKeyAuth: [mail:write, mail:send]
         - BasicAuth: [mail:write, mail:send]
       summary: Send a saved draft
       responses:
@@ -2380,6 +2618,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get all messages in a thread
       responses:
@@ -2410,6 +2649,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get mailbox quota usage
       responses:
@@ -2436,6 +2676,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Search messages with filters
       parameters:
@@ -2517,6 +2758,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Download an attachment
       responses:
@@ -2541,6 +2783,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: List attachments for a message
       responses:
@@ -2569,6 +2812,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: List contacts for an account
       parameters:
@@ -2602,6 +2846,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Create a new contact
       requestBody:
@@ -2720,6 +2965,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Update a contact
       requestBody:
@@ -2747,6 +2993,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Delete a contact
       responses:
@@ -2764,6 +3011,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Block a sender
       requestBody:
@@ -2811,6 +3059,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Bulk import contacts
       description: Validates all entries before importing. Existing contacts are skipped.
@@ -2915,6 +3164,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Autocomplete contacts by query
       parameters:
@@ -2950,6 +3200,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get vacation auto-reply settings
       responses:
@@ -2969,6 +3220,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Set vacation auto-reply settings
       requestBody:
@@ -3070,6 +3322,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Disable vacation auto-reply
       responses:
@@ -3088,6 +3341,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: Get the Sieve filter script
       responses:
@@ -3114,6 +3368,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Create or replace the Sieve filter script
       requestBody:
@@ -3195,6 +3450,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Delete the Sieve filter script
       responses:
@@ -3223,6 +3479,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Validate a Sieve script without saving
       requestBody:
@@ -3304,6 +3561,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: List quarantined messages
       responses:
@@ -3337,6 +3595,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Release a quarantined message to inbox
       responses:
@@ -3379,6 +3638,7 @@ paths:
       security:
         - CookieAuth: [mail:write]
         - BearerAuth: [mail:write]
+        - APIKeyAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Permanently delete a quarantined message
       responses:
@@ -3689,6 +3949,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: List all domains
       responses:
         "200":
@@ -3709,6 +3970,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Create a new domain
       description: >-
         The domain is created but not live: `active` is false. Mail for a domain
@@ -3883,6 +4145,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: Get a domain by ID
       # Links supply the created ID; the hook selects missing for the 404.
       parameters:
@@ -3926,6 +4189,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Update a domain
       description: >-
         Setting `active` to true makes the domain live, and is refused with 409
@@ -3999,6 +4263,7 @@ paths:
       security:
         - CookieAuth: [domains:delete]
         - BearerAuth: [domains:delete]
+        - APIKeyAuth: [domains:delete]
       summary: Delete a domain
       description: >
         Only a domain with no accounts and no aliases can be deleted: delete
@@ -4025,6 +4290,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:read]
         - BearerAuth: [mailboxes:read]
+        - APIKeyAuth: [mailboxes:read]
       summary: List mailboxes, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -4056,6 +4322,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:read]
         - BearerAuth: [mailboxes:read]
+        - APIKeyAuth: [mailboxes:read]
       summary: Get an account by ID
       responses:
         "200":
@@ -4076,6 +4343,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:write]
         - BearerAuth: [mailboxes:write]
+        - APIKeyAuth: [mailboxes:write]
       summary: Update an account
       description: |
         A new `password` (12 characters or more) replaces every password the
@@ -4158,6 +4426,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:delete]
         - BearerAuth: [mailboxes:delete]
+        - APIKeyAuth: [mailboxes:delete]
       summary: Delete an account
       description: >
         Its credentials are revoked (kept, for the audit trail) and its
@@ -4184,6 +4453,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:write]
         - BearerAuth: [mailboxes:write]
+        - APIKeyAuth: [mailboxes:write]
       summary: Sign an account out everywhere
       description: >
         Ends every session of the account: its refresh tokens are revoked and
@@ -4208,6 +4478,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:read]
         - BearerAuth: [mailboxes:read]
+        - APIKeyAuth: [mailboxes:read]
       summary: List aliases, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -4235,6 +4506,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:write]
         - BearerAuth: [mailboxes:write]
+        - APIKeyAuth: [mailboxes:write]
       summary: Create a new alias
       requestBody:
         required: true
@@ -4344,6 +4616,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:read]
         - BearerAuth: [mailboxes:read]
+        - APIKeyAuth: [mailboxes:read]
       summary: Get an alias by ID
       responses:
         "200":
@@ -4364,6 +4637,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:write]
         - BearerAuth: [mailboxes:write]
+        - APIKeyAuth: [mailboxes:write]
       summary: Update an alias
       requestBody:
         required: true
@@ -4422,6 +4696,7 @@ paths:
       security:
         - CookieAuth: [mailboxes:delete]
         - BearerAuth: [mailboxes:delete]
+        - APIKeyAuth: [mailboxes:delete]
       summary: Delete an alias
       responses:
         "204":
@@ -4439,6 +4714,7 @@ paths:
       security:
         - CookieAuth: [pipelines:read]
         - BearerAuth: [pipelines:read]
+        - APIKeyAuth: [pipelines:read]
       summary: List pipelines, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -4466,6 +4742,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Create a new pipeline
       requestBody:
         required: true
@@ -4585,6 +4862,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Update a pipeline
       requestBody:
         required: true
@@ -4662,6 +4940,7 @@ paths:
       security:
         - CookieAuth: [pipelines:delete]
         - BearerAuth: [pipelines:delete]
+        - APIKeyAuth: [pipelines:delete]
       summary: Delete a pipeline
       responses:
         "200":
@@ -4687,6 +4966,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Test a pipeline against a sample email
       requestBody:
         required: true
@@ -4776,6 +5056,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Test a single filter against a sample email
       requestBody:
         required: true
@@ -4892,6 +5173,7 @@ paths:
       security:
         - CookieAuth: [pipelines:read]
         - BearerAuth: [pipelines:read]
+        - APIKeyAuth: [pipelines:read]
       summary: List recent per-message pipeline traces
       description: >-
         Newest-first list of per-message pipeline traces. Each row is a
@@ -4966,6 +5248,7 @@ paths:
       security:
         - CookieAuth: [pipelines:read]
         - BearerAuth: [pipelines:read]
+        - APIKeyAuth: [pipelines:read]
       summary: List custom filters, optionally filtered by domain
       parameters:
         - name: domain_id
@@ -4993,6 +5276,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Create a custom filter
       requestBody:
         required: true
@@ -5091,6 +5375,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Syntax-check a JavaScript filter script via the sidecar
       requestBody:
         required: true
@@ -5184,6 +5469,7 @@ paths:
       security:
         - CookieAuth: [pipelines:read]
         - BearerAuth: [pipelines:read]
+        - APIKeyAuth: [pipelines:read]
       summary: Get a custom filter by ID
       responses:
         "200":
@@ -5204,6 +5490,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Update a custom filter
       requestBody:
         required: true
@@ -5303,6 +5590,7 @@ paths:
       security:
         - CookieAuth: [pipelines:delete]
         - BearerAuth: [pipelines:delete]
+        - APIKeyAuth: [pipelines:delete]
       summary: Delete a custom filter
       responses:
         "200":
@@ -5330,6 +5618,7 @@ paths:
       security:
         - CookieAuth: [pipelines:write]
         - BearerAuth: [pipelines:write]
+        - APIKeyAuth: [pipelines:write]
       summary: Run a stored custom filter's script against a sample email via the sidecar
       requestBody:
         required: false
@@ -5412,6 +5701,7 @@ paths:
       security:
         - CookieAuth: [queue:read]
         - BearerAuth: [queue:read]
+        - APIKeyAuth: [queue:read]
       summary: List outbound queue entries
       parameters:
         - name: status
@@ -5487,6 +5777,7 @@ paths:
       security:
         - CookieAuth: [queue:read]
         - BearerAuth: [queue:read]
+        - APIKeyAuth: [queue:read]
       summary: Get queue status counts
       responses:
         "200":
@@ -5507,6 +5798,7 @@ paths:
       security:
         - CookieAuth: [queue:manage]
         - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
       summary: Retry multiple queue entries
       requestBody:
         required: true
@@ -5568,6 +5860,7 @@ paths:
       security:
         - CookieAuth: [queue:manage]
         - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
       summary: Bounce multiple queue entries
       requestBody:
         required: true
@@ -5629,6 +5922,7 @@ paths:
       security:
         - CookieAuth: [queue:manage]
         - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
       summary: Delete multiple queue entries
       requestBody:
         required: true
@@ -5681,6 +5975,7 @@ paths:
       security:
         - CookieAuth: [queue:read]
         - BearerAuth: [queue:read]
+        - APIKeyAuth: [queue:read]
       summary: Get a single queue entry
       responses:
         "200":
@@ -5701,6 +5996,7 @@ paths:
       security:
         - CookieAuth: [queue:manage]
         - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
       summary: Delete a queue entry
       responses:
         "204":
@@ -5717,6 +6013,7 @@ paths:
       security:
         - CookieAuth: [queue:manage]
         - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
       summary: Retry a single queue entry
       responses:
         "200":
@@ -5746,6 +6043,7 @@ paths:
       security:
         - CookieAuth: [queue:manage]
         - BearerAuth: [queue:manage]
+        - APIKeyAuth: [queue:manage]
       summary: Bounce a single queue entry
       responses:
         "200":
@@ -5783,6 +6081,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: List allowlist entries for a domain
       responses:
         "200":
@@ -5803,6 +6102,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Add an allowlist entry
       requestBody:
         required: true
@@ -5883,6 +6183,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Remove an allowlist entry
       responses:
         "204":
@@ -5899,6 +6200,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: List blocklist entries for a domain
       responses:
         "200":
@@ -5919,6 +6221,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Add a blocklist entry
       requestBody:
         required: true
@@ -5999,6 +6302,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Remove a blocklist entry
       responses:
         "204":
@@ -6016,6 +6320,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: List DKIM key entries for all domains
       responses:
         "200":
@@ -6040,6 +6345,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: Read a domain's DKIM rotation interval
       description: >
         Available even before a domain has a signing key. The capability must
@@ -6070,6 +6376,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Set a domain's DKIM rotation interval
       description: >
         Stores the requested interval without changing signing material or key
@@ -6190,6 +6497,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Set or replace DKIM key for a domain
       description: >
         The key and selector are checked before they are stored, so a domain is
@@ -6319,6 +6627,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Delete DKIM key for a domain
       responses:
         "204":
@@ -6336,6 +6645,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: List TLS certificates
       responses:
         "200":
@@ -6356,6 +6666,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Upload a new TLS certificate
       requestBody:
         required: true
@@ -6437,6 +6748,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: Get certificate details (includes cert_pem)
       responses:
         "200":
@@ -6462,6 +6774,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Delete a certificate
       responses:
         "204":
@@ -6479,6 +6792,7 @@ paths:
       security:
         - CookieAuth: [bans:read]
         - BearerAuth: [bans:read]
+        - APIKeyAuth: [bans:read]
       summary: List IP bans
       parameters:
         - name: protocol
@@ -6527,6 +6841,7 @@ paths:
       security:
         - CookieAuth: [bans:write]
         - BearerAuth: [bans:write]
+        - APIKeyAuth: [bans:write]
       summary: Create an IP ban
       requestBody:
         required: true
@@ -6620,6 +6935,7 @@ paths:
       security:
         - CookieAuth: [bans:delete]
         - BearerAuth: [bans:delete]
+        - APIKeyAuth: [bans:delete]
       summary: Delete a ban by ID
       responses:
         "204":
@@ -6642,6 +6958,7 @@ paths:
       security:
         - CookieAuth: [bans:delete]
         - BearerAuth: [bans:delete]
+        - APIKeyAuth: [bans:delete]
       summary: Remove all bans for a specific IP
       responses:
         "204":
@@ -6659,6 +6976,7 @@ paths:
       security:
         - CookieAuth: [messages:read]
         - BearerAuth: [messages:read]
+        - APIKeyAuth: [messages:read]
       summary: Query delivery log (outbound queue history)
       parameters:
         - name: status
@@ -6723,6 +7041,7 @@ paths:
       security:
         - CookieAuth: [audit:read]
         - BearerAuth: [audit:read]
+        - APIKeyAuth: [audit:read]
       summary: Read the audit log, newest first
       description: >-
         Entries newest first. To read the next page, pass the returned
@@ -6815,6 +7134,7 @@ paths:
       security:
         - CookieAuth: [audit:read]
         - BearerAuth: [audit:read]
+        - APIKeyAuth: [audit:read]
       summary: Check the audit log's hash chain
       description: >-
         Walks the whole log from its lowest seq and checks that every entry
@@ -7203,6 +7523,7 @@ paths:
       security:
         - CookieAuth: [mail:read, mail:send]
         - BearerAuth: [mail:read, mail:send]
+        - APIKeyAuth: [mail:read, mail:send]
         - BasicAuth: [mail:read, mail:send]
       summary: Send an iMIP reply to a calendar invitation in a message
       requestBody:
@@ -7258,6 +7579,7 @@ paths:
       security:
         - CookieAuth: [mail:read]
         - BearerAuth: [mail:read]
+        - APIKeyAuth: [mail:read]
         - BasicAuth: [mail:read]
       summary: List calendar events (grouped by UID, latest version) for the mailbox
       responses:
@@ -7284,6 +7606,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: Dashboard statistics
       description: Visible to every admin role, all of which hold domains:read.
       responses:
@@ -7308,6 +7631,7 @@ paths:
       security:
         - CookieAuth: [users:read]
         - BearerAuth: [users:read]
+        - APIKeyAuth: [users:read]
       summary: List roles
       responses:
         "200":
@@ -7330,6 +7654,7 @@ paths:
       security:
         - CookieAuth: [users:read]
         - BearerAuth: [users:read]
+        - APIKeyAuth: [users:read]
       summary: List capabilities
       responses:
         "200":
@@ -7352,6 +7677,7 @@ paths:
       security:
         - CookieAuth: [users:read]
         - BearerAuth: [users:read]
+        - APIKeyAuth: [users:read]
       summary: List grants, oldest first
       description: >-
         Every grant, active and eligible, or only one holder's, or only those
@@ -7409,6 +7735,7 @@ paths:
       security:
         - CookieAuth: [users:write]
         - BearerAuth: [users:write]
+        - APIKeyAuth: [users:write]
       summary: Grant a role at a scope
       description: >-
         Needs a session that signed in with two-factor authentication (`403
@@ -7459,6 +7786,7 @@ paths:
       security:
         - CookieAuth: [users:write]
         - BearerAuth: [users:write]
+        - APIKeyAuth: [users:write]
       summary: Remove a grant
       description: >-
         The same rules as granting: a 2FA session, and the caller must hold
@@ -7713,6 +8041,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain
       responses:
         "200":
@@ -7740,6 +8069,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: List a domain's suppressed recipients
       description: |
         Recipients the domain's mail is no longer sent to, because mail from
@@ -7778,6 +8108,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Clear a suppression
       description: The domain's mail to the address is tried again.
       responses:
@@ -7798,6 +8129,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: Get the MTA-STS policy for a domain
       responses:
         "200":
@@ -7823,6 +8155,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Create or update the MTA-STS policy for a domain
       requestBody:
         required: true
@@ -7939,6 +8272,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Delete the MTA-STS policy for a domain
       responses:
         "204":
@@ -7960,6 +8294,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: Get the domain's outbound transport
       description: |
         How mail sent from this domain leaves the server: `direct` resolves
@@ -7994,6 +8329,7 @@ paths:
       security:
         - CookieAuth: [domains:write]
         - BearerAuth: [domains:write]
+        - APIKeyAuth: [domains:write]
       summary: Set the domain's outbound transport
       description: |
         Replaces the domain's outbound transport. Takes `domains:write` held
@@ -8185,6 +8521,7 @@ paths:
       security:
         - CookieAuth: [domains:read]
         - BearerAuth: [domains:read]
+        - APIKeyAuth: [domains:read]
       summary: List received TLS-RPT reports
       parameters:
         - name: domain_id
@@ -8246,6 +8583,7 @@ paths:
       security:
         - CookieAuth: [observability:read]
         - BearerAuth: [observability:read]
+        - APIKeyAuth: [observability:read]
       summary: Windowed message-lifecycle funnel from pipeline_rollups
       parameters:
         - name: window
@@ -8281,6 +8619,7 @@ paths:
       security:
         - CookieAuth: [observability:read]
         - BearerAuth: [observability:read]
+        - APIKeyAuth: [observability:read]
       summary: Get the pipeline trace for a delivered message
       description: >-
         Returns the trace joined on message_id, which is set only on the
@@ -8310,6 +8649,7 @@ paths:
       security:
         - CookieAuth: ["*"]
         - BearerAuth: ["*"]
+        - APIKeyAuth: ["*"]
       summary: Inject a test email directly into a recipient mailbox
       requestBody:
         required: true
@@ -8404,6 +8744,7 @@ paths:
       security:
         - CookieAuth: ["*"]
         - BearerAuth: ["*"]
+        - APIKeyAuth: ["*"]
       summary: Poll for a delivered message matching the given criteria
       parameters:
         - name: to
@@ -8456,6 +8797,7 @@ paths:
       security:
         - CookieAuth: ["*"]
         - BearerAuth: ["*"]
+        - APIKeyAuth: ["*"]
       summary: Probe connectivity to SMTP/IMAP/POP3/DNS/DB
       requestBody:
         required: false
@@ -8530,6 +8872,7 @@ paths:
       security:
         - CookieAuth: ["*"]
         - BearerAuth: ["*"]
+        - APIKeyAuth: ["*"]
       summary: Wipe all data and re-seed default test data
       responses:
         "200":
@@ -8548,6 +8891,7 @@ paths:
       security:
         - CookieAuth: ["*"]
         - BearerAuth: ["*"]
+        - APIKeyAuth: ["*"]
       summary: Seed default test domains, mailboxes, aliases and accounts
       responses:
         "200":
@@ -8566,6 +8910,7 @@ paths:
       security:
         - CookieAuth: ["*"]
         - BearerAuth: ["*"]
+        - APIKeyAuth: ["*"]
       summary: Capture the current database state as JSON
       responses:
         "200":
@@ -8589,6 +8934,7 @@ paths:
       security:
         - CookieAuth: ["*"]
         - BearerAuth: ["*"]
+        - APIKeyAuth: ["*"]
       summary: Restore database state from a previously captured snapshot
       requestBody:
         required: true
@@ -8644,6 +8990,18 @@ components:
         the login/refresh JSON body; obtain it from the restmail_access cookie in
         the login response's Set-Cookie header. Bearer requests carry no cookie
         and are exempt from the CSRF check.
+    APIKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: rmk
+      description: >
+        A scoped API key (`rmk_…`) as an Authorization: Bearer header, made by
+        createAPIKey. Checked on every request: refused once revoked or
+        expired, and only ever allowed where both the key's permissions and
+        its owner's live grants cover the capability at the target. Accepted
+        only by the operations that list it; never for sign-in, passwords,
+        2FA, credentials, API keys or the owner's own grants. A refused key is
+        never retried as a session. Exempt from the CSRF check.
 
   parameters:
     CSRFToken:
@@ -9004,6 +9362,64 @@ components:
               description: >
                 The app password, shown this once. Use it with the mailbox's
                 address as the password of a mail client, or with HTTP Basic.
+
+    ScopedPermission:
+      type: object
+      description: One capability an API key may use, at a scope.
+      required: [capability, scope]
+      properties:
+        capability:
+          type: string
+          description: A named capability, such as `mail:read`; never `*`
+          example: "mail:read"
+        scope:
+          type: string
+          description: "`*`, `domain:<name>` or `mailbox:<address>`; covers everything beneath it"
+          example: "mailbox:robot@example.com"
+
+    APIKey:
+      type: object
+      description: An API key, as its owner sees it. Never its secret or hash.
+      required: [id, name, kind, public_id, created_at, last_used_at, expires_at, permissions]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [api_key]
+        public_id:
+          type: string
+          description: The part of the key after `rmk_` and before the secret
+          example: 9Hm3yU1cNp5Q
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+          description: When it was last used, to within a minute
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScopedPermission"
+
+    CreatedAPIKey:
+      allOf:
+        - $ref: "#/components/schemas/APIKey"
+        - type: object
+          required: [token]
+          properties:
+            token:
+              type: string
+              pattern: "^rmk_[A-Za-z0-9]{12}_[A-Za-z0-9]{43}$"
+              description: >
+                The API key, shown this once. Send it as `Authorization:
+                Bearer rmk_…`.
 
     PushDevices:
       type: object
