@@ -149,7 +149,10 @@ function NewMailboxPage() {
                   }}
                 >
                   <input
-                    type="email"
+                    type="text"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={formData.email}
                     onChange={(e) => {
                       setFormData((prev) => ({ ...prev, email: e.target.value }))

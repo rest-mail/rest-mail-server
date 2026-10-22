@@ -24,7 +24,6 @@ import vertrag_hooks as hooks
 ADMIN = "admin@restmail.test"
 ADMIN_PASSWORD = "admin123!@"
 # A seeded account that nobody owns, to link (cmd/seed's fixture password).
-LINKABLE = "eve@restmail.test"
 LINKABLE_PASSWORD = "password123"
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
@@ -40,6 +39,19 @@ def basic(address, password):
     return "Basic " + token
 
 
+@hooks.before("login")
+@hooks.before("refreshToken")
+@hooks.before("linkAccount")
+@hooks.before("createAppPassword")
+@hooks.before("protocolSignIn")
+def pace_auth_requests(transaction):
+    # These operations share the default 1 request/second auth bucket. Coverage
+    # repeats valid requests as well as refusals, so even correct credentials
+    # drain its burst. Wait for a token without changing or retrying the probe.
+    # Leave a small margin for clock/scheduling differences at the boundary.
+    time.sleep(1.1)
+
+
 def admin_token(origin):
     """Sign in for fixture setup without changing the transaction's principal.
 
@@ -48,6 +60,7 @@ def admin_token(origin):
     """
     tokens = hooks.stash.get("setup_admin_tokens", {})
     if origin not in tokens:
+        pace_auth_requests(None)
         request = urllib.request.Request(
             origin + "/api/v1/auth/login",
             data=json.dumps({"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}).encode(),
@@ -97,7 +110,57 @@ def confirm_with_the_admin_password(transaction):
 
 @hooks.before("linkAccount")
 def link_a_seeded_account(transaction):
-    hooks.set_json(transaction, {"address": LINKABLE, "password": LINKABLE_PASSWORD})
+    body = hooks.get_json(transaction)
+    # Supply only the fixture secret the named examples ask for. Preserve
+    # missing/empty fields and coverage mutations so their refusals are reachable.
+    if isinstance(body, dict) and body.get("password") == "supplied-by-contract-hook":
+        body["password"] = LINKABLE_PASSWORD
+        hooks.set_json(transaction, body)
+    if not isinstance(body, dict):
+        return
+    # Each successful link consumes the unlinked state. Restore only that
+    # state before a fixture's valid proof; do not alter generated body bytes,
+    # malformed values, wrong passwords, or the transaction's principal.
+    passwords = {"eve@restmail.test": LINKABLE_PASSWORD, "someone@example.com": "x"}
+    address = body.get("address")
+    if not isinstance(address, str) or address not in passwords or body.get("password") != passwords[address]:
+        return
+    headers = transaction["request"].get("headers") or {}
+    if not any(key.lower() == "authorization" and value for key, value in headers.items()):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    if address == "someone@example.com":
+        ready = hooks.stash.get("link_fixture_prepared", {})
+        if origin not in ready:
+            # createAccount probes need this address absent; linkAccount probes
+            # need it present with their generated password. Set up the latter
+            # only now, after the preceding operation's probes have finished.
+            subprocess.run(["chore", "test:contract-link-fixture"], check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+            ready[origin] = True
+            hooks.stash["link_fixture_prepared"] = ready
+    ids = hooks.stash.get("link_fixture_ids", {})
+    key = origin + "\n" + address
+    if key not in ids:
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/mailboxes?limit=1000",
+            headers={"Authorization": "Bearer " + admin_token(origin)},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            accounts = json.load(response).get("data") or []
+        ids[key] = next((account["id"] for account in accounts if account.get("address") == address), None)
+        if ids[key] is None:
+            raise RuntimeError("contract account-link fixture is missing")
+        hooks.stash["link_fixture_ids"] = ids
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts/" + str(ids[key]), headers=headers, method="DELETE")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not clear the preceding contract link")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:  # The first proof has no preceding grant.
+            raise
 
 
 @hooks.after("createDomain")
@@ -109,6 +172,19 @@ def keep_the_created_domain(transaction):
         return
     hooks.stash["domain_id"] = data.get("id")
     hooks.stash["domain"] = data.get("name")
+
+
+@hooks.before("deleteDomain")
+def delete_only_the_created_domain(transaction):
+    # Coverage's in-range probe names domain 1, the fixture admin's own. The
+    # server refuses it while it has accounts (409, #388), which a valid probe
+    # counts as a finding, and before that refusal the probe deleted it and
+    # every later send failed. Malformed ids are sent: they test the 400.
+    domain_id = transaction["fullPath"].split("?")[0].rstrip("/").split("/")[-1]
+    if not domain_id.isdecimal() or int(domain_id) < 1:
+        return
+    if int(domain_id) != hooks.stash.get("domain_id"):
+        transaction["skip"] = True
 
 
 def on_the_created_domain(transaction, **fields):
@@ -369,10 +445,21 @@ def schedule_a_message(transaction):
         headers=headers,
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status != 202:
-            raise RuntimeError("could not schedule a contract message: HTTP %d" % response.status)
-        return (json.load(response).get("data") or {}).get("id")
+    # sendMessage's generated bodies spend the same account's submission
+    # budget, even when their sender is refused. Wait out one minute window
+    # for fixture setup only; the actual probes must see every refusal.
+    for attempt in range(2):
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                if response.status != 202:
+                    raise RuntimeError("could not schedule a contract message: HTTP %d" % response.status)
+                return (json.load(response).get("data") or {}).get("id")
+        except urllib.error.HTTPError as error:
+            retry_after = error.headers.get("Retry-After", "")
+            if attempt or error.code != 429 or not retry_after.isdecimal() or not 1 <= int(retry_after) <= 60:
+                raise
+            error.close()
+            time.sleep(int(retry_after))
 
 
 @hooks.before("listScheduledMessages")
@@ -417,6 +504,34 @@ def wait_for_the_trace(transaction):
     # (internal/trace/recorder.go); the testbed keeps every one
     # (TRACE_SAMPLE_RATE=1 in tasks/api.yml).
     time.sleep(1)
+
+
+@hooks.before("receiveTlsReport")
+def pace_the_tls_reports(transaction):
+    # The route is rate-limited per client IP, 1 a second after a burst of 10
+    # (DefaultTLSRPTRateLimitRPS, internal/config/config.go), and coverage
+    # sends more probes than that: a 429 is the limiter, not the report.
+    time.sleep(1)
+
+
+@hooks.before("receiveTlsReport")
+def host_the_reported_policy_domains(transaction):
+    # Generated reports name domains other than restmail.test. Host them so
+    # a valid report reaches storage; leave every generated byte unchanged.
+    body = hooks.get_json(transaction)
+    policies = body.get("policies") if isinstance(body, dict) else None
+    if not isinstance(policies, list):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    hosted = set()
+    for entry in policies:
+        policy = entry.get("policy") if isinstance(entry, dict) else None
+        domain = policy.get("policy-domain") if isinstance(policy, dict) else None
+        if not isinstance(domain, str) or not domain or domain in hosted:
+            continue
+        hosted.add(domain)
+        headers = {"Authorization": "Bearer " + admin_token(origin)}
+        hosted_domain_id(origin, headers, domain.rstrip("."))
 
 
 def created_folder_path(transaction):
@@ -575,6 +690,253 @@ def remove_a_previous_contact_probe(transaction):
         offset += len(contacts)
 
 
+def sender_rules_path(transaction):
+    """The list a sender rule probe adds to, and its domain id, or None for a
+    malformed id (left to the probe's own 400)."""
+    path = transaction["fullPath"].split("?")[0].rstrip("/")
+    domain_id = path.split("/")[-2]
+    if not domain_id.isdecimal() or int(domain_id) < 1:
+        return None
+    return path
+
+
+def sender_rules(origin, path, headers):
+    request = urllib.request.Request(origin + path, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.load(response).get("data") or []
+    except urllib.error.HTTPError as error:
+        if error.code in (400, 403, 404):
+            return None  # Leave a domain that is not there to the probe.
+        raise
+
+
+@hooks.before("addToAllowlist")
+@hooks.before("addToBlocklist")
+def remove_a_previous_sender_rule_probe(transaction):
+    # The domain stays for the whole run (deleteDomain refuses one with
+    # accounts, #388), so probes repeating a pattern meet the entry an
+    # earlier one added, a 409. Claim an absent pattern before its first add,
+    # then remove only that probe's entry when generated bodies repeat it.
+    # Existing entries and all generated request bytes stay untouched.
+    body = hooks.get_json(transaction)
+    pattern = body.get("pattern") if isinstance(body, dict) else None
+    path = sender_rules_path(transaction)
+    if not isinstance(pattern, str) or not pattern or path is None:
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Authorization": "Bearer " + admin_token(origin)}
+    rules = sender_rules(origin, path, headers)
+    if rules is None:
+        return
+    key = origin + path + "\n" + pattern
+    owned = hooks.stash.get("created_sender_rule_probes", {})
+    rule = next((r for r in rules if r.get("pattern") == pattern), None)
+    if rule is None:
+        owned[key] = True
+        hooks.stash["created_sender_rule_probes"] = owned
+        return
+    if key not in owned:
+        return
+    request = urllib.request.Request(
+        origin + path + "/" + str(rule["id"]), headers=headers, method="DELETE")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 204:
+            raise RuntimeError("could not remove the previous sender rule probe")
+
+
+@hooks.after("addToAllowlist")
+@hooks.after("addToBlocklist")
+def keep_the_added_sender_rule(transaction):
+    # Only the example runs after hooks, and its id is what
+    # removeFromAllowlist and removeFromBlocklist are linked to. Probes
+    # repeating its pattern remove that entry above, so remember what to
+    # restore.
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    if not data.get("id"):
+        return
+    path = sender_rules_path(transaction)
+    created = hooks.stash.get("created_sender_rules", {})
+    created[path] = {"id": data["id"], "body": hooks.get_json(transaction)}
+    hooks.stash["created_sender_rules"] = created
+
+
+@hooks.before("removeFromAllowlist")
+@hooks.before("removeFromBlocklist")
+def on_the_added_sender_rule(transaction):
+    # Follow the linked entry to its current id, adding it again when a probe
+    # removed it without a successful add of its own to replace it. Any other
+    # id (the 404 examples, path parameter probes) is left alone.
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, entry_id = path.rpartition("/")
+    created = hooks.stash.get("created_sender_rules", {}).get(parent)
+    if not created or entry_id != str(created["id"]):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    pattern = created["body"]["pattern"]
+    rule = next((r for r in sender_rules(origin, parent, headers) or [] if r.get("pattern") == pattern), None)
+    if rule is None:
+        request = urllib.request.Request(
+            origin + parent, data=json.dumps(created["body"]).encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=10) as response:
+            rule = json.load(response)["data"]
+    transaction["fullPath"] = parent + "/" + str(rule["id"]) + ("?" + query if query else "")
+
+
+def hosted_domain_id(origin, headers, name):
+    """The id of the domain called name, hosting it first if need be, or None
+    when the server will not host it (left to the probe)."""
+    request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        domains = json.load(response).get("data") or []
+    domain_id = next((d["id"] for d in domains if d.get("name") == name), None)
+    if domain_id is not None:
+        return domain_id
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/domains",
+        data=json.dumps({"name": name, "server_type": "traditional"}).encode(),
+        headers=dict(headers, **{"Content-Type": "application/json"}),
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return (json.load(response).get("data") or {}).get("id")
+    except urllib.error.HTTPError as error:
+        if 400 <= error.code < 500:
+            return None
+        raise
+
+
+@hooks.before("mozillaAutoconfig")
+@hooks.before("mozillaAutoconfigWellKnown")
+def an_active_domain_for_autoconfig(transaction):
+    # Discovery requires an active hosted domain. updateDomain's example now
+    # changes only sending_policy, so it no longer incidentally activates the
+    # generated email's domain. Prepare that state without changing the query.
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(transaction["fullPath"]).query)
+    address = query.get("emailaddress", [""])[0]
+    if address.count("@") != 1:
+        return
+    local, name = address.split("@")
+    if not local or "." not in name:
+        return  # Leave malformed addresses to the actual probe.
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    domain_id = hosted_domain_id(origin, headers, name)
+    if domain_id is None:
+        return
+    path = origin + "/api/v1/admin/domains/" + str(domain_id)
+    with urllib.request.urlopen(urllib.request.Request(path, headers=headers), timeout=10) as response:
+        domain = json.load(response).get("data") or {}
+    if domain.get("active"):
+        return
+    activate = urllib.request.Request(path, data=b'{"active":true}', headers=headers, method="PATCH")
+    try:
+        with urllib.request.urlopen(activate, timeout=10):
+            return
+    except urllib.error.HTTPError as error:
+        if error.code != 409 or (json.load(error).get("error") or {}).get("code") != "certificate_required":
+            raise
+    # Activation uses the production certificate gate. Supply a real fixture
+    # certificate only when that precondition is missing, then activate it.
+    with tempfile.TemporaryDirectory() as directory:
+        key, cert = os.path.join(directory, "tls.key"), os.path.join(directory, "tls.crt")
+        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
+                "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
+                "-keyout", key, "-out", cert)
+        with open(cert) as cert_file, open(key) as key_file:
+            body = {"domain_id": domain_id, "cert_pem": cert_file.read(),
+                    "key_pem": key_file.read(), "auto_renew": False}
+        request = urllib.request.Request(origin + "/api/v1/admin/certificates",
+                                         data=json.dumps(body).encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=10):
+            pass
+    with urllib.request.urlopen(activate, timeout=10):
+        pass
+
+
+def alias_on(origin, headers, domain_id, source):
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/aliases?domain_id=%d" % domain_id, headers=headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        aliases = json.load(response).get("data") or []
+    return next((a for a in aliases if (a.get("source_address") or "").lower() == source.lower()), None)
+
+
+@hooks.before("createAlias")
+def remove_a_previous_alias_probe(transaction):
+    # Coverage probes alias an address on a domain the fixture does not host
+    # (someone@example.com), which the handler rightly refuses with 404, and
+    # repeat it, which meets the alias an earlier probe made (409). Host the
+    # domain, claim an absent source before its first create, and remove only
+    # that probe's alias when generated bodies repeat it. Existing aliases and
+    # all generated request bytes stay untouched.
+    body = hooks.get_json(transaction)
+    source = body.get("source_address") if isinstance(body, dict) else None
+    if not isinstance(source, str) or source.count("@") != 1:
+        return
+    local, domain = source.split("@")
+    if not local or "." not in domain:
+        return  # Leave a malformed address to the actual probe.
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Authorization": "Bearer " + admin_token(origin)}
+    domain_id = hosted_domain_id(origin, headers, domain.lower())
+    if domain_id is None:
+        return
+    alias = alias_on(origin, headers, domain_id, source)
+    owned = hooks.stash.get("created_alias_probes", {})
+    key = origin + "\n" + source.lower()
+    if alias is None:
+        owned[key] = True
+        hooks.stash["created_alias_probes"] = owned
+        return
+    if key not in owned:
+        return
+    request = urllib.request.Request(
+        origin + "/api/v1/admin/aliases/%d" % alias["id"], headers=headers, method="DELETE")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 204:
+            raise RuntimeError("could not remove the previous alias probe")
+
+
+@hooks.after("createAlias")
+def keep_the_created_alias(transaction):
+    # Only the example runs after hooks, and its id is what getAlias,
+    # updateAlias and deleteAlias are linked to. Probes repeating its source
+    # remove that alias above, so remember what to restore.
+    data = hooks.get_json(transaction, "real").get("data") or {}
+    if not data.get("id"):
+        return
+    hooks.stash["created_alias"] = {"id": data["id"], "body": hooks.get_json(transaction)}
+
+
+@hooks.before("getAlias")
+@hooks.before("updateAlias")
+@hooks.before("deleteAlias")
+def on_the_created_alias(transaction):
+    # Follow the linked alias to its current id, recreating it when a probe
+    # removed it without a successful create of its own to replace it. Any
+    # other id (the 404 examples, path parameter probes) is left alone.
+    created = hooks.stash.get("created_alias")
+    path, _, query = transaction["fullPath"].partition("?")
+    parent, _, alias_id = path.rpartition("/")
+    if not created or alias_id != str(created["id"]):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    source = created["body"]["source_address"]
+    domain_id = hosted_domain_id(origin, headers, source.split("@")[1].lower())
+    alias = alias_on(origin, headers, domain_id, source)
+    if alias is None:
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/aliases", data=json.dumps(created["body"]).encode(),
+            headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=10) as response:
+            alias = json.load(response)["data"]
+    transaction["fullPath"] = parent + "/" + str(alias["id"]) + ("?" + query if query else "")
+
+
 @hooks.before("createAccount")
 def host_the_account_probe_domain(transaction):
     # Coverage probes address a domain the fixture does not host
@@ -592,6 +954,11 @@ def host_the_account_probe_domain(transaction):
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
     origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    if address.lower() == "someone@example.com":
+        # A later create can replace the account whose credential/id the link
+        # hook prepared. Rebuild its proof before the next generated link.
+        hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
+        hooks.stash.get("link_fixture_ids", {}).pop(origin + "\n" + address.lower(), None)
     headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
     request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
     with urllib.request.urlopen(request, timeout=10) as response:

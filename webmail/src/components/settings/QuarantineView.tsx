@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useMailStore } from '@/stores/mailStore';
@@ -104,7 +105,7 @@ export function QuarantineView() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm truncate">{item.sender}</span>
+                        <span className="font-medium text-sm truncate">{displayAddress(item.sender)}</span>
                         <Badge variant={reasonBadgeVariant(item.quarantine_reason)} className="text-xs">
                           {item.quarantine_reason}
                         </Badge>
