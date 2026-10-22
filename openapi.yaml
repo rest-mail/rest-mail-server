@@ -5442,6 +5442,23 @@ paths:
                   minimum: 0
                   maximum: 3650
                   example: 90
+            examples:
+              configured:
+                value: {rotation_interval_days: 90}
+              body_array:
+                value: []
+              interval_wrong_type:
+                value: {rotation_interval_days: "90"}
+              field_unknown:
+                value: {rotation_interval_days: 90, private_key: injected}
+              interval_missing:
+                value: {}
+              interval_null:
+                value: {rotation_interval_days: null}
+              interval_negative:
+                value: {rotation_interval_days: -1}
+              interval_too_large:
+                value: {rotation_interval_days: 3651}
       responses:
         "200":
           description: DKIM rotation settings saved
@@ -5453,12 +5470,26 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMRotationSettings"
+              examples:
+                configured:
+                  value:
+                    data: {domain_id: 1, rotation_interval_days: 90}
         "400":
           description: Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                interval_wrong_type:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                field_unknown:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -5467,6 +5498,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                interval_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_negative:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_too_large:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
 
   /api/v1/admin/dkim/{id}:
     parameters:

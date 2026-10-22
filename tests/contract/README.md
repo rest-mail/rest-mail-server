@@ -172,6 +172,14 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setDKIMRotation` pairs `configured` with 200, `body_array`,
+`interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
+`interval_null`, `interval_negative` and `interval_too_large` with 422.
+The domain ID comes from `createDomain`'s link. The handler tests send each
+refusal before and after saving a valid interval and verify the entire domain
+is preserved, including its signing material. Other DKIM operations keep
+their exclusions.
+
 `createFolder` pairs `created` with 201 and `name_missing`, `name_empty`, and
 `name_wrong_type` with 422. The real handler tests use an authorized account
 on a scratch database and compare each example's status and full response
