@@ -743,6 +743,54 @@ def hosted_domain_id(origin, headers, name):
         raise
 
 
+@hooks.before("mozillaAutoconfig")
+@hooks.before("mozillaAutoconfigWellKnown")
+def an_active_domain_for_autoconfig(transaction):
+    # Discovery requires an active hosted domain. updateDomain's example now
+    # changes only sending_policy, so it no longer incidentally activates the
+    # generated email's domain. Prepare that state without changing the query.
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(transaction["fullPath"]).query)
+    address = query.get("emailaddress", [""])[0]
+    if address.count("@") != 1:
+        return
+    local, name = address.split("@")
+    if not local or "." not in name:
+        return  # Leave malformed addresses to the actual probe.
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    domain_id = hosted_domain_id(origin, headers, name)
+    if domain_id is None:
+        return
+    path = origin + "/api/v1/admin/domains/" + str(domain_id)
+    with urllib.request.urlopen(urllib.request.Request(path, headers=headers), timeout=10) as response:
+        domain = json.load(response).get("data") or {}
+    if domain.get("active"):
+        return
+    activate = urllib.request.Request(path, data=b'{"active":true}', headers=headers, method="PATCH")
+    try:
+        with urllib.request.urlopen(activate, timeout=10):
+            return
+    except urllib.error.HTTPError as error:
+        if error.code != 409 or (json.load(error).get("error") or {}).get("code") != "certificate_required":
+            raise
+    # Activation uses the production certificate gate. Supply a real fixture
+    # certificate only when that precondition is missing, then activate it.
+    with tempfile.TemporaryDirectory() as directory:
+        key, cert = os.path.join(directory, "tls.key"), os.path.join(directory, "tls.crt")
+        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
+                "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
+                "-keyout", key, "-out", cert)
+        with open(cert) as cert_file, open(key) as key_file:
+            body = {"domain_id": domain_id, "cert_pem": cert_file.read(),
+                    "key_pem": key_file.read(), "auto_renew": False}
+        request = urllib.request.Request(origin + "/api/v1/admin/certificates",
+                                         data=json.dumps(body).encode(), headers=headers, method="POST")
+        with urllib.request.urlopen(request, timeout=10):
+            pass
+    with urllib.request.urlopen(activate, timeout=10):
+        pass
+
+
 def alias_on(origin, headers, domain_id, source):
     request = urllib.request.Request(
         origin + "/api/v1/admin/aliases?domain_id=%d" % domain_id, headers=headers)

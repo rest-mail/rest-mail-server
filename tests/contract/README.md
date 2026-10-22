@@ -252,6 +252,12 @@ check the exact refusal and unchanged stored domain, and verify that the success
 persists its policy (`contract_domain_update_examples_test.go`). Its 404 and 409
 remain excluded until they have requests of their own.
 
+Mozilla discovery's generated email needs an active hosted domain. Its hooks
+prepare that domain through the admin API, adding a self-signed fixture
+certificate when activation requires one. The query and caller's credential
+stay unchanged. Discovery therefore runs independently of `updateDomain`'s
+example, which updates only the sending policy.
+
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.
