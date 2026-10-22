@@ -178,6 +178,13 @@ hook supplies the fixture admin's current password without changing the name.
 The real handler tests check every pair on a managed account and verify that
 refusals create no credential (`contract_credential_examples_test.go`). Other
 account operations keep their exclusions.
+
+`setDomainRelay` pairs `relay` and `direct` with 200; `body_array` and
+`port_wrong_type` with 400; and missing/invalid transport, invalid host,
+port, TLS mode, and mismatched credentials with 422. A createDomain link
+supplies the domain id. Refusals leave both absent and saved relay settings
+unchanged (`contract_relay_examples_test.go`). Missing-domain 404 and the
+409 that needs a server without MASTER_KEY remain excluded.
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.

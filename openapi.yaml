@@ -3453,6 +3453,14 @@ paths:
               operationId: domainDNSCheck
               parameters:
                 id: '$response.body#/data/id'
+            setDomainRelay:
+              operationId: setDomainRelay
+              parameters:
+                id: '$response.body#/data/id'
+            getDomainRelay:
+              operationId: getDomainRelay
+              parameters:
+                id: '$response.body#/data/id'
             setMtaStsPolicy:
               operationId: setMtaStsPolicy
               parameters:
@@ -7272,6 +7280,53 @@ paths:
                 summary: Deliver straight to each recipient's MX
                 value:
                   transport: direct
+              body_array:
+                value: []
+              port_wrong_type:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: '587'
+                  tls_mode: starttls
+                  username: apikey
+                  password: relay-password
+              transport_missing:
+                value: {}
+              transport_invalid:
+                value:
+                  transport: smtp
+              host_invalid:
+                value:
+                  transport: relay
+                  host: smtp://smtp.example.net
+                  port: 587
+                  tls_mode: starttls
+                  username: apikey
+                  password: relay-password
+              port_invalid:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: 65536
+                  tls_mode: starttls
+                  username: apikey
+                  password: relay-password
+              tls_mode_invalid:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: 587
+                  tls_mode: none
+                  username: apikey
+                  password: relay-password
+              credentials_mismatch:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: 587
+                  tls_mode: starttls
+                  username: apikey
+                  password: ''
       responses:
         "200":
           description: Outbound transport saved
@@ -7283,12 +7338,99 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainRelay"
+              examples:
+                relay:
+                  value:
+                    data:
+                      domain_id: 1
+                      transport: relay
+                      host: smtp.example.net
+                      port: 587
+                      tls_mode: starttls
+                      username: apikey
+                      password_set: true
+                direct:
+                  value:
+                    data:
+                      domain_id: 1
+                      transport: direct
+                      password_set: false
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "400":
+          description: Invalid domain ID or a body that cannot decode as the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                port_wrong_type:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                transport_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          transport: 'Must be one of: direct, relay'
+                transport_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          transport: 'Must be one of: direct, relay'
+                host_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          host: Must be a bare host name or IP address, with no scheme, port or path
+                port_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          port: Must be between 1 and 65535
+                tls_mode_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          tls_mode: 'Must be one of: starttls, implicit'
+                credentials_mismatch:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          password: A username and a password are set together, or neither
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: TLS Reports
