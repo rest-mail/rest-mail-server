@@ -89,6 +89,7 @@ class PairedRefusals(unittest.TestCase):
     # request example.
     PAIRED = {
         "setDomainRelay",
+        "setDKIMRotation",
         "sendMessage",
         "microsoftAutodiscover",
         "createDomain",
