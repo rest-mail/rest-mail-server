@@ -403,6 +403,7 @@ a hosted domain and mailbox for each address a test send probe uses, and,
 - `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
   (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
 - `test_hooks_send_message.py`: the sendMessage sender hook's tests, against a stub admin API.
+- `test_hooks_update_domain.py`: the updateDomain certificate hook's tests, against a stub admin API.
 - `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
@@ -504,6 +505,13 @@ the sender's domain with a DKIM key (an https unsubscribe target needs one) and
 creates its mailbox through the admin API the first time the address appears,
 then leaves them in place. Malformed senders and domains the server will not
 host are left to the probe, and the request is never rewritten.
+
+Update probes (updateDomain) that set `active` to true would meet 409
+`certificate_required`: no created domain has a certificate when they run. A
+before hook gives the domain in the path a self-signed certificate through the
+admin API the first time such a request appears, then leaves it in place. The
+request is never rewritten, and a domain that does not exist is left to the
+probe's 404.
 
 Test send probes (sendTestEmail) send from and to a generated address
 (`someone@example.com`) that has no mailbox. A before hook hosts its domain and

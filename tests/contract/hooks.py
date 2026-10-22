@@ -317,6 +317,49 @@ def a_self_signed_certificate(transaction):
                                   auto_renew=False)
 
 
+@hooks.before("updateDomain")
+def a_certificate_before_going_live(transaction):
+    # Setting active to true is refused with 409 certificate_required for a
+    # domain with no valid certificate, which every created domain is when
+    # the probes reach it. The domain gets a self-signed one through the
+    # admin API, once per run; the request is never rewritten.
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict) or body.get("active") is not True:
+        return
+    path = transaction["fullPath"].split("?")[0]
+    domain_id = path.rstrip("/").rsplit("/", 1)[-1]
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    ready = hooks.stash.get("certified_domains", {})
+    if not domain_id.isdigit() or (origin + "\n" + domain_id) in ready:
+        return
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+
+    def call(method, path, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(origin + path, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.load(response).get("data")
+
+    try:
+        name = call("GET", "/api/v1/admin/domains/" + domain_id)["name"]
+    except urllib.error.HTTPError as error:
+        # No such domain: the probe meets the 404 itself.
+        if error.code == 404:
+            return
+        raise
+    with tempfile.TemporaryDirectory() as d:
+        key, cert = os.path.join(d, "tls.key"), os.path.join(d, "tls.crt")
+        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "30",
+                "-subj", "/CN=" + name, "-addext", "subjectAltName=DNS:" + name,
+                "-keyout", key, "-out", cert)
+        with open(cert) as cert_file, open(key) as key_file:
+            call("POST", "/api/v1/admin/certificates",
+                 {"domain_id": int(domain_id), "cert_pem": cert_file.read(),
+                  "key_pem": key_file.read(), "auto_renew": False})
+    ready[origin + "\n" + domain_id] = True
+    hooks.stash["certified_domains"] = ready
+
+
 @hooks.before("mtaStsPolicyFile")
 def ask_for_the_created_domains_policy(transaction):
     # Served at mta-sts.<domain>: the domain is the Host's, not a parameter.

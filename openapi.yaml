@@ -9738,8 +9738,14 @@ components:
         default_quota_bytes:
           type: integer
           format: int64
+        # Inline rather than a $ref to DomainSendingPolicy: vertrag 0.29
+        # validates each boundary probe against the body schema without
+        # resolving a nested $ref, and drops every probe of a body that has
+        # one (#388).
         sending_policy:
-          $ref: "#/components/schemas/DomainSendingPolicy"
+          type: string
+          enum: ["", transactional, bulk]
+          description: The domain's sending policy (DomainSendingPolicy); `""` clears it.
 
     DomainSendingPolicy:
       type: string
