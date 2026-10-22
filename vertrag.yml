@@ -98,7 +98,8 @@ exclude-matching:
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
   # createContact, sendMessage, microsoftAutodiscover, setDomainRelay,
   # setDKIMRotation, createAppPassword, linkAccount, setVacation, importContacts,
-  # updateMailbox, probeServices, setMtaStsPolicy, updateAlias and updatePipeline.
+  # updateMailbox, probeServices, setMtaStsPolicy, updateAlias, updateDomain
+  # and updatePipeline.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
@@ -124,7 +125,7 @@ exclude-matching:
   - '^/api/v1/admin/aliases/.* > 400( >|$)'
   - '^/api/v1/admin/pipelines/\{id\} > .* > 400( >|$)'
   - '^/api/v1/admin/pipelines/(logs|analytics)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\} > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\} > .* > 400( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(dns|suppressions)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/relay > Get .* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'

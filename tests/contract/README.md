@@ -253,6 +253,19 @@ with the 200. The alias ID comes from `createAlias`'s existing link. A handler
 test sends the examples to a stored alias, checks the documented refusal body,
 and verifies that the refusal leaves the stored alias unchanged.
 
+`updateDomain` sends `sending_policy_invalid` (`newsletter`) with its paired
+422 and `updated` (`transactional`) with its 200. The existing `createDomain`
+link supplies the stored domain ID. The handler tests send the spec's requests,
+check the exact refusal and unchanged stored domain, and verify that the success
+persists its policy (`contract_domain_update_examples_test.go`). Its 404 and 409
+remain excluded until they have requests of their own.
+
+Mozilla discovery's generated email needs an active hosted domain. Its hooks
+prepare that domain through the admin API, adding a self-signed fixture
+certificate when activation requires one. The query and caller's credential
+stay unchanged. Discovery therefore runs independently of `updateDomain`'s
+example, which updates only the sending policy.
+
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.
