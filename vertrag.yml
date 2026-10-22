@@ -14,6 +14,9 @@ endpoint: http://10.99.0.20:8080
 # a sign-in hands out. Everything else comes from the spec, its links included.
 hookfiles: ./tests/contract/hooks.py
 language: python
+# Fixture setup can invoke the cached Go helper in the topology's API container.
+# Give its bounded 20-second command time to finish before the hook deadline (ms).
+hooks-worker-timeout: 30000
 
 auth:
   login:
@@ -93,7 +96,10 @@ exclude-matching:
   # bulkDeleteQueue, bulkRetryQueue, bulkBounceQueue, addToAllowlist,
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
-  # createContact, sendMessage, microsoftAutodiscover and setDKIMRotation.
+  # createContact, sendMessage, microsoftAutodiscover, setDomainRelay,
+  # setDKIMRotation, createAppPassword, linkAccount, setVacation, importContacts,
+  # updateMailbox, probeServices, setMtaStsPolicy, updateAlias, updateDomain
+  # and updatePipeline.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
@@ -102,28 +108,33 @@ exclude-matching:
   - '^/api/v1/auth/(login|logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/accounts/(link|\{id\}) > .* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/(credentials|threads|quota|search|vacation|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/accounts/link > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\} > .* > (400|422)( >|$)'
+  - '^/api/v1/accounts/\{id\}/(threads|quota|search|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/contacts/.* > (400|422)( >|$)'
+  - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
-  - '^/api/v1/admin/(audit|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(audit|grants|tls-reports)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/dkim/\{id\} > .* > (400|422)( >|$)'
   - '^/api/v1/admin/dkim/\{id\}/rotation > Read .* > (400|422)( >|$)'
+  - '^/api/v1/admin/mailboxes > .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue/(stats|\{id\})(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/aliases/.* > (400|422)( >|$)'
-  - '^/api/v1/admin/pipelines/(\{id\}|logs|analytics)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\} > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions|mta-sts|relay)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/aliases/.* > 400( >|$)'
+  - '^/api/v1/admin/pipelines/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/pipelines/(logs|analytics)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/relay > Get .* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist) > List .* > (400|422)( >|$)'
   - '^/api/v1/admin/custom-filters/\{id\} > .* > (400|422)( >|$)'
   - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/test/(verify|probe|snapshot/restore) > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
