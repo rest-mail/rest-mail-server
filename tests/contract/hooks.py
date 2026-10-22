@@ -4,8 +4,8 @@ Only what the spec cannot hold: the fixture's passwords, which no spec example
 should carry; the refresh token a sign-in hands out; a fresh key pair; and the
 id of the domain the run created, where a request carries it in its body
 rather than its path (links fill only parameters). Links supply the other
-existing resources; getDomain's 404 selects its documented missing ID because
-vertrag does not pair named parameter examples.
+existing resources; domain and certificate 404s select their documented missing
+IDs because vertrag does not pair named parameter examples.
 
 The principals are the E2E fixture's (tests/e2e/contract_principals_test.go),
 read from the file it writes.
@@ -232,6 +232,15 @@ def get_a_missing_domain(transaction):
     # spec's missing ID; the success and its coverage probes keep their IDs.
     if " > 404 > " in transaction.get("name", ""):
         transaction["fullPath"] = "/api/v1/admin/domains/2147483647"
+
+
+@hooks.before("getCertificate")
+def get_a_missing_certificate(transaction):
+    # Parameter example names are not paired by vertrag 0.29, and the create
+    # link supplies its real ID to both responses. Only the 404 selects the
+    # spec's missing ID; the success and its coverage probes keep their IDs.
+    if " > 404 > " in transaction.get("name", ""):
+        transaction["fullPath"] = "/api/v1/admin/certificates/2147483647"
 
 
 @hooks.before("deleteDomain")

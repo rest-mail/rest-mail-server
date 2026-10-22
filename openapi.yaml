@@ -6757,6 +6757,18 @@ paths:
         - BearerAuth: [domains:read]
         - APIKeyAuth: [domains:read]
       summary: Get certificate details (includes cert_pem)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Certificate details with PEM data
@@ -6774,7 +6786,17 @@ paths:
               parameters:
                 id: '$request.path.id'
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Certificate not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Certificate not found
     delete:
       operationId: deleteCertificate
       tags: ["Admin: Certificates"]
