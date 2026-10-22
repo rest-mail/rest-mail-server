@@ -205,6 +205,13 @@ as a failed probe. `gate.py` does not judge a probe built from a refusal (a
 transaction whose status is 4xx), so those failures do not count against the
 coverage ratchet (`test_gate.py`).
 
+`saveDraft` includes an `empty` request (`{}`) as well as `with_sender`.
+Every draft field is optional: omitting `from` saves in the signed-in
+account's mailbox with an empty sender. An explicit sender still needs
+mail:write on that mailbox (`contract_draft_test.go`). The operation remains
+in the coverage baseline because generated sender addresses can name
+mailboxes the principal cannot write to.
+
 vertrag is the released, checksum-pinned binary (v0.29.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
 
