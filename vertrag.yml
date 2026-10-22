@@ -94,6 +94,7 @@ exclude-matching:
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
   # createContact, sendMessage, microsoftAutodiscover and updateMailbox.
+  # createContact, sendMessage, microsoftAutodiscover and setDomainRelay.
   # createContact, sendMessage, microsoftAutodiscover and setDKIMRotation.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
@@ -118,7 +119,8 @@ exclude-matching:
   - '^/api/v1/admin/aliases/.* > (400|422)( >|$)'
   - '^/api/v1/admin/pipelines/(\{id\}|logs|analytics)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\} > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions|mta-sts|relay)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions|mta-sts)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/relay > Get .* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist) > List .* > (400|422)( >|$)'
   - '^/api/v1/admin/custom-filters/\{id\} > .* > (400|422)( >|$)'
