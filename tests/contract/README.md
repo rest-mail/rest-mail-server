@@ -241,6 +241,25 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`login` pairs `wrong_password` with 401 and `email_missing`,
+`password_missing` and `client_invalid` with their 422s. Its 200 is named
+`signed_in`. `refreshToken` pairs `invalid_token` and `token_missing` with
+their 401s and `refreshed` with 200. The hooks replace only the explicit
+`fixture-password` and `fixture-refresh-token` placeholders; wrong credentials,
+missing fields and coverage mutations survive. Refusals keep the saved refresh
+token intact. The real handler tests check the exact refusal bodies, that no
+session is created or rotated by a refusal, and that the valid requests still
+sign in and rotate (`contract_auth_examples_test.go`). `test_auth_hooks.py`
+checks the hooks against the spec examples and the exclusions. Both operations'
+401s are now counted by the surface gate.
+
+Refresh success probes with a missing or empty body token exercise the browser
+channel. Their before hook obtains a fresh `restmail_refresh` cookie for each
+probe, because coverage does not run the after hook that records rotated tokens.
+The generated body bytes and existing caller headers stay intact. Named 401
+examples, malformed bodies and explicit caller cookies receive no setup cookie;
+their refusals stay visible. Setup login failures stop the run.
+
 `setVacation` pairs `configured` with 200, `body_array` with 400, and
 `enabled_missing`, `subject_missing`, `body_missing`, `reply_missing` and
 `dates_reversed` with their 422s. No hook changes these requests. The handler

@@ -91,7 +91,7 @@ exclude-matching:
   # Each needs a request of its own that provokes it (a named request example
   # paired with a named response example), which the spec does not have yet:
   # #386. The 400s and 422s are excluded by path rather than everywhere, so the
-  # operations whose refusals have their pair are sent: createDomain,
+  # operations whose refusals have their pair are sent: login, createDomain,
   # createAlias, createPipeline, createBan, createCustomFilter,
   # validateCustomFilter, sendTestEmail, createAccount, restmailDeliver,
   # bulkDeleteQueue, bulkRetryQueue, bulkBounceQueue, addToAllowlist,
@@ -106,7 +106,7 @@ exclude-matching:
   # Each operation paired next comes off these patterns the same way. A path in
   # a segment none of them names is sent.
   - '> (404|409)( >|$)'
-  - '^/api/v1/auth/(login|logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
+  - '^/api/v1/auth/(logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/link > .* > 400( >|$)'
@@ -141,7 +141,7 @@ exclude-matching:
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
-  - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
+  - '^/api/v1/auth/(reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
   - '> (429|503)( >|$)'
   # The send example sends immediately. The scheduled branch needs a request
@@ -234,12 +234,6 @@ surface:
     - operation: restmailDiscover
       status: "500"
       reason: "Discovery's database-outage response needs a fault-injected database."
-    - operation: login
-      status: "401"
-      reason: "a 401 for a wrong credential on an operation that takes none (#386)"
-    - operation: refreshToken
-      status: "401"
-      reason: "a 401 for a wrong credential on an operation that takes none (#386)"
 
 reporter: [cli, junit]
 output: ["", .cache/contract/examples.xml]

@@ -10,6 +10,7 @@ The principals are the E2E fixture's (tests/e2e/contract_principals_test.go),
 read from the file it writes.
 """
 import base64
+from http.cookies import SimpleCookie
 import json
 import os
 import subprocess
@@ -78,7 +79,12 @@ def admin_token(origin):
 
 @hooks.before("login")
 def sign_in_as_the_fixture_admin(transaction):
-    hooks.set_json(transaction, {"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"})
+    body = hooks.get_json(transaction)
+    # Replace only the fixture placeholder. Wrong passwords, missing fields
+    # and coverage mutations must reach the handler unchanged.
+    if isinstance(body, dict) and body.get("password") == "fixture-password":
+        body["password"] = ADMIN_PASSWORD
+        hooks.set_json(transaction, body)
 
 
 @hooks.after("login")
@@ -90,7 +96,51 @@ def keep_the_refresh_token(transaction):
 
 @hooks.before("refreshToken")
 def refresh_the_sign_in(transaction):
-    hooks.set_json(transaction, {"refresh_token": hooks.stash.get("refresh_token", ""), "client": "native"})
+    body = hooks.get_json(transaction)
+    if isinstance(body, dict) and body.get("refresh_token") == "fixture-refresh-token":
+        body["refresh_token"] = hooks.stash.get("refresh_token", "")
+        hooks.set_json(transaction, body)
+    # A schema-valid body without a native token is the browser channel.
+    # Supply its cookie only for success probes; named missing/invalid-token
+    # refusals must still reach the handler without a credential. Coverage
+    # runs no after hooks, so each browser probe needs its own unspent token.
+    name = transaction.get("name", "")
+    # The runner gives before hooks the source transaction's name, including
+    # for coverage, so the 200 response identifies the success channel here.
+    if (" > 200 > " not in name or not isinstance(body, dict) or
+            body.get("refresh_token", "") != ""):
+        return
+    headers = transaction["request"].get("headers", {})
+    if any(key.lower() == "cookie" for key in headers):
+        return  # Keep an explicitly supplied caller credential intact.
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    cookie = fresh_browser_refresh_cookie(origin)
+    headers["Cookie"] = cookie
+    transaction["request"]["headers"] = headers
+
+
+def fresh_browser_refresh_cookie(origin):
+    """Prepare one browser session without consuming the native fixture token."""
+    pace_auth_requests(None)
+    request = urllib.request.Request(
+        origin + "/api/v1/auth/login",
+        data=json.dumps({"email": ADMIN, "password": ADMIN_PASSWORD}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 200:
+            raise RuntimeError("fixture browser sign-in failed: HTTP %d" % response.status)
+        cookies = SimpleCookie()
+        for header in response.headers.get_all("Set-Cookie", []):
+            cookies.load(header)
+        token = cookies.get("restmail_refresh")
+        if token is None or not token.value:
+            raise RuntimeError("fixture browser sign-in returned no refresh cookie")
+        cookie = "restmail_refresh=" + token.coded_value
+    # The setup login and the actual refresh share the auth rate bucket.
+    pace_auth_requests(None)
+    return cookie
 
 
 @hooks.after("refreshToken")
