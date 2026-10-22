@@ -8580,18 +8580,19 @@ components:
       type: object
       required: [enabled, subject, body]
       # An enabled auto-reply needs something to send: setVacation refuses an
-      # empty subject or body while enabled is true.
-      if:
-        required: [enabled]
-        properties:
-          enabled:
-            const: true
-      then:
-        properties:
-          subject:
-            minLength: 1
-          body:
-            minLength: 1
+      # empty subject or body while enabled is true. Stated as anyOf with an
+      # enum rather than if/then and const, so every JSON Schema draft reads
+      # it the same: the contract tests' boundary probes judged an empty
+      # subject valid under the if/then form (#388).
+      anyOf:
+        - properties:
+            enabled:
+              enum: [false]
+        - properties:
+            subject:
+              minLength: 1
+            body:
+              minLength: 1
       properties:
         enabled:
           type: boolean
