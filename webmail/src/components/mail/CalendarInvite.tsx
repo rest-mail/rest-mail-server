@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -231,7 +232,7 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
             <User className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
             <p className="text-foreground">
               <span className="text-muted-foreground">Organizer: </span>
-              {event.organizer.name ? `${event.organizer.name} (${event.organizer.address})` : event.organizer.address}
+              {event.organizer.name ? `${event.organizer.name} (${displayAddress(event.organizer.address)})` : displayAddress(event.organizer.address)}
             </p>
           </div>
         )}
@@ -257,7 +258,7 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
                 {event.attendees.map((attendee, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span className="text-foreground">
-                      {attendee.name || attendee.address}
+                      {attendee.name || displayAddress(attendee.address)}
                     </span>
                     {attendee.partstat && partStatBadge(attendee.partstat)}
                     {attendee.role === 'OPT-PARTICIPANT' && (
@@ -361,7 +362,7 @@ export function CalendarInvite({ events, messageId }: CalendarInviteProps) {
           <>
             <Separator />
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Response from {event.attendees[0].name || event.attendees[0].address}:</span>
+              <span className="text-muted-foreground">Response from {event.attendees[0].name || displayAddress(event.attendees[0].address)}:</span>
               {partStatBadge(event.attendees[0].partstat ?? '')}
             </div>
           </>

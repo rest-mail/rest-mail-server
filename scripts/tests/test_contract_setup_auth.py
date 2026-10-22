@@ -30,6 +30,9 @@ class ContractSetupAuthTests(unittest.TestCase):
         self.module = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"vertrag_hooks": hooks}):
             spec.loader.exec_module(self.module)
+        self.pacing = patch.object(self.module.time, "sleep")
+        self.wait = self.pacing.start()
+        self.addCleanup(self.pacing.stop)
         self.logins = []
         self.calls = []
         self.responses = []
@@ -135,6 +138,9 @@ class ContractSetupAuthTests(unittest.TestCase):
             self.assertEqual(self.module.admin_token(origin), "setup-session")
         self.assertEqual(self.logins, ["http://fixture.test:8080/api/v1/auth/login",
                                       "http://other.test:8080/api/v1/auth/login"])
+        # Only actual sign-ins spend a token; reusing a cached session does not.
+        self.assertEqual(self.wait.call_count, 2)
+        self.wait.assert_called_with(1.1)
 
     def test_failed_login_is_not_cached(self):
         origin = "http://fixture.test:8080"

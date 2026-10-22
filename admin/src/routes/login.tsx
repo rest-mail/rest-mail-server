@@ -89,7 +89,10 @@ function LoginPage() {
                   style={{ borderColor: 'var(--gray-border)' }}
                 >
                   <input
-                    type="email"
+                    type="text"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     autoComplete="username"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
