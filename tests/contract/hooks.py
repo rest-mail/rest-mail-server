@@ -24,7 +24,6 @@ import vertrag_hooks as hooks
 ADMIN = "admin@restmail.test"
 ADMIN_PASSWORD = "admin123!@"
 # A seeded account that nobody owns, to link (cmd/seed's fixture password).
-LINKABLE = "eve@restmail.test"
 LINKABLE_PASSWORD = "password123"
 
 PRINCIPALS = os.environ.get("CONTRACT_PRINCIPALS", ".cache/contract-principals.json")
@@ -111,7 +110,57 @@ def confirm_with_the_admin_password(transaction):
 
 @hooks.before("linkAccount")
 def link_a_seeded_account(transaction):
-    hooks.set_json(transaction, {"address": LINKABLE, "password": LINKABLE_PASSWORD})
+    body = hooks.get_json(transaction)
+    # Supply only the fixture secret the named examples ask for. Preserve
+    # missing/empty fields and coverage mutations so their refusals are reachable.
+    if isinstance(body, dict) and body.get("password") == "supplied-by-contract-hook":
+        body["password"] = LINKABLE_PASSWORD
+        hooks.set_json(transaction, body)
+    if not isinstance(body, dict):
+        return
+    # Each successful link consumes the unlinked state. Restore only that
+    # state before a fixture's valid proof; do not alter generated body bytes,
+    # malformed values, wrong passwords, or the transaction's principal.
+    passwords = {"eve@restmail.test": LINKABLE_PASSWORD, "someone@example.com": "x"}
+    address = body.get("address")
+    if not isinstance(address, str) or address not in passwords or body.get("password") != passwords[address]:
+        return
+    headers = transaction["request"].get("headers") or {}
+    if not any(key.lower() == "authorization" and value for key, value in headers.items()):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    if address == "someone@example.com":
+        ready = hooks.stash.get("link_fixture_prepared", {})
+        if origin not in ready:
+            # createAccount probes need this address absent; linkAccount probes
+            # need it present with their generated password. Set up the latter
+            # only now, after the preceding operation's probes have finished.
+            subprocess.run(["chore", "test:contract-link-fixture"], check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+            ready[origin] = True
+            hooks.stash["link_fixture_prepared"] = ready
+    ids = hooks.stash.get("link_fixture_ids", {})
+    key = origin + "\n" + address
+    if key not in ids:
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/mailboxes?limit=1000",
+            headers={"Authorization": "Bearer " + admin_token(origin)},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            accounts = json.load(response).get("data") or []
+        ids[key] = next((account["id"] for account in accounts if account.get("address") == address), None)
+        if ids[key] is None:
+            raise RuntimeError("contract account-link fixture is missing")
+        hooks.stash["link_fixture_ids"] = ids
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts/" + str(ids[key]), headers=headers, method="DELETE")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not clear the preceding contract link")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:  # The first proof has no preceding grant.
+            raise
 
 
 @hooks.after("createDomain")
@@ -792,6 +841,11 @@ def host_the_account_probe_domain(transaction):
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
     origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    if address.lower() == "someone@example.com":
+        # A later create can replace the account whose credential/id the link
+        # hook prepared. Rebuild its proof before the next generated link.
+        hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
+        hooks.stash.get("link_fixture_ids", {}).pop(origin + "\n" + address.lower(), None)
     headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
     request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
     with urllib.request.urlopen(request, timeout=10) as response:
