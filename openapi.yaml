@@ -8911,13 +8911,15 @@ components:
 
     SendMessageRequest:
       type: object
-      required: [from, to, subject]
+      # No subject is a message with an empty Subject, as the handler sends it.
+      required: [from, to]
       properties:
         from:
           type: string
           format: email
         to:
           type: array
+          minItems: 1
           items:
             type: string
             format: email
@@ -8947,8 +8949,43 @@ components:
             minute ahead, and within a year). The response is 202 with the
             stored scheduled message, and the message is not sent until then.
             Omit it to send immediately.
+        # Inline rather than a $ref: vertrag 0.29 validates each boundary probe
+        # against the body schema without resolving a nested $ref, and drops
+        # every probe of a body that has one (#388).
         list_unsubscribe:
-          $ref: "#/components/schemas/ListUnsubscribe"
+          type: object
+          description: >
+            Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058),
+            published as the message's List-Unsubscribe field. You run the
+            endpoint; the server never fetches or posts to it. With `https`, the
+            message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+            and both fields are DKIM signed; a sender domain with no DKIM key is
+            refused with 422 `dkim_required` rather than sent with an unsigned
+            one-click claim. With only `mailto`, there is no one-click field. Omit
+            the object and the message carries neither field. A value with a line
+            break, a space, a comma, an angle bracket or quote, or any other scheme
+            is refused with 400, as is any key other than `mailto` and `https`.
+          minProperties: 1
+          additionalProperties: false
+          properties:
+            mailto:
+              type: string
+              format: email
+              description: >
+                A bare ASCII address (no display name, no `mailto:`, no query),
+                published as `<mailto:address>`.
+              example: unsubscribe@example.com
+            https:
+              type: string
+              format: uri
+              maxLength: 2048
+              pattern: "^https://"
+              description: >
+                One absolute https URL with a host and no credentials, which
+                unsubscribes the recipient when it receives the RFC 8058 one-click
+                POST (body `List-Unsubscribe=One-Click`). It should identify the
+                recipient and the list, as RFC 8058 §3.1 asks.
+              example: https://example.com/unsubscribe?t=opaque-token
 
     ScheduledSend:
       type: object
@@ -8987,41 +9024,6 @@ components:
         updated_at:
           type: string
           format: date-time
-
-    ListUnsubscribe:
-      type: object
-      description: >
-        Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058),
-        published as the message's List-Unsubscribe field. You run the
-        endpoint; the server never fetches or posts to it. With `https`, the
-        message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
-        and both fields are DKIM signed; a sender domain with no DKIM key is
-        refused with 422 `dkim_required` rather than sent with an unsigned
-        one-click claim. With only `mailto`, there is no one-click field. Omit
-        the object and the message carries neither field. A value with a line
-        break, a space, a comma, an angle bracket or quote, or any other scheme
-        is refused with 400, as is any key other than `mailto` and `https`.
-      minProperties: 1
-      additionalProperties: false
-      properties:
-        mailto:
-          type: string
-          format: email
-          description: >
-            A bare ASCII address (no display name, no `mailto:`, no query),
-            published as `<mailto:address>`.
-          example: unsubscribe@example.com
-        https:
-          type: string
-          format: uri
-          maxLength: 2048
-          pattern: "^https://"
-          description: >
-            One absolute https URL with a host and no credentials, which
-            unsubscribes the recipient when it receives the RFC 8058 one-click
-            POST (body `List-Unsubscribe=One-Click`). It should identify the
-            recipient and the list, as RFC 8058 §3.1 asks.
-          example: https://example.com/unsubscribe?t=opaque-token
 
     ForwardMessageRequest:
       type: object

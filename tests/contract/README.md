@@ -373,6 +373,11 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
   not change the product's retry rules or any coverage exclusion.
+- Scheduled-message hooks prepare their own messages through the send API.
+  If send-body probes exhaust the admin's submission budget, fixture setup
+  retries once after `Retry-After` (at most 60 seconds). The actual contract
+  requests are never retried, so their rate-limit responses remain visible.
+  The hook worker deadline allows for that wait and the setup API requests.
 - `../e2e/contract_principals_test.go`: the principals, written to
   `.cache/contract-principals.json`.
 
