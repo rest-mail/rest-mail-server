@@ -3127,7 +3127,7 @@ export interface components {
         };
         DraftRequest: {
             /** Format: email */
-            from: string;
+            from?: string;
             to?: string[];
             cc?: string[];
             subject?: string;

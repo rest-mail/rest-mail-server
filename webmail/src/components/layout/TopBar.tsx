@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -118,7 +119,7 @@ export function TopBar() {
 
         <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuLabel className="font-normal">
-            <p className="font-mono text-sm font-medium truncate">{user?.email}</p>
+            <p className="font-mono text-sm font-medium truncate">{user?.email && displayAddress(user.email)}</p>
             <p className="font-mono text-xs text-muted-foreground">// signed_in</p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
