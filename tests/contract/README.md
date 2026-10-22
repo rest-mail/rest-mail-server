@@ -90,6 +90,21 @@ database access (`contract_account_examples_test.go`,
 `contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
 No before hook rewrites these requests. Sibling operations remain excluded.
 
+`linkAccount` pairs `linked` with its 201, and `address_missing`,
+`password_missing`, `address_blank` and `password_empty` with its 422. The
+handler reports both required fields for each refusal, before account lookup
+or grant creation (`contract_link_account_examples_test.go`). Its hook supplies
+only the password placeholder; missing fields, empty values and generated
+coverage mutations stay intact (`test_link_account_hook.py`). Its 409 remains
+excluded until an ordered repeated link provokes it.
+Just before its first generated link proof, the hook runs
+`chore test:contract-link-fixture` to seed `someone@example.com` with password
+`x`, matching vertrag v0.29's valid schema specimens. This happens after the
+account-creation probes, which need that address absent. Before a valid fixture
+proof, the hook removes only the caller's previous link, so repeated probes
+start unlinked. It preserves the generated request and its principal; invalid
+credentials still reach the handler unchanged.
+
 `bulkRetryQueue` and `bulkBounceQueue` send their `invalid_body` (`[]`) and
 `selection_missing` (`{}`) requests with their paired 400s; their original
 request is named `by_ids`, with a matching 200 example, so neither refusal is
@@ -181,12 +196,27 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setVacation` pairs `configured` with 200, `body_array` with 400, and
+`enabled_missing`, `subject_missing`, `body_missing`, `reply_missing` and
+`dates_reversed` with their 422s. No hook changes these requests. The handler
+checks each refusal after authorizing the account and before changing its
+stored vacation setting; the tests send the spec examples to the real handler
+and verify that refused updates preserve a previously configured reply.
+
+`createAppPassword` sends `name_missing`, `name_empty`, `name_too_long` and
+`name_control` with their paired 422s; `created` pairs only with 201. The
+hook supplies the fixture admin's current password without changing the name.
+The real handler tests check every pair on a managed account and verify that
+refusals create no credential (`contract_credential_examples_test.go`). Other
+account operations keep their exclusions.
+
 `setDomainRelay` pairs `relay` and `direct` with 200; `body_array` and
 `port_wrong_type` with 400; and missing/invalid transport, invalid host,
 port, TLS mode, and mismatched credentials with 422. A createDomain link
 supplies the domain id. Refusals leave both absent and saved relay settings
 unchanged (`contract_relay_examples_test.go`). Missing-domain 404 and the
 409 that needs a server without MASTER_KEY remain excluded.
+
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.
@@ -240,7 +270,21 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
   folder for each rename probe (a successful rename consumes the previous one),
-  a hosted domain and mailbox for each address a test send probe uses, and,
+  and, for `addToAllowlist`, `addToBlocklist` and `createAlias`, the entry a
+  previous probe added removed when generated bodies repeat it (the domain
+  stays for the whole run, so a repeat is otherwise a 409), with an alias
+  probe's domain hosted first. The entries `removeFromAllowlist`,
+  `removeFromBlocklist`, `getAlias`, `updateAlias` and `deleteAlias` are linked
+  to are followed to their current id, and added again if a probe left none.
+  TLS-RPT reports are sent a second apart: the route is rate-limited. Their
+  schema requires a policy domain and caps the array at 100 policies, matching
+  the storage limit. The hook hosts generated policy domains before sending
+  each report, leaving its generated request unchanged.
+  The valid relay transport enum probe gets the host, port and TLS mode that
+  its `if/then` branch requires; vertrag v0.29 does not generate those
+  conditional companions. Other relay probes and documented refusals keep
+  their bodies.
+a hosted domain and mailbox for each address a test send probe uses, and,
   for `createAccount`'s probes, their address's domain hosted and the
   account a previous probe created removed (a generated address such as
   `someone@example.com` is otherwise refused as on a domain this server does
@@ -253,7 +297,16 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   session, cached per endpoint. It leaves the request's own credentials intact,
   including when the principal has no credentials; Basic auth is reserved for
   app passwords, not the fixture admin's account password.
+  Login, refresh, account linking, app-password creation and protocol sign-in
+  share the API's default auth bucket (1 request/second, burst 15). Their before
+  hooks wait 1.1 seconds per request, including coverage probes and setup
+  logins, so a dense run cannot turn valid probes into 429s. The limiter stays
+  enabled; requests and the coverage baseline stay unchanged.
   Every other id comes from the spec's `links`.
+  `deleteDomain` deletes only the domain the run created: a probe naming any
+  other domain (coverage's in-range id 1 is the fixture admin's) is skipped,
+  since the server refuses a domain that still has accounts with 409
+  (`test_hooks_delete_domain.py`).
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `authorization.py`: builds a private configuration from the E2E principals
@@ -262,6 +315,8 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_repeat_probe_hooks.py`: the sender rule and alias hooks' tests, against
+  a stub admin API (`python3 -m unittest discover -s tests/contract -p test_repeat_probe_hooks.py`).
 - `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
   (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
 - `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.

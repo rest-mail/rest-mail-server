@@ -1091,6 +1091,25 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/LinkAccountRequest"
+            examples:
+              linked:
+                value:
+                  address: eve@restmail.test
+                  password: supplied-by-contract-hook
+              address_missing:
+                value:
+                  password: supplied-by-contract-hook
+              password_missing:
+                value:
+                  address: eve@restmail.test
+              address_blank:
+                value:
+                  address: "   "
+                  password: supplied-by-contract-hook
+              password_empty:
+                value:
+                  address: eve@restmail.test
+                  password: ""
       responses:
         "201":
           description: Linked
@@ -1102,6 +1121,14 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+              examples:
+                linked:
+                  value:
+                    data:
+                      id: 2
+                      address: eve@restmail.test
+                      display_name: Eve
+                      is_primary: false
           links:
             unlinkAccount:
               operationId: unlinkAccount
@@ -1122,7 +1149,48 @@ paths:
         "409":
           description: Already linked, or the session's own account
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Address or password missing or empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                address_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                password_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                address_blank:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                password_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
         "429":
           description: Too many attempts from this client
 
@@ -1246,6 +1314,17 @@ paths:
                   format: password
                   writeOnly: true
                   description: The session's own current password, entered again.
+            examples:
+              created:
+                value: {name: iPhone Mail}
+              name_missing:
+                value: {}
+              name_empty:
+                value: {name: ""}
+              name_too_long:
+                value: {name: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+              name_control:
+                value: {name: "Mail\nClient"}
       responses:
         "201":
           description: Made; `password` is shown this once
@@ -1257,6 +1336,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CreatedAppPassword"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      name: iPhone Mail
+                      kind: app_password
+                      public_id: 7Kq2xT9bLm4P
+                      created_at: "2026-01-01T00:00:00Z"
+                      last_used_at: null
+                      expires_at: null
+                      password: "rm_7Kq2xT9bLm4P_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
           links:
             revokeCredential:
               operationId: revokeCredential
@@ -1278,7 +1369,20 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          description: name missing or longer than 100 characters, or expires_at not in the future
+          description: name missing, empty, longer than 100 characters or containing control characters, or expires_at not in the future
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                name_missing:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: required}}}}
+                name_empty:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: required}}}}
+                name_too_long:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: must be at most 100 characters}}}}
+                name_control:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: must not contain control characters}}}}
         "429":
           description: Too many attempts from this client; shares login's budget
 
@@ -2716,6 +2820,26 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/VacationConfig"
+            examples:
+              configured:
+                value: {enabled: true, subject: "Out of office", body: "I will reply when I return."}
+              body_array:
+                value: []
+              enabled_missing:
+                value: {subject: "Out of office", body: "I will reply when I return."}
+              subject_missing:
+                value: {enabled: true, body: "I will reply when I return."}
+              body_missing:
+                value: {enabled: true, subject: "Out of office"}
+              reply_missing:
+                value: {enabled: true}
+              dates_reversed:
+                value:
+                  enabled: true
+                  subject: "Out of office"
+                  body: "I will reply when I return."
+                  start_date: "2030-01-02T00:00:00Z"
+                  end_date: "2030-01-01T00:00:00Z"
       responses:
         "200":
           description: Vacation config updated
@@ -2727,8 +2851,62 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/VacationConfig"
+              examples:
+                configured:
+                  value:
+                    data: {enabled: true, subject: "Out of office", body: "I will reply when I return."}
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: "Invalid request body"}
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                enabled_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {enabled: required}
+                subject_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {subject: "required when enabled"}
+                body_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {body: "required when enabled"}
+                reply_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {subject: "required when enabled", body: "required when enabled"}
+                dates_reversed:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {end_date: "must be after start_date"}
     delete:
       operationId: disableVacation
       tags: [Vacation]
@@ -3548,11 +3726,20 @@ paths:
         - CookieAuth: [domains:delete]
         - BearerAuth: [domains:delete]
       summary: Delete a domain
+      description: >
+        Only a domain with no accounts and no aliases can be deleted: delete
+        those first.
       responses:
         "204":
           description: Domain deleted
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: The domain still has accounts or aliases (`domain_not_empty`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Mailboxes
@@ -9578,6 +9765,7 @@ components:
       properties:
         pattern:
           type: string
+          minLength: 1
           description: "Email address (spam@evil.com) or domain pattern (@evil.com)"
         reason:
           type: string
@@ -10219,6 +10407,17 @@ components:
     SetDomainRelayRequest:
       type: object
       required: [transport]
+      # A relay needs somewhere to dial: setDomainRelay refuses one without
+      # its host, port and TLS mode. Stated as anyOf with an enum, which
+      # draft-04 and 2020-12 validators read alike (if/then is 2019-09+).
+      anyOf:
+        - properties:
+            transport:
+              enum: [direct]
+        - required: [host, port, tls_mode]
+          properties:
+            transport:
+              enum: [relay]
       properties:
         transport:
           type: string
@@ -10337,6 +10536,7 @@ components:
       properties:
         organization-name:
           type: string
+          minLength: 1
         contact-info:
           type: string
         report-id:
@@ -10353,11 +10553,15 @@ components:
               format: date-time
         policies:
           type: array
+          minItems: 1
+          maxItems: 100
           items:
             type: object
+            required: [policy]
             properties:
               policy:
                 type: object
+                required: [policy-domain]
                 properties:
                   policy-type:
                     type: string
@@ -10367,6 +10571,8 @@ components:
                       type: string
                   policy-domain:
                     type: string
+                    minLength: 1
+                    format: hostname
                   mx-host:
                     type: array
                     items:
