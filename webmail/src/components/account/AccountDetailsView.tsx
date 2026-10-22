@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
@@ -55,7 +56,7 @@ export function AccountDetailsView() {
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-2">Profile</h3>
             <div className="space-y-1 text-sm">
-              <p><span className="font-medium">Email:</span> {user?.email}</p>
+              <p><span className="font-medium">Email:</span> {user?.email && displayAddress(user.email)}</p>
               <p><span className="font-medium">Display Name:</span> {user?.display_name || 'Not set'}</p>
             </div>
           </div>
@@ -69,7 +70,7 @@ export function AccountDetailsView() {
               {accounts.map(a => (
                 <div key={a.id} className="flex items-center justify-between text-sm p-2 rounded-md bg-muted">
                   <div>
-                    <span className="font-medium">{a.address}</span>
+                    <span className="font-medium">{displayAddress(a.address)}</span>
                     {a.is_primary && (
                       <span className="ml-2 text-xs text-primary">(primary)</span>
                     )}

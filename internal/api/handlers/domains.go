@@ -12,6 +12,7 @@ import (
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 	"golang.org/x/net/idna"
 	"gorm.io/gorm"
@@ -280,6 +281,22 @@ func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A domain still holding accounts or aliases stays (#388): deleting it
+	// left them pointing at no domain, and every send from such an account
+	// then failed with a 500 on its domain's sending policy.
+	for _, held := range []interface{}{&models.Mailbox{}, &models.Alias{}} {
+		var n int64
+		if err := h.db.Model(held).Where("domain_id = ?", domain.ID).Count(&n).Error; err != nil {
+			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the domain's addresses")
+			return
+		}
+		if n > 0 {
+			respond.Error(w, http.StatusConflict, "domain_not_empty",
+				"The domain still has accounts or aliases: delete them first")
+			return
+		}
+	}
+
 	if err := h.db.Delete(&domain).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete domain")
 		return
@@ -313,16 +330,32 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 
 	var checks []recordCheck
 
+	// DNS holds the A-label (punycode) form of an internationalized name: look
+	// up, and report the owner names to publish, in that form. A stored name
+	// that is not a valid DNS name is reported, not looked up.
+	name, err := rmail.DomainASCII(domain.Name)
+	if err != nil {
+		respond.Data(w, http.StatusOK, map[string]interface{}{
+			"domain": domain.Name,
+			"records": []recordCheck{{
+				Type: "DOMAIN", Name: domain.Name, Status: "error",
+				Message: "The domain name is not a valid DNS name, so its records cannot be checked",
+			}},
+			"summary": "0/1 records verified",
+		})
+		return
+	}
+
 	// MX records
-	mxs, err := h.lookupMX(domain.Name)
+	mxs, err := h.lookupMX(name)
 	if err != nil {
 		checks = append(checks, recordCheck{
-			Type: "MX", Name: domain.Name, Status: "missing",
+			Type: "MX", Name: name, Status: "missing",
 			Message: fmt.Sprintf("MX lookup failed: %v", err),
 		})
 	} else if len(mxs) == 0 {
 		checks = append(checks, recordCheck{
-			Type: "MX", Name: domain.Name, Status: "missing",
+			Type: "MX", Name: name, Status: "missing",
 			Message: "No MX records found",
 		})
 	} else {
@@ -331,20 +364,20 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 			hosts[i] = fmt.Sprintf("%s (pri %d)", mx.Host, mx.Pref)
 		}
 		checks = append(checks, recordCheck{
-			Type: "MX", Name: domain.Name, Status: "ok",
+			Type: "MX", Name: name, Status: "ok",
 			Value: strings.Join(hosts, ", "),
 		})
 	}
 
 	// SPF (TXT record)
 	spfFound := false
-	txts, err := h.lookupTXT(domain.Name)
+	txts, err := h.lookupTXT(name)
 	if err == nil {
 		for _, txt := range txts {
 			if strings.HasPrefix(txt, "v=spf1") {
 				spfFound = true
 				checks = append(checks, recordCheck{
-					Type: "SPF", Name: domain.Name, Status: "ok",
+					Type: "SPF", Name: name, Status: "ok",
 					Value: txt,
 				})
 				break
@@ -353,20 +386,20 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if !spfFound {
 		checks = append(checks, recordCheck{
-			Type: "SPF", Name: domain.Name, Status: "missing",
+			Type: "SPF", Name: name, Status: "missing",
 			Message: "No SPF record (v=spf1...) found in TXT records",
 		})
 	}
 
 	// DMARC
 	dmarcFound := false
-	dmarcTxts, err := h.lookupTXT("_dmarc." + domain.Name)
+	dmarcTxts, err := h.lookupTXT("_dmarc." + name)
 	if err == nil {
 		for _, txt := range dmarcTxts {
 			if strings.HasPrefix(txt, "v=DMARC1") {
 				dmarcFound = true
 				checks = append(checks, recordCheck{
-					Type: "DMARC", Name: "_dmarc." + domain.Name, Status: "ok",
+					Type: "DMARC", Name: "_dmarc." + name, Status: "ok",
 					Value: txt,
 				})
 				break
@@ -375,7 +408,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	if !dmarcFound {
 		checks = append(checks, recordCheck{
-			Type: "DMARC", Name: "_dmarc." + domain.Name, Status: "missing",
+			Type: "DMARC", Name: "_dmarc." + name, Status: "missing",
 			Message: "No DMARC record found",
 		})
 	}
@@ -383,11 +416,11 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 	// DKIM, under the selector the domain signs with (domains.dkim_selector).
 	if domain.DKIMSelector == "" || domain.DKIMPrivateKey == "" {
 		checks = append(checks, recordCheck{
-			Type: "DKIM", Name: domain.Name, Status: "missing",
+			Type: "DKIM", Name: name, Status: "missing",
 			Message: "The domain has no DKIM key, so its mail is not signed",
 		})
 	} else {
-		dkimName := domain.DKIMSelector + "._domainkey." + domain.Name
+		dkimName := domain.DKIMSelector + "._domainkey." + name
 		dkimTxts, err := h.lookupTXT(dkimName)
 		if err != nil || len(dkimTxts) == 0 {
 			checks = append(checks, recordCheck{
@@ -403,7 +436,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// MTA-STS
-	mtaSTSName := "_mta-sts." + domain.Name
+	mtaSTSName := "_mta-sts." + name
 	mtaSTSTxts, err := h.lookupTXT(mtaSTSName)
 	if err != nil || len(mtaSTSTxts) == 0 {
 		checks = append(checks, recordCheck{
@@ -431,7 +464,7 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TLS-RPT
-	tlsRPTName := "_smtp._tls." + domain.Name
+	tlsRPTName := "_smtp._tls." + name
 	tlsRPTTxts, err := h.lookupTXT(tlsRPTName)
 	if err != nil || len(tlsRPTTxts) == 0 {
 		checks = append(checks, recordCheck{

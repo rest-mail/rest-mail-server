@@ -1326,6 +1326,20 @@ func (h *MessageHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
 	}
+	// A draft's recipients become its To:/Cc: when it is sent: each must be an
+	// address, as the schema says (#388).
+	for _, addr := range req.To {
+		if rmail.ValidateAddress(addr) != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in to")
+			return
+		}
+	}
+	for _, addr := range req.Cc {
+		if rmail.ValidateAddress(addr) != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
+			return
+		}
+	}
 
 	// A draft is kept in the mailbox it is from: one the caller may write to.
 	// Without a from, the caller's own.

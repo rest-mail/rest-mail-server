@@ -9,6 +9,7 @@ import (
 
 	dkim "github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/outbound"
 )
 
@@ -268,4 +269,59 @@ func addHeaderField(msg, field string, atEnd bool) string {
 	}
 	i := strings.Index(msg, "\r\n\r\n")
 	return msg[:i+2] + field + "\r\n" + msg[i+2:]
+}
+
+// Both the API and queued SMTP paths must sign EAI mail from hosted IDNs.
+func TestSentMessage_IDNDKIM(t *testing.T) {
+	h, domain, unicodeResolver := seedSigningDomain(t, "bücher")
+	ascii, err := rmail.DomainASCII(domain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := "From: 用户@" + domain + "\r\nTo: müller@例え.jp\r\nSubject: Grüße 世界\r\n\r\nUTF-8 body: café\r\n"
+	resolver := func(ctx context.Context, name string) ([]string, error) {
+		if name != "rm1._domainkey."+ascii {
+			t.Fatalf("key lookup %q, want A-label domain %q", name, ascii)
+		}
+		return unicodeResolver(ctx, "rm1._domainkey."+domain)
+	}
+	for _, path := range []string{"api", "queue"} {
+		t.Run(path, func(t *testing.T) {
+			var signed string
+			var err error
+			if path == "api" {
+				signed, err = h.signOutboundDKIM(domain, raw)
+			} else {
+				signed, err = outbound.Prepare(h.db, h.masterKey, domain, raw)
+			}
+			if err != nil {
+				t.Fatalf("sign IDN message: %v", err)
+			}
+			if !strings.HasSuffix(signed, "\r\n"+raw) {
+				t.Fatal("signing changed original UTF-8 message bytes")
+			}
+			results := dkim.Verify(context.Background(), []byte(signed), resolver)
+			if len(results) != 1 || results[0].Result != dkim.ResultPass || results[0].Domain != ascii {
+				t.Fatalf("IDN signature did not verify with A-label domain: %+v", results)
+			}
+			tampered := strings.Replace(signed, "Subject: Grüße 世界", "Subject: forged", 1)
+			if got := dkim.Verify(context.Background(), []byte(tampered), resolver); len(got) != 1 || got[0].Result != dkim.ResultFail {
+				t.Fatalf("modified UTF-8 header was not detected: %+v", got)
+			}
+		})
+	}
+	var stored models.Domain
+	if err := h.db.Where("name = ?", domain).First(&stored).Error; err != nil || stored.Name != domain {
+		t.Fatalf("stored Unicode domain changed: %q, %v", stored.Name, err)
+	}
+
+	t.Run("invalid hosted IDN fails closed", func(t *testing.T) {
+		invalid := "bad_." + domain
+		if err := h.db.Model(&stored).Update("name", invalid).Error; err != nil {
+			t.Fatal(err)
+		}
+		if got, err := outbound.SignDKIM(h.db, h.masterKey, invalid, raw); err == nil || got != "" {
+			t.Fatalf("invalid hosted IDN signed or relayed unsigned: message length %d, error %v", len(got), err)
+		}
+	})
 }

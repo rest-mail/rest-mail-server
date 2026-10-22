@@ -88,16 +88,27 @@ class PairedRefusals(unittest.TestCase):
     # The operations whose documented 400s and 422s each have their named
     # request example.
     PAIRED = {
+        "login",
+        "updateAlias",
+        "setDomainRelay",
+        "setDKIMRotation",
         "sendMessage",
         "microsoftAutodiscover",
         "createDomain",
+        "updateDomain",
         "createAlias",
         "createPipeline",
+        "updatePipeline",
         "createBan",
         "createCustomFilter",
+        "updateCustomFilter",
         "validateCustomFilter",
         "sendTestEmail",
         "createAccount",
+        "importContacts",
+        "linkAccount",
+        "createAppPassword",
+        "createFolder",
         "restmailDeliver",
         "bulkDeleteQueue",
         "bulkRetryQueue",
@@ -110,7 +121,14 @@ class PairedRefusals(unittest.TestCase):
         "receiveTlsReport",
         "createCertificate",
         "protocolSignIn",
+        "probeServices",
+        "setMtaStsPolicy",
+        "setVacation",
+        "updateMailbox",
+        "putSieveScript",
+        "validateSieveScript",
         "createContact",
+        "setDKIMKey",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
@@ -161,7 +179,7 @@ class PairedRefusals(unittest.TestCase):
 
 
 class MissingResourceRefusals(unittest.TestCase):
-    def test_only_get_certificate_sends_its_documented_404(self):
+    def test_only_enabled_lookups_send_their_documented_404(self):
         with open(os.path.join(ROOT, "openapi.yaml")) as file:
             spec = yaml.safe_load(file)
         with open(os.path.join(ROOT, "vertrag.yml")) as file:
@@ -177,7 +195,7 @@ class MissingResourceRefusals(unittest.TestCase):
                 name = "%s > %s > 404 > application/json" % (path, op["summary"])
                 if not any(pattern.search(name) for pattern in patterns):
                     sent.add(op["operationId"])
-        self.assertEqual(sent, {"getCertificate"})
+        self.assertEqual(sent, {"getDomain", "getCertificate"})
 
 
 if __name__ == "__main__":
