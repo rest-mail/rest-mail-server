@@ -106,7 +106,6 @@ exclude-matching:
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/link > .* > 400( >|$)'
   - '^/api/v1/accounts/\{id\}(/| >).* > (400|422)( >|$)'
-- '^/api/v1/accounts/(link|\{id\}) > .* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/(credentials|threads|quota|search|vacation|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts/.* > (400|422)( >|$)'
