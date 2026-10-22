@@ -39,6 +39,19 @@ def basic(address, password):
     return "Basic " + token
 
 
+@hooks.before("login")
+@hooks.before("refreshToken")
+@hooks.before("linkAccount")
+@hooks.before("createAppPassword")
+@hooks.before("protocolSignIn")
+def pace_auth_requests(transaction):
+    # These operations share the default 1 request/second auth bucket. Coverage
+    # repeats valid requests as well as refusals, so even correct credentials
+    # drain its burst. Wait for a token without changing or retrying the probe.
+    # Leave a small margin for clock/scheduling differences at the boundary.
+    time.sleep(1.1)
+
+
 def admin_token(origin):
     """Sign in for fixture setup without changing the transaction's principal.
 
@@ -47,6 +60,7 @@ def admin_token(origin):
     """
     tokens = hooks.stash.get("setup_admin_tokens", {})
     if origin not in tokens:
+        pace_auth_requests(None)
         request = urllib.request.Request(
             origin + "/api/v1/auth/login",
             data=json.dumps({"email": ADMIN, "password": ADMIN_PASSWORD, "client": "native"}).encode(),
