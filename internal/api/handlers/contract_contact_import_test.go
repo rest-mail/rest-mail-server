@@ -28,7 +28,11 @@ func TestImportContacts_ContractSchema(t *testing.T) {
 		Paths map[string]struct {
 			Post struct {
 				Responses map[string]struct {
-					Ref string `yaml:"$ref"`
+					Content map[string]struct {
+						Schema struct {
+							Ref string `yaml:"$ref"`
+						} `yaml:"schema"`
+					} `yaml:"content"`
 				} `yaml:"responses"`
 			} `yaml:"post"`
 		} `yaml:"paths"`
@@ -39,8 +43,8 @@ func TestImportContacts_ContractSchema(t *testing.T) {
 	if got := doc.Components.Schemas["ImportContactsRequest"].Properties["contacts"].MinItems; got != 1 {
 		t.Errorf("contacts minItems = %d, want 1", got)
 	}
-	if got := doc.Paths["/api/v1/accounts/{id}/contacts/import"].Post.Responses["422"].Ref; got != "#/components/responses/ValidationError" {
-		t.Errorf("422 response = %q, want ValidationError", got)
+	if got := doc.Paths["/api/v1/accounts/{id}/contacts/import"].Post.Responses["422"].Content["application/json"].Schema.Ref; got != "#/components/schemas/ValidationErrorResponse" {
+		t.Errorf("422 response = %q, want ValidationErrorResponse", got)
 	}
 }
 
