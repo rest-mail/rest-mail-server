@@ -13,6 +13,33 @@ import (
 
 const testAPIKey = "rmk_AAAAAAAAAAAA_secretsecretsecretsecretsecretsecretsecretsec"
 
+func TestSessionOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		claims *auth.Claims
+		status int
+	}{
+		{"missing", nil, http.StatusUnauthorized},
+		{"session", &auth.Claims{AccountID: 7}, http.StatusNoContent},
+		{"key", apiKeyClaims(), http.StatusForbidden},
+		{"basic", &auth.Claims{AccountID: 7, CredentialID: 4}, http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/grants", nil)
+			if tc.claims != nil {
+				r = r.WithContext(contextOf(r, tc.claims))
+			}
+			out := httptest.NewRecorder()
+			SessionOnly(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			})).ServeHTTP(out, r)
+			if out.Code != tc.status {
+				t.Fatalf("status = %d, want %d", out.Code, tc.status)
+			}
+		})
+	}
+}
+
 func apiKeyClaims(perms ...auth.ScopedPermission) *auth.Claims {
 	return &auth.Claims{AccountID: 7, Address: "bot@a.com", TokenType: "access", CredentialID: 9,
 		CredentialKind: auth.CredentialKindAPIKey, APIKeyPermissions: perms}

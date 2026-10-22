@@ -55,6 +55,9 @@ checks:
 # surface.exclude below, which takes the same operations out of the surface
 # the run is held to; tests/contract/gate.py checks the two lists agree.
 exclude-operation-id:
+  - listAPIKeys
+  - createAPIKey
+  - revokeAPIKey
   - listPushDevices
   - registerPushDevice
   - removePushDevice
@@ -168,6 +171,12 @@ surface:
   count: passed
   require: 100
   exclude:
+    - operation: listAPIKeys
+      reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. It checks metadata, creation, scoped use and revocation without changing this run's principal."
+    - operation: createAPIKey
+      reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. The primary fixture admin has no MFA."
+    - operation: revokeAPIKey
+      reason: "Required real-MFA API key lifecycle suite: chore test:contract-api-keys in e2e-suite.yml. The primary fixture admin has no MFA."
     - operation: listPushDevices
       reason: "Push is off unless APNs is configured, and the E2E topology has no APNs credentials: every devices route answers 404."
     - operation: registerPushDevice

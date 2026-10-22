@@ -1,6 +1,9 @@
 import base64
 import hashlib
+import os
 import unittest
+
+import yaml
 
 import api_keys_live
 
@@ -34,6 +37,36 @@ class GuardTest(unittest.TestCase):
         for field in ("token", "password", "secret"):
             with self.assertRaises(AssertionError):
                 api_keys_live.assert_no_secret({"id": 1, field: "rmk_x"})
+
+
+class RequiredCI(unittest.TestCase):
+    def test_separate_suite_is_required_for_exactly_the_three_key_operations(self):
+        root = os.path.join(os.path.dirname(__file__), "..", "..")
+        with open(os.path.join(root, "vertrag.yml")) as source:
+            config = yaml.safe_load(source)
+        expected = {"listAPIKeys", "createAPIKey", "revokeAPIKey"}
+        excluded = {item["operation"] for item in config["surface"]["exclude"]
+                    if "test:contract-api-keys" in item.get("reason", "")}
+        self.assertEqual(excluded, expected)
+        self.assertLessEqual(expected, set(config["exclude-operation-id"]))
+        with open(os.path.join(root, ".github/workflows/e2e-suite.yml")) as source:
+            workflow = yaml.safe_load(source)
+        steps = [step for step in workflow["jobs"]["suite"]["steps"]
+                 if step.get("run") == "chore test:contract-api-keys"]
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0]["if"], "inputs.contract-phases == 'gate'")
+        self.assertFalse(steps[0].get("continue-on-error", False))
+
+    def test_validation_examples_pair_with_documented_responses(self):
+        root = os.path.join(os.path.dirname(__file__), "..", "..")
+        with open(os.path.join(root, "openapi.yaml")) as source:
+            spec = yaml.safe_load(source)
+        operation = spec["paths"]["/api/v1/accounts/{id}/api-keys"]["post"]
+        requests = operation["requestBody"]["content"]["application/json"]["examples"]
+        refusals = operation["responses"]["422"]["content"]["application/json"]["examples"]
+        self.assertEqual(set(refusals), set(requests) - {"created"})
+        for example in refusals.values():
+            self.assertEqual(example["value"]["error"]["code"], "validation_failed")
 
 
 if __name__ == "__main__":

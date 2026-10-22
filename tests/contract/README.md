@@ -18,7 +18,18 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. | Report only, after the gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 
-Two gates judge the run:
+The three API-key operations run in a separate required step,
+`chore test:contract-api-keys`, before the examples gate. It creates a fresh
+disposable `restmail.test` account with a domain-scoped admin grant, enrolls
+2FA through the public API, confirms a real TOTP and signs in with a recovery
+code. The suite checks create/list/revoke, metadata without secrets, password
+reauthentication, validation, refusals without MFA, scope restrictions and
+immediate revocation. These three operations alone are excluded from the
+primary vertrag run because its fixture admin has no MFA. The dedicated step
+has no `continue-on-error`, changes no primary principal, and adds no coverage
+baseline entries.
+
+Two gates judge the primary run:
 
 - **examples, in vertrag:** `vertrag.yml`'s surface gate (`surface: {count:
   passed, require: 100}`) counts an operation only when every documented

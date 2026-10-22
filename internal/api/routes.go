@@ -748,8 +748,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// holds everything it grants or removes, and records each change in the
 		// audit log in the change's own transaction.
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/grants", grantH.List)
-		r.With(needs(middleware.CapUsersWrite)).Post("/api/v1/admin/grants", grantH.Create)
-		r.With(needs(middleware.CapUsersWrite)).Delete("/api/v1/admin/grants/{id}", grantH.Delete)
+		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Post("/api/v1/admin/grants", grantH.Create)
+		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Delete("/api/v1/admin/grants/{id}", grantH.Delete)
 
 		// Escalation (#346): every admin sees its own grants, and switches its
 		// own eligible ones on for a while. Holding the eligible grant is what

@@ -196,6 +196,10 @@ jobs:
         if: inputs.contract-phases == 'gate' || inputs.contract-phases == 'fuzz'
         run: chore test:contract-fixtures
 
+      - name: API key contract (real MFA and scoped credential lifecycle)
+        if: inputs.contract-phases == 'gate'
+        run: chore test:contract-api-keys
+
       - name: Contract tests (examples and coverage)
         # Every operation in openapi.yaml, sent as the fixture admin against the
         # topology the stages above just exercised, ordered by the spec's links

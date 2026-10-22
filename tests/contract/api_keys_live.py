@@ -16,7 +16,8 @@ enrollment, then signs in with one of the recovery codes (a second TOTP code
 in the same step would be refused as a replay) to get a session that really
 carries the second factor. No token is forged and no server guard is relaxed.
 
-Usage: api_keys_live.py BASE_URL EMAIL PASSWORD
+Usage: api_keys_live.py BASE_URL EMAIL PASSWORD DOMAIN_ID
+       api_keys_live.py BASE_URL --fixture FIXTURE_JSON
 """
 
 import base64
@@ -69,12 +70,19 @@ class Client:
         if token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(self.base_url + path, data=data, method=method, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                status, raw = resp.status, resp.read()
-        except urllib.error.HTTPError as err:
-            status, raw = err.code, err.read()
-        return status, (json.loads(raw) if raw else None)
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    status, raw = resp.status, resp.read()
+            except urllib.error.HTTPError as err:
+                status, raw = err.code, err.read()
+                if status == 429 and attempt < 2:
+                    delay = int(err.headers.get("Retry-After", "1"))
+                    if not 0 < delay <= 60:
+                        raise AssertionError(f"unexpected throttle delay {delay}")
+                    time.sleep(delay + 1)
+                    continue
+            return status, (json.loads(raw) if raw else None)
 
     def expect(self, want, method, path, body=None, token=None, code=None):
         status, payload = self.call(method, path, body, token)
@@ -97,12 +105,12 @@ def mfa_session(client, email, password):
     plain = login(client, email, password)
     token = plain["access_token"]
     enrolled = client.expect(200, "POST", "/api/v1/auth/2fa/enroll", {}, token)["data"]
-    client.expect(200, "POST", "/api/v1/auth/2fa/confirm", {"totp_code": totp(enrolled["secret"])}, token)
+    client.expect(204, "POST", "/api/v1/auth/2fa/confirm", {"totp_code": totp(enrolled["secret"])}, token)
     signed_in = login(client, email, password, recovery_code=enrolled["recovery_codes"][0])
     return signed_in, token
 
 
-def run(base_url, email, password):
+def run(base_url, email, password, domain_id):
     require_fixture_account(email)
     client = Client(base_url)
     session, plain_token = mfa_session(client, email, password)
@@ -110,6 +118,7 @@ def run(base_url, email, password):
     account = session["user"]["id"]
     keys = f"/api/v1/accounts/{account}/api-keys"
     scope = f"domain:{FIXTURE_DOMAIN}"
+    domain_path = f"/api/v1/admin/domains/{int(domain_id)}"
     request = {
         "name": "contract live key",
         "password": password,
@@ -119,7 +128,13 @@ def run(base_url, email, password):
     # A session without the second factor cannot create or revoke.
     client.expect(403, "POST", keys, request, plain_token, code="two_factor_required")
     # Creating re-checks the current password.
-    client.expect(403, "POST", keys, {**request, "password": password + "-wrong"}, token, code="reauth_required")
+    client.expect(403, "POST", keys, {**request, "password": password + "-wrong"}, token, code="invalid_password")
+
+    for permissions in ([], [{"capability": "*", "scope": "*"}]):
+        client.expect(422, "POST", keys, {**request, "permissions": permissions}, token,
+                      code="validation_failed")
+    client.expect(403, "POST", keys, {**request, "permissions": [
+        {"capability": "domains:read", "scope": "*"}]}, token, code="forbidden")
 
     created = client.expect(201, "POST", keys, request, token)["data"]
     secret = created["token"]
@@ -132,18 +147,27 @@ def run(base_url, email, password):
     assert_no_secret(match[0])
 
     # The raw key works inside its scope and cannot manage credentials.
-    client.expect(200, "GET", "/api/v1/admin/domains", token=secret)
-    client.expect(403, "GET", keys, token=secret)
-    client.expect(403, "POST", keys, request, secret)
+    client.expect(200, "GET", domain_path, token=secret)
+    client.expect(403, "GET", "/api/v1/admin/domains", token=secret)
+    client.expect(403, "PATCH", domain_path, {"active": False}, secret)
+    # These routes accept JWT sessions only, so a raw key is not a session.
+    client.expect(401, "GET", keys, token=secret)
+    client.expect(401, "POST", keys, request, secret)
 
     client.expect(403, "DELETE", f"{keys}/{created['id']}", token=plain_token, code="two_factor_required")
     client.expect(204, "DELETE", f"{keys}/{created['id']}", token=token)
     client.expect(404, "DELETE", f"{keys}/{created['id']}", token=token, code="not_found")
-    client.expect(401, "GET", "/api/v1/admin/domains", token=secret)
+    client.expect(401, "GET", domain_path, token=secret)
 
 
 def main(argv):
-    if len(argv) != 4:
+    if len(argv) == 4 and argv[2] == "--fixture":
+        with open(argv[3]) as source:
+            fixture = json.load(source)
+        run(argv[1], fixture["email"], "contract-api-key123!@", fixture["domain_id"])
+        print("api key live checks passed")
+        return
+    if len(argv) != 5:
         raise SystemExit(__doc__)
     run(*argv[1:])
     print("api key live checks passed")
