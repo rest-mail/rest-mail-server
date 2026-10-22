@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useState } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -44,7 +45,7 @@ export function AccountSettingsView() {
     <div className="h-full flex flex-col">
       <div className="px-6 pt-5 pb-0 border-b border-border">
         <p className="text-xs text-muted-foreground mb-0.5">Account settings</p>
-        <h2 className="text-lg font-semibold mb-4 truncate">{account.address}</h2>
+        <h2 className="text-lg font-semibold mb-4 truncate">{displayAddress(account.address)}</h2>
         <div className="flex gap-0">
           {TABS.map(t => (
             <button
@@ -97,7 +98,7 @@ function DetailsTab({ account, isPrimary }: { account: { id: number; address: st
         <CardContent className="space-y-3">
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Email address</p>
-            <p className="text-sm font-mono">{account.address}</p>
+            <p className="text-sm font-mono">{displayAddress(account.address)}</p>
           </div>
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Account ID</p>

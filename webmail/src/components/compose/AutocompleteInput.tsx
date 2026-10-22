@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { suggestContacts, type ContactSuggestion } from '@/api/client';
@@ -162,9 +163,9 @@ export function AutocompleteInput({ value, onChange, placeholder }: Autocomplete
 
   function formatSuggestion(s: ContactSuggestion): string {
     if (s.name) {
-      return `${s.name} <${s.email}>`;
+      return `${s.name} <${displayAddress(s.email)}>`;
     }
-    return s.email;
+    return displayAddress(s.email);
   }
 
   return (
@@ -182,7 +183,7 @@ export function AutocompleteInput({ value, onChange, placeholder }: Autocomplete
             key={`${email}-${i}`}
             className="inline-flex items-center gap-1 rounded-md bg-secondary text-secondary-foreground px-2 py-0.5 text-xs font-medium max-w-[240px]"
           >
-            <span className="truncate">{email}</span>
+            <span className="truncate" title={email}>{displayAddress(email)}</span>
             <button
               type="button"
               className="ml-0.5 text-muted-foreground hover:text-foreground shrink-0"
@@ -190,7 +191,7 @@ export function AutocompleteInput({ value, onChange, placeholder }: Autocomplete
                 e.stopPropagation();
                 removeRecipient(i);
               }}
-              aria-label={`Remove ${email}`}
+              aria-label={`Remove ${displayAddress(email)}`}
             >
               {"\u2715"}
             </button>

@@ -90,23 +90,28 @@ func TestSetVacationRequiresEnabled(t *testing.T) {
 	}
 }
 
+// TestVacationConfig_ContractSchema pins how the spec states the enabled rule:
+// anyOf with an enum, which draft-04 and 2020-12 validators read alike. Under
+// if/then the contract tests' boundary probes still judged an empty subject
+// valid beside enabled true, and counted the handler's 422 as a finding.
 func TestVacationConfig_ContractSchema(t *testing.T) {
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	type rule struct {
-		Required   []string `yaml:"required"`
+	type branch struct {
 		Properties map[string]struct {
-			Const     interface{} `yaml:"const"`
-			MinLength int         `yaml:"minLength"`
+			Enum      []interface{} `yaml:"enum"`
+			MinLength int           `yaml:"minLength"`
 		} `yaml:"properties"`
 	}
 	var doc struct {
 		Components struct {
 			Schemas map[string]struct {
-				If   rule `yaml:"if"`
-				Then rule `yaml:"then"`
+				Required []string    `yaml:"required"`
+				If       interface{} `yaml:"if"`
+				Then     interface{} `yaml:"then"`
+				AnyOf    []branch    `yaml:"anyOf"`
 			} `yaml:"schemas"`
 		} `yaml:"components"`
 	}
@@ -114,15 +119,56 @@ func TestVacationConfig_ContractSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	schema := doc.Components.Schemas["VacationConfig"]
-	if enabled := schema.If.Properties["enabled"].Const; enabled != true {
-		t.Errorf("VacationConfig if: enabled const = %v, want true", enabled)
+	if schema.If != nil || schema.Then != nil {
+		t.Error("VacationConfig still states the enabled rule with if/then")
 	}
-	if !reflect.DeepEqual(schema.If.Required, []string{"enabled"}) {
-		t.Errorf("VacationConfig if: required = %v, want [enabled]", schema.If.Required)
+	if !reflect.DeepEqual(schema.Required, []string{"enabled", "subject", "body"}) {
+		t.Errorf("VacationConfig required = %v, want [enabled subject body]", schema.Required)
 	}
-	for _, field := range []string{"subject", "body"} {
-		if got := schema.Then.Properties[field].MinLength; got != 1 {
-			t.Errorf("VacationConfig then: %s minLength = %d, want 1", field, got)
+	if len(schema.AnyOf) != 2 {
+		t.Fatalf("VacationConfig anyOf has %d branches, want 2", len(schema.AnyOf))
+	}
+
+	// permits reads the anyOf as a validator does: some branch whose every
+	// stated property holds.
+	permits := func(enabled bool, subject, body string) bool {
+		values := map[string]interface{}{"enabled": enabled, "subject": subject, "body": body}
+		for _, b := range schema.AnyOf {
+			ok := true
+			for name, rule := range b.Properties {
+				value := values[name]
+				if rule.Enum != nil {
+					member := false
+					for _, allowed := range rule.Enum {
+						member = member || reflect.DeepEqual(allowed, value)
+					}
+					ok = ok && member
+				}
+				if s, isString := value.(string); isString && len(s) < rule.MinLength {
+					ok = false
+				}
+			}
+			if ok {
+				return true
+			}
+		}
+		return false
+	}
+	for _, tc := range []struct {
+		enabled       bool
+		subject, body string
+		want          bool
+	}{
+		{true, "Away", "Back Monday", true},
+		{true, "", "Back Monday", false},
+		{true, "Away", "", false},
+		{true, "", "", false},
+		{false, "", "", true},
+		{false, "Away", "Back Monday", true},
+	} {
+		if got := permits(tc.enabled, tc.subject, tc.body); got != tc.want {
+			t.Errorf("enabled=%v subject=%q body=%q: schema permits = %v, want %v",
+				tc.enabled, tc.subject, tc.body, got, tc.want)
 		}
 	}
 }
