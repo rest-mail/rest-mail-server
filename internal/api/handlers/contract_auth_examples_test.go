@@ -175,3 +175,33 @@ func TestAuthRefresh_DocumentedExamples(t *testing.T) {
 		t.Fatalf("success did not rotate the session: %s", rr.Body)
 	}
 }
+
+// The optional refresh body also permits browser requests. The contract's
+// empty-body probes need a cookie, while the same bodies without it stay 401.
+func TestAuthRefresh_BrowserCoverageExamples(t *testing.T) {
+	for _, body := range []string{`{}`, `{"refresh_token":""}`} {
+		t.Run(body, func(t *testing.T) {
+			jwt := auth.NewJWTService("contract-browser-refresh-secret", 15*time.Minute, 7*24*time.Hour)
+			store := newFakeRefreshStore()
+			h := newRefreshHandler(jwt, store)
+			pair, err := jwt.GenerateSession(42, "admin@restmail.test", 0, []string{auth.AMRPassword}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			seedActive(store, pair, 42)
+			before := *store.rows[pair.RefreshJTI]
+			authExampleResponse(t, h.Refresh, "/api/v1/auth/refresh", parseShapeJSON(t, body),
+				http.StatusUnauthorized, parseShapeJSON(t, `{"error":{"code":"unauthorized","message":"No refresh token"}}`))
+			if !reflect.DeepEqual(*store.rows[pair.RefreshJTI], before) {
+				t.Fatal("missing-cookie refusal consumed the browser session")
+			}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", bytes.NewBufferString(body))
+			req.AddCookie(&http.Cookie{Name: auth.RefreshCookieName, Value: pair.RefreshToken})
+			rr := httptest.NewRecorder()
+			h.Refresh(rr, req)
+			if rr.Code != http.StatusOK || refreshCookieValue(rr) == "" || store.statusOf(pair.RefreshJTI) != models.RefreshTokenRotated {
+				t.Fatalf("browser refresh failed: %d %s", rr.Code, rr.Body)
+			}
+		})
+	}
+}

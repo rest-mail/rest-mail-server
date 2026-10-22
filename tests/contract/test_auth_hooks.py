@@ -1,7 +1,9 @@
 """Authentication hooks preserve the spec's paired refusals and probes."""
 
 import copy
+from email.message import Message
 import importlib.util
+import io
 import json
 from pathlib import Path
 import re
@@ -9,6 +11,7 @@ import sys
 import types
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 import yaml
 
@@ -101,6 +104,83 @@ class ContractAuthHookTests(unittest.TestCase):
             self.assertNotIn({"operation": op["operationId"], "status": "401"},
                              [{"operation": e.get("operation"), "status": e.get("status")}
                               for e in config["surface"]["exclude"]])
+
+    def browser_probe(self, raw="{}", status="200", prefix=""):
+        return {
+            "name": prefix + "/api/v1/auth/refresh > Refresh > " + status + " > application/json · body · probe",
+            "protocol": "http:", "host": "api", "port": "8080",
+            "request": {"body": raw, "headers": {"Authorization": "Bearer caller"}},
+        }
+
+    def browser_login(self, token):
+        response = io.BytesIO(b'{"data":{"user":{"id":1}}}')
+        response.status = 200
+        response.headers = Message()
+        response.headers.add_header("Set-Cookie", "restmail_access=access; HttpOnly; Secure")
+        if token is not None:
+            response.headers.add_header("Set-Cookie", "restmail_refresh=" + token + "; HttpOnly; Secure")
+        return response
+
+    def test_browser_success_probes_get_fresh_cookies_without_body_changes(self):
+        responses = [self.browser_login("first-session"), self.browser_login("second-session")]
+        with patch.object(self.module.urllib.request, "urlopen", side_effect=responses) as network, \
+                patch.object(self.module, "pace_auth_requests") as pace:
+            for raw, token in (("{  }", "first-session"), ('{ "refresh_token" : "" }', "second-session")):
+                transaction = self.browser_probe(raw)
+                self.module.refresh_the_sign_in(transaction)
+                self.assertEqual(transaction["request"]["body"], raw)
+                self.assertEqual(transaction["request"]["headers"], {
+                    "Authorization": "Bearer caller", "Cookie": "restmail_refresh=" + token,
+                })
+        self.assertEqual(network.call_count, 2)
+        self.assertEqual(pace.call_count, 4)
+        for call in network.call_args_list:
+            request = call.args[0]
+            self.assertEqual(request.full_url, "http://api:8080/api/v1/auth/login")
+            self.assertEqual(request.get_method(), "POST")
+            self.assertEqual(json.loads(request.data), {
+                "email": self.module.ADMIN, "password": self.module.ADMIN_PASSWORD,
+            })
+            self.assertEqual(call.kwargs, {"timeout": 10})
+        self.assertEqual(self.hooks.stash["refresh_token"], "live-fixture-token")
+
+    def test_browser_setup_preserves_refusals_malformed_bodies_and_caller_cookies(self):
+        transactions = [self.browser_probe(raw, status=status, prefix=prefix)
+                        for raw, status, prefix in (
+                            ("{}", "401", "coverage: "), ("{}", "401", ""),
+                            ('{"refresh_token":"contract-invalid-token"}', "401", ""),
+                            ("[]", "200", "coverage: "), ("null", "200", "coverage: "),
+                            ('{"refresh_token":12345}', "200", "coverage: "),
+                        )]
+        for key in ("Cookie", "cookie"):
+            transaction = self.browser_probe()
+            transaction["request"]["headers"][key] = "restmail_refresh=caller-token"
+            transactions.append(transaction)
+        with patch.object(self.module.urllib.request, "urlopen") as network:
+            for transaction in transactions:
+                before = copy.deepcopy(transaction)
+                self.module.refresh_the_sign_in(transaction)
+                self.assertEqual(transaction, before)
+        network.assert_not_called()
+
+    def test_browser_setup_requires_the_login_cookie(self):
+        transaction = self.browser_probe()
+        before = copy.deepcopy(transaction)
+        with patch.object(self.module.urllib.request, "urlopen", return_value=self.browser_login(None)), \
+                patch.object(self.module, "pace_auth_requests"):
+            with self.assertRaisesRegex(RuntimeError, "no refresh cookie"):
+                self.module.refresh_the_sign_in(transaction)
+        self.assertEqual(transaction, before)
+
+    def test_browser_setup_propagates_login_failure(self):
+        transaction = self.browser_probe()
+        before = copy.deepcopy(transaction)
+        refusal = HTTPError("http://api:8080/api/v1/auth/login", 401, "refused", {}, io.BytesIO(b"{}"))
+        with patch.object(self.module.urllib.request, "urlopen", side_effect=refusal), \
+                patch.object(self.module, "pace_auth_requests"):
+            with self.assertRaises(HTTPError):
+                self.module.refresh_the_sign_in(transaction)
+        self.assertEqual(transaction, before)
 
 
 if __name__ == "__main__":
