@@ -253,6 +253,112 @@ def no_sending_policy_after_the_refusal(transaction):
     set_the_admin_domains_policy(transaction, "")
 
 
+@hooks.before("sendTestEmail")
+def a_mailbox_at_each_test_send_address(transaction):
+    # Coverage probes send from and to an address the fixture has no mailbox
+    # for (someone@example.com), which the handler rightly answers 404. Host
+    # its domain and give it an account, once, and leave it there: a test
+    # send only adds a message. Every generated request byte stays untouched.
+    from urllib.error import HTTPError
+
+    body = hooks.get_json(transaction)
+    if not isinstance(body, dict):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    ready = hooks.stash.get("test_send_mailboxes", {})
+    for field in ("from", "to"):
+        address = body.get(field)
+        if not isinstance(address, str) or address.count("@") != 1:
+            continue
+        local, domain = address.split("@")
+        if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
+            continue  # Leave a malformed address to the actual probe.
+        headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+        request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            domains = json.load(response).get("data") or []
+        domain_id = next((d["id"] for d in domains if d.get("name") == domain), None)
+        if domain_id is None:
+            request = urllib.request.Request(
+                origin + "/api/v1/admin/domains",
+                data=json.dumps({"name": domain, "server_type": "traditional"}).encode(),
+                headers=headers,
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    domain_id = (json.load(response).get("data") or {}).get("id")
+            except HTTPError as error:
+                if 400 <= error.code < 500:
+                    continue  # Not a domain the server can host: leave it to the probe.
+                raise
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/mailboxes?domain_id=%d" % domain_id, headers=headers)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            accounts = json.load(response).get("data") or []
+        if not any((a.get("address") or "").lower() == address.lower() for a in accounts):
+            request = urllib.request.Request(
+                origin + "/api/v1/accounts",
+                data=json.dumps({"address": address}).encode(),
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=10) as response:
+                if response.status != 201:
+                    raise RuntimeError("could not create the test send probe's account")
+        ready[origin + "\n" + address.lower()] = True
+        hooks.stash["test_send_mailboxes"] = ready
+
+
+def schedule_a_message(transaction):
+    """Store a scheduled message through the API and return its id, so the
+    list and cancel examples have something of their own to act on."""
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+    body = {
+        "from": ADMIN,
+        "to": [ADMIN],
+        "subject": "contract scheduled message",
+        "body_text": "Contract fixture.",
+        "scheduled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600)),
+    }
+    request = urllib.request.Request(
+        origin + "/api/v1/messages/send",
+        data=json.dumps(body).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        if response.status != 202:
+            raise RuntimeError("could not schedule a contract message: HTTP %d" % response.status)
+        return (json.load(response).get("data") or {}).get("id")
+
+
+@hooks.before("listScheduledMessages")
+def list_has_a_message_to_show(transaction):
+    # Boundary probes and the report-only authorization phase do not need a
+    # fixture; an empty list is still a valid answer. Only the examples
+    # transaction is given one.
+    name = transaction.get("name", "")
+    if name.startswith("coverage:") or " as " in name:
+        return
+    schedule_a_message(transaction)
+
+
+@hooks.before("cancelScheduledMessage")
+def cancel_a_message_we_made(transaction):
+    # A boundary probe (0, a word, a fraction) must reach the handler with its
+    # own id, so its refusal is the one being judged. Only the examples
+    # transaction, and the valid probe built from it, get a real message.
+    path = transaction.get("fullPath", "").split("?")[0]
+    last = path.rsplit("/", 1)[-1]
+    if not last.isdigit() or int(last) < 1:
+        return
+    scheduled_id = schedule_a_message(transaction)
+    if isinstance(scheduled_id, int):
+        transaction["fullPath"] = "/api/v1/messages/scheduled/%d" % scheduled_id
+
+
 @hooks.before("listQueue")
 def list_the_sent_messages_queue_entry(transaction):
     # The example asks for status=pending (the enum's first value), and the
