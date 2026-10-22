@@ -61,7 +61,10 @@ export function LoginPage() {
                 </label>
                 <div className="flex items-center h-9 rounded-2xl bg-secondary px-3">
                   <input
-                    type="email"
+                    type="text"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder="alice@restmail.dev"
