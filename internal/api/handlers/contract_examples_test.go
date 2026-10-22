@@ -97,29 +97,44 @@ type namedExamples struct {
 // status and name, as JSON values.
 func postExamples(t *testing.T, path, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
 	t.Helper()
+	return operationExamples(t, path, "post", operationID)
+}
+
+func requestExamples(t *testing.T, path, operationID, method string) (map[string]interface{}, map[string]map[string]interface{}) {
+	t.Helper()
+	return operationExamples(t, path, method, operationID)
+}
+
+func operationExamples(t *testing.T, path, method, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
+	t.Helper()
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
 		t.Fatalf("read the spec: %v", err)
 	}
 	var doc struct {
-		Paths map[string]struct {
-			Post struct {
-				OperationID string `yaml:"operationId"`
-				RequestBody struct {
-					Content map[string]namedExamples `yaml:"content"`
-				} `yaml:"requestBody"`
-				Responses map[string]struct {
-					Content map[string]namedExamples `yaml:"content"`
-				} `yaml:"responses"`
-			} `yaml:"post"`
-		} `yaml:"paths"`
+		Paths map[string]map[string]interface{} `yaml:"paths"`
 	}
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	op := doc.Paths[path].Post
+	encoded, err := yaml.Marshal(doc.Paths[path][method])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var op struct {
+		OperationID string `yaml:"operationId"`
+		RequestBody struct {
+			Content map[string]namedExamples `yaml:"content"`
+		} `yaml:"requestBody"`
+		Responses map[string]struct {
+			Content map[string]namedExamples `yaml:"content"`
+		} `yaml:"responses"`
+	}
+	if err := yaml.Unmarshal(encoded, &op); err != nil {
+		t.Fatalf("parse operation: %v", err)
+	}
 	if op.OperationID != operationID {
-		t.Fatalf("POST %s is %q, want %s", path, op.OperationID, operationID)
+		t.Fatalf("%s %s is %q, want %s", method, path, op.OperationID, operationID)
 	}
 
 	requests := map[string]interface{}{}

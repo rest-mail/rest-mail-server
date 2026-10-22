@@ -113,6 +113,21 @@ func TestRelaySettingsRoundTrip(t *testing.T) {
 	}
 }
 
+// A relay needs the companions the schema's anyOf relay branch requires, and
+// no credentials.
+func TestRelaySettingsContractTransportProbe(t *testing.T) {
+	srv, _, id := relayTestServer(t, relayTestMasterKey)
+	code, body := relayCall(t, srv, http.MethodPut, id,
+		`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls"}`)
+	if code != http.StatusOK || !strings.Contains(body, `"password_set":false`) {
+		t.Fatalf("relay enum with companions: %d %s; want 200 without credentials", code, body)
+	}
+	code, body = relayCall(t, srv, http.MethodPut, id, `{"transport":"relay"}`)
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("relay enum without companions: %d %s; want 422", code, body)
+	}
+}
+
 func TestRelaySettingsValidation(t *testing.T) {
 	srv, _, id := relayTestServer(t, relayTestMasterKey)
 	cases := map[string]struct {
@@ -130,6 +145,14 @@ func TestRelaySettingsValidation(t *testing.T) {
 		"user no password":  {`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls","username":"u"}`, "password"},
 		"password no user":  {`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls","password":"p"}`, "password"},
 		"CRLF in username":  {`{"transport":"relay","host":"smtp.example.net","port":587,"tls_mode":"starttls","username":"u\r\nMAIL","password":"p"}`, "username"},
+		"relay no port":     {`{"transport":"relay","host":"smtp.example.net","tls_mode":"starttls"}`, "port"},
+		"relay no tls mode": {`{"transport":"relay","host":"smtp.example.net","port":587}`, "tls_mode"},
+		// Direct keeps none of a relay's fields, but each is still held to
+		// its schema (#388).
+		"direct port zero":     {`{"transport":"direct","port":0}`, "port"},
+		"direct port too high": {`{"transport":"direct","port":65536}`, "port"},
+		"direct tls mode":      {`{"transport":"direct","tls_mode":"none"}`, "tls_mode"},
+		"direct long username": {`{"transport":"direct","username":"` + strings.Repeat("u", 256) + `"}`, "username"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
