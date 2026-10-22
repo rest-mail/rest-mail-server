@@ -109,7 +109,6 @@ exclude-matching:
   - '^/api/v1/accounts/(link|\{id\}) > .* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/(credentials|folders|threads|quota|search|vacation|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
-- '^/api/v1/accounts/\{id\}/(credentials|threads|quota|search|vacation|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
