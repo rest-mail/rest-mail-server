@@ -116,6 +116,41 @@ def link_a_seeded_account(transaction):
     if isinstance(body, dict) and body.get("password") == "supplied-by-contract-hook":
         body["password"] = LINKABLE_PASSWORD
         hooks.set_json(transaction, body)
+    if not isinstance(body, dict):
+        return
+    # Each successful link consumes the unlinked state. Restore only that
+    # state before a fixture's valid proof; do not alter generated body bytes,
+    # malformed values, wrong passwords, or the transaction's principal.
+    passwords = {"eve@restmail.test": LINKABLE_PASSWORD, "someone@example.com": "x"}
+    address = body.get("address")
+    if not isinstance(address, str) or address not in passwords or body.get("password") != passwords[address]:
+        return
+    headers = transaction["request"].get("headers") or {}
+    if not any(key.lower() == "authorization" and value for key, value in headers.items()):
+        return
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    ids = hooks.stash.get("link_fixture_ids", {})
+    key = origin + "\n" + address
+    if key not in ids:
+        request = urllib.request.Request(
+            origin + "/api/v1/admin/mailboxes?limit=1000",
+            headers={"Authorization": "Bearer " + admin_token(origin)},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            accounts = json.load(response).get("data") or []
+        ids[key] = next((account["id"] for account in accounts if account.get("address") == address), None)
+        if ids[key] is None:
+            raise RuntimeError("contract account-link fixture is missing")
+        hooks.stash["link_fixture_ids"] = ids
+    request = urllib.request.Request(
+        origin + "/api/v1/accounts/" + str(ids[key]), headers=headers, method="DELETE")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            if response.status != 204:
+                raise RuntimeError("could not clear the preceding contract link")
+    except urllib.error.HTTPError as error:
+        if error.code != 404:  # The first proof has no preceding grant.
+            raise
 
 
 @hooks.after("createDomain")

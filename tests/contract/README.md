@@ -97,6 +97,11 @@ or grant creation (`contract_link_account_examples_test.go`). Its hook supplies
 only the password placeholder; missing fields, empty values and generated
 coverage mutations stay intact (`test_link_account_hook.py`). Its 409 remains
 excluded until an ordered repeated link provokes it.
+The disposable fixture also seeds `someone@example.com` with the generated
+password `x`, matching vertrag v0.29's valid schema specimens. Before a valid
+fixture proof, the hook removes only the caller's previous link, so repeated
+probes start unlinked. It preserves the generated request and its principal;
+invalid credentials still reach the handler unchanged.
 
 `bulkRetryQueue` and `bulkBounceQueue` send their `invalid_body` (`[]`) and
 `selection_missing` (`{}`) requests with their paired 400s; their original
