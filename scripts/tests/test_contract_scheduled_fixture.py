@@ -11,6 +11,8 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -44,6 +46,11 @@ class ContractScheduledFixtureTests(unittest.TestCase):
     def limited(self, retry="60", status=429):
         return HTTPError("http://api:8080/api/v1/messages/send", status,
                          "refused", {"Retry-After": retry}, io.BytesIO(b"{}"))
+
+    def test_worker_deadline_allows_the_fixture_retry(self):
+        config = yaml.safe_load((ROOT / "vertrag.yml").read_text())
+        # One 60-second wait, two 10-second requests and a 10-second login.
+        self.assertGreaterEqual(config["hooks-worker-timeout"], 90_000)
 
     def test_cancel_fixture_waits_for_one_send_window_and_keeps_the_probe_principal(self):
         original = copy.deepcopy(self.transaction)

@@ -377,6 +377,7 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   If send-body probes exhaust the admin's submission budget, fixture setup
   retries once after `Retry-After` (at most 60 seconds). The actual contract
   requests are never retried, so their rate-limit responses remain visible.
+  The hook worker deadline allows for that wait and the setup API requests.
 - `../e2e/contract_principals_test.go`: the principals, written to
   `.cache/contract-principals.json`.
 
