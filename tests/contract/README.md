@@ -239,6 +239,12 @@ supplies the domain id. Refusals leave both absent and saved relay settings
 unchanged (`contract_relay_examples_test.go`). Missing-domain 404 and the
 409 that needs a server without MASTER_KEY remain excluded.
 
+`updateAlias` pairs its `destination_invalid` request (`not-an-email`) with
+its 422 naming `destination_address`. Its valid `updated` request pairs only
+with the 200. The alias ID comes from `createAlias`'s existing link. A handler
+test sends the examples to a stored alias, checks the documented refusal body,
+and verifies that the refusal leaves the stored alias unchanged.
+
 `updateDomain` sends `sending_policy_invalid` (`newsletter`) with its paired
 422 and `updated` (`transactional`) with its 200. The existing `createDomain`
 link supplies the stored domain ID. The handler tests send the spec's requests,
