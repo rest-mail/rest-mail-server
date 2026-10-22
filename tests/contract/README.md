@@ -183,8 +183,15 @@ their exclusions.
 400, the `bad_request` the handler sends for a body that does not decode,
 before the filter is looked up. Its `valid` request (`{}`, the built-in sample
 email) runs the created filter and gets the 200
-(`contract_testcustomfilter_examples_test.go`). The other
-`/custom-filters/{id}` operations keep their exclusions.
+(`contract_testcustomfilter_examples_test.go`).
+
+`updateCustomFilter` pairs `updated` with 200 and five invalid requests with
+422: `name_empty`, `filter_type_invalid`, `direction_invalid`, `config_array`
+and `config_null`. The existing create link supplies the stored filter's ID;
+no hook rewrites these requests. The handler tests send each spec request,
+compare the exact refusal and verify the stored filter is unchanged, then
+check the successful update (`contract_customfilter_update_examples_test.go`).
+The child path's 400 and 404 remain excluded.
 
 `createCertificate` sends `invalid_body` (`[]`) and `fields_missing` (`{}`)
 with their paired 400s, both refused before the domain lookup. Its `valid`

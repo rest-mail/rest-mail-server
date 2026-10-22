@@ -5033,14 +5033,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateCustomFilterRequest"
-            example:
-              description: Tags mail about invoices and receipts
-              config:
-                script: |
-                  function filter(email) {
-                    return { action: "continue" };
-                  }
-              enabled: true
+            # The createCustomFilter link supplies the stored filter's ID.
+            examples:
+              updated:
+                value:
+                  description: Tags mail about invoices and receipts
+                  config: {script: 'function filter(email) { return { action: "continue" }; }'}
+                  enabled: true
+              name_empty:
+                value: {name: "", enabled: true}
+              filter_type_invalid:
+                value: {filter_type: invalid, enabled: true}
+              direction_invalid:
+                value: {direction: sideways, enabled: true}
+              config_array:
+                value: {config: [], enabled: true}
+              config_null:
+                value: {config: null, enabled: true}
       responses:
         "200":
           description: Custom filter updated
@@ -5052,10 +5061,64 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CustomFilter"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      name: tag-invoices
+                      description: Tags mail about invoices and receipts
+                      filter_type: action
+                      direction: inbound
+                      config: {script: 'function filter(email) { return { action: "continue" }; }'}
+                      enabled: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                name_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {name: required}
+                filter_type_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {filter_type: must be action or transform}
+                direction_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {direction: 'must be inbound, outbound or both'}
+                config_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {config: must be an object}
+                config_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {config: must be an object}
     delete:
       operationId: deleteCustomFilter
       tags: ["Admin: Custom Filters"]
