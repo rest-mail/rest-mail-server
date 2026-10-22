@@ -7404,11 +7404,30 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SetMTASTSPolicyRequest"
-            example:
-              mode: testing
-              mx_hosts: mail.example.org
-              max_age: 86400
-              active: true
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              policy:
+                value:
+                  mode: testing
+                  mx_hosts: mail.example.org
+                  max_age: 86400
+                  active: true
+              # The policy request with a mode MTA-STS does not have: refused
+              # before the domain is looked up.
+              mode_invalid:
+                value:
+                  mode: strict
+                  mx_hosts: mail.example.org
+                  max_age: 86400
+                  active: true
+              # The policy request with a negative lifetime.
+              max_age_negative:
+                value:
+                  mode: testing
+                  mx_hosts: mail.example.org
+                  max_age: -1
+                  active: true
       responses:
         "201":
           description: Policy created
@@ -7420,6 +7439,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
+              examples:
+                policy:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      mode: testing
+                      mx_hosts: mail.example.org
+                      max_age: 86400
+                      active: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             getMtaStsPolicy:
               operationId: getMtaStsPolicy
@@ -7439,10 +7470,43 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
+              examples:
+                policy:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      mode: testing
+                      mx_hosts: mail.example.org
+                      max_age: 86400
+                      active: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                mode_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          mode: "Must be one of: none, testing, enforce"
+                max_age_negative:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          max_age: Must be a non-negative integer (seconds)
     delete:
       operationId: deleteMtaStsPolicy
       tags: ["Admin: MTA-STS"]

@@ -152,6 +152,13 @@ database) with its 200. The refusal comes before any service is reached
 handler). The other `/api/v1/admin/test` refusals (`verifyDelivery`'s 422)
 keep their exclusion.
 
+`setMtaStsPolicy` sends its `mode_invalid` request (mode `strict`) and its
+`max_age_negative` request (`max_age` -1), each with its paired 422 naming the
+field, and `policy` with its 201. Both are refused before the domain is looked
+up (`contract_mtasts_examples_test.go`, which sends each to the real handler
+with no database). The other `/api/v1/admin/domains/{id}` subpaths keep their
+exclusions.
+
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
 is made; `valid` still runs `header_validate` and gets the documented 200

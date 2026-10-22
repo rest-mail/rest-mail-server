@@ -117,6 +117,7 @@ class PairedRefusals(unittest.TestCase):
         "createCertificate",
         "protocolSignIn",
         "probeServices",
+        "setMtaStsPolicy",
         "setVacation",
         "updateMailbox",
         "createContact",
