@@ -326,6 +326,11 @@ checks. This second run writes `coverage.xml`, judged by the unchanged ratchet;
 the full example report remains `examples.xml`. The generated configuration
 also serves the report-only fuzz run.
 
+Before the second process repeats examples, `repeat_fixtures.py` removes only
+the fixture admin's `Receipts` folder and `spam@example.org` contact, and
+`chore test:contract-fixtures` supplies a new held queue entry. The first run's
+complete example report is already enforced; probe requests stay unchanged.
+
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.
@@ -515,6 +520,8 @@ chore test:contract-fixtures
 vertrag doctor                          # sends nothing: does every setting reach something?
 mkdir -p .cache/contract                # the report's directory; vertrag makes none
 vertrag run --sequence --phases examples
+python3 tests/contract/repeat_fixtures.py vertrag.yml
+chore test:contract-fixtures
 python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml .cache/contract/coverage.xml
 vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases coverage
 echo "vertrag exited $?"                 # 0, or 2 for probe findings; 1 and 3 fail

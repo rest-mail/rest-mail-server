@@ -220,6 +220,10 @@ jobs:
           # every example and the full surface gate with no generated pins.
           vertrag run --sequence --phases examples 2>&1 | tee "$RUNNER_TEMP/contract-examples.log"
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          # The second process repeats create examples after the first one
+          # consumed its queue entry and left its folder and contact behind.
+          python3 tests/contract/repeat_fixtures.py vertrag.yml
+          chore test:contract-fixtures
           trap 'rm -f .cache/contract/vertrag-probes.yml' EXIT
           python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml \
             .cache/contract/coverage.xml
