@@ -301,6 +301,53 @@ def set_the_admin_domains_policy(transaction, policy):
     hooks.stash["admin_domain_policy"] = policy
 
 
+def a_signing_mailbox_at(transaction, address):
+    """Host address's domain, with a DKIM key, and give address a mailbox,
+    through the admin API, once per run. A malformed address, or a domain the
+    server will not host, is left alone for the request itself to meet."""
+    if not isinstance(address, str) or address.count("@") != 1:
+        return
+    local, domain = address.split("@")
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    ready = hooks.stash.get("sender_mailboxes", {})
+    if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
+        return
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+
+    def call(method, path, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(origin + path, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.load(response).get("data")
+
+    domain_id = next((d["id"] for d in call("GET", "/api/v1/admin/domains") or []
+                      if (d.get("name") or "").lower() == domain.lower()), None)
+    if domain_id is None:
+        try:
+            domain_id = call("POST", "/api/v1/admin/domains",
+                             {"name": domain, "server_type": "traditional"})["id"]
+        except urllib.error.HTTPError as error:
+            if 400 <= error.code < 500:
+                return
+            raise
+    # An https unsubscribe target is refused for a domain that cannot sign it
+    # (dkim_required). The domain may already be hosted without a key (the
+    # createAccount hook hosts probe domains too), so a domain with no key
+    # gets one; a key already in place is kept.
+    if not any(k.get("domain_id") == domain_id for k in call("GET", "/api/v1/admin/dkim") or []):
+        with tempfile.TemporaryDirectory() as d:
+            key = os.path.join(d, "dkim.key")
+            openssl("genrsa", "-out", key, "2048")
+            with open(key) as key_file:
+                call("PUT", "/api/v1/admin/dkim/%d" % domain_id,
+                     {"selector": "contract", "private_key": key_file.read()})
+    mailboxes = call("GET", "/api/v1/admin/mailboxes?domain_id=%d" % domain_id) or []
+    if not any((m.get("address") or "").lower() == address.lower() for m in mailboxes):
+        call("POST", "/api/v1/accounts", {"address": address})
+    ready[origin + "\n" + address.lower()] = True
+    hooks.stash["sender_mailboxes"] = ready
+
+
 @hooks.before("sendMessage")
 def a_sending_policy_for_the_send(transaction):
     # unsubscribe_not_allowed (422) is refused by a transactional sender
@@ -309,6 +356,13 @@ def a_sending_policy_for_the_send(transaction):
     # coverage probes included (they run no after hooks), finds no policy.
     paired = " > 422 > " in transaction.get("name", "")
     set_the_admin_domains_policy(transaction, "transactional" if paired else "")
+    # Coverage probes send from a generated address (someone@example.com)
+    # that no mailbox holds, which the handler rightly refuses (403). The
+    # sender gets a hosted, signing domain and a mailbox; the request's bytes
+    # and credentials stay as generated.
+    body = hooks.get_json(transaction)
+    if isinstance(body, dict):
+        a_signing_mailbox_at(transaction, body.get("from"))
 
 
 @hooks.after("/api/v1/messages/send > * > 422 > application/json")

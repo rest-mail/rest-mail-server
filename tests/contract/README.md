@@ -383,6 +383,7 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   a stub admin API (`python3 -m unittest discover -s tests/contract -p test_repeat_probe_hooks.py`).
 - `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
   (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
+- `test_hooks_send_message.py`: the sendMessage sender hook's tests, against a stub admin API.
 - `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
@@ -477,6 +478,13 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+Send probes (sendMessage) send from a generated address (`someone@example.com`)
+that no mailbox holds, which the handler refuses with 403. A before hook hosts
+the sender's domain with a DKIM key (an https unsubscribe target needs one) and
+creates its mailbox through the admin API the first time the address appears,
+then leaves them in place. Malformed senders and domains the server will not
+host are left to the probe, and the request is never rewritten.
 
 Test send probes (sendTestEmail) send from and to a generated address
 (`someone@example.com`) that has no mailbox. A before hook hosts its domain and
