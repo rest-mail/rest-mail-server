@@ -93,9 +93,9 @@ exclude-matching:
   # bulkDeleteQueue, bulkRetryQueue, bulkBounceQueue, addToAllowlist,
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, sendMessage,
-  # microsoftAutodiscover and importContacts.
-# receiveTlsReport, createCertificate, protocolSignIn, createFolder,
-  # createContact, sendMessage, microsoftAutodiscover and setDKIMRotation.
+  # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
+  # createContact, sendMessage, microsoftAutodiscover, setDKIMRotation and
+  # importContacts.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
