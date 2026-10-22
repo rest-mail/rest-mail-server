@@ -2061,17 +2061,26 @@ paths:
         - BearerAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Save a new draft
+      description: >
+        All draft fields are optional. Without `from`, the draft is saved in
+        the signed-in account's mailbox with an empty sender. When `from` is
+        supplied, the caller needs mail:write on that mailbox.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DraftRequest"
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test]
-              subject: Draft
-              body_text: Not sent yet.
+            examples:
+              with_sender:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test]
+                  subject: Draft
+                  body_text: Not sent yet.
+              empty:
+                summary: Start an empty draft in the signed-in account
+                value: {}
       responses:
         "201":
           description: Draft saved
@@ -5482,6 +5491,23 @@ paths:
                   minimum: 0
                   maximum: 3650
                   example: 90
+            examples:
+              configured:
+                value: {rotation_interval_days: 90}
+              body_array:
+                value: []
+              interval_wrong_type:
+                value: {rotation_interval_days: "90"}
+              field_unknown:
+                value: {rotation_interval_days: 90, private_key: injected}
+              interval_missing:
+                value: {}
+              interval_null:
+                value: {rotation_interval_days: null}
+              interval_negative:
+                value: {rotation_interval_days: -1}
+              interval_too_large:
+                value: {rotation_interval_days: 3651}
       responses:
         "200":
           description: DKIM rotation settings saved
@@ -5493,12 +5519,26 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMRotationSettings"
+              examples:
+                configured:
+                  value:
+                    data: {domain_id: 1, rotation_interval_days: 90}
         "400":
           description: Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                interval_wrong_type:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                field_unknown:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -5507,6 +5547,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                interval_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_negative:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_too_large:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
 
   /api/v1/admin/dkim/{id}:
     parameters:
@@ -8382,7 +8455,6 @@ components:
     # ─────────────────────────────────────────────────────────────
     DraftRequest:
       type: object
-      required: [from]
       properties:
         from:
           type: string
@@ -8555,18 +8627,19 @@ components:
       type: object
       required: [enabled, subject, body]
       # An enabled auto-reply needs something to send: setVacation refuses an
-      # empty subject or body while enabled is true.
-      if:
-        required: [enabled]
-        properties:
-          enabled:
-            const: true
-      then:
-        properties:
-          subject:
-            minLength: 1
-          body:
-            minLength: 1
+      # empty subject or body while enabled is true. Stated as anyOf with an
+      # enum rather than if/then and const, so every JSON Schema draft reads
+      # it the same: the contract tests' boundary probes judged an empty
+      # subject valid under the if/then form (#388).
+      anyOf:
+        - properties:
+            enabled:
+              enum: [false]
+        - properties:
+            subject:
+              minLength: 1
+            body:
+              minLength: 1
       properties:
         enabled:
           type: boolean
@@ -8736,13 +8809,33 @@ components:
 
     RestmailDeliverRequest:
       type: object
-      required: [to]
+      description: >-
+        Recipients come from a non-empty to list, otherwise a non-empty
+        recipients list, otherwise the To header parsed from raw_message.
+        A raw message must contain a parseable To header when neither list
+        supplies recipients; an empty or missing recipient set is refused.
+      anyOf:
+        - required: [to]
+          properties:
+            to:
+              type: array
+              minItems: 1
+        - required: [recipients]
+          properties:
+            recipients:
+              type: array
+              minItems: 1
+        - required: [raw_message]
+          properties:
+            raw_message:
+              type: string
+              minLength: 1
       properties:
         from:
           type: string
           format: email
         to:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8772,7 +8865,7 @@ components:
           format: email
           description: Alias for 'from'
         recipients:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8825,13 +8918,16 @@ components:
 
     CreateDomainRequest:
       type: object
-      required: [name, server_type]
+      required: [name]
       properties:
         name:
           type: string
+          minLength: 1
         server_type:
-          type: string
-          enum: [traditional, restmail]
+          type: [string, "null"]
+          enum: [traditional, restmail, "", null]
+          default: traditional
+          description: Omitted, empty or null selects traditional.
         default_quota_bytes:
           type: integer
           format: int64
@@ -9056,6 +9152,7 @@ components:
       properties:
         filter_name:
           type: string
+          minLength: 1
         config:
           type: object
         email:
