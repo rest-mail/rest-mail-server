@@ -97,8 +97,8 @@ exclude-matching:
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
   # createContact, sendMessage, microsoftAutodiscover, setDomainRelay,
-  # setDKIMRotation, createAppPassword, linkAccount, setVacation, importContacts
-  # and updateMailbox.
+  # setDKIMRotation, createAppPassword, linkAccount, setVacation, importContacts,
+  # updateMailbox and probeServices.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
@@ -132,7 +132,7 @@ exclude-matching:
   - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/test/(verify|probe|snapshot/restore) > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).

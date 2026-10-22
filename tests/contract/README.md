@@ -145,6 +145,13 @@ requests to the real handler on a scratch database). The other
 `/api/v1/admin/mailboxes` refusals (`listMailboxes`' 422) keep their
 exclusion.
 
+`probeServices` sends its `service_unknown` request (`ftp`, a service it
+cannot probe) with its paired 422 naming `services`, and `probed` (only the
+database) with its 200. The refusal comes before any service is reached
+(`contract_probe_examples_test.go`, which sends both requests to the real
+handler). The other `/api/v1/admin/test` refusals (`verifyDelivery`'s 422)
+keep their exclusion.
+
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
 is made; `valid` still runs `header_validate` and gets the documented 200
