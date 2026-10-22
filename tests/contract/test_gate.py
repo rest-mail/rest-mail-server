@@ -124,6 +124,8 @@ class PairedRefusals(unittest.TestCase):
         "setMtaStsPolicy",
         "setVacation",
         "updateMailbox",
+        "putSieveScript",
+        "validateSieveScript",
         "createContact",
     }
 
