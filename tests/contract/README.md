@@ -238,7 +238,21 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
   folder for each rename probe (a successful rename consumes the previous one),
-  a hosted domain and mailbox for each address a test send probe uses, and,
+  and, for `addToAllowlist`, `addToBlocklist` and `createAlias`, the entry a
+  previous probe added removed when generated bodies repeat it (the domain
+  stays for the whole run, so a repeat is otherwise a 409), with an alias
+  probe's domain hosted first. The entries `removeFromAllowlist`,
+  `removeFromBlocklist`, `getAlias`, `updateAlias` and `deleteAlias` are linked
+  to are followed to their current id, and added again if a probe left none.
+  TLS-RPT reports are sent a second apart: the route is rate-limited. Their
+  schema requires a policy domain and caps the array at 100 policies, matching
+  the storage limit. The hook hosts generated policy domains before sending
+  each report, leaving its generated request unchanged.
+  The valid relay transport enum probe gets the host, port and TLS mode that
+  its `if/then` branch requires; vertrag v0.29 does not generate those
+  conditional companions. Other relay probes and documented refusals keep
+  their bodies.
+a hosted domain and mailbox for each address a test send probe uses, and,
   for `createAccount`'s probes, their address's domain hosted and the
   account a previous probe created removed (a generated address such as
   `someone@example.com` is otherwise refused as on a domain this server does
@@ -257,6 +271,10 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   logins, so a dense run cannot turn valid probes into 429s. The limiter stays
   enabled; requests and the coverage baseline stay unchanged.
   Every other id comes from the spec's `links`.
+  `deleteDomain` deletes only the domain the run created: a probe naming any
+  other domain (coverage's in-range id 1 is the fixture admin's) is skipped,
+  since the server refuses a domain that still has accounts with 409
+  (`test_hooks_delete_domain.py`).
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
 - `authorization.py`: builds a private configuration from the E2E principals
@@ -265,6 +283,8 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_repeat_probe_hooks.py`: the sender rule and alias hooks' tests, against
+  a stub admin API (`python3 -m unittest discover -s tests/contract -p test_repeat_probe_hooks.py`).
 - `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
   (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
 - `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.

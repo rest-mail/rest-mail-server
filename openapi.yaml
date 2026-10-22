@@ -3584,11 +3584,20 @@ paths:
         - CookieAuth: [domains:delete]
         - BearerAuth: [domains:delete]
       summary: Delete a domain
+      description: >
+        Only a domain with no accounts and no aliases can be deleted: delete
+        those first.
       responses:
         "204":
           description: Domain deleted
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: The domain still has accounts or aliases (`domain_not_empty`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Mailboxes
@@ -9576,6 +9585,7 @@ components:
       properties:
         pattern:
           type: string
+          minLength: 1
           description: "Email address (spam@evil.com) or domain pattern (@evil.com)"
         reason:
           type: string
@@ -10217,6 +10227,17 @@ components:
     SetDomainRelayRequest:
       type: object
       required: [transport]
+      # A relay needs somewhere to dial: setDomainRelay refuses one without
+      # its host, port and TLS mode. Stated as anyOf with an enum, which
+      # draft-04 and 2020-12 validators read alike (if/then is 2019-09+).
+      anyOf:
+        - properties:
+            transport:
+              enum: [direct]
+        - required: [host, port, tls_mode]
+          properties:
+            transport:
+              enum: [relay]
       properties:
         transport:
           type: string
@@ -10335,6 +10356,7 @@ components:
       properties:
         organization-name:
           type: string
+          minLength: 1
         contact-info:
           type: string
         report-id:
@@ -10351,11 +10373,15 @@ components:
               format: date-time
         policies:
           type: array
+          minItems: 1
+          maxItems: 100
           items:
             type: object
+            required: [policy]
             properties:
               policy:
                 type: object
+                required: [policy-domain]
                 properties:
                   policy-type:
                     type: string
@@ -10365,6 +10391,8 @@ components:
                       type: string
                   policy-domain:
                     type: string
+                    minLength: 1
+                    format: hostname
                   mx-host:
                     type: array
                     items:
