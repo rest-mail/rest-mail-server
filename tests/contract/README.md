@@ -90,6 +90,14 @@ database access (`contract_account_examples_test.go`,
 `contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
 No before hook rewrites these requests. Sibling operations remain excluded.
 
+`importContacts` pairs `body_array` with its 400 and `contacts_missing`,
+`contacts_empty`, `email_missing`, `email_invalid` and `mixed_batch` with its
+422. Its successful request and 200 are named `imported`. The handler tests
+send every documented pair, check exact responses, and prove that refusals
+preserve all contacts both before and after a successful import, including a
+batch whose first entry is valid (`contract_contact_import_examples_test.go`).
+No hook rewrites these requests; other account operations retain their exclusions.
+
 `linkAccount` pairs `linked` with its 201, and `address_missing`,
 `password_missing`, `address_blank` and `password_empty` with its 422. The
 handler reports both required fields for each refusal, before account lookup
