@@ -92,46 +92,46 @@ type namedExamples struct {
 	} `yaml:"examples"`
 }
 
-type requestExampleOperation struct {
-	OperationID string `yaml:"operationId"`
-	RequestBody struct {
-		Content map[string]namedExamples `yaml:"content"`
-	} `yaml:"requestBody"`
-	Responses map[string]struct {
-		Content map[string]namedExamples `yaml:"content"`
-	} `yaml:"responses"`
-}
-
 // postExamples reads the named application/json examples of the POST on path
 // from the spec the API serves: the request's by name, and each response's by
 // status and name, as JSON values.
 func postExamples(t *testing.T, path, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
 	t.Helper()
-	return requestExamples(t, path, operationID, "post")
+	return operationExamples(t, path, "post", operationID)
 }
 
 func requestExamples(t *testing.T, path, operationID, method string) (map[string]interface{}, map[string]map[string]interface{}) {
+	t.Helper()
+	return operationExamples(t, path, method, operationID)
+}
+
+func operationExamples(t *testing.T, path, method, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
 	t.Helper()
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
 		t.Fatalf("read the spec: %v", err)
 	}
 	var doc struct {
-		Paths map[string]struct {
-			Post  requestExampleOperation `yaml:"post"`
-			Patch requestExampleOperation `yaml:"patch"`
-		} `yaml:"paths"`
+		Paths map[string]map[string]interface{} `yaml:"paths"`
 	}
 	if err := yaml.Unmarshal(served, &doc); err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	op := doc.Paths[path].Post
-	switch method {
-	case "post":
-	case "patch":
-		op = doc.Paths[path].Patch
-	default:
-		t.Fatalf("unsupported example method %q", method)
+	encoded, err := yaml.Marshal(doc.Paths[path][method])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var op struct {
+		OperationID string `yaml:"operationId"`
+		RequestBody struct {
+			Content map[string]namedExamples `yaml:"content"`
+		} `yaml:"requestBody"`
+		Responses map[string]struct {
+			Content map[string]namedExamples `yaml:"content"`
+		} `yaml:"responses"`
+	}
+	if err := yaml.Unmarshal(encoded, &op); err != nil {
+		t.Fatalf("parse operation: %v", err)
 	}
 	if op.OperationID != operationID {
 		t.Fatalf("%s %s is %q, want %s", method, path, op.OperationID, operationID)

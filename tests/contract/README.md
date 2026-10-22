@@ -177,6 +177,13 @@ its 422 naming `destination_address`. Its valid `updated` request pairs only
 with the 200. The alias ID comes from `createAlias`'s existing link. A handler
 test sends the examples to a stored alias, checks the documented refusal body,
 and verifies that the refusal leaves the stored alias unchanged.
+`setDKIMRotation` pairs `configured` with 200, `body_array`,
+`interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
+`interval_null`, `interval_negative` and `interval_too_large` with 422.
+The domain ID comes from `createDomain`'s link. The handler tests send each
+refusal before and after saving a valid interval and verify the entire domain
+is preserved, including its signing material. Other DKIM operations keep
+their exclusions.
 
 `createFolder` pairs `created` with 201 and `name_missing`, `name_empty`, and
 `name_wrong_type` with 422. The real handler tests use an authorized account
@@ -202,6 +209,13 @@ pipeline with no direction, say) is refused as well, and vertrag reports each
 as a failed probe. `gate.py` does not judge a probe built from a refusal (a
 transaction whose status is 4xx), so those failures do not count against the
 coverage ratchet (`test_gate.py`).
+
+`saveDraft` includes an `empty` request (`{}`) as well as `with_sender`.
+Every draft field is optional: omitting `from` saves in the signed-in
+account's mailbox with an empty sender. An explicit sender still needs
+mail:write on that mailbox (`contract_draft_test.go`). The operation remains
+in the coverage baseline because generated sender addresses can name
+mailboxes the principal cannot write to.
 
 vertrag is the released, checksum-pinned binary (v0.29.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
