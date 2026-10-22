@@ -206,7 +206,7 @@ func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, accountID uint, password string) bool {
 	if password == "" {
 		respond.Error(w, http.StatusForbidden, "reauth_required",
-			"Enter your current password to create an app password")
+			"Enter your current password to create a credential")
 		return false
 	}
 	var account models.Mailbox
@@ -300,7 +300,7 @@ type protocolSignInRequest struct {
 // POST /api/v1/auth/protocol-sign-in
 func (h *CredentialHandler) ProtocolSignIn(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaims(r)
-	if claims == nil || claims.CredentialID == 0 {
+	if claims == nil || claims.CredentialID == 0 || claims.IsAPIKey() {
 		respond.Error(w, http.StatusBadRequest, "basic_required",
 			"Sign in here with HTTP Basic: the account's address, and its password or an app password")
 		return

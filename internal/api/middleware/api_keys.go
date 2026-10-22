@@ -22,6 +22,24 @@ type APIKeyVerify func(key string) (*auth.Claims, error)
 // APIKeyRefusedFunc records a refused API key.
 type APIKeyRefusedFunc func(r *http.Request, refusal *auth.CredentialRefusal)
 
+// SessionOnly guards changes to a person's own eligible permissions. A
+// machine key never becomes a password-authenticated session, even when it
+// can perform other explicitly delegated administration.
+func SessionOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		claims := GetClaims(r)
+		if claims == nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
+			return
+		}
+		if claims.CredentialID != 0 {
+			writeError(w, http.StatusForbidden, "session_required", "Sign in with your password to manage eligible permissions")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // APIKeys lets the routes it guards be called with an API key (#341), sent as
 // Authorization: Bearer rmk_..., as well as however the routes were reached
 // before. A bearer token with the API key prefix is only ever checked as an

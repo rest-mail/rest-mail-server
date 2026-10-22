@@ -96,6 +96,21 @@ func (h *AccountHandler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 			accounts = append(accounts, toAccountResponse(&others[i], own.ID))
 		}
 	}
+	if claims.IsAPIKey() {
+		visible := make([]accountResponse, 0, len(accounts))
+		for _, account := range accounts {
+			if !middleware.CredentialAllows(claims, models.CapMailRead, grants.Mailbox(account.Address)) {
+				continue
+			}
+			if _, err := mayReach(h.db, claims, account.ID, models.CapMailRead); err == nil {
+				visible = append(visible, account)
+			} else if !errors.Is(err, errNoAccess) {
+				respond.Error(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
+				return
+			}
+		}
+		accounts = visible
+	}
 	respond.List(w, accounts, nil)
 }
 
@@ -172,7 +187,8 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
 		return
 	}
-	if !held.Allows(middleware.CapMailboxesWrite, grants.Domain(domainName)) {
+	if !held.Allows(middleware.CapMailboxesWrite, grants.Domain(domainName)) ||
+		!middleware.CredentialAllows(claims, middleware.CapMailboxesWrite, grants.Domain(domainName)) {
 		respond.Error(w, http.StatusForbidden, "forbidden", "You cannot create accounts on "+domainName)
 		return
 	}

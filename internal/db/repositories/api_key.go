@@ -133,6 +133,15 @@ func (r *CredentialRepository) VerifyAPIKey(key string, now time.Time) (*models.
 	case mailbox.PasswordChangeRequired || mailbox.BootstrapExpired(now):
 		return nil, nil, refused(auth.CredentialAccountInSetup)
 	}
+	if mailbox.TwoFactorRequired {
+		enrolled, err := r.HasTwoFactor(mailbox.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !enrolled {
+			return nil, nil, refused(auth.CredentialAccountInSetup)
+		}
+	}
 	return &cred, &mailbox, nil
 }
 
