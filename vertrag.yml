@@ -97,7 +97,7 @@ exclude-matching:
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
   # createContact, sendMessage, microsoftAutodiscover, setDomainRelay,
-  # setDKIMRotation, createAppPassword and linkAccount.
+  # setDKIMRotation, createAppPassword, linkAccount and setVacation.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
@@ -108,7 +108,7 @@ exclude-matching:
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/link > .* > 400( >|$)'
   - '^/api/v1/accounts/\{id\} > .* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/(threads|quota|search|vacation|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/accounts/\{id\}/(threads|quota|search|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts/.* > (400|422)( >|$)'

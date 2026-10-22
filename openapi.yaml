@@ -2820,6 +2820,26 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/VacationConfig"
+            examples:
+              configured:
+                value: {enabled: true, subject: "Out of office", body: "I will reply when I return."}
+              body_array:
+                value: []
+              enabled_missing:
+                value: {subject: "Out of office", body: "I will reply when I return."}
+              subject_missing:
+                value: {enabled: true, body: "I will reply when I return."}
+              body_missing:
+                value: {enabled: true, subject: "Out of office"}
+              reply_missing:
+                value: {enabled: true}
+              dates_reversed:
+                value:
+                  enabled: true
+                  subject: "Out of office"
+                  body: "I will reply when I return."
+                  start_date: "2030-01-02T00:00:00Z"
+                  end_date: "2030-01-01T00:00:00Z"
       responses:
         "200":
           description: Vacation config updated
@@ -2831,8 +2851,62 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/VacationConfig"
+              examples:
+                configured:
+                  value:
+                    data: {enabled: true, subject: "Out of office", body: "I will reply when I return."}
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: "Invalid request body"}
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                enabled_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {enabled: required}
+                subject_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {subject: "required when enabled"}
+                body_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {body: "required when enabled"}
+                reply_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {subject: "required when enabled", body: "required when enabled"}
+                dates_reversed:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {end_date: "must be after start_date"}
     delete:
       operationId: disableVacation
       tags: [Vacation]

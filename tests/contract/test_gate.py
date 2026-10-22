@@ -115,6 +115,7 @@ class PairedRefusals(unittest.TestCase):
         "receiveTlsReport",
         "createCertificate",
         "protocolSignIn",
+        "setVacation",
         "createContact",
     }
 

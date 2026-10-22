@@ -187,6 +187,13 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setVacation` pairs `configured` with 200, `body_array` with 400, and
+`enabled_missing`, `subject_missing`, `body_missing`, `reply_missing` and
+`dates_reversed` with their 422s. No hook changes these requests. The handler
+checks each refusal after authorizing the account and before changing its
+stored vacation setting; the tests send the spec examples to the real handler
+and verify that refused updates preserve a previously configured reply.
+
 `createAppPassword` sends `name_missing`, `name_empty`, `name_too_long` and
 `name_control` with their paired 422s; `created` pairs only with 201. The
 hook supplies the fixture admin's current password without changing the name.
@@ -200,6 +207,7 @@ port, TLS mode, and mismatched credentials with 422. A createDomain link
 supplies the domain id. Refusals leave both absent and saved relay settings
 unchanged (`contract_relay_examples_test.go`). Missing-domain 404 and the
 409 that needs a server without MASTER_KEY remain excluded.
+
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.
