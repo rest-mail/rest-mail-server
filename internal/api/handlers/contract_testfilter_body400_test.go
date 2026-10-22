@@ -253,8 +253,8 @@ func TestTestFilterBody400_UndecodableBodiesRefused(t *testing.T) {
 
 // Controls: a body that decodes, without its filter name or its email, is not
 // refused as undecodable; it gets the 422 naming both fields, never the 400.
-// So does a config of the wrong JSON type, which the handler passes on as it
-// is, and so the 400's description does not claim it.
+// A config of the wrong JSON type also decodes; when the name or email is
+// missing, those required fields are reported before config is validated.
 func TestTestFilterBody400_DecodableBodiesGet422(t *testing.T) {
 	want := parseShapeJSON(t, testFilterFieldsMissing)
 	const email = `"email":{"envelope":{"mail_from":"someone@example.com","rcpt_to":["eve@restmail.test"]}}`

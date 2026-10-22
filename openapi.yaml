@@ -9099,6 +9099,7 @@ components:
       properties:
         filter_name:
           type: string
+          minLength: 1
         config:
           type: object
         email:
