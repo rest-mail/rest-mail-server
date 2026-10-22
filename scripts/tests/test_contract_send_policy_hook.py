@@ -28,6 +28,8 @@ class ContractSendPolicyHookTests(unittest.TestCase):
         hooks = types.ModuleType("vertrag_hooks")
         hooks.before = hooks.after = lambda *args: lambda function: function
         hooks.stash = {"setup_admin_tokens": {"http://api:8080": "admin"}}
+        # These transactions carry no body, so the sender mailbox hook stays out of the way.
+        hooks.get_json = lambda transaction, which="request": None
         spec = importlib.util.spec_from_file_location("contract_send_policy_hooks", ROOT / "tests/contract/hooks.py")
         self.module = importlib.util.module_from_spec(spec)
         with patch.dict(sys.modules, {"vertrag_hooks": hooks}):

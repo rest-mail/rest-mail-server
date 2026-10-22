@@ -152,6 +152,24 @@ func TestValidateTLSRPTReport(t *testing.T) {
 		}
 	})
 
+	t.Run("failure-details must be a list of objects", func(t *testing.T) {
+		for _, raw := range []string{`"vertrag-not-an-array"`, `{}`, `null`, `[1]`, `["x"]`, `[null]`} {
+			r := makeReport("example.test", 2)
+			r.Policies[1].FailureDetails = json.RawMessage(raw)
+			_, _, verr := validateTLSRPTReport(r)
+			if verr == nil || verr.fields["policies[1].failure-details"] == "" {
+				t.Errorf("failure-details %s: verr = %+v, want policies[1].failure-details field error", raw, verr)
+			}
+		}
+		for _, raw := range []string{`[]`, `[{"result-type":"certificate-expired","failed-session-count":1}]`} {
+			r := makeReport("example.test", 1)
+			r.Policies[0].FailureDetails = json.RawMessage(raw)
+			if _, _, verr := validateTLSRPTReport(r); verr != nil {
+				t.Errorf("failure-details %s rejected: %+v", raw, verr)
+			}
+		}
+	})
+
 	t.Run("exactly the cap is accepted", func(t *testing.T) {
 		if _, _, verr := validateTLSRPTReport(makeReport("example.test", tlsRPTMaxPolicies)); verr != nil {
 			t.Fatalf("report at the cap rejected: %+v", verr)
