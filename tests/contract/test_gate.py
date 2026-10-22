@@ -101,6 +101,7 @@ class PairedRefusals(unittest.TestCase):
         "sendTestEmail",
         "createAccount",
         "importContacts",
+        "linkAccount",
         "createAppPassword",
         "createFolder",
         "restmailDeliver",
@@ -115,6 +116,7 @@ class PairedRefusals(unittest.TestCase):
         "receiveTlsReport",
         "createCertificate",
         "protocolSignIn",
+        "setVacation",
         "createContact",
     }
 

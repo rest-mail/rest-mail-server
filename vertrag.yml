@@ -14,6 +14,9 @@ endpoint: http://10.99.0.20:8080
 # a sign-in hands out. Everything else comes from the spec, its links included.
 hookfiles: ./tests/contract/hooks.py
 language: python
+# Fixture setup can invoke the cached Go helper in the topology's API container.
+# Give its bounded 20-second command time to finish before the hook deadline (ms).
+hooks-worker-timeout: 30000
 
 auth:
   login:
@@ -94,7 +97,7 @@ exclude-matching:
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
   # createContact, sendMessage, microsoftAutodiscover, setDomainRelay,
-  # setDKIMRotation, createAppPassword and importContacts.
+  # setDKIMRotation, createAppPassword, linkAccount, setVacation and importContacts.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
@@ -103,8 +106,9 @@ exclude-matching:
   - '^/api/v1/auth/(login|logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/accounts/(link|\{id\}) > .* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/(threads|quota|search|vacation|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/accounts/link > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\} > .* > (400|422)( >|$)'
+  - '^/api/v1/accounts/\{id\}/(threads|quota|search|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
