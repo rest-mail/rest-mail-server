@@ -1279,7 +1279,10 @@ export interface paths {
         get: operations["getDomain"];
         put?: never;
         post?: never;
-        /** Delete a domain */
+        /**
+         * Delete a domain
+         * @description Only a domain with no accounts and no aliases can be deleted: delete those first.
+         */
         delete: operations["deleteDomain"];
         options?: never;
         head?: never;
@@ -4038,10 +4041,11 @@ export interface components {
                 "end-datetime": string;
             };
             policies: {
-                policy?: {
+                policy: {
                     "policy-type"?: string;
                     "policy-string"?: string[];
-                    "policy-domain"?: string;
+                    /** Format: hostname */
+                    "policy-domain": string;
                     "mx-host"?: string[];
                 };
                 summary?: {
@@ -6908,6 +6912,15 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            /** @description The domain still has accounts or aliases (`domain_not_empty`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     updateDomain: {

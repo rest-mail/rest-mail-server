@@ -88,6 +88,8 @@ class PairedRefusals(unittest.TestCase):
     # The operations whose documented 400s and 422s each have their named
     # request example.
     PAIRED = {
+        "updateAlias",
+        "setDomainRelay",
         "setDKIMRotation",
         "sendMessage",
         "microsoftAutodiscover",
@@ -100,6 +102,9 @@ class PairedRefusals(unittest.TestCase):
         "validateCustomFilter",
         "sendTestEmail",
         "createAccount",
+        "importContacts",
+        "linkAccount",
+        "createAppPassword",
         "createFolder",
         "restmailDeliver",
         "bulkDeleteQueue",
@@ -113,6 +118,10 @@ class PairedRefusals(unittest.TestCase):
         "receiveTlsReport",
         "createCertificate",
         "protocolSignIn",
+        "probeServices",
+        "setMtaStsPolicy",
+        "setVacation",
+        "updateMailbox",
         "createContact",
     }
 
