@@ -179,7 +179,7 @@ class PairedRefusals(unittest.TestCase):
 
 
 class MissingResourceRefusals(unittest.TestCase):
-    def test_only_get_domain_sends_its_documented_404(self):
+    def test_only_enabled_lookups_send_their_documented_404(self):
         with open(os.path.join(ROOT, "openapi.yaml")) as file:
             spec = yaml.safe_load(file)
         with open(os.path.join(ROOT, "vertrag.yml")) as file:
@@ -195,7 +195,7 @@ class MissingResourceRefusals(unittest.TestCase):
                 name = "%s > %s > 404 > application/json" % (path, op["summary"])
                 if not any(pattern.search(name) for pattern in patterns):
                     sent.add(op["operationId"])
-        self.assertEqual(sent, {"getDomain"})
+        self.assertEqual(sent, {"getDomain", "getCertificate"})
 
 
 if __name__ == "__main__":

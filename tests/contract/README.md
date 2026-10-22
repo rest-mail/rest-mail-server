@@ -248,8 +248,16 @@ parameter examples, and the create link supplies the new domain ID to both
 responses, so a hook selects the missing ID for the 404 alone. The linked
 200 and its boundary probes retain their original IDs. The handler test
 checks both lookups against PostgreSQL and verifies the existing domain
-is unchanged. All other 404s keep their exclusions; `test_gate.py` holds
-that set to exactly `getDomain`.
+is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
+the enabled set to exactly `getDomain` and `getCertificate`.
+
+`getCertificate` sends its documented 404 with the `missing` path parameter
+example. Vertrag 0.29 does not pair parameter example names, and the create
+link supplies its new ID to both responses, so a hook selects the missing ID
+only for the 404. Successful lookups and their boundary probes keep their
+original IDs. `contract_certificate_get_examples_test.go` checks the exact
+refusal, successful detail response, and unchanged stored certificate against
+PostgreSQL; `test_contract_missing_certificate.py` checks the hook.
 
 `login` pairs `wrong_password` with 401 and `email_missing`,
 `password_missing` and `client_invalid` with their 422s. Its 200 is named
