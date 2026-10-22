@@ -97,6 +97,7 @@ class PairedRefusals(unittest.TestCase):
         "updateDomain",
         "createAlias",
         "createPipeline",
+        "updatePipeline",
         "createBan",
         "createCustomFilter",
         "validateCustomFilter",

@@ -68,6 +68,14 @@ checks it gets the documented body: the refusal comes before anything is looked
 up or stored. `contract_pipeline_body400_test.go` does the same for
 `body_array` and its 400.
 
+`updatePipeline` pairs `updated` with its 200, and `filters_object` and
+`filters_null` with their 422s. The existing create link supplies the stored
+pipeline ID, and no hook rewrites the PATCH body. The handler test sends each
+spec request to a stored pipeline, checks the exact refusal and unchanged row,
+and verifies the successful update's response and persistence
+(`contract_pipeline_update_examples_test.go`). Only this path's 422 exclusion
+is removed; pipeline logs and analytics keep theirs.
+
 `createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
 JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
