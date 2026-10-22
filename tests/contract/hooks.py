@@ -1037,6 +1037,53 @@ def on_the_created_alias(transaction):
     transaction["fullPath"] = parent + "/" + str(alias["id"]) + ("?" + query if query else "")
 
 
+def a_mailbox_at(transaction, address):
+    """Host address's domain and give address a mailbox, through the admin
+    API, once per run. A malformed address, or a domain the server will not
+    host, is left alone for the request itself to meet."""
+    if not isinstance(address, str) or address.count("@") != 1:
+        return
+    local, domain = address.split("@")
+    origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    ready = hooks.stash.get("probe_mailboxes", {})
+    if not local or "." not in domain or (origin + "\n" + address.lower()) in ready:
+        return
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
+
+    def call(method, path, body=None):
+        data = json.dumps(body).encode() if body is not None else None
+        request = urllib.request.Request(origin + path, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.load(response).get("data")
+
+    domain_id = next((d["id"] for d in call("GET", "/api/v1/admin/domains") or []
+                      if (d.get("name") or "").lower() == domain.lower()), None)
+    if domain_id is None:
+        try:
+            domain_id = call("POST", "/api/v1/admin/domains",
+                             {"name": domain, "server_type": "traditional"})["id"]
+        except urllib.error.HTTPError as error:
+            if 400 <= error.code < 500:
+                return
+            raise
+    mailboxes = call("GET", "/api/v1/admin/mailboxes?domain_id=%d" % domain_id) or []
+    if not any((m.get("address") or "").lower() == address.lower() for m in mailboxes):
+        call("POST", "/api/v1/accounts", {"address": address})
+    ready[origin + "\n" + address.lower()] = True
+    hooks.stash["probe_mailboxes"] = ready
+
+
+@hooks.before("saveDraft")
+def a_mailbox_for_the_draft(transaction):
+    # Coverage probes save drafts from a generated address
+    # (someone@example.com) that no mailbox holds, which the handler rightly
+    # refuses (403). The sender gets a hosted domain and a mailbox the admin
+    # created; the request's bytes and credentials stay as generated.
+    body = hooks.get_json(transaction)
+    if isinstance(body, dict):
+        a_mailbox_at(transaction, body.get("from"))
+
+
 @hooks.before("createAccount")
 def host_the_account_probe_domain(transaction):
     # Coverage probes address a domain the fixture does not host

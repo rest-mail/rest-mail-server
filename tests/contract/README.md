@@ -432,6 +432,7 @@ a hosted domain and mailbox for each address a test send probe uses, and,
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
 - `test_repeat_probe_hooks.py`: the sender rule and alias hooks' tests, against
   a stub admin API (`python3 -m unittest discover -s tests/contract -p test_repeat_probe_hooks.py`).
 - `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
@@ -536,6 +537,14 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+Draft probes (saveDraft) save from a generated address (`someone@example.com`)
+that no mailbox holds, which the handler refuses with 403. A before hook hosts
+the sender's domain and creates its mailbox through the admin API the first
+time the address appears, then leaves them in place. Malformed senders and
+domains the server will not host are left to the probe, and the request is
+never rewritten. With `from` optional and invalid recipients refused,
+`saveDraft` comes out of the coverage baseline.
 
 Send probes (sendMessage) send from a generated address (`someone@example.com`)
 that no mailbox holds, which the handler refuses with 403. A before hook hosts
