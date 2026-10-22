@@ -3881,10 +3881,21 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateMailboxRequest"
-            example:
-              display_name: Contract Test
-              quota_bytes: 1073741824
-              active: true
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              updated:
+                value:
+                  display_name: Contract Test
+                  quota_bytes: 1073741824
+                  active: true
+              # A password under 12 characters: refused before anything is
+              # hashed or stored, so the account keeps its passwords and
+              # sessions.
+              password_short:
+                value:
+                  display_name: Contract Test
+                  password: short
       responses:
         "200":
           description: Mailbox updated
@@ -3896,6 +3907,24 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Mailbox"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 2
+                      domain_id: 1
+                      local_part: new-account
+                      address: new-account@restmail.test
+                      display_name: Contract Test
+                      quota_bytes: 1073741824
+                      quota_used_bytes: 0
+                      active: true
+                      last_login_at: null
+                      password_change_required: false
+                      two_factor_required: false
+                      last_password_change: null
+                      created_at: "2026-10-21T12:00:00Z"
+                      updated_at: "2026-10-21T12:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -3904,6 +3933,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                password_short:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          password: must be at least 12 characters
     delete:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
