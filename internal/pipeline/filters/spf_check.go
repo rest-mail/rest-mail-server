@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rest-mail/go-spf"
+	"github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -82,6 +83,17 @@ func (f *spfCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 	// header From is not an SPF identity (§2.2).
 	if mailFrom == "" && helo == "" {
 		return spfContinue(spf.ResultNone, "no MAIL FROM or HELO to check"), nil
+	}
+	// go-spf expects A-label domains, including in sender/HELO macros.
+	// Convert only these evaluation inputs; retain the original envelope and
+	// remote local-part bytes for delivery and message signature verification.
+	// Failed conversions stay intact for go-spf's invalid-domain handling;
+	// never use a partial IDNA result as an authenticated identity.
+	if ascii, err := mail.SMTPAddressASCII(mailFrom); err == nil {
+		mailFrom = ascii
+	}
+	if ascii, err := mail.DomainASCII(helo); err == nil {
+		helo = ascii
 	}
 
 	// An unparseable address is the zero netip.Addr, which go-spf answers with
