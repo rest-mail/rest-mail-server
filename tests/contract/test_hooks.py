@@ -8,6 +8,8 @@ import threading
 import types
 import unittest
 import urllib.parse
+import urllib.request
+from unittest.mock import patch
 
 
 def stub_vertrag_hooks():
@@ -54,10 +56,22 @@ class FixtureAPI(BaseHTTPRequestHandler):
             state["domains"].append(domain)
             return self.answer(201, {"data": domain})
         if self.path == "/api/v1/accounts":
-            address = self.read_body()["address"]
+            body = self.read_body()
+            address = body["address"]
+            if any(account["address"] == address for account in state["accounts"]):
+                return self.answer(409)
             domain = next(d for d in state["domains"] if d["name"] == address.split("@")[1])
-            account = {"id": 100 + len(state["accounts"]) + len(state["deleted"]), "domain_id": domain["id"], "address": address}
+            account = {"id": 100 + len(state["accounts"]) + len(state["deleted"]), "domain_id": domain["id"], **body}
             state["accounts"].append(account)
+            return self.answer(201, {"data": account})
+        if self.path == "/api/v1/accounts/link":
+            body = self.read_body()
+            account = next((account for account in state["accounts"] if account["address"] == body.get("address")), None)
+            if not account or not body.get("password") or account.get("password") != body["password"]:
+                return self.answer(403)
+            if account["id"] in state["linked"]:
+                return self.answer(409)
+            state["linked"].add(account["id"])
             return self.answer(201, {"data": account})
         self.answer(404)
 
@@ -67,13 +81,18 @@ class FixtureAPI(BaseHTTPRequestHandler):
         if url.path == "/api/v1/admin/domains":
             return self.answer(200, {"data": state["domains"]})
         if url.path == "/api/v1/admin/mailboxes":
-            domain_id = int(urllib.parse.parse_qs(url.query)["domain_id"][0])
-            return self.answer(200, {"data": [a for a in state["accounts"] if a["domain_id"] == domain_id]})
+            domain_id = urllib.parse.parse_qs(url.query).get("domain_id", [None])[0]
+            return self.answer(200, {"data": [a for a in state["accounts"] if domain_id is None or a["domain_id"] == int(domain_id)]})
         self.answer(404)
 
     def do_DELETE(self):
         state = self.server.state
         account_id = int(self.path.rsplit("/", 1)[1])
+        if self.path.startswith("/api/v1/accounts/"):
+            if account_id not in state["linked"]:
+                return self.answer(404)
+            state["linked"].remove(account_id)
+            return self.answer(204)
         state["deleted"].append(account_id)
         state["accounts"] = [a for a in state["accounts"] if a["id"] != account_id]
         self.answer(204)
@@ -87,6 +106,7 @@ class AdminAPITestCase(unittest.TestCase):
             "domains": [{"id": 1, "name": "restmail.test"}],
             "accounts": [{"id": 1, "domain_id": 1, "address": "admin@restmail.test"}],
             "deleted": [],
+            "linked": set(),
         }
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
@@ -176,6 +196,40 @@ class LinkedAccount(AdminAPITestCase):
             self.assertEqual(self.linked(account_id), "/api/v1/admin/mailboxes/" + account_id)
         hooks.hooks.stash.pop("created_account")
         self.assertEqual(self.linked(101), "/api/v1/admin/mailboxes/101")
+
+
+class CreateAndLinkAccountProbes(AdminAPITestCase):
+    def test_both_operations_repeat_without_consuming_each_others_fixture(self):
+        origin = "http://127.0.0.1:%d" % self.server.server_port
+        proof = {"address": "someone@example.com", "password": "x"}
+        setup_calls = []
+
+        def prepare(*args, **kwargs):
+            setup_calls.append(args)
+            account = next(account for account in self.server.state["accounts"] if account["address"] == proof["address"])
+            account["password"] = proof["password"]
+
+        def send(path, body):
+            request = urllib.request.Request(origin + path, data=json.dumps(body).encode(),
+                                             headers={"Content-Type": "application/json", "Authorization": "Bearer caller"})
+            with urllib.request.urlopen(request, timeout=10) as response:
+                self.assertEqual(response.status, 201)
+
+        with patch.object(hooks.subprocess, "run", side_effect=prepare):
+            for cycle in range(2):
+                for body in ({"address": proof["address"]}, {"address": proof["address"], "password": "xxxxxxxxxxxx"}):
+                    self.probe(body)
+                    send("/api/v1/accounts", body)
+                for _ in range(2):
+                    transaction = {
+                        "protocol": "http:", "host": "127.0.0.1", "port": self.server.server_port,
+                        "request": {"body": json.dumps(proof), "headers": {"Authorization": "Bearer caller"}},
+                    }
+                    before = json.dumps(transaction, sort_keys=True)
+                    hooks.link_a_seeded_account(transaction)
+                    self.assertEqual(json.dumps(transaction, sort_keys=True), before)
+                    send("/api/v1/accounts/link", proof)
+                self.assertEqual(len(setup_calls), cycle + 1)
 
 
 if __name__ == "__main__":

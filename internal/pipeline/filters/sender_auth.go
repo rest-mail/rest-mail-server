@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/rest-mail/go-dmarc"
-	"github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/pipeline"
 )
 
@@ -31,7 +30,7 @@ func senderAuthenticated(ctx context.Context, domain string) bool {
 	auth := pipeline.AuthResultsFromContext(ctx)
 	verdicts := append(auth.Find(pipeline.AuthSPF, pipeline.PropMailFrom), auth.Find(pipeline.AuthDKIM, pipeline.PropHeaderD)...)
 	for _, r := range verdicts {
-		if r.Result == "pass" && r.Domain != "" && dmarc.AlignedOrg(r.Domain, domain, mail.OrgDomain) {
+		if r.Result == "pass" && dmarcAligned(r.Domain, domain, dmarc.AlignmentRelaxed) {
 			return true
 		}
 	}

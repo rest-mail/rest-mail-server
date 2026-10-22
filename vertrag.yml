@@ -14,6 +14,10 @@ endpoint: http://10.99.0.20:8080
 # a sign-in hands out. Everything else comes from the spec, its links included.
 hookfiles: ./tests/contract/hooks.py
 language: python
+# Fixture setup can invoke the cached Go helper (bounded to 20 seconds), or
+# wait up to 60 seconds for the send budget before retrying. Include time for
+# admin login and both API requests in the hook deadline (ms).
+hooks-worker-timeout: 120000
 
 auth:
   login:
@@ -87,47 +91,57 @@ exclude-matching:
   # Each needs a request of its own that provokes it (a named request example
   # paired with a named response example), which the spec does not have yet:
   # #386. The 400s and 422s are excluded by path rather than everywhere, so the
-  # operations whose refusals have their pair are sent: createDomain,
+  # operations whose refusals have their pair are sent: login, createDomain,
   # createAlias, createPipeline, createBan, createCustomFilter,
   # validateCustomFilter, sendTestEmail, createAccount, restmailDeliver,
   # bulkDeleteQueue, bulkRetryQueue, bulkBounceQueue, addToAllowlist,
   # addToBlocklist, testFilter, testPipeline, testCustomFilter,
   # receiveTlsReport, createCertificate, protocolSignIn, createFolder,
-  # createContact, sendMessage, microsoftAutodiscover and setDKIMKey.
-  # createContact, sendMessage, microsoftAutodiscover and setDKIMRotation.
+  # createContact, sendMessage, microsoftAutodiscover, setDomainRelay,
+  # setDKIMRotation, createAppPassword, linkAccount, setVacation, importContacts,
+  # updateMailbox, probeServices, setMtaStsPolicy, updateAlias, updateDomain,
+  # updatePipeline, updateCustomFilter, putSieveScript, validateSieveScript
+  # and setDKIMKey.
   # Coverage probes built from a refused request are refused too;
   # tests/contract/gate.py does not judge those (tests/contract/README.md).
   # Each operation paired next comes off these patterns the same way. A path in
   # a segment none of them names is sent.
   - '> (404|409)( >|$)'
-  - '^/api/v1/auth/(login|logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
+  - '^/api/v1/auth/(logout|refresh|reset|recover|owner/[a-z]+|2fa/[a-z]+|password) > .* > (400|422)( >|$)'
   - '^/api/v1/devices(/| >).* > (400|422)( >|$)'
   - '^/api/v1/messages/(\{id\}|draft|deliver)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/accounts/(link|\{id\}) > .* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/(credentials|threads|quota|search|vacation|sieve|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/accounts/link > .* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\} > .* > (400|422)( >|$)'
+  - '^/api/v1/accounts/\{id\}/(threads|quota|search|quarantine|events|calendar-events)(/| >).* > (400|422)( >|$)'
+  # Sieve's missing/null script 422s have named request/response pairs.
+  - '^/api/v1/accounts/\{id\}/sieve(/| >).* > 400( >|$)'
+  - '^/api/v1/accounts/\{id\}/credentials/.* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/folders/.* > (400|422)( >|$)'
-  - '^/api/v1/accounts/\{id\}/contacts/.* > (400|422)( >|$)'
+  - '^/api/v1/accounts/\{id\}/contacts/(\{cid\}|block|suggest)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/accounts/\{id\}/contacts > List contacts for an account > (400|422)( >|$)'
   - '^/api/v1/accounts > List the accounts this one reaches > (400|422)( >|$)'
-  - '^/api/v1/admin/(audit|grants|mailboxes|tls-reports)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/(audit|grants|tls-reports)(/| >).* > (400|422)( >|$)'
   - '^/api/v1/admin/dkim/\{id\}/rotation > Read .* > (400|422)( >|$)'
+  - '^/api/v1/admin/mailboxes > .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue > .* > (400|422)( >|$)'
   - '^/api/v1/admin/queue/(stats|\{id\})(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/aliases/.* > (400|422)( >|$)'
-  - '^/api/v1/admin/pipelines/(\{id\}|logs|analytics)(/| >).* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\} > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions|mta-sts|relay)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/aliases/.* > 400( >|$)'
+  - '^/api/v1/admin/pipelines/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/pipelines/(logs|analytics)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\} > .* > 400( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/(dns|suppressions)(/| >).* > (400|422)( >|$)'
+  - '^/api/v1/admin/domains/\{id\}/relay > Get .* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist)/.* > (400|422)( >|$)'
   - '^/api/v1/admin/domains/\{id\}/(allowlist|blocklist) > List .* > (400|422)( >|$)'
-  - '^/api/v1/admin/custom-filters/\{id\} > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/custom-filters/\{id\} > .* > 400( >|$)'
   - '^/api/v1/admin/(aliases|custom-filters|pipelines) > List [a-z ]+, optionally filtered by domain > (400|422)( >|$)'
   - '^/api/v1/admin/bans > List IP bans > (400|422)( >|$)'
   - '^/api/v1/admin/logs/delivery > .* > (400|422)( >|$)'
-  - '^/api/v1/admin/test/(verify|probe|snapshot/restore) > .* > (400|422)( >|$)'
+  - '^/api/v1/admin/test/(verify|snapshot/restore) > .* > (400|422)( >|$)'
   - '^/\.well-known/(restmail|autoconfig|mta-sts\.txt|acme-challenge)(/| >).* > (400|422)( >|$)'
   - '^/restmail/(capabilities|mailboxes) > .* > (400|422)( >|$)'
   # A 401 for a wrong credential on an operation that takes none (#386).
-  - '^/api/v1/auth/(login|refresh|reset|owner/[a-z]+) > .* > 401( >|$)'
+  - '^/api/v1/auth/(reset|owner/[a-z]+) > .* > 401( >|$)'
   # Rate limits and an unavailable sidecar: not reachable in a contract run.
   - '> (429|503)( >|$)'
   # The send example sends immediately. The scheduled branch needs a request
@@ -220,12 +234,6 @@ surface:
     - operation: restmailDiscover
       status: "500"
       reason: "Discovery's database-outage response needs a fault-injected database."
-    - operation: login
-      status: "401"
-      reason: "a 401 for a wrong credential on an operation that takes none (#386)"
-    - operation: refreshToken
-      status: "401"
-      reason: "a 401 for a wrong credential on an operation that takes none (#386)"
 
 reporter: [cli, junit]
 output: ["", .cache/contract/examples.xml]
