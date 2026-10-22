@@ -14,6 +14,7 @@ import (
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
+	"github.com/restmail/restmail/internal/gateway/rawmsg"
 )
 
 // errAccountLocked is returned when an account is temporarily banned for too
@@ -163,7 +164,8 @@ func (m *mailbox) Fetch(uid uint32) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte(m.rawMessage(detail.Data)), nil
+	// No client can enable UTF-8 yet, so headers go out downgraded to ASCII.
+	return []byte(rawmsg.Downgrade(m.rawMessage(detail.Data))), nil
 }
 
 // rawMessage returns the stored raw bytes when present, else the rebuild.
