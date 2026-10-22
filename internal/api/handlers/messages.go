@@ -1388,17 +1388,6 @@ func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var draft models.Message
-	if err := h.db.Where("id = ? AND is_draft = ?", id, true).First(&draft).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Draft not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &draft, models.CapMailWrite) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
 	var req struct {
 		From     *string  `json:"from"`
 		To       []string `json:"to"`
@@ -1411,9 +1400,47 @@ func (h *MessageHandler) UpdateDraft(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
 		return
 	}
+	// The same rule as SaveDraft: each recipient must be an address (#388),
+	// and so must a new from.
+	if req.From != nil && rmail.ValidateAddress(*req.From) != nil {
+		respond.Error(w, http.StatusBadRequest, "bad_request", "invalid from address")
+		return
+	}
+	for _, addr := range req.To {
+		if rmail.ValidateAddress(addr) != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in to")
+			return
+		}
+	}
+	for _, addr := range req.Cc {
+		if rmail.ValidateAddress(addr) != nil {
+			respond.Error(w, http.StatusBadRequest, "bad_request", "invalid recipient address in cc")
+			return
+		}
+	}
+
+	var draft models.Message
+	if err := h.db.Where("id = ? AND is_draft = ?", id, true).First(&draft).Error; err != nil {
+		respond.Error(w, http.StatusNotFound, "not_found", "Draft not found")
+		return
+	}
+
+	if !h.verifyMessageOwnership(w, r, &draft, models.CapMailWrite) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
+		return
+	}
 
 	updates := map[string]interface{}{}
 	if req.From != nil {
+		// A new from goes through the check SaveDraft makes: the caller must
+		// be able to write to its mailbox, and the draft moves there, since a
+		// draft is kept in the mailbox it is from.
+		mb, err := mayActAs(h.db, claims, *req.From, models.CapMailWrite)
+		if err != nil {
+			respond.Error(w, http.StatusForbidden, "forbidden", "You are not authorized to send from this address")
+			return
+		}
+		updates["mailbox_id"] = mb.ID
 		updates["sender"] = *req.From
 	}
 	if req.To != nil {

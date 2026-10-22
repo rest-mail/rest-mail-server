@@ -2136,6 +2136,18 @@ paths:
               operationId: sendDraft
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: The body is not JSON, or from, or a to or cc entry, is not an address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The caller may not write to the draft, or to the mailbox of its new from
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 
