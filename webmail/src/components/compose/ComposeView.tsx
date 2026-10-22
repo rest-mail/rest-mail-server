@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useUIStore } from '@/stores/uiStore';
@@ -159,7 +160,7 @@ export function ComposeView() {
             className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
           >
             {accounts.map(a => (
-              <option key={a.id} value={a.address}>{a.address}</option>
+              <option key={a.id} value={a.address}>{displayAddress(a.address)}</option>
             ))}
           </select>
         </div>

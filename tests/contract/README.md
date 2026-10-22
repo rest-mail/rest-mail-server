@@ -172,6 +172,20 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`setDKIMRotation` pairs `configured` with 200, `body_array`,
+`interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
+`interval_null`, `interval_negative` and `interval_too_large` with 422.
+The domain ID comes from `createDomain`'s link. The handler tests send each
+refusal before and after saving a valid interval and verify the entire domain
+is preserved, including its signing material. Other DKIM operations keep
+their exclusions.
+
+`createFolder` pairs `created` with 201 and `name_missing`, `name_empty`, and
+`name_wrong_type` with 422. The real handler tests use an authorized account
+on a scratch database and compare each example's status and full response
+body. The folder hook leaves the invalid bodies unchanged and only removes
+previously created valid probe folders.
+
 These operations' 400s and 422s are sent and judged: `vertrag.yml` excludes
 400 and 422 by path, naming every path but the paired operations' own,
 rather than everywhere. A transaction sent and refused other than as
@@ -191,6 +205,13 @@ as a failed probe. `gate.py` does not judge a probe built from a refusal (a
 transaction whose status is 4xx), so those failures do not count against the
 coverage ratchet (`test_gate.py`).
 
+`saveDraft` includes an `empty` request (`{}`) as well as `with_sender`.
+Every draft field is optional: omitting `from` saves in the signed-in
+account's mailbox with an empty sender. An explicit sender still needs
+mail:write on that mailbox (`contract_draft_test.go`). The operation remains
+in the coverage baseline because generated sender addresses can name
+mailboxes the principal cannot write to.
+
 vertrag is the released, checksum-pinned binary (v0.29.0), not a Go
 dependency: it needs Go 1.26 and this module is on 1.25.
 
@@ -204,7 +225,14 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
   folder for each rename probe (a successful rename consumes the previous one),
-  and a hosted domain and mailbox for each address a test send probe uses.
+  a hosted domain and mailbox for each address a test send probe uses, and,
+  for `createAccount`'s probes, their address's domain hosted and the
+  account a previous probe created removed (a generated address such as
+  `someone@example.com` is otherwise refused as on a domain this server does
+  not host, or as existing). A probe repeating the example's address removes
+  the account `getMailbox`, `updateMailbox` and `deleteMailbox` are linked to,
+  so those follow it to its current id, recreating it if a refused probe left
+  it removed.
   Folder create probes keep their generated bodies and account IDs unchanged.
   Folder and contact setup signs in as the fixture admin with a separate bearer
   session, cached per endpoint. It leaves the request's own credentials intact,
@@ -219,6 +247,8 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
+  (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
 - `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
