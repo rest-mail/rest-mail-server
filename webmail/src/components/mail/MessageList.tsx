@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useEffect, useCallback } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -157,7 +158,7 @@ export function MessageList() {
                   )}
                   style={{ background: avatarTint(msg.sender) }}
                 >
-                  {initialsOf(msg.sender_name || msg.sender)}
+                  {initialsOf(msg.sender_name || displayAddress(msg.sender))}
                 </span>
               )}
 
@@ -179,7 +180,7 @@ export function MessageList() {
                     {v.unread === 'dot' && !msg.is_read && (
                       <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                     )}
-                    <span className="truncate">{msg.sender_name || msg.sender}</span>
+                    <span className="truncate">{msg.sender_name || displayAddress(msg.sender)}</span>
                   </span>
                   <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                     {formatDate(msg.received_at)}

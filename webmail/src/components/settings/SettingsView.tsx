@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useState } from 'react';
 import { useSettingsStore, type ReadingPane, type Density } from '@/stores/settingsStore';
 import { useMailStore } from '@/stores/mailStore';
@@ -241,7 +242,7 @@ function AccountsTab() {
                 : "border-border hover:bg-accent text-muted-foreground"
             )}
           >
-            {a.address}
+            {displayAddress(a.address)}
             {a.address === user?.email && <span className="ml-1.5 text-xs opacity-60">(primary)</span>}
           </button>
         ))}

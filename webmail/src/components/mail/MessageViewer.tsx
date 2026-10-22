@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useState, useEffect } from 'react';
 import { useMailStore } from '@/stores/mailStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -345,13 +346,13 @@ export function MessageViewer() {
               TYPEFACE_CLASS[v.readerType],
               v.identity === 'circle' ? 'rounded-full' : v.identity === 'squircle' ? 'rounded-lg' : 'rounded-2xl',
             )}>
-              {(msg.sender_name || msg.sender).slice(0, 1).toUpperCase()}
+              {(msg.sender_name || displayAddress(msg.sender)).slice(0, 1).toUpperCase()}
             </div>
             <div className={cn("text-xs space-y-0.5 text-muted-foreground flex-1 min-w-0", TYPEFACE_CLASS[v.readerType])}>
               <p className="flex flex-wrap items-center gap-1.5">
                 <span className="font-medium text-foreground">from:</span>{' '}
                 <span className="min-w-0 break-all">
-                  {msg.sender_name ? `${msg.sender_name} <${msg.sender}>` : msg.sender}
+                  {msg.sender_name ? `${msg.sender_name} <${displayAddress(msg.sender)}>` : displayAddress(msg.sender)}
                 </span>
               </p>
               <p>
@@ -361,7 +362,7 @@ export function MessageViewer() {
               {msg.recipients_to && (
                 <p>
                   <span className="font-medium text-foreground">to:</span>{' '}
-                  {msg.recipients_to.join(', ')}
+                  {msg.recipients_to.map(displayAddress).join(', ')}
                 </p>
               )}
             </div>
@@ -390,7 +391,7 @@ export function MessageViewer() {
                       <span className="text-muted-foreground ml-2">
                         {new Date(tm.received_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                       </span>
-                      <span className="text-muted-foreground ml-1">- {tm.sender_name || tm.sender}</span>
+                      <span className="text-muted-foreground ml-1">- {tm.sender_name || displayAddress(tm.sender)}</span>
                     </button>
                   ))}
                 </div>

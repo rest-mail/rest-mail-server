@@ -1116,6 +1116,8 @@ type builtDSN struct {
 // well-behaved auto-responder does not reply to it (backscatter), and the
 // per-recipient status block carries Last-Attempt-Date (RFC 3464 §2.3.7) and,
 // when the failure named a specific next hop, Remote-MTA (RFC 3464 §2.3.5).
+// An internationalized recipient, remote reply or returned header section
+// switches the affected parts to the RFC 6533 global types (#153).
 func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPError, now, lastAttempt time.Time) builtDSN {
 	boundary := fmt.Sprintf("=_restmail_dsn_%d", now.UnixNano())
 	msgID := fmt.Sprintf("<dsn-%d-%d@%s>", item.ID, now.UnixNano(), hostname)
@@ -1169,7 +1171,7 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 	var dsnBuf strings.Builder
 	fmt.Fprintf(&dsnBuf, "Reporting-MTA: dns; %s\r\n", hostname)
 	fmt.Fprintf(&dsnBuf, "Arrival-Date: %s\r\n\r\n", item.CreatedAt.Format(time.RFC1123Z))
-	fmt.Fprintf(&dsnBuf, "Final-Recipient: rfc822; %s\r\n", recipient)
+	fmt.Fprintf(&dsnBuf, "Final-Recipient: %s\r\n", dsnRecipientField(recipient))
 	dsnBuf.WriteString("Action: failed\r\n")
 	fmt.Fprintf(&dsnBuf, "Status: %s\r\n", statusCode)
 	if remoteMTA != "" {
@@ -1178,6 +1180,17 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 	fmt.Fprintf(&dsnBuf, "Diagnostic-Code: %s\r\n", diagnosticCode)
 	fmt.Fprintf(&dsnBuf, "Last-Attempt-Date: %s\r\n", lastAttempt.Format(time.RFC1123Z))
 	dsnPart := dsnBuf.String()
+
+	// RFC 6533: a status block or returned header section carrying UTF-8 uses
+	// the global media types, which permit it; the RFC 3464 types are ASCII-only.
+	reportType := "delivery-status"
+	if containsNonASCII(dsnPart) {
+		reportType = "global-delivery-status"
+	}
+	headersType := "text/rfc822-headers"
+	if containsNonASCII(originalHeaders) {
+		headersType = "message/global-headers"
+	}
 
 	bounceSubject := fmt.Sprintf("Undelivered Mail Returned to Sender <%s>", recipient)
 
@@ -1191,7 +1204,7 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 	// Auto-Submitted so downstream auto-responders do not reply to it (backscatter).
 	b.WriteString("Auto-Submitted: auto-generated\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: multipart/report; report-type=delivery-status; boundary=\"" + boundary + "\"\r\n")
+	b.WriteString("Content-Type: multipart/report; report-type=" + reportType + "; boundary=\"" + boundary + "\"\r\n")
 	b.WriteString("\r\n")
 	// Part 1
 	b.WriteString("--" + boundary + "\r\n")
@@ -1199,15 +1212,34 @@ func buildDSNMessage(hostname string, item models.OutboundQueue, smtpErr *SMTPEr
 	b.WriteString(humanPart + "\r\n")
 	// Part 2
 	b.WriteString("--" + boundary + "\r\n")
-	b.WriteString("Content-Type: message/delivery-status\r\n\r\n")
+	b.WriteString("Content-Type: message/" + reportType + "\r\n\r\n")
 	b.WriteString(dsnPart + "\r\n")
 	// Part 3
 	b.WriteString("--" + boundary + "\r\n")
-	b.WriteString("Content-Type: text/rfc822-headers\r\n\r\n")
+	b.WriteString("Content-Type: " + headersType + "\r\n\r\n")
 	b.WriteString(originalHeaders + "\r\n")
 	b.WriteString("--" + boundary + "--\r\n")
 
 	return builtDSN{raw: b.String(), subject: bounceSubject, humanPart: humanPart}
+}
+
+// dsnRecipientField renders a Final-Recipient value. An ASCII address keeps the
+// rfc822 type; an internationalized one uses the RFC 6533 utf-8 type, whose
+// unitext form carries UTF-8 as is and writes space, "+", "=", "\\" and any
+// other non-printing ASCII as \x{HEX}.
+func dsnRecipientField(addr string) string {
+	if !containsNonASCII(addr) {
+		return "rfc822; " + addr
+	}
+	var b strings.Builder
+	for _, r := range addr {
+		if r > 0x7f || (r > 0x20 && r < 0x7f && r != '+' && r != '=' && r != '\\') {
+			b.WriteRune(r)
+			continue
+		}
+		fmt.Fprintf(&b, "\\x{%X}", r)
+	}
+	return "utf-8; " + b.String()
 }
 
 // deliverToHost attempts SMTP delivery to a specific host.
