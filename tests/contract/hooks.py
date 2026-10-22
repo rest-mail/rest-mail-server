@@ -129,6 +129,16 @@ def link_a_seeded_account(transaction):
     if not any(key.lower() == "authorization" and value for key, value in headers.items()):
         return
     origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    if address == "someone@example.com":
+        ready = hooks.stash.get("link_fixture_prepared", {})
+        if origin not in ready:
+            # createAccount probes need this address absent; linkAccount probes
+            # need it present with their generated password. Set up the latter
+            # only now, after the preceding operation's probes have finished.
+            subprocess.run(["chore", "test:contract-link-fixture"], check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+            ready[origin] = True
+            hooks.stash["link_fixture_prepared"] = ready
     ids = hooks.stash.get("link_fixture_ids", {})
     key = origin + "\n" + address
     if key not in ids:
@@ -831,6 +841,11 @@ def host_the_account_probe_domain(transaction):
     if not local or "." not in domain:
         return  # Leave a malformed address to the actual probe.
     origin = "%s//%s:%s" % (transaction["protocol"], transaction["host"], transaction["port"])
+    if address.lower() == "someone@example.com":
+        # A later create can replace the account whose credential/id the link
+        # hook prepared. Rebuild its proof before the next generated link.
+        hooks.stash.get("link_fixture_prepared", {}).pop(origin, None)
+        hooks.stash.get("link_fixture_ids", {}).pop(origin + "\n" + address.lower(), None)
     headers = {"Content-Type": "application/json", "Authorization": "Bearer " + admin_token(origin)}
     request = urllib.request.Request(origin + "/api/v1/admin/domains", headers=headers)
     with urllib.request.urlopen(request, timeout=10) as response:

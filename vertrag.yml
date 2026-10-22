@@ -14,6 +14,9 @@ endpoint: http://10.99.0.20:8080
 # a sign-in hands out. Everything else comes from the spec, its links included.
 hookfiles: ./tests/contract/hooks.py
 language: python
+# Fixture setup can invoke the cached Go helper in the topology's API container.
+# Give its bounded 20-second command time to finish before the hook deadline (ms).
+hooks-worker-timeout: 30000
 
 auth:
   login:

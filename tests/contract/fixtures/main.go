@@ -20,6 +20,7 @@ const retryRecipient = "contract-retry@retry.invalid"
 
 func main() {
 	domain := flag.String("test-domain", "", "confirm the disposable restmail.test topology")
+	linkOnly := flag.Bool("link-account-only", false, "prepare the generated account-link proof after account-creation probes")
 	flag.Parse()
 	if *domain != "restmail.test" || flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "contract fixtures require --test-domain=restmail.test")
@@ -32,16 +33,17 @@ func main() {
 	}
 	database, err := db.WaitForDB(cfg, 10*time.Second)
 	if err == nil {
-		_, err = prepareRetryFixture(database, *domain)
-	}
-	if err == nil {
-		_, err = prepareLinkFixture(database, *domain)
+		if *linkOnly {
+			_, err = prepareLinkFixture(database, *domain)
+		} else {
+			_, err = prepareRetryFixture(database, *domain)
+		}
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "cannot prepare the contract fixtures")
 		os.Exit(1)
 	}
-	fmt.Println("contract retry and account-link fixtures prepared")
+	fmt.Println("contract fixtures prepared")
 }
 
 // Vertrag v0.29 generates this email and password for LinkAccountRequest's
@@ -75,10 +77,9 @@ func prepareLinkFixture(database *gorm.DB, domain string) (uint, error) {
 			if err != nil {
 				return err
 			}
-			if credential == nil {
-				return errors.New("contract link probe account has a different password")
+			if credential != nil {
+				return nil
 			}
-			return nil
 		}
 		hash, err := auth.HashPassword("x")
 		if err != nil {
@@ -87,7 +88,7 @@ func prepareLinkFixture(database *gorm.DB, domain string) (uint, error) {
 		if _, err := creds.SetPassword(account.ID, hash, nil, time.Now()); err != nil {
 			return err
 		}
-		return tx.Create(&models.QuotaUsage{MailboxID: account.ID}).Error
+		return tx.Where("mailbox_id = ?", account.ID).FirstOrCreate(&models.QuotaUsage{MailboxID: account.ID}).Error
 	})
 	return account.ID, err
 }

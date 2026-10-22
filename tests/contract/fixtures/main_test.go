@@ -155,9 +155,22 @@ func TestLinkFixtureSupportsUnmodifiedGeneratedProof(t *testing.T) {
 	if err := db.Create(&models.Domain{Name: "restmail.test"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	// The preceding createAccount probes can leave their generated account
+	// with another password. Prepare its link proof without replacing its id.
+	hosted := models.Domain{Name: "example.com"}
+	if err := db.Create(&hosted).Error; err != nil {
+		t.Fatal(err)
+	}
+	created := models.Mailbox{DomainID: hosted.ID, LocalPart: "someone", Address: "someone@example.com", Active: true}
+	if err := db.Create(&created).Error; err != nil {
+		t.Fatal(err)
+	}
 	first, err := prepareLinkFixture(db, "restmail.test")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if first != created.ID {
+		t.Fatal("link fixture replaced the preceding createAccount probe")
 	}
 	second, err := prepareLinkFixture(db, "restmail.test")
 	if err != nil || first != second {

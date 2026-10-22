@@ -56,6 +56,9 @@ class ContractLinkAccountHookTests(unittest.TestCase):
         patcher = patch.object(self.module, "admin_token", return_value="fixture-setup")
         patcher.start()
         self.addCleanup(patcher.stop)
+        patcher = patch.object(self.module.subprocess, "run")
+        self.prepare_fixture = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def apply_hook(self, body, name="coverage: linkAccount"):
         transaction = {
@@ -83,6 +86,9 @@ class ContractLinkAccountHookTests(unittest.TestCase):
             self.assertEqual(request.full_url, "http://example.test:8080/api/v1/accounts/30")
             self.assertEqual(request.get_header("Authorization"), "Bearer ordinary-account")
         self.assertEqual(self.requests[0].get_header("Authorization"), "Bearer fixture-setup")
+        self.prepare_fixture.assert_called_once_with(
+            ["chore", "test:contract-link-fixture"], check=True,
+            stdout=self.module.subprocess.PIPE, stderr=self.module.subprocess.PIPE, timeout=20)
 
     def test_unlinked_fixture_is_ready_for_its_first_proof(self):
         self.unlink_status = 404
@@ -105,6 +111,7 @@ class ContractLinkAccountHookTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(self.apply_hook(body), body)
         self.assertEqual(self.requests, [])
+        self.prepare_fixture.assert_not_called()
 
     def test_missing_session_does_not_prepare_or_unlink_accounts(self):
         transaction = {"request": {"body": {"address": "someone@example.com", "password": "x"}}}
@@ -112,6 +119,7 @@ class ContractLinkAccountHookTests(unittest.TestCase):
         self.registered["linkAccount"](transaction)
         self.assertEqual(transaction, original)
         self.assertEqual(self.requests, [])
+        self.prepare_fixture.assert_not_called()
 
     def test_named_requests_keep_their_invalid_fields(self):
         with open(ROOT / "openapi.yaml") as f:
