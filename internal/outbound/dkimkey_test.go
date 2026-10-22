@@ -110,17 +110,26 @@ func TestCheckDKIMKey_Refusals(t *testing.T) {
 	}
 }
 
-// The test signature refuses what go-dkim refuses even where the checks
-// before it pass: here a signing domain that is not in A-label form.
-func TestCheckDKIMKey_TestSignatureRefusesWhatGoDKIMRefuses(t *testing.T) {
-	key, _, err := dkim.GenerateKey(2048)
+// Unicode hosted domains remain stored as Unicode but sign using A-labels.
+func TestCheckDKIMKey_IDN(t *testing.T) {
+	_, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
-		t.Fatalf("generate RSA key: %v", err)
+		t.Fatal(err)
 	}
-	err = CheckDKIMKey("bücher.test", "default", key)
-	var refused *DKIMKeyError
-	if !errors.As(err, &refused) || !strings.Contains(refused.Reason, "does not sign for bücher.test") {
-		t.Fatalf("CheckDKIMKey = %v, want a refusal from the test signature", err)
+	keyPEM := pkcs8PEM(t, key)
+	for _, domain := range []string{"bücher.test", "bu\u0308cher.test", "BÜCHER.test", "xn--bcher-kva.test", "faß.de", "例え.jp"} {
+		t.Run(domain, func(t *testing.T) {
+			if err := CheckDKIMKey(domain, "default", keyPEM); err != nil {
+				t.Fatalf("IDN key cannot sign: %v", err)
+			}
+		})
+	}
+	for _, domain := range []string{"bad..test", "bad_.test", "a\u200db.test", "\xff.test"} {
+		t.Run(domain, func(t *testing.T) {
+			if err := CheckDKIMKey(domain, "default", keyPEM); err == nil {
+				t.Fatal("invalid IDN accepted")
+			}
+		})
 	}
 }
 
