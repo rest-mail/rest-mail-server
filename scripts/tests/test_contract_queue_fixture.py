@@ -7,10 +7,11 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import textwrap
 import types
 import unittest
 from unittest.mock import patch
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -41,9 +42,13 @@ class ContractQueueFixtureTests(unittest.TestCase):
                 self.assertEqual(transaction["fullPath"], path)
 
     def test_task_selects_the_fixture_container_and_refuses_other_configs(self):
-        source = (ROOT / "chores.yml").read_text()
-        task = source.split("\n  test:contract-fixtures:\n", 1)[1].split("\n  test:e2e:\n", 1)[0]
-        script = textwrap.dedent(task.split("      - |\n", 1)[1])
+        tasks = yaml.safe_load((ROOT / "chores.yml").read_text())["tasks"]
+        for name, flags in (("test:contract-fixtures", []),
+                            ("test:contract-link-fixture", ["--link-account-only"])):
+            with self.subTest(task=name):
+                self.check_fixture_task(tasks[name]["cmds"][0], flags)
+
+    def check_fixture_task(self, script, flags):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             capture = work / "docker.json"
@@ -59,7 +64,7 @@ class ContractQueueFixtureTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(json.loads(capture.read_text()),
                              ["exec", "--", "custom-test-project-api", "go", "run",
-                              "./tests/contract/fixtures", "--test-domain=restmail.test"])
+                              "./tests/contract/fixtures", "--test-domain=restmail.test"] + flags)
             capture.unlink()
             env["CONTRACT_FIXTURE_CONFIG"] = "production.example"
             result = subprocess.run(["sh", "-eu"], input=script, text=True,

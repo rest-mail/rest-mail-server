@@ -14,6 +14,7 @@ import (
 	"time"
 
 	dkim "github.com/rest-mail/go-dkim"
+	rmail "github.com/restmail/restmail/internal/mail"
 )
 
 // SelectorPrefix starts every selector a rotation creates: restmail-1,
@@ -86,7 +87,13 @@ func Published(ctx context.Context, lookup LookupTXT, domain, selector, want str
 	if wantKey == "" {
 		return fmt.Errorf("the expected DKIM record has no public key")
 	}
-	name := dkim.RecordName(selector, domain)
+	// DKIM key records live under the A-label domain even when the hosted
+	// domain is stored as Unicode. Invalid IDNs must never reach DNS.
+	asciiDomain, err := rmail.DomainASCII(domain)
+	if err != nil {
+		return fmt.Errorf("invalid DKIM domain: %w", err)
+	}
+	name := dkim.RecordName(selector, asciiDomain)
 	txts, err := lookup(ctx, name)
 	if err != nil {
 		return fmt.Errorf("%w: %s: %v", ErrNotPublished, name, err)

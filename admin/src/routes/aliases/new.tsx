@@ -80,7 +80,10 @@ function CreateAliasPage() {
                   Source Address
                 </label>
                 <input
-                  type="email"
+                  type="text"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={formData.source_address}
                   onChange={(e) => setFormData({ ...formData, source_address: e.target.value })}
                   placeholder="alias@example.com"
@@ -99,7 +102,10 @@ function CreateAliasPage() {
                   Destination Address
                 </label>
                 <input
-                  type="email"
+                  type="text"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={formData.destination_address}
                   onChange={(e) => setFormData({ ...formData, destination_address: e.target.value })}
                   placeholder="user@example.com"

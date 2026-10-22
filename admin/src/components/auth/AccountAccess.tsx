@@ -132,7 +132,7 @@ export function AccountAccess({ children, apiBase, email, steps, onSession, onSi
           <form onSubmit={savePassword} className="space-y-4">
             {selfRecovering ? <>
               <label className="block text-sm">Email
-                <input type="email" autoComplete="username" required value={recoveryEmail}
+                <input type="text" inputMode="email" autoCapitalize="none" spellCheck={false} autoComplete="username" required value={recoveryEmail}
                   onChange={e => setRecoveryEmail(e.target.value)} className="mt-1 border p-3 w-full" />
               </label>
               <label className="block text-sm">Authenticator code
