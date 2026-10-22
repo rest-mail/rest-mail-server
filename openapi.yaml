@@ -1246,6 +1246,17 @@ paths:
                   format: password
                   writeOnly: true
                   description: The session's own current password, entered again.
+            examples:
+              created:
+                value: {name: iPhone Mail}
+              name_missing:
+                value: {}
+              name_empty:
+                value: {name: ""}
+              name_too_long:
+                value: {name: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+              name_control:
+                value: {name: "Mail\nClient"}
       responses:
         "201":
           description: Made; `password` is shown this once
@@ -1257,6 +1268,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CreatedAppPassword"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      name: iPhone Mail
+                      kind: app_password
+                      public_id: 7Kq2xT9bLm4P
+                      created_at: "2026-01-01T00:00:00Z"
+                      last_used_at: null
+                      expires_at: null
+                      password: "rm_7Kq2xT9bLm4P_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
           links:
             revokeCredential:
               operationId: revokeCredential
@@ -1278,7 +1301,20 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          description: name missing or longer than 100 characters, or expires_at not in the future
+          description: name missing, empty, longer than 100 characters or containing control characters, or expires_at not in the future
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                name_missing:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: required}}}}
+                name_empty:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: required}}}}
+                name_too_long:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: must be at most 100 characters}}}}
+                name_control:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: must not contain control characters}}}}
         "429":
           description: Too many attempts from this client; shares login's budget
 

@@ -172,6 +172,13 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
+`createAppPassword` sends `name_missing`, `name_empty`, `name_too_long` and
+`name_control` with their paired 422s; `created` pairs only with 201. The
+hook supplies the fixture admin's current password without changing the name.
+The real handler tests check every pair on a managed account and verify that
+refusals create no credential (`contract_credential_examples_test.go`). Other
+account operations keep their exclusions.
+
 `setDomainRelay` pairs `relay` and `direct` with 200; `body_array` and
 `port_wrong_type` with 400; and missing/invalid transport, invalid host,
 port, TLS mode, and mismatched credentials with 422. A createDomain link
@@ -244,6 +251,11 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   session, cached per endpoint. It leaves the request's own credentials intact,
   including when the principal has no credentials; Basic auth is reserved for
   app passwords, not the fixture admin's account password.
+  Login, refresh, account linking, app-password creation and protocol sign-in
+  share the API's default auth bucket (1 request/second, burst 15). Their before
+  hooks wait 1.1 seconds per request, including coverage probes and setup
+  logins, so a dense run cannot turn valid probes into 429s. The limiter stays
+  enabled; requests and the coverage baseline stay unchanged.
   Every other id comes from the spec's `links`.
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
