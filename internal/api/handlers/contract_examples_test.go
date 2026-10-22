@@ -100,6 +100,11 @@ func postExamples(t *testing.T, path, operationID string) (map[string]interface{
 	return operationExamples(t, path, "post", operationID)
 }
 
+func requestExamples(t *testing.T, path, operationID, method string) (map[string]interface{}, map[string]map[string]interface{}) {
+	t.Helper()
+	return operationExamples(t, path, method, operationID)
+}
+
 func operationExamples(t *testing.T, path, method, operationID string) (map[string]interface{}, map[string]map[string]interface{}) {
 	t.Helper()
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
