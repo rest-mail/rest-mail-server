@@ -29,6 +29,28 @@ func TestDomainASCII(t *testing.T) {
 	}
 }
 
+func TestDomainUnicode(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"example.com", "example.com"},
+		{"xn--bcher-kva.example", "bücher.example"},
+		{"XN--BCHER-KVA.Example", "bücher.example"},
+		{"bu\u0308cher.example", "bücher.example"},
+		{"xn--fa-hia.de", "faß.de"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := DomainUnicode(tc.input)
+			if err != nil || got != tc.want {
+				t.Fatalf("DomainUnicode(%q) = %q, %v; want %q", tc.input, got, err, tc.want)
+			}
+		})
+	}
+	for _, input := range []string{"", "bad_.example", "xn--.example"} {
+		if got, err := DomainUnicode(input); err == nil || got != "" {
+			t.Errorf("DomainUnicode(%q) = %q, %v; want empty result and error", input, got, err)
+		}
+	}
+}
+
 func TestSMTPAddressASCII(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{
 		{"", ""},

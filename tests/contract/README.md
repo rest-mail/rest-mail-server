@@ -68,6 +68,22 @@ checks it gets the documented body: the refusal comes before anything is looked
 up or stored. `contract_pipeline_body400_test.go` does the same for
 `body_array` and its 400.
 
+`updatePipeline` pairs `updated` with its 200, and `filters_object` and
+`filters_null` with their 422s. The existing create link supplies the stored
+pipeline ID, and no hook rewrites the PATCH body. The handler test sends each
+spec request to a stored pipeline, checks the exact refusal and unchanged row,
+and verifies the successful update's response and persistence
+(`contract_pipeline_update_examples_test.go`). Only this path's 422 exclusion
+is removed; pipeline logs and analytics keep theirs.
+
+The Sieve operations `putSieveScript` and `validateSieveScript` send
+`script_missing` and `script_null` requests with matching 422 examples.
+Their successful responses are named `valid`; PUT keeps its 201-before-200
+order to create the script before replacing it. The account link supplies
+the authorized account ID. Handler tests send the spec examples against a
+database and check the exact refusals and unchanged stored script
+(`contract_sieve_examples_test.go`).
+
 `createDomain`'s 400 is paired the same way: its `body_array` request (`[]`,
 JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
@@ -89,6 +105,29 @@ database access (`contract_account_examples_test.go`,
 `contract_restmail_examples_test.go`, `contract_allowlist_examples_test.go`,
 `contract_blocklist_examples_test.go`, `contract_bulkdelete_selection400_test.go`).
 No before hook rewrites these requests. Sibling operations remain excluded.
+
+`importContacts` pairs `body_array` with its 400 and `contacts_missing`,
+`contacts_empty`, `email_missing`, `email_invalid` and `mixed_batch` with its
+422. Its successful request and 200 are named `imported`. The handler tests
+send every documented pair, check exact responses, and prove that refusals
+preserve all contacts both before and after a successful import, including a
+batch whose first entry is valid (`contract_contact_import_examples_test.go`).
+No hook rewrites these requests; other account operations retain their exclusions.
+
+`linkAccount` pairs `linked` with its 201, and `address_missing`,
+`password_missing`, `address_blank` and `password_empty` with its 422. The
+handler reports both required fields for each refusal, before account lookup
+or grant creation (`contract_link_account_examples_test.go`). Its hook supplies
+only the password placeholder; missing fields, empty values and generated
+coverage mutations stay intact (`test_link_account_hook.py`). Its 409 remains
+excluded until an ordered repeated link provokes it.
+Just before its first generated link proof, the hook runs
+`chore test:contract-link-fixture` to seed `someone@example.com` with password
+`x`, matching vertrag v0.29's valid schema specimens. This happens after the
+account-creation probes, which need that address absent. Before a valid fixture
+proof, the hook removes only the caller's previous link, so repeated probes
+start unlinked. It preserves the generated request and its principal; invalid
+credentials still reach the handler unchanged.
 
 `bulkRetryQueue` and `bulkBounceQueue` send their `invalid_body` (`[]`) and
 `selection_missing` (`{}`) requests with their paired 400s; their original
@@ -113,6 +152,29 @@ spec's malformed request to the real handler with no database. The 200's
 named example declares no fixed response body: the XML contains the requested
 mailbox's settings. This route's 400 is now sent and judged.
 
+`updateMailbox` sends its `password_short` request (a five-character
+password) with its paired 422 naming `password`, and `updated` with its 200,
+both to the account `createAccount`'s link names. The refusal comes before any
+password is hashed or stored: the account keeps its fields, credential epoch
+and password (`contract_mailbox_update_examples_test.go`, which sends both
+requests to the real handler on a scratch database). The other
+`/api/v1/admin/mailboxes` refusals (`listMailboxes`' 422) keep their
+exclusion.
+
+`probeServices` sends its `service_unknown` request (`ftp`, a service it
+cannot probe) with its paired 422 naming `services`, and `probed` (only the
+database) with its 200. The refusal comes before any service is reached
+(`contract_probe_examples_test.go`, which sends both requests to the real
+handler). The other `/api/v1/admin/test` refusals (`verifyDelivery`'s 422)
+keep their exclusion.
+
+`setMtaStsPolicy` sends its `mode_invalid` request (mode `strict`) and its
+`max_age_negative` request (`max_age` -1), each with its paired 422 naming the
+field, and `policy` with its 201. Both are refused before the domain is looked
+up (`contract_mtasts_examples_test.go`, which sends each to the real handler
+with no database). The other `/api/v1/admin/domains/{id}` subpaths keep their
+exclusions.
+
 `testFilter` sends its `invalid_body` request (`[]`) with its paired 400 and
 `filter_name_missing` with its paired 422. Both are refused before any filter
 is made; `valid` still runs `header_validate` and gets the documented 200
@@ -129,8 +191,15 @@ their exclusions.
 400, the `bad_request` the handler sends for a body that does not decode,
 before the filter is looked up. Its `valid` request (`{}`, the built-in sample
 email) runs the created filter and gets the 200
-(`contract_testcustomfilter_examples_test.go`). The other
-`/custom-filters/{id}` operations keep their exclusions.
+(`contract_testcustomfilter_examples_test.go`).
+
+`updateCustomFilter` pairs `updated` with 200 and five invalid requests with
+422: `name_empty`, `filter_type_invalid`, `direction_invalid`, `config_array`
+and `config_null`. The existing create link supplies the stored filter's ID;
+no hook rewrites these requests. The handler tests send each spec request,
+compare the exact refusal and verify the stored filter is unchanged, then
+check the successful update (`contract_customfilter_update_examples_test.go`).
+The child path's 400 and 404 remain excluded.
 
 `createCertificate` sends `invalid_body` (`[]`) and `fields_missing` (`{}`)
 with their paired 400s, both refused before the domain lookup. Its `valid`
@@ -172,13 +241,114 @@ operations keep their exclusions.
 gets 400, and `protocol_missing` (`{}`) gets 422. The hook supplies only
 the Basic credential, so each request body reaches the handler unchanged.
 
-`getAlias` documents a `missing` path ID (`2147483647`) and its exact 404
-refusal. Its hook selects that ID only for the 404 transaction because vertrag
-0.29 does not pair parameter example names and the create link supplies its
-created ID to both responses. Successful lookups and their coverage probes
-keep their IDs. The real-handler test checks the missing ID and a successful
-lookup, including the domain association, and proves neither changes storage.
-All other documented 404s retain their exclusions; `test_gate.py` checks this set.
+`getDomain` also sends its 404. Its `missing` path-parameter example names
+an unused positive ID in the disposable fixture (2147483647), and the 404
+names the matching `domain_not_found` body. Vertrag 0.29 does not pair named
+parameter examples, and the create link supplies the new domain ID to both
+responses, so a hook selects the missing ID for the 404 alone. The linked
+200 and its boundary probes retain their original IDs. The handler test
+checks both lookups against PostgreSQL and verifies the existing domain
+is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
+the enabled set to exactly `getDomain`, `getCertificate` and `getAlias`.
+
+`getCertificate` sends its documented 404 with the `missing` path parameter
+example. Vertrag 0.29 does not pair parameter example names, and the create
+link supplies its new ID to both responses, so a hook selects the missing ID
+only for the 404. Successful lookups and their boundary probes keep their
+original IDs. `contract_certificate_get_examples_test.go` checks the exact
+refusal, successful detail response, and unchanged stored certificate against
+PostgreSQL; `test_contract_missing_certificate.py` checks the hook.
+
+`login` pairs `wrong_password` with 401 and `email_missing`,
+`password_missing` and `client_invalid` with their 422s. Its 200 is named
+`signed_in`. `refreshToken` pairs `invalid_token` and `token_missing` with
+their 401s and `refreshed` with 200. The hooks replace only the explicit
+`fixture-password` and `fixture-refresh-token` placeholders; wrong credentials,
+missing fields and coverage mutations survive. Refusals keep the saved refresh
+token intact. The real handler tests check the exact refusal bodies, that no
+session is created or rotated by a refusal, and that the valid requests still
+sign in and rotate (`contract_auth_examples_test.go`). `test_auth_hooks.py`
+checks the hooks against the spec examples and the exclusions. Both operations'
+401s are now counted by the surface gate.
+
+Refresh success probes with a missing or empty body token exercise the browser
+channel. Their before hook obtains a fresh `restmail_refresh` cookie for each
+probe, because coverage does not run the after hook that records rotated tokens.
+The generated body bytes and existing caller headers stay intact. Named 401
+examples, malformed bodies and explicit caller cookies receive no setup cookie;
+their refusals stay visible. Setup login failures stop the run.
+
+`setVacation` pairs `configured` with 200, `body_array` with 400, and
+`enabled_missing`, `subject_missing`, `body_missing`, `reply_missing` and
+`dates_reversed` with their 422s. No hook changes these requests. The handler
+checks each refusal after authorizing the account and before changing its
+stored vacation setting; the tests send the spec examples to the real handler
+and verify that refused updates preserve a previously configured reply.
+
+`createAppPassword` sends `name_missing`, `name_empty`, `name_too_long` and
+`name_control` with their paired 422s; `created` pairs only with 201. The
+hook supplies the fixture admin's current password without changing the name.
+The real handler tests check every pair on a managed account and verify that
+refusals create no credential (`contract_credential_examples_test.go`). Other
+account operations keep their exclusions.
+
+`setDomainRelay` pairs `relay` and `direct` with 200; `body_array` and
+`port_wrong_type` with 400; and missing/invalid transport, invalid host,
+port, TLS mode, and mismatched credentials with 422. A createDomain link
+supplies the domain id. Refusals leave both absent and saved relay settings
+unchanged (`contract_relay_examples_test.go`). Missing-domain 404 and the
+409 that needs a server without MASTER_KEY remain excluded.
+
+`updateAlias` pairs its `destination_invalid` request (`not-an-email`) with
+its 422 naming `destination_address`. Its valid `updated` request pairs only
+with the 200. The alias ID comes from `createAlias`'s existing link. A handler
+test sends the examples to a stored alias, checks the documented refusal body,
+and verifies that the refusal leaves the stored alias unchanged.
+
+`updateDomain` sends `sending_policy_invalid` (`newsletter`) with its paired
+422 and `updated` (`transactional`) with its 200. The existing `createDomain`
+link supplies the stored domain ID. The handler tests send the spec's requests,
+check the exact refusal and unchanged stored domain, and verify that the success
+persists its policy (`contract_domain_update_examples_test.go`). Its 404 and 409
+remain excluded until they have requests of their own.
+
+Mozilla discovery's generated email needs an active hosted domain. Its hooks
+prepare that domain through the admin API, adding a self-signed fixture
+certificate when activation requires one. The query and caller's credential
+stay unchanged. Discovery therefore runs independently of `updateDomain`'s
+example, which updates only the sending policy.
+
+`setDKIMKey` pairs `installed` with 200; `body_array` and missing, empty or
+wrong-type selectors and private keys with 400; and `selector_invalid` and
+`private_key_invalid` with 422. The hook replaces only the explicit
+`fixture-signing-key` placeholder, preserving malformed bodies, missing
+fields and invalid selectors or keys. The existing createDomain link supplies
+the domain ID. Refusals leave the stored domain unchanged
+(`contract_dkim_key_examples_test.go`, `test_contract_dkim_hook.py`). DKIM
+rotation retains its own exclusions.
+
+Generated DKIM requests hold a public test-only Ed25519 key through
+`probes.py`'s `fuzz.pin.private_key`: schema generation cannot construct a signing key.
+Selector and body probes still run, with nonempty fields and DNS selector
+syntax described in the schema. Generated private-key mutations are held
+fixed; the named examples above exercise their refusals instead, including
+missing, empty, wrong-type and non-PEM keys. The placeholder hook leaves
+generated request bytes unchanged, and no coverage baseline or accepted-status
+exception is added.
+
+vertrag 0.29 applies pins to named examples too. CI first runs the complete,
+unpinned examples with the 100% surface gate. Then `probes.py` writes a separate
+configuration with the test key and no 4xx source transactions, whose probes
+the ratchet already ignores. It retains every success transaction and all
+checks. This second run writes `coverage.xml`, judged by the unchanged ratchet;
+the full example report remains `examples.xml`. The generated configuration
+also serves the report-only fuzz run.
+
+Before the second process repeats examples, `repeat_fixtures.py` removes only
+the fixture admin's `Receipts` folder and `spam@example.org` contact, and
+`chore test:contract-fixtures` supplies a new held queue entry. The first run's
+complete example report is already enforced; probe requests stay unchanged.
+
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
 `interval_null`, `interval_negative` and `interval_too_large` with 422.
@@ -232,7 +402,21 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   MTA-STS policy file is served by, cleanup of folders previously created by
   create probes (so repeated valid names do not conflict), and a fresh source
   folder for each rename probe (a successful rename consumes the previous one),
-  a hosted domain and mailbox for each address a test send probe uses, and,
+  and, for `addToAllowlist`, `addToBlocklist` and `createAlias`, the entry a
+  previous probe added removed when generated bodies repeat it (the domain
+  stays for the whole run, so a repeat is otherwise a 409), with an alias
+  probe's domain hosted first. The entries `removeFromAllowlist`,
+  `removeFromBlocklist`, `getAlias`, `updateAlias` and `deleteAlias` are linked
+  to are followed to their current id, and added again if a probe left none.
+  TLS-RPT reports are sent a second apart: the route is rate-limited. Their
+  schema requires a policy domain and caps the array at 100 policies, matching
+  the storage limit. The hook hosts generated policy domains before sending
+  each report, leaving its generated request unchanged.
+  The valid relay transport enum probe gets the host, port and TLS mode that
+  its `if/then` branch requires; vertrag v0.29 does not generate those
+  conditional companions. Other relay probes and documented refusals keep
+  their bodies.
+a hosted domain and mailbox for each address a test send probe uses, and,
   for `createAccount`'s probes, their address's domain hosted and the
   account a previous probe created removed (a generated address such as
   `someone@example.com` is otherwise refused as on a domain this server does
@@ -245,22 +429,44 @@ dependency: it needs Go 1.26 and this module is on 1.25.
   session, cached per endpoint. It leaves the request's own credentials intact,
   including when the principal has no credentials; Basic auth is reserved for
   app passwords, not the fixture admin's account password.
+  Login, refresh, account linking, app-password creation and protocol sign-in
+  share the API's default auth bucket (1 request/second, burst 15). Their before
+  hooks wait 1.1 seconds per request, including coverage probes and setup
+  logins, so a dense run cannot turn valid probes into 429s. The limiter stays
+  enabled; requests and the coverage baseline stay unchanged.
   Every other id comes from the spec's `links`.
+  `deleteDomain` deletes only the domain the run created: a probe naming any
+  other domain (coverage's in-range id 1 is the fixture admin's) is skipped,
+  since the server refuses a domain that still has accounts with 409
+  (`test_hooks_delete_domain.py`).
 - `gate.py`: the contract coverage gate. `gate.py --failing-probes openapi.yaml <report>` prints
   the operations with a failing probe, in the baseline's form.
+- `probes.py`: prepares the coverage/fuzz configuration after the full examples
+  gate, holding only the public `fixtures/dkim-key.pem` signing key. Its tests
+  keep pins out of the examples gate and preserve all success probes.
 - `authorization.py`: builds a private configuration from the E2E principals
   for the report-only authorization phase. Its JUnit report and log are
   included in `e2e-container-logs`; the generated credential-bearing YAML is
   removed after the run and is never uploaded.
 - `coverage-baseline.txt`: the coverage ratchet's baseline.
 - `test_gate.py`: `gate.py`'s own tests (`python3 -m unittest discover -s tests/contract -p test_gate.py`).
+- `test_hooks_save_draft.py`: the saveDraft sender hook's tests, against a stub admin API.
+- `test_repeat_probe_hooks.py`: the sender rule and alias hooks' tests, against
+  a stub admin API (`python3 -m unittest discover -s tests/contract -p test_repeat_probe_hooks.py`).
 - `test_hooks.py`: the `createAccount` hooks' tests, against a stub admin API
   (`python3 -m unittest discover -s tests/contract -p test_hooks.py`).
+- `test_hooks_send_message.py`: the sendMessage sender hook's tests, against a stub admin API.
+- `test_hooks_update_domain.py`: the updateDomain certificate hook's tests, against a stub admin API.
 - `test_hooks_test_send.py`: the sendTestEmail hook's tests, against a stub admin API.
 - `fixtures/`: prepares a deferred queue entry on the disposable `restmail.test`
   topology before the contract run. Its next attempt is held for 24 hours so
   the background worker cannot deliver it before the retry example. This does
   not change the product's retry rules or any coverage exclusion.
+- Scheduled-message hooks prepare their own messages through the send API.
+  If send-body probes exhaust the admin's submission budget, fixture setup
+  retries once after `Retry-After` (at most 60 seconds). The actual contract
+  requests are never retried, so their rate-limit responses remain visible.
+  The hook worker deadline allows for that wait and the setup API requests.
 - `../e2e/contract_principals_test.go`: the principals, written to
   `.cache/contract-principals.json`.
 
@@ -332,9 +538,13 @@ principals):
 chore test:contract-fixtures
 vertrag doctor                          # sends nothing: does every setting reach something?
 mkdir -p .cache/contract                # the report's directory; vertrag makes none
-vertrag run --sequence --phases coverage
+vertrag run --sequence --phases examples
+python3 tests/contract/repeat_fixtures.py vertrag.yml
+chore test:contract-fixtures
+python3 tests/contract/probes.py vertrag.yml .cache/contract/vertrag-probes.yml .cache/contract/coverage.xml
+vertrag run --config .cache/contract/vertrag-probes.yml --sequence --phases coverage
 echo "vertrag exited $?"                 # 0, or 2 for probe findings; 1 and 3 fail
-python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/examples.xml \
+python3 tests/contract/gate.py openapi.yaml vertrag.yml .cache/contract/coverage.xml \
   tests/contract/coverage-baseline.txt
 ```
 
@@ -346,9 +556,39 @@ leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
 
+Draft probes (saveDraft) save from a generated address (`someone@example.com`)
+that no mailbox holds, which the handler refuses with 403. A before hook hosts
+the sender's domain and creates its mailbox through the admin API the first
+time the address appears, then leaves them in place. Malformed senders and
+domains the server will not host are left to the probe, and the request is
+never rewritten. With `from` optional and invalid recipients refused,
+`saveDraft` comes out of the coverage baseline.
+
+Send probes (sendMessage) send from a generated address (`someone@example.com`)
+that no mailbox holds, which the handler refuses with 403. A before hook hosts
+the sender's domain with a DKIM key (an https unsubscribe target needs one) and
+creates its mailbox through the admin API the first time the address appears,
+then leaves them in place. Malformed senders and domains the server will not
+host are left to the probe, and the request is never rewritten.
+
+Update probes (updateDomain) that set `active` to true would meet 409
+`certificate_required`: no created domain has a certificate when they run. A
+before hook gives the domain in the path a self-signed certificate through the
+admin API the first time such a request appears, then leaves it in place. The
+request is never rewritten, and a domain that does not exist is left to the
+probe's 404.
+
 Test send probes (sendTestEmail) send from and to a generated address
 (`someone@example.com`) that has no mailbox. A before hook hosts its domain and
 creates its account through the admin API the first time an address appears,
 then leaves both in place: a test send only adds a message. Malformed addresses
 and domains the server will not host are left to the probe, and the request is
 never rewritten.
+
+`getAlias` sends its `missing` path ID (`2147483647`) and exact 404 refusal.
+Its hook selects that ID only for the documented 404 because vertrag 0.29 does
+not pair parameter examples and the create link supplies its created ID to both
+responses. Successes and coverage probes keep their linked IDs. The real-handler
+test checks missing and successful lookup, domain association and unchanged
+storage. `test_gate.py` holds the enabled 404 set to `getDomain`,
+`getCertificate` and `getAlias`; sibling exclusions remain in place.
