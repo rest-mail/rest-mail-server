@@ -7,7 +7,15 @@ WORKDIR /app
 # with one version. Dependencies are installed HERE, at build time: a container
 # never installs anything when it starts, it runs what the image contains.
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable pnpm && pnpm install --frozen-lockfile
+# Corepack's pnpm download can fail on transient registry errors (HTTP 503).
+# Bootstrap it separately so retries do not rerun dependency installation.
+RUN corepack enable pnpm && \
+    for attempt in 1 2 3; do \
+      corepack install && break; \
+      if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+      sleep 5; \
+    done && \
+    pnpm install --frozen-lockfile
 
 # ── Stage 2: builder ─────────────────────────────────────────────────
 FROM deps AS builder
