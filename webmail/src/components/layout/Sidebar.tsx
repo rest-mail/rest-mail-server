@@ -1,3 +1,4 @@
+import { displayAddress } from '@/lib/addressDisplay';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useMailStore } from '@/stores/mailStore';
@@ -175,7 +176,7 @@ export function Sidebar() {
                   <span className="text-muted-foreground text-[10px]">
                     {isExpanded(account.id) ? '▾' : '▸'}
                   </span>
-                  <span className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{account.address}</span>
+                  <span className="truncate flex-1 font-mono text-[11px] font-medium text-foreground">{displayAddress(account.address)}</span>
                   {!isExpanded(account.id) && <InboxBadge />}
                 </button>
                 <button

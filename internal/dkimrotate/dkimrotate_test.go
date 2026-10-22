@@ -121,3 +121,37 @@ func TestPublished(t *testing.T) {
 		t.Errorf("an expected record with no key: Published = %v, want a non-ErrNotPublished error", err)
 	}
 }
+
+func TestPublished_IDN(t *testing.T) {
+	const record = "v=DKIM1; k=ed25519; p=test-public-key"
+	for _, tc := range []struct{ domain, ascii string }{
+		{"bücher.test", "xn--bcher-kva.test"},
+		{"bu\u0308cher.test", "xn--bcher-kva.test"},
+		{"BÜCHER.test", "xn--bcher-kva.test"},
+		{"xn--bcher-kva.test", "xn--bcher-kva.test"},
+		{"faß.de", "xn--fa-hia.de"},
+	} {
+		t.Run(tc.domain, func(t *testing.T) {
+			called := false
+			lookup := func(_ context.Context, name string) ([]string, error) {
+				called = true
+				if name != "restmail-2._domainkey."+tc.ascii {
+					t.Fatalf("queried %q", name)
+				}
+				return []string{record}, nil
+			}
+			if err := Published(context.Background(), lookup, tc.domain, "restmail-2", record); err != nil || !called {
+				t.Fatalf("Published = %v, lookup called = %v", err, called)
+			}
+		})
+	}
+	for _, domain := range []string{"bad..test", "bad_.test", "a\u200db.test", "\xff.test"} {
+		err := Published(context.Background(), func(context.Context, string) ([]string, error) {
+			t.Fatal("invalid IDN reached DNS")
+			return nil, nil
+		}, domain, "restmail-2", record)
+		if err == nil {
+			t.Errorf("Published(%q) accepted invalid IDN", domain)
+		}
+	}
+}

@@ -119,8 +119,9 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	}
 
 	fromAddr := email.Headers.From[0].Address
-	parts := strings.SplitN(fromAddr, "@", 2)
-	if len(parts) != 2 {
+	// A quoted local part can contain @; the domain follows the last one.
+	at := strings.LastIndexByte(fromAddr, '@')
+	if at <= 0 {
 		return &pipeline.FilterResult{
 			Type:   pipeline.FilterTypeAction,
 			Action: pipeline.ActionContinue,
@@ -131,7 +132,20 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 			},
 		}, nil
 	}
-	domain := parts[1]
+	// RFC 8616 §6: map U-labels to validated A-labels before discovery and
+	// alignment. Preserve the original header, including its local part.
+	domain, err := mail.DomainASCII(fromAddr[at+1:])
+	if err != nil {
+		return &pipeline.FilterResult{
+			Type:   pipeline.FilterTypeAction,
+			Action: pipeline.ActionContinue,
+			Log: pipeline.FilterLog{
+				Filter: "dmarc_check",
+				Result: "none",
+				Detail: "invalid From domain",
+			},
+		}, nil
+	}
 
 	// Discover the From domain's policy: its own record, or else its
 	// Organizational Domain's (RFC 7489 §6.6.3). A record with no valid policy
@@ -173,7 +187,7 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	for _, r := range auth.Find(pipeline.AuthSPF, pipeline.PropMailFrom) {
 		if r.Result == "pass" {
 			spfPass = true
-			if r.Domain != "" && dmarc.AlignedMode(r.Domain, domain, published.Record.ASPF, mail.OrgDomain) {
+			if dmarcAligned(r.Domain, domain, published.Record.ASPF) {
 				spfAligned = true
 			}
 		}
@@ -186,7 +200,7 @@ func (f *dmarcCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSO
 	for _, r := range auth.Find(pipeline.AuthDKIM, pipeline.PropHeaderD) {
 		if r.Result == "pass" {
 			dkimPass = true
-			if r.Domain != "" && dmarc.AlignedMode(r.Domain, domain, published.Record.ADKIM, mail.OrgDomain) {
+			if dmarcAligned(r.Domain, domain, published.Record.ADKIM) {
 				dkimAligned = true
 			}
 		}
@@ -301,4 +315,19 @@ var dmarcTXT dmarc.TXTResolver
 // discoverDMARC finds the DMARC policy that applies to domain.
 func discoverDMARC(domain string) (dmarc.Policy, error) {
 	return dmarc.Discover(domain, dmarcTXT, mail.OrgDomain)
+}
+
+// dmarcAligned applies the same IDNA mapping to both identifiers. In
+// particular, an invalid subdomain must not establish relaxed alignment just
+// because it has the same Organizational Domain as the From address.
+func dmarcAligned(authDomain, fromDomain string, mode dmarc.AlignmentMode) bool {
+	authASCII, err := mail.DomainASCII(authDomain)
+	if err != nil {
+		return false
+	}
+	fromASCII, err := mail.DomainASCII(fromDomain)
+	if err != nil {
+		return false
+	}
+	return dmarc.AlignedMode(authASCII, fromASCII, mode, mail.OrgDomain)
 }

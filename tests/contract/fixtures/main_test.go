@@ -15,6 +15,7 @@ import (
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/db/repositories"
 	"gorm.io/gorm"
 )
 
@@ -133,5 +134,66 @@ func TestRetryFixtureRequiresTheDisposableDomain(t *testing.T) {
 	var rows int64
 	if err := db.Model(&models.OutboundQueue{}).Count(&rows).Error; err != nil || rows != 0 {
 		t.Fatal("refused setup changed the queue:", err)
+	}
+}
+
+func TestLinkFixtureRequiresTheDisposableDomain(t *testing.T) {
+	if _, err := prepareLinkFixture(nil, "production.example"); err == nil {
+		t.Fatal("fixture accepted a different domain")
+	}
+	db := fixtureDB(t)
+	if _, err := prepareLinkFixture(db, "restmail.test"); err == nil {
+		t.Fatal("fixture accepted a database without restmail.test")
+	}
+}
+
+func TestLinkFixtureSupportsUnmodifiedGeneratedProof(t *testing.T) {
+	db := fixtureDB(t)
+	if err := db.AutoMigrate(&models.Mailbox{}, &models.Credential{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&models.Domain{Name: "restmail.test"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The preceding createAccount probes can leave their generated account
+	// with another password. Prepare its link proof without replacing its id.
+	hosted := models.Domain{Name: "example.com"}
+	if err := db.Create(&hosted).Error; err != nil {
+		t.Fatal(err)
+	}
+	created := models.Mailbox{DomainID: hosted.ID, LocalPart: "someone", Address: "someone@example.com", Active: true}
+	if err := db.Create(&created).Error; err != nil {
+		t.Fatal(err)
+	}
+	first, err := prepareLinkFixture(db, "restmail.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != created.ID {
+		t.Fatal("link fixture replaced the preceding createAccount probe")
+	}
+	second, err := prepareLinkFixture(db, "restmail.test")
+	if err != nil || first != second {
+		t.Fatal("fixture was not idempotent:", first, second, err)
+	}
+	var account models.Mailbox
+	if err := db.Preload("Domain").First(&account, first).Error; err != nil {
+		t.Fatal(err)
+	}
+	if account.Address != "someone@example.com" || !account.Active || account.PasswordChangeRequired || account.Domain.Name != "example.com" {
+		t.Fatalf("generated proof's account = %+v", account)
+	}
+	creds := repositories.NewCredentialRepository(db)
+	credential, err := creds.MatchPassword(first, "x", time.Now())
+	if err != nil || credential == nil {
+		t.Fatal("generated password did not match:", err)
+	}
+	credential, err = creds.MatchPassword(first, "wrong-password", time.Now())
+	if err != nil || credential != nil {
+		t.Fatal("wrong password matched:", err)
+	}
+	passwords, err := creds.Passwords(first, time.Now())
+	if err != nil || len(passwords) != 1 {
+		t.Fatal("repeat setup changed credentials:", passwords, err)
 	}
 }
