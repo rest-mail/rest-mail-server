@@ -1091,6 +1091,25 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/LinkAccountRequest"
+            examples:
+              linked:
+                value:
+                  address: eve@restmail.test
+                  password: supplied-by-contract-hook
+              address_missing:
+                value:
+                  password: supplied-by-contract-hook
+              password_missing:
+                value:
+                  address: eve@restmail.test
+              address_blank:
+                value:
+                  address: "   "
+                  password: supplied-by-contract-hook
+              password_empty:
+                value:
+                  address: eve@restmail.test
+                  password: ""
       responses:
         "201":
           description: Linked
@@ -1102,6 +1121,14 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Account"
+              examples:
+                linked:
+                  value:
+                    data:
+                      id: 2
+                      address: eve@restmail.test
+                      display_name: Eve
+                      is_primary: false
           links:
             unlinkAccount:
               operationId: unlinkAccount
@@ -1122,7 +1149,48 @@ paths:
         "409":
           description: Already linked, or the session's own account
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Address or password missing or empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                address_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                password_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                address_blank:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
+                password_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          address: required
+                          password: required
         "429":
           description: Too many attempts from this client
 
@@ -1246,6 +1314,17 @@ paths:
                   format: password
                   writeOnly: true
                   description: The session's own current password, entered again.
+            examples:
+              created:
+                value: {name: iPhone Mail}
+              name_missing:
+                value: {}
+              name_empty:
+                value: {name: ""}
+              name_too_long:
+                value: {name: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+              name_control:
+                value: {name: "Mail\nClient"}
       responses:
         "201":
           description: Made; `password` is shown this once
@@ -1257,6 +1336,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CreatedAppPassword"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      name: iPhone Mail
+                      kind: app_password
+                      public_id: 7Kq2xT9bLm4P
+                      created_at: "2026-01-01T00:00:00Z"
+                      last_used_at: null
+                      expires_at: null
+                      password: "rm_7Kq2xT9bLm4P_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
           links:
             revokeCredential:
               operationId: revokeCredential
@@ -1278,7 +1369,20 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          description: name missing or longer than 100 characters, or expires_at not in the future
+          description: name missing, empty, longer than 100 characters or containing control characters, or expires_at not in the future
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                name_missing:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: required}}}}
+                name_empty:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: required}}}}
+                name_too_long:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: must be at most 100 characters}}}}
+                name_control:
+                  value: {error: {code: validation_failed, message: Request body failed validation, details: {fields: {name: must not contain control characters}}}}
         "429":
           description: Too many attempts from this client; shares login's budget
 
@@ -1561,8 +1665,18 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateFolderRequest"
-            example:
-              name: Receipts
+            examples:
+              created:
+                value:
+                  name: Receipts
+              name_missing:
+                value: {}
+              name_empty:
+                value:
+                  name: ""
+              name_wrong_type:
+                value:
+                  name: 12
       responses:
         "201":
           description: Folder created
@@ -1574,6 +1688,11 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/FolderName"
+              examples:
+                created:
+                  value:
+                    data:
+                      name: Receipts
           links:
             renameFolder:
               operationId: renameFolder
@@ -1581,7 +1700,36 @@ paths:
                 id: '$request.path.id'
                 folder: '$response.body#/data/name'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Folder name is missing, empty, or not a string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                name_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
+                name_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          name: required
 
   /api/v1/accounts/{id}/folders/{folder}:
     parameters:
@@ -1859,6 +2007,16 @@ paths:
               operationId: getMessageTrace
               parameters:
                 id: '$response.body#/data/id'
+        "202":
+          description: Accepted and scheduled for the time in `scheduled_at`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ScheduledSend"
         "400":
           description: A field is missing or invalid, including an unsafe list_unsubscribe target
           content:
@@ -1883,6 +2041,56 @@ paths:
                     error:
                       code: list_unsubscribe_not_allowed
                       message: "The sender domain sends transactional mail, which carries no List-Unsubscribe field: omit list_unsubscribe"
+
+  /api/v1/messages/scheduled:
+    get:
+      operationId: listScheduledMessages
+      tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
+      summary: Messages waiting to be sent later
+      description: >-
+        The pending and in-flight scheduled sends for this account, soonest
+        first. A message that has been sent or cancelled is no longer listed.
+      responses:
+        "200":
+          description: Scheduled messages, soonest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ScheduledSend"
+
+  /api/v1/messages/scheduled/{id}:
+    parameters:
+      - $ref: "#/components/parameters/MessageId"
+    delete:
+      operationId: cancelScheduledMessage
+      tags: [Messages]
+      security:
+        - CookieAuth: [mail:send]
+        - BearerAuth: [mail:send]
+        - BasicAuth: [mail:send]
+      summary: Cancel a message that has not been sent yet
+      description: >-
+        Only a message still waiting can be called back. One already being
+        sent is not in the list and cannot be cancelled.
+      responses:
+        "204":
+          description: Cancelled
+        "404":
+          description: No waiting scheduled message with that id belongs to this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/messages/{id}/raw:
     parameters:
@@ -1957,17 +2165,26 @@ paths:
         - BearerAuth: [mail:write]
         - BasicAuth: [mail:write]
       summary: Save a new draft
+      description: >
+        All draft fields are optional. Without `from`, the draft is saved in
+        the signed-in account's mailbox with an empty sender. When `from` is
+        supplied, the caller needs mail:write on that mailbox.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/DraftRequest"
-            example:
-              from: admin@restmail.test
-              to: [admin@restmail.test]
-              subject: Draft
-              body_text: Not sent yet.
+            examples:
+              with_sender:
+                value:
+                  from: admin@restmail.test
+                  to: [admin@restmail.test]
+                  subject: Draft
+                  body_text: Not sent yet.
+              empty:
+                summary: Start an empty draft in the signed-in account
+                value: {}
       responses:
         "201":
           description: Draft saved
@@ -2300,6 +2517,33 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/CreateContactRequest"
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386). Each refused
+            # one has one field missing or wrong, and is refused before
+            # anything is stored. Their address is not created's: the
+            # createContact hook removes a contact an earlier request made
+            # with the same address, and created's links still need it.
+            examples:
+              created:
+                value:
+                  email: someone@example.com
+                  name: Someone
+                  trust_level: trusted
+              email_missing:
+                value:
+                  name: Someone
+                  trust_level: trusted
+              # A display name and address, not a bare address.
+              email_invalid:
+                value:
+                  email: Refused <refused@example.com>
+                  name: Someone
+                  trust_level: trusted
+              trust_level_invalid:
+                value:
+                  email: refused@example.com
+                  name: Someone
+                  trust_level: friend
       responses:
         "201":
           description: Contact created
@@ -2311,6 +2555,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Contact"
+              examples:
+                created:
+                  value:
+                    data:
+                      id: 1
+                      mailbox_id: 1
+                      email: someone@example.com
+                      name: Someone
+                      trust_level: trusted
+                      source: manual
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             updateContact:
               operationId: updateContact
@@ -2323,7 +2579,36 @@ paths:
                 id: '$request.path.id'
                 cid: '$response.body#/data/id'
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                email_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          email: required
+                email_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          email: must be an email address
+                trust_level_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          trust_level: "must be auto, trusted, or blocked"
 
   /api/v1/accounts/{id}/contacts/{cid}:
     parameters:
@@ -2442,10 +2727,27 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ImportContactsRequest"
-            example:
-              contacts:
-                - email: carol@example.org
-                  name: Carol
+            examples:
+              imported:
+                value:
+                  contacts:
+                    - email: carol@example.org
+                      name: Carol
+              body_array:
+                value: []
+              contacts_missing:
+                value: {}
+              contacts_empty:
+                value: {contacts: []}
+              email_missing:
+                value: {contacts: [{}]}
+              email_invalid:
+                value: {contacts: [{email: not-an-email}]}
+              mixed_batch:
+                value:
+                  contacts:
+                    - {email: valid-import@example.org, name: Must not be imported}
+                    - {email: not-an-email}
       responses:
         "200":
           description: Import result
@@ -2461,8 +2763,55 @@ paths:
                     properties:
                       imported:
                         type: integer
+              examples:
+                imported:
+                  value: {data: {imported: 1}}
+        "400":
+          description: Request body is not a JSON object of contact import fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value: {error: {code: bad_request, message: Invalid request body}}
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Contacts missing or empty, or an entry has a missing or invalid email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                contacts_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {contacts: required}}
+                contacts_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {contacts: required}}
+                email_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {"contacts[0].email": required}}
+                email_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {"contacts[0].email": must be an email address}}
+                mixed_batch:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details: {fields: {"contacts[1].email": must be an email address}}
 
   /api/v1/accounts/{id}/contacts/suggest:
     parameters:
@@ -2535,6 +2884,26 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/VacationConfig"
+            examples:
+              configured:
+                value: {enabled: true, subject: "Out of office", body: "I will reply when I return."}
+              body_array:
+                value: []
+              enabled_missing:
+                value: {subject: "Out of office", body: "I will reply when I return."}
+              subject_missing:
+                value: {enabled: true, body: "I will reply when I return."}
+              body_missing:
+                value: {enabled: true, subject: "Out of office"}
+              reply_missing:
+                value: {enabled: true}
+              dates_reversed:
+                value:
+                  enabled: true
+                  subject: "Out of office"
+                  body: "I will reply when I return."
+                  start_date: "2030-01-02T00:00:00Z"
+                  end_date: "2030-01-01T00:00:00Z"
       responses:
         "200":
           description: Vacation config updated
@@ -2546,8 +2915,62 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/VacationConfig"
+              examples:
+                configured:
+                  value:
+                    data: {enabled: true, subject: "Out of office", body: "I will reply when I return."}
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: "Invalid request body"}
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                enabled_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {enabled: required}
+                subject_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {subject: "required when enabled"}
+                body_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {body: "required when enabled"}
+                reply_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {subject: "required when enabled", body: "required when enabled"}
+                dates_reversed:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: "Request body failed validation"
+                      details:
+                        fields: {end_date: "must be after start_date"}
     delete:
       operationId: disableVacation
       tags: [Vacation]
@@ -3236,6 +3659,14 @@ paths:
               operationId: domainDNSCheck
               parameters:
                 id: '$response.body#/data/id'
+            setDomainRelay:
+              operationId: setDomainRelay
+              parameters:
+                id: '$response.body#/data/id'
+            getDomainRelay:
+              operationId: getDomainRelay
+              parameters:
+                id: '$response.body#/data/id'
             setMtaStsPolicy:
               operationId: setMtaStsPolicy
               parameters:
@@ -3331,6 +3762,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateDomainRequest"
+            examples:
+              updated:
+                value:
+                  sending_policy: transactional
+              sending_policy_invalid:
+                value:
+                  sending_policy: newsletter
       responses:
         "200":
           description: Domain updated
@@ -3342,6 +3780,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Domain"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 1
+                      name: example.org
+                      server_type: restmail
+                      active: false
+                      default_quota_bytes: 0
+                      sending_policy: transactional
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -3351,7 +3801,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                sending_policy_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          sending_policy: must be 'transactional', 'bulk' or empty
     delete:
       operationId: deleteDomain
       tags: ["Admin: Domains"]
@@ -3359,11 +3822,20 @@ paths:
         - CookieAuth: [domains:delete]
         - BearerAuth: [domains:delete]
       summary: Delete a domain
+      description: >
+        Only a domain with no accounts and no aliases can be deleted: delete
+        those first.
       responses:
         "204":
           description: Domain deleted
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: The domain still has accounts or aliases (`domain_not_empty`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: Mailboxes
@@ -3441,10 +3913,21 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateMailboxRequest"
-            example:
-              display_name: Contract Test
-              quota_bytes: 1073741824
-              active: true
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              updated:
+                value:
+                  display_name: Contract Test
+                  quota_bytes: 1073741824
+                  active: true
+              # A password under 12 characters: refused before anything is
+              # hashed or stored, so the account keeps its passwords and
+              # sessions.
+              password_short:
+                value:
+                  display_name: Contract Test
+                  password: short
       responses:
         "200":
           description: Mailbox updated
@@ -3456,6 +3939,24 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Mailbox"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 2
+                      domain_id: 1
+                      local_part: new-account
+                      address: new-account@restmail.test
+                      display_name: Contract Test
+                      quota_bytes: 1073741824
+                      quota_used_bytes: 0
+                      active: true
+                      last_login_at: null
+                      password_change_required: false
+                      two_factor_required: false
+                      last_password_change: null
+                      created_at: "2026-10-21T12:00:00Z"
+                      updated_at: "2026-10-21T12:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -3464,6 +3965,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                password_short:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          password: must be at least 12 characters
     delete:
       operationId: deleteMailbox
       tags: ["Admin: Mailboxes"]
@@ -3683,6 +4193,13 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateAliasRequest"
+            examples:
+              updated:
+                value:
+                  destination_address: admin@restmail.test
+              destination_invalid:
+                value:
+                  destination_address: not-an-email
       responses:
         "200":
           description: Alias updated
@@ -3694,10 +4211,33 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Alias"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      source_address: sales@restmail.test
+                      destination_address: admin@restmail.test
+                      active: true
+                      created_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                destination_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          destination_address: must be a valid email address
     delete:
       operationId: deleteAlias
       tags: ["Admin: Aliases"]
@@ -3874,6 +4414,21 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdatePipelineRequest"
+            examples:
+              updated:
+                value:
+                  filters:
+                    - name: spf_check
+                      config: {}
+                  active: false
+              filters_object:
+                value:
+                  filters: {name: spf_check, config: {}}
+                  active: false
+              filters_null:
+                value:
+                  filters: null
+                  active: false
       responses:
         "200":
           description: Pipeline updated
@@ -3885,10 +4440,44 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/Pipeline"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      direction: inbound
+                      filters:
+                        - name: spf_check
+                          config: {}
+                      active: false
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                filters_object:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          filters: must be an array of filter objects
+                filters_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          filters: must be an array of filter objects
     delete:
       operationId: deletePipeline
       tags: ["Admin: Pipelines"]
@@ -4444,14 +5033,23 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/UpdateCustomFilterRequest"
-            example:
-              description: Tags mail about invoices and receipts
-              config:
-                script: |
-                  function filter(email) {
-                    return { action: "continue" };
-                  }
-              enabled: true
+            # The createCustomFilter link supplies the stored filter's ID.
+            examples:
+              updated:
+                value:
+                  description: Tags mail about invoices and receipts
+                  config: {script: 'function filter(email) { return { action: "continue" }; }'}
+                  enabled: true
+              name_empty:
+                value: {name: "", enabled: true}
+              filter_type_invalid:
+                value: {filter_type: invalid, enabled: true}
+              direction_invalid:
+                value: {direction: sideways, enabled: true}
+              config_array:
+                value: {config: [], enabled: true}
+              config_null:
+                value: {config: null, enabled: true}
       responses:
         "200":
           description: Custom filter updated
@@ -4463,10 +5061,64 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/CustomFilter"
+              examples:
+                updated:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      name: tag-invoices
+                      description: Tags mail about invoices and receipts
+                      filter_type: action
+                      direction: inbound
+                      config: {script: 'function filter(email) { return { action: "continue" }; }'}
+                      enabled: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                name_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {name: required}
+                filter_type_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {filter_type: must be action or transform}
+                direction_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {direction: 'must be inbound, outbound or both'}
+                config_array:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {config: must be an object}
+                config_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields: {config: must be an object}
     delete:
       operationId: deleteCustomFilter
       tags: ["Admin: Custom Filters"]
@@ -5261,6 +5913,23 @@ paths:
                   minimum: 0
                   maximum: 3650
                   example: 90
+            examples:
+              configured:
+                value: {rotation_interval_days: 90}
+              body_array:
+                value: []
+              interval_wrong_type:
+                value: {rotation_interval_days: "90"}
+              field_unknown:
+                value: {rotation_interval_days: 90, private_key: injected}
+              interval_missing:
+                value: {}
+              interval_null:
+                value: {rotation_interval_days: null}
+              interval_negative:
+                value: {rotation_interval_days: -1}
+              interval_too_large:
+                value: {rotation_interval_days: 3651}
       responses:
         "200":
           description: DKIM rotation settings saved
@@ -5272,12 +5941,26 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DKIMRotationSettings"
+              examples:
+                configured:
+                  value:
+                    data: {domain_id: 1, rotation_interval_days: 90}
         "400":
           description: Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                interval_wrong_type:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
+                field_unknown:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -5286,6 +5969,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                interval_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_null:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_negative:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_too_large:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Invalid DKIM rotation interval
+                      details:
+                        fields:
+                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
 
   /api/v1/admin/dkim/{id}:
     parameters:
@@ -6862,11 +7578,30 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/SetMTASTSPolicyRequest"
-            example:
-              mode: testing
-              mx_hosts: mail.example.org
-              max_age: 86400
-              active: true
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              policy:
+                value:
+                  mode: testing
+                  mx_hosts: mail.example.org
+                  max_age: 86400
+                  active: true
+              # The policy request with a mode MTA-STS does not have: refused
+              # before the domain is looked up.
+              mode_invalid:
+                value:
+                  mode: strict
+                  mx_hosts: mail.example.org
+                  max_age: 86400
+                  active: true
+              # The policy request with a negative lifetime.
+              max_age_negative:
+                value:
+                  mode: testing
+                  mx_hosts: mail.example.org
+                  max_age: -1
+                  active: true
       responses:
         "201":
           description: Policy created
@@ -6878,6 +7613,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
+              examples:
+                policy:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      mode: testing
+                      mx_hosts: mail.example.org
+                      max_age: 86400
+                      active: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
           links:
             getMtaStsPolicy:
               operationId: getMtaStsPolicy
@@ -6897,10 +7644,43 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/MTASTSPolicy"
+              examples:
+                policy:
+                  value:
+                    data:
+                      id: 1
+                      domain_id: 1
+                      mode: testing
+                      mx_hosts: mail.example.org
+                      max_age: 86400
+                      active: true
+                      created_at: "2026-01-01T00:00:00Z"
+                      updated_at: "2026-01-01T00:00:00Z"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                mode_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          mode: "Must be one of: none, testing, enforce"
+                max_age_negative:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          max_age: Must be a non-negative integer (seconds)
     delete:
       operationId: deleteMtaStsPolicy
       tags: ["Admin: MTA-STS"]
@@ -6991,6 +7771,53 @@ paths:
                 summary: Deliver straight to each recipient's MX
                 value:
                   transport: direct
+              body_array:
+                value: []
+              port_wrong_type:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: '587'
+                  tls_mode: starttls
+                  username: apikey
+                  password: relay-password
+              transport_missing:
+                value: {}
+              transport_invalid:
+                value:
+                  transport: smtp
+              host_invalid:
+                value:
+                  transport: relay
+                  host: smtp://smtp.example.net
+                  port: 587
+                  tls_mode: starttls
+                  username: apikey
+                  password: relay-password
+              port_invalid:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: 65536
+                  tls_mode: starttls
+                  username: apikey
+                  password: relay-password
+              tls_mode_invalid:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: 587
+                  tls_mode: none
+                  username: apikey
+                  password: relay-password
+              credentials_mismatch:
+                value:
+                  transport: relay
+                  host: smtp.example.net
+                  port: 587
+                  tls_mode: starttls
+                  username: apikey
+                  password: ''
       responses:
         "200":
           description: Outbound transport saved
@@ -7002,12 +7829,99 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/DomainRelay"
+              examples:
+                relay:
+                  value:
+                    data:
+                      domain_id: 1
+                      transport: relay
+                      host: smtp.example.net
+                      port: 587
+                      tls_mode: starttls
+                      username: apikey
+                      password_set: true
+                direct:
+                  value:
+                    data:
+                      domain_id: 1
+                      transport: direct
+                      password_set: false
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "400":
+          description: Invalid domain ID or a body that cannot decode as the request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                body_array:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+                port_wrong_type:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                transport_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          transport: 'Must be one of: direct, relay'
+                transport_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          transport: 'Must be one of: direct, relay'
+                host_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          host: Must be a bare host name or IP address, with no scheme, port or path
+                port_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          port: Must be between 1 and 65535
+                tls_mode_invalid:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          tls_mode: 'Must be one of: starttls, implicit'
+                credentials_mismatch:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          password: A username and a password are set together, or neither
 
   # ═══════════════════════════════════════════════════════════════
   # Admin: TLS Reports
@@ -7307,6 +8221,17 @@ paths:
                   type: string
                 timeout:
                   type: string
+            # Named, as are the responses they produce: a request pairs only
+            # with the response example of the same name (#386).
+            examples:
+              probed:
+                value:
+                  services: [db]
+              # A service the handler cannot probe: refused before anything
+              # is reached.
+              service_unknown:
+                value:
+                  services: [ftp]
       responses:
         "200":
           description: Per-service probe results
@@ -7321,10 +8246,30 @@ paths:
                     additionalProperties:
                       type: object
                       additionalProperties: true
+              examples:
+                probed:
+                  value:
+                    data:
+                      db:
+                        status: ok
+                        latency: 1.2ms
         "403":
           description: Disabled in production
         "422":
-          $ref: "#/components/responses/ValidationError"
+          description: Request body failed validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorResponse"
+              examples:
+                service_unknown:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          services: 'unknown service "ftp": want smtp, smtp_submission, imap, pop3, dns or db'
 
   /api/v1/admin/test/reset:
     post:
@@ -8029,13 +8974,15 @@ components:
 
     SendMessageRequest:
       type: object
-      required: [from, to, subject]
+      # No subject is a message with an empty Subject, as the handler sends it.
+      required: [from, to]
       properties:
         from:
           type: string
           format: email
         to:
           type: array
+          minItems: 1
           items:
             type: string
             format: email
@@ -8057,43 +9004,89 @@ components:
           type: string
         in_reply_to:
           type: string
+        scheduled_at:
+          type: string
+          format: date-time
+          description: >-
+            Send the message at this time instead of now (at least one
+            minute ahead, and within a year). The response is 202 with the
+            stored scheduled message, and the message is not sent until then.
+            Omit it to send immediately.
+        # Inline rather than a $ref: vertrag 0.29 validates each boundary probe
+        # against the body schema without resolving a nested $ref, and drops
+        # every probe of a body that has one (#388).
         list_unsubscribe:
-          $ref: "#/components/schemas/ListUnsubscribe"
+          type: object
+          description: >
+            Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058),
+            published as the message's List-Unsubscribe field. You run the
+            endpoint; the server never fetches or posts to it. With `https`, the
+            message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+            and both fields are DKIM signed; a sender domain with no DKIM key is
+            refused with 422 `dkim_required` rather than sent with an unsigned
+            one-click claim. With only `mailto`, there is no one-click field. Omit
+            the object and the message carries neither field. A value with a line
+            break, a space, a comma, an angle bracket or quote, or any other scheme
+            is refused with 400, as is any key other than `mailto` and `https`.
+          minProperties: 1
+          additionalProperties: false
+          properties:
+            mailto:
+              type: string
+              format: email
+              description: >
+                A bare ASCII address (no display name, no `mailto:`, no query),
+                published as `<mailto:address>`.
+              example: unsubscribe@example.com
+            https:
+              type: string
+              format: uri
+              maxLength: 2048
+              pattern: "^https://"
+              description: >
+                One absolute https URL with a host and no credentials, which
+                unsubscribes the recipient when it receives the RFC 8058 one-click
+                POST (body `List-Unsubscribe=One-Click`). It should identify the
+                recipient and the list, as RFC 8058 §3.1 asks.
+              example: https://example.com/unsubscribe?t=opaque-token
 
-    ListUnsubscribe:
+    ScheduledSend:
       type: object
-      description: >
-        Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058),
-        published as the message's List-Unsubscribe field. You run the
-        endpoint; the server never fetches or posts to it. With `https`, the
-        message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
-        and both fields are DKIM signed; a sender domain with no DKIM key is
-        refused with 422 `dkim_required` rather than sent with an unsigned
-        one-click claim. With only `mailto`, there is no one-click field. Omit
-        the object and the message carries neither field. A value with a line
-        break, a space, a comma, an angle bracket or quote, or any other scheme
-        is refused with 400, as is any key other than `mailto` and `https`.
-      minProperties: 1
-      additionalProperties: false
+      required: [id, account_id, from, to, subject, scheduled_at, status, created_at, updated_at]
       properties:
-        mailto:
+        id:
+          type: integer
+        account_id:
+          type: integer
+        from:
           type: string
           format: email
-          description: >
-            A bare ASCII address (no display name, no `mailto:`, no query),
-            published as `<mailto:address>`.
-          example: unsubscribe@example.com
-        https:
+        to:
+          type: array
+          items:
+            type: string
+            format: email
+        subject:
           type: string
-          format: uri
-          maxLength: 2048
-          pattern: "^https://"
-          description: >
-            One absolute https URL with a host and no credentials, which
-            unsubscribes the recipient when it receives the RFC 8058 one-click
-            POST (body `List-Unsubscribe=One-Click`). It should identify the
-            recipient and the list, as RFC 8058 §3.1 asks.
-          example: https://example.com/unsubscribe?t=opaque-token
+        scheduled_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [pending, sending, sent, failed, cancelled]
+        attempts:
+          type: integer
+        sent_message_id:
+          type: integer
+          nullable: true
+        last_error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     ForwardMessageRequest:
       type: object
@@ -8115,7 +9108,6 @@ components:
     # ─────────────────────────────────────────────────────────────
     DraftRequest:
       type: object
-      required: [from]
       properties:
         from:
           type: string
@@ -8288,18 +9280,19 @@ components:
       type: object
       required: [enabled, subject, body]
       # An enabled auto-reply needs something to send: setVacation refuses an
-      # empty subject or body while enabled is true.
-      if:
-        required: [enabled]
-        properties:
-          enabled:
-            const: true
-      then:
-        properties:
-          subject:
-            minLength: 1
-          body:
-            minLength: 1
+      # empty subject or body while enabled is true. Stated as anyOf with an
+      # enum rather than if/then and const, so every JSON Schema draft reads
+      # it the same: the contract tests' boundary probes judged an empty
+      # subject valid under the if/then form (#388).
+      anyOf:
+        - properties:
+            enabled:
+              enum: [false]
+        - properties:
+            subject:
+              minLength: 1
+            body:
+              minLength: 1
       properties:
         enabled:
           type: boolean
@@ -8469,13 +9462,33 @@ components:
 
     RestmailDeliverRequest:
       type: object
-      required: [to]
+      description: >-
+        Recipients come from a non-empty to list, otherwise a non-empty
+        recipients list, otherwise the To header parsed from raw_message.
+        A raw message must contain a parseable To header when neither list
+        supplies recipients; an empty or missing recipient set is refused.
+      anyOf:
+        - required: [to]
+          properties:
+            to:
+              type: array
+              minItems: 1
+        - required: [recipients]
+          properties:
+            recipients:
+              type: array
+              minItems: 1
+        - required: [raw_message]
+          properties:
+            raw_message:
+              type: string
+              minLength: 1
       properties:
         from:
           type: string
           format: email
         to:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8505,7 +9518,7 @@ components:
           format: email
           description: Alias for 'from'
         recipients:
-          type: array
+          type: [array, "null"]
           items:
             type: string
             format: email
@@ -8558,13 +9571,16 @@ components:
 
     CreateDomainRequest:
       type: object
-      required: [name, server_type]
+      required: [name]
       properties:
         name:
           type: string
+          minLength: 1
         server_type:
-          type: string
-          enum: [traditional, restmail]
+          type: [string, "null"]
+          enum: [traditional, restmail, "", null]
+          default: traditional
+          description: Omitted, empty or null selects traditional.
         default_quota_bytes:
           type: integer
           format: int64
@@ -8789,6 +9805,7 @@ components:
       properties:
         filter_name:
           type: string
+          minLength: 1
         config:
           type: object
         email:
@@ -9083,6 +10100,7 @@ components:
       properties:
         pattern:
           type: string
+          minLength: 1
           description: "Email address (spam@evil.com) or domain pattern (@evil.com)"
         reason:
           type: string
@@ -9724,6 +10742,17 @@ components:
     SetDomainRelayRequest:
       type: object
       required: [transport]
+      # A relay needs somewhere to dial: setDomainRelay refuses one without
+      # its host, port and TLS mode. Stated as anyOf with an enum, which
+      # draft-04 and 2020-12 validators read alike (if/then is 2019-09+).
+      anyOf:
+        - properties:
+            transport:
+              enum: [direct]
+        - required: [host, port, tls_mode]
+          properties:
+            transport:
+              enum: [relay]
       properties:
         transport:
           type: string
@@ -9842,6 +10871,7 @@ components:
       properties:
         organization-name:
           type: string
+          minLength: 1
         contact-info:
           type: string
         report-id:
@@ -9858,11 +10888,15 @@ components:
               format: date-time
         policies:
           type: array
+          minItems: 1
+          maxItems: 100
           items:
             type: object
+            required: [policy]
             properties:
               policy:
                 type: object
+                required: [policy-domain]
                 properties:
                   policy-type:
                     type: string
@@ -9872,6 +10906,8 @@ components:
                       type: string
                   policy-domain:
                     type: string
+                    minLength: 1
+                    format: hostname
                   mx-host:
                     type: array
                     items:
