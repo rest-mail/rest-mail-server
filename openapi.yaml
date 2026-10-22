@@ -6179,8 +6179,16 @@ paths:
                 value: []
               selector_missing:
                 value: {private_key: fixture-signing-key}
+              selector_empty:
+                value: {selector: "", private_key: fixture-signing-key}
+              selector_wrong_type:
+                value: {selector: 42, private_key: fixture-signing-key}
               private_key_missing:
                 value: {selector: contract}
+              private_key_empty:
+                value: {selector: contract, private_key: ""}
+              private_key_wrong_type:
+                value: {selector: contract, private_key: 42}
               selector_invalid:
                 value: {selector: invalid_selector, private_key: fixture-signing-key}
               private_key_invalid:
@@ -6224,9 +6232,21 @@ paths:
                 selector_missing:
                   value:
                     error: {code: bad_request, message: selector and private_key are required}
+                selector_empty:
+                  value:
+                    error: {code: bad_request, message: selector and private_key are required}
+                selector_wrong_type:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
                 private_key_missing:
                   value:
                     error: {code: bad_request, message: selector and private_key are required}
+                private_key_empty:
+                  value:
+                    error: {code: bad_request, message: selector and private_key are required}
+                private_key_wrong_type:
+                  value:
+                    error: {code: bad_request, message: Invalid request body}
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -10379,10 +10399,13 @@ components:
       properties:
         selector:
           type: string
+          minLength: 1
           maxLength: 63
+          pattern: '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$'
           description: A DNS name; the key's record is `<selector>._domainkey.<domain>`
         private_key:
           type: string
+          minLength: 1
           description: >
             PEM-encoded private key: RSA of at least 2048 bits (PKCS#1 or
             PKCS#8), or Ed25519 (PKCS#8)

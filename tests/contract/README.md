@@ -300,14 +300,23 @@ certificate when activation requires one. The query and caller's credential
 stay unchanged. Discovery therefore runs independently of `updateDomain`'s
 example, which updates only the sending policy.
 
-`setDKIMKey` pairs `installed` with 200, `body_array`, `selector_missing`
-and `private_key_missing` with 400, and `selector_invalid` and
+`setDKIMKey` pairs `installed` with 200; `body_array` and missing, empty or
+wrong-type selectors and private keys with 400; and `selector_invalid` and
 `private_key_invalid` with 422. The hook replaces only the explicit
 `fixture-signing-key` placeholder, preserving malformed bodies, missing
 fields and invalid selectors or keys. The existing createDomain link supplies
 the domain ID. Refusals leave the stored domain unchanged
 (`contract_dkim_key_examples_test.go`, `test_contract_dkim_hook.py`). DKIM
 rotation retains its own exclusions.
+
+Generated DKIM requests hold a public test-only Ed25519 key through
+`fuzz.pin.private_key`: schema generation cannot construct a signing key.
+Selector and body probes still run, with nonempty fields and DNS selector
+syntax described in the schema. Generated private-key mutations are held
+fixed; the named examples above exercise their refusals instead, including
+missing, empty, wrong-type and non-PEM keys. The placeholder hook leaves
+generated request bytes unchanged, and no coverage baseline or accepted-status
+exception is added.
 
 `setDKIMRotation` pairs `configured` with 200, `body_array`,
 `interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,

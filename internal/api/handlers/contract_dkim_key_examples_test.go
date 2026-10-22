@@ -11,13 +11,17 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/outbound"
 	yaml "go.yaml.in/yaml/v2"
 )
 
@@ -73,9 +77,9 @@ func TestDKIMKeyContract_ExamplePairs(t *testing.T) {
 		got[status] = names(examples)
 	}
 	want := map[string][]string{
-		"request": {"body_array", "installed", "private_key_invalid", "private_key_missing", "selector_invalid", "selector_missing"},
+		"request": {"body_array", "installed", "private_key_empty", "private_key_invalid", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_invalid", "selector_missing", "selector_wrong_type"},
 		"200":     {"installed"},
-		"400":     {"body_array", "private_key_missing", "selector_missing"},
+		"400":     {"body_array", "private_key_empty", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_missing", "selector_wrong_type"},
 		"422":     {"private_key_invalid", "selector_invalid"},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -84,15 +88,75 @@ func TestDKIMKeyContract_ExamplePairs(t *testing.T) {
 	// Pin the requests too: changing a placeholder or repairing a refusal in
 	// the spec must not silently leave this test exercising a different case.
 	bodies := map[string]interface{}{
-		"installed":           map[string]interface{}{"selector": "contract", "private_key": "fixture-signing-key"},
-		"body_array":          []interface{}{},
-		"selector_missing":    map[string]interface{}{"private_key": "fixture-signing-key"},
-		"private_key_missing": map[string]interface{}{"selector": "contract"},
-		"selector_invalid":    map[string]interface{}{"selector": "invalid_selector", "private_key": "fixture-signing-key"},
-		"private_key_invalid": map[string]interface{}{"selector": "contract", "private_key": "not a key"},
+		"installed":              map[string]interface{}{"selector": "contract", "private_key": "fixture-signing-key"},
+		"body_array":             []interface{}{},
+		"selector_missing":       map[string]interface{}{"private_key": "fixture-signing-key"},
+		"selector_empty":         map[string]interface{}{"selector": "", "private_key": "fixture-signing-key"},
+		"selector_wrong_type":    map[string]interface{}{"selector": float64(42), "private_key": "fixture-signing-key"},
+		"private_key_missing":    map[string]interface{}{"selector": "contract"},
+		"private_key_empty":      map[string]interface{}{"selector": "contract", "private_key": ""},
+		"private_key_wrong_type": map[string]interface{}{"selector": "contract", "private_key": float64(42)},
+		"selector_invalid":       map[string]interface{}{"selector": "invalid_selector", "private_key": "fixture-signing-key"},
+		"private_key_invalid":    map[string]interface{}{"selector": "contract", "private_key": "not a key"},
 	}
 	if !reflect.DeepEqual(requests, bodies) {
 		t.Fatalf("requests = %s, want %s", mustJSON(requests), mustJSON(bodies))
+	}
+}
+
+func TestDKIMKeyContract_GeneratedFixture(t *testing.T) {
+	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type property struct {
+		MinLength int    `yaml:"minLength"`
+		MaxLength int    `yaml:"maxLength"`
+		Pattern   string `yaml:"pattern"`
+	}
+	var spec struct {
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]property `yaml:"properties"`
+			} `yaml:"schemas"`
+		} `yaml:"components"`
+	}
+	if err := yaml.Unmarshal(served, &spec); err != nil {
+		t.Fatal(err)
+	}
+	properties := spec.Components.Schemas["SetDKIMKeyRequest"].Properties
+	selector := properties["selector"]
+	if selector.MinLength != 1 || selector.MaxLength != 63 || properties["private_key"].MinLength != 1 || selector.Pattern == "" {
+		t.Fatal("DKIM fields must be nonempty and selectors must describe DNS syntax and length")
+	}
+	pattern, err := regexp.Compile(selector.Pattern)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := os.ReadFile("../../../vertrag.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings struct {
+		Fuzz struct {
+			Pin map[string]string `yaml:"pin"`
+		} `yaml:"fuzz"`
+	}
+	if err := yaml.Unmarshal(config, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if len(settings.Fuzz.Pin) != 1 || settings.Fuzz.Pin["private_key"] == "" {
+		t.Fatal("hold only the public test signing key, leaving selectors and bodies generated")
+	}
+	key := settings.Fuzz.Pin["private_key"]
+	for _, value := range []string{"x", "contract", "A1", "a-b", "alpha.beta", strings.Repeat("x", 63), "", "-", "-x", "x-", "invalid_selector", "a..b", "a\n", strings.Repeat("x", 64)} {
+		t.Run(fmt.Sprintf("selector_%q", value), func(t *testing.T) {
+			permitted := len(value) >= selector.MinLength && len(value) <= selector.MaxLength && pattern.MatchString(value)
+			err := outbound.CheckDKIMKey("example.com", value, key)
+			if permitted != (err == nil) {
+				t.Fatalf("schema permits %q = %v, signing check = %v", value, permitted, err)
+			}
+		})
 	}
 }
 

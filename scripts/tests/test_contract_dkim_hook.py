@@ -64,6 +64,27 @@ class ContractDKIMHookTests(unittest.TestCase):
                     self.assertEqual(transaction, before)
             openssl.assert_not_called()
 
+    def test_generated_key_is_scoped_and_hook_leaves_it_unchanged(self):
+        with (ROOT / "vertrag.yml").open() as source:
+            config = yaml.safe_load(source)
+        pin = config["fuzz"]["pin"]
+        self.assertEqual(set(pin), {"private_key"})
+        with (ROOT / "openapi.yaml").open() as source:
+            spec = yaml.safe_load(source)
+        # Pins match declared property names globally. Catch any new schema
+        # that would unintentionally share this signing-key fixture.
+        owners = {name for name, schema in spec["components"]["schemas"].items()
+                  if "private_key" in schema.get("properties", {})}
+        self.assertEqual(owners, {"SetDKIMKeyRequest"})
+        for selector in ["x", "", "invalid_selector", "x" * 64, 42]:
+            with self.subTest(selector=selector):
+                transaction = self.transaction({"selector": selector, **pin})
+                before = copy.deepcopy(transaction)
+                with patch.object(self.module, "openssl") as openssl:
+                    self.module.a_fresh_signing_key(transaction)
+                    openssl.assert_not_called()
+                self.assertEqual(transaction, before)
+
 
 if __name__ == "__main__":
     unittest.main()
