@@ -824,15 +824,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
 
 		// Queue management
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue", queueH.ListQueue)
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/stats", queueH.QueueStats)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-retry", queueH.BulkRetry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-bounce", queueH.BulkBounce)
-		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/bulk-delete", queueH.BulkDelete)
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/{id}", queueH.GetQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/retry", queueH.RetryQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/bounce", queueH.BounceQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/{id}", queueH.DeleteQueueEntry)
+		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
 
 		// Sender allowlist/blocklist (domain-scoped → domains:* capabilities)
 		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)

@@ -6023,6 +6023,9 @@ paths:
               # Neither ids nor a filter: refused before any entry is selected.
               selection_missing:
                 value: {}
+              invalid_ids:
+                value:
+                  ids: "1"
       responses:
         "200":
           description: Bulk retry result
@@ -6042,8 +6045,8 @@ paths:
         "400":
           description: >-
             Invalid JSON or a body that cannot be decoded into the request shape;
-            no IDs and no filter; or more than 1000 IDs. Refused before any queue
-            lookup. An empty filter object is accepted.
+            or no IDs and no filter. Refused before any queue lookup. An empty
+            filter object is accepted. Invalid fields and more than 1000 IDs answer 422.
           content:
             application/json:
               schema:
@@ -6059,6 +6062,21 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
+        "422":
+          description: Invalid request fields, including more than 1000 IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_ids:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: must be an array
 
   /api/v1/admin/queue/bulk-bounce:
     post:
@@ -6085,6 +6103,9 @@ paths:
               # Neither ids nor a filter: refused before any entry is selected.
               selection_missing:
                 value: {}
+              invalid_ids:
+                value:
+                  ids: "1"
       responses:
         "200":
           description: Bulk bounce result
@@ -6104,8 +6125,8 @@ paths:
         "400":
           description: >-
             Invalid JSON or a body that cannot be decoded into the request shape;
-            no IDs and no filter; or more than 1000 IDs. Refused before any queue
-            lookup. An empty filter object is accepted.
+            or no IDs and no filter. Refused before any queue lookup. An empty
+            filter object is accepted. Invalid fields and more than 1000 IDs answer 422.
           content:
             application/json:
               schema:
@@ -6121,6 +6142,21 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
+        "422":
+          description: Invalid request fields, including more than 1000 IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_ids:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: must be an array
 
   /api/v1/admin/queue/bulk-delete:
     delete:
@@ -6144,6 +6180,9 @@ paths:
               # Neither ids nor a filter: refused before any entry is selected.
               selection_missing:
                 value: {}
+              invalid_ids:
+                value:
+                  ids: "1"
       responses:
         "200":
           description: Bulk delete result
@@ -6172,6 +6211,21 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
+        "422":
+          description: Invalid request fields, including more than 1000 IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_ids:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: must be an array
 
   /api/v1/admin/queue/{id}:
     parameters:
@@ -6205,6 +6259,7 @@ paths:
         - BearerAuth: [queue:manage]
         - APIKeyAuth: [queue:manage]
       summary: Delete a queue entry
+      description: Answers 404 not_found when the ID does not exist.
       responses:
         "204":
           description: Queue entry deleted
