@@ -34,7 +34,7 @@ func putDKIMKey(t *testing.T, tx *gorm.DB, domain models.Domain, selector, keyPE
 	rctx.URLParams.Add("id", fmt.Sprint(domain.ID))
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
-	NewDKIMHandler(tx, dkimTestMasterKey).SetKey(rr, req)
+	dkimRoutes(NewDKIMHandler(tx, dkimTestMasterKey)).ServeHTTP(rr, req)
 	return rr
 }
 
@@ -169,7 +169,7 @@ func TestSetDKIMKey_RefusesWhatCannotSign(t *testing.T) {
 				t.Fatalf("decode: %v", err)
 			}
 			if resp.Error.Code != "validation_failed" || resp.Error.Details.Fields[tc.field] == "" ||
-				!strings.HasPrefix(resp.Error.Message, tc.field+" ") {
+				resp.Error.Message != "Request body failed validation" {
 				t.Fatalf("error = %+v, want validation_failed naming %s", resp.Error, tc.field)
 			}
 
@@ -201,7 +201,7 @@ func TestListDKIMKeys_ReportsKnownAndUnknownAgeWithoutPrivateMaterial(t *testing
 
 	rr := httptest.NewRecorder()
 	before := time.Now()
-	NewDKIMHandler(tx, dkimTestMasterKey).ListKeys(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/dkim", nil))
+	dkimRoutes(NewDKIMHandler(tx, dkimTestMasterKey)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/dkim", nil))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
 	}
@@ -313,7 +313,7 @@ func TestSetDKIMKey_TracksInstallationAndDeleteClearsAge(t *testing.T) {
 	rctx.URLParams.Add("id", fmt.Sprint(domain.ID))
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr = httptest.NewRecorder()
-	NewDKIMHandler(tx, dkimTestMasterKey).DeleteKey(rr, req)
+	dkimRoutes(NewDKIMHandler(tx, dkimTestMasterKey)).ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("delete status %d", rr.Code)
 	}
