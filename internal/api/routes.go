@@ -345,8 +345,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	// API Documentation (no auth)
 	// ═══════════════════════════════════════════════════════════════
-	r.Get("/api/docs", SwaggerUIHandler())
-	r.Get("/api/docs/openapi.yaml", OpenAPISpecHandler())
+	registerDocs(endpoint.Routes{Router: r, Registry: registry})
 
 	// ═══════════════════════════════════════════════════════════════
 	// Health — public liveness probe (no auth, always 200 when up). The handler
@@ -362,7 +361,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// A router-local registry avoids retaining DB handles in the global registry.
 	dkimRegistry := prometheus.NewRegistry()
 	dkimRegistry.MustRegister(metrics.NewDKIMKeyAgeCollector(db))
-	r.Handle("/metrics", promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
+	registerMetrics(endpoint.Routes{Router: r, Registry: registry}, promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer,
 		promhttp.HandlerFor(prometheus.Gatherers{
 			prometheus.DefaultGatherer, dkimRegistry,
 		}, promhttp.HandlerOpts{})))
