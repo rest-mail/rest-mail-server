@@ -668,12 +668,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Get("/api/v1/messages/{id}/attachments", attachmentH.ListAttachments)
 
 		// Contacts
-		r.Get("/api/v1/accounts/{id}/contacts", contactH.ListContacts)
-		r.Post("/api/v1/accounts/{id}/contacts", contactH.CreateContact)
-		r.Patch("/api/v1/accounts/{id}/contacts/{cid}", contactH.UpdateContact)
-		r.Delete("/api/v1/accounts/{id}/contacts/{cid}", contactH.DeleteContact)
-		r.Post("/api/v1/accounts/{id}/contacts/block", contactH.BlockSender)
-		r.Post("/api/v1/accounts/{id}/contacts/import", contactH.ImportContacts)
+		contactH.RegisterContacts(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
 		// Vacation
 		r.Get("/api/v1/accounts/{id}/vacation", vacationH.GetVacation)
@@ -685,9 +681,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Put("/api/v1/accounts/{id}/sieve", sieveH.PutScript)
 		r.Delete("/api/v1/accounts/{id}/sieve", sieveH.DeleteScript)
 		r.Post("/api/v1/accounts/{id}/sieve/validate", sieveH.ValidateScript)
-
-		// Contacts suggest (autocomplete)
-		r.Get("/api/v1/accounts/{id}/contacts/suggest", contactH.SuggestContacts)
 
 		// Search
 		r.Get("/api/v1/accounts/{id}/search", searchH.Search)

@@ -214,7 +214,7 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 	t.Cleanup(func() { tx.Rollback() })
 	fx := seedMsgDeleteFixture(t, tx, 0)
 	handlers := map[string]http.HandlerFunc{
-		"listContacts":    NewContactHandler(tx).ListContacts,
+		"listContacts":    contactRoutes(NewContactHandler(tx)).ServeHTTP,
 		"searchMessages":  NewSearchHandler(tx).Search,
 		"getDeliveryLogs": logRoutes(NewLogHandler(tx)).ServeHTTP,
 	}
@@ -252,6 +252,8 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 							path = "/api/v1/admin/logs/delivery"
 						case "listAuditEntries":
 							path = "/api/v1/admin/audit"
+						case "listContacts":
+							path = contactsPathOf(fx.mailbox.ID, "")
 						}
 						req := authzRequest(http.MethodGet, path+"?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID)}, "")
 						rr := httptest.NewRecorder()

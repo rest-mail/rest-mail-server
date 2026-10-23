@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -48,9 +49,7 @@ func TestCreateContact_ContractProbes(t *testing.T) {
 		})
 	})
 	router.Post("/api/v1/auth/login", contractSetupLogin(t))
-	router.Post("/api/v1/accounts/{id}/contacts", h.CreateContact)
-	router.Get("/api/v1/accounts/{id}/contacts", h.ListContacts)
-	router.Delete("/api/v1/accounts/{id}/contacts/{cid}", h.DeleteContact)
+	h.RegisterContacts(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()})
 	server := httptest.NewServer(router)
 	defer server.Close()
 	hookFile, err := filepath.Abs("../../../tests/contract/hooks.py")

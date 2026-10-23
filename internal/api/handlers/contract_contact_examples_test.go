@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -28,13 +27,11 @@ func TestCreateContact_DocumentedRefusals(t *testing.T) {
 		db.Delete(&models.Domain{}, fx.mailbox.DomainID)
 	})
 
-	h := NewContactHandler(db)
+	routes := contactRoutes(NewContactHandler(db))
 	forAccount := func(w http.ResponseWriter, r *http.Request) {
-		route := chi.NewRouteContext()
-		route.URLParams.Add("id", uintToStr(fx.mailbox.ID))
-		ctx := context.WithValue(r.Context(), chi.RouteCtxKey, route)
-		ctx = context.WithValue(ctx, middleware.ClaimsKey, &auth.Claims{AccountID: fx.mailbox.ID})
-		h.CreateContact(w, r.WithContext(ctx))
+		r.URL.Path, r.URL.RawPath = contactsPathOf(fx.mailbox.ID, ""), ""
+		ctx := context.WithValue(r.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: fx.mailbox.ID})
+		routes.ServeHTTP(w, r.WithContext(ctx))
 	}
 	documentedRefusals(t, "/api/v1/accounts/{id}/contacts", "createContact", forAccount)
 

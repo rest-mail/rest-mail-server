@@ -66,10 +66,10 @@ func TestImportContacts_ContractBoundaries(t *testing.T) {
 	if err := db.First(&existing, existing.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	h := NewContactHandler(db)
+	routes := contactRoutes(NewContactHandler(db))
 	post := func(body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.ImportContacts(rr, authzRequest(http.MethodPost, "/contacts/import", mailbox.ID,
+		routes.ServeHTTP(rr, authzRequest(http.MethodPost, contactsPathOf(mailbox.ID, "/import"), mailbox.ID,
 			map[string]string{"id": uintToStr(mailbox.ID)}, body))
 		return rr
 	}
