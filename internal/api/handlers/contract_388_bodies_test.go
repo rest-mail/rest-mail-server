@@ -25,7 +25,7 @@ func TestLogoutRejectsNonStringRefreshToken(t *testing.T) {
 	h := newRefreshHandler(jwt, newFakeRefreshStore())
 
 	rr := httptest.NewRecorder()
-	h.Logout(rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{"refresh_token":12345}`)))
+	serveAuth(h, rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(`{"refresh_token":12345}`)))
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -36,7 +36,7 @@ func TestLogoutRejectsNonStringRefreshToken(t *testing.T) {
 	// No body, an empty object and an empty token still log out.
 	for _, body := range []string{"", `{}`, `{"refresh_token":""}`} {
 		rr := httptest.NewRecorder()
-		h.Logout(rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(body)))
+		serveAuth(h, rr, httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", strings.NewReader(body)))
 		if rr.Code != http.StatusNoContent {
 			t.Errorf("body %q: want 204, got %d (%s)", body, rr.Code, rr.Body.String())
 		}

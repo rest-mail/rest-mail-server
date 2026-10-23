@@ -101,6 +101,8 @@ type Error struct {
 	Code    string
 	Message string
 	Fields  map[string]string
+	// Header is written with the refusal: the Retry-After of a 429.
+	Header http.Header
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("%d %s: %s", e.Status, e.Code, e.Message) }
@@ -376,12 +378,22 @@ func writeError(w http.ResponseWriter, err error) {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Internal server error")
 		return
 	}
+	for name, values := range refusal.Header {
+		for _, v := range values {
+			w.Header().Add(name, v)
+		}
+	}
 	if refusal.Fields != nil {
 		respond.ValidationError(w, refusal.Fields)
 		return
 	}
 	respond.Error(w, refusal.Status, refusal.Code, refusal.Message)
 }
+
+// WriteError writes err as a registered route would answer it: the refusal it is, with its
+// headers, or 500 for anything else. It is for a handler not yet registered that shares
+// code with registered ones.
+func WriteError(w http.ResponseWriter, err error) { writeError(w, err) }
 
 // shape is what a request type takes from a request, read once at registration by the rules
 // go-oapifly's Endpoint.Request describes it with.

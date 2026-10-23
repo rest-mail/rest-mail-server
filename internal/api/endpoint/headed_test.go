@@ -73,3 +73,18 @@ func TestHeadedWritesItsHeadersAndItsValue(t *testing.T) {
 		}
 	}
 }
+
+// A refusal writes its own headers, such as a 429's Retry-After.
+func TestRefusalHeaders(t *testing.T) {
+	r := chi.NewRouter()
+	Register(Routes{Router: r, Registry: NewRegistry()}, Operation{Method: http.MethodPost, Path: "/slow", OperationID: "slow",
+		Errors: []int{http.StatusTooManyRequests}}, func(*http.Request, struct{}) (Empty, error) {
+		return Empty{}, &Error{Status: http.StatusTooManyRequests, Code: "rate_limited", Message: "Later",
+			Header: http.Header{"Retry-After": {"30"}}}
+	})
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/slow", nil))
+	if rr.Code != http.StatusTooManyRequests || rr.Header().Get("Retry-After") != "30" {
+		t.Fatalf("refusal = %d %v", rr.Code, rr.Header())
+	}
+}

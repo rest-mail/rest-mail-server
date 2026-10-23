@@ -418,10 +418,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Burst: cfg.AuthRateLimitBurst,
 		})
 	}
-	r.With(authThrottle, auditLog("auth.sign_in", middleware.AuditSignIn())).Post("/api/v1/auth/login", authH.Login)
-	// Unthrottled, so only a logout that names a session is recorded.
-	r.With(auditLog("auth.sign_out", middleware.AuditRefreshToken(), middleware.AuditIdentifiedOnly())).Post("/api/v1/auth/logout", authH.Logout)
-	r.With(authThrottle, auditLog("auth.refresh", middleware.AuditRefreshToken(), middleware.AuditFailuresOnly())).Post("/api/v1/auth/refresh", authH.Refresh)
+	// Sign-in, refresh and recovery (below) are throttled like login; logout is
+	// unthrottled, so only a logout that names a session is recorded.
+	signInChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: describedAudit(auditLog)}
 	// Redeem a single-use token minted by the operator command (restmail-api
 	// mint-token) or for an owner key: reset an admin who has lost every way
 	// in. Throttled like login: it guesses at a secret.
@@ -437,7 +436,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			TTL:   2 * time.Hour,
 		}))
 	}
-	r.With(authThrottle, auditLog("auth.recover", middleware.AuditStartedSession())).Post("/api/v1/auth/recover", authH.Recover)
+	authH.RegisterSignIn(endpoint.Routes{Router: r, Registry: registry}, signInChecks)
 	// Owners prove themselves with a key registered in PostgreSQL: sign a
 	// challenge, get a reset-admin token to redeem above. Throttled at
 	// login's rate, but in a bucket of its own: the CLI's requests must not use
@@ -626,8 +625,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// password, sent with HTTP Basic. Throttled like login; a refused
 		// credential is recorded by basicCredentials, a successful sign-in
 		// here.
-		r.With(authThrottle, auditLog("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))).
-			Post("/api/v1/auth/protocol-sign-in", credentialH.ProtocolSignIn)
+		credentialH.RegisterProtocolSignIn(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap), signInChecks)
 
 		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
