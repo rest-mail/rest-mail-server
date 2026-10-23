@@ -24,8 +24,9 @@ type widgetPath struct {
 }
 
 type widgetQuery struct {
-	Limit *int   `query:"limit"`
-	Trace string `header:"X-Trace"`
+	Limit  *int    `query:"limit"`
+	Colour *string `query:"colour" enums:"red,blue"`
+	Trace  string  `header:"X-Trace"`
 }
 
 type createWidget struct {
@@ -136,8 +137,10 @@ func TestRegisteredRoutesAnswer(t *testing.T) {
 		{"GET", "/widgets?limit=1", "", []string{"X-Trace", "t1"}, 200, `{"data":[{"id":1,"name":"t1"}],"pagination":{"has_more":false,"total":1}}`},
 		// The request type's rules are enforced before the handler runs, field by field.
 		{"GET", "/widgets?limit=x", "", nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"limit":"must be an integer"}}}}`},
-		// A blank query value is an omitted one.
+		// A blank number is an omitted one.
 		{"GET", "/widgets?limit=", "", nil, 200, `{"data":[{"id":1,"name":""},{"id":2,"name":""}],"pagination":{"has_more":false,"total":2}}`},
+		// A blank string is a value, which its enum refuses.
+		{"GET", "/widgets?colour=", "", nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"colour":"must be one of \"red\" or \"blue\""}}}}`},
 		{"POST", "/widgets", `{"name":"far too long"}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"must be at most 8 characters"}}}}`},
 		{"POST", "/widgets", `{"name":"n","colour":"red"}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"colour":"not allowed"}}}}`},
 		{"POST", "/widgets", `{"name":"new"}`, nil, 201, `{"data":{"id":9,"name":"new"}}`},

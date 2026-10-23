@@ -386,16 +386,22 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		body = read
 	}
 
+	textual := stringParams(reflect.TypeOf(dst))
 	err := oapifly.Bind(dst, func(in, name string) (string, bool) {
 		switch in {
 		case "path":
 			v := chi.URLParam(r, name)
 			return v, v != ""
 		case "query":
-			// A blank value is an omitted one, as url.Values.Get has always read it:
-			// ?domain_id= lists every domain's entries.
-			v := r.URL.Query().Get(name)
-			return v, v != ""
+			values, ok := r.URL.Query()[name]
+			if !ok || len(values) == 0 {
+				return "", false
+			}
+			// A blank number, flag or time is an omitted one, as the handlers read
+			// it with url.Values.Get: ?domain_id= lists every domain's entries. A
+			// blank string is a value, which its enum may refuse: ?status= is not
+			// a status.
+			return values[0], values[0] != "" || textual[name]
 		}
 		v := r.Header.Get(name)
 		return v, v != ""
@@ -412,6 +418,38 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 	}
 	return err
+}
+
+// stringParams names the query parameters of t whose type is a string.
+func stringParams(t reflect.Type) map[string]bool {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	out := map[string]bool{}
+	if t.Kind() != reflect.Struct {
+		return out
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.Anonymous {
+			for name := range stringParams(f.Type) {
+				out[name] = true
+			}
+			continue
+		}
+		name := strings.Split(f.Tag.Get("query"), ",")[0]
+		if name == "" || name == "-" {
+			continue
+		}
+		kind := f.Type
+		for kind.Kind() == reflect.Pointer {
+			kind = kind.Elem()
+		}
+		if kind.Kind() == reflect.String {
+			out[name] = true
+		}
+	}
+	return out
 }
 
 // missingMessages gives a missing field the wording its missing tag documents.
