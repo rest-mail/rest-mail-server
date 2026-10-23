@@ -7,6 +7,7 @@ import { setOnUnauthorized } from '@/api/client';
 import { AccountAccess } from '@/components/auth/AccountAccess';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { SplashScreen } from '@/components/layout/SplashScreen';
 import { TopBar } from '@/components/layout/TopBar';
 import { MessageList } from '@/components/mail/MessageList';
 import { MessageViewer } from '@/components/mail/MessageViewer';
@@ -90,9 +91,10 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isAuthenticated, setupRequired.length, startCompose]);
 
-  // Avoid flashing the login page before the boot session check resolves.
+  // Avoid flashing the login page before the boot session check resolves:
+  // show the splash while the refresh-cookie exchange is in flight.
   if (!sessionChecked) {
-    return null;
+    return <SplashScreen />;
   }
 
   const content = !isAuthenticated ? (
