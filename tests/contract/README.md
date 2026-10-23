@@ -100,6 +100,12 @@ JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
 the real handler with no database).
 
+`CreateDomainRequest.sending_policy` uses an inline enum: vertrag 0.29 drops
+all body probes when the request schema contains a nested `$ref`. The schema
+test holds the inline values to `DomainSendingPolicy` and the real handler's
+validation. `createDomain` stays in the coverage baseline: hostname constraints
+and fixture state for repeated creates still need work.
+
 `createBan` (`ip_missing`, `duration_invalid`), `createCustomFilter`
 (`filter_type_invalid`), `validateCustomFilter` (`body_array` with its 400,
 `script_missing` with its 422) and `sendTestEmail` (`from_missing`) are paired
@@ -260,7 +266,7 @@ responses, so a hook selects the missing ID for the 404 alone. The linked
 200 and its boundary probes retain their original IDs. The handler test
 checks both lookups against PostgreSQL and verifies the existing domain
 is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
-the enabled set to exactly `getDomain` and `getCertificate`.
+the enabled set to exactly `getDomain`, `getCertificate` and `getAlias`.
 
 `getCertificate` sends its documented 404 with the `missing` path parameter
 example. Vertrag 0.29 does not pair parameter example names, and the create
@@ -567,6 +573,15 @@ leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
 
+`getCustomFilter` sends its documented `missing` 404 using the missing-ID path
+parameter example. Vertrag 0.29 does not pair parameter example names, and the
+create link supplies the created ID to both responses, so a hook selects
+2147483647 only for the 404 transaction. The successful lookup and its boundary
+probes retain their original IDs. The handler test proves the missing row is
+absent, checks the exact refusal and successful lookup, and verifies no stored
+filter changes. Other missing-resource responses remain excluded (#386).
+
+
 Draft probes (saveDraft) save from a generated address (`someone@example.com`)
 that no mailbox holds, which the handler refuses with 403. A before hook hosts
 the sender's domain and creates its mailbox through the admin API the first
@@ -595,3 +610,11 @@ creates its account through the admin API the first time an address appears,
 then leaves both in place: a test send only adds a message. Malformed addresses
 and domains the server will not host are left to the probe, and the request is
 never rewritten.
+
+`getAlias` sends its `missing` path ID (`2147483647`) and exact 404 refusal.
+Its hook selects that ID only for the documented 404 because vertrag 0.29 does
+not pair parameter examples and the create link supplies its created ID to both
+responses. Successes and coverage probes keep their linked IDs. The real-handler
+test checks missing and successful lookup, domain association and unchanged
+storage. `test_gate.py` holds the enabled 404 set to `getDomain`,
+`getCertificate` and `getAlias`; sibling exclusions remain in place.

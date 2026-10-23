@@ -2577,6 +2577,18 @@ paths:
               operationId: sendDraft
               parameters:
                 id: '$response.body#/data/id'
+        "400":
+          description: An invalid body, or a to or cc entry that is not an address
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: The draft is not the caller's, or the caller may not act as the new from
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -4625,6 +4637,19 @@ paths:
         - BearerAuth: [mailboxes:read]
         - APIKeyAuth: [mailboxes:read]
       summary: Get an alias by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Resource ID
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Alias details
@@ -4637,7 +4662,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/Alias"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Alias not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Alias not found
     patch:
       operationId: updateAlias
       tags: ["Admin: Aliases"]
@@ -5478,6 +5513,19 @@ paths:
         - BearerAuth: [pipelines:read]
         - APIKeyAuth: [pipelines:read]
       summary: Get a custom filter by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Resource ID
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Custom filter details
@@ -5490,7 +5538,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/CustomFilter"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Custom filter not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Custom filter not found
     patch:
       operationId: updateCustomFilter
       tags: ["Admin: Custom Filters"]
@@ -10280,7 +10338,11 @@ components:
           type: integer
           format: int64
         sending_policy:
-          $ref: "#/components/schemas/DomainSendingPolicy"
+          # vertrag 0.29 drops body probes when a property contains a $ref.
+          # Keep this enum in step with DomainSendingPolicy.
+          type: string
+          enum: ["", transactional, bulk]
+          description: Sending policy for this domain; empty means no rule.
 
     UpdateDomainRequest:
       type: object
