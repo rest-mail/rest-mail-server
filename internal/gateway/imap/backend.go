@@ -85,12 +85,16 @@ func (b *Backend) Authenticate(user, pass string) (imapsrv.Mailbox, error) {
 	}, nil
 }
 
-// mailbox is one authenticated account's view of its mail.
+// mailbox is one authenticated account's view of its mail, for one session.
 type mailbox struct {
 	api       *apiclient.Client
 	email     string
 	token     string
 	accountID uint
+	// utf8 is set once the client has sent ENABLE UTF8=ACCEPT (RFC 6855 §3):
+	// from then on it takes raw UTF-8 header fields, so FETCH stops
+	// downgrading them.
+	utf8 bool
 }
 
 var _ imapsrv.Mailbox = (*mailbox)(nil)
@@ -101,7 +105,16 @@ var _ imapsrv.Mailbox = (*mailbox)(nil)
 var (
 	_ imapsrv.UIDPlusMailbox = (*mailbox)(nil)
 	_ imapsrv.Mover          = (*mailbox)(nil)
+	_ imapsrv.UTF8Mailbox    = (*mailbox)(nil)
 )
+
+// EnableUTF8 switches this session to UTF-8 (RFC 6855 UTF8=ACCEPT). The
+// library advertises the capability because the mailbox implements this, and
+// calls it once when the client enables the mode.
+func (m *mailbox) EnableUTF8() error {
+	m.utf8 = true
+	return nil
+}
 
 // Folders lists the account's folders.
 func (m *mailbox) Folders() ([]imapsrv.Folder, error) {
@@ -164,8 +177,13 @@ func (m *mailbox) Fetch(uid uint32) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// No client can enable UTF-8 yet, so headers go out downgraded to ASCII.
-	return []byte(rawmsg.Downgrade(m.rawMessage(detail.Data))), nil
+	raw := m.rawMessage(detail.Data)
+	if m.utf8 {
+		return []byte(raw), nil
+	}
+	// A client that has not enabled UTF-8 gets headers downgraded to ASCII
+	// (RFC 6855 §3, RFC 6857).
+	return []byte(rawmsg.Downgrade(raw)), nil
 }
 
 // rawMessage returns the stored raw bytes when present, else the rebuild.

@@ -39,12 +39,22 @@ func NewBackend(api *apiclient.Client, limiter *connlimiter.Limiter) *Backend {
 	return &Backend{api: api, limiter: limiter}
 }
 
-var _ pop3srv.Backend = (*Backend)(nil)
+var (
+	_ pop3srv.Backend     = (*Backend)(nil)
+	_ pop3srv.UTF8Backend = (*Backend)(nil)
+)
 
-// Authenticate signs the user in via the API, with the mailbox's password or
-// an app password, and returns a Mailbox scoped to the resulting token and
-// account.
+// Authenticate signs in a client that has not sent UTF8; the library calls
+// [Backend.AuthenticateUTF8] instead, since the Backend implements it.
 func (b *Backend) Authenticate(user, pass string) (pop3srv.Mailbox, error) {
+	return b.AuthenticateUTF8(user, pass, false)
+}
+
+// AuthenticateUTF8 signs the user in via the API, with the mailbox's password
+// or an app password, and returns a Mailbox scoped to the resulting token and
+// account. utf8 says whether the client sent UTF8 before logging in (RFC
+// 6856): only then does RETR serve raw UTF-8 header fields.
+func (b *Backend) AuthenticateUTF8(user, pass string, utf8 bool) (pop3srv.Mailbox, error) {
 	// Per-account hard stop: reject a banned account WITHOUT calling the auth API,
 	// so a rotating-IP brute-force is throttled and a ban is never lifted by a
 	// lucky correct guess. The per-IP ban is enforced separately by the server.
@@ -81,6 +91,7 @@ func (b *Backend) Authenticate(user, pass string) (pop3srv.Mailbox, error) {
 		api:       b.api,
 		token:     resp.Data.AccessToken,
 		accountID: resp.Data.User.ID,
+		utf8:      utf8,
 	}, nil
 }
 
@@ -89,6 +100,8 @@ type mailbox struct {
 	api       *apiclient.Client
 	token     string
 	accountID uint
+	// utf8 is whether the client sent UTF8 before logging in (RFC 6856 §3).
+	utf8 bool
 }
 
 var _ pop3srv.Mailbox = (*mailbox)(nil)
@@ -128,8 +141,13 @@ func (m *mailbox) Retrieve(uid string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// No client can enable UTF-8 yet, so headers go out downgraded to ASCII.
-	return []byte(rawmsg.Downgrade(m.rawMessage(detail.Data))), nil
+	raw := m.rawMessage(detail.Data)
+	if m.utf8 {
+		return []byte(raw), nil
+	}
+	// A client that did not send UTF8 gets headers downgraded to ASCII (RFC
+	// 6856 §3, RFC 6857).
+	return []byte(rawmsg.Downgrade(raw)), nil
 }
 
 // rawMessage returns the stored raw bytes when present, else the rebuild.
