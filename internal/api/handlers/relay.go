@@ -100,8 +100,8 @@ func (h *RelayHandler) Set(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Transport string  `json:"transport"`
 		Host      string  `json:"host"`
-		Port      int     `json:"port"`
-		TLSMode   string  `json:"tls_mode"`
+		Port      *int    `json:"port"`
+		TLSMode   *string `json:"tls_mode"`
 		Username  string  `json:"username"`
 		Password  *string `json:"password"`
 	}
@@ -119,27 +119,46 @@ func (h *RelayHandler) Set(w http.ResponseWriter, r *http.Request) {
 		rel.ID, rel.CreatedAt = existing.ID, existing.CreatedAt
 	}
 
+	// A field's shape is the schema's whatever the transport: direct keeps
+	// none of them, but a port of 0 is no more valid for it than for a relay.
+	fields := map[string]string{}
+	if req.Port != nil && (*req.Port < 1 || *req.Port > 65535) {
+		fields["port"] = "Must be between 1 and 65535"
+	}
+	if req.TLSMode != nil && *req.TLSMode != models.RelayTLSStartTLS && *req.TLSMode != models.RelayTLSImplicit {
+		fields["tls_mode"] = "Must be one of: starttls, implicit"
+	}
+	if rmail.ContainsControlChar(req.Username) || len(req.Username) > 255 {
+		fields["username"] = "Must be at most 255 characters with no control characters"
+	}
+	if req.Password != nil && rmail.ContainsControlChar(*req.Password) {
+		fields["password"] = "Must not contain control characters"
+	}
+
 	switch req.Transport {
 	case models.OutboundTransportDirect:
 		// Direct keeps nothing of a relay, credentials included.
+		if len(fields) > 0 {
+			respond.ValidationError(w, fields)
+			return
+		}
 	case models.OutboundTransportRelay:
-		fields := map[string]string{}
 		if !models.ValidRelayHost(req.Host) {
 			fields["host"] = "Must be a bare host name or IP address, with no scheme, port or path"
 		}
-		if req.Port < 1 || req.Port > 65535 {
+		if req.Port == nil {
 			fields["port"] = "Must be between 1 and 65535"
 		}
-		if req.TLSMode != models.RelayTLSStartTLS && req.TLSMode != models.RelayTLSImplicit {
+		if req.TLSMode == nil {
 			fields["tls_mode"] = "Must be one of: starttls, implicit"
 		}
-		if rmail.ContainsControlChar(req.Username) || len(req.Username) > 255 {
-			fields["username"] = "Must be at most 255 characters with no control characters"
+		rel.Host, rel.Username = req.Host, req.Username
+		if req.Port != nil {
+			rel.Port = *req.Port
 		}
-		if req.Password != nil && rmail.ContainsControlChar(*req.Password) {
-			fields["password"] = "Must not contain control characters"
+		if req.TLSMode != nil {
+			rel.TLSMode = *req.TLSMode
 		}
-		rel.Host, rel.Port, rel.TLSMode, rel.Username = req.Host, req.Port, req.TLSMode, req.Username
 
 		passwordSet := existing != nil && existing.PasswordEnc != ""
 		if req.Password != nil {

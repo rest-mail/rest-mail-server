@@ -1279,7 +1279,10 @@ export interface paths {
         get: operations["getDomain"];
         put?: never;
         post?: never;
-        /** Delete a domain */
+        /**
+         * Delete a domain
+         * @description Only a domain with no accounts and no aliases can be deleted: delete those first.
+         */
         delete: operations["deleteDomain"];
         options?: never;
         head?: never;
@@ -3098,26 +3101,25 @@ export interface components {
             to: string[];
             cc?: string[];
             bcc?: string[];
-            subject: string;
+            subject?: string;
             body_text?: string;
             body_html?: string;
             in_reply_to?: string;
-            list_unsubscribe?: components["schemas"]["ListUnsubscribe"];
-        };
-        /** @description Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058), published as the message's List-Unsubscribe field. You run the endpoint; the server never fetches or posts to it. With `https`, the message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click` and both fields are DKIM signed; a sender domain with no DKIM key is refused with 422 `dkim_required` rather than sent with an unsigned one-click claim. With only `mailto`, there is no one-click field. Omit the object and the message carries neither field. A value with a line break, a space, a comma, an angle bracket or quote, or any other scheme is refused with 400, as is any key other than `mailto` and `https`. */
-        ListUnsubscribe: {
-            /**
-             * Format: email
-             * @description A bare ASCII address (no display name, no `mailto:`, no query), published as `<mailto:address>`.
-             * @example unsubscribe@example.com
-             */
-            mailto?: string;
-            /**
-             * Format: uri
-             * @description One absolute https URL with a host and no credentials, which unsubscribes the recipient when it receives the RFC 8058 one-click POST (body `List-Unsubscribe=One-Click`). It should identify the recipient and the list, as RFC 8058 §3.1 asks.
-             * @example https://example.com/unsubscribe?t=opaque-token
-             */
-            https?: string;
+            /** @description Where a recipient unsubscribes from this mail (RFC 2369, RFC 8058), published as the message's List-Unsubscribe field. You run the endpoint; the server never fetches or posts to it. With `https`, the message also carries `List-Unsubscribe-Post: List-Unsubscribe=One-Click` and both fields are DKIM signed; a sender domain with no DKIM key is refused with 422 `dkim_required` rather than sent with an unsigned one-click claim. With only `mailto`, there is no one-click field. Omit the object and the message carries neither field. A value with a line break, a space, a comma, an angle bracket or quote, or any other scheme is refused with 400, as is any key other than `mailto` and `https`. */
+            list_unsubscribe?: {
+                /**
+                 * Format: email
+                 * @description A bare ASCII address (no display name, no `mailto:`, no query), published as `<mailto:address>`.
+                 * @example unsubscribe@example.com
+                 */
+                mailto?: string;
+                /**
+                 * Format: uri
+                 * @description One absolute https URL with a host and no credentials, which unsubscribes the recipient when it receives the RFC 8058 one-click POST (body `List-Unsubscribe=One-Click`). It should identify the recipient and the list, as RFC 8058 §3.1 asks.
+                 * @example https://example.com/unsubscribe?t=opaque-token
+                 */
+                https?: string;
+            };
         };
         ForwardMessageRequest: {
             /** Format: email */
@@ -3127,7 +3129,7 @@ export interface components {
         };
         DraftRequest: {
             /** Format: email */
-            from: string;
+            from?: string;
             to?: string[];
             cc?: string[];
             subject?: string;
@@ -3339,7 +3341,11 @@ export interface components {
             active?: boolean;
             /** Format: int64 */
             default_quota_bytes?: number;
-            sending_policy?: components["schemas"]["DomainSendingPolicy"];
+            /**
+             * @description The domain's sending policy (DomainSendingPolicy); `""` clears it.
+             * @enum {string}
+             */
+            sending_policy?: "" | "transactional" | "bulk";
         };
         /**
          * @description What the send API expects of the domain's mail (RFC 2369, RFC 8058). `transactional`: mail one person asked for, such as receipts and password resets; it carries no List-Unsubscribe field, so a send with `list_unsubscribe` is refused with 422 `list_unsubscribe_not_allowed`. `bulk`: mail sent to a list, which receivers such as Gmail and Yahoo expect to say how to unsubscribe; a send without `list_unsubscribe` is refused with 422 `list_unsubscribe_required`. Empty: no rule, either is sent. The policy applies to the send API; SMTP submission, draft send and forward are not checked.
@@ -4038,10 +4044,11 @@ export interface components {
                 "end-datetime": string;
             };
             policies: {
-                policy?: {
+                policy: {
                     "policy-type"?: string;
                     "policy-string"?: string[];
-                    "policy-domain"?: string;
+                    /** Format: hostname */
+                    "policy-domain": string;
                     "mx-host"?: string[];
                 };
                 summary?: {
@@ -6908,6 +6915,15 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            /** @description The domain still has accounts or aliases (`domain_not_empty`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     updateDomain: {

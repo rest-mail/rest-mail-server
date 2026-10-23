@@ -13,6 +13,7 @@ import (
 	"time"
 
 	dkim "github.com/rest-mail/go-dkim"
+	rmail "github.com/restmail/restmail/internal/mail"
 )
 
 // MinDKIMRSABits is the smallest RSA key a domain may sign with. go-dkim signs
@@ -88,8 +89,15 @@ func testSignature(domain, selector string, key crypto.Signer) error {
 		"Message-ID: <dkim-key-check@" + domain + ">\r\n" +
 		"\r\n" +
 		"This message is never sent.\r\n"
+	// Stored domains and message headers remain Unicode. go-dkim takes the
+	// signing identity in A-label form, which RFC 8616 §5 also permits in
+	// internationalized messages. Convert before signing, never afterwards.
+	asciiDomain, err := rmail.DomainASCII(domain)
+	if err != nil {
+		return fmt.Errorf("does not sign for %s: %w", domain, err)
+	}
 	val, err := dkim.Sign([]byte(msg), dkim.SignOptions{
-		Domain:     domain,
+		Domain:     asciiDomain,
 		Selector:   selector,
 		PrivateKey: key,
 		Time:       time.Now().Unix(),
@@ -105,7 +113,7 @@ func testSignature(domain, selector string, key crypto.Signer) error {
 	if err != nil {
 		return fmt.Errorf("has no DKIM record: %w", err)
 	}
-	name := dkim.RecordName(selector, domain)
+	name := dkim.RecordName(selector, asciiDomain)
 	resolver := func(_ context.Context, n string) ([]string, error) {
 		if strings.EqualFold(n, name) {
 			return []string{record}, nil

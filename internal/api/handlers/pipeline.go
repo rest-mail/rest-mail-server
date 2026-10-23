@@ -475,6 +475,12 @@ func (h *PipelineHandler) TestFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce the request schema before a factory can ignore malformed config.
+	if !isJSONObject(req.Config) {
+		respond.ValidationError(w, map[string]string{"config": "must be an object"})
+		return
+	}
+
 	result, err := h.engine.TestFilter(r.Context(), req.FilterName, req.Config, req.Email)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "filter_error", err.Error())
@@ -598,8 +604,8 @@ func customFilterFieldErrors(filterType, direction string) map[string]string {
 	return errs
 }
 
-// isJSONObject reports whether raw is a JSON object, the shape of a custom
-// filter's config. A missing or null config is not one; an empty object is.
+// isJSONObject reports whether raw is a JSON object, the shape of a filter's
+// config. A missing or null config is not one; an empty object is.
 func isJSONObject(raw json.RawMessage) bool {
 	var obj map[string]json.RawMessage
 	return json.Unmarshal(raw, &obj) == nil && obj != nil
