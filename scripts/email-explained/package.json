@@ -1,0 +1,17 @@
+{
+  "name": "email-explained-bundle",
+  "private": true,
+  "description": "Builds docs/email-explained into the content bundle rest-mail.com renders",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "bundle": "node bundle.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "marked": "18.1.1"
+  }
+}
