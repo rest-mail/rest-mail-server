@@ -8,19 +8,21 @@
 //
 // A request type names its parameters with `path:"name"`, `query:"name"` and `header:"name"`
 // tags, and its body with a `body:""` field; a struct with no parameter fields is the body
-// itself. The handler returns the response value, or an *Error to refuse the request.
+// itself. Its constraints are struct tags (minLength, maximum, pattern, enums, format and so
+// on), described in the document and enforced by go-oapifly's Bind before the handler runs:
+// a request that breaks them is answered 422 with the fields at fault. The handler returns
+// the response value, or an *Error to refuse the request.
 package endpoint
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"reflect"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 
 	oapifly "github.com/antimatter-studios/go-oapifly"
@@ -42,8 +44,9 @@ type Operation struct {
 	// Status is the success status. 204 writes no body.
 	Status int
 	// Errors are the error statuses the operation can answer. Each is described with
-	// respond's error envelope; 400 for a request that cannot be bound is added when the
-	// request type has anything to bind, and 500 always.
+	// respond's error envelope. 422 for a request that breaks its type's rules is added when
+	// the request type has anything to bind, 400 for a body that is not JSON and 413 for one
+	// over the size cap when it has a body, and 500 always.
 	Errors []int
 
 	// Middleware runs before binding, in order: authentication, capability checks.
@@ -131,13 +134,13 @@ func Register[Req, Resp any](r chi.Router, reg *Registry, op Operation, handler 
 		op.Status = http.StatusOK
 	}
 	reqType := reflect.TypeOf((*Req)(nil)).Elem()
-	binder := newBinder(reqType)
+	shape := requestShape(reqType)
 
-	reg.record(op, reqType, reflect.TypeOf((*Resp)(nil)).Elem(), reflect.TypeOf((*Data[Resp])(nil)).Elem(), binder.binds())
+	reg.record(op, reqType, reflect.TypeOf((*Resp)(nil)).Elem(), reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
 
 	r.With(op.Middleware...).Method(op.Method, op.Path, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var in Req
-		if err := binder.bind(req, &in); err != nil {
+		if err := bind(req, &in, shape); err != nil {
 			writeError(w, err)
 			return
 		}
@@ -150,7 +153,7 @@ func Register[Req, Resp any](r chi.Router, reg *Registry, op Operation, handler 
 	}))
 }
 
-func (reg *Registry) record(op Operation, reqType, respType, envelope reflect.Type, binds bool) {
+func (reg *Registry) record(op Operation, reqType, respType, envelope reflect.Type, shape shape) {
 	key := strings.ToUpper(op.Method) + " " + op.Path
 	if reg.routes[key] {
 		panic("endpoint: " + key + " registered twice")
@@ -159,8 +162,12 @@ func (reg *Registry) record(op Operation, reqType, respType, envelope reflect.Ty
 
 	responses := []oapifly.EndpointResponse{successResponse(op.Status, respType, envelope)}
 	errorStatuses := map[int]bool{http.StatusInternalServerError: true}
-	if binds {
+	if shape.binds {
+		errorStatuses[http.StatusUnprocessableEntity] = true
+	}
+	if shape.body {
 		errorStatuses[http.StatusBadRequest] = true
+		errorStatuses[http.StatusRequestEntityTooLarge] = true
 	}
 	for _, status := range op.Errors {
 		errorStatuses[status] = true
@@ -178,7 +185,7 @@ func (reg *Registry) record(op Operation, reqType, respType, envelope reflect.Ty
 	}
 
 	var request reflect.Type
-	if binds {
+	if shape.binds {
 		request = reqType
 	}
 	reg.endpoints = append(reg.endpoints, oapifly.Endpoint{
@@ -245,119 +252,76 @@ func writeError(w http.ResponseWriter, err error) {
 	respond.Error(w, refusal.Status, refusal.Code, refusal.Message)
 }
 
-// binder binds one request type: which fields come from the path, the query, a header and
-// the body, read once at registration.
-type binder struct {
-	t       reflect.Type
-	params  []boundField
-	bodyIdx []int // the body field, or nil
-	whole   bool  // the request type is the body
+// shape is what a request type takes from a request, read once at registration by the rules
+// go-oapifly's Endpoint.Request describes it with.
+type shape struct {
+	binds bool // anything at all: a parameter or a body
+	body  bool // a body
 }
 
-type boundField struct {
-	index []int
-	in    string
-	name  string
-}
-
-func newBinder(t reflect.Type) *binder {
-	b := &binder{t: t}
+func requestShape(t reflect.Type) shape {
 	if t.Kind() != reflect.Struct {
-		b.whole = true
-		return b
+		return shape{binds: true, body: true}
 	}
+	params, bodyField := false, false
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		for _, in := range []string{"path", "query", "header"} {
-			if v := f.Tag.Get(in); v != "" {
-				name, _, _ := strings.Cut(v, ",")
-				b.params = append(b.params, boundField{index: f.Index, in: in, name: name})
+			if f.Tag.Get(in) != "" {
+				params = true
 			}
 		}
 		if _, ok := f.Tag.Lookup("body"); ok {
-			b.bodyIdx = f.Index
+			bodyField = true
 		}
 	}
-	b.whole = len(b.params) == 0 && b.bodyIdx == nil && t.NumField() > 0
-	return b
+	whole := !params && !bodyField && t.NumField() > 0
+	return shape{binds: params || bodyField || whole, body: bodyField || whole}
 }
 
-// binds reports whether the request type takes anything from the request.
-func (b *binder) binds() bool {
-	return b.whole || b.bodyIdx != nil || len(b.params) > 0
-}
-
-func (b *binder) bind(r *http.Request, dst interface{}) error {
-	v := reflect.ValueOf(dst).Elem()
-	if b.whole {
-		if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
-			return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
-		}
+// bind reads the request into dst with go-oapifly, which enforces the rules the document
+// describes: a violation is the 422 validation failure, field by field.
+func bind(r *http.Request, dst interface{}, s shape) error {
+	if !s.binds {
 		return nil
 	}
-	for _, p := range b.params {
-		var raw string
-		var present bool
-		switch p.in {
+	var body []byte
+	if s.body && r.Body != nil {
+		read, err := io.ReadAll(r.Body)
+		if err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				return Refuse(http.StatusRequestEntityTooLarge, "request_too_large", "Request body too large")
+			}
+			return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
+		}
+		body = read
+	}
+
+	err := oapifly.Bind(dst, func(in, name string) (string, bool) {
+		switch in {
 		case "path":
-			raw = chi.URLParam(r, p.name)
-			present = raw != ""
+			v := chi.URLParam(r, name)
+			return v, v != ""
 		case "query":
-			raw = r.URL.Query().Get(p.name)
-			_, present = r.URL.Query()[p.name]
-		case "header":
-			raw = r.Header.Get(p.name)
-			present = raw != ""
+			values, ok := r.URL.Query()[name]
+			if !ok || len(values) == 0 {
+				return "", false
+			}
+			return values[0], true
 		}
-		if !present {
-			continue
-		}
-		if err := setValue(v.FieldByIndex(p.index), raw); err != nil {
-			return Refuse(http.StatusBadRequest, "bad_request", "Invalid "+p.name)
-		}
-	}
-	if b.bodyIdx != nil {
-		field := v.FieldByIndex(b.bodyIdx)
-		if err := json.NewDecoder(r.Body).Decode(field.Addr().Interface()); err != nil {
-			return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
-		}
-	}
-	return nil
-}
+		v := r.Header.Get(name)
+		return v, v != ""
+	}, body)
 
-// setValue parses raw into a parameter field of a scalar kind, or a pointer to one.
-func setValue(field reflect.Value, raw string) error {
-	if field.Kind() == reflect.Pointer {
-		ptr := reflect.New(field.Type().Elem())
-		if err := setValue(ptr.Elem(), raw); err != nil {
-			return err
-		}
-		field.Set(ptr)
+	var violations oapifly.Violations
+	switch {
+	case err == nil:
 		return nil
+	case errors.As(err, &violations):
+		return Invalid(violations)
+	case errors.Is(err, oapifly.ErrMalformedBody):
+		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 	}
-	switch field.Kind() {
-	case reflect.String:
-		field.SetString(raw)
-	case reflect.Bool:
-		b, err := strconv.ParseBool(raw)
-		if err != nil {
-			return err
-		}
-		field.SetBool(b)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		n, err := strconv.ParseInt(raw, 10, field.Type().Bits())
-		if err != nil {
-			return err
-		}
-		field.SetInt(n)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		n, err := strconv.ParseUint(raw, 10, field.Type().Bits())
-		if err != nil {
-			return err
-		}
-		field.SetUint(n)
-	default:
-		return fmt.Errorf("parameter of kind %s cannot be bound", field.Kind())
-	}
-	return nil
+	return err
 }
