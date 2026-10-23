@@ -5124,6 +5124,8 @@ paths:
                       status:
                         type: string
                         example: deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/admin/pipelines/test:
     post:
@@ -5797,6 +5799,8 @@ paths:
                       status:
                         type: string
                         example: deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/v1/admin/custom-filters/{id}/test:
     parameters:

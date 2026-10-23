@@ -401,8 +401,15 @@ func (h *PipelineHandler) DeletePipeline(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.db.Delete(&models.Pipeline{}, id).Error; err != nil {
+	deleted := h.db.Delete(&models.Pipeline{}, id)
+	if deleted.Error != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete pipeline")
+		return
+	}
+	// Deleting what is not there is a 404, as for every other admin delete, not a
+	// "deleted" for nothing.
+	if deleted.RowsAffected == 0 {
+		respond.Error(w, http.StatusNotFound, "not_found", "Pipeline not found")
 		return
 	}
 
@@ -707,8 +714,13 @@ func (h *PipelineHandler) DeleteCustomFilter(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := h.db.Delete(&models.CustomFilter{}, id).Error; err != nil {
+	deleted := h.db.Delete(&models.CustomFilter{}, id)
+	if deleted.Error != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete custom filter")
+		return
+	}
+	if deleted.RowsAffected == 0 {
+		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
 		return
 	}
 

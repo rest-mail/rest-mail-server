@@ -117,7 +117,7 @@ exclude-matching:
   - '^/(api/v1/(auth|accounts|devices|messages|attachments)|restmail|mail|\.well-known)(/| >).* > 404( >|$)'
   - '^/api/v1/admin/(mailboxes|pipelines|queue|dkim|bans|grants|messages|test)(/| >).* > 404( >|$)'
   - '^/api/v1/admin/custom-filters(/\{id\}/test| >).* > 404( >|$)'
-  - '^/api/v1/admin/custom-filters/\{id\} > Update a custom filter > 404( >|$)'
+  - '^/api/v1/admin/custom-filters/\{id\} > (Update|Delete) a custom filter > 404( >|$)'
   - '^/api/v1/admin/aliases > .* > 404( >|$)'
   - '^/api/v1/admin/aliases/\{id\} > (Update an alias|Delete an alias) > 404( >|$)'
   - '^/api/v1/admin/domains/\{id\}/.* > 404( >|$)'
