@@ -675,16 +675,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Post("/api/v1/accounts/{id}/contacts/block", contactH.BlockSender)
 		r.Post("/api/v1/accounts/{id}/contacts/import", contactH.ImportContacts)
 
-		// Vacation
-		r.Get("/api/v1/accounts/{id}/vacation", vacationH.GetVacation)
-		r.Put("/api/v1/accounts/{id}/vacation", vacationH.SetVacation)
-		r.Delete("/api/v1/accounts/{id}/vacation", vacationH.DisableVacation)
-
-		// Sieve scripts
-		r.Get("/api/v1/accounts/{id}/sieve", sieveH.GetScript)
-		r.Put("/api/v1/accounts/{id}/sieve", sieveH.PutScript)
-		r.Delete("/api/v1/accounts/{id}/sieve", sieveH.DeleteScript)
-		r.Post("/api/v1/accounts/{id}/sieve/validate", sieveH.ValidateScript)
+		// Mail rules: the vacation reply and the Sieve script
+		mailRules := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+		vacationH.Register(mailRules)
+		sieveH.Register(mailRules)
 
 		// Contacts suggest (autocomplete)
 		r.Get("/api/v1/accounts/{id}/contacts/suggest", contactH.SuggestContacts)

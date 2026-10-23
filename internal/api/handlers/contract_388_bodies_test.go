@@ -68,7 +68,7 @@ func TestSetVacationRequiresEnabled(t *testing.T) {
 
 	put := func(body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.SetVacation(rr, authzRequest(http.MethodPut, "/vacation", fx.ownerMailbox.ID,
+		serveVacation(h, rr, authzRequest(http.MethodPut, "/vacation", fx.ownerMailbox.ID,
 			map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}, body))
 		return rr
 	}
@@ -185,7 +185,7 @@ func TestSetVacationEnabledNeedsSubjectAndBody(t *testing.T) {
 
 	put := func(body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.SetVacation(rr, authzRequest(http.MethodPut, "/vacation", fx.ownerMailbox.ID,
+		serveVacation(h, rr, authzRequest(http.MethodPut, "/vacation", fx.ownerMailbox.ID,
 			map[string]string{"id": uintToStr(fx.ownerMailbox.ID)}, body))
 		return rr
 	}

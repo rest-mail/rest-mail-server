@@ -122,21 +122,21 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Owner GET → 200.
 	rr := httptest.NewRecorder()
-	h.GetScript(rr, authzRequest(http.MethodGet, "/sieve", fx.ownerMailbox.ID, acctParam, ""))
+	serveSieve(h, rr, authzRequest(http.MethodGet, "/sieve", fx.ownerMailbox.ID, acctParam, ""))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner GET: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
 	// Attacker GET on the owner's account → 403.
 	rr = httptest.NewRecorder()
-	h.GetScript(rr, authzRequest(http.MethodGet, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
+	serveSieve(h, rr, authzRequest(http.MethodGet, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker GET: expected 403, got %d", rr.Code)
 	}
 
 	// Attacker PUT (overwrite) → 403, and the owner's script is unchanged.
 	rr = httptest.NewRecorder()
-	h.PutScript(rr, authzRequest(http.MethodPut, "/sieve", fx.attackerMailbox.ID, acctParam, `{"script":"# pwned","active":true}`))
+	serveSieve(h, rr, authzRequest(http.MethodPut, "/sieve", fx.attackerMailbox.ID, acctParam, `{"script":"# pwned","active":true}`))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker PUT: expected 403, got %d", rr.Code)
 	}
@@ -150,7 +150,7 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Attacker DELETE → 403, and the owner's script is still present.
 	rr = httptest.NewRecorder()
-	h.DeleteScript(rr, authzRequest(http.MethodDelete, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
+	serveSieve(h, rr, authzRequest(http.MethodDelete, "/sieve", fx.attackerMailbox.ID, acctParam, ""))
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("attacker DELETE: expected 403, got %d", rr.Code)
 	}
@@ -162,7 +162,7 @@ func TestSieveIDOR_OwnershipEnforced(t *testing.T) {
 
 	// Owner PUT → 200 (the legitimate path still works).
 	rr = httptest.NewRecorder()
-	h.PutScript(rr, authzRequest(http.MethodPut, "/sieve", fx.ownerMailbox.ID, acctParam, `{"script":"# updated","active":true}`))
+	serveSieve(h, rr, authzRequest(http.MethodPut, "/sieve", fx.ownerMailbox.ID, acctParam, `{"script":"# updated","active":true}`))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("owner PUT: expected 200, got %d (%s)", rr.Code, rr.Body.String())
 	}
