@@ -29,7 +29,7 @@ type widgetQuery struct {
 }
 
 type createWidget struct {
-	Name string `json:"name"`
+	Name string `json:"name" maxLength:"8"`
 }
 
 type tagged struct {
@@ -79,8 +79,15 @@ func server(t *testing.T) (*chi.Mux, *Registry) {
 			}
 			return out, nil
 		})
+	// The API's body cap, which reading the body runs into.
+	capped := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			req.Body = http.MaxBytesReader(w, req.Body, 1024)
+			next.ServeHTTP(w, req)
+		})
+	}
 	Register(r, reg, Operation{Method: http.MethodPost, Path: "/widgets", OperationID: "createWidget",
-		Status: http.StatusCreated, Errors: []int{http.StatusUnprocessableEntity}},
+		Status: http.StatusCreated, Middleware: []func(http.Handler) http.Handler{capped}},
 		func(_ *http.Request, in createWidget) (widget, error) {
 			if in.Name == "" {
 				return widget{}, Invalid(map[string]string{"name": "required"})
@@ -126,10 +133,16 @@ func TestRegisteredRoutesAnswer(t *testing.T) {
 		{"GET", "/widgets/8", "", nil, 500, `{"error":{"code":"internal_error","message":"Internal server error"}}`},
 		{"GET", "/widgets/7", "", []string{"X-Block", "1"}, 403, `{"error":{"code":"forbidden","message":"Blocked"}}`},
 		{"GET", "/widgets?limit=1", "", []string{"X-Trace", "t1"}, 200, `{"data":[{"id":1,"name":"t1"}],"pagination":{"has_more":false,"total":1}}`},
-		{"GET", "/widgets?limit=x", "", nil, 400, `{"error":{"code":"bad_request","message":"Invalid limit"}}`},
+		// The request type's rules are enforced before the handler runs, field by field.
+		{"GET", "/widgets?limit=x", "", nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"limit":"must be an integer"}}}}`},
+		{"POST", "/widgets", `{"name":"far too long"}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"must be at most 8 characters"}}}}`},
+		{"POST", "/widgets", `{"name":"n","colour":"red"}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"colour":"not allowed"}}}}`},
 		{"POST", "/widgets", `{"name":"new"}`, nil, 201, `{"data":{"id":9,"name":"new"}}`},
 		{"POST", "/widgets", `{"name":`, nil, 400, `{"error":{"code":"bad_request","message":"Invalid request body"}}`},
 		{"POST", "/widgets", `{}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"required"}}}}`},
+		// The handler's own validation still answers the same way.
+		{"POST", "/widgets", `{"name":""}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"required"}}}}`},
+		{"POST", "/widgets", strings.Repeat(" ", 2048) + `{"name":"n"}`, nil, 413, `{"error":{"code":"request_too_large","message":"Request body too large"}}`},
 		{"PATCH", "/widgets/3", `{"name":"three"}`, nil, 200, `{"data":{"id":3,"name":"three"}}`},
 		{"PATCH", "/widgets/3", `nope`, nil, 400, `{"error":{"code":"bad_request","message":"Invalid request body"}}`},
 		{"DELETE", "/widgets/3", "", nil, 204, ``},
@@ -187,9 +200,18 @@ func TestRegistrationsAreTheDocument(t *testing.T) {
 	if len(get.Parameters) != 1 || get.Parameters[0].Name != "id" || get.Parameters[0].In != "path" {
 		t.Fatalf("the path parameter: %+v", get.Parameters)
 	}
-	for _, status := range []string{"200", "400", "404", "500"} {
+	for _, status := range []string{"200", "404", "422", "500"} {
 		if _, ok := get.Responses[status]; !ok {
 			t.Fatalf("getWidget answers %s: %v", status, get.Responses)
+		}
+	}
+	if _, ok := get.Responses["400"]; ok {
+		t.Fatalf("getWidget has no body to be malformed: %v", get.Responses)
+	}
+	create := parsed.Paths["/widgets"]["post"]
+	for _, status := range []string{"201", "400", "413", "422", "500"} {
+		if _, ok := create.Responses[status]; !ok {
+			t.Fatalf("createWidget answers %s: %v", status, create.Responses)
 		}
 	}
 	if ref := get.Responses["200"].Content["application/json"].Schema["$ref"]; ref != "#/components/schemas/Data-widget" {
@@ -213,6 +235,9 @@ func TestRegistrationsAreTheDocument(t *testing.T) {
 	}
 	if !reg.Has("GET", "/widgets/{id:[0-9]+}") || reg.Has("PUT", "/widgets/{id}") {
 		t.Fatalf("Has reports what was registered")
+	}
+	if routes := strings.Join(reg.Routes(), ","); !strings.Contains(routes, "GET /widgets/{id:[0-9]+},") || !strings.HasPrefix(routes, "DELETE /widgets/{id},") {
+		t.Fatalf("Routes lists the patterns as mounted, sorted: %s", routes)
 	}
 }
 
