@@ -29,7 +29,7 @@ type OutboundQueue struct {
 	// from the remote's reply (queue.ClassifyFailure); empty until an attempt
 	// fails. It decides how the message is retried, and whether at all.
 	FailureCategory FailureCategory `gorm:"size:32" json:"failure_category"`
-	MaxRetries    int        `gorm:"default:30" json:"max_retries"`
+	MaxRetries    int        `gorm:"default:60" json:"max_retries"`
 	CreatedAt     time.Time  `json:"created_at"`
 	ExpiresAt     time.Time  `json:"expires_at"`
 
@@ -108,6 +108,17 @@ func (c FailureCategory) Description() string {
 	return ""
 }
 
+// QueueLifetime is how long a message is retried before it bounces: "at least
+// 4-5 days" (RFC 5321 §4.5.4.1), and five, as Postfix's maximal_queue_lifetime.
+// REST Mail's own delivery notices are put straight into the sender's local
+// mailbox and never queued, so no shorter lifetime for them is needed.
+const QueueLifetime = 5 * 24 * time.Hour
+
+// DefaultMaxRetries is a message's retry budget: more attempts than any retry
+// schedule makes in QueueLifetime, even with every delay jittered short, so the
+// deadline, not the budget, is what ends retrying.
+const DefaultMaxRetries = 60
+
 // BeforeCreate guarantees every queued message has a delivery deadline and a
 // retry budget, on ANY enqueue path. Without an ExpiresAt the worker's claim
 // query (`... AND expires_at > now`) silently skips the row forever: an
@@ -116,10 +127,10 @@ func (c FailureCategory) Description() string {
 // here — rather than at each call site — makes that class of bug impossible.
 func (q *OutboundQueue) BeforeCreate(*gorm.DB) error {
 	if q.ExpiresAt.IsZero() {
-		q.ExpiresAt = time.Now().Add(72 * time.Hour)
+		q.ExpiresAt = time.Now().Add(QueueLifetime)
 	}
 	if q.MaxRetries == 0 {
-		q.MaxRetries = 30
+		q.MaxRetries = DefaultMaxRetries
 	}
 	return nil
 }
