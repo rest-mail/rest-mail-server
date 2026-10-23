@@ -4671,6 +4671,10 @@ paths:
                   destination_address: admin@restmail.test
               # JSON, but an array where the request is an object: refused
               # when it is read, before any field is looked at.
+              source_wrong_type:
+                value:
+                  source_address: 5
+                  destination_address: admin@restmail.test
               body_array:
                 value: []
       responses:
@@ -4734,6 +4738,14 @@ paths:
                       details:
                         fields:
                           source_address: required
+                source_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          source_address: must be a string
                 source_invalid:
                   value:
                     error:
@@ -8108,6 +8120,8 @@ paths:
       responses:
         "204":
           description: Removed
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8197,7 +8211,7 @@ paths:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
         "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
+          description: A body that is not JSON or not an object
           content:
             application/json:
               schema:
@@ -8252,12 +8266,8 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
-        "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8310,11 +8320,13 @@ paths:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
         "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
+          description: A body that is not JSON or not an object
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8759,11 +8771,6 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
-                port_wrong_type:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:
@@ -8771,6 +8778,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
               examples:
+                port_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          port: must be an integer
                 transport_missing:
                   value:
                     error:
@@ -8859,14 +8874,12 @@ paths:
             type: integer
             default: 0
       responses:
-        "400":
-          description: Invalid domain_id
+        "422":
+          description: Request query failed validation, including a malformed domain_id
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
+                $ref: "#/components/schemas/ValidationErrorResponse"
         "200":
           description: TLS-RPT reports
           content:

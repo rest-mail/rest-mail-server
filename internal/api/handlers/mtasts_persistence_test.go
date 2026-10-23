@@ -153,7 +153,7 @@ func TestMTASTSPolicy_PersistedLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			rr := httptest.NewRecorder()
-			h.SetPolicy(rr, mtastsRequest(http.MethodPut, domain.ID, tc.body))
+			policyRoutes(h).ServeHTTP(rr, mtastsRequest(http.MethodPut, domain.ID, tc.body))
 			if rr.Code != http.StatusCreated {
 				t.Fatalf("create = %d %s, want 201", rr.Code, rr.Body.String())
 			}
@@ -183,17 +183,17 @@ func TestMTASTSPolicy_PersistedLifecycle(t *testing.T) {
 			}
 			// Existing-row saves must preserve explicit zero and false too.
 			rr = httptest.NewRecorder()
-			h.SetPolicy(rr, mtastsRequest(http.MethodPut, domain.ID, `{"mode":"none","mx_hosts":"mx.restmail.test,*.restmail.test","max_age":0,"active":false}`))
+			policyRoutes(h).ServeHTTP(rr, mtastsRequest(http.MethodPut, domain.ID, `{"mode":"none","mx_hosts":"mx.restmail.test,*.restmail.test","max_age":0,"active":false}`))
 			if rr.Code != http.StatusOK {
 				t.Fatalf("update = %d %s, want 200", rr.Code, rr.Body.String())
 			}
 			rr = httptest.NewRecorder()
-			h.SetPolicy(rr, mtastsRequest(http.MethodPut, domain.ID, `{}`))
+			policyRoutes(h).ServeHTTP(rr, mtastsRequest(http.MethodPut, domain.ID, `{}`))
 			if rr.Code != http.StatusOK {
 				t.Fatalf("empty update = %d %s, want 200", rr.Code, rr.Body.String())
 			}
 			rr = httptest.NewRecorder()
-			h.GetPolicy(rr, mtastsRequest(http.MethodGet, domain.ID, ""))
+			policyRoutes(h).ServeHTTP(rr, mtastsRequest(http.MethodGet, domain.ID, ""))
 			if rr.Code != http.StatusOK {
 				t.Fatalf("get = %d %s, want 200", rr.Code, rr.Body.String())
 			}
@@ -211,12 +211,12 @@ func TestMTASTSPolicy_PersistedLifecycle(t *testing.T) {
 				t.Fatalf("unpublished policy served: %d %s", rr.Code, rr.Body.String())
 			}
 			rr = httptest.NewRecorder()
-			h.DeletePolicy(rr, mtastsRequest(http.MethodDelete, domain.ID, ""))
+			policyRoutes(h).ServeHTTP(rr, mtastsRequest(http.MethodDelete, domain.ID, ""))
 			if rr.Code != http.StatusNoContent {
 				t.Fatalf("delete = %d %s, want 204", rr.Code, rr.Body.String())
 			}
 			rr = httptest.NewRecorder()
-			h.GetPolicy(rr, mtastsRequest(http.MethodGet, domain.ID, ""))
+			policyRoutes(h).ServeHTTP(rr, mtastsRequest(http.MethodGet, domain.ID, ""))
 			if rr.Code != http.StatusNotFound || !strings.Contains(rr.Body.String(), "No MTA-STS policy found for this domain") {
 				t.Fatalf("get after delete = %d %s", rr.Code, rr.Body.String())
 			}
@@ -244,7 +244,7 @@ func TestMTASTSPolicy_PersistedLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		rr := httptest.NewRecorder()
-		h.SetPolicy(rr, mtastsRequest(http.MethodPut, domain.ID, `{"max_age":13,"active":false}`))
+		policyRoutes(h).ServeHTTP(rr, mtastsRequest(http.MethodPut, domain.ID, `{"max_age":13,"active":false}`))
 		if rr.Code != http.StatusInternalServerError || !strings.Contains(rr.Body.String(), `"code":"internal_error"`) {
 			t.Fatalf("insert failure = %d %s, want 500/internal_error", rr.Code, rr.Body.String())
 		}

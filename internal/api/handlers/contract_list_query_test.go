@@ -95,19 +95,26 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 	fx := seedMsgDeleteFixture(t, tx, 0)
 	pipeline := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	handlers := map[string]http.HandlerFunc{
-		"listAliases":       NewAliasHandler(tx).List,
-		"listMailboxes":     NewMailboxHandler(tx, nil, nil).List,
+		"listAliases":       aliasRoutes(NewAliasHandler(tx)).ServeHTTP,
+		"listMailboxes":     mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP,
 		"listPipelines":     pipeline.ListPipelines,
 		"listCustomFilters": pipeline.ListCustomFilters,
 		"listPipelineLogs":  pipeline.ListPipelineLogs,
 		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
-		"listGrants":        NewGrantHandler(tx, nil, "").List,
+		"listGrants": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/grants"
+			grantRoutes(NewGrantHandler(tx, nil, "")).ServeHTTP(w, r)
+		},
 		"listQueue": func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path = "/api/v1/admin/queue"
 			queueRoutes(NewQueueHandler(tx)).ServeHTTP(w, r)
 		},
-		"listBans":         banRoutes(NewBanHandler(tx)).ServeHTTP,
-		"listTlsReports":   NewTLSReportHandler(tx).ListReports,
+		"listBans": banRoutes(NewBanHandler(tx)).ServeHTTP,
+		"listTlsReports": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/tls-reports"
+			r.URL.RawPath = ""
+			policyRoutes(NewTLSReportHandler(tx)).ServeHTTP(w, r)
+		},
 		"listAuditEntries": auditRoutes(NewAuditHandler(tx)).ServeHTTP,
 		"searchMessages":   NewSearchHandler(tx).Search,
 		"getDeliveryLogs":  logRoutes(NewLogHandler(tx)).ServeHTTP,
@@ -134,13 +141,7 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 							n, err := strconv.ParseInt(value, 10, 64)
 							if err != nil || (param.Schema.Minimum != nil && n < *param.Schema.Minimum) || (param.Schema.Maximum != nil && n > *param.Schema.Maximum) {
 								want = http.StatusUnprocessableEntity
-								if op == "listTlsReports" && param.Name == "domain_id" {
-									want = http.StatusBadRequest
-								}
 							}
-						}
-						if value == "" && (op == "listBans" || op == "getDeliveryLogs" || op == "listAuditEntries") {
-							want = http.StatusUnprocessableEntity
 						}
 						query := url.Values{param.Name: []string{value}}
 						path := "/"
@@ -154,6 +155,12 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 						}
 						req := authzRequest(http.MethodGet, path+"?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID), "folder": "INBOX"}, "")
 						rr := httptest.NewRecorder()
+						if op == "listAliases" {
+							req.URL.Path = "/api/v1/admin/aliases"
+						}
+						if op == "listMailboxes" {
+							req.URL.Path = "/api/v1/admin/mailboxes"
+						}
 						handler(rr, req)
 						if rr.Code != want {
 							t.Fatalf("status = %d, want %d; body %s", rr.Code, want, rr.Body.String())

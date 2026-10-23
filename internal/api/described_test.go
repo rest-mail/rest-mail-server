@@ -123,3 +123,66 @@ func refName(t *testing.T, schema map[string]interface{}) string {
 	}
 	return ref[len(prefix):]
 }
+
+func TestDomainMailPolicyIsDescribed(t *testing.T) {
+	paths, schemas := describedAPI(t)
+	for _, tc := range []struct {
+		path, method, id, capability string
+		statuses                     []string
+	}{
+		{"/api/v1/admin/domains/{id}/allowlist", "get", "listAllowlist", "domains:read", []string{"200"}},
+		{"/api/v1/admin/domains/{id}/allowlist", "post", "addToAllowlist", "domains:write", []string{"201", "400", "404", "409"}},
+		{"/api/v1/admin/domains/{id}/allowlist/{eid}", "delete", "removeFromAllowlist", "domains:write", []string{"204", "404"}},
+		{"/api/v1/admin/domains/{id}/blocklist", "get", "listBlocklist", "domains:read", []string{"200"}},
+		{"/api/v1/admin/domains/{id}/blocklist", "post", "addToBlocklist", "domains:write", []string{"201", "400", "404", "409"}},
+		{"/api/v1/admin/domains/{id}/blocklist/{eid}", "delete", "removeFromBlocklist", "domains:write", []string{"204", "404"}},
+		{"/api/v1/admin/domains/{id}/suppressions", "get", "listSuppressions", "domains:read", []string{"200"}},
+		{"/api/v1/admin/domains/{id}/suppressions/{sid}", "delete", "clearSuppression", "domains:write", []string{"204", "404"}},
+		{"/api/v1/admin/domains/{id}/mta-sts", "get", "getMtaStsPolicy", "domains:read", []string{"200", "404"}},
+		{"/api/v1/admin/domains/{id}/mta-sts", "put", "setMtaStsPolicy", "domains:write", []string{"200", "201", "400", "404"}},
+		{"/api/v1/admin/domains/{id}/mta-sts", "delete", "deleteMtaStsPolicy", "domains:write", []string{"204", "404"}},
+		{"/api/v1/admin/domains/{id}/relay", "get", "getDomainRelay", "domains:read", []string{"200", "404"}},
+		{"/api/v1/admin/domains/{id}/relay", "put", "setDomainRelay", "domains:write", []string{"200", "400", "404", "409"}},
+		{"/api/v1/admin/tls-reports", "get", "listTlsReports", "domains:read", []string{"200"}},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			op := paths[tc.path][tc.method]
+			if op.OperationID != tc.id {
+				t.Fatalf("operationId = %q", op.OperationID)
+			}
+			security, _ := json.Marshal(op.Security)
+			want := `[{"CookieAuth":["` + tc.capability + `"]},{"BearerAuth":["` + tc.capability + `"]},{"APIKeyAuth":["` + tc.capability + `"]}]`
+			if string(security) != want {
+				t.Errorf("security = %s, want %s", security, want)
+			}
+			statuses := append([]string{"401", "403", "413", "422", "500", "503"}, tc.statuses...)
+			for _, status := range statuses {
+				if _, ok := op.Responses[status]; !ok {
+					t.Errorf("missing response %s", status)
+				}
+			}
+			if len(op.Responses) != len(statuses) {
+				t.Errorf("describes %d responses, want %v", len(op.Responses), statuses)
+			}
+		})
+	}
+	// Check the generated response types, in addition to the runtime credential round trip.
+	doc := generatedDocument(t)
+	for _, method := range []string{"get", "put"} {
+		op := paths["/api/v1/admin/domains/{id}/relay"][method]
+		shape := normalSchema(doc, op.Responses["200"].Content["application/json"].Schema, map[string]bool{}).(map[string]interface{})
+		data := shape["properties"].(map[string]interface{})["data"].(map[string]interface{})
+		props := data["properties"].(map[string]interface{})
+		for _, key := range []string{"password", "password_enc"} {
+			if _, leaked := props[key]; leaked {
+				t.Errorf("%s relay response describes %s", method, key)
+			}
+		}
+		if props["password_set"] == nil {
+			t.Error("relay response must describe password_set")
+		}
+	}
+	if schemas["SenderRule"] == nil || schemas["Suppression"] == nil || schemas["MTASTSPolicy"] == nil || schemas["TLSReport"] == nil {
+		t.Error("API-owned policy response types are missing")
+	}
+}

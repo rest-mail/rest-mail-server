@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -20,53 +20,42 @@ func NewSuppressionHandler(db *gorm.DB) *SuppressionHandler {
 	return &SuppressionHandler{db: db}
 }
 
-// List returns a domain's suppressions that haven't expired, newest first. An
+// list returns a domain's suppressions that haven't expired, newest first. An
 // expired one no longer suppresses, so it isn't listed.
 // GET /api/v1/admin/domains/{id}/suppressions
-func (h *SuppressionHandler) List(w http.ResponseWriter, r *http.Request) {
-	domainID, err := pathID(r, "id")
-	if err != nil || domainID == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
+func (h *SuppressionHandler) list(_ *http.Request, in domainPath) (endpoint.List[Suppression], error) {
+	domainID := in.ID
 
 	var suppressions []models.Suppression
 	if err := h.db.Where("domain_id = ? AND expires_at > ?", domainID, time.Now()).
 		Order("updated_at DESC").
 		Find(&suppressions).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list suppressions")
-		return
+		return endpoint.List[Suppression]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list suppressions")
 	}
 
-	respond.List(w, suppressions, nil)
+	data := make([]Suppression, len(suppressions))
+	for i, row := range suppressions {
+		data[i] = suppressionOf(row)
+	}
+	return endpoint.List[Suppression]{Data: data}, nil
 }
 
-// Delete clears a suppression, so mail from the domain to the address is
+// delete clears a suppression, so mail from the domain to the address is
 // tried again.
 // DELETE /api/v1/admin/domains/{id}/suppressions/{sid}
-func (h *SuppressionHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	domainID, err := pathID(r, "id")
-	if err != nil || domainID == 0 {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
-	suppressionID, err := pathID(r, "sid")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid suppression ID")
-		return
-	}
+func (h *SuppressionHandler) delete(_ *http.Request, in suppressionPath) (endpoint.Empty, error) {
+	domainID := in.ID
+	suppressionID := in.SID
 
 	// Scoped to the domain in the path, which the route checked the caller's
 	// capability on: another domain's suppression is not found.
 	res := h.db.Where("id = ? AND domain_id = ?", suppressionID, domainID).Delete(&models.Suppression{})
 	if res.Error != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to clear suppression")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to clear suppression")
 	}
 	if res.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "Suppression not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Suppression not found")
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }

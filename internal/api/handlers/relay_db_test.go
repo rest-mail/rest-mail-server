@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/restmail/restmail/internal/db/models"
 )
 
@@ -33,15 +32,13 @@ func relayTestServer(t *testing.T, masterKey string) (http.Handler, *RelayHandle
 		t.Fatalf("seed the domain: %v", err)
 	}
 	h := NewRelayHandler(tx, masterKey)
-	r := chi.NewRouter()
-	r.Get("/domains/{id}/relay", h.Get)
-	r.Put("/domains/{id}/relay", h.Set)
+	r := policyRoutes(h)
 	return r, h, dom.ID
 }
 
 func relayCall(t *testing.T, srv http.Handler, method string, domainID uint, body string) (int, string) {
 	t.Helper()
-	req := httptest.NewRequest(method, fmt.Sprintf("/domains/%d/relay", domainID), strings.NewReader(body))
+	req := httptest.NewRequest(method, fmt.Sprintf("/api/v1/admin/domains/%d/relay", domainID), strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
 	return rec.Code, rec.Body.String()
