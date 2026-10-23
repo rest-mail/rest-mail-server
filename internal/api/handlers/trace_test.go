@@ -191,6 +191,40 @@ func TestBuildTrace_Quarantined(t *testing.T) {
 	}
 }
 
+// TestQuarantineReason gives a quarantine row the reason code of the step
+// that held the message, the same code its trace records, and "pipeline"
+// when no step is known.
+func TestQuarantineReason(t *testing.T) {
+	held := func(filter string) *pipeline.ExecutionResult {
+		return &pipeline.ExecutionResult{
+			FinalAction: pipeline.ActionQuarantine,
+			Steps: []pipeline.StepResult{
+				{FilterName: "spf_check", Action: pipeline.ActionContinue},
+				{FilterName: filter, Action: pipeline.ActionQuarantine, Log: pipeline.FilterLog{Result: "fail"}},
+			},
+		}
+	}
+	for _, c := range []struct {
+		name string
+		res  *pipeline.ExecutionResult
+		want string
+	}{
+		{"dmarc", held("dmarc_check"), string(pipeline.ReasonDMARCQuarantine)},
+		{"spf", held("spf_check"), string(pipeline.Reason("spf_check", pipeline.ActionQuarantine, "fail"))},
+		{"nil result", nil, "pipeline"},
+		{"no steps", &pipeline.ExecutionResult{FinalAction: pipeline.ActionQuarantine}, "pipeline"},
+	} {
+		if got := quarantineReason(c.res); got != c.want {
+			t.Errorf("%s: quarantineReason = %q, want %q", c.name, got, c.want)
+		}
+	}
+	// The row's reason and the trace's are the same code.
+	res := held("dmarc_check")
+	if tr := buildTrace(traceInputs{Result: res, Outcome: outcomeQuarantined}); tr.ReasonCode != quarantineReason(res) {
+		t.Errorf("trace %q and quarantine %q reasons differ", tr.ReasonCode, quarantineReason(res))
+	}
+}
+
 // TestBuildTrace_NilResult tolerates a nil ExecutionResult (defensive): no
 // panic, empty stages/final_action, zero duration.
 func TestBuildTrace_NilResult(t *testing.T) {

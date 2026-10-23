@@ -10299,6 +10299,13 @@ components:
           format: float
         quarantine_reason:
           type: string
+          description: >-
+            Why the message was held: the reason code of the pipeline step
+            that quarantined it, the same code its message trace records
+            (dmarc_quarantine, spf_fail, dkim_fail, spam_threshold,
+            virus_detected, header_invalid, custom_reject, other), or
+            pipeline when no step is known.
+          example: dmarc_quarantine
         received_at:
           type: string
           format: date-time

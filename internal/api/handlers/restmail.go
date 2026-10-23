@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -336,7 +337,9 @@ func (h *RestmailHandler) Deliver(w http.ResponseWriter, r *http.Request) {
 							Sender:           req.From,
 							Subject:          req.Subject,
 							BodyPreview:      preview,
-							QuarantineReason: "pipeline",
+							QuarantineReason: quarantineReason(result),
+							ReceivedAt:       time.Now(),
+							ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
 						})
 					}
 				}
