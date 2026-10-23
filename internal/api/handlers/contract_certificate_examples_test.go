@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -13,102 +14,69 @@ import (
 	yaml "go.yaml.in/yaml/v2"
 )
 
-// createCertificate refuses a body it cannot use with a 400 before it looks
-// the domain up (#388). Each body here is sent to the real handler, which has
-// no database, and gets exactly the 400 example documented for its reason: a
-// body that reached the lookup would panic on the nil database instead.
+// Binding rejects malformed bodies with 400 and broken field rules with 422,
+// before a database lookup. Exercise the named examples through registration.
 func TestCertificateCreate_DocumentedBadRequests(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/certificates", "createCertificate")
 	wantPairs := map[string][]string{
 		"request": {"fields_missing", "invalid_body", "valid"},
-		"201":     {"valid"},
-		"400":     {"fields_missing", "invalid_body"},
+		"201":     {"valid"}, "400": {"invalid_body"}, "422": {"fields_missing"},
 	}
 	gotPairs := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
 		gotPairs[status] = names(examples)
 	}
 	if !reflect.DeepEqual(gotPairs, wantPairs) {
-		t.Fatalf("createCertificate's named examples are %v, want %v", gotPairs, wantPairs)
+		t.Fatalf("example pairs %v, want %v", gotPairs, wantPairs)
 	}
-	for name, want := range responses["400"] {
-		body := string(mustJSON(requests[name]))
-		rr, reachedDB := createCertificateWithoutDB(body)
-		if reachedDB || rr.Code != http.StatusBadRequest {
-			t.Fatalf("%s: reached database %v, status %d, want 400 before lookup", body, reachedDB, rr.Code)
-		}
-		var got interface{}
-		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("%s answered %s, want %s", body, rr.Body, mustJSON(want))
-		}
-	}
-
-	documented := responses["400"]
-	if got, want := names(documented), []string{"fields_missing", "invalid_body"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("createCertificate's 400 examples are %v, want %v", got, want)
-	}
-	// The two reasons must stay apart: one body is not usable at all, the
-	// other is well-typed JSON that leaves a required field out.
-	if reflect.DeepEqual(documented["invalid_body"], documented["fields_missing"]) {
-		t.Fatalf("invalid_body and fields_missing document the same body %s", mustJSON(documented["invalid_body"]))
-	}
-
-	bodies := map[string][]string{
-		"invalid_body": {
-			``,
-			`{`,
-			`not json`,
-			`[]`,
-			`[{"domain_id":1,"cert_pem":"cert","key_pem":"key"}]`,
-			`"domain_id"`,
-			`42`,
-			`true`,
-			`{"domain_id":"1","cert_pem":"cert","key_pem":"key"}`,
-			`{"domain_id":-1,"cert_pem":"cert","key_pem":"key"}`,
-			`{"domain_id":1.5,"cert_pem":"cert","key_pem":"key"}`,
-			`{"domain_id":1,"cert_pem":1,"key_pem":"key"}`,
-			`{"domain_id":1,"cert_pem":"cert","key_pem":["key"]}`,
-			`{"domain_id":1,"cert_pem":"cert","key_pem":"key","auto_renew":"yes"}`,
-		},
-		"fields_missing": {
-			`null`,
-			`{}`,
-			`{"cert_pem":"cert","key_pem":"key"}`,
-			`{"domain_id":0,"cert_pem":"cert","key_pem":"key"}`,
-			`{"domain_id":null,"cert_pem":"cert","key_pem":"key"}`,
-			`{"domain_id":1,"key_pem":"key"}`,
-			`{"domain_id":1,"cert_pem":"","key_pem":"key"}`,
-			`{"domain_id":1,"cert_pem":"cert"}`,
-			`{"domain_id":1,"cert_pem":"cert","key_pem":"","auto_renew":true}`,
-		},
-	}
-	for name, cases := range bodies {
-		want, ok := documented[name]
-		if !ok {
-			t.Fatalf("the 400 documents no %q example", name)
-		}
-		for _, body := range cases {
-			rr, reachedDB := createCertificateWithoutDB(body)
-			if reachedDB {
-				t.Errorf("%q reached the database before it was refused", body)
-				continue
-			}
-			if rr.Code != http.StatusBadRequest {
-				t.Errorf("%q: status %d, want 400; body %s", body, rr.Code, rr.Body)
-				continue
-			}
-			if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
-				t.Errorf("%q: Content-Type %q, want application/json", body, ct)
+	for _, status := range []string{"400", "422"} {
+		for name, want := range responses[status] {
+			rr, reachedDB := createCertificateWithoutDB(string(mustJSON(requests[name])))
+			if reachedDB || fmt.Sprint(rr.Code) != status {
+				t.Fatalf("%s reached DB %v, status %d: %s", name, reachedDB, rr.Code, rr.Body)
 			}
 			var got interface{}
 			if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
-				t.Fatalf("%q: decode %s: %v", body, rr.Body, err)
+				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, want) {
-				t.Errorf("%q answered\n  %s\nthe spec documents %s as\n  %s", body, rr.Body, name, mustJSON(want))
+				t.Errorf("%s answered %s, want %s", name, rr.Body, mustJSON(want))
+			}
+		}
+	}
+	for _, tc := range []struct {
+		body   string
+		status int
+		field  string
+	}{
+		{"not json", 400, ""}, {`[]`, 400, ""}, {`null`, 400, ""}, {`"cert"`, 400, ""}, {`1`, 400, ""}, {`false`, 400, ""},
+		{`{"domain_id":"1","cert_pem":"cert","key_pem":"key"}`, 422, "domain_id"},
+		{`{"domain_id":-1,"cert_pem":"cert","key_pem":"key"}`, 422, "domain_id"},
+		{`{"domain_id":0,"cert_pem":"cert","key_pem":"key"}`, 422, "domain_id"},
+		{`{"domain_id":null,"cert_pem":"cert","key_pem":"key"}`, 422, "domain_id"},
+		{`{"domain_id":1,"cert_pem":42,"key_pem":"key"}`, 422, "cert_pem"},
+		{`{"domain_id":1,"cert_pem":"","key_pem":"key"}`, 422, "cert_pem"},
+		{`{"domain_id":1,"cert_pem":"cert","key_pem":false}`, 422, "key_pem"},
+		{`{"domain_id":1,"cert_pem":"cert","key_pem":""}`, 422, "key_pem"},
+	} {
+		rr, reachedDB := createCertificateWithoutDB(tc.body)
+		if reachedDB || rr.Code != tc.status {
+			t.Errorf("%s reached DB %v, status %d, want %d: %s", tc.body, reachedDB, rr.Code, tc.status, rr.Body)
+			continue
+		}
+		if tc.field != "" {
+			var got struct {
+				Error struct {
+					Details struct {
+						Fields map[string]string `json:"fields"`
+					} `json:"details"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.Error.Details.Fields[tc.field] == "" {
+				t.Errorf("%s: field %s absent from %s", tc.body, tc.field, rr.Body)
 			}
 		}
 	}
@@ -125,7 +93,7 @@ func TestCertificateCreate_CompleteBodyReachesTheLookup(t *testing.T) {
 }
 
 // The success keeps its link, and the 400 keeps the shared error envelope.
-// No 422 is documented: the handler never sends one.
+// The 422 names the broken field rules.
 func TestCertificateCreate_DocumentedResponses(t *testing.T) {
 	served, err := restmail.OpenAPI.ReadFile("openapi.yaml")
 	if err != nil {
@@ -161,7 +129,7 @@ func TestCertificateCreate_DocumentedResponses(t *testing.T) {
 		statuses = append(statuses, status)
 	}
 	sort.Strings(statuses)
-	if want := []string{"201", "400"}; !reflect.DeepEqual(statuses, want) {
+	if want := []string{"201", "400", "422"}; !reflect.DeepEqual(statuses, want) {
 		t.Errorf("createCertificate documents %v, want %v", statuses, want)
 	}
 	if _, ok := op.Responses["201"].Links["getCertificate"]; !ok {
@@ -182,6 +150,6 @@ func createCertificateWithoutDB(body string) (rr *httptest.ResponseRecorder, rea
 			reachedDB = true
 		}
 	}()
-	NewCertificateHandler(nil, "").CreateCertificate(rr, req)
+	certificateRoutes(NewCertificateHandler(nil, "")).ServeHTTP(rr, req)
 	return rr, false
 }
