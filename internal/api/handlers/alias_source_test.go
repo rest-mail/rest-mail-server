@@ -27,7 +27,7 @@ func postAliasSource(t *testing.T, raw []byte) (rr *httptest.ResponseRecorder, l
 				inLookup = panickedInAliasDomainLookup()
 			}
 		}()
-		NewAliasHandler(nil).Create(rr, req)
+		aliasRoutes(NewAliasHandler(nil)).ServeHTTP(rr, req)
 	}()
 	if panicked != nil && !inLookup {
 		t.Fatalf("%s panicked outside the domain lookup: %v", raw, panicked)
@@ -36,7 +36,7 @@ func postAliasSource(t *testing.T, raw []byte) (rr *httptest.ResponseRecorder, l
 }
 
 // panickedInAliasDomainLookup reports whether the panic being recovered was
-// raised inside gorm's (*DB).Where, called directly by AliasHandler.Create. It
+// raised inside gorm's (*DB).Where, called directly by AliasHandler.create. It
 // must be called from the deferred function that recovers, while the panicking
 // frames are still on the stack.
 func panickedInAliasDomainLookup() bool {
@@ -46,7 +46,7 @@ func panickedInAliasDomainLookup() bool {
 		frame, more := frames.Next()
 		if frame.Function == "gorm.io/gorm.(*DB).Where" {
 			caller, _ := frames.Next()
-			return caller.Function == "github.com/restmail/restmail/internal/api/handlers.(*AliasHandler).Create"
+			return caller.Function == "github.com/restmail/restmail/internal/api/handlers.(*AliasHandler).create"
 		}
 		if !more {
 			return false
@@ -147,19 +147,14 @@ func TestAliasCreate_SourceRequiredAndNoAtUnchanged(t *testing.T) {
 	}
 }
 
-// A body that does not decode is still the 400 it was, before any field check.
+// Malformed JSON stays 400; a field with the wrong type is a binding rule failure (422).
 func TestAliasCreate_UndecodableBodyStill400(t *testing.T) {
 	want := map[string]interface{}{
 		"error": map[string]interface{}{"code": "bad_request", "message": "Invalid request body"},
 	}
-	for name, raw := range map[string]string{
-		"truncated":         `{"source_address":`,
-		"source not string": `{"source_address": 5, "destination_address": "admin@restmail.test"}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			assertAliasSourceAnswer(t, []byte(raw), http.StatusBadRequest, want)
-		})
-	}
+	assertAliasSourceAnswer(t, []byte(`{"source_address":`), http.StatusBadRequest, want)
+	assertAliasSourceAnswer(t, []byte(`{"source_address":5,"destination_address":"admin@restmail.test"}`), http.StatusUnprocessableEntity,
+		aliasSourceValidation(map[string]interface{}{"source_address": "must be a string"}))
 }
 
 // Well-formed sources, including forms a simple pattern would wrongly refuse

@@ -223,7 +223,7 @@ func mailboxUpdate(t *testing.T, h *MailboxHandler, id uint, body string) *httpt
 	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
-	h.Update(rr, req)
+	mailboxRoutes(h).ServeHTTP(rr, req)
 	return rr
 }
 
@@ -292,7 +292,7 @@ func TestMailboxDeleteRevokesSessions(t *testing.T) {
 	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
-	mbH.Delete(rr, req)
+	mailboxRoutes(mbH).ServeHTTP(rr, req)
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("delete: expected 204, got %d (%s)", rr.Code, rr.Body.String())
 	}
@@ -353,7 +353,7 @@ func TestAdminDeleteRevokesSessions(t *testing.T) {
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, as))
 		rr := httptest.NewRecorder()
-		mbH.Delete(rr, req)
+		mailboxRoutes(mbH).ServeHTTP(rr, req)
 		return rr
 	}
 	noOTP := *granter

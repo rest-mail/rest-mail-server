@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -32,15 +32,12 @@ func NewMailboxHandler(db *gorm.DB, cache *grants.Cache, sessions *SessionCache)
 	return &MailboxHandler{db: db, cache: cache, sessions: sessions}
 }
 
-func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 0, "domain_id") {
-		return
-	}
-	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+func (h *MailboxHandler) list(r *http.Request, in adminAddressListRequest) (endpoint.List[Mailbox], error) {
+	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	query := filterAdminList(h.db.Model(&models.Mailbox{}), r, middleware.CapMailboxesRead, "mailboxes")
-	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
-		query = query.Where("domain_id = ?", domainID)
+	if in.DomainID != nil {
+		query = query.Where("domain_id = ?", *in.DomainID)
 	}
 
 	var total int64
@@ -48,37 +45,36 @@ func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	var mailboxes []models.Mailbox
 	if err := query.Preload("Domain").Preload("QuotaUsage").Order("address ASC").Limit(limit).Offset(offset).Find(&mailboxes).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list mailboxes")
-		return
+		return endpoint.List[Mailbox]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list mailboxes")
 	}
 	for i := range mailboxes {
 		redactMailboxDomain(r, &mailboxes[i])
 	}
-	respond.List(w, mailboxes, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]Mailbox, len(mailboxes))
+	for i, row := range mailboxes {
+		out[i] = mailboxOf(row)
+	}
+	return endpoint.List[Mailbox]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
-func (h *MailboxHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
-		return
-	}
+func (h *MailboxHandler) get(r *http.Request, in adminAddressPath) (Mailbox, error) {
+	id := in.ID
 
 	var mailbox models.Mailbox
 	if err := h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-		return
+		return Mailbox{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 
 	redactMailboxDomain(r, &mailbox)
-	respond.Data(w, http.StatusOK, mailbox)
+	return mailboxOf(mailbox), nil
 }
 
 type updateMailboxRequest struct {
-	Password    *string `json:"password"`
-	DisplayName *string `json:"display_name"`
-	QuotaBytes  *int64  `json:"quota_bytes"`
-	Active      *bool   `json:"active"`
+	// Keep the byte-count rule in the handler; minLength would count code points.
+	Password    *string `json:"password,omitempty" format:"password" description:"At least 12 bytes when supplied; null leaves the password unchanged"`
+	DisplayName *string `json:"display_name,omitempty"`
+	QuotaBytes  *int64  `json:"quota_bytes,omitempty"`
+	Active      *bool   `json:"active,omitempty"`
 }
 
 // mailboxUpdatableColumns is the exhaustive allowlist of DB columns the mailbox
@@ -93,35 +89,25 @@ var mailboxUpdatableColumns = map[string]bool{
 	"active":       true,
 }
 
-func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
-		return
-	}
+func (h *MailboxHandler) update(r *http.Request, in updateMailboxInput) (Mailbox, error) {
+	id := in.ID
 
 	var mailbox models.Mailbox
 	if err := h.db.First(&mailbox, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-		return
+		return Mailbox{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 
-	var req updateMailboxRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 
 	updates := map[string]interface{}{}
 	var hashed string
+	var err error
 	if req.Password != nil {
 		if len(*req.Password) < minChosenPasswordLength {
-			respond.ValidationError(w, map[string]string{"password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)})
-			return
+			return Mailbox{}, endpoint.Invalid(map[string]string{"password": fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)})
 		}
 		if hashed, err = hashPassword(*req.Password); err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to hash password")
-			return
+			return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to hash password")
 		}
 	}
 	if req.DisplayName != nil {
@@ -168,8 +154,7 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
-			return
+			return Mailbox{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update mailbox")
 		}
 		if hashed != "" || req.Active != nil {
 			h.sessions.Forget(mailbox.ID)
@@ -178,31 +163,26 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id)
 	redactMailboxDomain(r, &mailbox)
-	respond.Data(w, http.StatusOK, mailbox)
+	return mailboxOf(mailbox), nil
 }
 
-// Delete deletes an account. Its credentials are revoked (the rows stay, for
+// delete deletes an account. Its credentials are revoked (the rows stay, for
 // the audit trail) and its sessions end. Every grant it held is removed under
 // the grants API's rules, since deleting an admin takes away what it held: the
 // session must have signed in with 2FA and hold everything removed, and the
 // last superadmin cannot go. Every grant others held on it (owners) is removed
 // too, so a new account at the same address inherits nobody. Each removal has
 // its audit entry, in the same transaction.
-func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
-		return
-	}
+func (h *MailboxHandler) delete(r *http.Request, in adminAddressPath) (endpoint.Empty, error) {
+	id := in.ID
 
 	var mailbox models.Mailbox
 	if err := h.db.First(&mailbox, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 	claims := middleware.GetClaims(r)
 
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
@@ -237,37 +217,31 @@ func (h *MailboxHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 		return tx.Delete(&mailbox).Error
 	})
-	if grantChangeFailed(w, err) {
-		return
+	if err != nil {
+		return endpoint.Empty{}, mailboxGrantError(err)
 	}
 	h.cache.Invalidate()
 	h.sessions.Forget(mailbox.ID)
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
-// EndSessions signs an account out everywhere: every refresh token it holds is
+// endSessions signs an account out everywhere: every refresh token it holds is
 // revoked and its credential epoch moves on, so each access token it was
 // issued is refused at its next request, on the event stream and at refresh.
 // Its passwords and app passwords stay: a mail client signed in with an app
 // password keeps working, and is revoked on its own.
 // DELETE /api/v1/admin/mailboxes/{id}/sessions
-func (h *MailboxHandler) EndSessions(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid mailbox ID")
-		return
-	}
+func (h *MailboxHandler) endSessions(r *http.Request, in adminAddressPath) (endpoint.Empty, error) {
+	id := in.ID
 	var mailbox models.Mailbox
 	if err := h.db.Select("id").First(&mailbox, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "mailbox_not_found", "Mailbox not found")
 	}
 	if err := h.db.Transaction(func(tx *gorm.DB) error { return endSessions(tx, mailbox.ID) }); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to end the sessions")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to end the sessions")
 	}
 	h.sessions.Forget(mailbox.ID)
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
 // CheckAddress verifies a recipient exists: GET /api/mailboxes?address=...
