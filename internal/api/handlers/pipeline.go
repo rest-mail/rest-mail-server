@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -149,10 +150,8 @@ func NewPipelineHandler(db *gorm.DB, engine *pipeline.Engine, jsSidecar filters.
 const jsSidecarRefused = "JS filter sidecar refused the API's token (JS_FILTER_TOKEN differs between the API and the sidecar)"
 
 // ListPipelines returns all pipelines for a domain.
-func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 0, "domain_id") {
-		return
-	}
+func (h *PipelineHandler) listPipelines(r *http.Request, in listPipelineResourcesRequest) (endpoint.List[Pipeline], error) {
+	var zero endpoint.List[Pipeline]
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
@@ -166,10 +165,13 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 
 	var pipelines []models.Pipeline
 	if err := query.Order("direction ASC, id ASC").Limit(limit).Offset(offset).Find(&pipelines).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list pipelines")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list pipelines")
 	}
-	respond.List(w, pipelines, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]Pipeline, len(pipelines))
+	for i, item := range pipelines {
+		out[i] = pipelineOf(item)
+	}
+	return endpoint.List[Pipeline]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
 // ListPipelineLogs returns recent per-message pipeline traces, newest first,
@@ -177,33 +179,28 @@ func (h *PipelineHandler) ListPipelines(w http.ResponseWriter, r *http.Request) 
 // mail_from/rcpt_to/client_ip, the stages timeline and duration. It filters on
 // pipeline_id, direction, action (the trace's final_action column), and on
 // rfc_message_id / outcome / reason_code for message-lifecycle drill-down.
-func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 200, "pipeline_id", "limit", "offset") {
-		return
-	}
+func (h *PipelineHandler) listPipelineLogs(r *http.Request, in listPipelineLogsRequest) (endpoint.List[MessageTrace], error) {
+	var zero endpoint.List[MessageTrace]
 	params := r.URL.Query()
 	if params.Has("direction") {
 		switch params.Get("direction") {
 		case "inbound", "outbound":
 		default:
-			respond.ValidationError(w, map[string]string{"direction": "must be one of inbound, outbound"})
-			return
+			return zero, endpoint.Invalid(map[string]string{"direction": "must be one of inbound, outbound"})
 		}
 	}
 	if params.Has("action") {
 		switch params.Get("action") {
 		case "continue", "reject", "quarantine", "discard", "defer":
 		default:
-			respond.ValidationError(w, map[string]string{"action": "must be one of continue, reject, quarantine, discard, defer"})
-			return
+			return zero, endpoint.Invalid(map[string]string{"action": "must be one of continue, reject, quarantine, discard, defer"})
 		}
 	}
 	if params.Has("outcome") {
 		switch params.Get("outcome") {
 		case "delivered", "queued", "rejected", "quarantined", "discarded", "deferred":
 		default:
-			respond.ValidationError(w, map[string]string{"outcome": "must be one of delivered, queued, rejected, quarantined, discarded, deferred"})
-			return
+			return zero, endpoint.Invalid(map[string]string{"outcome": "must be one of delivered, queued, rejected, quarantined, discarded, deferred"})
 		}
 	}
 	limit := 50
@@ -241,10 +238,13 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 
 	var traces []models.MessageTrace
 	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&traces).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list pipeline traces")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list pipeline traces")
 	}
-	respond.List(w, traces, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]MessageTrace, len(traces))
+	for i, item := range traces {
+		out[i] = MessageTrace(item)
+	}
+	return endpoint.List[MessageTrace]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
 // GetMessageTrace returns the ordered pipeline stage timeline for a delivered
@@ -255,61 +255,45 @@ func (h *PipelineHandler) ListPipelineLogs(w http.ResponseWriter, r *http.Reques
 // nil for rejected/quarantined/discarded/deferred mail, which never became a
 // Message row and is instead correlated via rfc_message_id on ListPipelineLogs).
 // A non-delivered or unknown id therefore has no trace here → 404.
-func (h *PipelineHandler) GetMessageTrace(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
-	}
+func (h *PipelineHandler) getMessageTrace(r *http.Request, in pipelinePath) (MessageTrace, error) {
+	var zero MessageTrace
+	id := in.ID
 
 	var trace models.MessageTrace
 	if err := h.db.Where("message_id = ?", uint(id)).Order("created_at DESC").First(&trace).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "No pipeline trace for this message")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "No pipeline trace for this message")
 	}
-	respond.Data(w, http.StatusOK, trace)
+	return MessageTrace(trace), nil
 }
 
 // CreatePipeline creates a new pipeline.
-func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		DomainID  uint            `json:"domain_id"`
-		Direction string          `json:"direction"`
-		Filters   json.RawMessage `json:"filters"`
-		Active    *bool           `json:"active"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+func (h *PipelineHandler) createPipeline(r *http.Request, in createPipelineRequestBody) (Pipeline, error) {
+	var zero Pipeline
+	req := in
 
 	if req.Direction != "inbound" && req.Direction != "outbound" {
-		respond.ValidationError(w, map[string]string{"direction": "must be 'inbound' or 'outbound'"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"direction": "must be 'inbound' or 'outbound'"})
 	}
 
 	// filters is required and is an array of objects (CreatePipelineRequest,
 	// #388). The column takes any JSON, so a missing or misshapen list would be
 	// stored as it came and fail only when the pipeline is built for delivery.
 	if !isFilterObjectArray(req.Filters) {
-		respond.ValidationError(w, map[string]string{"filters": "must be an array of filter objects"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"filters": "must be an array of filter objects"})
 	}
 
 	// Install-validate every embedded Sieve script BEFORE persisting: a broken
 	// domain Sieve fails to build at delivery and, under the engine's fail-closed
 	// policy, would defer the whole domain's mail. Reject it now with HTTP 400.
 	if err := validateSievePipelineFilters(req.Filters); err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_sieve", err.Error())
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "invalid_sieve", err.Error())
 	}
 
 	// Reject a duplicate filter configured with an unsupported queue_recipient
 	// (issue #201) before persisting: an unhonoured config would be silently
 	// ignored at delivery.
 	if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
-		respond.Error(w, http.StatusBadRequest, "unsupported_filter", err.Error())
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "unsupported_filter", err.Error())
 	}
 
 	p := models.Pipeline{
@@ -331,53 +315,38 @@ func (h *PipelineHandler) CreatePipeline(w http.ResponseWriter, r *http.Request)
 		Active *bool
 	}{Pipeline: p, Active: &p.Active}
 	if err := h.db.Create(&row).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create pipeline")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create pipeline")
 	}
 
-	respond.Data(w, http.StatusCreated, row.Pipeline)
+	return pipelineOf(row.Pipeline), nil
 }
 
 // UpdatePipeline updates a pipeline's configuration.
-func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid pipeline ID")
-		return
-	}
+func (h *PipelineHandler) updatePipeline(r *http.Request, in updatePipelineRequest) (Pipeline, error) {
+	var zero Pipeline
+	id := in.ID
 
 	var p models.Pipeline
 	if err := h.db.First(&p, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Pipeline not found")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
 	}
 
-	var req struct {
-		Filters json.RawMessage `json:"filters"`
-		Active  *bool           `json:"active"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 
 	if req.Filters != nil {
 		// A supplied list has the same shape as CreatePipeline's (#388); null is
 		// not one, as UpdatePipelineRequest's filters are not nullable. Only an
 		// omitted list leaves the stored one as it was.
 		if !isFilterObjectArray(req.Filters) {
-			respond.ValidationError(w, map[string]string{"filters": "must be an array of filter objects"})
-			return
+			return zero, endpoint.Invalid(map[string]string{"filters": "must be an array of filter objects"})
 		}
 		// Same install-time Sieve gate as CreatePipeline: reject a broken embedded
 		// Sieve with HTTP 400 and leave the stored config untouched.
 		if err := validateSievePipelineFilters(req.Filters); err != nil {
-			respond.Error(w, http.StatusBadRequest, "invalid_sieve", err.Error())
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "invalid_sieve", err.Error())
 		}
 		if err := validateDuplicatePipelineFilters(req.Filters); err != nil {
-			respond.Error(w, http.StatusBadRequest, "unsupported_filter", err.Error())
-			return
+			return zero, endpoint.Refuse(http.StatusBadRequest, "unsupported_filter", err.Error())
 		}
 		p.Filters = req.Filters
 	}
@@ -386,63 +355,48 @@ func (h *PipelineHandler) UpdatePipeline(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.db.Save(&p).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update pipeline")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update pipeline")
 	}
 
-	respond.Data(w, http.StatusOK, p)
+	return pipelineOf(p), nil
 }
 
 // DeletePipeline removes a pipeline.
-func (h *PipelineHandler) DeletePipeline(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid pipeline ID")
-		return
-	}
+func (h *PipelineHandler) deletePipeline(r *http.Request, in pipelinePath) (deletedStatus, error) {
+	var zero deletedStatus
+	id := in.ID
 
 	deleted := h.db.Delete(&models.Pipeline{}, id)
 	if deleted.Error != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete pipeline")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete pipeline")
 	}
 	// Deleting what is not there is a 404, as for every other admin delete, not a
 	// "deleted" for nothing.
 	if deleted.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "Pipeline not found")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "deleted"})
+	return deletedStatus{Status: "deleted"}, nil
 }
 
 // TestPipeline runs a sample email through a pipeline and returns step-by-step results.
-func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		PipelineID uint                `json:"pipeline_id"`
-		Email      *pipeline.EmailJSON `json:"email"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+func (h *PipelineHandler) testPipeline(r *http.Request, in testPipelineRequestBody) (pipeline.ExecutionResult, error) {
+	var zero pipeline.ExecutionResult
+	req := in
 
 	if req.Email == nil {
-		respond.ValidationError(w, map[string]string{"email": "required"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"email": "required"})
 	}
 
 	var p models.Pipeline
 	if err := h.db.First(&p, req.PipelineID).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Pipeline not found")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Pipeline not found")
 	}
 
 	// Parse pipeline filters
 	var filterConfigs []pipeline.FilterConfig
 	if err := json.Unmarshal(p.Filters, &filterConfigs); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Invalid pipeline filter config")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid pipeline filter config")
 	}
 
 	pipelineCfg := &pipeline.PipelineConfig{
@@ -453,57 +407,44 @@ func (h *PipelineHandler) TestPipeline(w http.ResponseWriter, r *http.Request) {
 		Active:    p.Active,
 	}
 
-	result, err := h.engine.Execute(r.Context(), pipelineCfg, req.Email)
+	result, err := h.engine.Execute(r.Context(), pipelineCfg, req.Email.canonical())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "execution_error", err.Error())
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "execution_error", err.Error())
 	}
 
-	respond.Data(w, http.StatusOK, result)
+	return *result, nil
 }
 
 // TestFilter runs a single filter against a sample email.
-func (h *PipelineHandler) TestFilter(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		FilterName string              `json:"filter_name"`
-		Config     json.RawMessage     `json:"config"`
-		Email      *pipeline.EmailJSON `json:"email"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+func (h *PipelineHandler) testFilter(r *http.Request, in testFilterRequestBody) (pipeline.FilterResult, error) {
+	var zero pipeline.FilterResult
+	req := in
 
 	if req.FilterName == "" || req.Email == nil {
-		respond.ValidationError(w, map[string]string{
+		return zero, endpoint.Invalid(map[string]string{
 			"filter_name": "required",
 			"email":       "required",
 		})
-		return
 	}
 
 	// Enforce the request schema before a factory can ignore malformed config.
 	if !isJSONObject(req.Config) {
-		respond.ValidationError(w, map[string]string{"config": "must be an object"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"config": "must be an object"})
 	}
 
-	result, err := h.engine.TestFilter(r.Context(), req.FilterName, req.Config, req.Email)
+	result, err := h.engine.TestFilter(r.Context(), req.FilterName, req.Config, req.Email.canonical())
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "filter_error", err.Error())
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "filter_error", err.Error())
 	}
 
-	respond.Data(w, http.StatusOK, result)
+	return *result, nil
 }
 
 // ── Custom Filters ───────────────────────────────────────────────────
 
 // ListCustomFilters returns custom filters for a domain.
-func (h *PipelineHandler) ListCustomFilters(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 0, "domain_id") {
-		return
-	}
+func (h *PipelineHandler) listCustomFilters(r *http.Request, in listPipelineResourcesRequest) (endpoint.List[CustomFilter], error) {
+	var zero endpoint.List[CustomFilter]
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 	domainID := r.URL.Query().Get("domain_id")
 
@@ -517,14 +458,18 @@ func (h *PipelineHandler) ListCustomFilters(w http.ResponseWriter, r *http.Reque
 
 	var filters []models.CustomFilter
 	if err := query.Order("name ASC").Limit(limit).Offset(offset).Find(&filters).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list custom filters")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list custom filters")
 	}
-	respond.List(w, filters, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]CustomFilter, len(filters))
+	for i, item := range filters {
+		out[i] = customFilterOf(item)
+	}
+	return endpoint.List[CustomFilter]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
 // CreateCustomFilter creates a new custom filter definition.
-func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Request) {
+func (h *PipelineHandler) createCustomFilter(r *http.Request, in createCustomFilterRequestBody) (CustomFilter, error) {
+	var zero CustomFilter
 	// Decode only the client-settable fields into a dedicated request struct.
 	// Never bind straight into models.CustomFilter: its exported Domain
 	// association would be auto-saved by GORM on Create, letting a caller that
@@ -532,38 +477,23 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 	// privilege escalation), and a client-supplied ID/timestamps would be
 	// honoured too. The domain is bound by foreign key only, never via a nested
 	// Domain object — mirroring CreatePipeline and the update handlers.
-	var req struct {
-		DomainID    uint            `json:"domain_id"`
-		Name        string          `json:"name"`
-		Description string          `json:"description"`
-		FilterType  string          `json:"filter_type"`
-		Direction   string          `json:"direction"`
-		Config      json.RawMessage `json:"config"`
-		Enabled     *bool           `json:"enabled"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in
 
 	if req.Name == "" || req.FilterType == "" || req.Direction == "" {
-		respond.ValidationError(w, map[string]string{
+		return zero, endpoint.Invalid(map[string]string{
 			"name":        "required",
 			"filter_type": "required",
 			"direction":   "required",
 		})
-		return
 	}
 	if errs := customFilterFieldErrors(req.FilterType, req.Direction); errs != nil {
-		respond.ValidationError(w, errs)
-		return
+		return zero, endpoint.Invalid(errs)
 	}
 	// config is required and is an object (CreateCustomFilterRequest, #388).
 	// The column takes any JSON, so a missing or misshapen config would be
 	// stored as it came. What the object holds is the filter's own concern.
 	if !isJSONObject(req.Config) {
-		respond.ValidationError(w, map[string]string{"config": "must be an object"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"config": "must be an object"})
 	}
 
 	cf := models.CustomFilter{
@@ -588,11 +518,10 @@ func (h *PipelineHandler) CreateCustomFilter(w http.ResponseWriter, r *http.Requ
 		Enabled *bool
 	}{CustomFilter: cf, Enabled: &cf.Enabled}
 	if err := h.db.Table(cf.TableName()).Create(&row).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create custom filter")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to create custom filter")
 	}
 
-	respond.Data(w, http.StatusCreated, row.CustomFilter)
+	return customFilterOf(row.CustomFilter), nil
 }
 
 // customFilterFieldErrors checks a custom filter's type and direction against
@@ -619,51 +548,32 @@ func isJSONObject(raw json.RawMessage) bool {
 }
 
 // GetCustomFilter returns a single custom filter by ID.
-func (h *PipelineHandler) GetCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
-		return
-	}
+func (h *PipelineHandler) getCustomFilter(r *http.Request, in pipelinePath) (CustomFilter, error) {
+	var zero CustomFilter
+	id := in.ID
 
 	var cf models.CustomFilter
 	if err := h.db.First(&cf, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
 	}
 
-	respond.Data(w, http.StatusOK, cf)
+	return customFilterOf(cf), nil
 }
 
 // UpdateCustomFilter updates a custom filter's properties (enable/disable, config, etc.).
-func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
-		return
-	}
+func (h *PipelineHandler) updateCustomFilter(r *http.Request, in updateCustomFilterRequest) (CustomFilter, error) {
+	var zero CustomFilter
+	id := in.ID
 
 	var cf models.CustomFilter
 	if err := h.db.First(&cf, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
 	}
 
 	// Config is not a pointer: a pointer leaves an explicit null nil, the same
 	// as an omitted config, so a null would be passed over instead of refused.
 	// Omitted, it is nil; null, it is the bytes "null".
-	var req struct {
-		Name        *string         `json:"name"`
-		Description *string         `json:"description"`
-		FilterType  *string         `json:"filter_type"`
-		Direction   *string         `json:"direction"`
-		Config      json.RawMessage `json:"config"`
-		Enabled     *bool           `json:"enabled"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 
 	if req.Name != nil {
 		cf.Name = *req.Name
@@ -684,72 +594,56 @@ func (h *PipelineHandler) UpdateCustomFilter(w http.ResponseWriter, r *http.Requ
 		cf.Enabled = *req.Enabled
 	}
 	if cf.Name == "" {
-		respond.ValidationError(w, map[string]string{"name": "required"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"name": "required"})
 	}
 	if errs := customFilterFieldErrors(cf.FilterType, cf.Direction); errs != nil {
-		respond.ValidationError(w, errs)
-		return
+		return zero, endpoint.Invalid(errs)
 	}
 	// A config, when sent, is an object (UpdateCustomFilterRequest, #388), as
 	// on create: null, an array or a scalar is refused, not stored.
 	if req.Config != nil && !isJSONObject(req.Config) {
-		respond.ValidationError(w, map[string]string{"config": "must be an object"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"config": "must be an object"})
 	}
 
 	if err := h.db.Save(&cf).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update custom filter")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update custom filter")
 	}
 
-	respond.Data(w, http.StatusOK, cf)
+	return customFilterOf(cf), nil
 }
 
 // DeleteCustomFilter removes a custom filter.
-func (h *PipelineHandler) DeleteCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
-		return
-	}
+func (h *PipelineHandler) deleteCustomFilter(r *http.Request, in pipelinePath) (deletedStatus, error) {
+	var zero deletedStatus
+	id := in.ID
 
 	deleted := h.db.Delete(&models.CustomFilter{}, id)
 	if deleted.Error != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete custom filter")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete custom filter")
 	}
 	if deleted.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"status": "deleted"})
+	return deletedStatus{Status: "deleted"}, nil
 }
 
 // TestCustomFilter loads a custom filter from the DB and runs its script against a sample email
 // via the JS filter sidecar.
-func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid filter ID")
-		return
-	}
+func (h *PipelineHandler) testCustomFilter(r *http.Request, in testCustomFilterRequest) (endpoint.Forwarded[ScriptExecution], error) {
+	var zero endpoint.Forwarded[ScriptExecution]
+	id := in.ID
 
 	// Accept optional sample email from request body. No body is fine; a body
 	// that does not decode is refused before the filter is looked up (#386).
-	var req struct {
-		Email *json.RawMessage `json:"email,omitempty"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+	req := in.Body
+	if req == nil {
+		req = &testCustomFilterRequestBody{}
 	}
 
 	var cf models.CustomFilter
 	if err := h.db.First(&cf, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Custom filter not found")
-		return
+		return zero, endpoint.Refuse(http.StatusNotFound, "not_found", "Custom filter not found")
 	}
 
 	// Parse config to extract the script
@@ -757,8 +651,7 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 		Script string `json:"script"`
 	}
 	if err := json.Unmarshal(cf.Config, &config); err != nil || config.Script == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Filter config does not contain a script")
-		return
+		return zero, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Filter config does not contain a script")
 	}
 
 	// Build sidecar request
@@ -779,35 +672,24 @@ func (h *PipelineHandler) TestCustomFilter(w http.ResponseWriter, r *http.Reques
 	client := &http.Client{Timeout: 10 * time.Second}
 	sidecarResp, err := h.jsSidecar.Post(r.Context(), client, "/execute", bodyBytes)
 	if err != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
 	}
 	defer sidecarResp.Body.Close()
 	if sidecarResp.StatusCode == http.StatusUnauthorized {
-		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
 	respBody, _ := io.ReadAll(sidecarResp.Body)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(sidecarResp.StatusCode)
-	_, _ = w.Write(respBody)
+	return endpoint.Forwarded[ScriptExecution]{Status: sidecarResp.StatusCode, Body: respBody}, nil
 }
 
 // ValidateCustomFilter syntax-checks a JavaScript filter script via the sidecar.
-func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Script string           `json:"script"`
-		Email  *json.RawMessage `json:"email,omitempty"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+func (h *PipelineHandler) validateCustomFilter(r *http.Request, in validateCustomFilterRequestBody) (endpoint.Forwarded[ScriptValidation], error) {
+	var zero endpoint.Forwarded[ScriptValidation]
+	req := in
 	if req.Script == "" {
-		respond.ValidationError(w, map[string]string{"script": "required"})
-		return
+		return zero, endpoint.Invalid(map[string]string{"script": "required"})
 	}
 
 	// Build sidecar request
@@ -820,26 +702,82 @@ func (h *PipelineHandler) ValidateCustomFilter(w http.ResponseWriter, r *http.Re
 	client := &http.Client{Timeout: 5 * time.Second}
 	sidecarResp, err := h.jsSidecar.Post(r.Context(), client, "/validate", bodyBytes)
 	if err != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", "JS filter sidecar unavailable")
 	}
 	defer sidecarResp.Body.Close()
 	if sidecarResp.StatusCode == http.StatusUnauthorized {
-		respond.Error(w, http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
-		return
+		return zero, endpoint.Refuse(http.StatusServiceUnavailable, "service_unavailable", jsSidecarRefused)
 	}
 
 	respBody, _ := io.ReadAll(sidecarResp.Body)
 
 	var result json.RawMessage
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Invalid sidecar response")
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(respBody)
+	return endpoint.Forwarded[ScriptValidation]{Status: http.StatusOK, Body: respBody}, nil
+}
+
+type createPipelineRequestBody struct {
+	DomainID  uint            `json:"domain_id,omitempty"`
+	Direction string          `json:"direction,omitempty" enums:"inbound,outbound" message:"must be 'inbound' or 'outbound'"`
+	Filters   json.RawMessage `json:"filters,omitempty"`
+	Active    *bool           `json:"active,omitempty"`
+}
+type updatePipelineRequestBody struct {
+	Filters json.RawMessage `json:"filters,omitempty"`
+	Active  *bool           `json:"active,omitempty"`
+	// Webmail sends these on PATCH; historically they are accepted and ignored.
+	DomainID  *uint   `json:"domain_id,omitempty"`
+	Direction *string `json:"direction,omitempty"`
+}
+type updatePipelineRequest struct {
+	ID   uint32                    `path:"id" minimum:"1"`
+	Body updatePipelineRequestBody `body:""`
+}
+type testPipelineRequestBody struct {
+	PipelineID uint         `json:"pipeline_id,omitempty"`
+	Email      *sampleEmail `json:"email,omitempty"`
+}
+type testFilterRequestBody struct {
+	FilterName string          `json:"filter_name,omitempty"`
+	Config     json.RawMessage `json:"config,omitempty"`
+	Email      *sampleEmail    `json:"email,omitempty"`
+}
+type createCustomFilterRequestBody struct {
+	DomainID    uint            `json:"domain_id,omitempty"`
+	Name        string          `json:"name,omitempty"`
+	Description string          `json:"description,omitempty"`
+	FilterType  string          `json:"filter_type,omitempty" enums:"action,transform" message:"must be action or transform"`
+	Direction   string          `json:"direction,omitempty" enums:"inbound,outbound,both" message:"must be inbound, outbound or both"`
+	Config      json.RawMessage `json:"config,omitempty"`
+	Enabled     *bool           `json:"enabled,omitempty"`
+}
+type updateCustomFilterRequestBody struct {
+	Name        *string         `json:"name,omitempty"`
+	Description *string         `json:"description,omitempty"`
+	FilterType  *string         `json:"filter_type,omitempty" enums:"action,transform" message:"must be action or transform"`
+	Direction   *string         `json:"direction,omitempty" enums:"inbound,outbound,both" message:"must be inbound, outbound or both"`
+	Config      json.RawMessage `json:"config,omitempty"`
+	Enabled     *bool           `json:"enabled,omitempty"`
+	// Webmail sends domain_id on PATCH; it does not move the filter.
+	DomainID *uint `json:"domain_id,omitempty"`
+}
+type updateCustomFilterRequest struct {
+	ID   uint32                        `path:"id" minimum:"1"`
+	Body updateCustomFilterRequestBody `body:""`
+}
+type testCustomFilterRequestBody struct {
+	Email *json.RawMessage `json:"email,omitempty"`
+}
+type testCustomFilterRequest struct {
+	ID   uint32                       `path:"id" minimum:"1"`
+	Body *testCustomFilterRequestBody `body:""`
+}
+type validateCustomFilterRequestBody struct {
+	Script string           `json:"script,omitempty" minLength:"1" message:"required"`
+	Email  *json.RawMessage `json:"email,omitempty"`
 }
 
 // ── Quarantine ───────────────────────────────────────────────────────

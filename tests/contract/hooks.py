@@ -271,7 +271,11 @@ def a_pipeline_on_the_created_domain(transaction):
     # array, with no object to put the domain in.
     if not isinstance(body, dict):
         return
-    fields = {"active": False}
+    fields = {}
+    # A created pipeline stays inactive. The wrong-typed create
+    # (active_wrong_type, 422) keeps the "yes" it is named for.
+    if isinstance(body.get("active", False), bool):
+        fields["active"] = False
     # The refused creates (direction_missing and filters_missing, 422) are
     # sent as documented, each without the field it is named for.
     if "direction" in body:
@@ -294,9 +298,10 @@ def keep_the_created_pipeline(transaction):
 @hooks.before("testPipeline")
 def test_the_created_pipeline(transaction):
     body = hooks.get_json(transaction)
-    # The refused requests (invalid_body, 400, and email_missing, 422) are
-    # sent as documented: each is refused before any pipeline is looked up.
-    if not isinstance(body, dict) or "email" not in body:
+    # The refused requests (invalid_body, 400, email_missing and
+    # pipeline_id_wrong_type, 422) are sent as documented: each is refused
+    # before any pipeline is looked up.
+    if not isinstance(body, dict) or "email" not in body or not isinstance(body.get("pipeline_id"), int):
         return
     body["pipeline_id"] = hooks.stash.get("pipeline_id")
     hooks.set_json(transaction, body)
