@@ -63,7 +63,9 @@ Chapters with a link are written. The rest are planned.
 - Containers and bundles: what packaging solves, and what stays the same. How
   docker-mailserver, mailcow, Mailu, Mail-in-a-Box, iRedMail and
   kubernetes-mail-server package Postfix, Dovecot and the rest, what that
-  makes easier, and what is still inside
+  makes easier, and what is still inside. REST Mail's author built
+  kubernetes-mail-server, and a Docker-based server before it; this chapter
+  draws on that experience
 - Efforts to modernise email: JMAP and others, what each solves, where each
   stands today, and how they relate to REST Mail
 - What REST Mail does differently
