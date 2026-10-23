@@ -56,6 +56,10 @@ type Operation struct {
 	// SuccessStatuses are additional success statuses carrying the same response type.
 	SuccessStatuses []int
 
+	// Headers are the response headers every success answer carries, by name, for a handler
+	// that answers Headed: Set-Cookie on a sign-in.
+	Headers map[string]oapifly.ResponseHeader
+
 	// Security is the operation's own requirement, when it differs from what its middleware
 	// enforces: alternatives of schemes, each with the roles held there. nil leaves it to the
 	// middleware and the document's default; oapifly.Public needs no credential.
@@ -208,7 +212,11 @@ func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request
 			writeError(w, err)
 			return
 		}
-		if reply, ok := any(out).(statusResponse); ok {
+		answer := any(out)
+		if headed, ok := answer.(headedResponse); ok {
+			_, answer = headed.responseHeader()
+		}
+		if reply, ok := answer.(statusResponse); ok {
 			status, _ := reply.responseStatus()
 			declared := status == op.Status
 			for _, additional := range op.SuccessStatuses {
@@ -230,6 +238,10 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 	}
 	reg.routes[key] = true
 
+	if respType.Implements(reflect.TypeOf((*headedResponse)(nil)).Elem()) {
+		headed := reflect.Zero(respType).Interface().(headedResponse)
+		respType, envelope = headed.headedType(), headed.headedEnvelope()
+	}
 	if respType.Implements(reflect.TypeOf((*statusResponse)(nil)).Elem()) {
 		reply := reflect.Zero(respType).Interface().(statusResponse)
 		respType, envelope = reply.responseType(), reply.responseEnvelope()
@@ -237,6 +249,11 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 	responses := []oapifly.EndpointResponse{successResponse(op.Status, respType, envelope)}
 	for _, status := range op.SuccessStatuses {
 		responses = append(responses, successResponse(status, respType, envelope))
+	}
+	if op.Headers != nil {
+		for i := range responses {
+			responses[i].Headers = op.Headers
+		}
 	}
 	errorStatuses := map[int]bool{http.StatusInternalServerError: true}
 	if shape.binds {
@@ -330,6 +347,7 @@ func write(w http.ResponseWriter, status int, out interface{}) {
 		raw.writeResponse(w)
 		return
 	}
+	out = unheaded(w, out)
 	if reply, ok := out.(statusResponse); ok {
 		status, out = reply.responseStatus()
 	}
