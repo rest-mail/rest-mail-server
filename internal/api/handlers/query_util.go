@@ -5,11 +5,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/restmail/restmail/internal/api/respond"
 )
 
 // errZeroID is pathID's refusal of an ID of 0.
@@ -33,68 +31,6 @@ const (
 	defaultListLimit = 50
 	maxListLimit     = 200
 )
-
-// validateIntegerQuery refuses malformed integer filters before they reach SQL
-// or pagination's fallback logic. maxLimit is nonzero only when the operation
-// documents a maximum; numeric values otherwise retain their existing handling.
-func validateIntegerQuery(w http.ResponseWriter, r *http.Request, maxLimit int64, names ...string) bool {
-	invalid := map[string]string{}
-	for _, name := range names {
-		value := r.URL.Query().Get(name)
-		if value == "" {
-			continue
-		}
-		n, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			invalid[name] = "must be a whole number"
-		} else if name == "limit" && maxLimit > 0 && n > maxLimit {
-			invalid[name] = "exceeds the maximum page size"
-		}
-	}
-	if len(invalid) > 0 {
-		respond.ValidationError(w, invalid)
-		return false
-	}
-	return true
-}
-
-// validateBooleanQuery refuses boolean filters other than true and false
-// rather than treating any other value as false.
-func validateBooleanQuery(w http.ResponseWriter, r *http.Request, names ...string) bool {
-	invalid := map[string]string{}
-	for _, name := range names {
-		switch r.URL.Query().Get(name) {
-		case "", "true", "false":
-		default:
-			invalid[name] = "must be true or false"
-		}
-	}
-	if len(invalid) > 0 {
-		respond.ValidationError(w, invalid)
-		return false
-	}
-	return true
-}
-
-// validateDateTimeQuery refuses date-time filters that are not RFC 3339 rather
-// than dropping them, which would widen the result set.
-func validateDateTimeQuery(w http.ResponseWriter, r *http.Request, names ...string) bool {
-	invalid := map[string]string{}
-	for _, name := range names {
-		value := r.URL.Query().Get(name)
-		if value == "" {
-			continue
-		}
-		if _, err := time.Parse(time.RFC3339, value); err != nil {
-			invalid[name] = "must be an RFC 3339 date-time"
-		}
-	}
-	if len(invalid) > 0 {
-		respond.ValidationError(w, invalid)
-		return false
-	}
-	return true
-}
 
 // parsePagination reads the shared `limit`/`offset` query parameters and applies a
 // default page size plus a hard maximum. limit defaults to defLimit and is clamped
