@@ -1544,36 +1544,52 @@
 # Mail rules: the vacation reply and Sieve scripts (#640)
 
 - operation: getVacation
+
+# Contacts (#639)
+
+- operation: listContacts
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
 - operation: setVacation
+
+- operation: createContact
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
 - operation: disableVacation
+
+- operation: updateContact
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
 - operation: getSieveScript
+
+- operation: deleteContact
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
 - operation: putSieveScript
+
+- operation: blockSender
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
 - operation: deleteSieveScript
+
+- operation: importContacts
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
 - operation: validateSieveScript
+
+- operation: suggestContacts
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
@@ -1732,6 +1748,181 @@
   reason: >-
     An account with no reply set answers the defaults: off, with an empty subject and body,
     which the oracle's anyOf allows; the type states the fields without the request's rules.
+
+- operation: createContact
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+- operation: updateContact
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+- operation: blockSender
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+- operation: createContact
+  difference: "response 409: generated only"
+  reason: >-
+    An address that is already one of the account's contacts is 409 already_exists.
+- operation: createContact
+  difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The address is checked in the handler, which keeps its documented "required" for an empty
+    one and "must be an email address" for one that is not; a format on the field would answer
+    an empty one with the format's wording instead.
+- operation: importContacts
+  difference: "request body application/json.properties.contacts.items.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler, which keeps its documented "required" for an empty
+    one and "must be an email address" for one that is not; a format on the field would answer
+    an empty one with the format's wording instead.
+- operation: blockSender
+  difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Blocking has never checked the address is one: it blocks the sender exactly as given, so a
+    malformed From can be blocked too. Only an empty one is refused (422 required).
+- operation: listContacts
+  difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: suggestContacts
+  difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: createContact
+  difference: "response 201 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: updateContact
+  difference: "response 200 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: blockSender
+  difference: "response 200 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: blockSender
+  difference: "response 201 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: createContact
+  difference: "request body application/json.properties.trust_level.enum: openapi.yaml [\"auto\",\"blocked\",\"trusted\"], generated absent"
+  reason: >-
+    The trust level is checked in the handler with the address, so both are refused together
+    (422 "must be auto, trusted, or blocked").
+- operation: createContact
+  difference: "request body application/json.properties.trust_level.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null leaves the field as it would be without it (the default trust level on create, the
+    stored value on update), as the handler has always read it.
+- operation: updateContact
+  difference: "request body application/json.properties.name.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null leaves the field as it would be without it (the default trust level on create, the
+    stored value on update), as the handler has always read it.
+- operation: updateContact
+  difference: "request body application/json.properties.trust_level.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null leaves the field as it would be without it (the default trust level on create, the
+    stored value on update), as the handler has always read it.
+- operation: updateContact
+  difference: "request body application/json.properties.trust_level.enum: openapi.yaml [\"auto\",\"blocked\",\"trusted\"], generated [\"auto\",\"blocked\",\"trusted\",null]"
+  reason: >-
+    The enum lists null, which leaves the trust level unchanged. Before binding, any string
+    was stored; now one outside the enum is 422.
+- operation: importContacts
+  difference: "request body application/json.properties.contacts.minItems: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty or missing list is refused in the handler with its documented 422 "required" for
+    contacts.
+- operation: listContacts
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list has always read limit (default 50, at most 200); the oracle does not document it.
+- operation: listContacts
+  difference: "parameter query offset: generated only"
+  reason: >-
+    The list has always read offset; the oracle does not document it.
+- operation: suggestContacts
+  difference: "parameter query q: required: openapi.yaml true, generated false"
+  reason: >-
+    An absent or empty q answers an empty list, as it always has, rather than a refusal.
+
+# The account's quarantine (#641)
+
+- operation: listQuarantine
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list has always read limit (default 50, at most 200), as every list does; the oracle
+    does not document it.
+- operation: listQuarantine
+  difference: "parameter query offset: generated only"
+  reason: >-
+    The list has always read offset; the oracle does not document it.
+- operation: listQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: releaseQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: deleteQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: releaseQuarantine
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"released\"]"
+  reason: >-
+    A release always answers status released; the mobile app refuses any other. The oracle
+    leaves the value open.
+- operation: deleteQuarantine
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"deleted\"]"
+  reason: >-
+    A delete always answers status deleted; the mobile app refuses any other. The oracle
+    leaves the value open.
+- operation: deleteQuarantine
+  difference: "response 404: generated only"
+  reason: >-
+    A held message that is not in the account's quarantine, or belongs to another account, is
+    404 not_found, as release answers. The oracle documents it for release only.
+
+# API root, health and server identity (#630)
+
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"build_date\",\"commit\",\"links\",\"name\",\"version\"]"
+  reason: >-
+    The root always writes every field, empty when the build stamped none. The oracle makes
+    them all optional.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.properties: openapi.yaml absent, generated {\"docs\":{\"type\":\"string\"},\"health\":{\"type\":\"string\"},\"login\":{\"type\":\"string\"}}"
+  reason: >-
+    The links are the three the root has always written: docs, health and login. The oracle
+    describes them as an open map of strings.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.required: openapi.yaml absent, generated [\"docs\",\"health\",\"login\"]"
+  reason: >-
+    All three links are always written.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.additionalProperties: openapi.yaml {\"type\":\"string\"}, generated false"
+  reason: >-
+    The links object is closed like every struct (go-oapifly#30): it holds the three links
+    and nothing else.
+- operation: getHealth
+  difference: "response 200 application/json.properties.data.properties.cert_warnings: *"
+  reason: >-
+    The certificates expiring within 30 days, written only for a bearer token of a current
+    session holding domains:read at *, and only when there are any. The oracle does not
+    describe them.
+- operation: describeServer
+  difference: "response 429: generated only"
+  reason: >-
+    GET /api/v1/server shares the owner endpoints' per-IP bucket, which answers 429
+    rate_limited with Retry-After. The oracle does not document it.
 
 # The account's own password and two-factor authentication (#634)
 

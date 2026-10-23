@@ -1,13 +1,12 @@
 package handlers
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/mail"
-	"strconv"
+	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -22,92 +21,169 @@ func NewContactHandler(db *gorm.DB) *ContactHandler {
 	return &ContactHandler{db: db}
 }
 
-// resolveMailboxID checks the caller may act on the account (mailbox) the
-// URL names with capability, and returns its id.
-func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint, capability string) (uint, error) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		return 0, fmt.Errorf("not authenticated")
-	}
-	return resolveAccountMailbox(h.db, accountID, claims, capability)
+// Contact is an address an account's mail is filtered by: trusted, blocked, or learned from
+// what it sent.
+type Contact struct {
+	ID         uint      `json:"id"`
+	MailboxID  uint      `json:"mailbox_id"`
+	Email      string    `json:"email"`
+	Name       string    `json:"name"`
+	TrustLevel string    `json:"trust_level" enums:"auto,trusted,blocked"`
+	Source     string    `json:"source" enums:"sent,manual,import"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// ListContacts returns contacts for a mailbox with optional filtering.
-// GET /api/v1/accounts/{id}/contacts
-func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+func contactOf(m models.Contact) Contact {
+	return Contact{
+		ID:         m.ID,
+		MailboxID:  m.MailboxID,
+		Email:      m.Email,
+		Name:       m.Name,
+		TrustLevel: m.TrustLevel,
+		Source:     m.Source,
+		CreatedAt:  m.CreatedAt,
+		UpdatedAt:  m.UpdatedAt,
 	}
-	if params := r.URL.Query(); params.Has("trust_level") {
-		switch params.Get("trust_level") {
-		case "auto", "trusted", "blocked":
-		default:
-			respond.ValidationError(w, map[string]string{"trust_level": "must be one of auto, trusted, blocked"})
-			return
-		}
-	}
+}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailRead)
+func contactsOf(rows []models.Contact) []Contact {
+	out := make([]Contact, len(rows))
+	for i, row := range rows {
+		out[i] = contactOf(row)
+	}
+	return out
+}
+
+// ContactsImported is how many of an import's contacts were added; the rest were already
+// contacts.
+type ContactsImported struct {
+	Imported int `json:"imported"`
+}
+
+// contactPath names one of the account's contacts.
+type contactPath struct {
+	ID  uint32 `path:"id" minimum:"1"`
+	CID uint32 `path:"cid" minimum:"1"`
+}
+
+// RegisterContacts mounts the account's contacts. Their routes take what the mail routes take;
+// the handler checks the account is reachable with mail:read to read and mail:write to change,
+// and answers 403 forbidden when it is not.
+func (h *ContactHandler) RegisterContacts(rs endpoint.Routes) {
+	schemes := []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
+	reads := handlerChecked(models.CapMailRead, schemes...)
+	writes := handlerChecked(models.CapMailWrite, schemes...)
+	tags := []string{"Contacts"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts",
+		OperationID: "listContacts", Summary: "List contacts for an account", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: reads}, h.list)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts",
+		OperationID: "createContact", Summary: "Create a new contact", Tags: tags, Status: http.StatusCreated,
+		Errors: []int{http.StatusForbidden, http.StatusConflict}, Security: writes}, h.create)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/contacts/{cid}",
+		OperationID: "updateContact", Summary: "Update a contact", Tags: tags,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.update)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/contacts/{cid}",
+		OperationID: "deleteContact", Summary: "Delete a contact", Tags: tags, Status: http.StatusNoContent,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.delete)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/block",
+		OperationID: "blockSender", Summary: "Block a sender", Tags: tags,
+		Description: "201 when the sender was not a contact (a new contact, blocked), 200 when an existing contact was changed to blocked.",
+		Status:      http.StatusCreated, SuccessStatuses: []int{http.StatusOK},
+		Errors: []int{http.StatusForbidden}, Security: writes}, h.block)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/contacts/import",
+		OperationID: "importContacts", Summary: "Bulk import contacts", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: writes}, h.importContacts)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/contacts/suggest",
+		OperationID: "suggestContacts", Summary: "Autocomplete contacts by query", Tags: tags,
+		Description: "At most 10 contacts whose address or name contains q, blocked ones left out; an empty q answers none.",
+		Errors:      []int{http.StatusForbidden}, Security: reads}, h.suggest)
+}
+
+var (
+	errContactAccess   = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errContactNotFound = endpoint.Refuse(http.StatusNotFound, "not_found", "Contact not found")
+)
+
+// resolveMailboxID checks the caller may act on the account (mailbox) the
+// URL names with capability, and returns its id.
+func (h *ContactHandler) resolveMailboxID(r *http.Request, accountID uint32, capability string) (uint, error) {
+	claims := middleware.GetClaims(r)
+	if claims == nil {
+		return 0, errContactAccess
+	}
+	mailboxID, err := resolveAccountMailbox(h.db, uint(accountID), claims, capability)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return 0, errContactAccess
+	}
+	return mailboxID, nil
+}
+
+type listContactsRequest struct {
+	ID         uint32  `path:"id" minimum:"1"`
+	TrustLevel *string `query:"trust_level" enums:"auto,trusted,blocked" message:"must be one of auto, trusted, blocked"`
+	Search     string  `query:"search"`
+	Limit      *int    `query:"limit"`
+	Offset     *int    `query:"offset"`
+}
+
+// list returns contacts for a mailbox with optional filtering.
+// GET /api/v1/accounts/{id}/contacts
+func (h *ContactHandler) list(r *http.Request, in listContactsRequest) (endpoint.List[Contact], error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailRead)
+	if err != nil {
+		return endpoint.List[Contact]{}, err
 	}
 
 	query := h.db.Model(&models.Contact{}).Where("mailbox_id = ?", mailboxID)
 
-	if trustLevel := r.URL.Query().Get("trust_level"); trustLevel != "" {
-		query = query.Where("trust_level = ?", trustLevel)
+	if in.TrustLevel != nil {
+		query = query.Where("trust_level = ?", *in.TrustLevel)
 	}
 
 	// Escape LIKE metacharacters so a search term containing % or _ matches
 	// literally instead of acting as a wildcard.
-	if search := r.URL.Query().Get("search"); search != "" {
-		query = query.Where("email LIKE ? ESCAPE '\\'", "%"+escapeLike(search)+"%")
+	if in.Search != "" {
+		query = query.Where("email LIKE ? ESCAPE '\\'", "%"+escapeLike(in.Search)+"%")
 	}
 
-	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	var total int64
 	query.Count(&total)
 
 	var contacts []models.Contact
 	if err := query.Order("email ASC").Limit(limit).Offset(offset).Find(&contacts).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list contacts")
-		return
+		return endpoint.List[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list contacts")
 	}
 
-	respond.List(w, contacts, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	return endpoint.List[Contact]{Data: contactsOf(contacts), Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
+// createContactRequest is a new contact: an address, and optionally a name and how far it is
+// trusted (trusted when left out). The address and the trust level are checked in the
+// handler, together.
 type createContactRequest struct {
-	Email      string  `json:"email"`
-	Name       string  `json:"name"`
-	TrustLevel *string `json:"trust_level"`
+	ID   uint32            `path:"id" minimum:"1"`
+	Body createContactBody `body:""`
 }
 
-// CreateContact adds a new contact to a mailbox.
+type createContactBody struct {
+	Email      string  `json:"email"`
+	Name       string  `json:"name,omitempty"`
+	TrustLevel *string `json:"trust_level,omitempty"`
+}
+
+// create adds a new contact to a mailbox.
 // POST /api/v1/accounts/{id}/contacts
-func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *ContactHandler) create(r *http.Request, in createContactRequest) (Contact, error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return Contact{}, err
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req createContactRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
+	req := in.Body
 	errors := map[string]string{}
 	if req.Email == "" {
 		errors["email"] = "required"
@@ -125,8 +201,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(errors) > 0 {
-		respond.ValidationError(w, errors)
-		return
+		return Contact{}, endpoint.Invalid(errors)
 	}
 
 	contact := models.Contact{
@@ -138,51 +213,38 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.Create(&contact).Error; err != nil {
-		respond.Error(w, http.StatusConflict, "already_exists", "Contact already exists")
-		return
+		return Contact{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Contact already exists")
 	}
 
-	respond.Data(w, http.StatusCreated, contact)
+	return contactOf(contact), nil
 }
 
+// updateContactRequest changes what is given; null or left out leaves a field as it is.
 type updateContactRequest struct {
-	Name       *string `json:"name"`
-	TrustLevel *string `json:"trust_level"`
+	ID   uint32            `path:"id" minimum:"1"`
+	CID  uint32            `path:"cid" minimum:"1"`
+	Body updateContactBody `body:""`
 }
 
-// UpdateContact updates an existing contact's fields.
+type updateContactBody struct {
+	Name       *string `json:"name,omitempty"`
+	TrustLevel *string `json:"trust_level,omitempty" enums:"auto,trusted,blocked" message:"must be auto, trusted, or blocked"`
+}
+
+// update updates an existing contact's fields.
 // PATCH /api/v1/accounts/{id}/contacts/{cid}
-func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *ContactHandler) update(r *http.Request, in updateContactRequest) (Contact, error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
-
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	contactID, err := pathID(r, "cid")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid contact ID")
-		return
+		return Contact{}, err
 	}
 
 	var contact models.Contact
-	if err := h.db.Where("id = ? AND mailbox_id = ?", contactID, mailboxID).First(&contact).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Contact not found")
-		return
+	if err := h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+		return Contact{}, errContactNotFound
 	}
 
-	var req updateContactRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
+	req := in.Body
 	updates := map[string]interface{}{}
 	if req.Name != nil {
 		updates["name"] = *req.Name
@@ -193,82 +255,58 @@ func (h *ContactHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 
 	if len(updates) > 0 {
 		if err := h.db.Model(&contact).Updates(updates).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update contact")
-			return
+			return Contact{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update contact")
 		}
 	}
 
-	h.db.Where("id = ? AND mailbox_id = ?", contactID, mailboxID).First(&contact)
-	respond.Data(w, http.StatusOK, contact)
+	h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact)
+	return contactOf(contact), nil
 }
 
-// DeleteContact removes a contact from a mailbox.
+// delete removes a contact from a mailbox.
 // DELETE /api/v1/accounts/{id}/contacts/{cid}
-func (h *ContactHandler) DeleteContact(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *ContactHandler) delete(r *http.Request, in contactPath) (endpoint.Empty, error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
-
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	contactID, err := pathID(r, "cid")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid contact ID")
-		return
+		return endpoint.Empty{}, err
 	}
 
 	var contact models.Contact
-	if err := h.db.Where("id = ? AND mailbox_id = ?", contactID, mailboxID).First(&contact).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Contact not found")
-		return
+	if err := h.db.Where("id = ? AND mailbox_id = ?", in.CID, mailboxID).First(&contact).Error; err != nil {
+		return endpoint.Empty{}, errContactNotFound
 	}
 
 	if err := h.db.Delete(&contact).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete contact")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete contact")
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
 type blockSenderRequest struct {
+	ID   uint32          `path:"id" minimum:"1"`
+	Body blockSenderBody `body:""`
+}
+
+type blockSenderBody struct {
 	Email string `json:"email"`
 }
 
-// BlockSender creates or updates a contact with trust_level="blocked".
+// block creates or updates a contact with trust_level="blocked".
 // POST /api/v1/accounts/{id}/contacts/block
-func (h *ContactHandler) BlockSender(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *ContactHandler) block(r *http.Request, in blockSenderRequest) (endpoint.Status[Contact], error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return endpoint.Status[Contact]{}, err
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req blockSenderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
-	if req.Email == "" {
-		respond.ValidationError(w, map[string]string{"email": "required"})
-		return
+	email := in.Body.Email
+	if email == "" {
+		return endpoint.Status[Contact]{}, endpoint.Invalid(map[string]string{"email": "required"})
 	}
 
 	var contact models.Contact
-	result := h.db.Where("mailbox_id = ? AND email = ?", mailboxID, req.Email).First(&contact)
+	result := h.db.Where("mailbox_id = ? AND email = ?", mailboxID, email).First(&contact)
 
 	if result.Error == nil {
 		// Contact exists, update to blocked
@@ -277,97 +315,83 @@ func (h *ContactHandler) BlockSender(w http.ResponseWriter, r *http.Request) {
 			"source":      "manual",
 		})
 		h.db.First(&contact, contact.ID)
-		respond.Data(w, http.StatusOK, contact)
-		return
+		return endpoint.Status[Contact]{Code: http.StatusOK, Value: contactOf(contact)}, nil
 	}
 
 	// Contact does not exist, create as blocked
 	contact = models.Contact{
 		MailboxID:  mailboxID,
-		Email:      req.Email,
+		Email:      email,
 		TrustLevel: "blocked",
 		Source:     "manual",
 	}
 
 	if err := h.db.Create(&contact).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to block sender")
-		return
+		return endpoint.Status[Contact]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to block sender")
 	}
 
-	respond.Data(w, http.StatusCreated, contact)
+	return endpoint.Status[Contact]{Code: http.StatusCreated, Value: contactOf(contact)}, nil
 }
 
-// SuggestContacts returns autocomplete suggestions for the compose "To" field.
+type suggestContactsRequest struct {
+	ID uint32 `path:"id" minimum:"1"`
+	Q  string `query:"q"`
+}
+
+// suggest returns autocomplete suggestions for the compose "To" field.
 // GET /api/v1/accounts/{id}/contacts/suggest?q=...
-func (h *ContactHandler) SuggestContacts(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *ContactHandler) suggest(r *http.Request, in suggestContactsRequest) (endpoint.List[Contact], error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return endpoint.List[Contact]{}, err
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailRead)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	q := r.URL.Query().Get("q")
-	if q == "" {
-		respond.List(w, []models.Contact{}, nil)
-		return
+	if in.Q == "" {
+		return endpoint.List[Contact]{Data: []Contact{}}, nil
 	}
 
 	var contacts []models.Contact
-	escaped := "%" + escapeLike(q) + "%"
+	escaped := "%" + escapeLike(in.Q) + "%"
 	h.db.Where("mailbox_id = ? AND (email LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\') AND trust_level != ?",
 		mailboxID, escaped, escaped, "blocked").
 		Order("name ASC, email ASC").
 		Limit(10).
 		Find(&contacts)
 
-	respond.List(w, contacts, nil)
+	return endpoint.List[Contact]{Data: contactsOf(contacts)}, nil
 }
 
 type importContactsRequest struct {
+	ID   uint32             `path:"id" minimum:"1"`
+	Body importContactsBody `body:""`
+}
+
+type importContactsBody struct {
 	Contacts []importContactEntry `json:"contacts"`
 }
 
 type importContactEntry struct {
 	Email string `json:"email"`
-	Name  string `json:"name"`
+	Name  string `json:"name,omitempty"`
 }
 
-// ImportContacts bulk-imports contacts for a mailbox.
+// importContacts bulk-imports contacts for a mailbox.
 // POST /api/v1/accounts/{id}/contacts/import
-func (h *ContactHandler) ImportContacts(w http.ResponseWriter, r *http.Request) {
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *ContactHandler) importContacts(r *http.Request, in importContactsRequest) (ContactsImported, error) {
+	mailboxID, err := h.resolveMailboxID(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return ContactsImported{}, err
 	}
 
-	mailboxID, err := h.resolveMailboxID(r, uint(accountID), models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req importContactsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
-	if len(req.Contacts) == 0 {
-		respond.ValidationError(w, map[string]string{"contacts": "required"})
-		return
+	entries := in.Body.Contacts
+	if len(entries) == 0 {
+		return ContactsImported{}, endpoint.Invalid(map[string]string{"contacts": "required"})
 	}
 
 	// Validate the whole batch before writing so a bad entry cannot leave a
 	// partially imported request behind.
 	errors := map[string]string{}
-	for i, entry := range req.Contacts {
+	for i, entry := range entries {
 		field := fmt.Sprintf("contacts[%d].email", i)
 		if entry.Email == "" {
 			errors[field] = "required"
@@ -376,12 +400,11 @@ func (h *ContactHandler) ImportContacts(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	if len(errors) > 0 {
-		respond.ValidationError(w, errors)
-		return
+		return ContactsImported{}, endpoint.Invalid(errors)
 	}
 
 	imported := 0
-	for _, entry := range req.Contacts {
+	for _, entry := range entries {
 		contact := models.Contact{
 			MailboxID:  mailboxID,
 			Email:      entry.Email,
@@ -397,5 +420,5 @@ func (h *ContactHandler) ImportContacts(w http.ResponseWriter, r *http.Request) 
 		imported++
 	}
 
-	respond.Data(w, http.StatusOK, map[string]int{"imported": imported})
+	return ContactsImported{Imported: imported}, nil
 }
