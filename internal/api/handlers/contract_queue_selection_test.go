@@ -115,3 +115,52 @@ func bulkSelectionIDs(t *testing.T, count int, filter bool) string {
 	}
 	return string(encoded)
 }
+
+// An empty filter has no conditions, so it selects the whole queue: the app's
+// "delete the entire queue" sends exactly this, after asking the admin.
+func TestBulkQueue_EmptyFilterDeletesEveryEntry(t *testing.T) {
+	db, err := connectTestDB()
+	if err != nil {
+		t.Skipf("bulk queue deletes require PostgreSQL: %v", err)
+	}
+	if err := db.AutoMigrate(&models.OutboundQueue{}); err != nil {
+		t.Fatal(err)
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	t.Cleanup(func() { tx.Rollback() })
+	for _, domain := range []string{"a.test", "b.test", "c.test"} {
+		if err := tx.Create(&models.OutboundQueue{Sender: "s@x.test", Recipient: "r@" + domain, Domain: domain}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, body := range []string{`{"filter":{}}`, `{"ids":[],"filter":{"status":""}}`} {
+		if err := tx.Create(&models.OutboundQueue{Sender: "s@x.test", Recipient: "r@d.test", Domain: "d.test"}).Error; err != nil {
+			t.Fatal(err)
+		}
+		var present int64
+		if err := tx.Model(&models.OutboundQueue{}).Count(&present).Error; err != nil {
+			t.Fatal(err)
+		}
+		rr := httptest.NewRecorder()
+		queueRoutes(NewQueueHandler(tx)).ServeHTTP(rr, httptest.NewRequest(http.MethodDelete, "/api/v1/admin/queue/bulk-delete", strings.NewReader(body)))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s: want 200, got %d: %s", body, rr.Code, rr.Body)
+		}
+		var got struct {
+			Data BulkQueueResult `json:"data"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		var left int64
+		if err := tx.Model(&models.OutboundQueue{}).Count(&left).Error; err != nil {
+			t.Fatal(err)
+		}
+		if got.Data.Affected != present || left != 0 {
+			t.Fatalf("%s: affected %d of %d, %d left; want every entry deleted", body, got.Data.Affected, present, left)
+		}
+	}
+}
