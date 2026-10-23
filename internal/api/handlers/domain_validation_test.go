@@ -31,29 +31,44 @@ func TestDomainCreate_NameValidation(t *testing.T) {
 		body, _ := json.Marshal(map[string]string{"name": name})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/domains", bytes.NewReader(body))
 		rr := httptest.NewRecorder()
-		h.Create(rr, req)
+		domainRoutes(h).ServeHTTP(rr, req)
 		return rr
+	}
+
+	// A name that is not a hostname is the 422 validation failure on name, like
+	// every other refused field of the body (#645).
+	refusedName := func(t *testing.T, rr *httptest.ResponseRecorder) {
+		t.Helper()
+		var resp struct {
+			Error struct {
+				Code    string `json:"code"`
+				Details struct {
+					Fields map[string]string `json:"fields"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if rr.Code != http.StatusUnprocessableEntity || resp.Error.Code != "validation_failed" ||
+			!strings.HasPrefix(resp.Error.Details.Fields["name"], "Invalid domain name: ") {
+			t.Fatalf("status = %d, want 422 validation_failed on name (body %s)", rr.Code, rr.Body.String())
+		}
 	}
 
 	t.Run("bogus name rejected", func(t *testing.T) {
 		rr := create(t, "not a valid domain!!")
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400 (body %s)", rr.Code, rr.Body.String())
-		}
+		refusedName(t, rr)
 	})
 
 	t.Run("oversized name rejected", func(t *testing.T) {
 		rr := create(t, strings.Repeat("a", 300)+".test")
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400 (body %s)", rr.Code, rr.Body.String())
-		}
+		refusedName(t, rr)
 	})
 
 	t.Run("single-label host rejected", func(t *testing.T) {
 		rr := create(t, "localhost")
-		if rr.Code != http.StatusBadRequest {
-			t.Fatalf("status = %d, want 400 (body %s)", rr.Code, rr.Body.String())
-		}
+		refusedName(t, rr)
 	})
 
 	t.Run("valid IDN accepted and normalized", func(t *testing.T) {

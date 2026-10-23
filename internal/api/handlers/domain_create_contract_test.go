@@ -76,7 +76,7 @@ func TestDomainCreate_ServerTypeDefault(t *testing.T) {
 			}
 			t.Cleanup(func() { tx.Rollback() })
 			rr := httptest.NewRecorder()
-			NewDomainHandler(tx, nil).Create(rr, httptest.NewRequest(http.MethodPost,
+			domainRoutes(NewDomainHandler(tx, nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost,
 				"/api/v1/admin/domains", strings.NewReader(`{"name":"default-contract.test"`+tc.field+`}`)))
 			if rr.Code != http.StatusCreated {
 				t.Fatalf("status = %d, want 201; body %s", rr.Code, rr.Body)
@@ -100,7 +100,7 @@ func TestDomainCreate_ServerTypeDefault(t *testing.T) {
 
 func TestDomainCreate_EmptyNameContract(t *testing.T) {
 	rr := httptest.NewRecorder()
-	NewDomainHandler(nil, nil).Create(rr, httptest.NewRequest(http.MethodPost,
+	domainRoutes(NewDomainHandler(nil, nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost,
 		"/api/v1/admin/domains", strings.NewReader(`{"name":"","server_type":"traditional"}`)))
 	if rr.Code != http.StatusUnprocessableEntity || errorCodeOf(rr) != "validation_failed" {
 		t.Fatalf("status = %d, body %s; want 422 validation_failed", rr.Code, rr.Body)

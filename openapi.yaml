@@ -4228,7 +4228,7 @@ paths:
         "400":
           description: >-
             The body is not a JSON object of the request's fields
-            (`bad_request`), or the name is not a domain name (`invalid_domain`)
+            (`bad_request`)
           content:
             application/json:
               schema:
@@ -4242,7 +4242,9 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
         "422":
-          description: Request body failed validation
+          description: >-
+            Request body failed validation, a name that is not a domain name
+            included
           content:
             application/json:
               schema:

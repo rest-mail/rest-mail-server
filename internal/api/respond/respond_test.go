@@ -189,10 +189,9 @@ func TestValidationError(t *testing.T) {
 		t.Errorf("expected message %q, got %q", "Request body failed validation", body.Error.Message)
 	}
 
-	// Details is deserialized as map[string]interface{} by encoding/json.
-	details, ok := body.Error.Details.(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected details to be a map, got %T", body.Error.Details)
+	details := body.Error.Details
+	if details == nil {
+		t.Fatal("expected details")
 	}
 
 	fieldsRaw, ok := details["fields"]
