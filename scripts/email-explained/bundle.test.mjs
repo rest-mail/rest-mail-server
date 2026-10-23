@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { anchorer, compileChapter, extractFonts, slugOf, splitFrontMatter } from "./bundle.mjs";
+import { anchorer, compileChapter, extractFonts, readingOrder, slugOf, splitFrontMatter } from "./bundle.mjs";
 
 const commit = "0123456789abcdef0123456789abcdef01234567";
 const files = new Set(["README.md", "how-it-goes-wrong/open-relay.md"]);
@@ -23,6 +23,7 @@ test("a chapter's address is its path, and a README is its folder's", () => {
 test("front matter is read, and a line it does not understand is an error", () => {
   assert.deepEqual(splitFrontMatter("---\ntitle: A\npart: B\n---\nbody").meta, { title: "A", part: "B" });
   assert.throws(() => splitFrontMatter("---\n- nope\n---\n"), /not understood/);
+  assert.equal(splitFrontMatter('---\ntitle: "Reading mail: IMAP and \\"JMAP\\""\n---\n').meta.title, 'Reading mail: IMAP and "JMAP"');
 });
 
 test("sections split at ##, the # title is dropped, links and diagrams are rewritten", () => {
@@ -66,4 +67,10 @@ test("typefaces carried as data: URLs become files named for their contents", ()
   assert.match(file, /^fonts\/[0-9a-f]{16}\.woff2$/);
   assert.equal(html, `@font-face { src: url(${file}) format('woff2'); }`);
   assert.equal(fonts.get(file).toString(), "not really a font");
+});
+
+test("chapters come in the order the front page lists them, then the rest by path", () => {
+  const files = ["README.md", "a/second.md", "a/unlisted.md", "b/first.md"];
+  const readme = "- [First](b/first.md)\n- [Second](a/second.md#part)\n- [First again](b/first.md)\n- [Elsewhere](../MANUAL.md)";
+  assert.deepEqual(readingOrder(readme, files), ["README.md", "b/first.md", "a/second.md", "a/unlisted.md"]);
 });

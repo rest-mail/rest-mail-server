@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "A DKIM signature: checked directly, and broken by a mailing list",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/dkim.html",
+    "legend": {
+      "entries": {
+        "emphasis": {
+          "label": "The signed message"
+        },
+        "default": {
+          "label": "Key lookups"
+        },
+        "return": {
+          "label": "Answers"
+        },
+        "security": {
+          "label": "Changed on the way"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "sender",
+      "type": "backend",
+      "label": "example.com",
+      "sublabel": "signs with its private key"
+    },
+    {
+      "id": "list",
+      "type": "backend",
+      "label": "Mailing list",
+      "sublabel": "lists.example.net"
+    },
+    {
+      "id": "receiver",
+      "type": "backend",
+      "label": "Receiving server",
+      "sublabel": "checks the signature"
+    },
+    {
+      "id": "dns",
+      "type": "external",
+      "label": "DNS",
+      "sublabel": "the public key"
+    }
+  ],
+  "messages": [
+    {
+      "id": "send",
+      "from": "sender",
+      "to": "receiver",
+      "label": "message + DKIM-Signature",
+      "variant": "emphasis",
+      "note": "d=example.com s=2026a: body hash, From, Subject, Date signed",
+      "y": 170
+    },
+    {
+      "id": "ask",
+      "from": "receiver",
+      "to": "dns",
+      "label": "TXT 2026a._domainkey.example.com",
+      "variant": "default",
+      "y": 248
+    },
+    {
+      "id": "key",
+      "from": "dns",
+      "to": "receiver",
+      "label": "v=DKIM1; p=MIIB…",
+      "variant": "return",
+      "note": "Hash it again, check with the key: dkim=pass",
+      "y": 282
+    },
+    {
+      "id": "post",
+      "from": "sender",
+      "to": "list",
+      "label": "message + DKIM-Signature",
+      "variant": "emphasis",
+      "y": 362
+    },
+    {
+      "id": "relay",
+      "from": "list",
+      "to": "receiver",
+      "label": "footer added, [list] in Subject",
+      "variant": "security",
+      "note": "Signed content changed after signing",
+      "y": 396
+    },
+    {
+      "id": "ask2",
+      "from": "receiver",
+      "to": "dns",
+      "label": "TXT 2026a._domainkey.example.com",
+      "variant": "default",
+      "y": 460
+    },
+    {
+      "id": "key2",
+      "from": "dns",
+      "to": "receiver",
+      "label": "the same key",
+      "variant": "return",
+      "note": "The body hash does not match: dkim=fail",
+      "y": 494
+    }
+  ],
+  "activations": [
+    {
+      "participant": "receiver",
+      "from": 164,
+      "to": 288
+    },
+    {
+      "participant": "receiver",
+      "from": 390,
+      "to": 530
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What a pass proves",
+      "items": [
+        "The domain in d= signed it",
+        "Nothing signed changed since",
+        "Not that d= is the From: domain: that is DMARC's check"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "What breaks it",
+      "items": [
+        "List footers and subject tags",
+        "Disclaimers added by gateways",
+        "Re-encoding the body on a 7-bit hop",
+        "A selector deleted while mail is in transit"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Keys (RFC 8301, M3AAWG)",
+      "items": [
+        "RSA 2048 bits, or Ed25519; never rsa-sha1",
+        "Rotate at least every six months, with a new selector"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 338,
+      "label": "Delivered directly"
+    },
+    {
+      "from": 348,
+      "to": 536,
+      "label": "Through a mailing list"
+    }
+  ]
+}

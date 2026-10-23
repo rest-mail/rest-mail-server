@@ -71,7 +71,7 @@ version bump needed by the server or clients.
 **Security and Authentication**
 - TLS with SNI support and DB-backed certificate management
 - DKIM signing, SPF verification, DMARC policy enforcement with rua aggregate reporting
-- ARC sealing for forwarded messages
+- ARC chain verification (sealing forwarded mail is planned: #731)
 - MTA-STS and TLS-RPT (RFC 8460/8461), including outbound MTA-STS policy enforcement
 - ACME/Let's Encrypt auto-renewal
 - JWT authentication with bcrypt passwords (Dovecot-compatible `{BLF-CRYPT}` format)
@@ -95,7 +95,7 @@ version bump needed by the server or clients.
 - Console admin tool (bubbletea) with inbox, search, compose, and live status
 - React webmail with rich text editor, contacts, vacation settings
 - Prometheus metrics endpoint with Grafana dashboards
-- Email client auto-configuration (Mozilla, Microsoft, Apple)
+- Email client auto-configuration (Mozilla autoconfig, Microsoft Autodiscover)
 
 ## The Library Family
 
@@ -280,7 +280,7 @@ The gateways implement no wire protocol of their own — each is a `Backend` imp
                              |
               +--------------+--------------+
               |              |              |
-         SMTP:25/587    IMAP:143/993   POP3:110/995
+         SMTP:25/465     IMAP:993       POP3:995    
               |              |              |
      +--------+-------+ +----+---------+ +--+-------------+
      | go-smtp engine | | rest-mail/   | | rest-mail/     |

@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "From the mailbox to the apps that read it: Sieve, POP3, IMAP and JMAP",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/reading.html",
+    "legend": {
+      "entries": {
+        "backend": { "label": "Server: delivery and protocols" },
+        "security": { "label": "Rules that run on delivery" },
+        "database": { "label": "Message store" },
+        "frontend": { "label": "Mail apps" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "pop", "label": "Download it: POP3" },
+    { "id": "imap", "label": "Keep it in sync: IMAP" },
+    { "id": "jmap", "label": "Over HTTPS: JMAP" }
+  ],
+  "phases": [
+    { "id": "deliver", "label": "Delivery", "fromCol": 0, "toCol": 2 },
+    { "id": "access", "label": "Access", "fromCol": 3, "toCol": 4, "variant": "security" }
+  ],
+  "mainPath": ["arrives", "sieve", "store", "imapd", "desktop"],
+  "nodes": [
+    { "id": "arrives", "lane": "imap", "col": 0, "type": "backend", "label": "Message arrives", "sublabel": "after SMTP's 250" },
+    { "id": "sieve", "lane": "imap", "col": 1, "type": "security", "label": "Sieve rules", "sublabel": "fileinto, vacation" },
+    { "id": "managesieve", "lane": "pop", "col": 1, "type": "backend", "label": "ManageSieve", "sublabel": "port 4190: edit rules" },
+    { "id": "store", "lane": "imap", "col": 2, "type": "database", "label": "Message store", "sublabel": "folders, flags" },
+    { "id": "popd", "lane": "pop", "col": 3, "type": "backend", "label": "POP3 server", "sublabel": "995, or 110 + STLS" },
+    { "id": "imapd", "lane": "imap", "col": 3, "type": "backend", "label": "IMAP server", "sublabel": "993, or 143 + STARTTLS" },
+    { "id": "jmapd", "lane": "jmap", "col": 3, "type": "backend", "label": "JMAP API", "sublabel": "JSON over HTTPS" },
+    { "id": "single", "lane": "pop", "col": 4, "type": "frontend", "label": "One computer", "sublabel": "downloads, then deletes" },
+    { "id": "desktop", "lane": "imap", "col": 4, "type": "frontend", "label": "Every device", "sublabel": "same folders, IDLE push" },
+    { "id": "phone", "lane": "jmap", "col": 4, "type": "frontend", "label": "Phone or web app", "sublabel": "batched, changes since X" }
+  ],
+  "edges": [
+    { "id": "filter", "from": "arrives", "to": "sieve", "role": "main", "variant": "default" },
+    { "id": "file", "from": "sieve", "to": "store", "label": "files it", "role": "main", "variant": "default" },
+    { "id": "upload", "from": "managesieve", "to": "sieve", "label": "scripts", "role": "branch", "variant": "dashed" },
+    { "id": "serve-imap", "from": "store", "to": "imapd", "role": "main", "variant": "default" },
+    { "id": "serve-pop", "from": "store", "to": "popd", "role": "branch", "variant": "default" },
+    { "id": "serve-jmap", "from": "store", "to": "jmapd", "role": "branch", "variant": "default" },
+    { "id": "sync", "from": "imapd", "to": "desktop", "label": "IMAP", "role": "main", "variant": "emphasis" },
+    { "id": "download", "from": "popd", "to": "single", "label": "POP3", "role": "branch", "variant": "emphasis" },
+    { "id": "json", "from": "jmapd", "to": "phone", "label": "JMAP", "role": "branch", "variant": "emphasis" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Three eras", "items": ["POP3 (1996): mail read on one computer", "IMAP (2003; IMAP4rev2 2021): the same mail everywhere", "JMAP (2019): phones and the web, over HTTPS"] },
+    { "dot": "amber", "title": "Sieve runs first", "items": ["Rules run on the server as mail is delivered, so every device sees the same folders", "ManageSieve is how mail apps edit them"] }
+  ]
+}

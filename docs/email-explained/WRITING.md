@@ -49,10 +49,12 @@ current, reliable count of …") rather than estimating.
 
 ## Files
 
-- One folder per part (`how-it-goes-wrong/`, and so on), one Markdown file per
-  chapter.
+- One folder per part, one Markdown file per chapter: `how-email-works/`,
+  `security/`, `how-it-goes-wrong/`, `landscape/` and `reference/`.
 - Each chapter starts with front matter: `title`, `part`, `summary`, and
-  `diagram` when it has one. The website build reads it.
+  `diagram` when it has one. The website build reads it. A value with a colon in
+  it goes in double quotes, so GitHub can read it as YAML.
+- The order of the chapters is the order [README.md](README.md) lists them in.
 - Links between chapters are relative, so they work on GitHub as well as on the
   website.
 - Only the chapters that exist are linked from [README.md](README.md). A
@@ -76,7 +78,15 @@ example `open-relay.workflow.json`).
   browser (set `ARCHIFY_CHROME` to a Chrome or Chromium binary). The HTML and
   its receipts are generated, and git-ignored.
 - **The static image** for GitHub readers is committed beside the source
-  (`<name>.png`). It is exported from the rendered page, never edited by hand.
+  (`<name>.png`). It is exported from the rendered page, never edited by hand:
+
+  ```sh
+  CHROME=<chrome or chromium> node scripts/email-explained/png.mjs \
+    docs/email-explained/diagrams/open-relay.html docs/email-explained/diagrams/open-relay.png
+  ```
+
+  The script opens the page in its embed mode, light theme, motion stopped, and
+  captures the diagram at a width that suits it.
 - **The interactive version** is what the website shows, built from the same
   source.
 - **A diagram's facts are the chapter's facts.** Every label that states

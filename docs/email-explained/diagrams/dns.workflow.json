@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Finding where to deliver: what a sending server does with the DNS's answer",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/dns.html",
+    "legend": {
+      "entries": {
+        "external": { "label": "DNS lookups" },
+        "security": { "label": "Decisions and failures" },
+        "backend": { "label": "Sending server" },
+        "messagebus": { "label": "Back to the queue" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "stop", "label": "Answers that end it", "variant": "exception" },
+    { "id": "main", "label": "The usual path" },
+    { "id": "fallback", "label": "Fallbacks and retries" }
+  ],
+  "mainPath": ["domain", "mx", "answer", "sort", "resolve", "connect"],
+  "nodes": [
+    { "id": "domain", "lane": "main", "col": 0, "type": "backend", "label": "Recipient domain", "sublabel": "bob@example.org" },
+    { "id": "mx", "lane": "main", "col": 1, "type": "external", "label": "Ask for MX records", "sublabel": "MX example.org" },
+    { "id": "answer", "lane": "main", "col": 2, "type": "security", "label": "What came back?", "icon": "decision" },
+    { "id": "sort", "lane": "main", "col": 3, "type": "backend", "label": "Sort by preference", "sublabel": "lowest first, ties random" },
+    { "id": "resolve", "lane": "main", "col": 4, "type": "external", "label": "Resolve the host", "sublabel": "A and AAAA records" },
+    { "id": "connect", "lane": "main", "col": 5, "type": "backend", "label": "Connect to port 25", "icon": "success" },
+    { "id": "nxdomain", "lane": "stop", "col": 2, "type": "security", "label": "No such domain", "sublabel": "error at once: 5.1.2", "icon": "failure" },
+    { "id": "nullmx", "lane": "stop", "col": 3, "type": "security", "label": "Null MX: MX 0 .", "sublabel": "bounce: 556 5.1.10", "icon": "failure" },
+    { "id": "tempfail", "lane": "fallback", "col": 1, "type": "messagebus", "label": "Temporary failure", "sublabel": "queue, retry later" },
+    { "id": "implicit", "lane": "fallback", "col": 2, "type": "backend", "label": "No MX records", "sublabel": "implicit MX: its own A" },
+    { "id": "next", "lane": "fallback", "col": 5, "type": "backend", "label": "No answer?", "sublabel": "try the next MX" }
+  ],
+  "edges": [
+    { "id": "lookup", "from": "domain", "to": "mx", "label": "look up", "role": "main", "variant": "default" },
+    { "id": "reply", "from": "mx", "to": "answer", "role": "main", "variant": "default" },
+    { "id": "list", "from": "answer", "to": "sort", "label": "MX list", "role": "main", "variant": "emphasis" },
+    { "id": "pick", "from": "sort", "to": "resolve", "role": "main", "variant": "default" },
+    { "id": "dial", "from": "resolve", "to": "connect", "role": "main", "variant": "emphasis" },
+    { "id": "no-domain", "from": "answer", "to": "nxdomain", "label": "NXDOMAIN", "role": "branch", "variant": "security" },
+    { "id": "no-mail", "from": "answer", "to": "nullmx", "label": "MX 0 .", "role": "branch", "variant": "security" },
+    { "id": "no-mx", "from": "answer", "to": "implicit", "label": "no MX", "role": "branch", "variant": "default" },
+    { "id": "use-a", "from": "implicit", "to": "resolve", "label": "use the domain", "role": "branch", "variant": "default" },
+    { "id": "servfail", "from": "mx", "to": "tempfail", "label": "SERVFAIL, timeout", "role": "branch", "variant": "dashed" },
+    { "id": "down", "from": "connect", "to": "next", "label": "refused", "role": "branch", "variant": "dashed" },
+    { "id": "retry-next", "from": "next", "to": "resolve", "label": "next host", "role": "return", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "What an MX may point to", "items": ["A host name with an A or AAAA record", "Never an IP address", "Never an alias (CNAME): RFC 2181 §10.3"] },
+    { "dot": "rose", "title": "Three ways of saying no", "items": ["NXDOMAIN: the domain does not exist; RFC 5321 says report an error", "Null MX, MX 0 . : it exists and takes no mail (RFC 7505)", "Temporary failure: not an answer; queue and retry"] },
+    { "dot": "amber", "title": "Easy to get wrong", "items": ["A missing PTR record for the sending address", "Two SPF records on one domain: SPF fails for everything", "A long TTL during a move: half the internet uses the old MX"] }
+  ]
+}
