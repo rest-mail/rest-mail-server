@@ -281,6 +281,11 @@ func (h *QueueHandler) bulkDelete(_ *http.Request, req bulkQueueRequest) (BulkQu
 	if len(req.IDs) == 0 && req.Filter == nil {
 		return BulkQueueResult{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "ids or filter required")
 	}
+	// An empty filter names no entries, so it deletes none: emptying the whole
+	// queue is never one request with nothing in it.
+	if f := req.Filter; len(req.IDs) == 0 && f.Status == "" && f.Domain == "" && f.Sender == "" && f.Recipient == "" {
+		return BulkQueueResult{}, nil
+	}
 
 	result := h.buildBulkQuery(req).Delete(&models.OutboundQueue{})
 
