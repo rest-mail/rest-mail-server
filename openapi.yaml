@@ -8765,11 +8765,6 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
-                port_wrong_type:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:
@@ -8777,6 +8772,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
               examples:
+                port_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          port: must be an integer
                 transport_missing:
                   value:
                     error:

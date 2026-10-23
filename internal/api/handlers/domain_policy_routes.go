@@ -41,7 +41,7 @@ type setRelayInput struct {
 	Body setRelayBody `body:""`
 }
 type setRelayBody struct {
-	Transport string  `json:"transport" enums:"direct,relay" message:"Must be one of: direct, relay"`
+	Transport string  `json:"transport" enums:"direct,relay" message:"Must be one of: direct, relay" missing:"Must be one of: direct, relay"`
 	Host      string  `json:"host,omitempty"`
 	Port      *int    `json:"port,omitempty" minimum:"1" maximum:"65535" message:"Must be between 1 and 65535"`
 	TLSMode   *string `json:"tls_mode,omitempty" enums:"starttls,implicit" message:"Must be one of: starttls, implicit"`
