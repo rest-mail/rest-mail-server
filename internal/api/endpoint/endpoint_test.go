@@ -32,6 +32,11 @@ type createWidget struct {
 	Name string `json:"name"`
 }
 
+type tagged struct {
+	Tags   []string          `json:"tags"`
+	Labels map[string]string `json:"labels"`
+}
+
 type renameWidget struct {
 	ID   uint64       `path:"id"`
 	Body createWidget `body:""`
@@ -86,6 +91,10 @@ func server(t *testing.T) (*chi.Mux, *Registry) {
 		func(_ *http.Request, in renameWidget) (widget, error) {
 			return widget{ID: in.ID, Name: in.Body.Name}, nil
 		})
+	Register(r, reg, Operation{Method: http.MethodGet, Path: "/empty", OperationID: "listNothing"},
+		func(_ *http.Request, _ Empty) (List[widget], error) { return List[widget]{}, nil })
+	Register(r, reg, Operation{Method: http.MethodGet, Path: "/tagged", OperationID: "getTagged"},
+		func(_ *http.Request, _ Empty) (tagged, error) { return tagged{}, nil })
 	Register(r, reg, Operation{Method: http.MethodDelete, Path: "/widgets/{id}", OperationID: "deleteWidget",
 		Status: http.StatusNoContent},
 		func(_ *http.Request, _ widgetPath) (Empty, error) { return Empty{}, nil })
@@ -124,6 +133,9 @@ func TestRegisteredRoutesAnswer(t *testing.T) {
 		{"PATCH", "/widgets/3", `{"name":"three"}`, nil, 200, `{"data":{"id":3,"name":"three"}}`},
 		{"PATCH", "/widgets/3", `nope`, nil, 400, `{"error":{"code":"bad_request","message":"Invalid request body"}}`},
 		{"DELETE", "/widgets/3", "", nil, 204, ``},
+		// A list the handler left nil is written as [], a map as {}.
+		{"GET", "/empty", "", nil, 200, `{"data":[]}`},
+		{"GET", "/tagged", "", nil, 200, `{"data":{"tags":[],"labels":{}}}`},
 	}
 	for _, c := range cases {
 		status, body := call(t, r, c.method, c.target, c.body, c.headers...)

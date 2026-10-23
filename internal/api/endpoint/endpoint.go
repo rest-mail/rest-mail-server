@@ -210,6 +210,9 @@ func write(w http.ResponseWriter, status int, out interface{}) {
 		w.WriteHeader(status)
 		return
 	}
+	// The document says a list is never null, so a list the handler left nil is written as
+	// [] and a map as {}.
+	out = oapifly.EmptyLists(out)
 	if _, isList := out.(listResponse); isList {
 		respond.JSON(w, status, out)
 		return
