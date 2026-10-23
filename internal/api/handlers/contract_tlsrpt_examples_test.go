@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"github.com/restmail/restmail/internal/db/models"
 )
 
 const tlsReportPath = "/.well-known/smtp-tlsrpt"
@@ -14,6 +16,36 @@ const tlsReportPath = "/.well-known/smtp-tlsrpt"
 // tlsReportBodyRefused is the 400 ReceiveReport sends for a body that does not
 // decode as a report.
 const tlsReportBodyRefused = `{"error":{"code":"bad_request","message":"Invalid TLS-RPT JSON"}}`
+
+// The coverage generator uses required properties and format specimens, not
+// the stored example. Its smallest report must still identify a hosted domain.
+func TestTLSReportReceive_MinimalContractReport(t *testing.T) {
+	tx := openTLSRPTTestDB(t).Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	t.Cleanup(func() { tx.Rollback() })
+	domain := models.Domain{Name: "example.com"}
+	if err := tx.Create(&domain).Error; err != nil {
+		t.Fatal(err)
+	}
+	h := NewTLSReportHandler(tx)
+	for _, optional := range []string{"", `,"contact-info":""`, `,"report-id":""`} {
+		body := `{"organization-name":"x","date-range":{"start-datetime":"2020-01-02T03:04:05Z","end-datetime":"2020-01-02T03:04:05Z"},"policies":[{"policy":{"policy-domain":"example.com"}}]` + optional + `}`
+		rr := httptest.NewRecorder()
+		h.ReceiveReport(rr, httptest.NewRequest(http.MethodPost, tlsReportPath, bytes.NewBufferString(body)))
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("minimal report %s: got %d %s, want 201", body, rr.Code, rr.Body)
+		}
+	}
+	var stored int64
+	if err := tx.Model(&models.TLSReport{}).Where("domain_id = ?", domain.ID).Count(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored != 3 {
+		t.Errorf("stored %d reports, want 3", stored)
+	}
+}
 
 // receiveTlsReport's organization_missing request (#386) is refused by the
 // real handler with exactly its documented 422, before any domain is looked up
