@@ -59,7 +59,7 @@ type auditPage struct {
 func listAudit(t *testing.T, h *AuditHandler, query string) (int, auditPage) {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	h.List(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit?"+query, nil))
+	auditRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit?"+query, nil))
 	var page auditPage
 	if rr.Code == http.StatusOK {
 		if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
@@ -149,7 +149,7 @@ func TestAuditAPI_Verify(t *testing.T) {
 	verify := func(query ...string) audit.Result {
 		t.Helper()
 		rr := httptest.NewRecorder()
-		h.Verify(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify?"+strings.Join(query, "&"), nil))
+		auditRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify?"+strings.Join(query, "&"), nil))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("verify: %d %s", rr.Code, rr.Body.String())
 		}
@@ -217,7 +217,7 @@ func TestAuditAPI_VerifyRefusesABadAnchor(t *testing.T) {
 		"anchor=3:" + hash + ":" + hash,
 	} {
 		rr := httptest.NewRecorder()
-		h.Verify(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify?"+query, nil))
+		auditRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/verify?"+query, nil))
 		if rr.Code != http.StatusUnprocessableEntity {
 			t.Errorf("%s: status %d, want 422", query, rr.Code)
 		}

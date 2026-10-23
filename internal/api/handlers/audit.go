@@ -1,13 +1,13 @@
 package handlers
 
 import (
-	"log/slog"
+	"fmt"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/db/models"
@@ -24,89 +24,61 @@ func NewAuditHandler(db *gorm.DB) *AuditHandler {
 	return &AuditHandler{db: db}
 }
 
-const (
-	auditDefaultLimit = 50
-	auditMaxLimit     = 200
-)
+const auditDefaultLimit = 50
 
-// List returns audit entries, newest first.
+// listAuditRequest filters audit entries, newest first.
 // GET /api/v1/admin/audit?actor_kind=&actor_id=&actor=&action=&outcome=&since=&until=&before_seq=&limit=
 //
 // A page is followed by the next with before_seq set to the cursor. A filter
 // that does not parse is refused rather than ignored: an auditor must never
 // read "everything" believing it is a filtered view.
-func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	invalid := map[string]string{}
-	query := h.db.Model(&models.AuditEntry{})
+type listAuditRequest struct {
+	ActorKind string     `query:"actor_kind" enums:",account,system,anonymous" message:"must be account, system or anonymous"`
+	ActorID   *uint64    `query:"actor_id" minimum:"0" message:"must be a whole number"`
+	Actor     string     `query:"actor"`
+	Action    string     `query:"action"`
+	Outcome   string     `query:"outcome" enums:",success,denied,failed,error" message:"must be success, denied, failed or error"`
+	Since     *time.Time `query:"since" message:"must be an RFC 3339 time"`
+	Until     *time.Time `query:"until" message:"must be an RFC 3339 time"`
+	BeforeSeq *int64     `query:"before_seq" minimum:"1" message:"must be a positive whole number"`
+	Limit     *int       `query:"limit" minimum:"1" maximum:"200" message:"must be between 1 and 200"`
+}
 
-	if kind := q.Get("actor_kind"); kind != "" {
-		switch kind {
-		case models.AuditActorAccount, models.AuditActorSystem, models.AuditActorAnonymous:
-			query = query.Where("actor_kind = ?", kind)
-		default:
-			invalid["actor_kind"] = "must be account, system or anonymous"
-		}
+func (h *AuditHandler) list(_ *http.Request, in listAuditRequest) (endpoint.List[AuditEntry], error) {
+	query := h.db.Model(&models.AuditEntry{})
+	if in.ActorKind != "" {
+		query = query.Where("actor_kind = ?", in.ActorKind)
 	}
-	if v := q.Get("actor_id"); v != "" {
-		if id, err := strconv.ParseUint(v, 10, 64); err == nil {
-			query = query.Where("actor_id = ?", id)
-		} else {
-			invalid["actor_id"] = "must be a whole number"
-		}
+	if in.ActorID != nil {
+		query = query.Where("actor_id = ?", *in.ActorID)
 	}
-	if actor := q.Get("actor"); actor != "" {
-		query = query.Where("actor_name ILIKE ? ESCAPE '\\'", "%"+escapeLike(actor)+"%")
+	if in.Actor != "" {
+		query = query.Where("actor_name ILIKE ? ESCAPE '\\'", "%"+escapeLike(in.Actor)+"%")
 	}
-	if action := q.Get("action"); action != "" {
-		query = query.Where("action = ?", action)
+	if in.Action != "" {
+		query = query.Where("action = ?", in.Action)
 	}
-	if outcome := q.Get("outcome"); outcome != "" {
-		switch outcome {
-		case models.AuditOutcomeSuccess, models.AuditOutcomeDenied, models.AuditOutcomeFailed, models.AuditOutcomeError:
-			query = query.Where("outcome = ?", outcome)
-		default:
-			invalid["outcome"] = "must be success, denied, failed or error"
-		}
+	if in.Outcome != "" {
+		query = query.Where("outcome = ?", in.Outcome)
 	}
-	for _, f := range []struct{ param, cond string }{
-		{"since", "occurred_at >= ?"},
-		{"until", "occurred_at <= ?"},
-	} {
-		if v := q.Get(f.param); v != "" {
-			if t, err := time.Parse(time.RFC3339, v); err == nil {
-				query = query.Where(f.cond, t)
-			} else {
-				invalid[f.param] = "must be an RFC 3339 time"
-			}
-		}
+	if in.Since != nil {
+		query = query.Where("occurred_at >= ?", *in.Since)
 	}
-	if v := q.Get("before_seq"); v != "" {
-		if seq, err := strconv.ParseInt(v, 10, 64); err == nil && seq > 0 {
-			query = query.Where("seq < ?", seq)
-		} else {
-			invalid["before_seq"] = "must be a positive whole number"
-		}
+	if in.Until != nil {
+		query = query.Where("occurred_at <= ?", *in.Until)
+	}
+	if in.BeforeSeq != nil {
+		query = query.Where("seq < ?", *in.BeforeSeq)
 	}
 	limit := auditDefaultLimit
-	if v := q.Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= auditMaxLimit {
-			limit = n
-		} else {
-			invalid["limit"] = "must be between 1 and 200"
-		}
-	}
-	if len(invalid) > 0 {
-		respond.ValidationError(w, invalid)
-		return
+	if in.Limit != nil {
+		limit = *in.Limit
 	}
 
 	// One more than a page says whether there is another.
 	entries := []models.AuditEntry{}
 	if err := query.Order("seq DESC").Limit(limit + 1).Find(&entries).Error; err != nil {
-		slog.Error("reading the audit log failed", "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the audit log")
-		return
+		return endpoint.List[AuditEntry]{}, fmt.Errorf("read audit log: %w", err)
 	}
 	// Stored as timestamptz, read back in the server's zone: show UTC, as hashed.
 	for i := range entries {
@@ -118,46 +90,35 @@ func (h *AuditHandler) List(w http.ResponseWriter, r *http.Request) {
 		page.HasMore = true
 		page.Cursor = strconv.FormatInt(entries[limit-1].Seq, 10)
 	}
-	respond.List(w, entries, page)
+	out := make([]AuditEntry, len(entries))
+	for i, row := range entries {
+		out[i] = auditEntryOf(row)
+	}
+	return endpoint.List[AuditEntry]{Data: out, Pagination: page}, nil
 }
 
-// Verify walks the whole chain from its lowest seq and reports whether every
+// verifyAuditRequest checks the whole chain and reports whether every
 // entry holds, or the first that does not.
 // GET /api/v1/admin/audit/verify?anchor=<seq>:<hash>
 //
 // Given an anchor (a (seq, hash) kept outside the server), the chain must also
 // still hold that entry with that hash: a log rewritten and rehashed by
 // whoever owns the database holds as a chain, but not to the anchor.
-func (h *AuditHandler) Verify(w http.ResponseWriter, r *http.Request) {
-	anchor, invalid := parseAuditAnchor(r)
-	if len(invalid) > 0 {
-		respond.ValidationError(w, invalid)
-		return
-	}
-	res, err := audit.VerifyDBAnchored(h.db.WithContext(r.Context()), anchor)
-	if err != nil {
-		slog.Error("verifying the audit log failed", "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the audit log")
-		return
-	}
-	respond.Data(w, http.StatusOK, res)
+type verifyAuditRequest struct {
+	Anchor string `query:"anchor" pattern:"^$|^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$" message:"must be <seq>:<hash>, a positive whole number and 64 hex digits"`
 }
 
-// auditAnchorPattern is the anchor parameter's pattern in openapi.yaml.
-var auditAnchorPattern = regexp.MustCompile(`^([1-9][0-9]{0,17}):([0-9a-fA-F]{64})$`)
+func (h *AuditHandler) verify(r *http.Request, in verifyAuditRequest) (audit.Result, error) {
+	var anchor *audit.Anchor
+	if in.Anchor != "" {
+		parts := strings.SplitN(in.Anchor, ":", 2)
+		seq, _ := strconv.ParseInt(parts[0], 10, 64) // binding permits at most 18 digits
+		anchor = &audit.Anchor{Seq: seq, Hash: strings.ToLower(parts[1])}
+	}
 
-// parseAuditAnchor reads an optional anchor, "<seq>:<hash>": seq a positive
-// whole number, hash 64 hex digits, either case. One parameter rather than two
-// so the pair cannot be half given.
-func parseAuditAnchor(r *http.Request) (*audit.Anchor, map[string]string) {
-	param := r.URL.Query().Get("anchor")
-	if param == "" {
-		return nil, nil
+	res, err := audit.VerifyDBAnchored(h.db.WithContext(r.Context()), anchor)
+	if err != nil {
+		return audit.Result{}, fmt.Errorf("verify audit log: %w", err)
 	}
-	m := auditAnchorPattern.FindStringSubmatch(param)
-	if m == nil {
-		return nil, map[string]string{"anchor": "must be <seq>:<hash>, a positive whole number and 64 hex digits"}
-	}
-	seq, _ := strconv.ParseInt(m[1], 10, 64) // at most 18 digits: fits
-	return &audit.Anchor{Seq: seq, Hash: strings.ToLower(m[2])}, nil
+	return res, nil
 }
