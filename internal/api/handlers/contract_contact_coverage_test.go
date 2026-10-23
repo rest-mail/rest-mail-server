@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -48,9 +49,7 @@ func TestCreateContact_ContractProbes(t *testing.T) {
 		})
 	})
 	router.Post("/api/v1/auth/login", contractSetupLogin(t))
-	router.Post("/api/v1/accounts/{id}/contacts", h.CreateContact)
-	router.Get("/api/v1/accounts/{id}/contacts", h.ListContacts)
-	router.Delete("/api/v1/accounts/{id}/contacts/{cid}", h.DeleteContact)
+	h.RegisterContacts(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()})
 	server := httptest.NewServer(router)
 	defer server.Close()
 	hookFile, err := filepath.Abs("../../../tests/contract/hooks.py")
@@ -119,9 +118,9 @@ probes = [
     ("required email missing", account, '{}', 422),
     ("email shape", account, '{"email":"someone@example.com"}', 201),
     ("email wrong format", account, '{"email":"not-a-email"}', 422),
-    ("email wrong type", account, '{"email":12345}', 400),
+    ("email wrong type", account, '{"email":12345}', 422),
     ("name empty", account, '{"email":"someone@example.com","name":""}', 201),
-    ("name wrong type", account, '{"email":"someone@example.com","name":12345}', 400),
+    ("name wrong type", account, '{"email":"someone@example.com","name":12345}', 422),
     ("trust auto", account, '{"email":"someone@example.com","trust_level":"auto"}', 201),
     ("trust trusted", account, '{"email":"someone@example.com","trust_level":"trusted"}', 201),
     ("trust blocked", account, '{"email":"someone@example.com","trust_level":"blocked"}', 201),
@@ -129,9 +128,9 @@ probes = [
     ("trust invalid enum fresh email", account, '{"email":"fresh@example.com","trust_level":"vertrag-not-in-enum"}', 422),
     ("trust empty", account, '{"email":"fresh@example.com","trust_level":""}', 422),
     ("account minimum repeated", account, '{"email":"someone@example.com","name":"","trust_level":"auto"}', 201),
-    ("account below minimum", "0", '{"email":"someone@example.com"}', 403),
-    ("account wrong type", "abc", '{"email":"someone@example.com"}', 400),
-    ("account fractional", "1.5", '{"email":"someone@example.com"}', 400),
+    ("account below minimum", "0", '{"email":"someone@example.com"}', 422),
+    ("account wrong type", "abc", '{"email":"someone@example.com"}', 422),
+    ("account fractional", "1.5", '{"email":"someone@example.com"}', 422),
     ("preexisting contact", account, '{"email":"existing@example.com"}', 409),
     ("preexisting contact repeated", account, '{"email":"existing@example.com"}', 409),
     ("email empty", account, '{"email":""}', 422),

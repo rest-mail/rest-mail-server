@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/grants"
@@ -22,21 +22,34 @@ func NewHealthHandler(db *gorm.DB, jwtService *auth.JWTService) *HealthHandler {
 	return &HealthHandler{db: db, jwt: jwtService}
 }
 
-func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
+// Health is the body of GET /api/health. Its fields are in the order the map it replaced
+// was written in, so the bytes are unchanged.
+type Health struct {
+	CertWarnings []CertWarning `json:"cert_warnings,omitempty" description:"Only for a bearer token of a current session holding domains:read at *, and only while a certificate expires within 30 days"`
+	DB           string        `json:"db"`
+	Status       string        `json:"status"`
+}
+
+// CertWarning is a certificate that has expired or expires within 30 days.
+type CertWarning struct {
+	CertID    uint   `json:"cert_id"`
+	DaysUntil int    `json:"days_until" description:"Whole days until it expires; 0 or less once it has"`
+	Domain    string `json:"domain"`
+	Issuer    string `json:"issuer"`
+	NotAfter  string `json:"not_after" format:"date-time"`
+	Status    string `json:"status" enums:"expiring_soon,expired"`
+}
+
+func (h *HealthHandler) health(r *http.Request, _ struct{}) (Health, error) {
 	sqlDB, err := h.db.DB()
 	if err != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "unhealthy", "Database connection unavailable")
-		return
+		return Health{}, endpoint.Refuse(http.StatusServiceUnavailable, "unhealthy", "Database connection unavailable")
 	}
 	if err := sqlDB.Ping(); err != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "unhealthy", "Database ping failed")
-		return
+		return Health{}, endpoint.Refuse(http.StatusServiceUnavailable, "unhealthy", "Database ping failed")
 	}
 
-	result := map[string]any{
-		"status": "healthy",
-		"db":     "connected",
-	}
+	result := Health{Status: "healthy", DB: "connected"}
 
 	// The certificate inventory (issuer, hosted domain, expiry) is operational
 	// detail that must not be enumerable by unauthenticated callers. Disclose it
@@ -45,13 +58,9 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	// healthcheck (which carries no token) and external liveness probes keep
 	// working — the gate only controls how much detail is included.
 	if h.isAdmin(r) {
-		warnings := h.checkCertExpiry()
-		if len(warnings) > 0 {
-			result["cert_warnings"] = warnings
-		}
+		result.CertWarnings = h.checkCertExpiry()
 	}
-
-	respond.Data(w, http.StatusOK, result)
+	return result, nil
 }
 
 // isAdmin reports whether the request carries a current access token of an
@@ -80,7 +89,7 @@ func (h *HealthHandler) isAdmin(r *http.Request) bool {
 }
 
 // checkCertExpiry returns warnings for certificates expiring within 30 days.
-func (h *HealthHandler) checkCertExpiry() []map[string]any {
+func (h *HealthHandler) checkCertExpiry() []CertWarning {
 	threshold := time.Now().Add(30 * 24 * time.Hour)
 
 	var certs []models.Certificate
@@ -92,7 +101,7 @@ func (h *HealthHandler) checkCertExpiry() []map[string]any {
 		return nil
 	}
 
-	warnings := make([]map[string]any, 0, len(certs))
+	warnings := make([]CertWarning, 0, len(certs))
 	now := time.Now()
 	for _, cert := range certs {
 		domain := ""
@@ -103,13 +112,13 @@ func (h *HealthHandler) checkCertExpiry() []map[string]any {
 		if cert.NotAfter.Before(now) {
 			status = "expired"
 		}
-		warnings = append(warnings, map[string]any{
-			"cert_id":    cert.ID,
-			"domain":     domain,
-			"issuer":     cert.Issuer,
-			"not_after":  cert.NotAfter.Format(time.RFC3339),
-			"status":     status,
-			"days_until": int(time.Until(cert.NotAfter).Hours() / 24),
+		warnings = append(warnings, CertWarning{
+			CertID:    cert.ID,
+			DaysUntil: int(time.Until(cert.NotAfter).Hours() / 24),
+			Domain:    domain,
+			Issuer:    cert.Issuer,
+			NotAfter:  cert.NotAfter.Format(time.RFC3339),
+			Status:    status,
 		})
 	}
 	return warnings

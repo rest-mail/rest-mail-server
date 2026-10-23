@@ -16,7 +16,7 @@ import (
 // looked up: the handler has no database.
 func TestSendTestEmail_DocumentedRefusals(t *testing.T) {
 	documentedRefusals(t, "/api/v1/admin/test/send", "sendTestEmail",
-		NewTestHandler(nil, &config.Config{Environment: "test"}).SendTestEmail)
+		testRoutes(NewTestHandler(nil, &config.Config{Environment: "test"})).ServeHTTP)
 }
 
 // The pairs vertrag compiles for sendTestEmail: created with the 201 and
@@ -62,14 +62,14 @@ func TestSendTestEmail_ExamplePairs(t *testing.T) {
 }
 
 // In production the test endpoints stay shut: every documented request,
-// the refused one included, is answered 403 before it is read, and nothing is
+// the refused one included, is answered 404 without registration, and nothing is
 // looked up.
-func TestSendTestEmail_ProductionRefusesExamples(t *testing.T) {
+func TestSendTestEmail_ProductionOmitsExamples(t *testing.T) {
 	requests, _ := postExamples(t, "/api/v1/admin/test/send", "sendTestEmail")
 	if len(requests) == 0 {
 		t.Fatal("sendTestEmail names no request example")
 	}
-	send := NewTestHandler(nil, &config.Config{Environment: "production"}).SendTestEmail
+	send := testRoutes(NewTestHandler(nil, &config.Config{Environment: "production"})).ServeHTTP
 
 	for name, request := range requests {
 		t.Run(name, func(t *testing.T) {
@@ -88,8 +88,8 @@ func TestSendTestEmail_ProductionRefusesExamples(t *testing.T) {
 				send(rr, req)
 			}()
 
-			if rr.Code != http.StatusForbidden {
-				t.Fatalf("%s: status %d in production, want 403; body %s", body, rr.Code, rr.Body)
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("%s: status %d in production, want 404; body %s", body, rr.Code, rr.Body)
 			}
 		})
 	}

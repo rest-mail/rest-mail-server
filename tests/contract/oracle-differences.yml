@@ -1315,6 +1315,102 @@
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
   reason: The shared typed list envelope describes optional pagination. DKIM listing leaves it nil and continues to omit it in JSON.
 
+# Non-production test endpoints (#652)
+
+- operation: probeServices
+  difference: "request body application/json.properties.services.items.enum: openapi.yaml [\"db\",\"dns\",\"imap\",\"pop3\",\"smtp\",\"smtp_submission\"], generated absent"
+  reason: "Service names are checked case-insensitively in the handler, preserving uppercase callers and the documented unknown-service message. A literal enum would reject accepted spellings."
+- operation: probeServices
+  difference: "request body: required: openapi.yaml false, generated true"
+  reason: "Probe has always decoded a JSON body: an empty object chooses defaults, while an absent body is malformed. The oracle marks that body optional."
+- operation: probeServices
+  difference: "response 200 application/json.properties.data.additionalProperties: openapi.yaml {\"type\":\"object\"}, generated false"
+  reason: "Probe results have exactly the six declared service keys, each present only when requested; arbitrary result keys cannot be returned."
+- operation: probeServices
+  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated *"
+  reason: "The six service results now declare status, address, domain, error, latency and MX records. The oracle only describes an open map of open objects. Pointer fields express conditional presence."
+- operation: probeServices
+  difference: "response 400: generated only"
+  reason: "Binding refuses a missing, malformed or non-object JSON body with 400 bad_request. The oracle omits this existing malformed-body response."
+- operation: probeServices
+  difference: "response 403 application/json: generated only"
+  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
+- operation: resetTestData
+  difference: "response 403 application/json: generated only"
+  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
+- operation: restoreTestSnapshot
+  difference: "request body application/json.properties: openapi.yaml absent, generated *"
+  reason: "Restore declares all seven model-derived table arrays, their model JSON fields and inert snapshot_at metadata. Sparse rows and omitted tables remain accepted; JSONB and raw JSON columns remain unconstrained JSON. The oracle describes only an open object."
+- operation: restoreTestSnapshot
+  difference: "response 403 application/json: generated only"
+  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
+- operation: seedTestData
+  difference: "response 403 application/json: generated only"
+  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
+- operation: sendTestEmail
+  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: "These endpoints have always used exact mailbox address lookup and required nonempty input, without email syntax validation. Preserve accepted requests rather than add an unimplemented format constraint."
+- operation: sendTestEmail
+  difference: "request body application/json.properties.from.minLength: openapi.yaml absent, generated 1"
+  reason: "The existing nonempty address rule is now declared on the request type and enforced by binding."
+- operation: sendTestEmail
+  difference: "request body application/json.properties.to.format: openapi.yaml \"email\", generated absent"
+  reason: "These endpoints have always used exact mailbox address lookup and required nonempty input, without email syntax validation. Preserve accepted requests rather than add an unimplemented format constraint."
+- operation: sendTestEmail
+  difference: "request body application/json.properties.to.minLength: openapi.yaml absent, generated 1"
+  reason: "The existing nonempty address rule is now declared on the request type and enforced by binding."
+- operation: sendTestEmail
+  difference: "response 201 application/json.properties.data.required: openapi.yaml absent, generated [\"from\",\"message_id\",\"msg_id\",\"subject\",\"to\"]"
+  reason: "These fields are always written by the existing success response; the oracle leaves them optional."
+- operation: sendTestEmail
+  difference: "response 400: generated only"
+  reason: "Binding refuses a missing, malformed or non-object JSON body with 400 bad_request. The oracle omits this existing malformed-body response."
+- operation: sendTestEmail
+  difference: "response 403 application/json: generated only"
+  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
+- operation: snapshotTestData
+  difference: "response 200 application/json.properties.data.properties: openapi.yaml absent, generated *"
+  reason: "Snapshot always returns seven table arrays and snapshot_at. Model-derived types include associations, nullable timestamps and raw JSON columns, preserving the existing model JSON without exposing fields tagged json:\"-\". The oracle leaves the whole payload open."
+- operation: snapshotTestData
+  difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"aliases\",\"bans\",\"domains\",\"mailboxes\",\"messages\",\"pipelines\",\"queue\",\"snapshot_at\"]"
+  reason: "These fields are always written by the existing success response; the oracle leaves them optional."
+- operation: snapshotTestData
+  difference: "response 403 application/json: generated only"
+  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
+- operation: verifyDelivery
+  difference: "parameter query timeout schema.default: openapi.yaml \"5s\", generated absent"
+  reason: "The handler retains the five-second timeout default and thirty-second cap. The generator does not describe defaults yet."
+- operation: verifyDelivery
+  difference: "parameter query to schema.format: openapi.yaml \"email\", generated absent"
+  reason: "These endpoints have always used exact mailbox address lookup and required nonempty input, without email syntax validation. Preserve accepted requests rather than add an unimplemented format constraint."
+- operation: verifyDelivery
+  difference: "parameter query to schema.minLength: openapi.yaml absent, generated 1"
+  reason: "The existing nonempty address rule is now declared on the request type and enforced by binding."
+- operation: verifyDelivery
+  difference: "response 200 application/json.properties.data.properties.message: openapi.yaml absent, generated *"
+  reason: "Verification returns message on a miss and the matching message ID, RFC Message-ID, subject, sender and receipt time on a hit. The oracle declares only found. Pointer fields preserve absence and empty or zero values."
+- operation: verifyDelivery
+  difference: "response 200 application/json.properties.data.properties.message_id: openapi.yaml absent, generated *"
+  reason: "Verification returns message on a miss and the matching message ID, RFC Message-ID, subject, sender and receipt time on a hit. The oracle declares only found. Pointer fields preserve absence and empty or zero values."
+- operation: verifyDelivery
+  difference: "response 200 application/json.properties.data.properties.msg_id: openapi.yaml absent, generated *"
+  reason: "Verification returns message on a miss and the matching message ID, RFC Message-ID, subject, sender and receipt time on a hit. The oracle declares only found. Pointer fields preserve absence and empty or zero values."
+- operation: verifyDelivery
+  difference: "response 200 application/json.properties.data.properties.received_at: openapi.yaml absent, generated *"
+  reason: "Verification returns message on a miss and the matching message ID, RFC Message-ID, subject, sender and receipt time on a hit. The oracle declares only found. Pointer fields preserve absence and empty or zero values."
+- operation: verifyDelivery
+  difference: "response 200 application/json.properties.data.properties.sender: openapi.yaml absent, generated *"
+  reason: "Verification returns message on a miss and the matching message ID, RFC Message-ID, subject, sender and receipt time on a hit. The oracle declares only found. Pointer fields preserve absence and empty or zero values."
+- operation: verifyDelivery
+  difference: "response 200 application/json.properties.data.properties.subject: openapi.yaml absent, generated *"
+  reason: "Verification returns message on a miss and the matching message ID, RFC Message-ID, subject, sender and receipt time on a hit. The oracle declares only found. Pointer fields preserve absence and empty or zero values."
+- operation: verifyDelivery
+  difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"found\"]"
+  reason: "These fields are always written by the existing success response; the oracle leaves them optional."
+- operation: verifyDelivery
+  difference: "response 403 application/json: generated only"
+  reason: "The shared admin middleware refuses setup, CSRF and capability failures with the JSON error envelope. The oracle only describes the production refusal without a body; production now omits these routes entirely."
+
 # Accounts, app passwords and API keys (#635, #618)
 
 - operation: "*"
@@ -1444,3 +1540,438 @@
 - operation: createAppPassword
   difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
   reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+
+# Contacts (#639)
+
+- operation: listContacts
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: createContact
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: updateContact
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: deleteContact
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: blockSender
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: importContacts
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: suggestContacts
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: createContact
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+- operation: updateContact
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+- operation: blockSender
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request, as it always was.
+- operation: createContact
+  difference: "response 409: generated only"
+  reason: >-
+    An address that is already one of the account's contacts is 409 already_exists.
+- operation: createContact
+  difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The address is checked in the handler, which keeps its documented "required" for an empty
+    one and "must be an email address" for one that is not; a format on the field would answer
+    an empty one with the format's wording instead.
+- operation: importContacts
+  difference: "request body application/json.properties.contacts.items.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Each address is checked in the handler, which keeps its documented "required" for an empty
+    one and "must be an email address" for one that is not; a format on the field would answer
+    an empty one with the format's wording instead.
+- operation: blockSender
+  difference: "request body application/json.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Blocking has never checked the address is one: it blocks the sender exactly as given, so a
+    malformed From can be blocked too. Only an empty one is refused (422 required).
+- operation: listContacts
+  difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: suggestContacts
+  difference: "response 200 application/json.properties.data.items.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: createContact
+  difference: "response 201 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: updateContact
+  difference: "response 200 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: blockSender
+  difference: "response 200 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: blockSender
+  difference: "response 201 application/json.properties.data.properties.email.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A contact holds the address as it was given or seen: blocking never checked it is one, so
+    the answer cannot promise the format.
+- operation: createContact
+  difference: "request body application/json.properties.trust_level.enum: openapi.yaml [\"auto\",\"blocked\",\"trusted\"], generated absent"
+  reason: >-
+    The trust level is checked in the handler with the address, so both are refused together
+    (422 "must be auto, trusted, or blocked").
+- operation: createContact
+  difference: "request body application/json.properties.trust_level.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null leaves the field as it would be without it (the default trust level on create, the
+    stored value on update), as the handler has always read it.
+- operation: updateContact
+  difference: "request body application/json.properties.name.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null leaves the field as it would be without it (the default trust level on create, the
+    stored value on update), as the handler has always read it.
+- operation: updateContact
+  difference: "request body application/json.properties.trust_level.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null leaves the field as it would be without it (the default trust level on create, the
+    stored value on update), as the handler has always read it.
+- operation: updateContact
+  difference: "request body application/json.properties.trust_level.enum: openapi.yaml [\"auto\",\"blocked\",\"trusted\"], generated [\"auto\",\"blocked\",\"trusted\",null]"
+  reason: >-
+    The enum lists null, which leaves the trust level unchanged. Before binding, any string
+    was stored; now one outside the enum is 422.
+- operation: importContacts
+  difference: "request body application/json.properties.contacts.minItems: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty or missing list is refused in the handler with its documented 422 "required" for
+    contacts.
+- operation: listContacts
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list has always read limit (default 50, at most 200); the oracle does not document it.
+- operation: listContacts
+  difference: "parameter query offset: generated only"
+  reason: >-
+    The list has always read offset; the oracle does not document it.
+- operation: suggestContacts
+  difference: "parameter query q: required: openapi.yaml true, generated false"
+  reason: >-
+    An absent or empty q answers an empty list, as it always has, rather than a refusal.
+
+# The account's quarantine (#641)
+
+- operation: listQuarantine
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list has always read limit (default 50, at most 200), as every list does; the oracle
+    does not document it.
+- operation: listQuarantine
+  difference: "parameter query offset: generated only"
+  reason: >-
+    The list has always read offset; the oracle does not document it.
+- operation: listQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: releaseQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: deleteQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: releaseQuarantine
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"released\"]"
+  reason: >-
+    A release always answers status released; the mobile app refuses any other. The oracle
+    leaves the value open.
+- operation: deleteQuarantine
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"deleted\"]"
+  reason: >-
+    A delete always answers status deleted; the mobile app refuses any other. The oracle
+    leaves the value open.
+- operation: deleteQuarantine
+  difference: "response 404: generated only"
+  reason: >-
+    A held message that is not in the account's quarantine, or belongs to another account, is
+    404 not_found, as release answers. The oracle documents it for release only.
+
+# API root, health and server identity (#630)
+
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"build_date\",\"commit\",\"links\",\"name\",\"version\"]"
+  reason: >-
+    The root always writes every field, empty when the build stamped none. The oracle makes
+    them all optional.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.properties: openapi.yaml absent, generated {\"docs\":{\"type\":\"string\"},\"health\":{\"type\":\"string\"},\"login\":{\"type\":\"string\"}}"
+  reason: >-
+    The links are the three the root has always written: docs, health and login. The oracle
+    describes them as an open map of strings.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.required: openapi.yaml absent, generated [\"docs\",\"health\",\"login\"]"
+  reason: >-
+    All three links are always written.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.additionalProperties: openapi.yaml {\"type\":\"string\"}, generated false"
+  reason: >-
+    The links object is closed like every struct (go-oapifly#30): it holds the three links
+    and nothing else.
+- operation: getHealth
+  difference: "response 200 application/json.properties.data.properties.cert_warnings: *"
+  reason: >-
+    The certificates expiring within 30 days, written only for a bearer token of a current
+    session holding domains:read at *, and only when there are any. The oracle does not
+    describe them.
+- operation: describeServer
+  difference: "response 429: generated only"
+  reason: >-
+    GET /api/v1/server shares the owner endpoints' per-IP bucket, which answers 429
+    rate_limited with Retry-After. The oracle does not document it.
+
+# Mail rules: the vacation reply and Sieve scripts (#640)
+
+- operation: getVacation
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: setVacation
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: disableVacation
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: putSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: deleteSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: validateSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: putSieveScript
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request; a script that does not
+    parse, or fails its dry run, is 400 invalid_sieve on put.
+- operation: putSieveScript
+  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
+  reason: >-
+    The 422 is the API's validation envelope, with the fields at fault under details.fields;
+    the oracle describes this operation's 422 without them.
+- operation: putSieveScript
+  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null script is bound and then refused in the handler as 422 script required, the
+    documented script_null example, as a missing one is.
+- operation: validateSieveScript
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: validateSieveScript
+  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
+  reason: >-
+    The 422 is the API's validation envelope, with the fields at fault under details.fields;
+    the oracle describes this operation's 422 without them.
+- operation: validateSieveScript
+  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null script is bound and then refused in the handler as 422 script required, the
+    documented script_null example, as a missing one is.
+- operation: putSieveScript
+  difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    A null active is the default, true, as an absent one is.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The sha256 hex of the script validated at install, which the delivery path checks before
+    it trusts the script. It has always been written for a stored script; the oracle omits it.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    When the stored script was validated at install. It has always been written for a stored
+    script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The sha256 hex of the script validated at install, which the delivery path checks before
+    it trusts the script. It has always been written for a stored script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    When the stored script was validated at install. It has always been written for a stored
+    script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The sha256 hex of the script validated at install, which the delivery path checks before
+    it trusts the script. It has always been written for a stored script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    When the stored script was validated at install. It has always been written for a stored
+    script; the oracle omits it.
+- operation: getSieveScript
+  difference: "response 404: openapi.yaml only"
+  reason: >-
+    Never written: an account with no script answers 200 with the empty script.
+- operation: deleteSieveScript
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"deleted\"]"
+  reason: >-
+    A delete always answers status deleted, whether or not there was a script.
+- operation: validateSieveScript
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"valid\"], generated [\"message\",\"valid\"]"
+  reason: >-
+    Every answer carries a message: why the script is refused, or that it is valid.
+- operation: setVacation
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
+  reason: >-
+    The oracle describes the reply as anyOf {enabled: false} or a non-empty subject and body.
+    The handler states it exactly: enabled is required, and subject and body are required when
+    it is true (422 "required when enabled"), with their documented wording.
+- operation: setVacation
+  difference: "request body application/json.required: openapi.yaml [\"body\",\"enabled\",\"subject\"], generated [\"enabled\"]"
+  reason: >-
+    Only enabled is required; subject and body may be left out when the reply is off.
+- operation: setVacation
+  difference: "request body application/json.properties.enabled.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    A null enabled is bound and then refused in the handler as 422 enabled required, as a
+    missing one is.
+- operation: setVacation
+  difference: "response 200 application/json.properties.data.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
+  reason: >-
+    The answer is the reply as set, which the request's rules already held; it carries no
+    constraints of its own.
+- operation: getVacation
+  difference: "response 200 application/json.properties.data.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
+  reason: >-
+    An account with no reply set answers the defaults: off, with an empty subject and body,
+    which the oracle's anyOf allows; the type states the fields without the request's rules.
+
+# The account's own password and two-factor authentication (#634)
+
+- operation: changeOwnPassword
+  difference: "request body application/json.properties.new_password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The handler counts the new password in bytes, as bootstrap does, and only once the current
+    password is proven, so a wrong current password is still 403 invalid_password; it answers
+    the documented 422 on new_password. Binding's minLength would count characters, and first.
+- operation: changeOwnPassword
+  difference: "response 200 application/json: generated only"
+  reason: >-
+    The answer carries a message, {"data": {"message": ...}}, as it always did; openapi.yaml
+    describes the 200 by its status alone.
+- operation: changeOwnPassword
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: changeOwnPassword
+  difference: "response 429: generated only"
+  reason: It checks a password, so it shares login's per-client-IP throttle (429 rate_limited).
+- operation: confirmTwoFactor
+  difference: "response 429: generated only"
+  reason: It checks a code, so it shares login's per-client-IP throttle (429 rate_limited, #204).
+- operation: disableTwoFactor
+  difference: "response 429: generated only"
+  reason: It checks a code, so it shares login's per-client-IP throttle (429 rate_limited, #204).
+- operation: enrollTwoFactor
+  difference: "response 200 application/json.properties.data.properties.recovery_codes.items.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    Every recovery code is generated, never empty, but a struct tag cannot constrain the items
+    of a list, so the generated description states the list's minItems only.
