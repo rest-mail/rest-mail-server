@@ -12,7 +12,8 @@ import (
 	"time"
 
 	"github.com/emersion/go-sasl"
-	gosmtp "github.com/rest-mail/go-smtp"
+	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
+	smtpserver "github.com/rest-mail/go-smtp/pkg/smtp/server"
 
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
@@ -36,7 +37,7 @@ const maxRecipients = 100
 // protocol mechanics (command parsing, STARTTLS, SASL exchange, DATA
 // dot-reader with SMTP-smuggling hardening) live in go-smtp.
 type session struct {
-	conn         *gosmtp.Conn
+	conn         *smtpserver.Conn
 	api          Backend
 	store        Store
 	limiter      *connlimiter.Limiter
@@ -96,7 +97,7 @@ func (s *session) tarpitReject() {
 	s.sleep(s.ctx, d)
 }
 
-var _ gosmtp.AuthSession = (*session)(nil)
+var _ smtpserver.AuthSession = (*session)(nil)
 
 // remoteAddr returns the peer address, as rewritten by the PROXY protocol
 // listener when it is in play.
@@ -203,7 +204,7 @@ func (s *session) Auth(mech string) (sasl.Server, error) {
 	case sasl.Login:
 		return &loginSASLServer{authenticate: s.login}, nil
 	default:
-		return nil, gosmtp.ErrAuthUnknownMechanism
+		return nil, smtpserver.ErrAuthUnknownMechanism
 	}
 }
 
