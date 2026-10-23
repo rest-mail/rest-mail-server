@@ -103,47 +103,99 @@ func (h *MessageHandler) signOutboundDKIM(senderDomain, raw string) (string, err
 	return outbound.SignDKIM(h.db, h.masterKey, senderDomain, raw)
 }
 
-// ListMessages returns messages in a folder with cursor-based pagination.
-func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
+// listMessagesRequest is a page of a folder, newest first. limit is 1 to 100 (50 otherwise);
+// cursor is the next_cursor of the page before.
+type listMessagesRequest struct {
+	ID     uint32 `path:"id" minimum:"1"`
+	Folder string `path:"folder"`
+	Limit  *int   `query:"limit"`
+	Cursor string `query:"cursor"`
+}
 
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
+// messagePath names a message by its id.
+type messagePath struct {
+	ID uint32 `path:"id" minimum:"1"`
+}
 
-	folder := chi.URLParam(r, "folder")
+// updateMessageRequest changes what is given; null or left out leaves a flag as it is, and a
+// folder moves the message.
+type updateMessageRequest struct {
+	ID   uint32            `path:"id" minimum:"1"`
+	Body updateMessageBody `body:""`
+}
+
+type updateMessageBody struct {
+	IsRead    *bool   `json:"is_read,omitempty"`
+	IsFlagged *bool   `json:"is_flagged,omitempty"`
+	IsStarred *bool   `json:"is_starred,omitempty"`
+	IsDraft   *bool   `json:"is_draft,omitempty"`
+	Folder    *string `json:"folder,omitempty"`
+}
+
+// deleteMessageRequest deletes a message: to Trash, or for good when permanent is true, or
+// when it is already in Trash or deleted. The protocol gateways delete for good.
+type deleteMessageRequest struct {
+	ID        uint32 `path:"id" minimum:"1"`
+	Permanent string `query:"permanent" description:"true deletes the message for good; anything else moves it to Trash"`
+}
+
+type threadRequest struct {
+	ID       uint32 `path:"id" minimum:"1"`
+	ThreadID string `path:"threadID"`
+}
+
+var (
+	errMessageNotFound = endpoint.Refuse(http.StatusNotFound, "message_not_found", "Message not found")
+	errMessageAccess   = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+)
+
+// RegisterMessages mounts reading, changing and deleting an account's messages, and its
+// threads.
+func (h *MessageHandler) RegisterMessages(rs endpoint.Routes) {
+	reads := handlerChecked(models.CapMailRead, folderSchemes...)
+	writes := handlerChecked(models.CapMailWrite, folderSchemes...)
+	tags := []string{"Messages"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders/{folder}/messages",
+		OperationID: "listMessages", Summary: "List messages in a folder", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: reads}, h.listMessages)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/messages/{id}",
+		OperationID: "getMessage", Summary: "Get a message by ID", Tags: tags,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getMessage)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/messages/{id}",
+		OperationID: "updateMessage", Summary: "Update message flags or move to a folder", Tags: tags,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.updateMessage)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/messages/{id}",
+		OperationID: "deleteMessage", Summary: "Delete a message", Tags: tags, Status: http.StatusNoContent,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteMessage)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/threads/{threadID}",
+		OperationID: "getThread", Summary: "Get all messages in a thread", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: reads}, h.getThread)
+}
+
+// listMessages returns messages in a folder with cursor-based pagination.
+func (h *MessageHandler) listMessages(r *http.Request, in listMessagesRequest) (endpoint.List[Message], error) {
+	var zero endpoint.List[Message]
+	folder := in.Folder
 	if folder == "" {
 		folder = "INBOX"
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return zero, err
 	}
 
-	if !validateIntegerQuery(w, r, 0, "limit") {
-		return
-	}
 	limit := 50
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		}
+	if in.Limit != nil && *in.Limit > 0 && *in.Limit <= 100 {
+		limit = *in.Limit
 	}
 
 	query := h.db.Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).
 		Order("received_at DESC").
 		Limit(limit + 1)
 
-	if cursor := r.URL.Query().Get("cursor"); cursor != "" {
-		decoded, err := base64.StdEncoding.DecodeString(cursor)
+	if in.Cursor != "" {
+		decoded, err := base64.StdEncoding.DecodeString(in.Cursor)
 		if err == nil {
 			var cursorData struct {
 				ID uint `json:"id"`
@@ -156,8 +208,7 @@ func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 
 	var messages []models.Message
 	if err := query.Find(&messages).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list messages")
-		return
+		return zero, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list messages")
 	}
 
 	hasMore := len(messages) > limit
@@ -175,78 +226,46 @@ func (h *MessageHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	var total int64
 	h.db.Model(&models.Message{}).Where("mailbox_id = ? AND folder = ? AND is_deleted = ?", mailboxID, folder, false).Count(&total)
 
-	respond.List(w, messages, &respond.Pagination{
+	return endpoint.List[Message]{Data: messagesOf(messages), Pagination: &respond.Pagination{
 		Cursor:  nextCursor,
 		HasMore: hasMore,
 		Total:   total,
-	})
+	}}, nil
 }
 
-// GetMessage returns a single message by ID.
-func (h *MessageHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+// ownedMessage is the message the path names, when the session may reach its account with
+// capability.
+func (h *MessageHandler) ownedMessage(r *http.Request, id uint32, capability string) (models.Message, error) {
+	if middleware.GetClaims(r) == nil {
+		return models.Message{}, errNotSignedIn
 	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
-	}
-
 	var msg models.Message
 	if err := h.db.First(&msg, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
+		return models.Message{}, errMessageNotFound
 	}
-
-	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailRead) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+	if !h.verifyMessageOwnership(nil, r, &msg, capability) {
+		return models.Message{}, errMessageAccess
 	}
-
-	respond.Data(w, http.StatusOK, msg)
+	return msg, nil
 }
 
-// UpdateMessage updates message flags or moves to a folder.
-func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+// getMessage returns a single message by ID.
+func (h *MessageHandler) getMessage(r *http.Request, in messagePath) (Message, error) {
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
+		return Message{}, err
+	}
+	return messageOf(msg), nil
+}
+
+// updateMessage updates message flags or moves to a folder.
+func (h *MessageHandler) updateMessage(r *http.Request, in updateMessageRequest) (Message, error) {
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailWrite)
+	if err != nil {
+		return Message{}, err
 	}
 
-	var msg models.Message
-	if err := h.db.First(&msg, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailWrite) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req struct {
-		IsRead    *bool   `json:"is_read"`
-		IsFlagged *bool   `json:"is_flagged"`
-		IsStarred *bool   `json:"is_starred"`
-		IsDraft   *bool   `json:"is_draft"`
-		Folder    *string `json:"folder"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
+	req := in.Body
 	updates := map[string]interface{}{}
 	if req.IsRead != nil {
 		updates["is_read"] = *req.IsRead
@@ -271,7 +290,7 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		h.db.Model(&msg).Updates(updates)
 	}
 
-	h.db.First(&msg, id)
+	h.db.First(&msg, in.ID)
 
 	if h.broker != nil {
 		h.broker.Publish(msg.MailboxID, SSEEvent{
@@ -297,32 +316,14 @@ func (h *MessageHandler) UpdateMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respond.Data(w, http.StatusOK, msg)
+	return messageOf(msg), nil
 }
 
-// DeleteMessage soft-deletes a message.
-func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+// deleteMessage deletes a message: to Trash, or for good.
+func (h *MessageHandler) deleteMessage(r *http.Request, in deleteMessageRequest) (endpoint.Empty, error) {
+	msg, err := h.ownedMessage(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid message ID")
-		return
-	}
-
-	var msg models.Message
-	if err := h.db.First(&msg, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "message_not_found", "Message not found")
-		return
-	}
-
-	if !h.verifyMessageOwnership(w, r, &msg, models.CapMailWrite) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return endpoint.Empty{}, err
 	}
 
 	// A permanent delete removes the message for good and reclaims its storage.
@@ -331,7 +332,7 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	// row (unreachable, quota never reclaimed). A message already in Trash, or
 	// already flagged deleted, is likewise purged. Everything else (a webmail
 	// first delete) moves to Trash as a real, visible item.
-	permanent := r.URL.Query().Get("permanent") == "true"
+	permanent := in.Permanent == "true"
 	hardDelete := permanent || msg.Folder == "Trash" || msg.IsDeleted
 
 	if hardDelete {
@@ -369,8 +370,7 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 			}
 			return nil
 		}); err != nil {
-			respond.Error(w, http.StatusInternalServerError, "delete_failed", "Failed to delete message")
-			return
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "delete_failed", "Failed to delete message")
 		}
 	} else {
 		// Move to Trash as a real, visible item. is_deleted stays false so it
@@ -388,7 +388,7 @@ func (h *MessageHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
 // sendMessageRequest is the body of POST /api/v1/messages/send. It is kept as
@@ -1564,41 +1564,21 @@ func (h *MessageHandler) SendDraft(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetThread returns all messages sharing the same thread_id.
-// GET /api/v1/accounts/{id}/threads/{threadID}
-func (h *MessageHandler) GetThread(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+// getThread returns the account's messages in a thread, oldest first.
+func (h *MessageHandler) getThread(r *http.Request, in threadRequest) (endpoint.List[Message], error) {
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
-
-	threadID := chi.URLParam(r, "threadID")
-	if threadID == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Thread ID required")
-		return
-	}
-
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return endpoint.List[Message]{}, err
 	}
 
 	var messages []models.Message
-	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ?", mailboxID, threadID, false).
+	if err := h.db.Where("mailbox_id = ? AND thread_id = ? AND is_deleted = ?", mailboxID, in.ThreadID, false).
 		Order("received_at ASC").
 		Find(&messages).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to retrieve thread")
-		return
+		return endpoint.List[Message]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to retrieve thread")
 	}
 
-	respond.List(w, messages, nil)
+	return endpoint.List[Message]{Data: messagesOf(messages)}, nil
 }
 
 // GetRawMessage returns the raw RFC 2822 message content.

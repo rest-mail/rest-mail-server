@@ -90,3 +90,15 @@ func TestFolderBindingBeforeDatabase(t *testing.T) {
 		})
 	}
 }
+
+func messageRoutes(h *MessageHandler) http.Handler {
+	r := chi.NewRouter()
+	h.RegisterMessages(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()})
+	return r
+}
+
+func searchRoutes(h *SearchHandler) http.Handler {
+	r := chi.NewRouter()
+	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()})
+	return r
+}

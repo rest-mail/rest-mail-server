@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -100,7 +101,7 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 		"listPipelines":     pipelineRoute(pipeline, "/api/v1/admin/pipelines"),
 		"listCustomFilters": pipelineRoute(pipeline, "/api/v1/admin/custom-filters"),
 		"listPipelineLogs":  pipelineRoute(pipeline, "/api/v1/admin/pipelines/logs"),
-		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
+		"listMessages":      messageRoutes(NewMessageHandler(tx, nil, nil, "", nil)).ServeHTTP,
 		"listGrants": func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path = "/api/v1/admin/grants"
 			grantRoutes(NewGrantHandler(tx, nil, "")).ServeHTTP(w, r)
@@ -116,7 +117,7 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 			policyRoutes(NewTLSReportHandler(tx)).ServeHTTP(w, r)
 		},
 		"listAuditEntries": auditRoutes(NewAuditHandler(tx)).ServeHTTP,
-		"searchMessages":   NewSearchHandler(tx).Search,
+		"searchMessages":   searchRoutes(NewSearchHandler(tx)).ServeHTTP,
 		"getDeliveryLogs":  logRoutes(NewLogHandler(tx)).ServeHTTP,
 	}
 	ops := listQueryOperations(t)
@@ -152,6 +153,10 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 							path = "/api/v1/admin/logs/delivery"
 						case "listAuditEntries":
 							path = "/api/v1/admin/audit"
+						case "listMessages":
+							path = accountFoldersPath(fx.mailbox.ID) + "/INBOX/messages"
+						case "searchMessages":
+							path = fmt.Sprintf("/api/v1/accounts/%d/search", fx.mailbox.ID)
 						}
 						req := authzRequest(http.MethodGet, path+"?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID), "folder": "INBOX"}, "")
 						rr := httptest.NewRecorder()
@@ -215,7 +220,7 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 	fx := seedMsgDeleteFixture(t, tx, 0)
 	handlers := map[string]http.HandlerFunc{
 		"listContacts":    NewContactHandler(tx).ListContacts,
-		"searchMessages":  NewSearchHandler(tx).Search,
+		"searchMessages":  searchRoutes(NewSearchHandler(tx)).ServeHTTP,
 		"getDeliveryLogs": logRoutes(NewLogHandler(tx)).ServeHTTP,
 	}
 	ops := listQueryOperations(t)
@@ -252,6 +257,10 @@ func TestListQueryTypedContractProbes(t *testing.T) {
 							path = "/api/v1/admin/logs/delivery"
 						case "listAuditEntries":
 							path = "/api/v1/admin/audit"
+						case "listMessages":
+							path = accountFoldersPath(fx.mailbox.ID) + "/INBOX/messages"
+						case "searchMessages":
+							path = fmt.Sprintf("/api/v1/accounts/%d/search", fx.mailbox.ID)
 						}
 						req := authzRequest(http.MethodGet, path+"?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID)}, "")
 						rr := httptest.NewRecorder()

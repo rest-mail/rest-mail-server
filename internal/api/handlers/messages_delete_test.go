@@ -93,7 +93,7 @@ func TestDeleteMessage_GatewayPermanentReclaimsQuota(t *testing.T) {
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr+"?permanent=true",
 		fx.mailbox.ID, map[string]string{"id": idStr}, "")
-	h.DeleteMessage(rr, req)
+	messageRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("permanent delete: expected 204, got %d (%s)", rr.Code, rr.Body.String())
@@ -142,7 +142,7 @@ func TestDeleteMessage_GatewayPermanentReclaimsAttachments(t *testing.T) {
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr+"?permanent=true",
 		fx.mailbox.ID, map[string]string{"id": idStr}, "")
-	h.DeleteMessage(rr, req)
+	messageRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("permanent delete: expected 204, got %d (%s)", rr.Code, rr.Body.String())
@@ -184,7 +184,7 @@ func TestDeleteMessage_WebmailMoveToTrashVisibleAndCounted(t *testing.T) {
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr,
 		fx.mailbox.ID, map[string]string{"id": idStr}, "")
-	h.DeleteMessage(rr, req)
+	messageRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("move to trash: expected 204, got %d (%s)", rr.Code, rr.Body.String())
@@ -230,7 +230,7 @@ func TestDeleteMessage_WebmailPurgeFromTrashReclaims(t *testing.T) {
 	req := authzRequest(http.MethodDelete,
 		"/api/v1/messages/"+idStr,
 		fx.mailbox.ID, map[string]string{"id": idStr}, "")
-	h.DeleteMessage(rr, req)
+	messageRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusNoContent {
 		t.Fatalf("purge from trash: expected 204, got %d (%s)", rr.Code, rr.Body.String())

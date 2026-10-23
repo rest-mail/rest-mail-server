@@ -634,14 +634,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
 		// Folders and quota
-		messageH.RegisterFolders(endpoint.Routes{Router: r, Registry: registry}.
-			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
+		mail := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap)
+		messageH.RegisterFolders(mail)
+		messageH.RegisterMessages(mail)
+		searchH.Register(mail)
+		attachmentH.RegisterList(mail)
 
 		// Messages
-		r.Get("/api/v1/accounts/{id}/folders/{folder}/messages", messageH.ListMessages)
-		r.Get("/api/v1/messages/{id}", messageH.GetMessage)
-		r.Patch("/api/v1/messages/{id}", messageH.UpdateMessage)
-		r.Delete("/api/v1/messages/{id}", messageH.DeleteMessage)
 		r.Post("/api/v1/messages/send", messageH.SendMessage)
 		r.Get("/api/v1/messages/scheduled", messageH.ListScheduledSends)
 		r.Delete("/api/v1/messages/scheduled/{id}", messageH.CancelScheduledSend)
@@ -655,12 +655,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.Put("/api/v1/messages/draft/{id}", messageH.UpdateDraft)
 		r.Post("/api/v1/messages/draft/{id}/send", messageH.SendDraft)
 
-		// Threads
-		r.Get("/api/v1/accounts/{id}/threads/{threadID}", messageH.GetThread)
-
 		// Attachments
 		r.Get("/api/v1/attachments/{id}", attachmentH.GetAttachment)
-		r.Get("/api/v1/messages/{id}/attachments", attachmentH.ListAttachments)
 
 		// Contacts
 		r.Get("/api/v1/accounts/{id}/contacts", contactH.ListContacts)
@@ -683,9 +679,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Contacts suggest (autocomplete)
 		r.Get("/api/v1/accounts/{id}/contacts/suggest", contactH.SuggestContacts)
-
-		// Search
-		r.Get("/api/v1/accounts/{id}/search", searchH.Search)
 
 		// Quarantine
 		r.Get("/api/v1/accounts/{id}/quarantine", pipelineH.ListQuarantine)
