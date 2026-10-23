@@ -6,3 +6,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+
+  # The contract's generator (#628): each go-oapifly release is a bump PR the same day.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: daily
+    allow:
+      - dependency-name: "github.com/antimatter-studios/*"
