@@ -35,7 +35,7 @@ func TestDeliveryLog_LikeWildcardEscaped(t *testing.T) {
 	h := NewLogHandler(tx)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/logs/delivery?sender=a_b", nil)
 	rr := httptest.NewRecorder()
-	h.DeliveryLog(rr, req)
+	logRoutes(h).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
 	}

@@ -23,7 +23,7 @@ func TestListBans_RejectInvalidFilters(t *testing.T) {
 			t.Run(field+"="+value, func(t *testing.T) {
 				query := url.Values{field: {value}}
 				rr := httptest.NewRecorder()
-				NewBanHandler(nil).ListBans(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/bans?"+query.Encode(), nil))
+				banRoutes(NewBanHandler(nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/bans?"+query.Encode(), nil))
 				if rr.Code != http.StatusUnprocessableEntity {
 					t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body)
 				}
@@ -97,7 +97,7 @@ func TestListBans_ContractFilters(t *testing.T) {
 					query.Set("active", active)
 				}
 				rr := httptest.NewRecorder()
-				NewBanHandler(tx).ListBans(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/bans?"+query.Encode(), nil))
+				banRoutes(NewBanHandler(tx)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/bans?"+query.Encode(), nil))
 				if rr.Code != http.StatusOK {
 					t.Fatalf("status = %d, want 200: %s", rr.Code, rr.Body)
 				}
