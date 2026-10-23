@@ -105,11 +105,23 @@ can never quote a paragraph that has gone.
 ## Open
 
 1. **How interactive diagrams sit in the page.** To be decided by looking at a
-   working prototype of both (owner, 2026-10-23). Options:
-   - an `<iframe>` of Archify's standalone HTML: isolated and simple, but
-     its own scroll and theme;
-   - inlining its SVG and viewer runtime into the page: seamless, but the
-     site's styles and Archify's must not collide.
+   working prototype (owner, 2026-10-23). The prototype is the website's
+   `feat/email-explained-prototype` branch: every chapter takes `?embed=` to
+   switch between six ways, on the real site with its real
+   Content-Security-Policy. What each one did, in headless Chrome, 2026-10-23:
+
+   | `?embed=` | Result | Why |
+   |---|---|---|
+   | `image` | Works, static | The PNG GitHub shows. Nothing to explore. |
+   | `iframe` | Blocked, then works | The site sends `frame-ancestors 'none'` on every response, and refuses Archify's `data:` typefaces. Served with a policy of their own (`frame-ancestors 'self'`, `font-src data:`), diagrams load, and the page sizes the frame to fit because it is the same origin. |
+   | `iframe-embed` | Works | The same, in Archify's `?embed=1` mode: only the diagram, without the title, toolbar, cards and node index that repeat the chapter. |
+   | `srcdoc` | Works, with a fixed height | Archify's own advice. An opaque sandboxed frame cannot be measured, so it scrolls inside a fixed box. |
+   | `shadow` | Broken | Archify's stylesheet is written for a whole document (`:root`, `html[...]`), so inside a shadow root none of its colours resolve and every box is black. Its script looks its elements up in `document`, finds none, and throws. The page's typefaces still inherit in. |
+   | `inline` | Renders, but the site leaks in | Its CSS scoped to the diagram, so its variables cannot reach the site. The other way still leaks: the site's own rules (`.doc-body li`) match Archify's elements and make its cards unreadable. The site's policy also refuses its typefaces, and its script writes 12 attributes and a style onto the site's `<html>`. |
+
+   Scoping Archify's variables is not enough on its own. A page's selectors
+   and inherited styles reach anything inline. Only a separate document, a
+   frame, keeps both sides apart without changing Archify.
 
 2. **Matching the site's three designs.** Archify has its own looks (classic,
    editorial and others). Does a diagram follow the visitor's chosen design,
