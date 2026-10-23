@@ -9,7 +9,7 @@ import (
 // by the real handler with exactly their documented 422, before anything is
 // looked up or stored: the handler has no database.
 func TestBanCreate_DocumentedRefusals(t *testing.T) {
-	documentedRefusals(t, "/api/v1/admin/bans", "createBan", NewBanHandler(nil).CreateBan)
+	documentedRefusals(t, "/api/v1/admin/bans", "createBan", banRoutes(NewBanHandler(nil)).ServeHTTP)
 }
 
 // The pairs vertrag compiles for createBan: created with the 201, and

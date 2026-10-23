@@ -83,3 +83,9 @@ func (rt *Routers) Description(version string) (map[string]interface{}, []string
 	g.Register(rt.Registry.Endpoints()...)
 	return g.Generate(), g.Warnings
 }
+
+// describedAuditRead records every audit read, including a capability refusal.
+// Recording does not change the response or the authentication requirement.
+func describedAuditRead(wrap func(http.Handler) http.Handler) endpoint.Middleware {
+	return endpoint.Middleware{Wrap: wrap}
+}

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
 )
@@ -57,32 +56,32 @@ type InboundTransportSecurity struct {
 }
 
 type DashboardStats struct {
-	DomainCount              int                      `json:"domainCount"`
-	MailboxCount             int                      `json:"mailboxCount"`
-	QueueStats               QueueStats               `json:"queueStats"`
-	MessageVolume            []MessageVolumeData      `json:"messageVolume"`
-	RecentActivity           []RecentActivity         `json:"recentActivity"`
+	DomainCount   int                 `json:"domainCount"`
+	MailboxCount  int                 `json:"mailboxCount"`
+	QueueStats    QueueStats          `json:"queueStats"`
+	MessageVolume []MessageVolumeData `json:"messageVolume"`
+	// A pointer preserves the existing null when there is no recent activity;
+	// endpoint's ordinary nil slices are normalized to empty arrays.
+	RecentActivity           *[]RecentActivity        `json:"recentActivity"`
 	InboundTransportSecurity InboundTransportSecurity `json:"inboundTransportSecurity"`
 }
 
-// GetDashboardStats returns statistics for the admin dashboard
+// dashboardStats returns statistics for the admin dashboard
 // GET /api/v1/admin/stats
-func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request) {
+func (h *StatsHandler) dashboardStats(_ *http.Request, _ struct{}) (DashboardStats, error) {
 	stats := DashboardStats{}
 
 	// Count total domains
 	var domainCount int64
 	if err := h.db.Model(&models.Domain{}).Count(&domainCount).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to count domains")
-		return
+		return DashboardStats{}, fmt.Errorf("count domains: %w", err)
 	}
 	stats.DomainCount = int(domainCount)
 
 	// Count total mailboxes
 	var mailboxCount int64
 	if err := h.db.Model(&models.Mailbox{}).Count(&mailboxCount).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to count mailboxes")
-		return
+		return DashboardStats{}, fmt.Errorf("count mailboxes: %w", err)
 	}
 	stats.MailboxCount = int(mailboxCount)
 
@@ -95,8 +94,7 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 		Select("status, COUNT(*) as count").
 		Group("status").
 		Scan(&queueCounts).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to get queue stats")
-		return
+		return DashboardStats{}, fmt.Errorf("queue stats: %w", err)
 	}
 
 	byStatus := make(map[string]int, len(queueCounts))
@@ -119,7 +117,9 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 		// Log error but don't fail the request
 		recentActivity = []RecentActivity{}
 	}
-	stats.RecentActivity = recentActivity
+	if recentActivity != nil {
+		stats.RecentActivity = &recentActivity
+	}
 
 	// Inbound transport-security (always-on). Never fail the whole dashboard on
 	// an aggregate error — fall back to the zero value, as the other panels do.
@@ -127,7 +127,7 @@ func (h *StatsHandler) GetDashboardStats(w http.ResponseWriter, r *http.Request)
 		stats.InboundTransportSecurity = its
 	}
 
-	respond.Data(w, http.StatusOK, stats)
+	return stats, nil
 }
 
 // inboundTransportSecuritySQL is a single DB aggregate over inbound-MX mail.
