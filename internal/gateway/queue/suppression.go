@@ -23,21 +23,11 @@ func (w *Worker) SetSuppressionTTL(ttl time.Duration) {
 	w.suppressionTTL = ttl
 }
 
-// senderDomain is the lower-cased domain of an envelope sender, or "" for the
-// null sender.
-func senderDomain(sender string) string {
-	at := strings.LastIndexByte(sender, '@')
-	if at < 0 {
-		return ""
-	}
-	return strings.ToLower(sender[at+1:])
-}
-
 // suppress records that the message's recipient does not exist, so its sending
 // domain sends it nothing more until the suppression expires. A sender whose
 // domain isn't hosted here has nothing to record against.
 func (w *Worker) suppress(item models.OutboundQueue, category models.FailureCategory, lastError string, now time.Time) {
-	domain := senderDomain(item.Sender)
+	domain := strings.ToLower(sendsAs(item))
 	if domain == "" {
 		return
 	}
@@ -73,7 +63,7 @@ func (w *Worker) suppress(item models.OutboundQueue, category models.FailureCate
 // its sending domain, if there is one.
 func (w *Worker) suppression(item models.OutboundQueue, now time.Time) (models.Suppression, bool) {
 	var s models.Suppression
-	domain := senderDomain(item.Sender)
+	domain := strings.ToLower(sendsAs(item))
 	if domain == "" {
 		return s, false
 	}
@@ -100,7 +90,7 @@ func (w *Worker) bounceSuppressed(item models.OutboundQueue, s models.Suppressio
 	}
 	reason := fmt.Sprintf("not sent: an earlier message to this address bounced as undeliverable, "+
 		"so mail from %s to it is suppressed until %s",
-		senderDomain(item.Sender), s.ExpiresAt.UTC().Format("2 January 2006 15:04 MST"))
+		strings.ToLower(sendsAs(item)), s.ExpiresAt.UTC().Format("2 January 2006 15:04 MST"))
 	w.db.Model(&item).Updates(map[string]interface{}{
 		"status":           "bounced",
 		"attempts":         item.Attempts,

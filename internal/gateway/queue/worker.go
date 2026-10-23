@@ -298,7 +298,16 @@ func (w *Worker) SetMasterKey(key string) {
 // when a configured DKIM key cannot sign, so the caller fails closed
 // (defer/retry) rather than relaying the message unsigned.
 func (w *Worker) prepareOutbound(item models.OutboundQueue) (string, error) {
-	return outbound.Prepare(w.db, w.masterKey, rmail.DomainFromAddress(item.Sender), item.RawMessage)
+	return outbound.Prepare(w.db, w.masterKey, sendsAs(item), item.RawMessage)
+}
+
+// sendsAs is the hosted domain a queued message is sent as: the one the
+// row names when its envelope sender is null, else the envelope sender's.
+func sendsAs(item models.OutboundQueue) string {
+	if item.SendingDomain != "" {
+		return item.SendingDomain
+	}
+	return rmail.DomainFromAddress(item.Sender)
 }
 
 // newGuardedDialer builds a net.Dialer whose Control hook refuses to connect to
@@ -1020,6 +1029,13 @@ func (w *Worker) recentDSNCount(mailboxID uint) int64 {
 // generateBounce creates an RFC 3464 DSN (Delivery Status Notification)
 // and delivers it to the original sender's mailbox if the sender is local.
 func (w *Worker) generateBounce(item models.OutboundQueue, smtpErr *SMTPError) {
+	// Mail sent with a null reverse path, such as a vacation reply, is never
+	// bounced (RFC 5321 §6.1): there is nobody to tell, and a notice about a
+	// notice could loop.
+	if item.Sender == "" {
+		slog.Debug("queue: null sender, no DSN", "id", item.ID)
+		return
+	}
 	// Check if the sender has a local mailbox, resolving its hosted identity as
 	// submission did when it attributed the message.
 	var senderMailbox models.Mailbox
