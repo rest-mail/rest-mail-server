@@ -1,0 +1,360 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "From tutorial to spam machine: how a Postfix server relays for strangers",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/open-relay.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Postfix stages"
+        },
+        "security": {
+          "label": "Relay checks and the mistakes that defeat them"
+        },
+        "messagebus": {
+          "label": "Mail queue"
+        },
+        "cloud": {
+          "label": "Big mailbox providers"
+        },
+        "external": {
+          "label": "Outside actors and consequences"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "attacker",
+      "label": "Spammer"
+    },
+    {
+      "id": "server",
+      "label": "Your Postfix server"
+    },
+    {
+      "id": "mistakes",
+      "label": "Copied from tutorials",
+      "variant": "exception"
+    },
+    {
+      "id": "internet",
+      "label": "The rest of the internet"
+    }
+  ],
+  "phases": [
+    {
+      "id": "connect",
+      "label": "Connect",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "decide",
+      "label": "The relay decision",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "security"
+    },
+    {
+      "id": "abuse",
+      "label": "Abuse at scale",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "bot",
+    "session",
+    "relay",
+    "accepted",
+    "queue",
+    "outbound",
+    "providers"
+  ],
+  "nodes": [
+    {
+      "id": "bot",
+      "lane": "attacker",
+      "col": 0,
+      "type": "external",
+      "label": "Spammer's bot",
+      "sublabel": "scans for open port 25",
+      "icon": "person"
+    },
+    {
+      "id": "stolen",
+      "lane": "attacker",
+      "col": 1,
+      "type": "external",
+      "label": "Stolen password",
+      "sublabel": "phished or guessed"
+    },
+    {
+      "id": "denied",
+      "lane": "attacker",
+      "col": 2,
+      "type": "security",
+      "label": "Relay access denied",
+      "sublabel": "454 or 554: a correct answer",
+      "icon": "success"
+    },
+    {
+      "id": "session",
+      "lane": "server",
+      "col": 1,
+      "type": "backend",
+      "label": "SMTP session",
+      "sublabel": "RCPT TO: x@gmail.com"
+    },
+    {
+      "id": "relay",
+      "lane": "server",
+      "col": 2,
+      "type": "security",
+      "label": "Relay decision",
+      "sublabel": "smtpd_relay_restrictions",
+      "tag": "first match wins",
+      "icon": "decision"
+    },
+    {
+      "id": "accepted",
+      "lane": "server",
+      "col": 3,
+      "type": "backend",
+      "label": "250 OK, accepted",
+      "sublabel": "for a domain not yours",
+      "icon": "failure"
+    },
+    {
+      "id": "queue",
+      "lane": "server",
+      "col": 4,
+      "type": "messagebus",
+      "label": "Mail queue",
+      "sublabel": "spam and bounces pile up"
+    },
+    {
+      "id": "outbound",
+      "lane": "server",
+      "col": 5,
+      "type": "backend",
+      "label": "Delivered from your IP",
+      "sublabel": "sent from your IP"
+    },
+    {
+      "id": "widenet",
+      "lane": "mistakes",
+      "col": 2,
+      "type": "security",
+      "label": "mynetworks too wide",
+      "sublabel": "0.0.0.0/0 to fix a client"
+    },
+    {
+      "id": "gateway",
+      "lane": "mistakes",
+      "col": 1,
+      "type": "security",
+      "label": "Gateway trusted",
+      "sublabel": "Docker or proxy hides IPs"
+    },
+    {
+      "id": "order",
+      "lane": "mistakes",
+      "col": 3,
+      "type": "security",
+      "label": "permit before reject",
+      "sublabel": "unauth check never runs"
+    },
+    {
+      "id": "nolimit",
+      "lane": "mistakes",
+      "col": 4,
+      "type": "security",
+      "label": "No sending limits",
+      "sublabel": "one login sends millions"
+    },
+    {
+      "id": "providers",
+      "lane": "internet",
+      "col": 5,
+      "type": "cloud",
+      "label": "Gmail, Microsoft, Yahoo",
+      "sublabel": "traps and user reports"
+    },
+    {
+      "id": "blocklists",
+      "lane": "internet",
+      "col": 4,
+      "type": "external",
+      "label": "DNS blocklists",
+      "sublabel": "Spamhaus lists your IP"
+    },
+    {
+      "id": "bounced",
+      "lane": "internet",
+      "col": 3,
+      "type": "external",
+      "label": "Your real mail bounces",
+      "sublabel": "550 5.7.1: IP listed",
+      "icon": "failure"
+    }
+  ],
+  "edges": [
+    {
+      "id": "connect",
+      "from": "bot",
+      "to": "session",
+      "label": "connects to port 25",
+      "role": "main",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "auth",
+      "from": "stolen",
+      "to": "session",
+      "label": "AUTH with it",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "ask",
+      "from": "session",
+      "to": "relay",
+      "label": "relay for me?",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "refuse",
+      "from": "relay",
+      "to": "denied",
+      "label": "correct config",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "permit",
+      "from": "relay",
+      "to": "accepted",
+      "label": "a permit matched",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "trust-all",
+      "from": "widenet",
+      "to": "relay",
+      "label": "permit_mynetworks",
+      "role": "branch",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "trust-gateway",
+      "from": "gateway",
+      "to": "session",
+      "label": "everyone is 172.17.0.1",
+      "role": "branch",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "skip-reject",
+      "from": "order",
+      "to": "relay",
+      "label": "check ends early",
+      "role": "branch",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "enqueue",
+      "from": "accepted",
+      "to": "queue",
+      "label": "queued",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "unlimited",
+      "from": "nolimit",
+      "to": "queue",
+      "label": "nothing slows it",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "deliver",
+      "from": "queue",
+      "to": "outbound",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "flood",
+      "from": "outbound",
+      "to": "providers",
+      "label": "spam at volume",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "report",
+      "from": "providers",
+      "to": "blocklists",
+      "label": "reported",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "listed",
+      "from": "blocklists",
+      "to": "bounced",
+      "label": "your IP is listed",
+      "role": "branch",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Why tutorials get this wrong",
+      "items": [
+        "Postfix reads a restriction list top to bottom; the first permit ends it, so a permit before reject_unauth_destination relays for anyone",
+        "Guides copy different lines, often from Postfix versions before 2.10",
+        "A setting widened to fix one client can trust the whole internet",
+        "Behind Docker or a proxy, every client arrives from the gateway's address"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "What safe looks like",
+      "items": [
+        "Postfix 2.10+ default: permit_mynetworks, permit_sasl_authenticated, defer_unauth_destination",
+        "Postfix 3.0+ trusts only the machine itself (mynetworks_style = host), but only at compatibility_level 2 or higher; upgraded servers often keep the old subnet default",
+        "Test from outside: RCPT TO a Gmail address must be refused with 454 or 554",
+        "Rate-limit senders: Postfix limits per client IP; per-account limits need a policy service"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What it costs",
+      "items": [
+        "Blocklisted, and delisted only after the server is cleaned up",
+        "Your users' real mail is rejected for days or weeks",
+        "Hosts block port 25 or suspend the server",
+        "Bounces of forged mail hit innocent addresses (backscatter)"
+      ]
+    }
+  ]
+}
