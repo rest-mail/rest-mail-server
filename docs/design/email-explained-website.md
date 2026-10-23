@@ -31,6 +31,16 @@ one set of files becomes both, without the two ever drifting apart.
 - **The files stay readable on GitHub.** Relative links work there, diagrams
   have a static image, and no website-only syntax makes a chapter unreadable as
   plain Markdown.
+- **Diagrams are made with Archify** (2026-10-23, owner). A side-by-side with
+  diagram-design showed diagram-design's static editorial style reads calmer,
+  but Archify carries the whole technical story, every mistake wired to where it
+  takes effect, and readers can explore it. That suits a technical guide to why
+  REST Mail exists. Its JSON sources and automatic layout also suit a mechanical
+  build better than coordinates placed by hand.
+- **The website publishes the API reference too** (2026-10-23, owner). Once
+  the server serves its generated `openapi.json` (#623), the same pipeline
+  turns it into reference pages on rest-mail.com, so the reference is as
+  current as the code.
 
 ## Leaning
 
@@ -94,18 +104,17 @@ can never quote a paragraph that has gone.
 
 ## Open
 
-1. **How interactive diagrams sit in the page.** Options:
+1. **How interactive diagrams sit in the page.** To be decided by looking at a
+   working prototype of both (owner, 2026-10-23). Options:
    - an `<iframe>` of Archify's standalone HTML: isolated and simple, but
      its own scroll and theme;
    - inlining its SVG and viewer runtime into the page: seamless, but the
      site's styles and Archify's must not collide.
 
-   It may depend on which diagram tool wins (see the side-by-side of Archify
-   and diagram-design).
 2. **Matching the site's three designs.** Archify has its own looks (classic,
-   editorial and others), and diagram-design can adopt a site's palette and
-   fonts. Does a diagram follow the visitor's chosen design, or keep one look
-   everywhere?
+   editorial and others). Does a diagram follow the visitor's chosen design,
+   or keep one look everywhere? To be decided by seeing it, in the same
+   prototype (owner, 2026-10-23).
 3. **The static fallback for GitHub.** Today a PNG, cropped from a screenshot.
    Archify can export SVG that follows the reader's light or dark mode, which
    is sharper and smaller. That export needs automating (a headless browser
@@ -119,5 +128,3 @@ can never quote a paragraph that has gone.
    protocol chapters moving to their libraries' repositories. The bundle format
    should not assume one repository, so the website can merge several bundles
    later.
-7. **The API reference.** Once the server serves its generated `openapi.json`
-   (#623), the same pipeline could publish it as reference pages on the site.
