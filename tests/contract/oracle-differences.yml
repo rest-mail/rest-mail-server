@@ -229,6 +229,139 @@
   reason: >-
     Binding rejects malformed JSON or a non-object body with 400 bad_request. The oracle does not document this update response.
 
+# Admin bans, delivery log, audit log and dashboard (#651)
+
+- operation: createBan
+  difference: "request body application/json.properties.duration.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    An omitted or null duration means a permanent ban, as the handler has always accepted. A non-null duration must satisfy the Go duration pattern and parse within its range.
+- operation: createBan
+  difference: "response 200: generated only"
+  reason: >-
+    Creating a ban for an already banned IP replaces its reason, protocol, creator and expiry and returns 200; a newly inserted ban returns 201. Both existing statuses are preserved.
+- operation: createBan
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON or is not an object is refused as 400 bad_request before binding its fields. The oracle only documents validation failures.
+- operation: deleteBan
+  difference: "response 404: openapi.yaml only"
+  reason: >-
+    Deleting a nonexistent ban ID is idempotent and returns 204. The handler does not check RowsAffected and has no reachable 404.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.inboundTransportSecurity.properties.plaintextPercent.format: openapi.yaml absent, generated \"double\""
+  reason: >-
+    The percentages are float64 values, described as double. Their JSON remains a number with the existing camelCase field names.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.inboundTransportSecurity.properties.tlsPercent.format: openapi.yaml absent, generated \"double\""
+  reason: >-
+    The percentages are float64 values, described as double. Their JSON remains a number with the existing camelCase field names.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.inboundTransportSecurity.required: openapi.yaml absent, generated [\"overTLS\",\"plaintext\",\"plaintextAuthFail\",\"plaintextAuthPass\",\"plaintextPercent\",\"tlsPercent\",\"totalInboundMX\"]"
+  reason: >-
+    The dashboard always serializes every field of this object, including zero counts and empty strings. The oracle leaves these nested fields optional.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.messageVolume.items.required: openapi.yaml absent, generated [\"count\",\"date\"]"
+  reason: >-
+    The dashboard always serializes every field of this object, including zero counts and empty strings. The oracle leaves these nested fields optional.
+- operation: getDashboardStats
+  difference: "response 200 application/json.properties.data.properties.recentActivity.items.required: openapi.yaml absent, generated [\"description\",\"id\",\"timestamp\",\"type\"]"
+  reason: >-
+    The dashboard always serializes every field of this object, including zero counts and empty strings. The oracle leaves these nested fields optional.
+- operation: getDeliveryLogs
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 50 entries.
+- operation: getDeliveryLogs
+  difference: "parameter query offset schema.default: openapi.yaml 0, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 0 for offset.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.data.items.properties.body_type: openapi.yaml absent, generated {\"type\":\"string\"}"
+  reason: >-
+    The delivery log already writes body_type, the SMTP BODY parameter persisted on each queue entry. The oracle omits this existing field; raw_message remains private.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"attempts\",\"created_at\",\"domain\",\"expires_at\",\"id\",\"max_retries\",\"next_attempt\",\"recipient\",\"sender\",\"status\"], generated [\"attempts\",\"body_type\",\"created_at\",\"domain\",\"expires_at\",\"failure_category\",\"id\",\"last_attempt\",\"last_error\",\"last_error_code\",\"max_retries\",\"message_id\",\"next_attempt\",\"recipient\",\"sender\",\"status\"]"
+  reason: >-
+    The delivery log already emits body_type, failure_category, last_attempt, last_error, last_error_code and message_id on every item; nullable ids and times are explicit null. The API type retains the original JSON tags.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    Pagination always writes has_more, including false; cursor and total retain their existing omitempty behavior.
+- operation: getDeliveryLogs
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: listAuditEntries
+  difference: "parameter query actor_kind schema.enum: openapi.yaml [\"account\",\"anonymous\",\"system\"], generated [\"\",\"account\",\"anonymous\",\"system\"]"
+  reason: >-
+    An empty actor_kind or outcome has always meant no filter. The request type explicitly permits it alongside the documented nonempty values.
+- operation: listAuditEntries
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 50 entries.
+- operation: listAuditEntries
+  difference: "parameter query outcome schema.enum: openapi.yaml [\"denied\",\"error\",\"failed\",\"success\"], generated [\"\",\"denied\",\"error\",\"failed\",\"success\"]"
+  reason: >-
+    An empty actor_kind or outcome has always meant no filter. The request type explicitly permits it alongside the documented nonempty values.
+- operation: listAuditEntries
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    Pagination always writes has_more, including false; cursor and total retain their existing omitempty behavior.
+- operation: listAuditEntries
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: listAuditEntries
+  difference: "response 200 application/json.required: openapi.yaml [\"data\",\"pagination\"], generated [\"data\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: listBans
+  difference: "parameter query active schema.enum: openapi.yaml absent, generated [\"false\",\"true\"]"
+  reason: >-
+    The query accepts exactly the strings true and false, refusing other spellings and empty values. A string enum preserves that existing rule instead of Go boolean parsing, which also accepts 1, TRUE and other forms.
+- operation: listBans
+  difference: "parameter query active schema.type: openapi.yaml \"boolean\", generated \"string\""
+  reason: >-
+    The query accepts exactly the strings true and false, refusing other spellings and empty values. A string enum preserves that existing rule instead of Go boolean parsing, which also accepts 1, TRUE and other forms.
+- operation: listBans
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 50 entries.
+- operation: listBans
+  difference: "parameter query offset schema.default: openapi.yaml 0, generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler retains its existing default of 0 for offset.
+- operation: listBans
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    Pagination always writes has_more, including false; cursor and total retain their existing omitempty behavior.
+- operation: listBans
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The shared endpoint.List envelope has an optional pointer to pagination and therefore describes it as nullable and optional. This handler always supplies its pagination object, preserving the existing response.
+- operation: unbanIP
+  difference: "parameter path ip schema.minLength: openapi.yaml absent, generated 1"
+  reason: >-
+    The IP path segment must be nonempty. Binding now states and enforces the existing required-address rule with a field-specific 422.
+- operation: verifyAuditLog
+  difference: "parameter query anchor schema.pattern: openapi.yaml \"^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$\", generated \"^$|^[1-9][0-9]{0,17}:[0-9a-fA-F]{64}$\""
+  reason: >-
+    An empty anchor has always meant an unanchored chain check. The type explicitly permits empty, while preserving the positive sequence and 64 hexadecimal digit constraint for a supplied anchor.
+- operation: verifyAuditLog
+  difference: "response 200 application/json.properties.data.properties.anchor.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    The audit verification result uses optional pointer fields. go-oapifly describes their nullable Go types; the existing omitempty tags omit them when unset.
+- operation: verifyAuditLog
+  difference: "response 200 application/json.properties.data.properties.broken_at_seq.type: openapi.yaml \"integer\", generated [\"integer\",\"null\"]"
+  reason: >-
+    The audit verification result uses optional pointer fields. go-oapifly describes their nullable Go types; the existing omitempty tags omit them when unset.
+- operation: getDashboardStats
+  difference: 'response 200 application/json.properties.data.properties.recentActivity.type: openapi.yaml "array", generated ["array","null"]'
+  reason: >-
+    With no recent activity the dashboard has always written null. A pointer to the
+    slice preserves that response through endpoint registration; populated activity
+    remains an array and all camelCase names remain unchanged.
+
 # Outbound queue (#650)
 
 - operation: bulkBounceQueue

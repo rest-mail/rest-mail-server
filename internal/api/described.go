@@ -100,3 +100,9 @@ func describedMailboxCapability(check func(string) func(http.Handler) http.Handl
 func describedAliasCapability(check func(string) func(http.Handler) http.Handler) func(string) endpoint.Middleware {
 	return describedResourceCapability(check)
 }
+
+// describedAuditRead records every audit read, including a capability refusal.
+// Recording does not change the response or the authentication requirement.
+func describedAuditRead(wrap func(http.Handler) http.Handler) endpoint.Middleware {
+	return endpoint.Middleware{Wrap: wrap}
+}
