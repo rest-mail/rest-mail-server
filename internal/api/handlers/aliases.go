@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"strings"
 
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	rmail "github.com/restmail/restmail/internal/mail"
@@ -27,7 +28,7 @@ func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
-	query := h.db.Model(&models.Alias{})
+	query := filterAdminList(h.db.Model(&models.Alias{}), r, middleware.CapMailboxesRead, "aliases")
 	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
@@ -39,6 +40,9 @@ func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
 	if err := query.Preload("Domain").Order("source_address ASC").Limit(limit).Offset(offset).Find(&aliases).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list aliases")
 		return
+	}
+	for i := range aliases {
+		redactAdminDomain(r, &aliases[i].Domain)
 	}
 	respond.List(w, aliases, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
@@ -94,6 +98,10 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Address.String preserves quoting where the parsed local part needs it.
 	req.SourceAddress = strings.TrimSuffix(strings.TrimPrefix(parsed.String(), "<"), ">")
 
+	if !scopedDomainAllowed(r, middleware.CapMailboxesWrite, domainName) {
+		respond.Error(w, http.StatusForbidden, "forbidden", "Insufficient permissions")
+		return
+	}
 	var domain models.Domain
 	if err := h.db.Where("name = ?", domainName).First(&domain).Error; err != nil {
 		respond.Error(w, http.StatusNotFound, "domain_not_found", "Domain not found for source address")
@@ -128,6 +136,7 @@ func (h *AliasHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redactAdminDomain(r, &alias.Domain)
 	respond.Data(w, http.StatusOK, alias)
 }
 
@@ -175,6 +184,7 @@ func (h *AliasHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.db.Preload("Domain").First(&alias, id)
+	redactAdminDomain(r, &alias.Domain)
 	respond.Data(w, http.StatusOK, alias)
 }
 

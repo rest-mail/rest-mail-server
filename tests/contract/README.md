@@ -46,7 +46,18 @@ These checks detect missing routes and contract drift. Full mobile parity also
 needs request/response field, permission, UI and live integration evidence for
 each operation; route counts alone do not establish that evidence.
 
-Two gates judge the run:
+The three API-key operations run in a separate required step,
+`chore test:contract-api-keys`, before the examples gate. It creates a fresh
+disposable `restmail.test` account with a domain-scoped admin grant, enrolls
+2FA through the public API, confirms a real TOTP and signs in with a recovery
+code. The suite checks create/list/revoke, metadata without secrets, password
+reauthentication, validation, refusals without MFA, scope restrictions and
+immediate revocation. These three operations alone are excluded from the
+primary vertrag run because its fixture admin has no MFA. The dedicated step
+has no `continue-on-error`, changes no primary principal, and adds no coverage
+baseline entries.
+
+Two gates judge the primary run:
 
 - **examples, in vertrag:** `vertrag.yml`'s surface gate (`surface: {count:
   passed, require: 100}`) counts an operation only when every documented
@@ -116,6 +127,12 @@ database and check the exact refusals and unchanged stored script
 JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
 the real handler with no database).
+
+`CreateDomainRequest.sending_policy` uses an inline enum: vertrag 0.29 drops
+all body probes when the request schema contains a nested `$ref`. The schema
+test holds the inline values to `DomainSendingPolicy` and the real handler's
+validation. `createDomain` stays in the coverage baseline: hostname constraints
+and fixture state for repeated creates still need work.
 
 `createBan` (`ip_missing`, `duration_invalid`), `createCustomFilter`
 (`filter_type_invalid`), `validateCustomFilter` (`body_array` with its 400,
@@ -583,6 +600,15 @@ probes when an email is reused. It first checks that the email was absent,
 leaves pre-existing contacts alone, and preserves generated bodies, account IDs
 and headers. Coverage does not call after hooks, so ownership is recorded before
 the first create attempt.
+
+`getCustomFilter` sends its documented `missing` 404 using the missing-ID path
+parameter example. Vertrag 0.29 does not pair parameter example names, and the
+create link supplies the created ID to both responses, so a hook selects
+2147483647 only for the 404 transaction. The successful lookup and its boundary
+probes retain their original IDs. The handler test proves the missing row is
+absent, checks the exact refusal and successful lookup, and verifies no stored
+filter changes. Other missing-resource responses remain excluded (#386).
+
 
 Draft probes (saveDraft) save from a generated address (`someone@example.com`)
 that no mailbox holds, which the handler refuses with 403. A before hook hosts

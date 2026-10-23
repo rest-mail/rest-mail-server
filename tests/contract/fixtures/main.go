@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
+	"github.com/restmail/restmail/internal/grants"
 	"gorm.io/gorm"
 )
 
@@ -21,8 +23,9 @@ const retryRecipient = "contract-retry@retry.invalid"
 func main() {
 	domain := flag.String("test-domain", "", "confirm the disposable restmail.test topology")
 	linkOnly := flag.Bool("link-account-only", false, "prepare the generated account-link proof after account-creation probes")
+	apiKeys := flag.Bool("api-keys", false, "prepare a fresh account for real-MFA API key checks")
 	flag.Parse()
-	if *domain != "restmail.test" || flag.NArg() != 0 {
+	if *domain != "restmail.test" || flag.NArg() != 0 || (*linkOnly && *apiKeys) {
 		fmt.Fprintln(os.Stderr, "contract fixtures require --test-domain=restmail.test")
 		os.Exit(1)
 	}
@@ -33,7 +36,14 @@ func main() {
 	}
 	database, err := db.WaitForDB(cfg, 10*time.Second)
 	if err == nil {
-		if *linkOnly {
+		if *apiKeys {
+			var account *models.Mailbox
+			account, err = prepareAPIKeyFixture(database, *domain)
+			if err == nil {
+				body, _ := json.Marshal(map[string]interface{}{"email": account.Address, "domain_id": account.DomainID})
+				fmt.Printf("API_KEY_FIXTURE=%s\n", body)
+			}
+		} else if *linkOnly {
 			_, err = prepareLinkFixture(database, *domain)
 		} else {
 			_, err = prepareRetryFixture(database, *domain)
@@ -44,6 +54,43 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("contract fixtures prepared")
+}
+
+// A fresh account lets each CI run enroll real MFA without resetting either
+// the primary contract admin or an enrollment a preceding run used.
+func prepareAPIKeyFixture(database *gorm.DB, domain string) (*models.Mailbox, error) {
+	if domain != "restmail.test" {
+		return nil, errors.New("contract fixtures require restmail.test")
+	}
+	var hosted models.Domain
+	if err := database.Where("name = ?", domain).First(&hosted).Error; err != nil {
+		return nil, err
+	}
+	var role models.Role
+	if err := database.Where("name = ?", "admin").First(&role).Error; err != nil {
+		return nil, err
+	}
+	local := fmt.Sprintf("contract-api-keys-%d", time.Now().UnixNano())
+	account := models.Mailbox{DomainID: hosted.ID, LocalPart: local, Address: local + "@" + domain,
+		DisplayName: "Contract API keys", Active: true, QuotaBytes: hosted.DefaultQuotaBytes}
+	err := database.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&account).Error; err != nil {
+			return err
+		}
+		hash, err := auth.HashPassword("contract-api-key123!@")
+		if err != nil {
+			return err
+		}
+		if _, err := repositories.NewCredentialRepository(tx).SetPassword(account.ID, hash, nil, time.Now()); err != nil {
+			return err
+		}
+		if err := tx.Create(&models.QuotaUsage{MailboxID: account.ID}).Error; err != nil {
+			return err
+		}
+		_, err = grants.EnsureSystem(tx, account.ID, role.ID, "domain:"+domain, models.GrantActive)
+		return err
+	})
+	return &account, err
 }
 
 // Vertrag v0.29 generates this email and password for LinkAccountRequest's

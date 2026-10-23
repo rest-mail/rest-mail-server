@@ -722,6 +722,26 @@ html, body, #root {
   100% { background-position: 200% 0; }
 }
 
+/* Splash: the mark and wordmark rise once, the bar sweeps until the
+   session check answers. */
+@keyframes splash-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes splash-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(320%); }
+}
+.splash-rise {
+  animation: splash-rise 420ms ease-out both;
+}
+.splash-rise-late {
+  animation: splash-rise 420ms ease-out 90ms both;
+}
+.splash-sweep {
+  animation: splash-sweep 1.1s ease-in-out infinite;
+}
+
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-6px); }

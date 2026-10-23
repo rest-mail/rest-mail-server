@@ -810,6 +810,15 @@ def remove_a_previous_contact_probe(transaction):
         offset += len(contacts)
 
 
+@hooks.before("getCustomFilter")
+def get_a_missing_custom_filter(transaction):
+    # Parameter example names are not paired by vertrag 0.29, and the create
+    # link supplies its real ID to both responses. Only the 404 selects the
+    # spec's missing ID; the success and its coverage probes keep their IDs.
+    if " > 404 > " in transaction.get("name", ""):
+        transaction["fullPath"] = "/api/v1/admin/custom-filters/2147483647"
+
+
 def sender_rules_path(transaction):
     """The list a sender rule probe adds to, and its domain id, or None for a
     malformed id (left to the probe's own 400)."""
