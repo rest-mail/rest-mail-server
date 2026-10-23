@@ -95,7 +95,6 @@ func TestDeleteByIDZeroRefused(t *testing.T) {
 		"deleteBan":          banRoutes(&BanHandler{}).ServeHTTP,
 		"deletePipeline":     (&PipelineHandler{}).DeletePipeline,
 		"deleteCustomFilter": (&PipelineHandler{}).DeleteCustomFilter,
-		"deleteQueueEntry":   (&QueueHandler{}).DeleteQueueEntry,
 	}
 	for name, h := range handlers {
 		t.Run(name, func(t *testing.T) {

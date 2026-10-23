@@ -130,8 +130,8 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 	requests := s.requests(t)
 	responses := s.responses(t)
 
-	if got := names(requests); !reflect.DeepEqual(got, []string{"by_ids", "selection_missing"}) {
-		add("the request examples are %v, want by_ids and selection_missing", got)
+	if got := names(requests); !reflect.DeepEqual(got, []string{"by_ids", "invalid_ids", "selection_missing"}) {
+		add("the request examples are %v, want by_ids, invalid_ids and selection_missing", got)
 	}
 	if got, want := requests["by_ids"], jsonValue(t, map[interface{}]interface{}{"ids": []interface{}{987654}}); !reflect.DeepEqual(got, want) {
 		add("by_ids is %s, want the original request %s", mustJSON(got), mustJSON(want))
@@ -145,8 +145,8 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 		statuses = append(statuses, status)
 	}
 	sort.Strings(statuses)
-	if !reflect.DeepEqual(statuses, []string{"200", "400"}) {
-		add("the responses are %v, want 200 and 400", statuses)
+	if !reflect.DeepEqual(statuses, []string{"200", "400", "422"}) {
+		add("the responses are %v, want 200, 400 and 422", statuses)
 	}
 
 	// 200: unchanged contract, with its example named for the request that
@@ -187,7 +187,7 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 			}
 		}
 		sort.Strings(on)
-		want := map[string][]string{"by_ids": {"200"}, "selection_missing": {"400"}}[name]
+		want := map[string][]string{"by_ids": {"200"}, "selection_missing": {"400"}, "invalid_ids": {"422"}}[name]
 		if !reflect.DeepEqual(on, want) {
 			add("request example %q is named on responses %v, want %v", name, on, want)
 		}
@@ -236,7 +236,7 @@ func TestBulkDeleteQueue_SelectionMissingRefused(t *testing.T) {
 						t.Fatalf("%s reached the database before it was refused: %v", c.body, r)
 					}
 				}()
-				NewQueueHandler(nil).BulkDelete(rr,
+				queueRoutes(NewQueueHandler(nil)).ServeHTTP(rr,
 					httptest.NewRequest(http.MethodDelete, bulkDeleteQueuePath, bytes.NewReader([]byte(c.body))))
 			}()
 			if rr.Code != http.StatusBadRequest {
@@ -290,7 +290,7 @@ func TestBulkDeleteQueue_ByIDsExampleAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	rr := httptest.NewRecorder()
-	NewQueueHandler(tx).BulkDelete(rr,
+	queueRoutes(NewQueueHandler(tx)).ServeHTTP(rr,
 		httptest.NewRequest(http.MethodDelete, bulkDeleteQueuePath, bytes.NewReader(body)))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("%s: status %d, want 200; body %s", body, rr.Code, rr.Body)

@@ -219,6 +219,87 @@
     slice preserves that response through endpoint registration; populated activity
     remains an array and all camelCase names remain unchanged.
 
+# Outbound queue (#650)
+
+- operation: bulkBounceQueue
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"ids\":{\"minItems\":1}},\"required\":[\"ids\"]},{\"required\":[\"filter\"]}], generated absent"
+  reason: go-oapifly cannot express this anyOf. The handler still refuses requests without nonempty ids or a non-null filter with 400 bad_request; IDs take precedence when both are supplied.
+- operation: bulkBounceQueue
+  difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: A null filter is accepted as no filter, as before; the handler still requires nonempty ids in that case.
+- operation: bulkBounceQueue
+  difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
+  reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
+- operation: bulkBounceQueue
+  difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
+  reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
+- operation: bulkDeleteQueue
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"ids\":{\"minItems\":1}},\"required\":[\"ids\"]},{\"required\":[\"filter\"]}], generated absent"
+  reason: go-oapifly cannot express this anyOf. The handler still refuses requests without nonempty ids or a non-null filter with 400 bad_request; IDs take precedence when both are supplied.
+- operation: bulkDeleteQueue
+  difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: A null filter is accepted as no filter, as before; the handler still requires nonempty ids in that case.
+- operation: bulkDeleteQueue
+  difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
+  reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
+- operation: bulkDeleteQueue
+  difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
+  reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
+- operation: bulkRetryQueue
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"ids\":{\"minItems\":1}},\"required\":[\"ids\"]},{\"required\":[\"filter\"]}], generated absent"
+  reason: go-oapifly cannot express this anyOf. The handler still refuses requests without nonempty ids or a non-null filter with 400 bad_request; IDs take precedence when both are supplied.
+- operation: bulkRetryQueue
+  difference: "request body application/json.properties.filter.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: A null filter is accepted as no filter, as before; the handler still requires nonempty ids in that case.
+- operation: bulkRetryQueue
+  difference: "request body application/json.properties.ids.items.minimum: openapi.yaml 0, generated absent"
+  reason: The uint element type enforces non-negative IDs during binding, but go-oapifly does not emit the implicit unsigned minimum.
+- operation: bulkRetryQueue
+  difference: "response 200 application/json.properties.data.properties.affected.format: openapi.yaml absent, generated \"int64\""
+  reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
+- operation: getQueueEntry
+  difference: "response 200 application/json.properties.data.properties.body_type: openapi.yaml absent, generated {\"type\":\"string\"}"
+  reason: The API has always returned body_type from the outbound queue row. The oracle omitted this field.
+- operation: getQueueEntry
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"attempts\",\"created_at\",\"domain\",\"expires_at\",\"id\",\"max_retries\",\"next_attempt\",\"recipient\",\"sender\",\"status\"], generated [\"attempts\",\"body_type\",\"created_at\",\"domain\",\"expires_at\",\"failure_category\",\"id\",\"last_attempt\",\"last_error\",\"last_error_code\",\"max_retries\",\"message_id\",\"next_attempt\",\"recipient\",\"sender\",\"status\"]"
+  reason: Every queue entry always serializes these fields, including nullable message_id and last_attempt and empty error fields. The oracle marks some of them optional.
+- operation: listQueue
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: go-oapifly does not emit defaults. The handler preserves limit 50 and offset 0 when omitted, and the existing fallback for numeric values outside the pagination range.
+- operation: listQueue
+  difference: "parameter query offset schema.default: openapi.yaml 0, generated absent"
+  reason: go-oapifly does not emit defaults. The handler preserves limit 50 and offset 0 when omitted, and the existing fallback for numeric values outside the pagination range.
+- operation: listQueue
+  difference: "response 200 application/json.properties.data.properties.items.items.properties.body_type: openapi.yaml absent, generated {\"type\":\"string\"}"
+  reason: The API has always returned body_type from the outbound queue row. The oracle omitted this field.
+- operation: listQueue
+  difference: "response 200 application/json.properties.data.properties.items.items.required: openapi.yaml [\"attempts\",\"created_at\",\"domain\",\"expires_at\",\"id\",\"max_retries\",\"next_attempt\",\"recipient\",\"sender\",\"status\"], generated [\"attempts\",\"body_type\",\"created_at\",\"domain\",\"expires_at\",\"failure_category\",\"id\",\"last_attempt\",\"last_error\",\"last_error_code\",\"max_retries\",\"message_id\",\"next_attempt\",\"recipient\",\"sender\",\"status\"]"
+  reason: Every queue entry always serializes these fields, including nullable message_id and last_attempt and empty error fields. The oracle marks some of them optional.
+- operation: listQueue
+  difference: "response 200 application/json.properties.data.properties.total.format: openapi.yaml absent, generated \"int64\""
+  reason: The counter is an int64 in Go; generated documentation states its width without changing its JSON integer representation.
+- operation: retryQueueEntry
+  difference: "response 400: generated only"
+  reason: Retry still refuses entries outside pending or deferred with 400 bad_request and the original message; this state-based refusal is not a binding error.
+- operation: getQueueStats
+  difference: 'response 200 application/json.properties.data.properties.*.format: openapi.yaml absent, generated "int64"'
+  reason: Counts are int64 in Go; their JSON representation remains an integer.
+- operation: getQueueStats
+  difference: 'response 200 application/json.properties.data.properties.delivering: openapi.yaml absent, generated {"format":"int64","type":"integer"}'
+  reason: The existing handler includes delivering when entries have that status; the oracle omits this optional counter.
+- operation: getQueueStats
+  difference: 'response 200 application/json.properties.data.properties.expired: openapi.yaml absent, generated {"format":"int64","type":"integer"}'
+  reason: The existing handler includes expired when entries have that status; the oracle omits this optional counter.
+- operation: bulkRetryQueue
+  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
+  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+- operation: bulkBounceQueue
+  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
+  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+- operation: bulkDeleteQueue
+  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
+  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+
 # DKIM keys and certificates (#647)
 
 - operation: createCertificate
