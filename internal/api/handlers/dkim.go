@@ -1,13 +1,12 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
@@ -30,7 +29,7 @@ type dkimEntry struct {
 	Selector   string     `json:"selector"`
 	HasKey     bool       `json:"has_key"`
 	CreatedAt  *time.Time `json:"created_at"`
-	AgeSeconds *float64   `json:"age_seconds"`
+	AgeSeconds *float64   `json:"age_seconds" minimum:"0"`
 }
 
 func newDKIMEntry(domain models.Domain, now time.Time) dkimEntry {
@@ -45,13 +44,12 @@ func newDKIMEntry(domain models.Domain, now time.Time) dkimEntry {
 	return entry
 }
 
-// ListKeys returns DKIM configuration for all domains (keys are redacted).
+// listKeys returns DKIM configuration for all domains (keys are redacted).
 // GET /api/v1/admin/dkim
-func (h *DKIMHandler) ListKeys(w http.ResponseWriter, r *http.Request) {
+func (h *DKIMHandler) listKeys(r *http.Request, _ struct{}) (endpoint.List[dkimEntry], error) {
 	var domains []models.Domain
 	if err := h.db.WithContext(r.Context()).Select("id", "name", "dkim_selector", "dkim_created_at").Where("dkim_selector != '' AND dkim_private_key != ''").Find(&domains).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list DKIM keys")
-		return
+		return endpoint.List[dkimEntry]{}, err
 	}
 
 	entries := make([]dkimEntry, 0, len(domains))
@@ -59,53 +57,33 @@ func (h *DKIMHandler) ListKeys(w http.ResponseWriter, r *http.Request) {
 	for _, d := range domains {
 		entries = append(entries, newDKIMEntry(d, now))
 	}
-	respond.List(w, entries, nil)
+	return endpoint.List[dkimEntry]{Data: entries}, nil
 }
 
-// SetKey sets or updates the DKIM key for a domain. The key must be one the
-// domain can sign with (outbound.CheckDKIMKey); a refusal is 422, its message
-// saying which check failed.
-// PUT /api/v1/admin/dkim/{id}
-func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
+type setDKIMKeyBody struct {
+	Selector   string `json:"selector" minLength:"1" maxLength:"63" pattern:"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*$" message:"Must be a DNS label (letters, digits, hyphens), at most 63 characters"`
+	PrivateKey string `json:"private_key" minLength:"1" message:"required"`
+}
+type setDKIMKeyRequest struct {
+	ID   uint32         `path:"id" minimum:"1"`
+	Body setDKIMKeyBody `body:""`
+}
 
+func (h *DKIMHandler) setKey(_ *http.Request, in setDKIMKeyRequest) (dkimEntry, error) {
 	var domain models.Domain
-	if err := h.db.First(&domain, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Domain not found")
-		return
+	if err := h.db.First(&domain, in.ID).Error; err != nil {
+		return dkimEntry{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
+	req := in.Body
 
-	var req struct {
-		Selector   string `json:"selector"`
-		PrivateKey string `json:"private_key"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
-	if req.Selector == "" || req.PrivateKey == "" {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "selector and private_key are required")
-		return
-	}
 	// A key or selector go-dkim will not sign with is refused here, not found
 	// when the domain's mail is deferred because it cannot be signed (#391).
 	if err := outbound.CheckDKIMKey(domain.Name, req.Selector, req.PrivateKey); err != nil {
 		var refused *outbound.DKIMKeyError
 		if !errors.As(err, &refused) {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the DKIM key")
-			return
+			return dkimEntry{}, err
 		}
-		respond.JSON(w, http.StatusUnprocessableEntity, respond.ErrorResponse{Error: respond.ErrorBody{
-			Code:    "validation_failed",
-			Message: refused.Error(),
-			Details: map[string]interface{}{"fields": map[string]string{refused.Field: refused.Reason}},
-		}})
-		return
+		return dkimEntry{}, endpoint.Invalid(map[string]string{refused.Field: refused.Reason})
 	}
 
 	if h.masterKey == "" {
@@ -116,8 +94,7 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 	// anything else. With no MASTER_KEY (dev) this returns the plaintext.
 	keyToStore, err := models.EncryptDKIMPrivateKey(req.PrivateKey, h.masterKey)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to encrypt private key")
-		return
+		return dkimEntry{}, err
 	}
 
 	createdAt := domain.DKIMCreatedAt
@@ -133,28 +110,20 @@ func (h *DKIMHandler) SetKey(w http.ResponseWriter, r *http.Request) {
 		"dkim_private_key": keyToStore,
 		"dkim_created_at":  createdAt,
 	}).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save the DKIM key")
-		return
+		return dkimEntry{}, err
 	}
 
 	domain.DKIMSelector = req.Selector
 	domain.DKIMCreatedAt = createdAt
-	respond.Data(w, http.StatusOK, newDKIMEntry(domain, time.Now()))
+	return newDKIMEntry(domain, time.Now()), nil
 }
 
-// DeleteKey removes the DKIM key for a domain.
+// deleteKey removes the DKIM key for a domain.
 // DELETE /api/v1/admin/dkim/{id}
-func (h *DKIMHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
-
+func (h *DKIMHandler) deleteKey(_ *http.Request, in domainPath) (endpoint.Empty, error) {
 	var domain models.Domain
-	if err := h.db.First(&domain, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Domain not found")
-		return
+	if err := h.db.First(&domain, in.ID).Error; err != nil {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Domain not found")
 	}
 
 	if err := h.db.Model(&domain).Updates(map[string]interface{}{
@@ -162,9 +131,8 @@ func (h *DKIMHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		"dkim_private_key": "",
 		"dkim_created_at":  nil,
 	}).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete the DKIM key")
-		return
+		return endpoint.Empty{}, err
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
