@@ -52,6 +52,19 @@ func terminalStep(result *pipeline.ExecutionResult) *pipeline.StepResult {
 	return &result.Steps[len(result.Steps)-1]
 }
 
+// quarantineReason is why a message was held, for its quarantine row: the
+// reason code of the step that quarantined it, the same code its trace
+// records (dmarc_quarantine, spf_fail, spam_threshold, ...). "pipeline" when
+// no step is known.
+func quarantineReason(result *pipeline.ExecutionResult) string {
+	if ts := terminalStep(result); ts != nil {
+		if code := pipeline.ReasonForStep(*ts); code != "" {
+			return string(code)
+		}
+	}
+	return "pipeline"
+}
+
 // traceInputs carries everything buildTrace needs from a terminal site. It keeps
 // the mapping logic pure and unit-testable, independent of the request handler.
 type traceInputs struct {

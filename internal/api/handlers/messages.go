@@ -2189,7 +2189,7 @@ func (h *MessageHandler) deliverToLocal(ctx context.Context, params localDeliver
 				Subject:          params.Subject,
 				BodyPreview:      preview,
 				RawMessage:       params.RawMessage,
-				QuarantineReason: "pipeline",
+				QuarantineReason: quarantineReason(pipelineResult),
 				ReceivedAt:       time.Now(),
 				ExpiresAt:        time.Now().Add(30 * 24 * time.Hour),
 			})
