@@ -124,7 +124,33 @@ func validateTLSRPTReport(report *tlsRPTReport) (start, end time.Time, verr *tls
 		}
 	}
 
+	// failure-details is stored as raw JSON, so its shape is checked here: RFC
+	// 8460 §4.4 makes it a list of failure objects.
+	for i, pol := range report.Policies {
+		if len(pol.FailureDetails) > 0 && !isJSONObjectList(pol.FailureDetails) {
+			return start, end, &tlsRPTValidationErr{fields: map[string]string{
+				fmt.Sprintf("policies[%d].failure-details", i): "Must be a list of failure objects",
+			}}
+		}
+	}
+
 	return start, end, nil
+}
+
+// isJSONObjectList reports whether raw is a JSON array whose every item is an
+// object.
+func isJSONObjectList(raw json.RawMessage) bool {
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil || items == nil {
+		return false
+	}
+	for _, item := range items {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(item, &obj); err != nil || obj == nil {
+			return false
+		}
+	}
+	return true
 }
 
 // ReceiveReport accepts a JSON TLS-RPT report from an external MTA,
