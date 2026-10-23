@@ -109,8 +109,12 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 			r.URL.Path = "/api/v1/admin/queue"
 			queueRoutes(NewQueueHandler(tx)).ServeHTTP(w, r)
 		},
-		"listBans":         banRoutes(NewBanHandler(tx)).ServeHTTP,
-		"listTlsReports":   NewTLSReportHandler(tx).ListReports,
+		"listBans": banRoutes(NewBanHandler(tx)).ServeHTTP,
+		"listTlsReports": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/tls-reports"
+			r.URL.RawPath = ""
+			policyRoutes(NewTLSReportHandler(tx)).ServeHTTP(w, r)
+		},
 		"listAuditEntries": auditRoutes(NewAuditHandler(tx)).ServeHTTP,
 		"searchMessages":   NewSearchHandler(tx).Search,
 		"getDeliveryLogs":  logRoutes(NewLogHandler(tx)).ServeHTTP,
@@ -137,9 +141,6 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 							n, err := strconv.ParseInt(value, 10, 64)
 							if err != nil || (param.Schema.Minimum != nil && n < *param.Schema.Minimum) || (param.Schema.Maximum != nil && n > *param.Schema.Maximum) {
 								want = http.StatusUnprocessableEntity
-								if op == "listTlsReports" && param.Name == "domain_id" {
-									want = http.StatusBadRequest
-								}
 							}
 						}
 						query := url.Values{param.Name: []string{value}}
