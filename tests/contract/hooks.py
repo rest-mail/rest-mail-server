@@ -1206,3 +1206,11 @@ def on_the_created_account(transaction):
         with urllib.request.urlopen(request, timeout=10) as response:
             account = json.load(response)["data"]
     transaction["fullPath"] = parent + "/" + str(account["id"]) + ("?" + query if query else "")
+
+
+@hooks.before("getAlias")
+def get_a_missing_alias(transaction):
+    # Vertrag 0.29 does not pair parameter examples. Only the documented
+    # 404 selects the missing ID; successes and probes retain their linked ID.
+    if " > 404 > " in transaction.get("name", ""):
+        transaction["fullPath"] = "/api/v1/admin/aliases/2147483647"

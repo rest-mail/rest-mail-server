@@ -249,7 +249,7 @@ responses, so a hook selects the missing ID for the 404 alone. The linked
 200 and its boundary probes retain their original IDs. The handler test
 checks both lookups against PostgreSQL and verifies the existing domain
 is unchanged. Other 404s keep their exclusions; `test_gate.py` holds
-the enabled set to exactly `getDomain` and `getCertificate`.
+the enabled set to exactly `getDomain`, `getCertificate` and `getAlias`.
 
 `getCertificate` sends its documented 404 with the `missing` path parameter
 example. Vertrag 0.29 does not pair parameter example names, and the create
@@ -584,3 +584,11 @@ creates its account through the admin API the first time an address appears,
 then leaves both in place: a test send only adds a message. Malformed addresses
 and domains the server will not host are left to the probe, and the request is
 never rewritten.
+
+`getAlias` sends its `missing` path ID (`2147483647`) and exact 404 refusal.
+Its hook selects that ID only for the documented 404 because vertrag 0.29 does
+not pair parameter examples and the create link supplies its created ID to both
+responses. Successes and coverage probes keep their linked IDs. The real-handler
+test checks missing and successful lookup, domain association and unchanged
+storage. `test_gate.py` holds the enabled 404 set to `getDomain`,
+`getCertificate` and `getAlias`; sibling exclusions remain in place.
