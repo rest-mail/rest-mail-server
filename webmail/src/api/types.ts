@@ -3335,7 +3335,11 @@ export interface components {
             server_type: "traditional" | "restmail";
             /** Format: int64 */
             default_quota_bytes?: number;
-            sending_policy?: components["schemas"]["DomainSendingPolicy"];
+            /**
+             * @description Sending policy for this domain; empty means no rule.
+             * @enum {string}
+             */
+            sending_policy?: "" | "transactional" | "bulk";
         };
         UpdateDomainRequest: {
             active?: boolean;

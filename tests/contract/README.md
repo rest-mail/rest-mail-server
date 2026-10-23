@@ -89,6 +89,12 @@ JSON but not an object) goes with the `bad_request` the handler answers before
 it reads any field (`contract_domain_body_examples_test.go`, which sends it to
 the real handler with no database).
 
+`CreateDomainRequest.sending_policy` uses an inline enum: vertrag 0.29 drops
+all body probes when the request schema contains a nested `$ref`. The schema
+test holds the inline values to `DomainSendingPolicy` and the real handler's
+validation. `createDomain` stays in the coverage baseline: hostname constraints
+and fixture state for repeated creates still need work.
+
 `createBan` (`ip_missing`, `duration_invalid`), `createCustomFilter`
 (`filter_type_invalid`), `validateCustomFilter` (`body_array` with its 400,
 `script_missing` with its 422) and `sendTestEmail` (`from_missing`) are paired

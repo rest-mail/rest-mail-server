@@ -9917,7 +9917,11 @@ components:
           type: integer
           format: int64
         sending_policy:
-          $ref: "#/components/schemas/DomainSendingPolicy"
+          # vertrag 0.29 drops body probes when a property contains a $ref.
+          # Keep this enum in step with DomainSendingPolicy.
+          type: string
+          enum: ["", transactional, bulk]
+          description: Sending policy for this domain; empty means no rule.
 
     UpdateDomainRequest:
       type: object
