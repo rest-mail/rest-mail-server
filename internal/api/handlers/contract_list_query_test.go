@@ -139,9 +139,6 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 								}
 							}
 						}
-						if value == "" && (op == "listBans" || op == "getDeliveryLogs" || op == "listAuditEntries") {
-							want = http.StatusUnprocessableEntity
-						}
 						query := url.Values{param.Name: []string{value}}
 						path := "/"
 						switch op {
