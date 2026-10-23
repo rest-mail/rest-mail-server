@@ -1,0 +1,87 @@
+# Accepted differences between the description generated from the code and openapi.yaml
+# (#671), each with its reason. TestGeneratedDescriptionMatchesOracle (internal/api) fails on
+# any other difference, and on an entry here that no longer occurs. operation is an
+# operationId, or * for every operation; * in a difference matches any run of characters.
+
+# Every operation registered with endpoint.Register
+
+- operation: "*"
+  difference: "*additionalProperties: openapi.yaml absent, generated false"
+  reason: >-
+    Every struct is closed (go-oapifly#30, #658): a response cannot carry a field it does not
+    declare, and binding refuses a request with an unknown one. openapi.yaml leaves its
+    objects open.
+- operation: "*"
+  difference: "response 401: generated only"
+  reason: >-
+    The admin group's authentication answers 401 unauthorized for no token, a bad one, or a
+    session that has ended (go-oapifly#25). openapi.yaml documents few middleware answers.
+- operation: "*"
+  difference: "response 403: generated only"
+  reason: >-
+    The setup check, the CSRF check and the capability check answer 403 setup_required,
+    csrf_failed and forbidden before the handler runs.
+- operation: "*"
+  difference: "response 413: generated only"
+  reason: >-
+    The admin group's body cap answers 413 request_too_large, on any method, for a declared
+    body over the cap.
+- operation: "*"
+  difference: "response 503: generated only"
+  reason: The session and grants checks answer 503 unavailable when they cannot be made.
+- operation: "*"
+  difference: "response 500: generated only"
+  reason: >-
+    Every operation can fail inside, answering 500 internal_error. Not part of the contract:
+    Vertrag reports any 5xx as a finding.
+- operation: "*"
+  difference: "response 422: generated only"
+  reason: >-
+    Binding refuses a path id that is 0 or not a number, or a limit or offset that is not one,
+    with the 422 validation failure (#690). openapi.yaml documents no answer for them.
+- operation: "*"
+  difference: "response 422 application/json.properties.error.required: openapi.yaml [\"code\",\"message\"], generated [\"code\",\"details\",\"message\"]"
+  reason: The validation failure always names its fields, so its details are always there.
+- operation: "*"
+  difference: "response 422 application/json.properties.error.properties.details.required: openapi.yaml absent, generated [\"fields\"]"
+  reason: The validation failure always names its fields, so its details are always there.
+
+# Domains (#645)
+
+- operation: "*"
+  difference: "response 2* application/json.properties.data*required: openapi.yaml [\"active\",\"created_at\",\"default_quota_bytes\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"], generated [\"active\",\"created_at\",\"default_quota_bytes\",\"dkim_selector\",\"id\",\"name\",\"sending_policy\",\"server_type\",\"updated_at\"]"
+  reason: >-
+    A domain always carries dkim_selector, empty while it has no key, so it is required.
+    openapi.yaml marks it optional.
+- operation: listDomains
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list reads limit (default 50, at most the list cap) and offset, as every admin list
+    does. openapi.yaml does not document them for this one.
+- operation: listDomains
+  difference: "parameter query offset: generated only"
+  reason: The list reads limit and offset, as every admin list does.
+- operation: listDomains
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
+  reason: >-
+    The list answers its pagination, as every list does (respond.List). openapi.yaml leaves it
+    out of this one.
+- operation: createDomain
+  difference: "request body application/json.properties.default_quota_bytes.type: openapi.yaml \"integer\", generated [\"integer\",\"null\"]"
+  reason: Null is accepted and means the default quota, as the handler always did.
+- operation: createDomain
+  difference: "request body application/json.properties.server_type.default: openapi.yaml \"traditional\", generated absent"
+  reason: >-
+    go-oapifly does not describe defaults yet. The handler's default for a server_type left
+    out, empty or null is traditional.
+- operation: updateDomain
+  difference: "request body application/json.properties.*.type: openapi.yaml *, generated [*\"null\"*]"
+  reason: Null leaves the field unchanged, as the handler always did.
+- operation: updateDomain
+  difference: "request body application/json.properties.sending_policy.enum: openapi.yaml [\"\",\"bulk\",\"transactional\"], generated [\"\",\"bulk\",\"transactional\",null]"
+  reason: Null leaves the sending policy unchanged; an empty string clears it.
+- operation: updateDomain
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is the 400 bad_request. openapi.yaml documents
+    the 422 only.

@@ -77,11 +77,11 @@ func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
 type Domain struct {
 	ID                uint      `json:"id"`
 	Name              string    `json:"name"`
-	ServerType        string    `json:"server_type"`
+	ServerType        string    `json:"server_type" enums:"traditional,restmail"`
 	Active            bool      `json:"active"`
 	DefaultQuotaBytes int64     `json:"default_quota_bytes"`
 	DKIMSelector      string    `json:"dkim_selector"`
-	SendingPolicy     string    `json:"sending_policy"`
+	SendingPolicy     string    `json:"sending_policy" enums:",transactional,bulk"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
@@ -190,10 +190,11 @@ const sendingPolicyInvalid = "must be 'transactional', 'bulk' or empty"
 
 type createDomainRequest struct {
 	Name string `json:"name" minLength:"1" message:"required"`
-	// ServerType is restmail (the server keeps the mail) or traditional, the default.
-	ServerType        string `json:"server_type,omitempty" enums:",traditional,restmail" message:"must be 'traditional' or 'restmail'"`
-	DefaultQuotaBytes *int64 `json:"default_quota_bytes,omitempty"`
-	SendingPolicy     string `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
+	// ServerType is restmail (the server keeps the mail) or traditional, the default when it
+	// is left out, empty or null.
+	ServerType        *string `json:"server_type,omitempty" enums:",traditional,restmail" message:"must be 'traditional' or 'restmail'"`
+	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty"`
+	SendingPolicy     string  `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
 }
 
 func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain, error) {
@@ -205,8 +206,9 @@ func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain
 	}
 	req.Name = normalized
 
-	if req.ServerType == "" {
-		req.ServerType = "traditional"
+	serverType := "traditional"
+	if req.ServerType != nil && *req.ServerType != "" {
+		serverType = *req.ServerType
 	}
 
 	// A domain is set up in stages and is not live until it has a certificate of
@@ -215,7 +217,7 @@ func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain
 	// request, refused while there is no certificate to serve it with.
 	domain := models.Domain{
 		Name:          req.Name,
-		ServerType:    req.ServerType,
+		ServerType:    serverType,
 		Active:        false,
 		SendingPolicy: req.SendingPolicy,
 	}

@@ -24,14 +24,20 @@ type describedOperation struct {
 	} `json:"requestBody"`
 }
 
-func describedAPI(t *testing.T) (map[string]map[string]describedOperation, map[string]map[string]interface{}) {
+// describedRouters builds the routers the way the server does, on a database that fails
+// every query, for what they describe.
+func describedRouters(t *testing.T) *Routers {
 	t.Helper()
 	jwtSvc := auth.NewJWTService(routerTestSecret, 5*time.Minute, 24*time.Hour)
 	cfg := &config.Config{CORSAllowedOrigins: []string{"http://localhost:3000"}, Environment: "test"}
 	routers := NewRouters(newFailingGormDB(t), jwtSvc, cfg, nil)
 	t.Cleanup(routers.Close)
+	return routers
+}
 
-	doc, warnings := routers.Description("test")
+func describedAPI(t *testing.T) (map[string]map[string]describedOperation, map[string]map[string]interface{}) {
+	t.Helper()
+	doc, warnings := describedRouters(t).Description("test")
 	if len(warnings) > 0 {
 		t.Fatalf("the registered routes describe with warnings: %v", warnings)
 	}

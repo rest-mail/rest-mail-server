@@ -213,10 +213,11 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 	}
 	sort.Ints(statuses)
 	for _, status := range statuses {
-		responses = append(responses, oapifly.EndpointResponse{
-			Status: status,
-			Type:   reflect.TypeOf(respond.ErrorResponse{}),
-		})
+		body := reflect.TypeOf(respond.ErrorResponse{})
+		if status == http.StatusUnprocessableEntity {
+			body = reflect.TypeOf(respond.ValidationErrorResponse{})
+		}
+		responses = append(responses, oapifly.EndpointResponse{Status: status, Type: body})
 	}
 
 	var request reflect.Type
