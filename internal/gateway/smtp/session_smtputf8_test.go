@@ -150,22 +150,30 @@ func TestSMTP_SMTPUTF8SubmissionAuthorizationAndRouting(t *testing.T) {
 	}
 }
 
+// go-smtp (v0.31.0 on) answers an envelope address that is not valid UTF-8
+// before the session sees it: 550 5.6.7 (MAIL) and 553 5.6.7 (RCPT) without
+// SMTPUTF8 (RFC 6531 §3.4: a non-ASCII address needs the parameter), and
+// 501 5.5.2 with it (not a well-formed address).
 func TestSMTP_SMTPUTF8InvalidEnvelopeEncoding(t *testing.T) {
-	for _, parameter := range []string{"", " SMTPUTF8"} {
+	for _, c := range []struct{ parameter, mailReply, rcptReply string }{
+		{"", "550 5.6.7 ", "553 5.6.7 "},
+		{" SMTPUTF8", "501 5.5.2 ", "501 5.5.2 "},
+	} {
+		parameter := c.parameter
 		t.Run(parameter, func(t *testing.T) {
 			back, store := newMockBackend(), newMockStore()
 			h := newSMTPHarness(t, back, store, false)
 			h.ehlo()
 			for _, address := range []string{"bad\xff@remote.test", "sender@bad\xff.test"} {
-				if r := h.cmd("MAIL FROM:<%s>%s", address, parameter); !strings.HasPrefix(r, "550 5.1.3 ") {
-					t.Fatalf("invalid MAIL encoding = %q", r)
+				if r := h.cmd("MAIL FROM:<%s>%s", address, parameter); !strings.HasPrefix(r, c.mailReply) {
+					t.Fatalf("invalid MAIL encoding %q = %q, want %s", address, r, c.mailReply)
 				}
 			}
 			if r := h.cmd("MAIL FROM:<sender@remote.test>%s", parameter); replyCode(r) != "250" {
 				t.Fatal(r)
 			}
-			if r := h.cmd("RCPT TO:<bad\xff@local.test>"); !strings.HasPrefix(r, "553 5.1.3 ") {
-				t.Fatalf("invalid RCPT encoding = %q", r)
+			if r := h.cmd("RCPT TO:<bad\xff@local.test>"); !strings.HasPrefix(r, c.rcptReply) {
+				t.Fatalf("invalid RCPT encoding = %q, want %s", r, c.rcptReply)
 			}
 		})
 	}
