@@ -203,3 +203,21 @@ func TestScopedDomainBodyCheck(t *testing.T) {
 		t.Fatal(rr.Code)
 	}
 }
+
+func TestScopedParentDomainKeyCeiling(t *testing.T) {
+	claims := &auth.Claims{AccountID: 1, CredentialID: 3, CredentialKind: auth.CredentialKindAPIKey, APIKeyPermissions: []auth.ScopedPermission{{Capability: "mailboxes:read", Scope: "domain:a.test"}}}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, claims))
+	rr := httptest.NewRecorder()
+	middleware.RequireCapabilityOnList(func(uint) (grants.Held, error) { return grants.HeldOf(grants.Entry{Capability: "*", Scope: "*"}), nil }, "mailboxes:read")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		box := models.Mailbox{Domain: models.Domain{Name: "a.test", SendingPolicy: "bulk", DKIMSelector: "sensitive"}}
+		redactMailboxDomain(r, &box)
+		if box.Domain.Name != "" || box.Domain.SendingPolicy != "" || box.Domain.DKIMSelector != "" {
+			t.Fatal("owner's broad grant escaped key ceiling")
+		}
+		w.WriteHeader(http.StatusOK)
+	})).ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status%d body%s", rr.Code, rr.Body.String())
+	}
+}
