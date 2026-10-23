@@ -1,0 +1,271 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "The black hole: where a message can disappear without a bounce",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/black-hole.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "The message's path"
+        },
+        "frontend": {
+          "label": "The people"
+        },
+        "security": {
+          "label": "Honest failures: someone is told"
+        },
+        "external": {
+          "label": "Silent losses"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "honest",
+      "label": "Honest: the sender is told"
+    },
+    {
+      "id": "path",
+      "label": "The message's path"
+    },
+    {
+      "id": "lost",
+      "label": "The black hole: nobody is told",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "before",
+      "label": "Before the 250",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "after",
+      "label": "After the 250: the receiver is responsible",
+      "fromCol": 3,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "sender",
+    "dns",
+    "mx",
+    "filters",
+    "mailbox",
+    "reader"
+  ],
+  "nodes": [
+    {
+      "id": "sender",
+      "lane": "path",
+      "col": 0,
+      "type": "frontend",
+      "label": "Sender",
+      "icon": "person"
+    },
+    {
+      "id": "dns",
+      "lane": "path",
+      "col": 1,
+      "type": "backend",
+      "label": "Which MX?",
+      "sublabel": "DNS, maybe cached"
+    },
+    {
+      "id": "mx",
+      "lane": "path",
+      "col": 2,
+      "type": "backend",
+      "label": "Receiving server",
+      "sublabel": "answers 250"
+    },
+    {
+      "id": "filters",
+      "lane": "path",
+      "col": 3,
+      "type": "backend",
+      "label": "Filters",
+      "sublabel": "spam, virus, rules"
+    },
+    {
+      "id": "mailbox",
+      "lane": "path",
+      "col": 4,
+      "type": "backend",
+      "label": "Mailbox",
+      "sublabel": "or forwarded on"
+    },
+    {
+      "id": "reader",
+      "lane": "path",
+      "col": 5,
+      "type": "frontend",
+      "label": "Reader sees it",
+      "icon": "success"
+    },
+    {
+      "id": "refused",
+      "lane": "honest",
+      "col": 2,
+      "type": "security",
+      "label": "Refused: 5xx",
+      "sublabel": "the sender's server bounces it"
+    },
+    {
+      "id": "bounced",
+      "lane": "honest",
+      "col": 4,
+      "type": "security",
+      "label": "Bounced from <>",
+      "sublabel": "to the envelope sender"
+    },
+    {
+      "id": "oldmx",
+      "lane": "lost",
+      "col": 1,
+      "type": "external",
+      "label": "An old MX",
+      "sublabel": "still answers, nobody reads",
+      "icon": "failure"
+    },
+    {
+      "id": "discard",
+      "lane": "lost",
+      "col": 3,
+      "type": "external",
+      "label": "Discarded",
+      "sublabel": "or a quarantine nobody reviews",
+      "icon": "failure"
+    },
+    {
+      "id": "junk",
+      "lane": "lost",
+      "col": 4,
+      "type": "external",
+      "label": "Spam folder",
+      "sublabel": "delivered, never seen"
+    },
+    {
+      "id": "forward",
+      "lane": "lost",
+      "col": 5,
+      "type": "external",
+      "label": "Forward refused",
+      "sublabel": "and no bounce sent",
+      "icon": "failure"
+    }
+  ],
+  "edges": [
+    {
+      "id": "send",
+      "from": "sender",
+      "to": "dns",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "connect",
+      "from": "dns",
+      "to": "mx",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "accept",
+      "from": "mx",
+      "to": "filters",
+      "label": "250",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "file",
+      "from": "filters",
+      "to": "mailbox",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "read",
+      "from": "mailbox",
+      "to": "reader",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "no",
+      "from": "mx",
+      "to": "refused",
+      "label": "before 250",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "cannot",
+      "from": "mailbox",
+      "to": "bounced",
+      "label": "can't deliver",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "stale",
+      "from": "dns",
+      "to": "oldmx",
+      "label": "stale record",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "drop",
+      "from": "filters",
+      "to": "discard",
+      "label": "dropped",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "spam",
+      "from": "mailbox",
+      "to": "junk",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "onward",
+      "from": "mailbox",
+      "to": "forward",
+      "label": "forwarded",
+      "role": "branch",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "RFC 5321 §6.2",
+      "items": [
+        "Dropping mail without telling the sender \"is extremely dangerous and violates a long tradition\"",
+        "Mail is either delivered or returned"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "How to avoid it",
+      "items": [
+        "Decide before the 250; refuse rather than drop",
+        "Bounce what cannot be delivered",
+        "Keep a trace of every message's fate"
+      ]
+    }
+  ]
+}

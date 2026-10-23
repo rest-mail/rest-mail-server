@@ -22,7 +22,7 @@ func TestListPipelineLogs_RejectInvalidEnums(t *testing.T) {
 				rr := httptest.NewRecorder()
 				query := url.Values{name: {value}}
 				// Invalid filters must be refused before database access.
-				NewPipelineHandler(nil, nil, filters.JSSidecar{}).ListPipelineLogs(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/pipelines/logs?"+query.Encode(), nil))
+				pipelineRoutes(NewPipelineHandler(nil, nil, filters.JSSidecar{})).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/pipelines/logs?"+query.Encode(), nil))
 				if rr.Code != http.StatusUnprocessableEntity {
 					t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body)
 				}
@@ -131,7 +131,7 @@ func TestListPipelineLogs_ContractEnumFilters(t *testing.T) {
 			}
 			t.Run(query.Encode(), func(t *testing.T) {
 				rr := httptest.NewRecorder()
-				NewPipelineHandler(tx, nil, filters.JSSidecar{}).ListPipelineLogs(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/pipelines/logs?"+query.Encode(), nil))
+				pipelineRoutes(NewPipelineHandler(tx, nil, filters.JSSidecar{})).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/pipelines/logs?"+query.Encode(), nil))
 				if rr.Code != http.StatusOK {
 					t.Fatalf("status = %d, want 200: %s", rr.Code, rr.Body)
 				}

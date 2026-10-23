@@ -25,59 +25,54 @@ designed in [docs/design/email-explained-website.md](../design/email-explained-w
 
 ## Contents
 
-Chapters with a link are written. The rest are planned.
-
 ### Part 1: How email works
 
-- The journey of a message: from your mail app to someone else's inbox, hop by hop
-- DNS for email: MX, A and AAAA, reverse DNS, null MX
-- SMTP as a conversation: `EHLO`, `MAIL FROM`, `RCPT TO`, `DATA`, and the reply codes
-- The message itself: headers, MIME, encodings, envelope versus header
-- Bounces, queues and retries: delivery status notifications, deferral, backscatter
-- Reading mail: POP3, IMAP, JMAP, Sieve and ManageSieve
-- Finding the server: autoconfig, Autodiscover and SRV records
+- [The journey of a message](how-email-works/journey-of-a-message.md): from your mail app to someone else's inbox, hop by hop
+- [DNS for email](how-email-works/dns-for-email.md): MX, A and AAAA, reverse DNS, null MX
+- [SMTP as a conversation](how-email-works/smtp-conversation.md): `EHLO`, `MAIL FROM`, `RCPT TO`, `DATA`, and the reply codes
+- [The message itself](how-email-works/the-message.md): headers, MIME, encodings, envelope versus header
+- [Bounces, queues and retries](how-email-works/bounces-queues-retries.md): delivery status notifications, deferral, backscatter
+- [Reading mail: POP3, IMAP, JMAP and Sieve](how-email-works/reading-mail.md)
+- [Finding the server: autoconfig, Autodiscover and SRV](how-email-works/finding-the-server.md)
 
 ### Part 2: The security layers, one at a time
 
-- Encryption in transit: STARTTLS versus implicit TLS, and downgrade attacks
-- MTA-STS, TLS-RPT, DANE and DNSSEC
-- Who may send: SMTP AUTH, SASL, app passwords, and why submission needs a login
-- SPF: who may send for a domain, the 10-lookup limit, and why forwarding breaks it
-- DKIM: signatures, selectors, key rotation, and what breaks them
-- DMARC: alignment, policies, reports, and `p=reject` versus forwarding
-- ARC: authentication that survives forwarding
-- Spam defences: blocklists, greylisting, rate limits, content scanning, reputation
-- Bulk mail: List-Unsubscribe, one-click unsubscribe, and the 2024 sender rules
+- [Encryption in transit: STARTTLS and implicit TLS](security/encryption-in-transit.md), and downgrade attacks
+- [MTA-STS, TLS-RPT, DANE and DNSSEC](security/mta-sts-and-dane.md)
+- [Who may send: SMTP AUTH, SASL and app passwords](security/who-may-send.md), and why submission needs a login
+- [SPF](security/spf.md): who may send for a domain, the 10-lookup limit, and why forwarding breaks it
+- [DKIM](security/dkim.md): signatures, selectors, key rotation, and what breaks them
+- [DMARC](security/dmarc.md): alignment, policies, reports, and `p=reject` versus mailing lists
+- [ARC](security/arc.md): authentication that survives forwarding
+- [Spam defences](security/spam-defences.md): blocklists, greylisting, limits and filters
+- [Bulk mail](security/bulk-mail.md): List-Unsubscribe, one-click unsubscribe, and the 2024 sender rules
 
 ### Part 3: How it goes wrong
 
 - [The open relay and the spam machine](how-it-goes-wrong/open-relay-and-spam-machine.md)
-- The black hole: how mail is silently lost
-- Why the security layers are so hard to get right
-- Deliverability: reputation, warm-up, and why big providers distrust small servers
+- [The black hole: how mail is silently lost](how-it-goes-wrong/the-black-hole.md)
+- [Why the security layers are so hard to get right](how-it-goes-wrong/why-security-is-hard.md)
+- [Deliverability](how-it-goes-wrong/deliverability.md): reputation, warm-up, and why big providers distrust small servers
 
 ### Part 4: The landscape, and where REST Mail fits
 
-- The servers compared: Postfix, Exim, Sendmail, OpenSMTPD, Dovecot, Stalwart,
-  Maddy, Haraka, and the paid, proprietary services (Microsoft Exchange and
-  Microsoft 365, Google Workspace)
-- Containers and bundles: what packaging solves, and what stays the same. How
-  docker-mailserver, mailcow, Mailu, Mail-in-a-Box, iRedMail and
-  kubernetes-mail-server package Postfix, Dovecot and the rest, what that
-  makes easier, and what is still inside. REST Mail's author built
-  kubernetes-mail-server, and a Docker-based server before it; this chapter
-  draws on that experience
-- Efforts to modernise email: JMAP and others, what each solves, where each
-  stands today, and how they relate to REST Mail
-- What REST Mail does differently
-- RESTMAIL: delivery between servers over HTTPS
-- Migrating step by step, without breaking anything
-- Solved, solving, still open
+- [The servers compared](landscape/servers-compared.md): Postfix, Exim, Sendmail, OpenSMTPD, Haraka, Dovecot, Cyrus,
+  Stalwart, Maddy, and the hosted, proprietary services (Microsoft 365 and Google Workspace)
+- [Containers and bundles](landscape/containers-and-bundles.md): what packaging solves, and what stays the same. How
+  docker-mailserver, mailcow, Mailu, Mail-in-a-Box, iRedMail and kubernetes-mail-server package Postfix, Dovecot and
+  the rest. REST Mail's author built kubernetes-mail-server, and a Docker-based server before it; this chapter draws on
+  that experience
+- [Efforts to modernise email](landscape/modernising-email.md): JMAP, end-to-end encryption, and others, what each
+  solves, where each stands today, and how they relate to REST Mail
+- [What REST Mail does differently](landscape/what-rest-mail-does-differently.md)
+- [RESTMAIL: delivery between servers over HTTPS](landscape/restmail-protocol.md)
+- [Migrating step by step, without breaking anything](landscape/migrating.md)
+- [Solved, solving, still open](landscape/solved-solving-open.md)
 
 ### Reference
 
-- Glossary
-- Check your own server: a checklist
+- [Glossary](reference/glossary.md)
+- [Check your own server: a checklist](reference/checklist.md)
 
 ## Writing a chapter
 

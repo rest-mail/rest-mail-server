@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "One message, one SMTP conversation",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/smtp.html",
+    "legend": {
+      "entries": {
+        "default": {
+          "label": "Commands"
+        },
+        "emphasis": {
+          "label": "Envelope and message"
+        },
+        "security": {
+          "label": "Encryption"
+        },
+        "return": {
+          "label": "Server replies"
+        },
+        "dashed": {
+          "label": "After the message is accepted"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "Sending server",
+      "sublabel": "mail.example.com"
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Receiving server",
+      "sublabel": "mx.example.org, port 25"
+    },
+    {
+      "id": "mailbox",
+      "type": "database",
+      "label": "Bob's mailbox",
+      "sublabel": "after the 250"
+    }
+  ],
+  "messages": [
+    {
+      "id": "greet",
+      "from": "server",
+      "to": "client",
+      "y": 170,
+      "label": "220 mx.example.org ESMTP",
+      "variant": "return",
+      "note": "The server speaks first, once the connection is open"
+    },
+    {
+      "id": "ehlo",
+      "from": "client",
+      "to": "server",
+      "y": 248,
+      "label": "EHLO mail.example.com",
+      "variant": "default"
+    },
+    {
+      "id": "caps",
+      "from": "server",
+      "to": "client",
+      "y": 282,
+      "label": "250 SIZE, 8BITMIME, STARTTLS…",
+      "variant": "return"
+    },
+    {
+      "id": "starttls",
+      "from": "client",
+      "to": "server",
+      "y": 332,
+      "label": "STARTTLS",
+      "variant": "security"
+    },
+    {
+      "id": "ready",
+      "from": "server",
+      "to": "client",
+      "y": 366,
+      "label": "220 Ready to start TLS",
+      "variant": "return",
+      "note": "TLS handshake; then EHLO again, encrypted"
+    },
+    {
+      "id": "from",
+      "from": "client",
+      "to": "server",
+      "y": 446,
+      "label": "MAIL FROM:<alice@example.com>",
+      "variant": "emphasis",
+      "note": "Envelope sender: where bounces go"
+    },
+    {
+      "id": "from-ok",
+      "from": "server",
+      "to": "client",
+      "y": 510,
+      "label": "250 2.1.0 OK",
+      "variant": "return"
+    },
+    {
+      "id": "rcpt",
+      "from": "client",
+      "to": "server",
+      "y": 544,
+      "label": "RCPT TO:<bob@example.org>",
+      "variant": "emphasis"
+    },
+    {
+      "id": "rcpt-ok",
+      "from": "server",
+      "to": "client",
+      "y": 578,
+      "label": "250, or 550 5.1.1 no such user",
+      "variant": "return"
+    },
+    {
+      "id": "data",
+      "from": "client",
+      "to": "server",
+      "y": 628,
+      "label": "DATA",
+      "variant": "default"
+    },
+    {
+      "id": "go",
+      "from": "server",
+      "to": "client",
+      "y": 662,
+      "label": "354 end with <CRLF>.<CRLF>",
+      "variant": "return"
+    },
+    {
+      "id": "body",
+      "from": "client",
+      "to": "server",
+      "y": 696,
+      "label": "headers, blank line, body, .",
+      "variant": "emphasis"
+    },
+    {
+      "id": "queued",
+      "from": "server",
+      "to": "client",
+      "y": 730,
+      "label": "250 2.0.0 queued as 7F3A1",
+      "variant": "return",
+      "note": "From here, the receiver is responsible for the message"
+    },
+    {
+      "id": "file",
+      "from": "server",
+      "to": "mailbox",
+      "y": 808,
+      "label": "delivered",
+      "variant": "dashed"
+    },
+    {
+      "id": "quit",
+      "from": "client",
+      "to": "server",
+      "y": 858,
+      "label": "QUIT",
+      "variant": "default"
+    },
+    {
+      "id": "bye",
+      "from": "server",
+      "to": "client",
+      "y": 892,
+      "label": "221 Bye",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "server",
+      "from": 164,
+      "to": 898
+    },
+    {
+      "participant": "client",
+      "from": 242,
+      "to": 898
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The first digit",
+      "items": [
+        "2: done",
+        "3: go on, send the message",
+        "4: failed for now; keep it and retry",
+        "5: failed for good; bounce it"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Envelope, not header",
+      "items": [
+        "MAIL FROM and RCPT TO are the envelope: where it goes, where bounces go",
+        "From: and To: inside the message are what the reader sees; they can differ"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Line endings matter",
+      "items": [
+        "Only <CRLF>.<CRLF> ends a message",
+        "Servers that also accept a bare LF can be tricked into a hidden second message: SMTP smuggling (2023)"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 308,
+      "label": "Hello"
+    },
+    {
+      "from": 318,
+      "to": 422,
+      "label": "Encrypt"
+    },
+    {
+      "from": 432,
+      "to": 604,
+      "label": "Envelope"
+    },
+    {
+      "from": 614,
+      "to": 834,
+      "label": "Message"
+    },
+    {
+      "from": 844,
+      "to": 904,
+      "label": "Goodbye"
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "diagram_type": "tree",
+  "meta": {
+    "title": "One email, taken apart: envelope, header and MIME body",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/message.html"
+  },
+  "layout": { "direction": "right" },
+  "nodes": [
+    { "id": "email", "label": "One email", "sublabel": "as it travels between servers" },
+    { "id": "envelope", "parent": "email", "label": "The envelope", "sublabel": "SMTP commands, not in the file" },
+    { "id": "mailfrom", "parent": "envelope", "label": "MAIL FROM", "sublabel": "return path: bounces go here" },
+    { "id": "rcptto", "parent": "envelope", "label": "RCPT TO", "sublabel": "one per recipient, Bcc too" },
+    { "id": "header", "parent": "email", "label": "The header", "sublabel": "Name: value lines (RFC 5322)" },
+    { "id": "from", "parent": "header", "label": "From:", "sublabel": "the author; DMARC checks it" },
+    { "id": "to", "parent": "header", "label": "To: and Cc:", "sublabel": "shown to the reader, never Bcc" },
+    { "id": "date", "parent": "header", "label": "Date: and Message-ID:", "sublabel": "required, and needed for threads" },
+    { "id": "received", "parent": "header", "label": "Received:", "sublabel": "one per hop, newest first" },
+    { "id": "dkim", "parent": "header", "label": "DKIM-Signature:", "sublabel": "the sender's signature" },
+    { "id": "body", "parent": "email", "label": "The body", "sublabel": "multipart/mixed" },
+    { "id": "alternative", "parent": "body", "label": "multipart/alternative", "sublabel": "one text, two forms" },
+    { "id": "plain", "parent": "alternative", "label": "text/plain", "sublabel": "quoted-printable" },
+    { "id": "html", "parent": "alternative", "label": "text/html", "sublabel": "last part: shown if possible" },
+    { "id": "attachment", "parent": "body", "label": "application/pdf", "sublabel": "attachment, base64: a third bigger" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Envelope versus header", "items": ["Servers route by the envelope; the reader sees the header", "Nothing in SMTP makes them agree, which is why From: can be forged"] },
+    { "dot": "amber", "title": "Encodings", "items": ["quoted-printable for mostly-ASCII text: é becomes =C3=A9", "base64 for anything binary: 3 bytes become 4 characters"] }
+  ]
+}

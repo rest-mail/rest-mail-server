@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "RESTMAIL: one REST Mail server delivering to another over HTTPS",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/restmail.html",
+    "legend": {
+      "entries": {
+        "default": {
+          "label": "SMTP, as a hint only"
+        },
+        "security": {
+          "label": "HTTPS, certificate verified"
+        },
+        "emphasis": {
+          "label": "The message"
+        },
+        "return": {
+          "label": "Answers"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "sender",
+      "type": "backend",
+      "label": "Sending REST Mail",
+      "sublabel": "outbound queue"
+    },
+    {
+      "id": "mx",
+      "type": "backend",
+      "label": "Recipient's MX host",
+      "sublabel": "mx.example.org"
+    },
+    {
+      "id": "endpoint",
+      "type": "backend",
+      "label": "Recipient's endpoint",
+      "sublabel": "the server holding the domain"
+    }
+  ],
+  "messages": [
+    {
+      "id": "ehlo",
+      "from": "sender",
+      "to": "mx",
+      "label": "EHLO, port 25",
+      "variant": "default",
+      "y": 170
+    },
+    {
+      "id": "hint",
+      "from": "mx",
+      "to": "sender",
+      "label": "250 RESTMAIL …",
+      "variant": "return",
+      "note": "Cleartext: only a hint; any address in it is ignored",
+      "y": 204
+    },
+    {
+      "id": "ask",
+      "from": "sender",
+      "to": "mx",
+      "label": "GET /.well-known/restmail?domain=example.org",
+      "variant": "security",
+      "note": "HTTPS to the MX host name; no redirects",
+      "y": 298
+    },
+    {
+      "id": "where",
+      "from": "mx",
+      "to": "sender",
+      "label": "{\"endpoint\": \"https://…/restmail\"}",
+      "variant": "return",
+      "note": "404 or 410: not hosted; use SMTP",
+      "y": 362
+    },
+    {
+      "id": "post",
+      "from": "sender",
+      "to": "endpoint",
+      "label": "POST /messages, DKIM-signed",
+      "variant": "emphasis",
+      "note": "HTTPS, certificate checked again",
+      "y": 442
+    },
+    {
+      "id": "ok",
+      "from": "endpoint",
+      "to": "sender",
+      "label": "accepted",
+      "variant": "return",
+      "note": "DKIM aligned with From:, then the inbound pipeline",
+      "y": 506
+    }
+  ],
+  "activations": [
+    {
+      "participant": "sender",
+      "from": 164,
+      "to": 554
+    },
+    {
+      "participant": "endpoint",
+      "from": 436,
+      "to": 512
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Better between REST Mail servers",
+      "items": [
+        "Encryption cannot be stripped",
+        "The server's certificate is always checked",
+        "The message travels as it is, in one request"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Compatible with everyone else",
+      "items": [
+        "No RESTMAIL hint, or a verified 404: ordinary SMTP",
+        "An MTA-STS enforce policy still applies"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 274,
+      "label": "The hint"
+    },
+    {
+      "from": 284,
+      "to": 418,
+      "label": "Verified discovery"
+    },
+    {
+      "from": 428,
+      "to": 560,
+      "label": "Delivery"
+    }
+  ]
+}
