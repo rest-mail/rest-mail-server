@@ -20,7 +20,8 @@ Each chapter follows the same pattern:
 
 These files are the source of truth. The guide on
 [rest-mail.com](https://rest-mail.com) is built from them, with the diagrams
-made interactive, so the two never drift apart.
+made interactive, so the two never drift apart. How that build works is being
+designed in [docs/design/email-explained-website.md](../design/email-explained-website.md).
 
 ## Contents
 
