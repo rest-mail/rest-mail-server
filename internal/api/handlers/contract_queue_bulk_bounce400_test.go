@@ -15,8 +15,8 @@ import (
 const bulkBounce400Path = "/api/v1/admin/queue/bulk-bounce"
 
 // A nil database makes any lookup panic. Every request here must return its
-// own 400 first; no valid, database-reaching request is sent (#388).
-func TestBulkBounceQueue400_PreLookupRefusals(t *testing.T) {
+// own refusal first; no valid, database-reaching request is sent (#388).
+func TestBulkBounceQueue_PreLookupRefusals(t *testing.T) {
 	ids := make([]uint, 1001)
 	for i := range ids {
 		ids[i] = uint(i + 1)
@@ -40,7 +40,7 @@ func TestBulkBounceQueue400_PreLookupRefusals(t *testing.T) {
 		{"wrong_id_type", `{"ids":["1"]}`, "Invalid request body"},
 		{"wrong_filter_shape", `{"filter":[]}`, "Invalid request body"},
 		{"absent_selection", `{}`, "ids or filter required"},
-		{"null_body", `null`, "ids or filter required"},
+		{"null_body", `null`, "Invalid request body"},
 		{"empty_ids", `{"ids":[]}`, "ids or filter required"},
 		{"null_ids", `{"ids":null}`, "ids or filter required"},
 		{"null_filter", `{"filter":null}`, "ids or filter required"},
@@ -50,9 +50,21 @@ func TestBulkBounceQueue400_PreLookupRefusals(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			NewQueueHandler(nil).BulkBounce(rr, httptest.NewRequest(http.MethodPost, bulkBounce400Path, strings.NewReader(tc.body)))
-			if rr.Code != http.StatusBadRequest {
-				t.Fatalf("status %d, want 400; body %s", rr.Code, rr.Body)
+			queueRoutes(NewQueueHandler(nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, bulkBounce400Path, strings.NewReader(tc.body)))
+			fields := map[string]map[string]string{
+				"wrong_ids_shape":      {"ids": "must be an array"},
+				"wrong_id_type":        {"ids[0]": "must be a non-negative integer"},
+				"wrong_filter_shape":   {"filter": "must be an object"},
+				"null_ids":             {"ids": "must not be null"},
+				"1001_ids":             {"ids": "max 1000 IDs per request"},
+				"1001_ids_with_filter": {"ids": "max 1000 IDs per request"},
+			}[tc.name]
+			status := http.StatusBadRequest
+			if fields != nil {
+				status = http.StatusUnprocessableEntity
+			}
+			if rr.Code != status {
+				t.Fatalf("status %d, want %d; body %s", rr.Code, status, rr.Body)
 			}
 			if got := rr.Header().Get("Content-Type"); got != "application/json" {
 				t.Errorf("Content-Type %q, want application/json", got)
@@ -62,6 +74,13 @@ func TestBulkBounceQueue400_PreLookupRefusals(t *testing.T) {
 				t.Fatalf("decode response: %v", err)
 			}
 			want := map[string]interface{}{"error": map[string]interface{}{"code": "bad_request", "message": tc.message}}
+			if fields != nil {
+				fieldValues := map[string]interface{}{}
+				for k, v := range fields {
+					fieldValues[k] = v
+				}
+				want = map[string]interface{}{"error": map[string]interface{}{"code": "validation_failed", "message": "Request body failed validation", "details": map[string]interface{}{"fields": fieldValues}}}
+			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("response %s, want %v", rr.Body, want)
 			}
@@ -123,8 +142,8 @@ func TestBulkBounceQueue400_Spec(t *testing.T) {
 	if _, ok := op.Responses["200"]; !ok {
 		t.Error("missing existing 200 response")
 	}
-	if len(op.Responses) != 2 {
-		t.Errorf("responses %v, want only 200 and 400", op.Responses)
+	if len(op.Responses) != 3 {
+		t.Errorf("responses %v, want 200, 400 and 422", op.Responses)
 	}
 	content := op.Responses["400"].Content["application/json"]
 	if content.Schema.Ref != "#/components/schemas/ErrorResponse" {
