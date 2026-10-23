@@ -15,26 +15,31 @@ import (
 
 func TestBulkQueue_RejectInvalidAddressFilters(t *testing.T) {
 	h := NewQueueHandler(nil)
-	for name, handle := range map[string]http.HandlerFunc{
-		"retry": h.BulkRetry, "bounce": h.BulkBounce, "delete": h.BulkDelete,
-	} {
+	for _, name := range []string{"retry", "bounce", "delete"} {
 		for _, field := range []string{"sender", "recipient"} {
 			for _, value := range []string{`123`, `true`, `[]`, `{}`} {
 				t.Run(name+"/"+field+"/"+value, func(t *testing.T) {
 					body := fmt.Sprintf(`{"filter":{"%s":%s}}`, field, value)
 					rr := httptest.NewRecorder()
 					// A nil DB proves malformed filters are refused before mutation.
-					handle(rr, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
-					if rr.Code != http.StatusBadRequest {
-						t.Fatalf("status %d, want 400: %s", rr.Code, rr.Body)
+					method := http.MethodPost
+					if name == "delete" {
+						method = http.MethodDelete
+					}
+					queueRoutes(h).ServeHTTP(rr, httptest.NewRequest(method, "/api/v1/admin/queue/bulk-"+name, strings.NewReader(body)))
+					if rr.Code != http.StatusUnprocessableEntity {
+						t.Fatalf("status %d, want 422: %s", rr.Code, rr.Body)
 					}
 					var got struct {
-						Error struct{ Code, Message string }
+						Error struct {
+							Code, Message string
+							Details       struct{ Fields map[string]string }
+						}
 					}
 					if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 						t.Fatal(err)
 					}
-					if got.Error.Code != "bad_request" || got.Error.Message != "Invalid request body" {
+					if got.Error.Code != "validation_failed" || got.Error.Details.Fields["filter."+field] != "must be a string" {
 						t.Fatalf("unexpected refusal: %s", rr.Body)
 					}
 				})
@@ -119,7 +124,7 @@ func TestBulkQueue_AddressFiltersSelectOnlyMatchingEntries(t *testing.T) {
 					t.Fatal(err)
 				}
 				h := NewQueueHandler(tx)
-				handle := map[string]http.HandlerFunc{"retry": h.BulkRetry, "bounce": h.BulkBounce, "delete": h.BulkDelete}[action]
+				handle := queueRoutes(h).ServeHTTP
 				method := http.MethodPost
 				if action == "delete" {
 					method = http.MethodDelete

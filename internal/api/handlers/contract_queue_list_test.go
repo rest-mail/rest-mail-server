@@ -18,7 +18,7 @@ func TestListQueue_RejectInvalidStatus(t *testing.T) {
 			query := url.Values{"status": {status}}
 			rr := httptest.NewRecorder()
 			// A nil DB proves the refusal happens before any database access.
-			NewQueueHandler(nil).ListQueue(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/queue?"+query.Encode(), nil))
+			queueRoutes(NewQueueHandler(nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/queue?"+query.Encode(), nil))
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body)
 			}
@@ -107,7 +107,7 @@ func TestListQueue_ContractStatusFilters(t *testing.T) {
 					query.Set("offset", "1")
 				}
 				rr := httptest.NewRecorder()
-				NewQueueHandler(tx).ListQueue(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/queue?"+query.Encode(), nil))
+				queueRoutes(NewQueueHandler(tx)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/queue?"+query.Encode(), nil))
 				if rr.Code != http.StatusOK {
 					t.Fatalf("status = %d, want 200: %s", rr.Code, rr.Body)
 				}
