@@ -6,6 +6,7 @@ import (
 	oapifly "github.com/antimatter-studios/go-oapifly"
 
 	"github.com/restmail/restmail/internal/api/endpoint"
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 )
 
@@ -58,6 +59,52 @@ var (
 	}}
 )
 
+var (
+	// describedPersonSession is the authentication of the routes that need a person: a
+	// session from signing in, never a scoped API key or HTTP Basic, whose token is current.
+	describedPersonSession = oapifly.Middleware{
+		Security: defaultSecurity,
+		Responses: []oapifly.EndpointResponse{
+			refusal(http.StatusUnauthorized, "unauthorized: no token, a bad one, or a session that has ended"),
+			refusal(http.StatusServiceUnavailable, "unavailable: the session check could not be made"),
+		},
+	}
+	// describedMailSession is the mail routes' authentication: a session, a scoped API key,
+	// or a credential sent with HTTP Basic, whose refusals are throttled at login's rate.
+	describedMailSession = oapifly.Middleware{
+		Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}, {"APIKeyAuth": nil}, {"BasicAuth": nil}},
+		Responses: []oapifly.EndpointResponse{
+			refusal(http.StatusUnauthorized, "unauthorized, app_password_required or setup_required: a refused session or HTTP Basic credential"),
+			rateLimited("rate_limited: refused HTTP Basic credentials, throttled at login's rate"),
+			refusal(http.StatusServiceUnavailable, "unavailable: the credential or session check could not be made"),
+		},
+	}
+)
+
+// rateLimited is a 429 with the Retry-After seconds the limiter writes.
+func rateLimited(description string) oapifly.EndpointResponse {
+	limited := refusal(http.StatusTooManyRequests, description)
+	limited.Headers = map[string]oapifly.ResponseHeader{
+		"Retry-After": {Description: "Seconds until a request may be made again", Type: oapifly.TypeOf[int]()},
+	}
+	return limited
+}
+
+// describedThrottle is login's per-client-IP limit on a route that checks a password.
+func describedThrottle(wrap func(http.Handler) http.Handler) endpoint.Middleware {
+	return endpoint.Middleware{Wrap: wrap, Describes: oapifly.Middleware{Responses: []oapifly.EndpointResponse{
+		rateLimited("rate_limited: too many requests to the shared authentication throttle"),
+	}}}
+}
+
+// describedAudit records a route's action in the audit log. Recording does not change the
+// response or the authentication requirement.
+func describedAudit(audit func(action string, options ...middleware.AuditOption) func(http.Handler) http.Handler) func(string, ...middleware.AuditOption) endpoint.Middleware {
+	return func(action string, options ...middleware.AuditOption) endpoint.Middleware {
+		return endpoint.Middleware{Wrap: audit(action, options...)}
+	}
+}
+
 // describedCapability makes a capability check a route is registered behind: it requires the
 // capability as a role on every scheme, and answers 403 forbidden without it.
 func describedCapability(check func(capability string) func(http.Handler) http.Handler) func(capability string) endpoint.Middleware {
@@ -83,6 +130,20 @@ func (rt *Routers) Description(version string) (map[string]interface{}, []string
 	g.Register(rt.Registry.Endpoints()...)
 	return g.Generate(), g.Warnings
 }
+
+// Grant changes and escalation require a person's session, never a machine key.
+var describedSessionOnly = oapifly.Middleware{
+	Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}},
+	Responses: []oapifly.EndpointResponse{
+		refusal(http.StatusUnauthorized, "unauthorized: authentication required"),
+		refusal(http.StatusForbidden, "session_required: sign in with your password to manage eligible permissions"),
+	},
+}
+
+var describedAuthThrottle = oapifly.Middleware{Responses: []oapifly.EndpointResponse{
+	{Status: http.StatusTooManyRequests, Description: "rate_limited: login's per-IP limit", Type: errorBody,
+		Headers: map[string]oapifly.ResponseHeader{"Retry-After": {Description: "Seconds until another try is allowed", Required: true}}},
+}}
 
 // describedAuditRead records every audit read, including a capability refusal.
 // Recording does not change the response or the authentication requirement.

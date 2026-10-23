@@ -101,7 +101,10 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 		"listCustomFilters": pipeline.ListCustomFilters,
 		"listPipelineLogs":  pipeline.ListPipelineLogs,
 		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
-		"listGrants":        NewGrantHandler(tx, nil, "").List,
+		"listGrants": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/grants"
+			grantRoutes(NewGrantHandler(tx, nil, "")).ServeHTTP(w, r)
+		},
 		"listQueue": func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path = "/api/v1/admin/queue"
 			queueRoutes(NewQueueHandler(tx)).ServeHTTP(w, r)

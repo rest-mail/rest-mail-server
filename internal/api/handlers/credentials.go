@@ -12,8 +12,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/audit"
@@ -49,6 +49,54 @@ func NewCredentialHandler(db *gorm.DB) *CredentialHandler {
 	}
 }
 
+// Register registers an account's app password and API key routes, which need a signed-in
+// person. checks are login's throttle, for the routes that check the current password, and
+// the audit log.
+func (h *CredentialHandler) Register(rs endpoint.Routes, checks SessionRouteChecks) {
+	tags := []string{"Credentials"}
+	refusals := []int{http.StatusForbidden, http.StatusNotFound}
+	manage := handlerChecked(models.CapMailboxManage, "CookieAuth", "BearerAuth")
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/credentials",
+		OperationID: "listCredentials", Summary: "List an account's app passwords", Tags: tags,
+		Errors: refusals, Security: manage}, h.list)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/credentials",
+		OperationID: "createAppPassword", Summary: "Make an app password", Tags: tags,
+		Status: http.StatusCreated, Errors: refusals, Security: manage,
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("credentials.create", middleware.AuditBodyFields("name"),
+			middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))}}, h.create)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/credentials/{credential_id}",
+		OperationID: "revokeCredential", Summary: "Revoke an app password", Tags: tags,
+		Status: http.StatusNoContent, Errors: refusals, Security: manage,
+		Middleware: []endpoint.Middleware{checks.Audit(middleware.AuditActionCredentialsRevoke)}}, h.revoke)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/api-keys",
+		OperationID: "listAPIKeys", Summary: "List an account's API keys", Tags: tags,
+		Errors: refusals, Security: manage, Middleware: []endpoint.Middleware{noStore}}, h.listAPIKeys)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/api-keys",
+		OperationID: "createAPIKey", Summary: "Make a scoped API key", Tags: tags,
+		Status: http.StatusCreated, Errors: refusals, Security: manage,
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit(ActionAPIKeyCreate, middleware.AuditFailuresOnly()), noStore}}, h.createAPIKey)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/api-keys/{credential_id}",
+		OperationID: "revokeAPIKey", Summary: "Revoke an API key", Tags: tags,
+		Status: http.StatusNoContent, Errors: refusals, Security: manage,
+		Middleware: []endpoint.Middleware{checks.Audit(ActionAPIKeyRevoke, middleware.AuditFailuresOnly())}}, h.revokeAPIKey)
+}
+
+// noStore keeps every answer about an account's API keys out of caches: the list, and the
+// one answer that carries a key's secret.
+var noStore = endpoint.Middleware{Wrap: func(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		next.ServeHTTP(w, r)
+	})
+}}
+
+// credentialPath names one of an account's credentials by the path's {id} and
+// {credential_id}.
+type credentialPath struct {
+	ID           uint32 `path:"id" minimum:"1"`
+	CredentialID uint32 `path:"credential_id" minimum:"1"`
+}
+
 // credentialResponse is a credential as its owner sees it. Never the hash.
 type credentialResponse struct {
 	ID         uint       `json:"id"`
@@ -81,175 +129,151 @@ type createdAppPassword struct {
 
 // managedAccount resolves /accounts/{id} for the credential routes: the
 // session's own account, or one it holds mailbox:manage on (one it owns,
-// such as an automation's account with no password of its own). It writes the
-// error and returns false otherwise; an account the session cannot manage is
-// answered as one that does not exist.
-func (h *CredentialHandler) managedAccount(w http.ResponseWriter, r *http.Request) (*auth.Claims, uint, bool) {
+// such as an automation's account with no password of its own). It refuses
+// any other; an account the session cannot manage is answered as one that
+// does not exist.
+func (h *CredentialHandler) managedAccount(r *http.Request, id uint32) (*auth.Claims, uint, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return nil, 0, false
+		return nil, 0, errAuthenticationRequired
 	}
 	// The routes take no credential over HTTP Basic, but a credential must
 	// never manage credentials, whatever the route says.
 	if claims.CredentialID != 0 {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Sign in with your password to manage app passwords")
-		return nil, 0, false
-	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return nil, 0, false
+		return nil, 0, endpoint.Refuse(http.StatusForbidden, "forbidden", "Sign in with your password to manage app passwords")
 	}
 	if _, err := mayReach(h.db, claims, uint(id), models.CapMailboxManage); err != nil {
 		if errors.Is(err, errNoAccess) {
-			respond.Error(w, http.StatusNotFound, "not_found", "Account not found")
-		} else {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the account")
+			return nil, 0, errAccountNotFound
 		}
-		return nil, 0, false
+		return nil, 0, fmt.Errorf("read the account: %w", err)
 	}
-	return claims, uint(id), true
+	return claims, uint(id), nil
 }
 
-// List returns the mailbox's app passwords that are not revoked.
+// list returns the mailbox's app passwords that are not revoked.
 // GET /api/v1/accounts/{id}/credentials
-func (h *CredentialHandler) List(w http.ResponseWriter, r *http.Request) {
-	_, accountID, ok := h.managedAccount(w, r)
-	if !ok {
-		return
+func (h *CredentialHandler) list(r *http.Request, in accountPath) (endpoint.List[credentialResponse], error) {
+	_, accountID, err := h.managedAccount(r, in.ID)
+	if err != nil {
+		return endpoint.List[credentialResponse]{}, err
 	}
 	creds, err := h.repo.ListForAccount(accountID, models.CredentialKindAppPassword)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list credentials")
-		return
+		return endpoint.List[credentialResponse]{}, fmt.Errorf("list credentials: %w", err)
 	}
 	out := make([]credentialResponse, len(creds))
 	for i := range creds {
 		out[i] = toCredentialResponse(&creds[i])
 	}
-	respond.List(w, out, nil)
+	return endpoint.List[credentialResponse]{Data: out}, nil
+}
+
+// createCredentialBody is what the mobile app sends: a name, the session's current password
+// and, optionally, when the app password expires. A missing password is the 403
+// reauth_required the handler answers, not a validation failure.
+type createCredentialBody struct {
+	Name      string     `json:"name"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// Password is the mailbox's current password, entered again. It is
+	// checked and never stored, logged or answered with.
+	Password string `json:"password,omitempty"`
 }
 
 type createCredentialRequest struct {
-	Name      string     `json:"name"`
-	ExpiresAt *time.Time `json:"expires_at"`
-	// Password is the mailbox's current password, entered again. It is
-	// checked and never stored, logged or answered with.
-	Password string `json:"password"`
+	ID   uint32               `path:"id" minimum:"1"`
+	Body createCredentialBody `body:""`
 }
 
-// Create makes an app password and answers with it, once.
+// create makes an app password and answers with it, once.
 // POST /api/v1/accounts/{id}/credentials
-func (h *CredentialHandler) Create(w http.ResponseWriter, r *http.Request) {
-	claims, accountID, ok := h.managedAccount(w, r)
-	if !ok {
-		return
+func (h *CredentialHandler) create(r *http.Request, in createCredentialRequest) (createdAppPassword, error) {
+	claims, accountID, err := h.managedAccount(r, in.ID)
+	if err != nil {
+		return createdAppPassword{}, err
 	}
-	var req createCredentialRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 	req.Name = strings.TrimSpace(req.Name)
 	now := h.now()
 	switch {
 	case req.Name == "":
-		respond.ValidationError(w, map[string]string{"name": "required"})
-		return
+		return createdAppPassword{}, endpoint.Invalid(map[string]string{"name": "required"})
 	case utf8.RuneCountInString(req.Name) > maxCredentialNameLength:
-		respond.ValidationError(w, map[string]string{"name": fmt.Sprintf("must be at most %d characters", maxCredentialNameLength)})
-		return
+		return createdAppPassword{}, endpoint.Invalid(map[string]string{"name": fmt.Sprintf("must be at most %d characters", maxCredentialNameLength)})
 	case strings.IndexFunc(req.Name, unicode.IsControl) >= 0:
-		respond.ValidationError(w, map[string]string{"name": "must not contain control characters"})
-		return
+		return createdAppPassword{}, endpoint.Invalid(map[string]string{"name": "must not contain control characters"})
 	case req.ExpiresAt != nil && !req.ExpiresAt.After(now):
-		respond.ValidationError(w, map[string]string{"expires_at": "must be in the future"})
-		return
+		return createdAppPassword{}, endpoint.Invalid(map[string]string{"expires_at": "must be in the future"})
 	}
 
 	// Creating a credential needs a person who knows the mailbox's password
 	// now. A session outlives a change of password by up to its access token's
 	// lifetime, and an app password made in that window, by whoever learnt the
 	// old password, would outlive the change.
-	if !h.checkCurrentPassword(w, claims.AccountID, req.Password) {
-		return
+	if err := h.checkCurrentPassword(claims.AccountID, req.Password); err != nil {
+		return createdAppPassword{}, err
 	}
 
 	// It also needs a session whose sign-in took the mailbox's second factor,
 	// when the mailbox has one.
-	_, err := h.twoFactor.GetActive(claims.AccountID)
+	_, err = h.twoFactor.GetActive(claims.AccountID)
 	switch {
 	case err == nil && !claims.TwoFactor:
-		respond.Error(w, http.StatusForbidden, "two_factor_required",
+		return createdAppPassword{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required",
 			"This mailbox has two-factor authentication: sign in again with your code to create an app password")
-		return
 	case err != nil && !errors.Is(err, repositories.ErrTwoFactorNotFound):
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
-		return
+		return createdAppPassword{}, fmt.Errorf("verify two-factor authentication: %w", err)
 	}
 
 	cred, password, err := h.repo.CreateAppPassword(accountID, claims.AccountID, req.Name, req.ExpiresAt)
 	if err != nil {
 		slog.Error("creating an app password failed", "account_id", accountID, "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create the app password")
-		return
+		return createdAppPassword{}, fmt.Errorf("create the app password: %w", err)
 	}
-	respond.Data(w, http.StatusCreated, createdAppPassword{credentialResponse: toCredentialResponse(cred), Password: password})
+	return createdAppPassword{credentialResponse: toCredentialResponse(cred), Password: password}, nil
 }
 
 // checkCurrentPassword checks password against the mailbox's password hash
 // as it is now, with the same bcrypt comparison as signing in. A mailbox that
 // is gone or disabled is compared against a dummy hash, so it costs the same,
-// and refused. It writes the error and returns false unless password matches.
+// and refused. It refuses unless password matches.
 // A refusal is 403, never 401: the session is still good (#392).
-func (h *CredentialHandler) checkCurrentPassword(w http.ResponseWriter, accountID uint, password string) bool {
+func (h *CredentialHandler) checkCurrentPassword(accountID uint, password string) error {
 	if password == "" {
-		respond.Error(w, http.StatusForbidden, "reauth_required",
+		return endpoint.Refuse(http.StatusForbidden, "reauth_required",
 			"Enter your current password to create a credential")
-		return false
 	}
 	var account models.Mailbox
 	err := h.db.Select("id").Where("id = ? AND active = ?", accountID, true).Take(&account).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
-		return false
+		return fmt.Errorf("verify the password: %w", err)
 	}
 	cred, matchErr := h.repo.MatchPassword(account.ID, password, h.now())
 	if matchErr != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
-		return false
+		return fmt.Errorf("verify the password: %w", matchErr)
 	}
 	if cred == nil || err != nil {
-		respond.Error(w, http.StatusForbidden, "invalid_password", "The password is incorrect")
-		return false
+		return endpoint.Refuse(http.StatusForbidden, "invalid_password", "The password is incorrect")
 	}
-	return true
+	return nil
 }
 
-// Revoke revokes one of the mailbox's app passwords. Its row stays, revoked,
+// revoke revokes one of the mailbox's app passwords. Its row stays, revoked,
 // for the audit trail; the next request made with it is refused.
 // DELETE /api/v1/accounts/{id}/credentials/{credential_id}
-func (h *CredentialHandler) Revoke(w http.ResponseWriter, r *http.Request) {
-	_, accountID, ok := h.managedAccount(w, r)
-	if !ok {
-		return
-	}
-	id, err := pathID(r, "credential_id")
+func (h *CredentialHandler) revoke(r *http.Request, in credentialPath) (endpoint.Empty, error) {
+	_, accountID, err := h.managedAccount(r, in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid credential ID")
-		return
+		return endpoint.Empty{}, err
 	}
-	err = h.repo.Revoke(accountID, uint(id), h.now())
+	err = h.repo.Revoke(accountID, uint(in.CredentialID), h.now())
 	if errors.Is(err, repositories.ErrCredentialNotFound) {
-		respond.Error(w, http.StatusNotFound, "not_found", "Credential not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Credential not found")
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to revoke the credential")
-		return
+		return endpoint.Empty{}, fmt.Errorf("revoke the credential: %w", err)
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
 // CredentialRevokedPasswordChanged is the reason recorded for an app password

@@ -329,8 +329,9 @@ func TestEscalation_OnlyTheHolderSwitchesItOn(t *testing.T) {
 	if rr := f.activate(owner, 999999, activateBody("x", 60, f.code(t, "owner"))); rr.Code != http.StatusNotFound {
 		t.Errorf("a grant that does not exist = %d, want 404", rr.Code)
 	}
-	if rr := doRequest(f.router, http.MethodPost, "/api/v1/admin/grants/x/activate", owner, `{}`); rr.Code != http.StatusBadRequest {
-		t.Errorf("a grant id that is not one = %d, want 400", rr.Code)
+	// Binding refuses it before anything is looked up (#644): 422 naming the id.
+	if rr := doRequest(f.router, http.MethodPost, "/api/v1/admin/grants/x/activate", owner, `{}`); rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), `"id":`) {
+		t.Errorf("a grant id that is not one = %d %s, want 422 naming id", rr.Code, rr.Body.String())
 	}
 
 	// An active grant has nothing to switch on.
