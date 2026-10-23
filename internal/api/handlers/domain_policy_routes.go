@@ -109,28 +109,5 @@ func (h *RelayHandler) Register(rs endpoint.Routes, checks DomainPolicyRouteChec
 func (h *TLSReportHandler) Register(rs endpoint.Routes, checks DomainPolicyRouteChecks) {
 	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/tls-reports",
 		OperationID: "listTlsReports", Summary: "List received TLS-RPT reports", Tags: []string{"Admin: Domain mail policy"},
-		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsRead), {Wrap: emptyTLSReportNumbers}}}, h.listReports)
-}
-
-// Empty numeric filters have always meant the default. Normalize them before typed binding,
-// while a supplied empty policy_type is still refused.
-func emptyTLSReportNumbers(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query()
-		changed := false
-		for _, name := range []string{"domain_id", "limit", "offset"} {
-			if query.Has(name) && query.Get(name) == "" {
-				query.Del(name)
-				changed = true
-			}
-		}
-		if changed {
-			clone := r.Clone(r.Context())
-			url := *r.URL
-			url.RawQuery = query.Encode()
-			clone.URL = &url
-			r = clone
-		}
-		next.ServeHTTP(w, r)
-	})
+		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsRead)}}, h.listReports)
 }
