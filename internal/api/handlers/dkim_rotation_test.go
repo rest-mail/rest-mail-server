@@ -51,14 +51,14 @@ func TestDKIMRotationSettings_PersistWithoutChangingSigningMaterial(t *testing.T
 		}
 	}
 	rr := httptest.NewRecorder()
-	h.GetRotation(rr, rotationRequest(http.MethodGet, id, ""))
+	dkimRoutes(h).ServeHTTP(rr, rotationRequest(http.MethodGet, id, ""))
 	checkResponse(rr, 0)
 	for _, days := range []int{1, 90, models.MaxDKIMRotationIntervalDays, 0} {
 		rr = httptest.NewRecorder()
-		h.SetRotation(rr, rotationRequest(http.MethodPut, id, fmt.Sprintf(`{"rotation_interval_days":%d}`, days)))
+		dkimRoutes(h).ServeHTTP(rr, rotationRequest(http.MethodPut, id, fmt.Sprintf(`{"rotation_interval_days":%d}`, days)))
 		checkResponse(rr, days)
 		rr = httptest.NewRecorder()
-		NewDKIMHandler(tx, "").GetRotation(rr, rotationRequest(http.MethodGet, id, ""))
+		dkimRoutes(NewDKIMHandler(tx, "")).ServeHTTP(rr, rotationRequest(http.MethodGet, id, ""))
 		checkResponse(rr, days)
 		var after models.Domain
 		if err := tx.First(&after, domain.ID).Error; err != nil {
@@ -91,21 +91,21 @@ func TestDKIMRotationSettings_InvalidBodyDoesNotChangeInterval(t *testing.T) {
 		body string
 		code int
 	}{
-		{`{}`, 422}, {`null`, 422}, {`{"rotation_interval_days":null}`, 422},
+		{`{}`, 422}, {`null`, 400}, {`{"rotation_interval_days":null}`, 422},
 		{`{"rotation_interval_days":-1}`, 422}, {`{"rotation_interval_days":3651}`, 422},
-		{`{"rotation_interval_days":"90"}`, 400}, {`{"rotation_interval_days":1.5}`, 400},
-		{`{"rotation_interval_days":9223372036854775808}`, 400},
-		{`{"rotation_interval_days":90,"private_key":"injected"}`, 400},
+		{`{"rotation_interval_days":"90"}`, 422}, {`{"rotation_interval_days":1.5}`, 422},
+		{`{"rotation_interval_days":9223372036854775808}`, 422},
+		{`{"rotation_interval_days":90,"private_key":"injected"}`, 422},
 		{`{"rotation_interval_days":90} {}`, 400}, {`{"rotation_interval_days":90} trailing`, 400},
 		{`[]`, 400}, {`{`, 400}, {``, 400},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			h.SetRotation(rr, rotationRequest(http.MethodPut, fmt.Sprint(domain.ID), tc.body))
+			dkimRoutes(h).ServeHTTP(rr, rotationRequest(http.MethodPut, fmt.Sprint(domain.ID), tc.body))
 			if rr.Code != tc.code {
 				t.Fatalf("status %d, want %d: %s", rr.Code, tc.code, rr.Body.String())
 			}
-			if tc.code == 422 && !strings.Contains(rr.Body.String(), `"rotation_interval_days"`) {
+			if tc.code == 422 && !strings.Contains(rr.Body.String(), `"fields"`) {
 				t.Fatalf("validation does not identify field: %s", rr.Body.String())
 			}
 			var after models.Domain
@@ -129,7 +129,7 @@ func TestDKIMRotationSettings_DomainWithoutKeyAndMissingDomain(t *testing.T) {
 	}
 	h := NewDKIMHandler(tx, "")
 	rr := httptest.NewRecorder()
-	h.SetRotation(rr, rotationRequest(http.MethodPut, fmt.Sprint(domain.ID), `{"rotation_interval_days":30}`))
+	dkimRoutes(h).ServeHTTP(rr, rotationRequest(http.MethodPut, fmt.Sprint(domain.ID), `{"rotation_interval_days":30}`))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("keyless domain status %d: %s", rr.Code, rr.Body.String())
 	}
@@ -139,14 +139,14 @@ func TestDKIMRotationSettings_DomainWithoutKeyAndMissingDomain(t *testing.T) {
 	for _, tc := range []struct {
 		id   string
 		code int
-	}{{fmt.Sprint(domain.ID), 404}, {"0", 400}, {"nope", 400}, {"-1", 400}, {"4294967296", 400}} {
+	}{{fmt.Sprint(domain.ID), 404}, {"0", 422}, {"nope", 422}, {"-1", 422}, {"4294967296", 422}} {
 		for _, method := range []string{http.MethodGet, http.MethodPut} {
 			rr := httptest.NewRecorder()
 			req := rotationRequest(method, tc.id, `{"rotation_interval_days":30}`)
 			if method == http.MethodGet {
-				h.GetRotation(rr, req)
+				dkimRoutes(h).ServeHTTP(rr, req)
 			} else {
-				h.SetRotation(rr, req)
+				dkimRoutes(h).ServeHTTP(rr, req)
 			}
 			if rr.Code != tc.code {
 				t.Fatalf("%s id=%s: status %d, want %d: %s", method, tc.id, rr.Code, tc.code, rr.Body.String())

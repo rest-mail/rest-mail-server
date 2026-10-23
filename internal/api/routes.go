@@ -832,15 +832,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
 
 		// Queue management
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue", queueH.ListQueue)
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/stats", queueH.QueueStats)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-retry", queueH.BulkRetry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/bulk-bounce", queueH.BulkBounce)
-		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/bulk-delete", queueH.BulkDelete)
-		r.With(needs(middleware.CapQueueRead)).Get("/api/v1/admin/queue/{id}", queueH.GetQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/retry", queueH.RetryQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Post("/api/v1/admin/queue/{id}/bounce", queueH.BounceQueueEntry)
-		r.With(needs(middleware.CapQueueManage)).Delete("/api/v1/admin/queue/{id}", queueH.DeleteQueueEntry)
+		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
 
 		// Sender allowlist/blocklist (domain-scoped → domains:* capabilities)
 		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
@@ -869,18 +861,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// TLS-RPT reports (domain deliverability telemetry → domains:read)
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)
 
-		// DKIM key management (domain signing material → domains:* capabilities)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/dkim", dkimH.ListKeys)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/dkim/{id}/rotation", dkimH.GetRotation)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/dkim/{id}/rotation", dkimH.SetRotation)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/dkim/{id}", dkimH.SetKey)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/dkim/{id}", dkimH.DeleteKey)
-
-		// Certificate management (domain TLS material → domains:* capabilities)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/certificates", certH.ListCertificates)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/certificates/{id}", certH.GetCertificate)
-		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/certificates", certH.CreateCertificate)
-		r.With(needs(middleware.CapDomainsWrite)).Delete("/api/v1/admin/certificates/{id}", certH.DeleteCertificate)
+		// DKIM and certificates retain their existing capability scopes.
+		dkimH.Register(admin, handlers.DKIMRouteChecks{
+			At: describedCapability(needs), OnDomain: describedCapability(needsOnDomain),
+		})
+		certH.Register(admin, handlers.CertificateRouteChecks{At: describedCapability(needs)})
 
 		// Ban management
 		r.With(needs(middleware.CapBansRead)).Get("/api/v1/admin/bans", banH.ListBans)
