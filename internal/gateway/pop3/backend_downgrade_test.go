@@ -8,9 +8,9 @@ import (
 	"github.com/restmail/restmail/internal/gateway/apiclient"
 )
 
-// TestRetrieve_DowngradesUTF8Headers proves RETR never hands a client raw UTF-8
-// headers: no client can enable UTF-8 here yet (RFC 6855/6856), so the header
-// block goes out as ASCII while the body stays as stored.
+// TestRetrieve_DowngradesUTF8Headers proves RETR hands a client that did not
+// send UTF8 (RFC 6856) no raw UTF-8 headers: the header block goes out as
+// ASCII while the body stays as stored.
 func TestRetrieve_DowngradesUTF8Headers(t *testing.T) {
 	const raw = "From: Jörg <joerg@bücher.example>\r\nSubject: Grüße\r\n\r\nHallo, Jörg.\r\n"
 	mux := http.NewServeMux()
