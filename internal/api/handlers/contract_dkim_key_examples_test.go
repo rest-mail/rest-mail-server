@@ -79,8 +79,8 @@ func TestDKIMKeyContract_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"body_array", "installed", "private_key_empty", "private_key_invalid", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_invalid", "selector_missing", "selector_wrong_type"},
 		"200":     {"installed"},
-		"400":     {"body_array", "private_key_empty", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_missing", "selector_wrong_type"},
-		"422":     {"private_key_invalid", "selector_invalid"},
+		"400":     {"body_array"},
+		"422":     {"private_key_empty", "private_key_invalid", "private_key_missing", "private_key_wrong_type", "selector_empty", "selector_invalid", "selector_missing", "selector_wrong_type"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("pairs = %v, want %v", got, want)
@@ -197,12 +197,12 @@ func TestDKIMKeyContract_DocumentedExamples(t *testing.T) {
 			}
 			body = copy
 		}
-		request := httptest.NewRequest(http.MethodPut, dkimKeyContractPath, bytes.NewReader(mustJSON(body)))
+		request := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/admin/dkim/%d", domain.ID), bytes.NewReader(mustJSON(body)))
 		route := chi.NewRouteContext()
 		route.URLParams.Add("id", fmt.Sprint(domain.ID))
 		request = request.WithContext(context.WithValue(request.Context(), chi.RouteCtxKey, route))
 		rr := httptest.NewRecorder()
-		NewDKIMHandler(tx, dkimTestMasterKey).SetKey(rr, request)
+		dkimRoutes(NewDKIMHandler(tx, dkimTestMasterKey)).ServeHTTP(rr, request)
 		return rr
 	}
 	for _, status := range []string{"400", "422"} {
