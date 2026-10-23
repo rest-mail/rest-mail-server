@@ -195,7 +195,7 @@ class MissingResourceRefusals(unittest.TestCase):
                 name = "%s > %s > 404 > application/json" % (path, op["summary"])
                 if not any(pattern.search(name) for pattern in patterns):
                     sent.add(op["operationId"])
-        self.assertEqual(sent, {"getDomain", "getCertificate"})
+        self.assertEqual(sent, {"getDomain", "getCertificate", "getAlias", "getCustomFilter"})
 
 
 if __name__ == "__main__":
