@@ -46,6 +46,7 @@ def basic(address, password):
 @hooks.before("linkAccount")
 @hooks.before("createAppPassword")
 @hooks.before("protocolSignIn")
+@hooks.before("enrollTwoFactor")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
@@ -807,6 +808,15 @@ def remove_a_previous_contact_probe(transaction):
             hooks.stash["created_contact_probes"] = owned
             return
         offset += len(contacts)
+
+
+@hooks.before("getCustomFilter")
+def get_a_missing_custom_filter(transaction):
+    # Parameter example names are not paired by vertrag 0.29, and the create
+    # link supplies its real ID to both responses. Only the 404 selects the
+    # spec's missing ID; the success and its coverage probes keep their IDs.
+    if " > 404 > " in transaction.get("name", ""):
+        transaction["fullPath"] = "/api/v1/admin/custom-filters/2147483647"
 
 
 def sender_rules_path(transaction):

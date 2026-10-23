@@ -45,10 +45,30 @@ func Connect(cfg *config.Config) (*gorm.DB, error) {
 	return db, nil
 }
 
+// autoMigrateLockKey serialises AutoMigrate across processes sharing a
+// database: replicas starting at once, or test packages run in parallel,
+// would otherwise race creating the same tables ("relation already exists"):
+// "automigr".
+const autoMigrateLockKey int64 = 0x6175746f6d696772
+
 // AutoMigrate runs GORM's auto-migration for all models. It is ADDITIVE and
 // idempotent: it adds tables/columns/indexes, safe to re-run on every
 // startup. A server boot never issues destructive DML (issue #196).
+//
+// It holds a session advisory lock on one pinned connection rather than
+// running in a transaction: the best-effort index statements below may fail,
+// and a failure would abort a transaction.
 func AutoMigrate(db *gorm.DB) error {
+	return db.Connection(func(conn *gorm.DB) error {
+		if err := conn.Exec("SELECT pg_advisory_lock(?)", autoMigrateLockKey).Error; err != nil {
+			return fmt.Errorf("auto-migration lock failed: %w", err)
+		}
+		defer conn.Exec("SELECT pg_advisory_unlock(?)", autoMigrateLockKey)
+		return autoMigrate(conn)
+	})
+}
+
+func autoMigrate(db *gorm.DB) error {
 	slog.Info("running database auto-migration")
 
 	err := db.AutoMigrate(

@@ -38,7 +38,7 @@ func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
-	query := h.db.Model(&models.Mailbox{})
+	query := filterAdminList(h.db.Model(&models.Mailbox{}), r, middleware.CapMailboxesRead, "mailboxes")
 	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
 		query = query.Where("domain_id = ?", domainID)
 	}
@@ -50,6 +50,9 @@ func (h *MailboxHandler) List(w http.ResponseWriter, r *http.Request) {
 	if err := query.Preload("Domain").Preload("QuotaUsage").Order("address ASC").Limit(limit).Offset(offset).Find(&mailboxes).Error; err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list mailboxes")
 		return
+	}
+	for i := range mailboxes {
+		redactMailboxDomain(r, &mailboxes[i])
 	}
 	respond.List(w, mailboxes, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
 }
@@ -67,6 +70,7 @@ func (h *MailboxHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	redactMailboxDomain(r, &mailbox)
 	respond.Data(w, http.StatusOK, mailbox)
 }
 
@@ -173,6 +177,7 @@ func (h *MailboxHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.db.Preload("Domain").Preload("QuotaUsage").First(&mailbox, id)
+	redactMailboxDomain(r, &mailbox)
 	respond.Data(w, http.StatusOK, mailbox)
 }
 

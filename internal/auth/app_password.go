@@ -134,7 +134,7 @@ func isBase62(s string) bool {
 // records which; whoever presented it is told only that the address or the
 // password is wrong.
 const (
-	CredentialUnknown         = "unknown"       // no app password has its public id
+	CredentialUnknown         = "unknown"       // no app password or API key has its public id
 	CredentialWrongSecret     = "wrong_secret"  // the app password's secret does not match
 	CredentialWrongAddress    = "wrong_address" // it belongs to another account
 	CredentialRevoked         = "revoked"
@@ -150,6 +150,9 @@ const (
 	// CredentialAccountInSetup: the password matched, but the account must
 	// first choose its own password and enroll an authenticator.
 	CredentialAccountInSetup = "setup_required"
+	// CredentialMalformed: a bearer token with the API key prefix that is not
+	// in the API key format.
+	CredentialMalformed = "malformed"
 )
 
 // CredentialRefusal is the error for a credential that was checked and

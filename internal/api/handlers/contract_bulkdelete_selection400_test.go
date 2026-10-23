@@ -111,6 +111,7 @@ func bulkDeletePairProblems(t *testing.T, s bulkDeleteSpec) []string {
 	wantSecurity := []map[string][]string{
 		{"CookieAuth": {"queue:manage"}},
 		{"BearerAuth": {"queue:manage"}},
+		{"APIKeyAuth": {"queue:manage"}},
 	}
 	if !reflect.DeepEqual(s.Security, wantSecurity) {
 		add("security is %v, want %v", s.Security, wantSecurity)
@@ -367,6 +368,12 @@ func TestBulkDeleteQueue_SelectionMissingPairMutationsRejected(t *testing.T) {
 		name   string
 		mutate func(*bulkDeleteSpec)
 	}{
+		{"api_key_auth_missing", func(s *bulkDeleteSpec) {
+			s.Security = s.Security[:2]
+		}},
+		{"api_key_capability_changed", func(s *bulkDeleteSpec) {
+			s.Security[2] = map[string][]string{"APIKeyAuth": {"queue:read"}}
+		}},
 		{"request_missing", func(s *bulkDeleteSpec) {
 			request(s, func(c bulkContent) bulkContent { return setExamples(c, "selection_missing", nil) })
 		}},

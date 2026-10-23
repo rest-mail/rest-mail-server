@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/db/repositories"
@@ -48,7 +49,8 @@ func mayReach(db *gorm.DB, claims *auth.Claims, id uint, capability string) (*mo
 	if err != nil {
 		return nil, err
 	}
-	if held.Allows(capability, grants.Mailbox(mailbox.Address)) {
+	if held.Allows(capability, grants.Mailbox(mailbox.Address)) &&
+		middleware.CredentialAllows(claims, capability, grants.Mailbox(mailbox.Address)) {
 		return &mailbox, nil
 	}
 	return nil, errNoAccess
