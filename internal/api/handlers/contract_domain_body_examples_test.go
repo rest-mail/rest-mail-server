@@ -120,7 +120,7 @@ func createDomainNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder,
 				reached = true
 			}
 		}()
-		NewDomainHandler(nil, nil).Create(rr, req)
+		domainRoutes(NewDomainHandler(nil, nil)).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }

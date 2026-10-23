@@ -99,7 +99,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 		}
 	}
 	domainList := func(scopes []string, path string) listEnvelope {
-		rr := scopedRequest(scopes, middleware.CapDomainsRead, NewDomainHandler(tx, nil).List, path)
+		rr := scopedRequest(scopes, middleware.CapDomainsRead, domainRoutes(NewDomainHandler(tx, nil)).ServeHTTP, path)
 		if rr.Code != 200 {
 			t.Fatalf("domains status%d body%s", rr.Code, rr.Body.String())
 		}

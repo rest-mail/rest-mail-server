@@ -40,7 +40,7 @@ func TestDomainDelete_RefusesADomainWithAddresses(t *testing.T) {
 		rctx.URLParams.Add("id", fmt.Sprint(id))
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 		rr := httptest.NewRecorder()
-		h.Delete(rr, req)
+		domainRoutes(h).ServeHTTP(rr, req)
 		return rr
 	}
 	exists := func(id uint) bool {

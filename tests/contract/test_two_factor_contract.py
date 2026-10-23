@@ -33,6 +33,16 @@ class TwoFactorContract(unittest.TestCase):
         registered = {(method.upper(), path) for method, path in
                       re.findall(r'\.\s*(Get|Post|Put|Patch|Delete)\s*\(\s*"([^"\n]+)"', routes)
                       if included(path)}
+        # Routes registered with endpoint.Register name their method and path in an
+        # endpoint.Operation, beside their handler (#669).
+        for source in (ROOT / "internal/api").rglob("*.go"):
+            if source.name.endswith("_test.go"):
+                continue
+            for method, path in re.findall(
+                    r'Method:\s*http\.Method(Get|Post|Put|Patch|Delete),\s*Path:\s*"([^"\n]+)"',
+                    source.read_text()):
+                if included(path):
+                    registered.add((method.upper(), path))
         documented = {(method.upper(), path) for path, item in self.spec["paths"].items()
                       if included(path) for method in METHODS if method in item}
         self.assertTrue(registered, "empty registration scan")

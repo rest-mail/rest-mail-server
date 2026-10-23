@@ -30,9 +30,27 @@ type ErrorResponse struct {
 
 // ErrorBody contains the error details.
 type ErrorBody struct {
-	Code    string      `json:"code"`
-	Message string      `json:"message"`
-	Details interface{} `json:"details,omitempty"`
+	Code    string                 `json:"code"`
+	Message string                 `json:"message"`
+	Details map[string]interface{} `json:"details,omitempty"`
+}
+
+// ValidationErrorResponse is the 422 validation failure ValidationError writes: the fields at
+// fault, each with what is wrong with it.
+type ValidationErrorResponse struct {
+	Error ValidationErrorBody `json:"error"`
+}
+
+// ValidationErrorBody is a validation failure's error.
+type ValidationErrorBody struct {
+	Code    string            `json:"code"`
+	Message string            `json:"message"`
+	Details ValidationDetails `json:"details"`
+}
+
+// ValidationDetails names the fields at fault.
+type ValidationDetails struct {
+	Fields map[string]string `json:"fields"`
 }
 
 // JSON writes a JSON response with the given status code.
@@ -64,13 +82,11 @@ func Error(w http.ResponseWriter, status int, code, message string) {
 
 // ValidationError writes a 422 validation error with field details.
 func ValidationError(w http.ResponseWriter, fields map[string]string) {
-	JSON(w, http.StatusUnprocessableEntity, ErrorResponse{
-		Error: ErrorBody{
+	JSON(w, http.StatusUnprocessableEntity, ValidationErrorResponse{
+		Error: ValidationErrorBody{
 			Code:    "validation_failed",
 			Message: "Request body failed validation",
-			Details: map[string]interface{}{
-				"fields": fields,
-			},
+			Details: ValidationDetails{Fields: fields},
 		},
 	})
 }

@@ -46,6 +46,7 @@ func server(t *testing.T) (*chi.Mux, *Registry) {
 	t.Helper()
 	r := chi.NewRouter()
 	reg := NewRegistry()
+	rs := Routes{Router: r, Registry: reg}
 	blocked := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			if req.Header.Get("X-Block") != "" {
@@ -56,8 +57,8 @@ func server(t *testing.T) (*chi.Mux, *Registry) {
 		})
 	}
 
-	Register(r, reg, Operation{Method: http.MethodGet, Path: "/widgets/{id:[0-9]+}", OperationID: "getWidget",
-		Errors: []int{http.StatusNotFound}, Middleware: []func(http.Handler) http.Handler{blocked}},
+	Register(rs, Operation{Method: http.MethodGet, Path: "/widgets/{id:[0-9]+}", OperationID: "getWidget",
+		Errors: []int{http.StatusNotFound}, Middleware: []Middleware{{Wrap: blocked}}},
 		func(_ *http.Request, in widgetPath) (widget, error) {
 			switch in.ID {
 			case 7:
@@ -67,7 +68,7 @@ func server(t *testing.T) (*chi.Mux, *Registry) {
 			}
 			return widget{}, Refuse(http.StatusNotFound, "not_found", "Widget not found")
 		})
-	Register(r, reg, Operation{Method: http.MethodGet, Path: "/widgets", OperationID: "listWidgets"},
+	Register(rs, Operation{Method: http.MethodGet, Path: "/widgets", OperationID: "listWidgets"},
 		func(_ *http.Request, in widgetQuery) (List[widget], error) {
 			n := 2
 			if in.Limit != nil {
@@ -86,23 +87,23 @@ func server(t *testing.T) (*chi.Mux, *Registry) {
 			next.ServeHTTP(w, req)
 		})
 	}
-	Register(r, reg, Operation{Method: http.MethodPost, Path: "/widgets", OperationID: "createWidget",
-		Status: http.StatusCreated, Middleware: []func(http.Handler) http.Handler{capped}},
+	Register(rs, Operation{Method: http.MethodPost, Path: "/widgets", OperationID: "createWidget",
+		Status: http.StatusCreated, Middleware: []Middleware{{Wrap: capped}}},
 		func(_ *http.Request, in createWidget) (widget, error) {
 			if in.Name == "" {
 				return widget{}, Invalid(map[string]string{"name": "required"})
 			}
 			return widget{ID: 9, Name: in.Name}, nil
 		})
-	Register(r, reg, Operation{Method: http.MethodPatch, Path: "/widgets/{id}", OperationID: "renameWidget"},
+	Register(rs, Operation{Method: http.MethodPatch, Path: "/widgets/{id}", OperationID: "renameWidget"},
 		func(_ *http.Request, in renameWidget) (widget, error) {
 			return widget{ID: in.ID, Name: in.Body.Name}, nil
 		})
-	Register(r, reg, Operation{Method: http.MethodGet, Path: "/empty", OperationID: "listNothing"},
+	Register(rs, Operation{Method: http.MethodGet, Path: "/empty", OperationID: "listNothing"},
 		func(_ *http.Request, _ Empty) (List[widget], error) { return List[widget]{}, nil })
-	Register(r, reg, Operation{Method: http.MethodGet, Path: "/tagged", OperationID: "getTagged"},
+	Register(rs, Operation{Method: http.MethodGet, Path: "/tagged", OperationID: "getTagged"},
 		func(_ *http.Request, _ Empty) (tagged, error) { return tagged{}, nil })
-	Register(r, reg, Operation{Method: http.MethodDelete, Path: "/widgets/{id}", OperationID: "deleteWidget",
+	Register(rs, Operation{Method: http.MethodDelete, Path: "/widgets/{id}", OperationID: "deleteWidget",
 		Status: http.StatusNoContent},
 		func(_ *http.Request, _ widgetPath) (Empty, error) { return Empty{}, nil })
 	return r, reg
@@ -248,9 +249,67 @@ func TestRegisterTwicePanics(t *testing.T) {
 			t.Fatal("registering a route twice must panic")
 		}
 	}()
-	r := chi.NewRouter()
-	reg := NewRegistry()
+	rs := Routes{Router: chi.NewRouter(), Registry: NewRegistry()}
 	h := func(*http.Request, Empty) (Empty, error) { return Empty{}, nil }
-	Register(r, reg, Operation{Method: "GET", Path: "/a"}, h)
-	Register(r, reg, Operation{Method: "GET", Path: "/a"}, h)
+	Register(rs, Operation{Method: "GET", Path: "/a"}, h)
+	Register(rs, Operation{Method: "GET", Path: "/a"}, h)
+}
+
+// What a route's middleware adds is in its description: the group's authentication gives the
+// security and its 401, a capability check adds its role to every scheme and its 403, and an
+// operation's own security overrides the middleware's.
+func TestMiddlewareDescribesItself(t *testing.T) {
+	errorBody := oapifly.TypeOf[respond.ErrorResponse]()
+	authenticated := oapifly.Middleware{
+		Security:  []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}},
+		Responses: []oapifly.EndpointResponse{{Status: http.StatusUnauthorized, Type: errorBody}},
+	}
+	pass := func(next http.Handler) http.Handler { return next }
+	needs := func(capability string) Middleware {
+		return Middleware{Wrap: pass, Describes: oapifly.Middleware{
+			Roles:     []string{capability},
+			Responses: []oapifly.EndpointResponse{{Status: http.StatusForbidden, Type: errorBody}},
+		}}
+	}
+
+	r := chi.NewRouter()
+	rs := Routes{Router: r, Registry: NewRegistry()}.Describing(authenticated)
+	h := func(*http.Request, Empty) (widget, error) { return widget{}, nil }
+	Register(rs, Operation{Method: "GET", Path: "/things", OperationID: "listThings",
+		Middleware: []Middleware{needs("things:read")}}, h)
+	Register(rs, Operation{Method: "GET", Path: "/open", OperationID: "open", Security: oapifly.Public}, h)
+
+	g := oapifly.New(oapifly.Config{Title: "test", SecuritySchemes: map[string]oapifly.SecurityScheme{
+		"CookieAuth": {Type: "apiKey", In: "cookie", Name: "restmail_access"},
+		"BearerAuth": {Type: "http", Scheme: "bearer"},
+	}})
+	g.Register(rs.Registry.Endpoints()...)
+	doc, err := json.Marshal(g.Generate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Warnings) > 0 {
+		t.Fatalf("warnings: %v", g.Warnings)
+	}
+	var parsed struct {
+		Paths map[string]map[string]struct {
+			Security  []map[string][]string      `json:"security"`
+			Responses map[string]json.RawMessage `json:"responses"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(doc, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	list := parsed.Paths["/things"]["get"]
+	if got, _ := json.Marshal(list.Security); string(got) != `[{"CookieAuth":["things:read"]},{"BearerAuth":["things:read"]}]` {
+		t.Errorf("security: %s", got)
+	}
+	for _, status := range []string{"200", "401", "403", "500"} {
+		if _, ok := list.Responses[status]; !ok {
+			t.Errorf("listThings answers %s: %v", status, list.Responses)
+		}
+	}
+	if got, _ := json.Marshal(parsed.Paths["/open"]["get"].Security); string(got) != `[]` {
+		t.Errorf("an operation's own security wins: %s", got)
+	}
 }

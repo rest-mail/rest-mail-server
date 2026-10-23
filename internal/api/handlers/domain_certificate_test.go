@@ -40,7 +40,7 @@ func TestDomainLifecycle_NotLiveWithoutACertificate(t *testing.T) {
 		body, _ := json.Marshal(map[string]string{"name": domainName})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/domains", bytes.NewReader(body))
 		rr := httptest.NewRecorder()
-		h.Create(rr, req)
+		domainRoutes(h).ServeHTTP(rr, req)
 		if rr.Code != http.StatusCreated {
 			t.Fatalf("create status = %d, want 201 (body %s)", rr.Code, rr.Body.String())
 		}
@@ -62,7 +62,7 @@ func TestDomainLifecycle_NotLiveWithoutACertificate(t *testing.T) {
 		rctx.URLParams.Add("id", fmt.Sprint(id))
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 		rr := httptest.NewRecorder()
-		h.Update(rr, req)
+		domainRoutes(h).ServeHTTP(rr, req)
 		return rr
 	}
 

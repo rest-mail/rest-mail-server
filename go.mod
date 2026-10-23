@@ -3,7 +3,7 @@ module github.com/restmail/restmail
 go 1.25.0
 
 require (
-	github.com/antimatter-studios/go-oapifly v0.19.0
+	github.com/antimatter-studios/go-oapifly v0.21.2
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
@@ -29,7 +29,7 @@ require (
 	github.com/rest-mail/go-mtasts v0.3.1
 	github.com/rest-mail/go-pop3 v0.3.0
 	github.com/rest-mail/go-sieve v0.6.0
-	github.com/rest-mail/go-smtp v0.31.0
+	github.com/rest-mail/go-smtp v0.32.0
 	github.com/rest-mail/go-spf v0.1.2
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.55.0

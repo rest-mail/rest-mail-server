@@ -49,8 +49,38 @@ type Operation struct {
 	// over the size cap when it has a body, and 500 always.
 	Errors []int
 
-	// Middleware runs before binding, in order: authentication, capability checks.
-	Middleware []func(http.Handler) http.Handler
+	// Security is the operation's own requirement, when it differs from what its middleware
+	// enforces: alternatives of schemes, each with the roles held there. nil leaves it to the
+	// middleware and the document's default; oapifly.Public needs no credential.
+	Security []oapifly.SecurityRequirement
+
+	// Middleware runs before binding, in order, after the middleware its Routes already
+	// apply: a capability check, a rate limit. Each describes what it adds.
+	Middleware []Middleware
+}
+
+// Middleware is a middleware and a description of what it adds to every operation it wraps:
+// the responses it can answer, the security it enforces and the roles it requires. The two
+// are kept together so a route cannot be guarded by a check the document does not state.
+type Middleware struct {
+	Wrap      func(http.Handler) http.Handler
+	Describes oapifly.Middleware
+}
+
+// Routes is where operations are registered: a router, the registry recording them, and what
+// the middleware the router already applies to every route (its Use) adds, which chi runs but
+// cannot describe.
+type Routes struct {
+	Router   chi.Router
+	Registry *Registry
+	Applied  []oapifly.Middleware
+}
+
+// Describing returns rs with the descriptions of middleware applied to rs.Router since, for
+// a group that adds its own Use.
+func (rs Routes) Describing(applied ...oapifly.Middleware) Routes {
+	rs.Applied = append(append([]oapifly.Middleware(nil), rs.Applied...), applied...)
+	return rs
 }
 
 // Error is a handler's refusal: the status, the API's error code and message, and, for a
@@ -127,18 +157,23 @@ func (reg *Registry) Has(method, path string) bool {
 	return reg.routes[strings.ToUpper(method)+" "+path]
 }
 
-// Register mounts handler on r at op.Method and op.Path, behind op.Middleware, and records
-// the operation in reg. Req is bound from the request and Resp is what the handler answers.
-func Register[Req, Resp any](r chi.Router, reg *Registry, op Operation, handler func(*http.Request, Req) (Resp, error)) {
+// Register mounts handler on rs.Router at op.Method and op.Path, behind op.Middleware, and
+// records the operation in rs.Registry with everything its middleware adds. Req is bound from
+// the request and Resp is what the handler answers.
+func Register[Req, Resp any](rs Routes, op Operation, handler func(*http.Request, Req) (Resp, error)) {
 	if op.Status == 0 {
 		op.Status = http.StatusOK
 	}
 	reqType := reflect.TypeOf((*Req)(nil)).Elem()
 	shape := requestShape(reqType)
 
-	reg.record(op, reqType, reflect.TypeOf((*Resp)(nil)).Elem(), reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
+	rs.Registry.record(rs.Applied, op, reqType, reflect.TypeOf((*Resp)(nil)).Elem(), reflect.TypeOf((*Data[Resp])(nil)).Elem(), shape)
 
-	r.With(op.Middleware...).Method(op.Method, op.Path, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	wraps := make([]func(http.Handler) http.Handler, len(op.Middleware))
+	for i, m := range op.Middleware {
+		wraps[i] = m.Wrap
+	}
+	rs.Router.With(wraps...).Method(op.Method, op.Path, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var in Req
 		if err := bind(req, &in, shape); err != nil {
 			writeError(w, err)
@@ -153,7 +188,7 @@ func Register[Req, Resp any](r chi.Router, reg *Registry, op Operation, handler 
 	}))
 }
 
-func (reg *Registry) record(op Operation, reqType, respType, envelope reflect.Type, shape shape) {
+func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType, respType, envelope reflect.Type, shape shape) {
 	key := strings.ToUpper(op.Method) + " " + op.Path
 	if reg.routes[key] {
 		panic("endpoint: " + key + " registered twice")
@@ -178,10 +213,11 @@ func (reg *Registry) record(op Operation, reqType, respType, envelope reflect.Ty
 	}
 	sort.Ints(statuses)
 	for _, status := range statuses {
-		responses = append(responses, oapifly.EndpointResponse{
-			Status: status,
-			Type:   reflect.TypeOf(respond.ErrorResponse{}),
-		})
+		body := reflect.TypeOf(respond.ErrorResponse{})
+		if status == http.StatusUnprocessableEntity {
+			body = reflect.TypeOf(respond.ValidationErrorResponse{})
+		}
+		responses = append(responses, oapifly.EndpointResponse{Status: status, Type: body})
 	}
 
 	var request reflect.Type
@@ -197,7 +233,18 @@ func (reg *Registry) record(op Operation, reqType, respType, envelope reflect.Ty
 		Tags:        op.Tags,
 		Request:     request,
 		Responses:   responses,
+		Security:    op.Security,
+		Middleware:  described(applied, op.Middleware),
 	})
+}
+
+// described lists what every middleware wrapping an operation adds, outermost first.
+func described(applied []oapifly.Middleware, own []Middleware) []oapifly.Middleware {
+	out := append([]oapifly.Middleware(nil), applied...)
+	for _, m := range own {
+		out = append(out, m.Describes)
+	}
+	return out
 }
 
 // successResponse describes the success answer in the envelope write puts it in: a List as
