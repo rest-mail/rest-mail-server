@@ -11,6 +11,7 @@ package observer
 import (
 	"github.com/restmail/restmail/internal/metrics"
 	"github.com/restmail/restmail/internal/pipeline"
+	"time"
 )
 
 // metricsObserver implements pipeline.Observer by emitting bounded-cardinality
@@ -26,7 +27,7 @@ func New() pipeline.Observer { return metricsObserver{} }
 func (metricsObserver) ObserveStep(step pipeline.StepResult) {
 	filter := boundedFilter(step.FilterName)
 	metrics.PipelineStageDecisions.WithLabelValues(filter, stepAction(step)).Inc()
-	metrics.PipelineFilterDuration.WithLabelValues(filter).Observe(step.Duration.Seconds())
+	metrics.PipelineFilterDuration.WithLabelValues(filter).Observe(time.Duration(step.Duration).Seconds())
 
 	if mech, ok := authMechanism(step.Log.Filter); ok {
 		metrics.AuthVerdict.WithLabelValues(mech, normalizeAuthResult(step.Log.Result)).Inc()

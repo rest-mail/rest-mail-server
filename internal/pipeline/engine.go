@@ -79,11 +79,11 @@ func (e *Engine) SetFilterErrorAction(a Action) {
 
 // ExecutionResult holds the outcome of running a full pipeline.
 type ExecutionResult struct {
-	FinalAction Action        `json:"final_action"`
-	FinalEmail  *EmailJSON    `json:"final_email"`
-	Steps       []StepResult  `json:"steps"`
-	RejectMsg   string        `json:"reject_message,omitempty"`
-	Duration    time.Duration `json:"duration_ms"`
+	FinalAction Action       `json:"final_action"`
+	FinalEmail  *EmailJSON   `json:"final_email"`
+	Steps       []StepResult `json:"steps"`
+	RejectMsg   string       `json:"reject_message,omitempty"`
+	Duration    Elapsed      `json:"duration_ms"`
 	// Auth holds the verdicts the authentication filters recorded, in order. The
 	// delivery handlers write the stored message's Authentication-Results from
 	// it (AuthResultsHeader).
@@ -92,14 +92,14 @@ type ExecutionResult struct {
 
 // StepResult records what happened at each pipeline step.
 type StepResult struct {
-	FilterName string        `json:"filter_name"`
-	FilterType FilterType    `json:"filter_type"`
-	Action     Action        `json:"action"`
-	Skipped    bool          `json:"skipped,omitempty"`
-	SkipReason string        `json:"skip_reason,omitempty"`
-	Log        FilterLog     `json:"log"`
-	Duration   time.Duration `json:"duration_ms"`
-	Error      string        `json:"error,omitempty"`
+	FilterName string     `json:"filter_name"`
+	FilterType FilterType `json:"filter_type"`
+	Action     Action     `json:"action"`
+	Skipped    bool       `json:"skipped,omitempty"`
+	SkipReason string     `json:"skip_reason,omitempty"`
+	Log        FilterLog  `json:"log"`
+	Duration   Elapsed    `json:"duration_ms"`
+	Error      string     `json:"error,omitempty"`
 }
 
 // Execute runs the given pipeline configuration against an email.
@@ -147,7 +147,7 @@ Loop:
 			step.Skipped = true
 			step.SkipReason = "skipped by upstream filter"
 			step.Action = ActionContinue
-			step.Duration = time.Since(stepStart)
+			step.Duration = Elapsed(time.Since(stepStart))
 			recordStep(step)
 			e.logger.Debug("filter skipped", "filter", fc.Name, "reason", step.SkipReason)
 			continue
@@ -161,7 +161,7 @@ Loop:
 		if err != nil {
 			step.Error = fmt.Sprintf("create filter: %v", err)
 			step.Action = e.filterErrorAction
-			step.Duration = time.Since(stepStart)
+			step.Duration = Elapsed(time.Since(stepStart))
 			recordStep(step)
 			e.logger.Error("failed to create filter", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
 			if e.filterErrorAction == ActionContinue {
@@ -181,7 +181,7 @@ Loop:
 		if err != nil {
 			step.Error = fmt.Sprintf("execute: %v", err)
 			step.Action = e.filterErrorAction
-			step.Duration = time.Since(stepStart)
+			step.Duration = Elapsed(time.Since(stepStart))
 			recordStep(step)
 			e.logger.Error("filter execution failed", "filter", fc.Name, "error", err, "fail_action", e.filterErrorAction)
 			if e.filterErrorAction == ActionContinue {
@@ -194,13 +194,13 @@ Loop:
 
 		step.Action = filterResult.Action
 		step.Log = filterResult.Log
-		step.Duration = time.Since(stepStart)
+		step.Duration = Elapsed(time.Since(stepStart))
 		recordStep(step)
 
 		e.logger.Debug("filter executed",
 			"filter", fc.Name,
 			"action", filterResult.Action,
-			"duration", step.Duration,
+			"duration", time.Duration(step.Duration),
 		)
 
 		// Process skip_filters
@@ -236,7 +236,7 @@ Loop:
 		}
 	}
 
-	result.Duration = time.Since(start)
+	result.Duration = Elapsed(time.Since(start))
 	result.Auth = auth.List()
 	// One terminal observation per message, once the final action is known. A
 	// non-continue outcome breaks the loop immediately after recording its step,

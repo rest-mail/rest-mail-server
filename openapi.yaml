@@ -5172,8 +5172,8 @@ paths:
                     $ref: "#/components/schemas/ExecutionResult"
               examples:
                 # The contract run's pipeline (header_validate alone) on the
-                # empty email: it has no From and no Date. Durations are in
-                # nanoseconds.
+                # empty email: it has no From and no Date. Durations are whole
+                # milliseconds; this run takes less than one.
                 valid:
                   value:
                     data:
@@ -5187,8 +5187,8 @@ paths:
                             filter: header_validate
                             result: reject
                             detail: missing From header; missing Date header
-                          duration_ms: 4000
-                      duration_ms: 12000
+                          duration_ms: 0
+                      duration_ms: 0
         "400":
           description: The body is not JSON (`bad_request`)
           content:

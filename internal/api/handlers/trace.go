@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/pipeline"
@@ -108,7 +109,7 @@ func buildTrace(in traceInputs) models.MessageTrace {
 	)
 	if in.Result != nil {
 		finalAction = string(in.Result.FinalAction)
-		durationMS = in.Result.Duration.Milliseconds()
+		durationMS = time.Duration(in.Result.Duration).Milliseconds()
 		if b, err := json.Marshal(in.Result.Steps); err == nil {
 			stages = b
 		}
