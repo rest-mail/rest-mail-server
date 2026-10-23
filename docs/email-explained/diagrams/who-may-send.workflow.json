@@ -1,0 +1,240 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Two front doors: other servers on port 25, your users on submission",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/who-may-send.html",
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "Who connects"
+        },
+        "security": {
+          "label": "Checks"
+        },
+        "backend": {
+          "label": "What happens to the mail"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "mx",
+      "label": "Port 25: other servers, no sign-in"
+    },
+    {
+      "id": "refused",
+      "label": "Refused",
+      "variant": "exception"
+    },
+    {
+      "id": "submit",
+      "label": "Port 465 or 587: your users, signed in"
+    }
+  ],
+  "mainPath": [
+    "app",
+    "tls",
+    "auth",
+    "own",
+    "limits",
+    "queue"
+  ],
+  "nodes": [
+    {
+      "id": "server",
+      "lane": "mx",
+      "col": 0,
+      "type": "external",
+      "label": "Another server",
+      "sublabel": "delivering to you"
+    },
+    {
+      "id": "local",
+      "lane": "mx",
+      "col": 2,
+      "type": "security",
+      "label": "Recipient hosted here?",
+      "icon": "decision"
+    },
+    {
+      "id": "deliver",
+      "lane": "mx",
+      "col": 4,
+      "type": "backend",
+      "label": "Deliver locally",
+      "sublabel": "after the inbound checks"
+    },
+    {
+      "id": "app",
+      "lane": "submit",
+      "col": 0,
+      "type": "external",
+      "label": "Your user's app",
+      "icon": "person"
+    },
+    {
+      "id": "tls",
+      "lane": "submit",
+      "col": 1,
+      "type": "security",
+      "label": "TLS first",
+      "sublabel": "465, or 587 + STARTTLS"
+    },
+    {
+      "id": "auth",
+      "lane": "submit",
+      "col": 2,
+      "type": "security",
+      "label": "AUTH",
+      "sublabel": "app password, over TLS"
+    },
+    {
+      "id": "own",
+      "lane": "submit",
+      "col": 3,
+      "type": "security",
+      "label": "Own address?",
+      "sublabel": "MAIL FROM and From:"
+    },
+    {
+      "id": "limits",
+      "lane": "submit",
+      "col": 4,
+      "type": "security",
+      "label": "Within limits?",
+      "sublabel": "per account, per hour"
+    },
+    {
+      "id": "queue",
+      "lane": "submit",
+      "col": 5,
+      "type": "backend",
+      "label": "Queue for anywhere",
+      "icon": "success"
+    },
+    {
+      "id": "relay",
+      "lane": "refused",
+      "col": 2,
+      "type": "security",
+      "label": "Relay denied",
+      "sublabel": "454 or 554, or 550",
+      "icon": "failure"
+    },
+    {
+      "id": "noauth",
+      "lane": "refused",
+      "col": 3,
+      "type": "security",
+      "label": "Not yours, or too many",
+      "sublabel": "550, 451 4.7.1",
+      "icon": "failure"
+    }
+  ],
+  "edges": [
+    {
+      "id": "connect",
+      "from": "server",
+      "to": "local",
+      "label": "RCPT TO",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "yes-local",
+      "from": "local",
+      "to": "deliver",
+      "label": "yes",
+      "role": "branch",
+      "variant": "emphasis"
+    },
+    {
+      "id": "no-local",
+      "from": "local",
+      "to": "relay",
+      "label": "no",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "encrypt",
+      "from": "app",
+      "to": "tls",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "signin",
+      "from": "tls",
+      "to": "auth",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "address",
+      "from": "auth",
+      "to": "own",
+      "label": "235",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "rate",
+      "from": "own",
+      "to": "limits",
+      "label": "yes",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "accept",
+      "from": "limits",
+      "to": "queue",
+      "label": "yes",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "not-own",
+      "from": "own",
+      "to": "noauth",
+      "label": "no",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "too-many",
+      "from": "limits",
+      "to": "noauth",
+      "label": "no",
+      "role": "branch",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "The rule",
+      "items": [
+        "Port 25: anyone may deliver, only to your users",
+        "Submission: only your users, to anyone",
+        "RFC 6409: refuse MAIL FROM before sign-in"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "When a password leaks",
+      "items": [
+        "App passwords: one per app, revoke it alone",
+        "Per-account limits turn a stolen login into a nuisance",
+        "Ban addresses that keep guessing"
+      ]
+    }
+  ]
+}

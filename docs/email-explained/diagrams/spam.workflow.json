@@ -1,0 +1,66 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Layers of spam defence along one SMTP conversation: cheap checks first",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/spam.html",
+    "legend": {
+      "entries": {
+        "security": { "label": "Checks" },
+        "backend": { "label": "The SMTP conversation" },
+        "frontend": { "label": "Where the message ends up" },
+        "messagebus": { "label": "Try again later" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "checks", "label": "What is checked" },
+    { "id": "smtp", "label": "The conversation" },
+    { "id": "outcome", "label": "If it fails", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "cheap", "label": "Before the message: cheap", "fromCol": 0, "toCol": 2 },
+    { "id": "costly", "label": "After the message: costly", "fromCol": 3, "toCol": 4, "variant": "security" },
+    { "id": "user", "label": "The user", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["connect", "envelope", "rcpt", "data", "score", "inbox"],
+  "nodes": [
+    { "id": "c-connect", "lane": "checks", "col": 0, "type": "security", "label": "Blocklists, rDNS", "sublabel": "early talkers, limits" },
+    { "id": "c-envelope", "lane": "checks", "col": 1, "type": "security", "label": "SPF", "sublabel": "MAIL FROM and HELO" },
+    { "id": "c-rcpt", "lane": "checks", "col": 2, "type": "security", "label": "Recipient exists?", "sublabel": "greylisting" },
+    { "id": "c-data", "lane": "checks", "col": 3, "type": "security", "label": "DKIM, DMARC, ARC", "sublabel": "needs the whole message" },
+    { "id": "c-score", "lane": "checks", "col": 4, "type": "security", "label": "Content and viruses", "sublabel": "Rspamd, SpamAssassin, ClamAV" },
+    { "id": "connect", "lane": "smtp", "col": 0, "type": "backend", "label": "Connect", "sublabel": "from 192.0.2.99" },
+    { "id": "envelope", "lane": "smtp", "col": 1, "type": "backend", "label": "EHLO, MAIL FROM" },
+    { "id": "rcpt", "lane": "smtp", "col": 2, "type": "backend", "label": "RCPT TO" },
+    { "id": "data", "lane": "smtp", "col": 3, "type": "backend", "label": "DATA", "sublabel": "the message itself" },
+    { "id": "score", "lane": "smtp", "col": 4, "type": "backend", "label": "Final reply", "sublabel": "decide before the 250" },
+    { "id": "inbox", "lane": "smtp", "col": 5, "type": "frontend", "label": "Inbox", "sublabel": "or junk folder", "icon": "success" },
+    { "id": "refuse", "lane": "outcome", "col": 0, "type": "frontend", "label": "Refused: 554", "sublabel": "listed, or a bot", "icon": "failure" },
+    { "id": "later", "lane": "outcome", "col": 2, "type": "messagebus", "label": "Not now: 451", "sublabel": "greylisted; real servers retry" },
+    { "id": "reject", "lane": "outcome", "col": 4, "type": "frontend", "label": "Refused: 550", "sublabel": "DMARC reject, spam, virus", "icon": "failure" },
+    { "id": "report", "lane": "outcome", "col": 5, "type": "frontend", "label": "Report spam", "sublabel": "trains filters and reputation" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "connect", "to": "envelope", "role": "main", "variant": "default" },
+    { "id": "e2", "from": "envelope", "to": "rcpt", "role": "main", "variant": "default" },
+    { "id": "e3", "from": "rcpt", "to": "data", "role": "main", "variant": "default" },
+    { "id": "e4", "from": "data", "to": "score", "role": "main", "variant": "default" },
+    { "id": "e5", "from": "score", "to": "inbox", "label": "250", "role": "main", "variant": "emphasis" },
+    { "id": "k1", "from": "c-connect", "to": "connect", "role": "branch", "variant": "security" },
+    { "id": "k2", "from": "c-envelope", "to": "envelope", "role": "branch", "variant": "security" },
+    { "id": "k3", "from": "c-rcpt", "to": "rcpt", "role": "branch", "variant": "security" },
+    { "id": "k4", "from": "c-data", "to": "data", "role": "branch", "variant": "security" },
+    { "id": "k5", "from": "c-score", "to": "score", "role": "branch", "variant": "security" },
+    { "id": "f1", "from": "connect", "to": "refuse", "role": "branch", "variant": "dashed" },
+    { "id": "f3", "from": "rcpt", "to": "later", "role": "branch", "variant": "dashed" },
+    { "id": "f5", "from": "score", "to": "reject", "role": "branch", "variant": "dashed" },
+    { "id": "f6", "from": "inbox", "to": "report", "label": "user", "role": "branch", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Why this order", "items": ["A blocklist lookup costs one DNS query; a content scan costs CPU per message", "Refusing early also costs the spammer most"] },
+    { "dot": "rose", "title": "Decide before the 250", "items": ["Refused mail is the sender's to bounce", "Accepting then dropping loses mail silently; accepting then bouncing is backscatter"] }
+  ]
+}
