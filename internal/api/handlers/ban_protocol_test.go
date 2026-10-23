@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -26,7 +28,7 @@ func createBanNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, re
 				reachedDB = true
 			}
 		}()
-		NewBanHandler(nil).CreateBan(rr, req)
+		banRoutes(NewBanHandler(nil)).ServeHTTP(rr, req)
 	}()
 	return rr, reachedDB
 }
@@ -72,27 +74,25 @@ func TestCreateBanProtocol_EnumReachesLookup(t *testing.T) {
 	}
 }
 
-// The other refusals keep their bodies and their order: a missing IP is
-// refused before the protocol is looked at, the protocol before the duration,
-// and a bad duration with a valid protocol as before. A body that does not
-// decode is still a 400.
+// Binding reports all broken rules together, preserving each field's documented
+// message. A malformed JSON body remains a 400.
 func TestCreateBanProtocol_KeepsOtherRefusals(t *testing.T) {
-	const (
-		ipMissing  = `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"ip":"IP address is required"}}}}` + "\n"
-		badDur     = `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"duration":"invalid duration format (e.g. 24h, 168h)"}}}}` + "\n"
-		badRequest = `{"error":{"code":"bad_request","message":"Invalid request body"}}` + "\n"
-	)
+	const badRequest = `{"error":{"code":"bad_request","message":"Invalid request body"}}` + "\n"
+	refusal := func(fields map[string]string) string {
+		return string(mustJSON(map[string]any{"error": map[string]any{"code": "validation_failed", "message": "Request body failed validation", "details": map[string]any{"fields": fields}}})) + "\n"
+	}
+
 	for _, tc := range []struct {
 		body   string
 		status int
 		want   string
 	}{
-		{`{"protocol":"ftp","duration":"forever"}`, http.StatusUnprocessableEntity, ipMissing},
-		{`{"ip":"","protocol":"all"}`, http.StatusUnprocessableEntity, ipMissing},
-		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","protocol":"ftp","duration":"forever"}`, http.StatusUnprocessableEntity, banProtocolRefusal},
-		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","protocol":"smtp","duration":"forever"}`, http.StatusUnprocessableEntity, badDur},
-		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","duration":"7d"}`, http.StatusUnprocessableEntity, banProtocolRefusal},
-		{`{"ip":"192.0.2.10","protocol":7}`, http.StatusBadRequest, badRequest},
+		{`{"protocol":"ftp","duration":"forever"}`, http.StatusUnprocessableEntity, refusal(map[string]string{"ip": "IP address is required", "created_by": "required", "protocol": "protocol must be one of smtp, imap, pop3, all", "duration": "invalid duration format (e.g. 24h, 168h)"})},
+		{`{"ip":"","protocol":"all"}`, http.StatusUnprocessableEntity, refusal(map[string]string{"ip": "IP address is required", "created_by": "required"})},
+		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","protocol":"ftp","duration":"forever"}`, http.StatusUnprocessableEntity, refusal(map[string]string{"protocol": "protocol must be one of smtp, imap, pop3, all", "duration": "invalid duration format (e.g. 24h, 168h)"})},
+		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","protocol":"smtp","duration":"forever"}`, http.StatusUnprocessableEntity, refusal(map[string]string{"duration": "invalid duration format (e.g. 24h, 168h)"})},
+		{`{"ip":"192.0.2.10","created_by":"admin@restmail.test","duration":"7d"}`, http.StatusUnprocessableEntity, refusal(map[string]string{"protocol": "protocol must be one of smtp, imap, pop3, all", "duration": "invalid duration format (e.g. 24h, 168h)"})},
+		{`{"ip":"192.0.2.10","protocol":7}`, http.StatusUnprocessableEntity, refusal(map[string]string{"protocol": "must be a string", "created_by": "required"})},
 		{`{"ip":"192.0.2.10","protocol":null`, http.StatusBadRequest, badRequest},
 	} {
 		rr, reachedDB := createBanNoDB(t, tc.body)
@@ -100,7 +100,14 @@ func TestCreateBanProtocol_KeepsOtherRefusals(t *testing.T) {
 			t.Errorf("%s reached the database; want it refused first", tc.body)
 			continue
 		}
-		if rr.Code != tc.status || rr.Body.String() != tc.want {
+		var got, want any
+		if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(tc.want), &want); err != nil {
+			t.Fatal(err)
+		}
+		if rr.Code != tc.status || !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: %d %s, want %d %s", tc.body, rr.Code, rr.Body, tc.status, tc.want)
 		}
 	}
