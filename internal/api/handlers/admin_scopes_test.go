@@ -117,7 +117,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if len(empty.Data) != 0 || empty.Pagination.Total != 0 {
 		t.Fatalf("mailbox learned parent: %+v", empty)
 	}
-	rr := scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapMailboxesRead, NewMailboxHandler(tx, nil, nil).List, "/api/v1/admin/mailboxes?limit=1&offset=1")
+	rr := scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapMailboxesRead, mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP, "/api/v1/admin/mailboxes?limit=1&offset=1")
 	var page listEnvelope
 	if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
@@ -125,7 +125,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if rr.Code != 200 || len(page.Data) != 1 || page.Pagination.Total != 2 || page.Pagination.HasMore {
 		t.Fatalf("mailbox paging status%d body%s", rr.Code, rr.Body.String())
 	}
-	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapMailboxesRead, NewMailboxHandler(tx, nil, nil).List, "/api/v1/admin/mailboxes")
+	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapMailboxesRead, mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP, "/api/v1/admin/mailboxes")
 	var mailboxPage struct {
 		Data       []models.Mailbox
 		Pagination struct{ Total int }
@@ -139,7 +139,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if mailboxPage.Data[0].Domain.Name != "" {
 		t.Fatalf("parent configuration leaked: %s", rr.Body.String())
 	}
-	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapMailboxesRead, NewAliasHandler(tx).List, "/api/v1/admin/aliases")
+	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapMailboxesRead, aliasRoutes(NewAliasHandler(tx)).ServeHTTP, "/api/v1/admin/aliases")
 	// A fresh envelope each time: total is omitted at 0, and decoding into the
 	// last page would keep its total.
 	page = listEnvelope{}
@@ -149,7 +149,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 	if rr.Code != 200 || len(page.Data) != 0 || page.Pagination.Total != 0 {
 		t.Fatalf("mailbox learned aliases: %s", rr.Body.String())
 	}
-	rr = scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapMailboxesRead, NewAliasHandler(tx).List, "/api/v1/admin/aliases?domain_id="+fmt.Sprint(b.ID))
+	rr = scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapMailboxesRead, aliasRoutes(NewAliasHandler(tx)).ServeHTTP, "/api/v1/admin/aliases?domain_id="+fmt.Sprint(b.ID))
 	page = listEnvelope{}
 	if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)

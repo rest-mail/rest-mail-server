@@ -95,8 +95,8 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 	fx := seedMsgDeleteFixture(t, tx, 0)
 	pipeline := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	handlers := map[string]http.HandlerFunc{
-		"listAliases":       NewAliasHandler(tx).List,
-		"listMailboxes":     NewMailboxHandler(tx, nil, nil).List,
+		"listAliases":       aliasRoutes(NewAliasHandler(tx)).ServeHTTP,
+		"listMailboxes":     mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP,
 		"listPipelines":     pipeline.ListPipelines,
 		"listCustomFilters": pipeline.ListCustomFilters,
 		"listPipelineLogs":  pipeline.ListPipelineLogs,
@@ -139,6 +139,12 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 						query := url.Values{param.Name: []string{value}}
 						req := authzRequest(http.MethodGet, "/?"+query.Encode(), fx.mailbox.ID, map[string]string{"id": uintToStr(fx.mailbox.ID), "folder": "INBOX"}, "")
 						rr := httptest.NewRecorder()
+						if op == "listAliases" {
+							req.URL.Path = "/api/v1/admin/aliases"
+						}
+						if op == "listMailboxes" {
+							req.URL.Path = "/api/v1/admin/mailboxes"
+						}
 						handler(rr, req)
 						if rr.Code != want {
 							t.Fatalf("status = %d, want %d; body %s", rr.Code, want, rr.Body.String())

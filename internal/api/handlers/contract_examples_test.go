@@ -24,7 +24,7 @@ func TestDomainCreate_DocumentedRefusals(t *testing.T) {
 }
 
 func TestAliasCreate_DocumentedRefusals(t *testing.T) {
-	documentedRefusals(t, "/api/v1/admin/aliases", "createAlias", NewAliasHandler(nil).Create)
+	documentedRefusals(t, "/api/v1/admin/aliases", "createAlias", aliasRoutes(NewAliasHandler(nil)).ServeHTTP)
 }
 
 func documentedRefusals(t *testing.T, path, operationID string, create http.HandlerFunc) {

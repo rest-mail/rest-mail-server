@@ -790,20 +790,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Accounts (mailboxes). Creating one is POST /api/v1/accounts, the same
 		// for everyone; deleting one removes its grants under the grants rules.
-		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
-		r.With(needsOnMailbox(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
-		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
-		r.With(needsOnMailbox(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
-		// Signing an account out everywhere is a change to it, like a new
-		// password: mailboxes:write on it.
-		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Delete("/api/v1/admin/mailboxes/{id}/sessions", mailboxH.EndSessions)
-
-		// Aliases (mailbox routing config → mailboxes:* capabilities)
-		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)
-		r.With(needsOnList(middleware.CapMailboxesWrite)).Post("/api/v1/admin/aliases", aliasH.Create)
-		r.With(needsOnAlias(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases/{id}", aliasH.Get)
-		r.With(needsOnAlias(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
-		r.With(needsOnAlias(middleware.CapMailboxesDel)).Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
+		mailboxH.Register(admin, handlers.MailboxRouteChecks{
+			OnList: describedCapability(needsOnList), OnMailbox: describedMailboxCapability(needsOnMailbox),
+		})
+		aliasH.Register(admin, handlers.AliasRouteChecks{
+			OnList: describedCapability(needsOnList), OnAlias: describedAliasCapability(needsOnAlias),
+		})
 
 		// Pipelines
 		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines", pipelineH.ListPipelines)
