@@ -62,7 +62,7 @@ func TestCreateCustomFilter_RejectsNestedDomainMassAssignment(t *testing.T) {
 	h := NewPipelineHandler(tx, nil, filters.JSSidecar{})
 	// id + created_at are client-forged; `domain` is a nested association that,
 	// under the old code, GORM would auto-create as a brand-new domain row.
-	const clientForgedID = 987654
+
 	body := `{
 		"id": 987654,
 		"created_at": "2000-01-01T00:00:00Z",
@@ -76,10 +76,10 @@ func TestCreateCustomFilter_RejectsNestedDomainMassAssignment(t *testing.T) {
 	}`
 
 	rr := httptest.NewRecorder()
-	h.CreateCustomFilter(rr, adminPipelineReq(http.MethodPost, "/custom-filters", nil, body))
+	pipelineRoutes(h).ServeHTTP(rr, adminPipelineReq(http.MethodPost, "/custom-filters", nil, body))
 
-	if rr.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d (%s)", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d (%s)", rr.Code, rr.Body.String())
 	}
 
 	// (1) No Domain row may be created as a side effect of a filter create.
@@ -94,17 +94,11 @@ func TestCreateCustomFilter_RejectsNestedDomainMassAssignment(t *testing.T) {
 		t.Fatalf("the client-supplied nested domain 'evil-massassign.test' was inserted (%d row(s))", evil)
 	}
 
-	// (2) The stored filter must belong to the FK domain, ignore the client id,
-	// and be otherwise well-formed.
-	var cf models.CustomFilter
-	if err := tx.Where("name = ?", "massassign-filter").First(&cf).Error; err != nil {
-		t.Fatalf("created custom filter not found: %v", err)
-	}
-	if cf.ID == clientForgedID {
-		t.Fatalf("client-supplied primary key %d was honoured instead of a server-assigned id", clientForgedID)
-	}
-	if cf.DomainID != dom.ID {
-		t.Fatalf("custom filter DomainID = %d, want the FK-supplied %d", cf.DomainID, dom.ID)
+	// Closed binding refuses the entire forged request before any filter is created.
+	var count int64
+	tx.Model(&models.CustomFilter{}).Where("name = ?", "massassign-filter").Count(&count)
+	if count != 0 {
+		t.Fatalf("forged request created %d filters", count)
 	}
 }
 
@@ -131,7 +125,7 @@ func TestCreateCustomFilter_ValidCreatePersisted(t *testing.T) {
 	}`
 
 	rr := httptest.NewRecorder()
-	h.CreateCustomFilter(rr, adminPipelineReq(http.MethodPost, "/custom-filters", nil, body))
+	pipelineRoutes(h).ServeHTTP(rr, adminPipelineReq(http.MethodPost, "/custom-filters", nil, body))
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for a valid create, got %d (%s)", rr.Code, rr.Body.String())

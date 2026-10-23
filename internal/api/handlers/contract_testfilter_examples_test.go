@@ -54,7 +54,7 @@ func postTestFilter(t *testing.T, h *PipelineHandler, request interface{}) *http
 		t.Fatal(err)
 	}
 	rr := httptest.NewRecorder()
-	h.TestFilter(rr, httptest.NewRequest(http.MethodPost, testFilterPath, bytes.NewReader(body)))
+	pipelineRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, testFilterPath, bytes.NewReader(body)))
 	return rr
 }
 
@@ -66,10 +66,10 @@ func TestTestFilter_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, testFilterPath, "testFilter")
 
 	want := map[string][]string{
-		"request": {"filter_name_missing", "invalid_body", "valid"},
+		"request": {"filter_name_missing", "filter_name_wrong_type", "invalid_body", "valid"},
 		"200":     {"valid"},
 		"400":     {"invalid_body"},
-		"422":     {"filter_name_missing"},
+		"422":     {"filter_name_missing", "filter_name_wrong_type"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

@@ -34,12 +34,12 @@ func createCustomFilterNoDB(t *testing.T, body string) (rr *httptest.ResponseRec
 			}
 			stack := string(debug.Stack())
 			if !strings.Contains(stack, "gorm.io/gorm.(*DB).Table(") ||
-				!strings.Contains(stack, "handlers.(*PipelineHandler).CreateCustomFilter(") {
+				!strings.Contains(stack, "handlers.(*PipelineHandler).createCustomFilter(") {
 				t.Fatalf("%s: panicked outside gorm's Table: %v\n%s", body, r, stack)
 			}
 			reached = true
 		}()
-		h.CreateCustomFilter(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }
