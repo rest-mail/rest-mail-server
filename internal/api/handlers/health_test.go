@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -23,6 +26,12 @@ func openHealthTestDB(t *testing.T) *gorm.DB {
 		t.Skipf("health DB test skipped: migrate failed (%v)", err)
 	}
 	return gdb
+}
+
+func healthRoutes(h *HealthHandler) http.Handler {
+	r := chi.NewRouter()
+	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()})
+	return r
 }
 
 func healthBody(t *testing.T, rr *httptest.ResponseRecorder) map[string]any {
@@ -70,7 +79,7 @@ func TestHealth_CertDetailGatedByAuth(t *testing.T) {
 
 	// Unauthenticated: liveness only, no certificate inventory.
 	unauth := httptest.NewRecorder()
-	h.Health(unauth, httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	healthRoutes(h).ServeHTTP(unauth, httptest.NewRequest(http.MethodGet, "/api/health", nil))
 	if unauth.Code != http.StatusOK {
 		t.Fatalf("unauthenticated status = %d, want 200", unauth.Code)
 	}
@@ -91,7 +100,7 @@ func TestHealth_CertDetailGatedByAuth(t *testing.T) {
 	userReq := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	userReq.Header.Set("Authorization", "Bearer "+plain.AccessToken)
 	userRR := httptest.NewRecorder()
-	h.Health(userRR, userReq)
+	healthRoutes(h).ServeHTTP(userRR, userReq)
 	if _, leaked := healthBody(t, userRR)["cert_warnings"]; leaked {
 		t.Fatal("an account without domains:read was shown the certificate inventory")
 	}
@@ -106,7 +115,7 @@ func TestHealth_CertDetailGatedByAuth(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	req.Header.Set("Authorization", "Bearer "+pair.AccessToken)
 	authed := httptest.NewRecorder()
-	h.Health(authed, req)
+	healthRoutes(h).ServeHTTP(authed, req)
 	if authed.Code != http.StatusOK {
 		t.Fatalf("authenticated status = %d, want 200", authed.Code)
 	}
@@ -126,7 +135,7 @@ func TestHealth_InvalidTokenIsLivenessOnly(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	req.Header.Set("Authorization", "Bearer not-a-valid-token")
 	rr := httptest.NewRecorder()
-	h.Health(rr, req)
+	healthRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("invalid-token status = %d, want 200 (probe must not 401)", rr.Code)

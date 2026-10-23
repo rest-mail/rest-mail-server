@@ -1577,6 +1577,39 @@
     A held message that is not in the account's quarantine, or belongs to another account, is
     404 not_found, as release answers. The oracle documents it for release only.
 
+# API root, health and server identity (#630)
+
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.required: openapi.yaml absent, generated [\"build_date\",\"commit\",\"links\",\"name\",\"version\"]"
+  reason: >-
+    The root always writes every field, empty when the build stamped none. The oracle makes
+    them all optional.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.properties: openapi.yaml absent, generated {\"docs\":{\"type\":\"string\"},\"health\":{\"type\":\"string\"},\"login\":{\"type\":\"string\"}}"
+  reason: >-
+    The links are the three the root has always written: docs, health and login. The oracle
+    describes them as an open map of strings.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.required: openapi.yaml absent, generated [\"docs\",\"health\",\"login\"]"
+  reason: >-
+    All three links are always written.
+- operation: apiRoot
+  difference: "response 200 application/json.properties.data.properties.links.additionalProperties: openapi.yaml {\"type\":\"string\"}, generated false"
+  reason: >-
+    The links object is closed like every struct (go-oapifly#30): it holds the three links
+    and nothing else.
+- operation: getHealth
+  difference: "response 200 application/json.properties.data.properties.cert_warnings: *"
+  reason: >-
+    The certificates expiring within 30 days, written only for a bearer token of a current
+    session holding domains:read at *, and only when there are any. The oracle does not
+    describe them.
+- operation: describeServer
+  difference: "response 429: generated only"
+  reason: >-
+    GET /api/v1/server shares the owner endpoints' per-IP bucket, which answers 429
+    rate_limited with Retry-After. The oracle does not document it.
+
 # The account's own password and two-factor authentication (#634)
 
 - operation: changeOwnPassword
