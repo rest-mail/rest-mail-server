@@ -178,6 +178,9 @@ type Worker struct {
 	masterKey string
 	// relayRoots replaces system trust for relay certificates; tests only.
 	relayRoots *x509.CertPool
+	// resolver answers the MX and address lookups delivery makes; nil is the
+	// system resolver. Tests only.
+	resolver mxResolver
 	// restmailRoots holds system roots plus any configured operator/testbed CA
 	// for both RESTMAIL discovery and delivery. Nil uses system roots.
 	restmailRoots *x509.CertPool
@@ -531,6 +534,51 @@ func (w *Worker) recordFailure(item models.OutboundQueue, deliveryErr error, now
 	w.generateBounce(item, bounceErr)
 }
 
+// mxResolver is what delivery asks the DNS; *net.Resolver answers it.
+type mxResolver interface {
+	LookupMX(ctx context.Context, name string) ([]*net.MX, error)
+	LookupHost(ctx context.Context, host string) ([]string, error)
+}
+
+// errNoMailHost is RFC 5321 §5.1's error for a domain mail cannot be routed to:
+// one the DNS says does not exist, or one with no MX whose implicit MX, the
+// domain itself, has no address. It bounces at once as a bad destination
+// system (RFC 3463 X.1.2), not after days of retrying a typo.
+func errNoMailHost() error {
+	return &SMTPError{Code: 550, Enhanced: "5.1.2", Message: "recipient domain does not exist or has no mail host"}
+}
+
+// mxHosts is where mail for dnsDomain goes (RFC 5321 §5.1): its MX records, or,
+// with none, the domain itself as an implicit MX when it has an address. A
+// lookup that fails for now (SERVFAIL, a timeout) is an error to retry.
+//
+// Go reports "no such host" both for NXDOMAIN and for a name with no MX, and
+// some resolvers (Docker's embedded DNS answering for container names) serve
+// addresses but no MX at all, so the address lookup is what tells them apart:
+// a name with neither an MX nor an address has nowhere to deliver to, and
+// whether it exists does not change that.
+func (w *Worker) mxHosts(ctx context.Context, dnsDomain string) ([]*net.MX, error) {
+	var r mxResolver = net.DefaultResolver
+	if w.resolver != nil {
+		r = w.resolver
+	}
+	var dnsErr *net.DNSError
+	mx, err := r.LookupMX(ctx, dnsDomain)
+	if err == nil && len(mx) > 0 {
+		return mx, nil
+	}
+	if err != nil && (!errors.As(err, &dnsErr) || !dnsErr.IsNotFound) {
+		return nil, fmt.Errorf("MX lookup failed for %s: %w", dnsDomain, err)
+	}
+	if _, err := r.LookupHost(ctx, dnsDomain); err != nil {
+		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+			return nil, errNoMailHost()
+		}
+		return nil, fmt.Errorf("address lookup failed for %s: %w", dnsDomain, err)
+	}
+	return []*net.MX{{Host: dnsDomain, Pref: 0}}, nil
+}
+
 // deliver attempts to send a message via SMTP to the destination MX.
 // It first checks if the primary MX supports the RESTMAIL protocol for
 // direct HTTPS delivery, falling back to standard SMTP if not.
@@ -564,27 +612,11 @@ func (w *Worker) deliver(item models.OutboundQueue) error {
 	if err != nil {
 		return &SMTPError{Code: 550, Enhanced: "5.1.2", Message: "invalid recipient domain"}
 	}
-	mxRecords, err := net.LookupMX(dnsDomain)
+	mxCtx, mxCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	mxRecords, err := w.mxHosts(mxCtx, dnsDomain)
+	mxCancel()
 	if err != nil {
-		// RFC 5321 implicit MX: a domain with no MX records is still
-		// deliverable via its A/AAAA record. Go's LookupMX reports "no such
-		// host" both for NXDOMAIN and for a host that simply has no MX (and
-		// some resolvers — e.g. Docker's embedded DNS answering for container
-		// hostnames — serve A records but no MX at all), so fall back to the
-		// domain itself and let the dial resolve it. A truly unresolvable host
-		// then fails at connect time and defers as usual. Other lookup errors
-		// (e.g. resolver unreachable) still defer here.
-		var dnsErr *net.DNSError
-		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-			mxRecords = []*net.MX{{Host: dnsDomain, Pref: 0}}
-		} else {
-			return fmt.Errorf("MX lookup failed for %s: %w", item.Domain, err)
-		}
-	}
-
-	if len(mxRecords) == 0 {
-		// Fall back to A record
-		mxRecords = []*net.MX{{Host: dnsDomain, Pref: 0}}
+		return err
 	}
 	// A null MX (RFC 7505) says the domain accepts no mail. Its host is "." —
 	// left alone, that would be dialed as ":25", this machine.
