@@ -1541,6 +1541,42 @@
   difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
   reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
 
+# The account's quarantine (#641)
+
+- operation: listQuarantine
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list has always read limit (default 50, at most 200), as every list does; the oracle
+    does not document it.
+- operation: listQuarantine
+  difference: "parameter query offset: generated only"
+  reason: >-
+    The list has always read offset; the oracle does not document it.
+- operation: listQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: releaseQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: deleteQuarantine
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: releaseQuarantine
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"released\"]"
+  reason: >-
+    A release always answers status released; the mobile app refuses any other. The oracle
+    leaves the value open.
+- operation: deleteQuarantine
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"deleted\"]"
+  reason: >-
+    A delete always answers status deleted; the mobile app refuses any other. The oracle
+    leaves the value open.
+- operation: deleteQuarantine
+  difference: "response 404: generated only"
+  reason: >-
+    A held message that is not in the account's quarantine, or belongs to another account, is
+    404 not_found, as release answers. The oracle documents it for release only.
+
 # API root, health and server identity (#630)
 
 - operation: apiRoot
