@@ -88,16 +88,27 @@ class PairedRefusals(unittest.TestCase):
     # The operations whose documented 400s and 422s each have their named
     # request example.
     PAIRED = {
+        "login",
+        "updateAlias",
+        "setDomainRelay",
+        "setDKIMRotation",
         "sendMessage",
         "microsoftAutodiscover",
         "createDomain",
+        "updateDomain",
         "createAlias",
         "createPipeline",
+        "updatePipeline",
         "createBan",
         "createCustomFilter",
+        "updateCustomFilter",
         "validateCustomFilter",
         "sendTestEmail",
         "createAccount",
+        "importContacts",
+        "linkAccount",
+        "createAppPassword",
+        "createFolder",
         "restmailDeliver",
         "bulkDeleteQueue",
         "bulkRetryQueue",
@@ -110,7 +121,14 @@ class PairedRefusals(unittest.TestCase):
         "receiveTlsReport",
         "createCertificate",
         "protocolSignIn",
+        "probeServices",
+        "setMtaStsPolicy",
+        "setVacation",
+        "updateMailbox",
+        "putSieveScript",
+        "validateSieveScript",
         "createContact",
+        "setDKIMKey",
     }
 
     def test_exclude_matching_sends_exactly_the_paired_refusals(self):
@@ -158,6 +176,26 @@ class PairedRefusals(unittest.TestCase):
                             examples = response.get("examples", {})
                             self.assertTrue(examples)
                             self.assertLessEqual(set(examples), set(requests.get("examples", {})))
+
+
+class MissingResourceRefusals(unittest.TestCase):
+    def test_only_enabled_lookups_send_their_documented_404(self):
+        with open(os.path.join(ROOT, "openapi.yaml")) as file:
+            spec = yaml.safe_load(file)
+        with open(os.path.join(ROOT, "vertrag.yml")) as file:
+            config = yaml.safe_load(file)
+        patterns = [re.compile(pattern) for pattern in config["exclude-matching"]]
+        never = set(config["exclude-operation-id"])
+        sent = set()
+        for path, item in spec["paths"].items():
+            for method in gate.METHODS:
+                op = item.get(method)
+                if op is None or op["operationId"] in never or "404" not in op["responses"]:
+                    continue
+                name = "%s > %s > 404 > application/json" % (path, op["summary"])
+                if not any(pattern.search(name) for pattern in patterns):
+                    sent.add(op["operationId"])
+        self.assertEqual(sent, {"getDomain", "getCertificate", "getAlias", "getCustomFilter"})
 
 
 if __name__ == "__main__":
