@@ -33,9 +33,9 @@ import (
 const missingRequireFilters = `[{"name":"sieve","type":"transform","enabled":true,` +
 	`"config":{"script":"if header :contains \"Subject\" \"x\" { fileinto \"Spam\"; }"}}]`
 
-// dryRunErrorFilters is a one-filter pipeline whose Sieve PARSES but fails the
-// safe dry-run (redirect to a target with no domain).
-const dryRunErrorFilters = `[{"name":"sieve","type":"transform","enabled":true,` +
+// badRedirectFilters is a one-filter pipeline whose Sieve redirects to a
+// target with no domain. go-sieve (v0.5.0 on) refuses it when parsing.
+const badRedirectFilters = `[{"name":"sieve","type":"transform","enabled":true,` +
 	`"config":{"script":"redirect \"bogus\";"}}]`
 
 // validSieveFilters is a one-filter pipeline whose Sieve is valid.
@@ -59,17 +59,17 @@ func TestValidateSievePipelineFilters_MissingRequireRejected(t *testing.T) {
 	}
 }
 
-func TestValidateSievePipelineFilters_DryRunErrorRejected(t *testing.T) {
-	err := validateSievePipelineFilters(json.RawMessage(dryRunErrorFilters))
+func TestValidateSievePipelineFilters_BadRedirectRejected(t *testing.T) {
+	err := validateSievePipelineFilters(json.RawMessage(badRedirectFilters))
 	if err == nil {
-		t.Fatal("expected a Sieve validation error for a dry-run failure, got nil")
+		t.Fatal("expected a Sieve validation error for a redirect with no domain, got nil")
 	}
 	var se *filters.SieveInstallError
 	if !errors.As(err, &se) {
 		t.Fatalf("expected *filters.SieveInstallError, got %T (%v)", err, err)
 	}
-	if se.Stage != "dryrun" {
-		t.Errorf("expected dryrun-stage failure, got stage %q", se.Stage)
+	if se.Stage != "parse" {
+		t.Errorf("expected parse-stage failure, got stage %q", se.Stage)
 	}
 }
 

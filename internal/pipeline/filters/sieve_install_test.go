@@ -68,26 +68,36 @@ func TestValidateSieveForInstall_MissingRequire(t *testing.T) {
 
 // ── ValidateSieveForInstall: dry-run stage ───────────────────────────
 
-// TestValidateSieveForInstall_DryRunRuntimeError proves a script that PARSES but
-// fails when actually evaluated is caught at install. `redirect "bogus"` parses
-// (redirect is core, "bogus" has no control chars) but the target has no domain,
-// which the delivery executor would silently deny — the dry-run surfaces it.
-func TestValidateSieveForInstall_DryRunRuntimeError(t *testing.T) {
-	script := `redirect "bogus";`
-	// Sanity: it must parse, so the failure is genuinely from the dry-run stage.
-	if err := ValidateSieve(script); err != nil {
-		t.Fatalf("precondition: script should parse, got %v", err)
-	}
-	err := ValidateSieveForInstall(script)
+// TestValidateSieveForInstall_RedirectWithoutDomain proves a redirect to an
+// address with no domain is refused at install. go-sieve (v0.5.0 on) refuses
+// it when parsing (RFC 5228 §2.4.2.3), so it no longer reaches the dry run.
+func TestValidateSieveForInstall_RedirectWithoutDomain(t *testing.T) {
+	err := ValidateSieveForInstall(`redirect "bogus";`)
 	if err == nil {
-		t.Fatal("expected dry-run to reject a redirect with no domain, got nil")
+		t.Fatal("expected a redirect with no domain to be refused, got nil")
 	}
 	var se *SieveInstallError
 	if !errors.As(err, &se) {
 		t.Fatalf("expected *SieveInstallError, got %T (%v)", err, err)
 	}
-	if se.Stage != "dryrun" {
-		t.Errorf("expected Stage=dryrun, got %q", se.Stage)
+	if se.Stage != "parse" {
+		t.Errorf("expected Stage=parse, got %q", se.Stage)
+	}
+}
+
+// TestDryRunExecutor_RedirectWithoutDomain keeps the dry run's own check
+// proven now that the parser stops such a script first: the recording
+// executor turns a redirect with no domain into the dry-run error.
+func TestDryRunExecutor_RedirectWithoutDomain(t *testing.T) {
+	exec := &recordingExecutor{}
+	exec.Redirect("bogus", false)
+	if exec.err == nil {
+		t.Fatal("dry-run executor accepted a redirect with no domain")
+	}
+	exec = &recordingExecutor{}
+	exec.Redirect("ops@example.com", false)
+	if exec.err != nil {
+		t.Fatalf("dry-run executor refused a valid redirect: %v", exec.err)
 	}
 }
 

@@ -87,13 +87,20 @@ func (f *spfCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 	// go-spf expects A-label domains, including in sender/HELO macros.
 	// Convert only these evaluation inputs; retain the original envelope and
 	// remote local-part bytes for delivery and message signature verification.
-	// Failed conversions stay intact for go-spf's invalid-domain handling;
-	// never use a partial IDNA result as an authenticated identity.
+	// Never use a partial IDNA result as an authenticated identity. go-spf
+	// punycodes a non-ASCII name without IDNA2008 validation, so a non-ASCII
+	// identity this server cannot convert is not handed to it: it is answered
+	// here with none, and no DNS lookup is made for it (RFC 8616 §4.3).
+	mailFromValid, heloValid := true, true
 	if ascii, err := mail.SMTPAddressASCII(mailFrom); err == nil {
 		mailFrom = ascii
+	} else if !isASCIIText(mailFrom) {
+		mailFromValid = false
 	}
 	if ascii, err := mail.DomainASCII(helo); err == nil {
 		helo = ascii
+	} else if !isASCIIText(helo) {
+		heloValid = false
 	}
 
 	// An unparseable address is the zero netip.Addr, which go-spf answers with
@@ -107,7 +114,7 @@ func (f *spfCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 	// already is a check of the HELO identity, so it is not repeated.
 	var results []pipeline.AuthResult
 	detail := ""
-	if mailFrom != "" && pipeline.IsHostName(helo) {
+	if mailFrom != "" && heloValid && pipeline.IsHostName(helo) {
 		hr := spf.CheckHELO(ctx, ip, helo, opts)
 		results = append(results, pipeline.AuthResult{
 			Method: pipeline.AuthSPF, Result: string(hr.Result), Property: pipeline.PropHelo, Domain: helo,
@@ -115,7 +122,13 @@ func (f *spfCheckFilter) Execute(ctx context.Context, email *pipeline.EmailJSON)
 		detail = fmt.Sprintf("; HELO %s: %s (%s)", helo, hr.Result, hr.Reason)
 	}
 
-	resp := spf.CheckMailFrom(ctx, ip, mailFrom, helo, opts)
+	// The identity checked is MAIL FROM, or postmaster@HELO without one.
+	var resp spf.Response
+	if (mailFrom != "" && !mailFromValid) || (mailFrom == "" && !heloValid) {
+		resp = spf.Response{Result: spf.ResultNone, Reason: "not a valid internationalized domain name"}
+	} else {
+		resp = spf.CheckMailFrom(ctx, ip, mailFrom, helo, opts)
+	}
 	domain := spfAuthDomain(mailFrom, helo)
 	results = append(results, pipeline.AuthResult{
 		Method: pipeline.AuthSPF, Result: string(resp.Result), Property: pipeline.PropMailFrom, Domain: domain,
@@ -170,4 +183,14 @@ func spfAuthDomain(mailFrom, helo string) string {
 		return ""
 	}
 	return domain
+}
+
+// isASCIIText reports whether s holds only ASCII bytes.
+func isASCIIText(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
