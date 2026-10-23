@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/dns"
 )
 
 // An internationalized domain's records are published and checked under its
@@ -14,7 +15,7 @@ import (
 func TestRecordsForDomain_IDNUsesALabels(t *testing.T) {
 	for _, stored := range []string{"bücher.example", "BÜCHER.example", "bücher.example", "xn--bcher-kva.example"} {
 		t.Run(stored, func(t *testing.T) {
-			entry := recordsForDomain(models.Domain{Name: stored}, "mail.xn--bcher-kva.example", "203.0.113.5", "")
+			entry := recordsForDomain(models.Domain{Name: stored}, "mail.xn--bcher-kva.example", "203.0.113.5", "", dns.ClientPorts{})
 			if entry.Domain != stored {
 				t.Errorf("domain = %q, want the stored name %q", entry.Domain, stored)
 			}
@@ -38,7 +39,7 @@ func TestRecordsForDomain_IDNUsesALabels(t *testing.T) {
 }
 
 func TestRecordsForDomain_InvalidNamePublishesNothing(t *testing.T) {
-	entry := recordsForDomain(models.Domain{Name: "bad_name.example", DKIMSelector: "mail", DKIMPrivateKey: "unused"}, "mail.example", "203.0.113.5", "")
+	entry := recordsForDomain(models.Domain{Name: "bad_name.example", DKIMSelector: "mail", DKIMPrivateKey: "unused"}, "mail.example", "203.0.113.5", "", dns.ClientPorts{})
 	if len(entry.Records) != 0 || entry.Records == nil {
 		t.Errorf("records = %#v, want an empty list", entry.Records)
 	}
