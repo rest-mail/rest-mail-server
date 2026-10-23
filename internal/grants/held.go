@@ -14,8 +14,8 @@ const Wildcard = "*"
 
 // Entry is one capability held at one scope.
 type Entry struct {
-	Scope      string
-	Capability string
+	Scope      string `json:"scope"`
+	Capability string `json:"capability"`
 }
 
 // Held is what an account holds right now: a capability at a scope for each
@@ -62,11 +62,8 @@ func (h Held) CanGrant(capabilities []string, scope string) bool {
 	return true
 }
 
-// Capabilities is what the holder holds at "*", sorted, for a client to show
-// what it can do: ["*"] alone when that includes everything. What it holds
-// only at narrower scopes is not listed, as no client yet shows scoped
-// access, and listing a capability held on one domain would show functions
-// that answer 403.
+// Capabilities is the legacy global snapshot. Narrower access is reported
+// separately by ScopedCapabilities, so old clients never mistake it for global.
 func (h Held) Capabilities() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -79,6 +76,63 @@ func (h Held) Capabilities() []string {
 		}
 		seen[e.Capability] = true
 		out = append(out, e.Capability)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ScopedCapabilities is the deduplicated narrower snapshot for clients. It
+// authorizes nothing: middleware still reads live grants for every request.
+func (h Held) ScopedCapabilities() []Entry {
+	seen := map[Entry]bool{}
+	out := []Entry{}
+	for _, e := range h.entries {
+		if e.Scope != All && !seen[e] {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Scope != out[j].Scope {
+			return out[i].Scope < out[j].Scope
+		}
+		return out[i].Capability < out[j].Capability
+	})
+	return out
+}
+
+// Scopes is where this capability is held, including wildcard capabilities.
+func (h Held) Scopes(capability string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range h.entries {
+		if (e.Capability == capability || e.Capability == Wildcard) && !seen[e.Scope] {
+			seen[e.Scope] = true
+			out = append(out, e.Scope)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// IntersectScopes keeps only the narrower scopes shared by both sets. Scopes
+// form a hierarchy: two scopes overlap only when one covers the other.
+func IntersectScopes(a, b []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, left := range a {
+		for _, right := range b {
+			scope := ""
+			if Covers(left, right) {
+				scope = right
+			} else if Covers(right, left) {
+				scope = left
+			}
+			if scope != "" && !seen[scope] {
+				seen[scope] = true
+				out = append(out, scope)
+			}
+		}
 	}
 	sort.Strings(out)
 	return out

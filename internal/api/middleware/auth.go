@@ -137,7 +137,7 @@ func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(
 				return
 			}
 			if h.Allows(capability, grants.All) && CredentialAllows(claims, capability, grants.All) {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, withAuthorizedGrants(r, h))
 				return
 			}
 			if target != nil && h.AllowsSomewhere(capability) && credentialAllowsSomewhere(claims, capability) {
@@ -147,7 +147,7 @@ func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(
 					return
 				}
 				if found && h.Allows(capability, scope) && CredentialAllows(claims, capability, scope) {
-					next.ServeHTTP(w, r)
+					next.ServeHTTP(w, withAuthorizedGrants(r, h))
 					return
 				}
 			}

@@ -3963,6 +3963,7 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/domains:
     get:
+      x-restmail-scope: filtered-list
       operationId: listDomains
       tags: ["Admin: Domains"]
       security:
@@ -4304,6 +4305,7 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/mailboxes:
     get:
+      x-restmail-scope: filtered-list
       operationId: listMailboxes
       tags: ["Admin: Mailboxes"]
       security:
@@ -4492,6 +4494,7 @@ paths:
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/aliases:
     get:
+      x-restmail-scope: filtered-domain-list
       operationId: listAliases
       tags: ["Admin: Aliases"]
       security:
@@ -4520,6 +4523,7 @@ paths:
                     items:
                       $ref: "#/components/schemas/Alias"
     post:
+      x-restmail-scope: source-domain
       operationId: createAlias
       tags: ["Admin: Aliases"]
       security:
@@ -4630,6 +4634,7 @@ paths:
     parameters:
       - $ref: "#/components/parameters/ResourceId"
     get:
+      x-restmail-scope: source-domain
       operationId: getAlias
       tags: ["Admin: Aliases"]
       security:
@@ -4674,6 +4679,7 @@ paths:
                       code: not_found
                       message: Alias not found
     patch:
+      x-restmail-scope: source-domain
       operationId: updateAlias
       tags: ["Admin: Aliases"]
       security:
@@ -4733,6 +4739,7 @@ paths:
                         fields:
                           destination_address: must be a valid email address
     delete:
+      x-restmail-scope: source-domain
       operationId: deleteAlias
       tags: ["Admin: Aliases"]
       security:
@@ -9299,6 +9306,14 @@ components:
               format: email
             display_name:
               type: string
+        scoped_capabilities:
+          type: array
+          description: >
+            Active domain/mailbox capabilities, separate from the legacy global
+            capabilities array. UI snapshot only; the API checks live grants on
+            every request. Empty while account setup is unfinished.
+          items:
+            $ref: "#/components/schemas/ScopedCapability"
         capabilities:
           type: array
           description: >-
@@ -9355,6 +9370,14 @@ components:
               format: email
             display_name:
               type: string
+        scoped_capabilities:
+          type: array
+          description: >
+            Active domain/mailbox capabilities, separate from the legacy global
+            capabilities array. UI snapshot only; the API checks live grants on
+            every request. Empty while account setup is unfinished.
+          items:
+            $ref: "#/components/schemas/ScopedCapability"
         capabilities:
           type: array
           items:
@@ -9447,6 +9470,18 @@ components:
               description: >
                 The app password, shown this once. Use it with the mailbox's
                 address as the password of a mail client, or with HTTP Basic.
+
+    ScopedCapability:
+      type: object
+      description: A live session capability at a narrower domain or mailbox scope.
+      required: [capability, scope]
+      properties:
+        capability:
+          type: string
+          description: A capability name, or `*` for all capabilities at this scope.
+        scope:
+          type: string
+          description: "domain:<name> or mailbox:<address>; never widens to the installation"
 
     ScopedPermission:
       type: object
@@ -11346,6 +11381,14 @@ components:
       properties:
         grant:
           $ref: "#/components/schemas/Grant"
+        scoped_capabilities:
+          type: array
+          description: >
+            Active domain/mailbox capabilities, separate from the legacy global
+            capabilities array. UI snapshot only; the API checks live grants on
+            every request. Empty while account setup is unfinished.
+          items:
+            $ref: "#/components/schemas/ScopedCapability"
         capabilities:
           type: array
           description: What the caller now holds at `*`, as sign-in lists it.

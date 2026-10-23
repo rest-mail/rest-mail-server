@@ -734,6 +734,12 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		needsOnMailbox := func(capability string) func(http.Handler) http.Handler {
 			return middleware.RequireCapability(held, capability, onMailbox)
 		}
+		needsOnList := func(capability string) func(http.Handler) http.Handler {
+			return middleware.RequireCapabilityOnList(held, capability)
+		}
+		needsOnAlias := func(capability string) func(http.Handler) http.Handler {
+			return middleware.RequireCapability(held, capability, handlers.AliasScopeOf(db))
+		}
 
 		// Dashboard stats — every admin role holds domains:read
 		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/stats", statsH.GetDashboardStats)
@@ -763,7 +769,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/make-eligible", grantH.MakeEligible)
 
 		// Domains
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/domains", domainH.List)
+		r.With(needsOnList(middleware.CapDomainsRead)).Get("/api/v1/admin/domains", domainH.List)
 		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains", domainH.Create)
 		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}", domainH.Get)
 		r.With(needsOnDomain(middleware.CapDomainsWrite)).Patch("/api/v1/admin/domains/{id}", domainH.Update)
@@ -772,7 +778,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Accounts (mailboxes). Creating one is POST /api/v1/accounts, the same
 		// for everyone; deleting one removes its grants under the grants rules.
-		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
+		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
 		r.With(needsOnMailbox(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
 		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
 		r.With(needsOnMailbox(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
@@ -781,11 +787,11 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Delete("/api/v1/admin/mailboxes/{id}/sessions", mailboxH.EndSessions)
 
 		// Aliases (mailbox routing config → mailboxes:* capabilities)
-		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)
-		r.With(needs(middleware.CapMailboxesWrite)).Post("/api/v1/admin/aliases", aliasH.Create)
-		r.With(needs(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases/{id}", aliasH.Get)
-		r.With(needs(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
-		r.With(needs(middleware.CapMailboxesDel)).Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
+		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)
+		r.With(needsOnList(middleware.CapMailboxesWrite)).Post("/api/v1/admin/aliases", aliasH.Create)
+		r.With(needsOnAlias(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases/{id}", aliasH.Get)
+		r.With(needsOnAlias(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
+		r.With(needsOnAlias(middleware.CapMailboxesDel)).Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
 
 		// Pipelines
 		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines", pipelineH.ListPipelines)
