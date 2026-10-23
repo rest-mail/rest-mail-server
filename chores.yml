@@ -551,6 +551,16 @@ tasks:
     cmds:
       - go test -race -count=1 -v ./internal/...
 
+  deps:vertrag:
+    desc: Pin the latest Vertrag release for the contract run (version and checksum together)
+    cmds:
+      - python3 scripts/vertrag_pin.py bump
+
+  vertrag:install:
+    desc: Install the pinned Vertrag for this machine into .cache/bin, checksum verified
+    cmds:
+      - python3 scripts/vertrag_pin.py install .cache/bin
+
   test:coverage:
     desc: Run unit tests with coverage report
     cmds:

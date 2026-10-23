@@ -1,0 +1,66 @@
+name: Bump Vertrag
+
+# Pins each new Vertrag release for the contract run (#628): scripts/vertrag_pin.py
+# reads the latest release and its checksum, and a pull request carries the bump. The
+# contract gate (#626) proves the new version still passes; a release that changes a
+# verdict leaves a red bump for a person.
+#
+# A pull request opened with the workflow's own token starts no checks, so the bump also
+# dispatches CI and E2E for its branch. Opening a pull request at all needs either
+# PIPELINE_RESTMAIL_TOKEN or the repository setting that lets GitHub Actions create pull
+# requests; without both, this run fails at that step and says so.
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: bump-vertrag
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Pin the latest Vertrag release
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/vertrag_pin.py bump
+          if git diff --quiet; then
+            echo "changed=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >>"$GITHUB_OUTPUT"
+            echo "version=$(python3 scripts/vertrag_pin.py version)" >>"$GITHUB_OUTPUT"
+          fi
+      - name: Open the bump pull request
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_RESTMAIL_TOKEN || github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          set -euo pipefail
+          branch="chore/vertrag-${VERSION}"
+          if [ -n "$(gh pr list --head "$branch" --state open --json number -q '.[].number')" ]; then
+            echo "the bump to ${VERSION} is already open"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "chore(deps): Vertrag ${VERSION}"
+          git push --force origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "chore(deps): Vertrag ${VERSION}" \
+            --body "Pins Vertrag ${VERSION} and its linux-x86_64 checksum from the release's checksums.txt (scripts/vertrag_pin.py, #628). The contract gate decides whether it merges."
+          gh workflow run ci.yml --ref "$branch"
+          gh workflow run e2e.yml --ref "$branch"
