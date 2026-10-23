@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -101,8 +102,13 @@ func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
 	// Upsert: find existing or create new
 	var policy models.MTASTSPolicy
 	result := h.db.Where("domain_id = ?", domainID).First(&policy)
+	created := errors.Is(result.Error, gorm.ErrRecordNotFound)
+	if result.Error != nil && !created {
+		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
+		return
+	}
 
-	if result.Error != nil {
+	if created {
 		// Create new policy
 		policy = models.MTASTSPolicy{
 			DomainID: uint(domainID),
@@ -125,16 +131,37 @@ func (h *MTASTSHandler) SetPolicy(w http.ResponseWriter, r *http.Request) {
 		policy.Active = *req.Active
 	}
 
-	if err := h.db.Save(&policy).Error; err != nil {
+	var saveErr error
+	if created {
+		saveErr = insertMTASTSPolicy(h.db, &policy)
+	} else {
+		saveErr = h.db.Save(&policy).Error
+	}
+	if saveErr != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save MTA-STS policy")
 		return
 	}
 
 	status := http.StatusOK
-	if result.Error != nil {
+	if created {
 		status = http.StatusCreated
 	}
 	respond.Data(w, status, policy)
+}
+
+// Non-nil pointers preserve explicit zero/false instead of GORM replacing
+// them with the model's default:604800/default:true on insertion. Overlay
+// only this insert, keeping ordinary model creation and existing-row saves
+// unchanged. Use the model's configured table name, including any prefix.
+func insertMTASTSPolicy(db *gorm.DB, policy *models.MTASTSPolicy) error {
+	row := struct {
+		models.MTASTSPolicy
+		MaxAge *int
+		Active *bool
+	}{MTASTSPolicy: *policy, MaxAge: &policy.MaxAge, Active: &policy.Active}
+	err := db.Table(db.NamingStrategy.TableName("MTASTSPolicy")).Create(&row).Error
+	*policy = row.MTASTSPolicy
+	return err
 }
 
 // DeletePolicy removes the MTA-STS policy for a domain.
