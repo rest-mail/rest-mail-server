@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "The journey of a message: from Alice's mail app to Bob's",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/journey.html",
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "Mail apps"
+        },
+        "security": {
+          "label": "Sign-in and checks"
+        },
+        "backend": {
+          "label": "Mail servers"
+        },
+        "messagebus": {
+          "label": "Queue"
+        },
+        "database": {
+          "label": "Mailbox"
+        },
+        "external": {
+          "label": "DNS"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "devices",
+      "label": "People's devices"
+    },
+    {
+      "id": "sender",
+      "label": "Alice's provider: example.com"
+    },
+    {
+      "id": "net",
+      "label": "The internet"
+    },
+    {
+      "id": "recipient",
+      "label": "Bob's provider: example.org"
+    }
+  ],
+  "phases": [
+    {
+      "id": "send",
+      "label": "Sending",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "transfer",
+      "label": "Between servers",
+      "fromCol": 3,
+      "toCol": 3,
+      "variant": "security"
+    },
+    {
+      "id": "receive",
+      "label": "Receiving and reading",
+      "fromCol": 4,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "alice",
+    "submission",
+    "queue",
+    "mx",
+    "checks",
+    "mailbox",
+    "bob"
+  ],
+  "nodes": [
+    {
+      "id": "alice",
+      "lane": "devices",
+      "col": 0,
+      "type": "frontend",
+      "label": "Alice's mail app",
+      "sublabel": "to bob@example.org",
+      "icon": "person"
+    },
+    {
+      "id": "submission",
+      "lane": "sender",
+      "col": 1,
+      "type": "security",
+      "label": "Submission server",
+      "sublabel": "465 or 587, sign-in"
+    },
+    {
+      "id": "queue",
+      "lane": "sender",
+      "col": 2,
+      "type": "messagebus",
+      "label": "Outgoing queue",
+      "sublabel": "DKIM-signs, retries"
+    },
+    {
+      "id": "dns",
+      "lane": "net",
+      "col": 2,
+      "type": "external",
+      "label": "DNS",
+      "sublabel": "MX example.org?"
+    },
+    {
+      "id": "mx",
+      "lane": "recipient",
+      "col": 3,
+      "type": "backend",
+      "label": "Bob's MX server",
+      "sublabel": "port 25, no sign-in"
+    },
+    {
+      "id": "checks",
+      "lane": "recipient",
+      "col": 4,
+      "type": "security",
+      "label": "Checks",
+      "sublabel": "SPF, DKIM, DMARC, spam"
+    },
+    {
+      "id": "mailbox",
+      "lane": "recipient",
+      "col": 5,
+      "type": "database",
+      "label": "Bob's mailbox",
+      "sublabel": "Sieve rules file it"
+    },
+    {
+      "id": "bob",
+      "lane": "devices",
+      "col": 5,
+      "type": "frontend",
+      "label": "Bob's mail app",
+      "sublabel": "IMAP, POP3 or JMAP",
+      "icon": "person"
+    }
+  ],
+  "edges": [
+    {
+      "id": "submit",
+      "from": "alice",
+      "to": "submission",
+      "label": "SMTP + AUTH",
+      "role": "main",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "accept",
+      "from": "submission",
+      "to": "queue",
+      "label": "250 OK",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "lookup",
+      "from": "queue",
+      "to": "dns",
+      "label": "which server?",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "deliver",
+      "from": "queue",
+      "to": "mx",
+      "label": "SMTP, port 25",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "check",
+      "from": "mx",
+      "to": "checks",
+      "label": "before 250",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "store",
+      "from": "checks",
+      "to": "mailbox",
+      "label": "delivered",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "read",
+      "from": "mailbox",
+      "to": "bob",
+      "label": "fetched",
+      "role": "main",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Two kinds of SMTP",
+      "items": [
+        "Submission: a user's app, signed in, may send anywhere",
+        "Port 25: another server, no sign-in, only for this server's own users"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Who is responsible",
+      "items": [
+        "Alice's server keeps the message, and retries, until Bob's server answers 250 to it",
+        "From that 250, Bob's server must deliver it or send a bounce (RFC 5321 §6.1)"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Every hop leaves a trace",
+      "items": [
+        "Each server adds a Received: line at the top of the header",
+        "Read from the bottom up, they are the message's journey"
+      ]
+    }
+  ]
+}

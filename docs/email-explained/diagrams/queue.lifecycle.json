@@ -1,0 +1,46 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "A queued message: delivered, retried, or bounced",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/queue.html",
+    "legend": {
+      "entries": {
+        "start": { "label": "Accepted from the sender" },
+        "active": { "label": "Trying to deliver" },
+        "waiting": { "label": "Waiting to retry" },
+        "decision": { "label": "Reading the reply" },
+        "success": { "label": "Delivered" },
+        "failure": { "label": "Undeliverable" },
+        "neutral": { "label": "Sender notified" }
+      }
+    }
+  },
+  "mainPath": ["queued", "attempt", "reply", "delivered"],
+  "states": [
+    { "id": "queued", "type": "start", "label": "Queued", "sublabel": "250 to the sender's app", "step": "01" },
+    { "id": "attempt", "type": "active", "label": "Delivery attempt", "sublabel": "MX lookup, connect, SMTP", "step": "02" },
+    { "id": "reply", "type": "decision", "label": "What did it say?", "sublabel": "first digit of the reply", "step": "03" },
+    { "id": "delivered", "type": "success", "label": "Delivered", "sublabel": "2xx: receiver responsible now", "step": "04" },
+    { "id": "deferred", "type": "waiting", "label": "Deferred", "sublabel": "wait, longer each time" },
+    { "id": "failed", "type": "failure", "label": "Undeliverable", "sublabel": "5xx, or gave up after days" },
+    { "id": "bounced", "type": "neutral", "label": "Bounce sent", "sublabel": "DSN to MAIL FROM, sent from <>" }
+  ],
+  "transitions": [
+    { "id": "try", "from": "queued", "to": "attempt", "label": "send" },
+    { "id": "answer", "from": "attempt", "to": "reply", "label": "reply or timeout" },
+    { "id": "ok", "from": "reply", "to": "delivered", "label": "2xx", "variant": "emphasis" },
+    { "id": "later", "from": "reply", "to": "deferred", "label": "4xx, no answer", "variant": "dashed" },
+    { "id": "retry", "from": "deferred", "to": "attempt", "label": "retry" },
+    { "id": "expire", "from": "deferred", "to": "failed", "label": "4–5 days passed", "variant": "security" },
+    { "id": "never", "from": "reply", "to": "failed", "label": "5xx", "variant": "security" },
+    { "id": "notify", "from": "failed", "to": "bounced", "label": "tell the sender" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "RFC 5321 §4.5.4.1", "items": ["Retry interval: at least 30 minutes, unless the reason is known", "Give up after at least 4–5 days", "Postfix: 5 minutes to 67 minutes between tries, gives up after 5 days"] },
+    { "dot": "rose", "title": "Refuse, don't bounce", "items": ["Refuse an unknown recipient at RCPT TO: the sender's own server tells its user", "Accepting then bouncing sends bounces to forged senders: backscatter"] },
+    { "dot": "amber", "title": "Bounces never bounce", "items": ["A DSN is sent with MAIL FROM:<>", "Mail from <> never gets a bounce or an auto-reply"] }
+  ]
+}

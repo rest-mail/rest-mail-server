@@ -23,6 +23,7 @@ test("a chapter's address is its path, and a README is its folder's", () => {
 test("front matter is read, and a line it does not understand is an error", () => {
   assert.deepEqual(splitFrontMatter("---\ntitle: A\npart: B\n---\nbody").meta, { title: "A", part: "B" });
   assert.throws(() => splitFrontMatter("---\n- nope\n---\n"), /not understood/);
+  assert.equal(splitFrontMatter('---\ntitle: "Reading mail: IMAP and \\"JMAP\\""\n---\n').meta.title, 'Reading mail: IMAP and "JMAP"');
 });
 
 test("sections split at ##, the # title is dropped, links and diagrams are rewritten", () => {

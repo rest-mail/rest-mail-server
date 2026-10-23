@@ -33,7 +33,11 @@ const TYPES = new Set(["architecture", "workflow", "sequence", "dataflow", "life
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
 
-/** Front matter: `key: value` lines between two `---` lines, and the rest. */
+/**
+ * Front matter: `key: value` lines between two `---` lines, and the rest. A
+ * value with a colon in it is written in double quotes, as YAML needs for
+ * GitHub to show it.
+ */
 export function splitFrontMatter(text) {
   const match = text.match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) return { meta: {}, body: text };
@@ -41,7 +45,8 @@ export function splitFrontMatter(text) {
   for (const line of match[1].split("\n")) {
     const pair = line.match(/^([a-z]+):\s*(.*)$/);
     if (!pair) throw new Error(`front matter line not understood: ${line}`);
-    meta[pair[1]] = pair[2];
+    const quoted = pair[2].match(/^"((?:[^"\\]|\\.)*)"$/);
+    meta[pair[1]] = quoted ? quoted[1].replace(/\\(.)/g, "$1") : pair[2];
   }
   return { meta, body: text.slice(match[0].length) };
 }
