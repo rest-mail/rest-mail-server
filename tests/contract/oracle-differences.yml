@@ -86,6 +86,169 @@
     A body that is not JSON, or not an object, is the 400 bad_request. openapi.yaml documents
     the 422 only.
 
+# Admin: roles, capabilities, grants and escalation (#644)
+
+- operation: activateGrant
+  difference: "request body application/json.allOf: openapi.yaml [{\"properties\":{\"recovery_code\":{\"type\":\"string\"},\"totp_code\":{\"type\":\"string\"}},\"type\":\"object\"},{\"properties\":{\"minutes\":{\"default\":60,\"maximum\":240,\"minimum\":1,\"type\":\"integer\"},\"reason\":{\"maxLength\":500,\"type\":\"string\"}},\"required\":[\"reason\"],\"type\":\"object\"}], generated absent"
+  reason: >-
+    One typed body replaces the oracle allOf. The handler retains trimmed, nonempty reasons of at most 500 characters and minutes from 1 to 240 (default 60, including null); validation stays in the handler to preserve normalization and its field messages.
+- operation: activateGrant
+  difference: "request body application/json.properties: openapi.yaml absent, generated {\"minutes\":{\"type\":[\"integer\",\"null\"]},\"reason\":{\"type\":\"string\"},\"recovery_code\":{\"type\":\"string\"},\"totp_code\":{\"type\":\"string\"}}"
+  reason: >-
+    One typed body replaces the oracle allOf. The handler retains trimmed, nonempty reasons of at most 500 characters and minutes from 1 to 240 (default 60, including null); validation stays in the handler to preserve normalization and its field messages.
+- operation: activateGrant
+  difference: "request body application/json.type: openapi.yaml absent, generated \"object\""
+  reason: >-
+    One typed body replaces the oracle allOf. The handler retains trimmed, nonempty reasons of at most 500 characters and minutes from 1 to 240 (default 60, including null); validation stays in the handler to preserve normalization and its field messages.
+- operation: activateGrant
+  difference: "response 201 application/json.properties.data.properties.grant.properties.activation.properties.seconds_left.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    SecondsLeft is an int64 count of seconds; the oracle leaves its integer width unspecified.
+- operation: activateGrant
+  difference: "response 201 application/json.properties.data.properties.grant.properties.granted_by.required: openapi.yaml [\"kind\"], generated [\"id\",\"kind\"]"
+  reason: >-
+    The API always writes granted_by.id, including null for the system actor; the oracle marks id optional.
+- operation: activateGrant
+  difference: "response 201 application/json.properties.data.properties.grant.required: openapi.yaml [\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"], generated [\"activation\",\"expires_at\",\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"]"
+  reason: >-
+    Every grant response always writes activation and expires_at, including null when absent; the oracle marks them optional.
+- operation: activateGrant
+  difference: "response 201 application/json.properties.data.required: openapi.yaml [\"capabilities\",\"grant\"], generated [\"capabilities\",\"grant\",\"scoped_capabilities\"]"
+  reason: >-
+    Escalation always returns scoped_capabilities alongside the legacy global capabilities, including an empty array; the oracle marks the snapshot optional.
+- operation: activateGrant
+  difference: "response 429 header Retry-After: generated only"
+  reason: >-
+    The existing login per-IP throttle writes Retry-After on refusal. The oracle omits that response header.
+- operation: createGrant
+  difference: "request body application/json.properties.holder.properties.kind.enum: openapi.yaml [\"account\"], generated absent"
+  reason: >-
+    The handler validates holder (account kind and nonzero id), role and scope together, retaining its existing field messages; omission is accepted by binding so those checks still decide the refusal.
+- operation: createGrant
+  difference: "request body application/json.properties.holder.required: openapi.yaml [\"id\",\"kind\"], generated absent"
+  reason: >-
+    The handler validates holder (account kind and nonzero id), role and scope together, retaining its existing field messages; omission is accepted by binding so those checks still decide the refusal.
+- operation: createGrant
+  difference: "request body application/json.properties.holder.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    A null holder binds and is refused by the handler with the existing holder validation message, as is an absent holder.
+- operation: createGrant
+  difference: "request body application/json.properties.mode.default: openapi.yaml \"active\", generated absent"
+  reason: >-
+    The existing handler defaults omitted or empty mode to active; go-oapifly does not describe handler defaults.
+- operation: createGrant
+  difference: "request body application/json.properties.mode.enum: openapi.yaml [\"active\",\"eligible\"], generated absent"
+  reason: >-
+    The handler retains its existing mode validation and message after defaulting empty mode to active; binding does not replace that check.
+- operation: createGrant
+  difference: "request body application/json.required: openapi.yaml [\"holder\",\"role\",\"scope\"], generated absent"
+  reason: >-
+    The handler validates holder (account kind and nonzero id), role and scope together, retaining its existing field messages; omission is accepted by binding so those checks still decide the refusal.
+- operation: createGrant
+  difference: "response 201 application/json.properties.data.properties.activation.properties.seconds_left.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    SecondsLeft is an int64 count of seconds; the oracle leaves its integer width unspecified.
+- operation: createGrant
+  difference: "response 201 application/json.properties.data.properties.granted_by.required: openapi.yaml [\"kind\"], generated [\"id\",\"kind\"]"
+  reason: >-
+    The API always writes granted_by.id, including null for the system actor; the oracle marks id optional.
+- operation: createGrant
+  difference: "response 201 application/json.properties.data.required: openapi.yaml [\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"], generated [\"activation\",\"expires_at\",\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"]"
+  reason: >-
+    Every grant response always writes activation and expires_at, including null when absent; the oracle marks them optional.
+- operation: createGrant
+  difference: "response 400: generated only"
+  reason: >-
+    The existing malformed JSON refusal is 400 bad_request; binding also refuses a non-object body there. The oracle documents only semantic 422 validation.
+- operation: deactivateGrant
+  difference: "response 200 application/json.properties.data.properties.grant.properties.activation.properties.seconds_left.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    SecondsLeft is an int64 count of seconds; the oracle leaves its integer width unspecified.
+- operation: deactivateGrant
+  difference: "response 200 application/json.properties.data.properties.grant.properties.granted_by.required: openapi.yaml [\"kind\"], generated [\"id\",\"kind\"]"
+  reason: >-
+    The API always writes granted_by.id, including null for the system actor; the oracle marks id optional.
+- operation: deactivateGrant
+  difference: "response 200 application/json.properties.data.properties.grant.required: openapi.yaml [\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"], generated [\"activation\",\"expires_at\",\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"]"
+  reason: >-
+    Every grant response always writes activation and expires_at, including null when absent; the oracle marks them optional.
+- operation: deactivateGrant
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"capabilities\",\"grant\"], generated [\"capabilities\",\"grant\",\"scoped_capabilities\"]"
+  reason: >-
+    Escalation always returns scoped_capabilities alongside the legacy global capabilities, including an empty array; the oracle marks the snapshot optional.
+- operation: listCapabilities
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"id\",\"name\"], generated [\"action\",\"description\",\"id\",\"name\",\"resource\"]"
+  reason: >-
+    Capability responses always write action, description and resource along with id and name; the oracle marks those fields optional.
+- operation: listGrants
+  difference: "parameter query limit schema.default: openapi.yaml 50, generated absent"
+  reason: >-
+    The handler retains pagination defaults of limit 50 and offset 0 (also for non-positive values); go-oapifly does not describe handler defaults.
+- operation: listGrants
+  difference: "parameter query offset schema.default: openapi.yaml 0, generated absent"
+  reason: >-
+    The handler retains pagination defaults of limit 50 and offset 0 (also for non-positive values); go-oapifly does not describe handler defaults.
+- operation: listGrants
+  difference: "response 200 application/json.properties.data.items.properties.activation.properties.seconds_left.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    SecondsLeft is an int64 count of seconds; the oracle leaves its integer width unspecified.
+- operation: listGrants
+  difference: "response 200 application/json.properties.data.items.properties.granted_by.required: openapi.yaml [\"kind\"], generated [\"id\",\"kind\"]"
+  reason: >-
+    The API always writes granted_by.id, including null for the system actor; the oracle marks id optional.
+- operation: listGrants
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"], generated [\"activation\",\"expires_at\",\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"]"
+  reason: >-
+    Every grant response always writes activation and expires_at, including null when absent; the oracle marks them optional.
+- operation: listGrants
+  difference: "response 200 application/json.properties.pagination.required: openapi.yaml absent, generated [\"has_more\"]"
+  reason: >-
+    respond.Pagination always writes has_more, even when false; the oracle does not mark any pagination fields required.
+- operation: listGrants
+  difference: "response 200 application/json.properties.pagination.type: openapi.yaml \"object\", generated [\"null\",\"object\"]"
+  reason: >-
+    endpoint.List shares respond.List semantics: its pagination pointer is optional and nullable in the type. This handler always supplies pagination; the wire JSON remains unchanged.
+- operation: listGrants
+  difference: "response 200 application/json.required: openapi.yaml [\"data\",\"pagination\"], generated [\"data\"]"
+  reason: >-
+    endpoint.List shares respond.List semantics: its pagination pointer is optional and nullable in the type. This handler always supplies pagination; the wire JSON remains unchanged.
+- operation: listMyGrants
+  difference: "response 200 application/json.properties.data.items.properties.activation.properties.seconds_left.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    SecondsLeft is an int64 count of seconds; the oracle leaves its integer width unspecified.
+- operation: listMyGrants
+  difference: "response 200 application/json.properties.data.items.properties.granted_by.required: openapi.yaml [\"kind\"], generated [\"id\",\"kind\"]"
+  reason: >-
+    The API always writes granted_by.id, including null for the system actor; the oracle marks id optional.
+- operation: listMyGrants
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"], generated [\"activation\",\"expires_at\",\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"]"
+  reason: >-
+    Every grant response always writes activation and expires_at, including null when absent; the oracle marks them optional.
+- operation: listRoles
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"capabilities\",\"id\",\"name\"], generated [\"capabilities\",\"description\",\"id\",\"name\",\"system_role\"]"
+  reason: >-
+    Role responses always write description and system_role as well as id, name and capabilities; the oracle marks the former fields optional.
+- operation: makeGrantEligible
+  difference: "response 200 application/json.properties.data.properties.grant.properties.activation.properties.seconds_left.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    SecondsLeft is an int64 count of seconds; the oracle leaves its integer width unspecified.
+- operation: makeGrantEligible
+  difference: "response 200 application/json.properties.data.properties.grant.properties.granted_by.required: openapi.yaml [\"kind\"], generated [\"id\",\"kind\"]"
+  reason: >-
+    The API always writes granted_by.id, including null for the system actor; the oracle marks id optional.
+- operation: makeGrantEligible
+  difference: "response 200 application/json.properties.data.properties.grant.required: openapi.yaml [\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"], generated [\"activation\",\"expires_at\",\"granted_at\",\"granted_by\",\"holder\",\"id\",\"mode\",\"role\",\"role_id\",\"scope\"]"
+  reason: >-
+    Every grant response always writes activation and expires_at, including null when absent; the oracle marks them optional.
+- operation: makeGrantEligible
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"capabilities\",\"grant\"], generated [\"capabilities\",\"grant\",\"scoped_capabilities\"]"
+  reason: >-
+    Escalation always returns scoped_capabilities alongside the legacy global capabilities, including an empty array; the oracle marks the snapshot optional.
+- operation: makeGrantEligible
+  difference: "response 429 header Retry-After: generated only"
+  reason: >-
+    The existing login per-IP throttle writes Retry-After on refusal. The oracle omits that response header.
+
 # Admin bans, delivery log, audit log and dashboard (#651)
 
 - operation: createBan
