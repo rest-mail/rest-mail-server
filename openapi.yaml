@@ -4671,6 +4671,10 @@ paths:
                   destination_address: admin@restmail.test
               # JSON, but an array where the request is an object: refused
               # when it is read, before any field is looked at.
+              source_wrong_type:
+                value:
+                  source_address: 5
+                  destination_address: admin@restmail.test
               body_array:
                 value: []
       responses:
@@ -4734,6 +4738,14 @@ paths:
                       details:
                         fields:
                           source_address: required
+                source_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          source_address: must be a string
                 source_invalid:
                   value:
                     error:

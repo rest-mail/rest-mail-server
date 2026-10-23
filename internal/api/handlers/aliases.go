@@ -1,11 +1,11 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/mail"
 	"strings"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -22,15 +22,12 @@ func NewAliasHandler(db *gorm.DB) *AliasHandler {
 	return &AliasHandler{db: db}
 }
 
-func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 0, "domain_id") {
-		return
-	}
-	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+func (h *AliasHandler) list(r *http.Request, in adminAddressListRequest) (endpoint.List[Alias], error) {
+	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	query := filterAdminList(h.db.Model(&models.Alias{}), r, middleware.CapMailboxesRead, "aliases")
-	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
-		query = query.Where("domain_id = ?", domainID)
+	if in.DomainID != nil {
+		query = query.Where("domain_id = ?", *in.DomainID)
 	}
 
 	var total int64
@@ -38,26 +35,27 @@ func (h *AliasHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	var aliases []models.Alias
 	if err := query.Preload("Domain").Order("source_address ASC").Limit(limit).Offset(offset).Find(&aliases).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list aliases")
-		return
+		return endpoint.List[Alias]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to list aliases")
 	}
 	for i := range aliases {
 		redactAdminDomain(r, &aliases[i].Domain)
 	}
-	respond.List(w, aliases, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]Alias, len(aliases))
+	for i, row := range aliases {
+		out[i] = aliasOf(row)
+	}
+	return endpoint.List[Alias]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }
 
+// Address validation stays with the shared EAI parser: binding format:email
+// would reject display-name addresses that existing clients can submit.
 type createAliasRequest struct {
 	SourceAddress      string `json:"source_address"`
 	DestinationAddress string `json:"destination_address"`
 }
 
-func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req createAliasRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+func (h *AliasHandler) create(r *http.Request, in createAliasRequest) (Alias, error) {
+	req := in
 
 	errors := map[string]string{}
 	if req.SourceAddress == "" {
@@ -69,16 +67,14 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errors["destination_address"] = "must be a valid email address"
 	}
 	if len(errors) > 0 {
-		respond.ValidationError(w, errors)
-		return
+		return Alias{}, endpoint.Invalid(errors)
 	}
 
 	// The source must be one mail address, as the spec's format: email says,
 	// before its domain is looked up (#388): an "@" alone let "@domain",
 	// "local@", two addresses and CR/LF-injected values through.
 	if rmail.ValidateAddress(req.SourceAddress) != nil {
-		respond.ValidationError(w, map[string]string{"source_address": "must be a valid email address"})
-		return
+		return Alias{}, endpoint.Invalid(map[string]string{"source_address": "must be a valid email address"})
 	}
 
 	// Alias sources are hosted identities, like mailbox addresses. Parse away
@@ -89,8 +85,7 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 	at := strings.LastIndexByte(parsed.Address, '@')
 	domainName, err := rmail.DomainASCII(parsed.Address[at+1:])
 	if err != nil {
-		respond.ValidationError(w, map[string]string{"source_address": "must be a valid email address"})
-		return
+		return Alias{}, endpoint.Invalid(map[string]string{"source_address": "must be a valid email address"})
 	}
 	domainName = strings.TrimSuffix(domainName, ".")
 	parsed.Name = ""
@@ -99,13 +94,11 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 	req.SourceAddress = strings.TrimSuffix(strings.TrimPrefix(parsed.String(), "<"), ">")
 
 	if !scopedDomainAllowed(r, middleware.CapMailboxesWrite, domainName) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Insufficient permissions")
-		return
+		return Alias{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "Insufficient permissions")
 	}
 	var domain models.Domain
 	if err := h.db.Where("name = ?", domainName).First(&domain).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "domain_not_found", "Domain not found for source address")
-		return
+		return Alias{}, endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found for source address")
 	}
 
 	alias := models.Alias{
@@ -116,56 +109,40 @@ func (h *AliasHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.Create(&alias).Error; err != nil {
-		respond.Error(w, http.StatusConflict, "already_exists", "Alias already exists")
-		return
+		return Alias{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Alias already exists")
 	}
 
-	respond.Data(w, http.StatusCreated, alias)
+	return aliasOf(alias), nil
 }
 
-func (h *AliasHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid alias ID")
-		return
-	}
+func (h *AliasHandler) get(r *http.Request, in adminAddressPath) (Alias, error) {
+	id := in.ID
 
 	var alias models.Alias
 	if err := h.db.Preload("Domain").First(&alias, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Alias not found")
-		return
+		return Alias{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
 	}
 
 	redactAdminDomain(r, &alias.Domain)
-	respond.Data(w, http.StatusOK, alias)
+	return aliasOf(alias), nil
 }
 
 type updateAliasRequest struct {
-	DestinationAddress *string `json:"destination_address"`
-	Active             *bool   `json:"active"`
+	DestinationAddress *string `json:"destination_address,omitempty"`
+	Active             *bool   `json:"active,omitempty"`
 }
 
-func (h *AliasHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid alias ID")
-		return
-	}
+func (h *AliasHandler) update(r *http.Request, in updateAliasInput) (Alias, error) {
+	id := in.ID
 
 	var alias models.Alias
 	if err := h.db.First(&alias, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Alias not found")
-		return
+		return Alias{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
 	}
 
-	var req updateAliasRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 	if req.DestinationAddress != nil && rmail.ValidateAddress(*req.DestinationAddress) != nil {
-		respond.ValidationError(w, map[string]string{"destination_address": "must be a valid email address"})
-		return
+		return Alias{}, endpoint.Invalid(map[string]string{"destination_address": "must be a valid email address"})
 	}
 
 	updates := map[string]interface{}{}
@@ -178,33 +155,26 @@ func (h *AliasHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if len(updates) > 0 {
 		if err := h.db.Model(&alias).Updates(updates).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update alias")
-			return
+			return Alias{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to update alias")
 		}
 	}
 
 	h.db.Preload("Domain").First(&alias, id)
 	redactAdminDomain(r, &alias.Domain)
-	respond.Data(w, http.StatusOK, alias)
+	return aliasOf(alias), nil
 }
 
-func (h *AliasHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid alias ID")
-		return
-	}
+func (h *AliasHandler) delete(r *http.Request, in adminAddressPath) (endpoint.Empty, error) {
+	id := in.ID
 
 	var alias models.Alias
 	if err := h.db.First(&alias, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Alias not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Alias not found")
 	}
 
 	if err := h.db.Delete(&alias).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete alias")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to delete alias")
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }

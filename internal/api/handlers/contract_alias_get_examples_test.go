@@ -98,7 +98,7 @@ func TestAliasGet_DocumentedExamples(t *testing.T) {
 		ctx.URLParams.Add("id", fmt.Sprint(id))
 		r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, ctx))
 		rr := httptest.NewRecorder()
-		NewAliasHandler(tx).Get(rr, r)
+		aliasRoutes(NewAliasHandler(tx)).ServeHTTP(rr, r)
 		return rr
 	}
 	rr := lookup(missing)

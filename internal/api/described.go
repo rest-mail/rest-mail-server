@@ -131,6 +131,23 @@ func (rt *Routers) Description(version string) (map[string]interface{}, []string
 	return g.Generate(), g.Warnings
 }
 
+// Resource checks resolve the mailbox or source domain before binding. A failed lookup
+// answers 503; a missing or out-of-scope target answers the existing 403.
+func describedResourceCapability(check func(string) func(http.Handler) http.Handler) func(string) endpoint.Middleware {
+	return func(capability string) endpoint.Middleware {
+		m := describedCapability(check)(capability)
+		m.Describes.Responses = append(m.Describes.Responses,
+			refusal(http.StatusServiceUnavailable, "unavailable: the resource scope could not be checked"))
+		return m
+	}
+}
+func describedMailboxCapability(check func(string) func(http.Handler) http.Handler) func(string) endpoint.Middleware {
+	return describedResourceCapability(check)
+}
+func describedAliasCapability(check func(string) func(http.Handler) http.Handler) func(string) endpoint.Middleware {
+	return describedResourceCapability(check)
+}
+
 // Grant changes and escalation require a person's session, never a machine key.
 var describedSessionOnly = oapifly.Middleware{
 	Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}},
