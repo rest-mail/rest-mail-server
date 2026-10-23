@@ -697,10 +697,124 @@ paths:
         "422":
           description: Signature malformed
 
+  /api/v1/auth/2fa:
+    get:
+      operationId: getTwoFactorStatus
+      tags: [Auth]
+      summary: Read your authenticator status
+      description: >
+        Reports only the signed-in account's own state, including while it is
+        finishing setup. No account id is accepted. Enabled means a confirmed
+        enrollment gates sign-in; pending means an unconfirmed enrollment
+        exists and does not yet gate sign-in. Both are false without an
+        enrollment and they are never both true. This read returns no setup
+        secret or recovery codes and is not subject to the authentication
+        throttle. Requires a password-authenticated session, not an app
+        password, gateway password or API key.
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: The caller's own enrollment state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TwoFactorStatus"
+              example:
+                data: {enabled: false, pending: false}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          description: internal_error — the enrollment could not be read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/2fa/enroll:
+    post:
+      operationId: enrollTwoFactor
+      tags: [Auth]
+      summary: Start an authenticator enrollment
+      description: >
+        Generates a setup secret, provisioning URI and one-time recovery codes
+        for the signed-in account itself. No request body or account id is
+        needed. It may replace a pending enrollment but never a confirmed one.
+        Save the returned recovery codes and confirm with a current code at
+        POST /api/v1/auth/2fa/confirm; until confirmation the pending enrollment
+        does not gate sign-in. The response is the only disclosure of these
+        secrets: store the recovery codes safely and do not log them.
+        Requires a password-authenticated session, including a session still
+        finishing setup; app passwords, gateway passwords and API keys cannot
+        enroll. Throttled with login. Refuses new enrollment when the feature
+        is disabled or server encryption is not configured.
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Pending enrollment, including secrets returned this once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TwoFactorEnrollment"
+              example:
+                data:
+                  secret: JBSWY3DPEHPK3PXP
+                  otpauth_url: otpauth://totp/REST%20Mail:user%40restmail.test?secret=JBSWY3DPEHPK3PXP&issuer=REST%20Mail
+                  recovery_codes: [0123456789abcdef]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: forbidden — two-factor enrollment is disabled on this server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: conflict — two-factor authentication is already enabled; disable it before enrolling again
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many requests to the shared authentication throttle
+          headers:
+            Retry-After:
+              schema: {type: integer, minimum: 1}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: internal_error — the enrollment could not be read, generated, encrypted or saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: unavailable — server encryption is not configured; no secret is stored in plaintext
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/auth/2fa/confirm:
     post:
       operationId: confirmTwoFactor
       tags: [Auth]
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
       summary: Switch on a pending authenticator with its first code
       description: >
         Completes enrollment (`POST /api/v1/auth/2fa/enroll`) with a current
@@ -744,6 +858,9 @@ paths:
     post:
       operationId: disableTwoFactor
       tags: [Auth]
+      security:
+        - CookieAuth: []
+        - BearerAuth: []
       summary: Turn two-factor authentication off
       description: >
         Takes the second factor the way sign-in does: a current code from the
@@ -8876,6 +8993,40 @@ components:
       properties:
         refresh_token:
           type: string
+
+    TwoFactorStatus:
+      type: object
+      additionalProperties: false
+      required: [enabled, pending]
+      properties:
+        enabled:
+          type: boolean
+          description: A confirmed enrollment gates sign-in
+        pending:
+          type: boolean
+          description: An enrollment exists but has not been confirmed
+
+    TwoFactorEnrollment:
+      type: object
+      additionalProperties: false
+      required: [secret, otpauth_url, recovery_codes]
+      properties:
+        secret:
+          type: string
+          minLength: 1
+          description: Base32 setup secret, returned only by this enrollment
+        otpauth_url:
+          type: string
+          format: uri
+          pattern: '^otpauth://'
+          description: Provisioning URI for an authenticator app
+        recovery_codes:
+          type: array
+          minItems: 1
+          description: One-time codes returned only by this enrollment
+          items:
+            type: string
+            minLength: 1
 
     LoginResponse:
       type: object

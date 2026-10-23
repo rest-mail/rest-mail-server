@@ -46,6 +46,7 @@ def basic(address, password):
 @hooks.before("linkAccount")
 @hooks.before("createAppPassword")
 @hooks.before("protocolSignIn")
+@hooks.before("enrollTwoFactor")
 def pace_auth_requests(transaction):
     # These operations share the default 1 request/second auth bucket. Coverage
     # repeats valid requests as well as refusals, so even correct credentials
