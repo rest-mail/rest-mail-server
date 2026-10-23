@@ -140,6 +140,9 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 		t.Fatalf("parent configuration leaked: %s", rr.Body.String())
 	}
 	rr = scopedRequest([]string{grants.Mailbox(boxes[0].Address)}, middleware.CapMailboxesRead, NewAliasHandler(tx).List, "/api/v1/admin/aliases")
+	// A fresh envelope each time: total is omitted at 0, and decoding into the
+	// last page would keep its total.
+	page = listEnvelope{}
 	if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
@@ -147,6 +150,7 @@ func TestScopedListDatabaseIsolation(t *testing.T) {
 		t.Fatalf("mailbox learned aliases: %s", rr.Body.String())
 	}
 	rr = scopedRequest([]string{grants.Domain(a.Name)}, middleware.CapMailboxesRead, NewAliasHandler(tx).List, "/api/v1/admin/aliases?domain_id="+fmt.Sprint(b.ID))
+	page = listEnvelope{}
 	if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
 		t.Fatal(err)
 	}
