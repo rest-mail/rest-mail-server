@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "diagram_type": "tree",
+  "meta": {
+    "title": "A mail server's jobs, and the programs that do them",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/servers.html"
+  },
+  "layout": { "direction": "right" },
+  "nodes": [
+    { "id": "server", "label": "A mail server", "sublabel": "several jobs, one domain" },
+    { "id": "transfer", "parent": "server", "label": "Transfer (MTA)", "sublabel": "SMTP in and out" },
+    { "id": "postfix", "parent": "transfer", "label": "Postfix", "sublabel": "small cooperating programs" },
+    { "id": "exim", "parent": "transfer", "label": "Exim", "sublabel": "flexible routing, ACLs" },
+    { "id": "opensmtpd", "parent": "transfer", "label": "OpenSMTPD, Sendmail, Haraka", "sublabel": "OpenBSD, the original, Node.js" },
+    { "id": "access", "parent": "server", "label": "Storage and access", "sublabel": "IMAP, POP3, JMAP, Sieve" },
+    { "id": "dovecot", "parent": "access", "label": "Dovecot", "sublabel": "IMAP, POP3, Sieve, LMTP" },
+    { "id": "cyrus", "parent": "access", "label": "Cyrus IMAP", "sublabel": "IMAP, JMAP, CalDAV" },
+    { "id": "helpers", "parent": "server", "label": "Signing and filtering", "sublabel": "connected by milters" },
+    { "id": "dkimtools", "parent": "helpers", "label": "OpenDKIM, OpenDMARC", "sublabel": "sign and check" },
+    { "id": "spamtools", "parent": "helpers", "label": "Rspamd, SpamAssassin, ClamAV", "sublabel": "spam and viruses" },
+    { "id": "allinone", "parent": "server", "label": "All in one", "sublabel": "every job, one program" },
+    { "id": "stalwart", "parent": "allinone", "label": "Stalwart", "sublabel": "Rust; IMAP, JMAP, SMTP" },
+    { "id": "maddy", "parent": "allinone", "label": "Maddy", "sublabel": "Go; IMAP in beta" },
+    { "id": "restmail", "parent": "allinone", "label": "REST Mail", "sublabel": "Go; a REST API, with gateways" },
+    { "id": "hosted", "parent": "server", "label": "Hosted for you", "sublabel": "proprietary, per user" },
+    { "id": "m365", "parent": "hosted", "label": "Microsoft 365", "sublabel": "Exchange Online" },
+    { "id": "google", "parent": "hosted", "label": "Google Workspace", "sublabel": "Gmail" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "The classic stack", "items": ["An MTA (Postfix or Exim) plus Dovecot, plus a program for each check", "Flexible, mature, and many configuration files"] },
+    { "dot": "amber", "title": "All in one", "items": ["One program, one configuration", "Younger; less production history"] }
+  ]
+}

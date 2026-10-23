@@ -41,7 +41,7 @@ func postValidateJS(t *testing.T, h *PipelineHandler, request interface{}) *http
 		t.Fatal(err)
 	}
 	rr := httptest.NewRecorder()
-	h.ValidateCustomFilter(rr, httptest.NewRequest(http.MethodPost, validateJSPath, bytes.NewReader(body)))
+	pipelineRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, validateJSPath, bytes.NewReader(body)))
 	return rr
 }
 

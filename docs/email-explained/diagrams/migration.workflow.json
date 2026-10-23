@@ -1,0 +1,56 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Migrating a domain in four phases, every step reversible until the last",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/migration.html",
+    "legend": {
+      "entries": {
+        "external": { "label": "DNS changes" },
+        "backend": { "label": "Server work" },
+        "security": { "label": "The way back" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "dns", "label": "Your DNS" },
+    { "id": "servers", "label": "The two servers" },
+    { "id": "undo", "label": "If something is wrong", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "prepare", "label": "Prepare", "fromCol": 0, "toCol": 1 },
+    { "id": "both", "label": "Run both", "fromCol": 2, "toCol": 3 },
+    { "id": "cut", "label": "Cut over", "fromCol": 4, "toCol": 4, "variant": "security" },
+    { "id": "retire", "label": "Retire", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["inventory", "ttl", "setup", "copy", "mx", "final", "cleanup", "shutdown"],
+  "nodes": [
+    { "id": "inventory", "lane": "servers", "col": 0, "type": "backend", "label": "Write it all down", "sublabel": "mailboxes, aliases, senders" },
+    { "id": "ttl", "lane": "dns", "col": 1, "type": "external", "label": "Lower the TTLs", "sublabel": "MX, A: a few minutes" },
+    { "id": "setup", "lane": "servers", "col": 2, "type": "backend", "label": "Set up the new server", "sublabel": "test it directly" },
+    { "id": "publish", "lane": "dns", "col": 2, "type": "external", "label": "Both in DNS", "sublabel": "new DKIM selector, SPF" },
+    { "id": "copy", "lane": "servers", "col": 3, "type": "backend", "label": "Copy the mail", "sublabel": "imapsync, first pass" },
+    { "id": "mx", "lane": "dns", "col": 4, "type": "external", "label": "Point the MX", "sublabel": "at the new server" },
+    { "id": "final", "lane": "servers", "col": 4, "type": "backend", "label": "Final sync", "sublabel": "old server still accepting" },
+    { "id": "back", "lane": "undo", "col": 4, "type": "security", "label": "Point the MX back", "sublabel": "nothing removed yet" },
+    { "id": "cleanup", "lane": "dns", "col": 5, "type": "external", "label": "Remove the old", "sublabel": "SPF entry, then selector" },
+    { "id": "shutdown", "lane": "servers", "col": 5, "type": "backend", "label": "Shut the old down", "sublabel": "days later", "icon": "success" }
+  ],
+  "edges": [
+    { "id": "m1", "from": "inventory", "to": "ttl", "role": "main", "variant": "default" },
+    { "id": "m2", "from": "ttl", "to": "setup", "role": "main", "variant": "default" },
+    { "id": "keys", "from": "setup", "to": "publish", "role": "branch", "variant": "default" },
+    { "id": "m3", "from": "setup", "to": "copy", "role": "main", "variant": "default" },
+    { "id": "m4", "from": "copy", "to": "mx", "role": "main", "variant": "emphasis" },
+    { "id": "m5", "from": "mx", "to": "final", "role": "main", "variant": "default" },
+    { "id": "m6", "from": "final", "to": "cleanup", "label": "nothing new for days", "role": "main", "variant": "default" },
+    { "id": "m7", "from": "cleanup", "to": "shutdown", "role": "main", "variant": "default" },
+    { "id": "rollback", "from": "final", "to": "back", "label": "badly wrong", "role": "branch", "variant": "security" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "The rule", "items": ["Run both servers side by side", "Add before you remove: keys, SPF entries, MX", "Keep the old server accepting until the very end"] },
+    { "dot": "rose", "title": "Easy to forget", "items": ["The website or app that sends through the old server", "Mail that arrived at the old server during the cutover", "Removing the old DKIM selector too soon"] }
+  ]
+}

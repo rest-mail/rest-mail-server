@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "How a large mailbox provider weighs a message: inbox, spam folder or refused",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/reputation.html",
+    "legend": {
+      "entries": {
+        "backend": { "label": "The message" },
+        "security": { "label": "What is weighed" },
+        "frontend": { "label": "Outcomes" },
+        "messagebus": { "label": "Feedback that builds reputation" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "weigh", "label": "Weighed, roughly in this order" },
+    { "id": "out", "label": "Outcome" },
+    { "id": "learn", "label": "What the provider learns for next time" }
+  ],
+  "mainPath": ["msg", "ip", "auth", "domain", "content", "inbox"],
+  "nodes": [
+    { "id": "msg", "lane": "weigh", "col": 0, "type": "backend", "label": "A message arrives", "sublabel": "from a new server" },
+    { "id": "ip", "lane": "weigh", "col": 1, "type": "security", "label": "The sending address", "sublabel": "blocklists, PBL, PTR, history" },
+    { "id": "auth", "lane": "weigh", "col": 2, "type": "security", "label": "Authentication", "sublabel": "SPF, DKIM, DMARC, aligned" },
+    { "id": "domain", "lane": "weigh", "col": 3, "type": "security", "label": "The domain", "sublabel": "reputation of From: and d=" },
+    { "id": "content", "lane": "weigh", "col": 4, "type": "security", "label": "Content", "sublabel": "links, formatting, filters" },
+    { "id": "inbox", "lane": "weigh", "col": 5, "type": "frontend", "label": "Inbox", "icon": "success" },
+    { "id": "refused", "lane": "out", "col": 1, "type": "frontend", "label": "Refused", "sublabel": "550, or deferred: 421", "icon": "failure" },
+    { "id": "junk", "lane": "out", "col": 4, "type": "frontend", "label": "Spam folder", "sublabel": "accepted, not trusted" },
+    { "id": "react", "lane": "learn", "col": 5, "type": "messagebus", "label": "How recipients react", "sublabel": "spam reports, keep below 0.3%" },
+    { "id": "history", "lane": "learn", "col": 3, "type": "messagebus", "label": "History", "sublabel": "per address and per domain" }
+  ],
+  "edges": [
+    { "id": "e1", "from": "msg", "to": "ip", "role": "main", "variant": "default" },
+    { "id": "e2", "from": "ip", "to": "auth", "role": "main", "variant": "default" },
+    { "id": "e3", "from": "auth", "to": "domain", "role": "main", "variant": "default" },
+    { "id": "e4", "from": "domain", "to": "content", "role": "main", "variant": "default" },
+    { "id": "e5", "from": "content", "to": "inbox", "role": "main", "variant": "emphasis" },
+    { "id": "bad-ip", "from": "ip", "to": "refused", "label": "listed, home IP", "role": "branch", "variant": "security" },
+    { "id": "doubt", "from": "content", "to": "junk", "label": "in doubt", "role": "branch", "variant": "dashed" },
+    { "id": "feedback", "from": "inbox", "to": "react", "role": "branch", "variant": "dashed" },
+    { "id": "record", "from": "react", "to": "history", "label": "remembered", "role": "return", "variant": "dashed" },
+    { "id": "next", "from": "history", "to": "domain", "label": "next time", "role": "return", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "Why new servers start behind", "items": ["No history to weigh against the risk", "Home addresses are on Spamhaus's PBL", "Cloud providers often block port 25 by default"] },
+    { "dot": "cyan", "title": "Building a reputation (Google's guidelines)", "items": ["Increase sending volume slowly", "Separate notifications from promotions", "Unsubscribe addresses that keep bouncing; never buy lists"] }
+  ]
+}

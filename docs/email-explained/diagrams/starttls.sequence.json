@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "STARTTLS stripping: why an optional upgrade is not enough",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/starttls.html",
+    "legend": {
+      "entries": {
+        "default": {
+          "label": "SMTP commands"
+        },
+        "return": {
+          "label": "Replies"
+        },
+        "security": {
+          "label": "Tampered with on the way"
+        },
+        "emphasis": {
+          "label": "The message, in the clear"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "sender",
+      "type": "backend",
+      "label": "Sending server",
+      "sublabel": "mail.example.com"
+    },
+    {
+      "id": "path",
+      "type": "external",
+      "label": "Someone on the path",
+      "sublabel": "ISP, firewall, attacker"
+    },
+    {
+      "id": "receiver",
+      "type": "backend",
+      "label": "Receiving server",
+      "sublabel": "mx.example.org"
+    }
+  ],
+  "messages": [
+    {
+      "id": "ehlo",
+      "from": "sender",
+      "to": "path",
+      "label": "EHLO",
+      "variant": "default",
+      "y": 170
+    },
+    {
+      "id": "ehlo2",
+      "from": "path",
+      "to": "receiver",
+      "label": "EHLO",
+      "variant": "default",
+      "y": 204
+    },
+    {
+      "id": "offer",
+      "from": "receiver",
+      "to": "path",
+      "label": "250 SIZE, STARTTLS…",
+      "variant": "return",
+      "y": 238
+    },
+    {
+      "id": "strip",
+      "from": "path",
+      "to": "sender",
+      "label": "250 SIZE… STARTTLS deleted",
+      "variant": "security",
+      "note": "The offer travels in the clear, so it can be edited",
+      "y": 272
+    },
+    {
+      "id": "clear",
+      "from": "sender",
+      "to": "path",
+      "label": "MAIL, RCPT, DATA",
+      "variant": "emphasis",
+      "note": "No TLS offered? Send anyway: that is what opportunistic means",
+      "y": 350
+    },
+    {
+      "id": "read",
+      "from": "path",
+      "to": "receiver",
+      "label": "the message, read on the way",
+      "variant": "security",
+      "y": 428
+    },
+    {
+      "id": "ok",
+      "from": "receiver",
+      "to": "sender",
+      "label": "250 OK: nobody noticed",
+      "variant": "return",
+      "y": 462
+    },
+    {
+      "id": "ehlo3",
+      "from": "sender",
+      "to": "path",
+      "label": "EHLO",
+      "variant": "default",
+      "note": "The sender already knows this domain requires TLS",
+      "y": 512
+    },
+    {
+      "id": "strip2",
+      "from": "path",
+      "to": "sender",
+      "label": "250 SIZE… STARTTLS deleted",
+      "variant": "security",
+      "y": 590
+    },
+    {
+      "id": "quit",
+      "from": "sender",
+      "to": "path",
+      "label": "QUIT",
+      "variant": "default",
+      "note": "Policy says TLS: keep the message, retry, and report it (TLS-RPT)",
+      "y": 624
+    }
+  ],
+  "activations": [
+    {
+      "participant": "sender",
+      "from": 164,
+      "to": 672
+    },
+    {
+      "participant": "path",
+      "from": 164,
+      "to": 672
+    },
+    {
+      "participant": "receiver",
+      "from": 198,
+      "to": 468
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "What STARTTLS alone protects against",
+      "items": [
+        "Someone who can only listen: yes",
+        "Someone who can change traffic: no; they can delete the offer, or answer with their own certificate"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "What closes the gap",
+      "items": [
+        "MTA-STS: the domain publishes over HTTPS that it requires TLS, and with which MX names",
+        "DANE: the MX's certificate is published in DNSSEC-signed DNS"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Between apps and servers",
+      "items": [
+        "Use implicit TLS: 465, 993, 995 (RFC 8314)",
+        "There is no offer to delete when TLS starts with the first byte"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 488,
+      "label": "Opportunistic STARTTLS"
+    },
+    {
+      "from": 498,
+      "to": 678,
+      "label": "With MTA-STS or DANE"
+    }
+  ]
+}

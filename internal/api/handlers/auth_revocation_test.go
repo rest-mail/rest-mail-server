@@ -404,7 +404,7 @@ func TestAccountPasswordChangeRevokesSessions(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/password", bytes.NewBufferString(body))
 		req = req.WithContext(context.WithValue(req.Context(), middleware.ClaimsKey, &auth.Claims{AccountID: mb.ID, Address: mb.Address}))
 		rr := httptest.NewRecorder()
-		h.ChangePassword(rr, req)
+		passwordChangeRoutes(h).ServeHTTP(rr, req)
 		return rr
 	}
 	if rr := change("wrong", "a brand new passphrase"); rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), `"code":"invalid_password"`) {

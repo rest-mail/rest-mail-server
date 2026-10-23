@@ -98,7 +98,7 @@ func TestTwoFactor_StatusIsOwnStateWithoutSecrets(t *testing.T) {
 	read := func(enabled, pending bool) {
 		t.Helper()
 		rr := httptest.NewRecorder()
-		handler.Status(rr, withClaims(httptest.NewRequest(http.MethodGet, "/api/v1/auth/2fa", nil), owner))
+		twoFactorRoutes(handler).ServeHTTP(rr, withClaims(httptest.NewRequest(http.MethodGet, "/api/v1/auth/2fa", nil), owner))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status: %d %s", rr.Code, rr.Body)
 		}

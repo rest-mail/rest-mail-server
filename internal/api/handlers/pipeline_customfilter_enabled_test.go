@@ -86,12 +86,12 @@ func TestCustomFilterCreate_EnabledPersistence(t *testing.T) {
 		return domains, filters
 	}
 	body := func(name, enabled string) string {
-		// These forged fields must never reach the model or its association.
-		return fmt.Sprintf(`{"domain_id":%d,"name":%q,"description":"test filter","filter_type":"transform","direction":"both","config":{"script":"noop"},"id":987654,"created_at":"2000-01-01T00:00:00Z","updated_at":"2000-01-01T00:00:00Z","domain":{"name":"forged-domain.test","active":true}%s}`, domain.ID, name, enabled)
+		// Client-settable fields only; mass-assignment refusals are tested separately.
+		return fmt.Sprintf(`{"domain_id":%d,"name":%q,"description":"test filter","filter_type":"transform","direction":"both","config":{"script":"noop"}%s}`, domain.ID, name, enabled)
 	}
 	create := func(body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.CreateCustomFilter(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/custom-filters", strings.NewReader(body)))
+		pipelineRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/custom-filters", strings.NewReader(body)))
 		return rr
 	}
 	for _, tc := range []struct {
@@ -151,7 +151,7 @@ func TestCustomFilterCreate_EnabledPersistence(t *testing.T) {
 			{"missing_direction", `"direction":"both"`, `"direction":""`, http.StatusUnprocessableEntity},
 			{"invalid_type", `"filter_type":"transform"`, `"filter_type":"invalid"`, http.StatusUnprocessableEntity},
 			{"invalid_direction", `"direction":"both"`, `"direction":"invalid"`, http.StatusUnprocessableEntity},
-			{"invalid_enabled", `"enabled":false`, `"enabled":"false"`, http.StatusBadRequest},
+			{"invalid_enabled", `"enabled":false`, `"enabled":"false"`, http.StatusUnprocessableEntity},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				domainsBefore, filtersBefore := counts()

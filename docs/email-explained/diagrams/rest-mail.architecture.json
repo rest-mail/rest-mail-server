@@ -1,0 +1,207 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "REST Mail: protocol gateways in front of one REST API",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/rest-mail.html"
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 5,
+    "gapX": 120,
+    "gapY": 70,
+    "cellW": 170,
+    "cellH": 64
+  },
+  "components": [
+    {
+      "id": "servers",
+      "type": "external",
+      "label": "Other mail servers",
+      "sublabel": "Postfix, Exim, Gmail…",
+      "row": 0,
+      "col": 0
+    },
+    {
+      "id": "apps",
+      "type": "frontend",
+      "label": "Mail apps",
+      "sublabel": "Thunderbird, Apple Mail…",
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "own",
+      "type": "frontend",
+      "label": "Apps and agents",
+      "sublabel": "REST Mail apps, API keys",
+      "row": 2,
+      "col": 0
+    },
+    {
+      "id": "smtpgw",
+      "type": "backend",
+      "label": "SMTP gateway",
+      "sublabel": "25 in; 465 submission",
+      "row": 0,
+      "col": 1
+    },
+    {
+      "id": "imapgw",
+      "type": "backend",
+      "label": "IMAP, POP3 gateways",
+      "sublabel": "993, 995",
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "REST API",
+      "sublabel": "accounts, mail, admin",
+      "tag": "one permission system",
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "pipeline",
+      "type": "security",
+      "label": "Pipeline",
+      "sublabel": "SPF, DKIM, DMARC, filters",
+      "row": 2,
+      "col": 3
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "mailboxes, queue, traces",
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "queue",
+      "type": "messagebus",
+      "label": "Outbound queue",
+      "sublabel": "signs, retries, bounces",
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "remote",
+      "type": "external",
+      "label": "Recipients' servers",
+      "sublabel": "SMTP, or RESTMAIL",
+      "row": 0,
+      "col": 4
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "One REST Mail install",
+      "wraps": [
+        "smtpgw",
+        "imapgw",
+        "api",
+        "pipeline",
+        "db",
+        "queue"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "inbound",
+      "from": "servers",
+      "to": "smtpgw",
+      "label": "SMTP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "access",
+      "from": "apps",
+      "to": "imapgw",
+      "label": "IMAP, POP3"
+    },
+    {
+      "id": "submit",
+      "from": "apps",
+      "to": "smtpgw",
+      "label": "send, 465",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "rest",
+      "from": "own",
+      "to": "api",
+      "label": "HTTPS, JSON",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "smtp-api",
+      "from": "smtpgw",
+      "to": "api",
+      "label": "API calls"
+    },
+    {
+      "id": "imap-api",
+      "from": "imapgw",
+      "to": "api",
+      "label": "API calls"
+    },
+    {
+      "id": "checks",
+      "from": "api",
+      "to": "pipeline",
+      "label": "every message",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "store",
+      "from": "api",
+      "to": "db",
+      "label": "SQL"
+    },
+    {
+      "id": "drain",
+      "from": "db",
+      "to": "queue",
+      "label": "queued mail",
+      "variant": "dashed"
+    },
+    {
+      "id": "deliver",
+      "from": "queue",
+      "to": "remote",
+      "label": "deliver",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Compatible",
+      "items": [
+        "Other servers and mail apps see an ordinary SMTP, IMAP and POP3 server",
+        "Between REST Mail servers: delivery over HTTPS (RESTMAIL)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Safe without settings",
+      "items": [
+        "No trusted networks, no cleartext ports",
+        "Per-account limits; send only as yourself",
+        "Every outbound message DKIM-signed"
+      ]
+    }
+  ]
+}

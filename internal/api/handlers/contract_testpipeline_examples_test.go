@@ -15,10 +15,10 @@ func TestTestPipeline_ExamplePairs(t *testing.T) {
 	requests, responses := postExamples(t, testPipelinePath, "testPipeline")
 
 	want := map[string][]string{
-		"request": {"email_missing", "invalid_body", "valid"},
+		"request": {"email_missing", "invalid_body", "pipeline_id_wrong_type", "valid"},
 		"200":     {"valid"},
 		"400":     {"invalid_body"},
-		"422":     {"email_missing"},
+		"422":     {"email_missing", "pipeline_id_wrong_type"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

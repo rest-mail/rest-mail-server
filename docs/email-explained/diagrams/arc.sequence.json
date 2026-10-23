@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "ARC: a mailing list records what it saw, and the receiver decides whether to believe it",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/arc.html",
+    "legend": {
+      "entries": {
+        "emphasis": {
+          "label": "The message"
+        },
+        "security": {
+          "label": "Changed and sealed"
+        },
+        "default": {
+          "label": "Key lookups"
+        },
+        "return": {
+          "label": "Answers"
+        },
+        "dashed": {
+          "label": "Delivered"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "alice",
+      "type": "backend",
+      "label": "example.com",
+      "sublabel": "DKIM-signs, p=reject"
+    },
+    {
+      "id": "list",
+      "type": "backend",
+      "label": "Mailing list",
+      "sublabel": "lists.example.net"
+    },
+    {
+      "id": "bob",
+      "type": "backend",
+      "label": "Receiving server",
+      "sublabel": "example.org"
+    },
+    {
+      "id": "dns",
+      "type": "external",
+      "label": "DNS",
+      "sublabel": "public keys"
+    },
+    {
+      "id": "inbox",
+      "type": "database",
+      "label": "Bob's inbox"
+    }
+  ],
+  "messages": [
+    {
+      "id": "post",
+      "from": "alice",
+      "to": "list",
+      "label": "message, signed d=example.com",
+      "variant": "emphasis",
+      "note": "spf=pass dkim=pass dmarc=pass",
+      "y": 170
+    },
+    {
+      "id": "resend",
+      "from": "list",
+      "to": "bob",
+      "label": "footer added + ARC set i=1",
+      "variant": "security",
+      "note": "AAR: what the list saw; AMS and AS sign it",
+      "y": 250
+    },
+    {
+      "id": "keys",
+      "from": "bob",
+      "to": "dns",
+      "label": "keys for example.com and lists.example.net",
+      "variant": "default",
+      "y": 330
+    },
+    {
+      "id": "answer",
+      "from": "dns",
+      "to": "bob",
+      "label": "public keys",
+      "variant": "return",
+      "note": "DKIM fails (footer), DMARC fails; the ARC chain is valid",
+      "y": 364
+    },
+    {
+      "id": "deliver",
+      "from": "bob",
+      "to": "inbox",
+      "label": "delivered",
+      "variant": "dashed",
+      "note": "Local policy: lists.example.net is a trusted sealer",
+      "y": 442
+    }
+  ],
+  "activations": [
+    {
+      "participant": "list",
+      "from": 164,
+      "to": 256
+    },
+    {
+      "participant": "bob",
+      "from": 244,
+      "to": 490
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One ARC set per hop",
+      "items": [
+        "ARC-Authentication-Results: what this hop saw",
+        "ARC-Message-Signature: the message as it left",
+        "ARC-Seal: the chain so far, with cv=none, pass or fail"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Claims, not proof",
+      "items": [
+        "Anyone can run a sealer, spammers included",
+        "Use ARC results only from sealers you trust (RFC 8617 §7.2.1)"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 226,
+      "label": "The list checks it"
+    },
+    {
+      "from": 236,
+      "to": 306,
+      "label": "The list changes it, and seals"
+    },
+    {
+      "from": 316,
+      "to": 496,
+      "label": "The receiver decides"
+    }
+  ]
+}

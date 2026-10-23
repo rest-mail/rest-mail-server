@@ -57,6 +57,7 @@ func TestPipelineCreate_UndecodableBodiesRefused(t *testing.T) {
 	const filters = `"filters":[{"name":"header_validate","config":{}}]`
 	for name, body := range map[string]string{
 		"empty":                         ``,
+		"null":                          `null`,
 		"truncated":                     `{"domain_id":1,"direction":"inbound",`,
 		"not json":                      `domain_id=1&direction=inbound`,
 		"array of objects":              `[{"domain_id":1,"direction":"inbound",` + filters + `}]`,
@@ -76,10 +77,24 @@ func TestPipelineCreate_UndecodableBodiesRefused(t *testing.T) {
 			if reached {
 				t.Fatalf("%s reached the database before it was refused", body)
 			}
-			if rr.Code != http.StatusBadRequest {
-				t.Fatalf("%s: status %d, want 400; body %s", body, rr.Code, rr.Body)
+			status, expected := http.StatusBadRequest, want
+			fieldTypes := map[string]map[string]string{
+				"domain_id string":              {"domain_id": "must be a non-negative integer"},
+				"domain_id negative":            {"domain_id": "must be a non-negative integer"},
+				"domain_id fraction":            {"domain_id": "must be a non-negative integer"},
+				"direction number":              {"direction": "must be a string"},
+				"direction array":               {"direction": "must be a string"},
+				"direction boolean, no filters": {"direction": "must be a string"},
+				"active string":                 {"active": "must be a boolean"},
 			}
-			if got := decodeShapeBody(t, rr); !reflect.DeepEqual(got, want) {
+			if fields := fieldTypes[name]; fields != nil {
+				status = http.StatusUnprocessableEntity
+				expected = parseShapeJSON(t, pipelineValidation(fields))
+			}
+			if rr.Code != status {
+				t.Fatalf("%s: status %d, want %d; body %s", body, rr.Code, status, rr.Body)
+			}
+			if got := decodeShapeBody(t, rr); !reflect.DeepEqual(got, expected) {
 				t.Errorf("%s answered %s, want %s", body, rr.Body, pipelineBodyRefusal)
 			}
 		})
@@ -98,7 +113,6 @@ func TestPipelineCreate_DecodableBodyNot400(t *testing.T) {
 	for name, body := range map[string]string{
 		"no direction": `{"domain_id":1,"filters":[{"name":"header_validate","config":{}}],"active":true}`,
 		"empty object": `{}`,
-		"null":         `null`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			rr, reached := createPipelineNoDB(t, body)
@@ -159,8 +173,8 @@ func pipelineBody400Problems(requests map[string]interface{}, responses map[stri
 	if body, ok := requests["body_array"].([]interface{}); !ok || len(body) != 0 {
 		problems = append(problems, fmt.Sprintf("body_array is %s, want []", mustJSON(requests["body_array"])))
 	}
-	if got := names(responses["400"]); !reflect.DeepEqual(got, []string{"body_array"}) {
-		problems = append(problems, fmt.Sprintf("the 400 names %v, want [body_array]", got))
+	if got := names(responses["400"]); !reflect.DeepEqual(got, []string{"body_array", "null_body"}) {
+		problems = append(problems, fmt.Sprintf("the 400 names %v, want [body_array null_body]", got))
 	}
 	for status, examples := range responses {
 		if _, ok := examples["body_array"]; ok && status != "400" {

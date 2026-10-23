@@ -1,0 +1,252 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "One message through a packaged mail server, and the configuration behind each step",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/bundle.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "A daemon in the bundle"
+        },
+        "security": {
+          "label": "Checks, through milters"
+        },
+        "database": {
+          "label": "Mail storage"
+        },
+        "frontend": {
+          "label": "Configuration each one reads"
+        },
+        "external": {
+          "label": "The bundle's own layer"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "flow",
+      "label": "The message's path"
+    },
+    {
+      "id": "config",
+      "label": "Each step's configuration, still there"
+    },
+    {
+      "id": "bundle",
+      "label": "What the bundle adds on top"
+    }
+  ],
+  "mainPath": [
+    "internet",
+    "postscreen",
+    "smtpd",
+    "milters",
+    "lmtp",
+    "maildir"
+  ],
+  "nodes": [
+    {
+      "id": "internet",
+      "lane": "flow",
+      "col": 0,
+      "type": "external",
+      "label": "Port 25",
+      "sublabel": "from the internet"
+    },
+    {
+      "id": "postscreen",
+      "lane": "flow",
+      "col": 1,
+      "type": "backend",
+      "label": "postscreen",
+      "sublabel": "Postfix: bots, blocklists"
+    },
+    {
+      "id": "smtpd",
+      "lane": "flow",
+      "col": 2,
+      "type": "backend",
+      "label": "smtpd, cleanup",
+      "sublabel": "Postfix: relay rules"
+    },
+    {
+      "id": "milters",
+      "lane": "flow",
+      "col": 3,
+      "type": "security",
+      "label": "Milters",
+      "sublabel": "Rspamd, OpenDKIM, OpenDMARC"
+    },
+    {
+      "id": "lmtp",
+      "lane": "flow",
+      "col": 4,
+      "type": "backend",
+      "label": "Dovecot",
+      "sublabel": "LMTP delivery, Sieve rules"
+    },
+    {
+      "id": "maildir",
+      "lane": "flow",
+      "col": 5,
+      "type": "database",
+      "label": "Mailbox",
+      "sublabel": "Maildir on a volume"
+    },
+    {
+      "id": "maincf",
+      "lane": "config",
+      "col": 1,
+      "type": "frontend",
+      "label": "main.cf, master.cf",
+      "sublabel": "mynetworks, restrictions"
+    },
+    {
+      "id": "rspamdconf",
+      "lane": "config",
+      "col": 3,
+      "type": "frontend",
+      "label": "rspamd local.d, opendkim.conf",
+      "sublabel": "keys, scores, policies"
+    },
+    {
+      "id": "dovecotconf",
+      "lane": "config",
+      "col": 4,
+      "type": "frontend",
+      "label": "dovecot.conf, sieve",
+      "sublabel": "auth, storage, quotas"
+    },
+    {
+      "id": "env",
+      "lane": "bundle",
+      "col": 1,
+      "type": "external",
+      "label": "Settings and templates",
+      "sublabel": "env vars, a setup script"
+    },
+    {
+      "id": "ui",
+      "lane": "bundle",
+      "col": 3,
+      "type": "external",
+      "label": "Admin UI, ACME, DNS help",
+      "sublabel": "depending on the bundle"
+    },
+    {
+      "id": "images",
+      "lane": "bundle",
+      "col": 4,
+      "type": "external",
+      "label": "Images and upgrades",
+      "sublabel": "tested together"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "from": "internet",
+      "to": "postscreen",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "e2",
+      "from": "postscreen",
+      "to": "smtpd",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "e3",
+      "from": "smtpd",
+      "to": "milters",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "e4",
+      "from": "milters",
+      "to": "lmtp",
+      "label": "queue, then",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "c1",
+      "from": "maincf",
+      "to": "postscreen",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "c2",
+      "from": "rspamdconf",
+      "to": "milters",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "c3",
+      "from": "dovecotconf",
+      "to": "lmtp",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "g1",
+      "from": "env",
+      "to": "maincf",
+      "label": "generates",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "g2",
+      "from": "ui",
+      "to": "rspamdconf",
+      "label": "writes",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "g3",
+      "from": "images",
+      "to": "dovecotconf",
+      "label": "ships",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "e6",
+      "from": "lmtp",
+      "to": "maildir",
+      "role": "main",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What packaging solves",
+      "items": [
+        "Installation in an afternoon",
+        "Known-good defaults, connected the same way every time",
+        "Upgrades of every component together"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "What stays the same",
+      "items": [
+        "Every daemon and its configuration language",
+        "Debugging means knowing each component and its logs",
+        "Containers can add traps: trusted Docker networks, hidden client addresses"
+      ]
+    }
+  ]
+}

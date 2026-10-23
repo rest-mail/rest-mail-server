@@ -9,13 +9,13 @@ import (
 
 func TestCustomFilterCreate_DocumentedRefusals(t *testing.T) {
 	documentedRefusals(t, "/api/v1/admin/custom-filters", "createCustomFilter",
-		NewPipelineHandler(nil, nil, filters.JSSidecar{}).CreateCustomFilter)
+		pipelineRoutes(NewPipelineHandler(nil, nil, filters.JSSidecar{})).ServeHTTP)
 }
 
 func TestCustomFilterCreate_ExamplePair(t *testing.T) {
 	requests, responses := postExamples(t, "/api/v1/admin/custom-filters", "createCustomFilter")
-	if len(requests) != 2 || len(responses["201"]) != 1 || len(responses["422"]) != 1 {
-		t.Fatalf("want two requests paired with one 201 and one 422, got %v / %v", requests, responses)
+	if len(requests) != 3 || len(responses["201"]) != 1 || len(responses["422"]) != 2 {
+		t.Fatalf("want three requests paired with one 201 and two 422s, got %v / %v", requests, responses)
 	}
 	created, ok := requests["created"].(map[string]interface{})
 	if !ok || created["filter_type"] != "action" {

@@ -1,0 +1,271 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Before delivering: how a sender applies DANE and MTA-STS",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/mta-sts.html",
+    "legend": {
+      "entries": {
+        "external": {
+          "label": "Lookups"
+        },
+        "security": {
+          "label": "Policy decisions"
+        },
+        "backend": {
+          "label": "Delivery"
+        },
+        "messagebus": {
+          "label": "Kept and reported"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "dane",
+      "label": "DANE: keys in signed DNS"
+    },
+    {
+      "id": "sts",
+      "label": "MTA-STS: a policy over HTTPS"
+    },
+    {
+      "id": "fail",
+      "label": "A check fails",
+      "variant": "exception"
+    },
+    {
+      "id": "none",
+      "label": "Neither: opportunistic"
+    }
+  ],
+  "mainPath": [
+    "mx",
+    "signed",
+    "tlsa",
+    "dane-tls",
+    "deliver-dane"
+  ],
+  "nodes": [
+    {
+      "id": "mx",
+      "lane": "dane",
+      "col": 0,
+      "type": "external",
+      "label": "Look up the MX",
+      "sublabel": "for example.org"
+    },
+    {
+      "id": "signed",
+      "lane": "dane",
+      "col": 1,
+      "type": "security",
+      "label": "Signed with DNSSEC?",
+      "icon": "decision"
+    },
+    {
+      "id": "tlsa",
+      "lane": "dane",
+      "col": 2,
+      "type": "external",
+      "label": "TLSA records",
+      "sublabel": "_25._tcp.mx1"
+    },
+    {
+      "id": "dane-tls",
+      "lane": "dane",
+      "col": 3,
+      "type": "security",
+      "label": "TLS, key matches",
+      "sublabel": "or no delivery"
+    },
+    {
+      "id": "deliver-dane",
+      "lane": "dane",
+      "col": 4,
+      "type": "backend",
+      "label": "Deliver",
+      "sublabel": "authenticated TLS",
+      "icon": "success"
+    },
+    {
+      "id": "sts-txt",
+      "lane": "sts",
+      "col": 1,
+      "type": "external",
+      "label": "_mta-sts TXT",
+      "sublabel": "or a cached policy"
+    },
+    {
+      "id": "policy",
+      "lane": "sts",
+      "col": 2,
+      "type": "external",
+      "label": "Fetch the policy",
+      "sublabel": "https://mta-sts.example.org"
+    },
+    {
+      "id": "enforce",
+      "lane": "sts",
+      "col": 3,
+      "type": "security",
+      "label": "MX listed, valid TLS",
+      "sublabel": "mode: enforce"
+    },
+    {
+      "id": "deliver-sts",
+      "lane": "sts",
+      "col": 4,
+      "type": "backend",
+      "label": "Deliver",
+      "sublabel": "authenticated TLS",
+      "icon": "success"
+    },
+    {
+      "id": "defer",
+      "lane": "fail",
+      "col": 3,
+      "type": "messagebus",
+      "label": "Keep and retry",
+      "sublabel": "report it: TLS-RPT",
+      "icon": "failure"
+    },
+    {
+      "id": "opportunistic",
+      "lane": "none",
+      "col": 2,
+      "type": "backend",
+      "label": "STARTTLS if offered",
+      "sublabel": "any certificate"
+    },
+    {
+      "id": "deliver-any",
+      "lane": "none",
+      "col": 4,
+      "type": "backend",
+      "label": "Deliver",
+      "sublabel": "encrypted, or not"
+    }
+  ],
+  "edges": [
+    {
+      "id": "check",
+      "from": "mx",
+      "to": "signed",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "yes-signed",
+      "from": "signed",
+      "to": "tlsa",
+      "label": "yes",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "found",
+      "from": "tlsa",
+      "to": "dane-tls",
+      "label": "found",
+      "role": "main",
+      "variant": "security"
+    },
+    {
+      "id": "ok-dane",
+      "from": "dane-tls",
+      "to": "deliver-dane",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "no-dane",
+      "from": "signed",
+      "to": "sts-txt",
+      "label": "no, or no TLSA",
+      "role": "branch",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "fetch",
+      "from": "sts-txt",
+      "to": "policy",
+      "label": "found",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "apply",
+      "from": "policy",
+      "to": "enforce",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "ok-sts",
+      "from": "enforce",
+      "to": "deliver-sts",
+      "role": "branch",
+      "variant": "emphasis",
+      "label": "passes"
+    },
+    {
+      "id": "fail-sts",
+      "from": "enforce",
+      "to": "defer",
+      "label": "fails",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "no-sts",
+      "from": "sts-txt",
+      "to": "opportunistic",
+      "label": "no policy",
+      "role": "branch",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "left"
+    },
+    {
+      "id": "send-any",
+      "from": "opportunistic",
+      "to": "deliver-any",
+      "role": "branch",
+      "variant": "default"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "MTA-STS (RFC 8461)",
+      "items": [
+        "_mta-sts TXT: v=STSv1; id=... (change the id when the policy changes)",
+        "Policy at https://mta-sts.<domain>/.well-known/mta-sts.txt",
+        "mode, mx, max_age; start with mode: testing"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "DANE (RFC 7672)",
+      "items": [
+        "Needs DNSSEC on the zone and in the sender's resolver",
+        "TLSA 3 1 1: SHA-256 of the server's public key",
+        "Publish the new key's record before the key changes"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "TLS-RPT (RFC 8460)",
+      "items": [
+        "_smtp._tls TXT: v=TLSRPTv1; rua=mailto:... or https://...",
+        "A daily report of every failure senders saw"
+      ]
+    }
+  ]
+}
