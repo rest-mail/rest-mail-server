@@ -101,7 +101,7 @@ func decodeAccount(t *testing.T, rr *httptest.ResponseRecorder) accountResponse 
 func listAccounts(t *testing.T, h *AccountHandler, accountID uint) []accountResponse {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	h.ListAccounts(rr, authzRequest(http.MethodGet, "/api/v1/accounts", accountID, nil, ""))
+	accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodGet, "/api/v1/accounts", accountID, nil, ""))
 	if rr.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", rr.Code, rr.Body.String())
 	}
@@ -125,7 +125,7 @@ func TestCreateAccount(t *testing.T) {
 	h := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), "")
 	create := func(accountID uint, body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.CreateAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts", accountID, nil, body))
+		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts", accountID, nil, body))
 		return rr
 	}
 	chris := "chris@" + fx.domain.Name
@@ -217,7 +217,7 @@ func TestLinkAccount(t *testing.T) {
 	h := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), "")
 	linkWith := func(accountID uint, body string) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
-		h.LinkAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", accountID, nil, body))
+		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", accountID, nil, body))
 		return rr
 	}
 	link := func(accountID uint, address, password string) *httptest.ResponseRecorder {
@@ -292,7 +292,7 @@ func TestLinkAccount(t *testing.T) {
 	// Unlinking removes the caller's grant, and only the caller's.
 	unlink := func(accountID, id uint) int {
 		rr := httptest.NewRecorder()
-		h.UnlinkAccount(rr, authzRequest(http.MethodDelete, "/api/v1/accounts/x", accountID, map[string]string{"id": uintToStr(id)}, ""))
+		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodDelete, "/api/v1/accounts/"+uintToStr(id), accountID, nil, ""))
 		return rr.Code
 	}
 	if code := unlink(fx.user.ID, fx.user.ID); code != http.StatusConflict {
@@ -332,7 +332,7 @@ func TestLinkAccount_ConcurrentLinksOneGrant(t *testing.T) {
 			defer wg.Done()
 			<-start
 			rr := httptest.NewRecorder()
-			h.LinkAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.user.ID, nil, body))
+			accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.user.ID, nil, body))
 			codes[i] = rr.Code
 		}(i)
 	}

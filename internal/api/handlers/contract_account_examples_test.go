@@ -12,7 +12,7 @@ import (
 // refusals are sent signed in as an ordinary account. The handler still has
 // no database: the refusal comes before the session's grants are loaded.
 func TestAccountCreate_DocumentedRefusals(t *testing.T) {
-	documentedRefusals(t, "/api/v1/accounts", "createAccount", signedIn(NewAccountHandler(nil, nil, "").CreateAccount))
+	documentedRefusals(t, "/api/v1/accounts", "createAccount", signedIn(accountRoutes(NewAccountHandler(nil, nil, "")).ServeHTTP))
 }
 
 // The refused example is refused for the address it leaves out: given the
@@ -45,7 +45,7 @@ func TestAccountCreate_AddressMissingIsTheRefusal(t *testing.T) {
 			t.Errorf("%s was answered %d without reaching the database: %s", body, rr.Code, rr.Body)
 		}
 	}()
-	signedIn(NewAccountHandler(nil, nil, "").CreateAccount)(rr, req)
+	signedIn(accountRoutes(NewAccountHandler(nil, nil, "")).ServeHTTP)(rr, req)
 }
 
 func signedIn(next http.HandlerFunc) http.HandlerFunc {

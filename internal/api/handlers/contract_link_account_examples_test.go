@@ -14,7 +14,7 @@ import (
 func TestLinkAccount_DocumentedRefusals(t *testing.T) {
 	// A valid session reaches validation, but none of the refused examples
 	// needs a database, password check or grant write.
-	documentedRefusals(t, "/api/v1/accounts/link", "linkAccount", signedIn(NewAccountHandler(nil, nil, "").LinkAccount))
+	documentedRefusals(t, "/api/v1/accounts/link", "linkAccount", signedIn(accountRoutes(NewAccountHandler(nil, nil, "")).ServeHTTP))
 }
 
 func TestLinkAccount_ExamplePairs(t *testing.T) {
@@ -58,7 +58,7 @@ func TestLinkAccount_RefusalsStillRequireSession(t *testing.T) {
 	for name := range responses["422"] {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/link", bytes.NewReader(mustJSON(requests[name])))
-		NewAccountHandler(nil, nil, "").LinkAccount(rr, req)
+		accountRoutes(NewAccountHandler(nil, nil, "")).ServeHTTP(rr, req)
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("%s without a session = %d, want 401: %s", name, rr.Code, rr.Body)
 		}
@@ -90,7 +90,7 @@ func TestLinkAccount_DocumentedLifecycle(t *testing.T) {
 			body[field] = value
 		}
 		rr := httptest.NewRecorder()
-		h.LinkAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.user.ID, nil, string(mustJSON(body))))
+		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.user.ID, nil, string(mustJSON(body))))
 		return rr
 	}
 	if rr := link("linked"); rr.Code != http.StatusCreated {

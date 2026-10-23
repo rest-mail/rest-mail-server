@@ -350,3 +350,133 @@
 - operation: listDKIMKeys
   difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
   reason: The shared typed list envelope describes optional pagination. DKIM listing leaves it nil and continues to omit it in JSON.
+
+# Accounts, app passwords and API keys (#635, #618)
+
+- operation: "*"
+  difference: "response 2* application/json.properties.data*address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    An account's address is the stored mailbox address, which may be internationalised
+    (EAI). The API's account type does not claim the email format for it.
+- operation: createAccount
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The handler checks the address with REST Mail's own mailbox-address rule (EAI local parts
+    included) and answers the documented 422 on address; binding's email format would refuse
+    addresses the server accepts.
+- operation: createAccount
+  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    An empty password means the account has none (#341), so the handler checks the length of
+    a password that is given and answers 422 on password.
+- operation: linkAccount
+  difference: "request body application/json.properties.address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A wrong address is refused like a wrong password (403 invalid_credentials) so that linking
+    says nothing about which addresses exist.
+- operation: "*"
+  difference: "request body application/json.properties.password.format: openapi.yaml \"password\", generated absent"
+  reason: >-
+    The password fields are plain strings to the code; the password format is a hint for
+    documentation and clients only.
+- operation: "*"
+  difference: "request body application/json.properties.password.writeOnly: openapi.yaml true, generated absent"
+  reason: The current password is a request field only; no response type has one to mark.
+- operation: createAccount
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: linkAccount
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: createAppPassword
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: "*"
+  difference: "response 4* application/json: generated only"
+  reason: >-
+    Every refusal carries the error envelope; openapi.yaml describes some of these responses
+    by their code without the body.
+- operation: "*"
+  difference: "response 429 header Retry-After: generated only"
+  reason: >-
+    Login's throttle, and the mail routes' throttle on refused HTTP Basic credentials, write
+    Retry-After on every 429. openapi.yaml does not state it for these operations.
+- operation: getAccount
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: listAccounts
+  difference: "response 429: generated only"
+  reason: The mail routes throttle refused HTTP Basic credentials at login's rate (429 rate_limited).
+- operation: listAccounts
+  difference: "response 404: generated only"
+  reason: The session's own account was deleted under a live session (404 not_found).
+- operation: "*"
+  difference: "request body application/json.properties.expires_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: An expires_at of null means no expiry (an app password) or the default (an API key), as it always did.
+- operation: "*"
+  difference: "request body application/json.properties.name.maxLength: openapi.yaml 100, generated absent"
+  reason: >-
+    The handler trims the name before counting its characters, so a name of 100 characters
+    with surrounding blanks is accepted; it answers the documented 422 on name.
+- operation: createAppPassword
+  difference: "request body application/json.required: openapi.yaml [\"name\",\"password\"], generated [\"name\"]"
+  reason: >-
+    A missing current password is the documented 403 reauth_required, a refusal of the request
+    rather than a malformed body, which the mobile app shows as such.
+- operation: createAPIKey
+  difference: "request body application/json.required: openapi.yaml [\"name\",\"password\",\"permissions\"], generated [\"name\"]"
+  reason: >-
+    A missing current password is the documented 403 reauth_required, and missing permissions
+    the 422 on permissions with the rule they break, as the handler answered them.
+- operation: createAPIKey
+  difference: "request body application/json.properties.permissions.minItems: openapi.yaml 1, generated absent"
+  reason: The handler answers the 422 on permissions with the 1-to-64 rule, together with the other fields at fault.
+- operation: createAPIKey
+  difference: "request body application/json.properties.permissions.maxItems: openapi.yaml 64, generated absent"
+  reason: The handler answers the 422 on permissions with the 1-to-64 rule, together with the other fields at fault.
+- operation: createAPIKey
+  difference: "request body application/json.properties.permissions.items.required: openapi.yaml [\"capability\",\"scope\"], generated absent"
+  reason: >-
+    A permission without a capability or scope is the 422 on permissions ("each permission
+    needs a named capability and a valid scope"), as the handler answered it.
+- operation: "*"
+  difference: "response 201 application/json.properties.data.allOf: openapi.yaml *, generated absent"
+  reason: >-
+    The created credential embeds the listed one, which Go writes as one flat object;
+    the generated description states that object, openapi.yaml composes it with allOf.
+- operation: "*"
+  difference: "response 201 application/json.properties.data.properties: openapi.yaml absent, generated *"
+  reason: The created credential described as one flat object, not allOf (see above).
+- operation: "*"
+  difference: "response 201 application/json.properties.data.required: openapi.yaml absent, generated *"
+  reason: The created credential described as one flat object, not allOf (see above).
+- operation: "*"
+  difference: "response 201 application/json.properties.data.type: openapi.yaml absent, generated \"object\""
+  reason: The created credential described as one flat object, not allOf (see above).
+- operation: listCredentials
+  difference: "response 200 application/json.properties.data.items.properties.kind.enum: openapi.yaml [\"app_password\"], generated absent"
+  reason: App passwords and API keys share one credential type, whose kind is either.
+- operation: listAPIKeys
+  difference: "response 200 application/json.properties.data.items.properties.kind.enum: openapi.yaml [\"api_key\"], generated absent"
+  reason: App passwords and API keys share one credential type, whose kind is either.
+- operation: "*"
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated {\"additionalProperties\":false,\"properties\":{\"cursor\":{\"type\":\"string\"},\"has_more\":{\"type\":\"boolean\"},\"total\":{\"format\":\"int64\",\"type\":\"integer\"}},\"required\":[\"has_more\"],\"type\":[\"null\",\"object\"]}"
+  reason: >-
+    Every list is described with the API's list envelope, whose pagination is omitted when
+    the list is whole, as it is for these lists.
+- operation: "*"
+  difference: "response 2* header Cache-Control: openapi.yaml only"
+  reason: >-
+    The API key routes' no-store middleware writes Cache-Control: no-store on every answer;
+    a middleware cannot yet describe a header it adds to the success response.
+- operation: linkAccount
+  difference: "request body application/json.required: openapi.yaml [\"address\",\"password\"], generated absent"
+  reason: >-
+    The handler checks address and password together and answers the documented 422 naming
+    both when either is missing or blank, after the session check.
+- operation: createAPIKey
+  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
+  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+- operation: createAppPassword
+  difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
+  reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.

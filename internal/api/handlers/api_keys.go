@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,8 +10,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -37,30 +36,50 @@ func toAPIKeyResponse(c *models.Credential) apiKeyResponse {
 	return apiKeyResponse{toCredentialResponse(c), append([]auth.ScopedPermission{}, c.Scope.Permissions...)}
 }
 
-// ListAPIKeys lists metadata only. A key's secret is returned once, at creation.
-func (h *CredentialHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
-	_, accountID, ok := h.managedAccount(w, r)
-	if !ok {
-		return
+// listAPIKeys lists metadata only. A key's secret is returned once, at creation.
+func (h *CredentialHandler) listAPIKeys(r *http.Request, in accountPath) (endpoint.List[apiKeyResponse], error) {
+	_, accountID, err := h.managedAccount(r, in.ID)
+	if err != nil {
+		return endpoint.List[apiKeyResponse]{}, err
 	}
 	keys, err := h.repo.ListForAccount(accountID, models.CredentialKindAPIKey)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list API keys")
-		return
+		return endpoint.List[apiKeyResponse]{}, fmt.Errorf("list API keys: %w", err)
 	}
 	out := make([]apiKeyResponse, len(keys))
 	for i := range keys {
 		out[i] = toAPIKeyResponse(&keys[i])
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	respond.List(w, out, nil)
+	return endpoint.List[apiKeyResponse]{Data: out}, nil
+}
+
+// createAPIKeyBody is what the mobile app sends. The handler checks every field, as before, so
+// a refusal names each field at fault at once: a missing password is the 403
+// reauth_required, and missing permissions are refused with the rule they break.
+type createAPIKeyBody struct {
+	Name        string             `json:"name"`
+	Password    string             `json:"password,omitempty"`
+	Permissions []apiKeyPermission `json:"permissions,omitempty"`
+	ExpiresAt   *time.Time         `json:"expires_at,omitempty"`
+}
+
+// apiKeyPermission is one permission asked for. A blank capability or scope is refused by the
+// handler with the permissions rule, as before.
+type apiKeyPermission struct {
+	Capability string `json:"capability,omitempty"`
+	Scope      string `json:"scope,omitempty"`
 }
 
 type createAPIKeyRequest struct {
-	Name        string                  `json:"name"`
-	Password    string                  `json:"password"`
-	Permissions []auth.ScopedPermission `json:"permissions"`
-	ExpiresAt   *time.Time              `json:"expires_at"`
+	ID   uint32           `path:"id" minimum:"1"`
+	Body createAPIKeyBody `body:""`
+}
+
+// createdAPIKey is the answer to creating one: the key, and its token, shown this once and
+// never again.
+type createdAPIKey struct {
+	apiKeyResponse
+	Token string `json:"token"`
 }
 
 // apiKeyWithinGrants checks the creator and the account the key belongs to.
@@ -74,22 +93,17 @@ func apiKeyWithinGrants(creator, owner grants.Held, permissions []auth.ScopedPer
 	return true
 }
 
-// CreateAPIKey needs a password-authenticated, two-factor session and the
+// createAPIKey needs a password-authenticated, two-factor session and the
 // creator's current password. Machine credentials never satisfy this check.
-func (h *CredentialHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
-	claims, accountID, ok := h.managedAccount(w, r)
-	if !ok {
-		return
+func (h *CredentialHandler) createAPIKey(r *http.Request, in createAPIKeyRequest) (createdAPIKey, error) {
+	claims, accountID, err := h.managedAccount(r, in.ID)
+	if err != nil {
+		return createdAPIKey{}, err
 	}
 	if !claims.TwoFactor {
-		respond.Error(w, http.StatusForbidden, "two_factor_required", "Sign in with two-factor authentication to create API keys")
-		return
+		return createdAPIKey{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required", "Sign in with two-factor authentication to create API keys")
 	}
-	var req createAPIKeyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 	req.Name = strings.TrimSpace(req.Name)
 	now := h.now()
 	problems := map[string]string{}
@@ -101,7 +115,11 @@ func (h *CredentialHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request)
 	if len(req.Permissions) == 0 || len(req.Permissions) > maxAPIKeyPermissions {
 		problems["permissions"] = fmt.Sprintf("must contain between 1 and %d scoped permissions", maxAPIKeyPermissions)
 	}
-	permissions, err := repositories.NormalizeAPIKeyPermissions(req.Permissions)
+	asked := make([]auth.ScopedPermission, len(req.Permissions))
+	for i, permission := range req.Permissions {
+		asked[i] = auth.ScopedPermission{Capability: permission.Capability, Scope: permission.Scope}
+	}
+	permissions, err := repositories.NormalizeAPIKeyPermissions(asked)
 	if err != nil {
 		problems["permissions"] = "each permission needs a named capability and a valid scope"
 	}
@@ -112,11 +130,10 @@ func (h *CredentialHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request)
 		problems["expires_at"] = "must be in the future"
 	}
 	if len(problems) != 0 {
-		respond.ValidationError(w, problems)
-		return
+		return createdAPIKey{}, endpoint.Invalid(problems)
 	}
-	if !h.checkCurrentPassword(w, claims.AccountID, req.Password) {
-		return
+	if err := h.checkCurrentPassword(claims.AccountID, req.Password); err != nil {
+		return createdAPIKey{}, err
 	}
 
 	var credential *models.Credential
@@ -157,38 +174,26 @@ func (h *CredentialHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request)
 	})
 	switch {
 	case errors.Is(err, errPermission):
-		respond.Error(w, http.StatusForbidden, "forbidden", "API key permissions must be within the account's and your current grants")
-		return
+		return createdAPIKey{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "API key permissions must be within the account's and your current grants")
 	case errors.Is(err, errUnknown):
-		respond.ValidationError(w, map[string]string{"permissions": "contains an unknown capability"})
-		return
+		return createdAPIKey{}, endpoint.Invalid(map[string]string{"permissions": "contains an unknown capability"})
 	case err != nil:
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create the API key")
-		return
+		return createdAPIKey{}, fmt.Errorf("create the API key: %w", err)
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	respond.Data(w, http.StatusCreated, struct {
-		apiKeyResponse
-		Token string `json:"token"`
-	}{toAPIKeyResponse(credential), secret})
+	return createdAPIKey{toAPIKeyResponse(credential), secret}, nil
 }
 
-// RevokeAPIKey preserves the credential and its audit history. It stops being
+// revokeAPIKey preserves the credential and its audit history. It stops being
 // accepted on the next request because the credential is checked every time.
-func (h *CredentialHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
-	claims, accountID, ok := h.managedAccount(w, r)
-	if !ok {
-		return
+func (h *CredentialHandler) revokeAPIKey(r *http.Request, in credentialPath) (endpoint.Empty, error) {
+	claims, accountID, err := h.managedAccount(r, in.ID)
+	if err != nil {
+		return endpoint.Empty{}, err
 	}
 	if !claims.TwoFactor {
-		respond.Error(w, http.StatusForbidden, "two_factor_required", "Sign in with two-factor authentication to revoke API keys")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required", "Sign in with two-factor authentication to revoke API keys")
 	}
-	id, err := pathID(r, "credential_id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid API key ID")
-		return
-	}
+	id := in.CredentialID
 	err = h.db.Transaction(func(tx *gorm.DB) error {
 		if err := repositories.NewCredentialRepository(tx).RevokeAPIKey(accountID, uint(id), h.now()); err != nil {
 			return err
@@ -200,12 +205,10 @@ func (h *CredentialHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request)
 		return audit.Append(tx, e)
 	})
 	if errors.Is(err, repositories.ErrCredentialNotFound) {
-		respond.Error(w, http.StatusNotFound, "not_found", "API key not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "API key not found")
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to revoke the API key")
-		return
+		return endpoint.Empty{}, fmt.Errorf("revoke the API key: %w", err)
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
