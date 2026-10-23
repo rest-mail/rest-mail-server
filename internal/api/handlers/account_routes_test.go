@@ -37,3 +37,19 @@ func credentialRoutes(h *CredentialHandler) http.Handler {
 	h.Register(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, passingSessionChecks)
 	return r
 }
+
+// twoFactorRoutes serves h's own two-factor routes as the router registers them, behind
+// checks that let every request through.
+func twoFactorRoutes(h *TwoFactorHandler) http.Handler {
+	r := chi.NewRouter()
+	h.RegisterOwn(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, passingSessionChecks)
+	return r
+}
+
+// passwordChangeRoutes serves h's own password change as the router registers it, behind
+// checks that let every request through.
+func passwordChangeRoutes(h *AuthHandler) http.Handler {
+	r := chi.NewRouter()
+	h.RegisterPasswordChange(endpoint.Routes{Router: r, Registry: endpoint.NewRegistry()}, passingSessionChecks)
+	return r
+}

@@ -946,3 +946,34 @@
 - operation: createAppPassword
   difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
   reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+
+# The account's own password and two-factor authentication (#634)
+
+- operation: changeOwnPassword
+  difference: "request body application/json.properties.new_password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The handler counts the new password in bytes, as bootstrap does, and only once the current
+    password is proven, so a wrong current password is still 403 invalid_password; it answers
+    the documented 422 on new_password. Binding's minLength would count characters, and first.
+- operation: changeOwnPassword
+  difference: "response 200 application/json: generated only"
+  reason: >-
+    The answer carries a message, {"data": {"message": ...}}, as it always did; openapi.yaml
+    describes the 200 by its status alone.
+- operation: changeOwnPassword
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.
+- operation: changeOwnPassword
+  difference: "response 429: generated only"
+  reason: It checks a password, so it shares login's per-client-IP throttle (429 rate_limited).
+- operation: confirmTwoFactor
+  difference: "response 429: generated only"
+  reason: It checks a code, so it shares login's per-client-IP throttle (429 rate_limited, #204).
+- operation: disableTwoFactor
+  difference: "response 429: generated only"
+  reason: It checks a code, so it shares login's per-client-IP throttle (429 rate_limited, #204).
+- operation: enrollTwoFactor
+  difference: "response 200 application/json.properties.data.properties.recovery_codes.items.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    Every recovery code is generated, never empty, but a struct tag cannot constrain the items
+    of a list, so the generated description states the list's minItems only.

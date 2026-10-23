@@ -561,19 +561,18 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// brute-force TOTP codes — inconsistent with the throttled login path. The
 		// status read carries no secret to guess and is left unthrottled so the SPA
 		// can poll it freely.
-		r.Get("/api/v1/auth/2fa", twofaH.Status)
+		personChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: audited}
+		inSetup := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedPersonSession, describedCSRF, describedBodyCap)
+		twofaH.RegisterOwn(inSetup, personChecks)
 		// An account replaces its own password; with 2FA enrollment, all a
 		// session in setup can do. Throttled like login: it checks a password.
-		r.With(authThrottle, auditLog("auth.password_change")).Post("/api/v1/auth/password", authH.ChangePassword)
-		r.With(authThrottle, auditLog("auth.2fa_enroll")).Post("/api/v1/auth/2fa/enroll", twofaH.Enroll)
-		r.With(authThrottle, auditLog("auth.2fa_confirm")).Post("/api/v1/auth/2fa/confirm", twofaH.Confirm)
-		r.With(authThrottle, auditLog("auth.2fa_disable")).Post("/api/v1/auth/2fa/disable", twofaH.Disable)
+		authH.RegisterPasswordChange(inSetup, personChecks)
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.SetupDone)
 			person := endpoint.Routes{Router: r, Registry: registry}.
 				Describing(describedPersonSession, describedCSRF, describedBodyCap, describedSetupDone)
-			personChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: audited}
 
 			// Accounts (#347). Creating one needs mailboxes:write covering its
 			// domain, and makes the creator its owner; the account, its grant
