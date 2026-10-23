@@ -1,0 +1,52 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "From an email address to server settings: what a mail app tries, in order",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/discovery.html",
+    "legend": {
+      "entries": {
+        "frontend": { "label": "The mail app and its user" },
+        "backend": { "label": "Where settings come from" },
+        "security": { "label": "Checks before saving" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "lookup", "label": "First answer wins" },
+    { "id": "use", "label": "Then, before saving" }
+  ],
+  "phases": [
+    { "id": "provider", "label": "Ask the provider", "fromCol": 0, "toCol": 1 },
+    { "id": "elsewhere", "label": "Ask elsewhere", "fromCol": 2, "toCol": 4 },
+    { "id": "manual", "label": "Ask the user", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["address", "autoconfig", "ispdb", "mxprovider", "other", "typed"],
+  "nodes": [
+    { "id": "address", "lane": "lookup", "col": 0, "type": "frontend", "label": "Email address", "sublabel": "bob@example.org", "icon": "person" },
+    { "id": "autoconfig", "lane": "lookup", "col": 1, "type": "backend", "label": "Provider's autoconfig", "sublabel": "autoconfig.example.org" },
+    { "id": "ispdb", "lane": "lookup", "col": 2, "type": "backend", "label": "ISPDB", "sublabel": "central database" },
+    { "id": "mxprovider", "lane": "lookup", "col": 3, "type": "backend", "label": "The MX's provider", "sublabel": "who runs the MX?" },
+    { "id": "other", "lane": "lookup", "col": 4, "type": "backend", "label": "Other methods", "sublabel": "Autodiscover, SRV, guesses" },
+    { "id": "typed", "lane": "lookup", "col": 5, "type": "frontend", "label": "Typed by hand", "sublabel": "the last resort" },
+    { "id": "show", "lane": "use", "col": 3, "type": "security", "label": "Show the domains", "sublabel": "spot a lookalike" },
+    { "id": "test", "lane": "use", "col": 4, "type": "security", "label": "Test the login", "sublabel": "over TLS only" },
+    { "id": "save", "lane": "use", "col": 5, "type": "frontend", "label": "Saved for years", "icon": "success" }
+  ],
+  "edges": [
+    { "id": "ask", "from": "address", "to": "autoconfig", "label": "HTTPS", "role": "main", "variant": "emphasis" },
+    { "id": "no1", "from": "autoconfig", "to": "ispdb", "label": "no file", "role": "main", "variant": "dashed" },
+    { "id": "no2", "from": "ispdb", "to": "mxprovider", "label": "not listed", "role": "main", "variant": "dashed" },
+    { "id": "no3", "from": "mxprovider", "to": "other", "label": "nothing", "role": "main", "variant": "dashed" },
+    { "id": "no4", "from": "other", "to": "typed", "label": "nothing", "role": "main", "variant": "dashed" },
+    { "id": "found", "from": "autoconfig", "to": "show", "label": "an answer, from any step", "role": "branch", "variant": "default" },
+    { "id": "confirm", "from": "show", "to": "test", "role": "branch", "variant": "security" },
+    { "id": "keep", "from": "test", "to": "save", "role": "branch", "variant": "default" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Where an answer can come from", "items": ["Autoconfig: an XML file at autoconfig.<domain> or /.well-known/autoconfig/ (IETF draft)", "Autodiscover: Outlook and Exchange", "SRV records: _imaps, _submissions (RFC 6186, RFC 8314)"] },
+    { "dot": "rose", "title": "Why the order matters", "items": ["Whatever the app finds is what it keeps using", "An answer that says port 143 without TLS sends the password in the clear", "RFC 8314: ignore advertised settings that do not use TLS"] }
+  ]
+}

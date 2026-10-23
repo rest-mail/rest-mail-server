@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "One-click unsubscribe (RFC 8058): from the button to the sender's list",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/unsubscribe.html",
+    "legend": {
+      "entries": {
+        "emphasis": {
+          "label": "The newsletter"
+        },
+        "security": {
+          "label": "Signed and checked"
+        },
+        "default": {
+          "label": "User actions"
+        },
+        "return": {
+          "label": "Answers"
+        }
+      }
+    }
+  },
+  "participants": [
+    {
+      "id": "sender",
+      "type": "backend",
+      "label": "Newsletter sender",
+      "sublabel": "news.example.com"
+    },
+    {
+      "id": "provider",
+      "type": "cloud",
+      "label": "Mailbox provider",
+      "sublabel": "Gmail, Outlook.com…"
+    },
+    {
+      "id": "user",
+      "type": "frontend",
+      "label": "Reader",
+      "icon": "person"
+    }
+  ],
+  "messages": [
+    {
+      "id": "mail",
+      "from": "sender",
+      "to": "provider",
+      "label": "newsletter + List-Unsubscribe headers",
+      "variant": "emphasis",
+      "note": "List-Unsubscribe-Post: List-Unsubscribe=One-Click, both DKIM-signed",
+      "y": 170
+    },
+    {
+      "id": "show",
+      "from": "provider",
+      "to": "user",
+      "label": "shows an Unsubscribe button",
+      "variant": "default",
+      "note": "Only when the signature covers both header fields",
+      "y": 248
+    },
+    {
+      "id": "click",
+      "from": "user",
+      "to": "provider",
+      "label": "Unsubscribe",
+      "variant": "default",
+      "y": 342
+    },
+    {
+      "id": "post",
+      "from": "provider",
+      "to": "sender",
+      "label": "POST https://news.example.com/u/7f3a9c2e",
+      "variant": "security",
+      "note": "Body: List-Unsubscribe=One-Click. No cookies, no sign-in",
+      "y": 376
+    },
+    {
+      "id": "ok",
+      "from": "sender",
+      "to": "provider",
+      "label": "200 OK, never a redirect",
+      "variant": "return",
+      "note": "The opaque token says who and which list; removed within 48 hours",
+      "y": 454
+    }
+  ],
+  "activations": [
+    {
+      "participant": "provider",
+      "from": 164,
+      "to": 502
+    },
+    {
+      "participant": "sender",
+      "from": 370,
+      "to": 460
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Required of bulk senders",
+      "items": [
+        "Gmail: over 5,000 a day, since February 2024",
+        "Outlook.com: over 5,000 a day, since May 2025",
+        "Marketing and subscribed mail; honour within 48 hours"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Why the rules",
+      "items": [
+        "Unsigned headers could unsubscribe people from someone else's list",
+        "Redirected POSTs often become GETs",
+        "A filter scanning links must not unsubscribe anyone: user consent first"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 156,
+      "to": 318,
+      "label": "The message"
+    },
+    {
+      "from": 328,
+      "to": 508,
+      "label": "One click"
+    }
+  ]
+}

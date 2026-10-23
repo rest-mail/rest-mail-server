@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "diagram_type": "tree",
+  "meta": {
+    "title": "What one domain needs for mail that is delivered and trusted",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/domain-needs.html"
+  },
+  "layout": { "direction": "right" },
+  "nodes": [
+    { "id": "domain", "label": "example.com", "sublabel": "sends and receives mail" },
+    { "id": "dns", "parent": "domain", "label": "Its own DNS", "sublabel": "at the DNS host" },
+    { "id": "mx", "parent": "dns", "label": "MX, A, AAAA", "sublabel": "where mail goes" },
+    { "id": "spf", "parent": "dns", "label": "SPF", "sublabel": "one record, ≤ 10 lookups" },
+    { "id": "dkimkey", "parent": "dns", "label": "DKIM keys", "sublabel": "one per selector" },
+    { "id": "dmarc", "parent": "dns", "label": "DMARC", "sublabel": "_dmarc: policy, reports" },
+    { "id": "sts", "parent": "dns", "label": "MTA-STS, TLS-RPT", "sublabel": "_mta-sts, _smtp._tls" },
+    { "id": "srv", "parent": "dns", "label": "SRV, autoconfig", "sublabel": "for mail apps" },
+    { "id": "elsewhere", "parent": "domain", "label": "Someone else's", "sublabel": "not in your zone" },
+    { "id": "ptr", "parent": "elsewhere", "label": "PTR (reverse DNS)", "sublabel": "the IP owner sets it" },
+    { "id": "dnssec", "parent": "elsewhere", "label": "DNSSEC, TLSA", "sublabel": "DS at the registrar" },
+    { "id": "web", "parent": "domain", "label": "Web and certificates", "sublabel": "renewed every few months" },
+    { "id": "policy", "parent": "web", "label": "MTA-STS policy file", "sublabel": "https://mta-sts.<domain>" },
+    { "id": "certs", "parent": "web", "label": "TLS certificates", "sublabel": "MX, submission, IMAP" },
+    { "id": "software", "parent": "domain", "label": "Software", "sublabel": "classic stack: one per job" },
+    { "id": "mta", "parent": "software", "label": "MTA and mailbox server", "sublabel": "e.g. Postfix, Dovecot" },
+    { "id": "auth", "parent": "software", "label": "Signing and checking", "sublabel": "e.g. OpenDKIM, OpenDMARC" },
+    { "id": "filter", "parent": "software", "label": "Spam and virus filters", "sublabel": "e.g. Rspamd, ClamAV" },
+    { "id": "ops", "parent": "domain", "label": "Ongoing work", "sublabel": "or it decays" },
+    { "id": "rotate", "parent": "ops", "label": "Rotate DKIM keys", "sublabel": "at least every 6 months" },
+    { "id": "reports", "parent": "ops", "label": "Read the reports", "sublabel": "DMARC, TLS-RPT, daily" }
+  ],
+  "cards": [
+    { "dot": "rose", "title": "Why mistakes go unnoticed", "items": ["Each record fails quietly, and only at some receivers", "Feedback arrives days later, as bounces or unread reports", "Different people own the DNS, the IP address and the certificates"] }
+  ]
+}
