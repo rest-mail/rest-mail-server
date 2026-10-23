@@ -65,7 +65,7 @@ func TestAppPasswordCreate_DocumentedPairs(t *testing.T) {
 			}
 			count(&before)
 			rr := httptest.NewRecorder()
-			h.Create(rr, authzRequest(http.MethodPost, path, fx.user.ID, map[string]string{"id": id}, string(mustJSON(body))))
+			credentialRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, path, fx.user.ID, map[string]string{"id": id}, string(mustJSON(body))))
 			count(&after)
 			if name == "created" {
 				if rr.Code != http.StatusCreated || after != before+1 {

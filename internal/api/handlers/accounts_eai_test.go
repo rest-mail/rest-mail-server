@@ -35,7 +35,7 @@ func TestAccountsEAI(t *testing.T) {
 	create := func(holder uint, address string) *httptest.ResponseRecorder {
 		body, _ := json.Marshal(map[string]string{"address": address, "password": accountsPassword})
 		rr := httptest.NewRecorder()
-		h.CreateAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts", holder, nil, string(body)))
+		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts", holder, nil, string(body)))
 		return rr
 	}
 	variants := []string{
@@ -104,7 +104,7 @@ func TestAccountsEAI(t *testing.T) {
 	for i, address := range variants {
 		body, _ := json.Marshal(map[string]string{"address": address, "password": accountsPassword})
 		rr := httptest.NewRecorder()
-		h.LinkAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.user.ID, nil, string(body)))
+		accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.user.ID, nil, string(body)))
 		wantStatus := http.StatusConflict
 		if i == 0 {
 			wantStatus = http.StatusCreated
@@ -145,13 +145,13 @@ func TestAccountsEAILegacy(t *testing.T) {
 	h := NewAccountHandler(db, grants.NewCache(db, grants.CacheTTL), "")
 	body, _ := json.Marshal(map[string]string{"address": canonical})
 	rr := httptest.NewRecorder()
-	h.CreateAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts", fx.admin.ID, nil, string(body)))
+	accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts", fx.admin.ID, nil, string(body)))
 	if rr.Code != http.StatusConflict {
 		t.Fatalf("NFC duplicate of legacy account: %d %s", rr.Code, rr.Body.String())
 	}
 	body, _ = json.Marshal(map[string]string{"address": canonical, "password": accountsPassword})
 	rr = httptest.NewRecorder()
-	h.LinkAccount(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.admin.ID, nil, string(body)))
+	accountRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPost, "/api/v1/accounts/link", fx.admin.ID, nil, string(body)))
 	if rr.Code != http.StatusCreated || decodeAccount(t, rr).ID != legacy.ID {
 		t.Fatalf("link legacy account: %d %s", rr.Code, rr.Body.String())
 	}
