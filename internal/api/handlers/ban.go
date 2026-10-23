@@ -72,9 +72,9 @@ func (h *BanHandler) list(_ *http.Request, in listBansRequest) (endpoint.List[Ba
 // createBanRequest adds or replaces an IP ban.
 // POST /api/v1/admin/bans
 type createBanRequest struct {
-	IP        string  `json:"ip" minLength:"1" message:"IP address is required"`
+	IP        string  `json:"ip" minLength:"1" message:"IP address is required" missing:"IP address is required"`
 	Reason    string  `json:"reason,omitempty"`
-	Protocol  string  `json:"protocol" enums:"smtp,imap,pop3,all" message:"protocol must be one of smtp, imap, pop3, all"`
+	Protocol  string  `json:"protocol" enums:"smtp,imap,pop3,all" message:"protocol must be one of smtp, imap, pop3, all" missing:"protocol must be one of smtp, imap, pop3, all"`
 	Duration  *string `json:"duration,omitempty" pattern:"^[+-]?(0|(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|μs|ms|s|m|h))+)$" message:"invalid duration format (e.g. 24h, 168h)"`
 	CreatedBy string  `json:"created_by" message:"required"`
 }
@@ -138,7 +138,7 @@ func (h *BanHandler) delete(_ *http.Request, in banPath) (endpoint.Empty, error)
 // unbanIPRequest names the address to unban.
 // DELETE /api/v1/admin/bans/ip/{ip}
 type unbanIPRequest struct {
-	IP string `path:"ip" minLength:"1" message:"IP address required"`
+	IP string `path:"ip" minLength:"1" message:"IP address required" missing:"IP address required"`
 }
 
 func (h *BanHandler) unbanIP(_ *http.Request, in unbanIPRequest) (endpoint.Empty, error) {

@@ -59,7 +59,7 @@ func TestStatusResponse(t *testing.T) {
 
 func TestMissingFieldKeepsDocumentedMessage(t *testing.T) {
 	type request struct {
-		IP string `json:"ip" minLength:"1" message:"IP address is required"`
+		IP string `json:"ip" minLength:"1" message:"IP address is required" missing:"IP address is required"`
 	}
 	r := chi.NewRouter()
 	Register(Routes{Router: r, Registry: NewRegistry()}, Operation{Method: http.MethodPost, Path: "/ban"}, func(*http.Request, request) (Empty, error) {

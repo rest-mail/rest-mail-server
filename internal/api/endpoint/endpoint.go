@@ -407,7 +407,7 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 	case err == nil:
 		return nil
 	case errors.As(err, &violations):
-		requiredMessages(reflect.TypeOf(dst).Elem(), "", violations)
+		missingMessages(reflect.TypeOf(dst).Elem(), "", violations)
 		return Invalid(violations)
 	case errors.Is(err, oapifly.ErrMalformedBody):
 		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
@@ -415,9 +415,10 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 	return err
 }
 
-// requiredMessages preserves documented wording for a missing field as well as a
-// present field that breaks a constraint. Bind leaves missing fields as "required".
-func requiredMessages(t reflect.Type, prefix string, violations oapifly.Violations) {
+// missingMessages gives a missing field the wording its missing tag documents.
+// Bind reports a missing field as "required", whatever its message tag says: the
+// message tag words a broken rule, and a field that is not there broke none.
+func missingMessages(t reflect.Type, prefix string, violations oapifly.Violations) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -430,7 +431,7 @@ func requiredMessages(t reflect.Type, prefix string, violations oapifly.Violatio
 			continue
 		}
 		if _, body := f.Tag.Lookup("body"); body {
-			requiredMessages(f.Type, prefix, violations)
+			missingMessages(f.Type, prefix, violations)
 			continue
 		}
 		name := strings.Split(f.Tag.Get("json"), ",")[0]
@@ -447,13 +448,13 @@ func requiredMessages(t reflect.Type, prefix string, violations oapifly.Violatio
 			name = f.Name
 		}
 		key := prefix + name
-		if message := f.Tag.Get("message"); message != "" && violations[key] == "required" {
+		if message := f.Tag.Get("missing"); message != "" && violations[key] == "required" {
 			violations[key] = message
 		}
 		// Recurse only for a reported nested field, avoiding recursive types.
 		for field := range violations {
 			if strings.HasPrefix(field, key+".") {
-				requiredMessages(f.Type, key+".", violations)
+				missingMessages(f.Type, key+".", violations)
 				break
 			}
 		}
