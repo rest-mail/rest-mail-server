@@ -280,7 +280,7 @@ The gateways implement no wire protocol of their own — each is a `Backend` imp
                              |
               +--------------+--------------+
               |              |              |
-         SMTP:25/587    IMAP:143/993   POP3:110/995
+         SMTP:25/465     IMAP:993       POP3:995    
               |              |              |
      +--------+-------+ +----+---------+ +--+-------------+
      | go-smtp engine | | rest-mail/   | | rest-mail/     |
