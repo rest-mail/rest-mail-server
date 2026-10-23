@@ -151,12 +151,12 @@ of all, the user types the settings in by hand.
   TLS from the first byte, with the email address as the login name. They never
   advertise a cleartext or `STARTTLS` port, because REST Mail does not listen on
   one ([`internal/api/handlers/autoconfig.go`](../../../internal/api/handlers/autoconfig.go)).
-- **Not yet right:** both answers name the email domain as the server, not the
-  mail host the MX record points to, which is wrong whenever the two differ
-  ([#722](https://github.com/rest-mail/rest-mail-server/issues/722)). And the
-  autoconfig answer requires the `?emailaddress=` parameter, which the draft
-  makes optional, and which the `.well-known` address never has
-  ([#721](https://github.com/rest-mail/rest-mail-server/issues/721)).
+- **The server they name is the mail host**, `GATEWAY_HOSTNAME`, the name the
+  MX record points to and the certificate covers, never the email domain
+  itself, which is usually a website (#722).
+- **The address is optional**, as the draft has it: without `?emailaddress=`,
+  the domain is the host the request was made to, `autoconfig.<domain>` or,
+  at the `.well-known` address, the domain itself (#721).
 - **SRV records** are not yet in the set REST Mail prints for a domain, and the
   list in the code names the cleartext ports. Publishing the six records above
   is [#712](https://github.com/rest-mail/rest-mail-server/issues/712).
