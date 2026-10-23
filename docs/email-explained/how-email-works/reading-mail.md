@@ -51,9 +51,10 @@ C: a2 SELECT INBOX
 S: * 3 EXISTS
 S: a2 OK [READ-WRITE] Selected
 C: a3 FETCH 3 (FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])
-S: * 3 FETCH (FLAGS () BODY[HEADER.FIELDS (FROM SUBJECT)] {58}
+S: * 3 FETCH (FLAGS () BODY[HEADER.FIELDS (FROM SUBJECT)] {52}
 S: From: Alice <alice@example.com>
 S: Subject: Lunch?
+S:
 S: )
 S: a3 OK Fetch completed
 ```

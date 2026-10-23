@@ -69,12 +69,22 @@ try {
       const { result } = await page("Runtime.evaluate", {
         expression: `(async () => {
           await document.fonts.ready;
-          const box = document.querySelector(".diagram-container");
-          const svg = box?.querySelector("svg");
+          const svg = document.querySelector(".diagram-container svg");
           if (!svg || document.readyState !== "complete") return null;
-          const r = box.getBoundingClientRect();
-          const drawn = svg.viewBox.baseVal?.width || r.width;
-          return r.width > 0 ? { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, drawn } : null;
+          const canvas = svg.getBoundingClientRect();
+          if (!canvas.width) return null;
+          // The drawing itself: everything on the canvas but its background,
+          // which fills it, with a margin. The canvas is often taller.
+          const parts = [...svg.children].map((e) => e.getBoundingClientRect())
+            .filter((r) => r.width > 0 || r.height > 0)
+            .filter((r) => r.width < canvas.width * 0.98 || r.height < canvas.height * 0.98);
+          const margin = 24;
+          const left = Math.max(canvas.left, Math.min(...parts.map((r) => r.left)) - margin);
+          const top = Math.max(canvas.top, Math.min(...parts.map((r) => r.top)) - margin);
+          const right = Math.min(canvas.right, Math.max(...parts.map((r) => r.right)) + margin);
+          const bottom = Math.min(canvas.bottom, Math.max(...parts.map((r) => r.bottom)) + margin);
+          const drawn = svg.viewBox.baseVal?.width || canvas.width;
+          return { x: left + scrollX, y: top + scrollY, width: right - left, height: bottom - top, drawn };
         })()`,
         awaitPromise: true,
         returnByValue: true,
@@ -99,5 +109,6 @@ try {
   const stopped = new Promise((ok) => (chrome.exitCode === null ? chrome.once("exit", ok) : ok()));
   chrome.kill();
   await stopped;
-  await rm(profile, { recursive: true, force: true });
+  // Chrome's helper processes can still be closing files in it for a moment.
+  await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }

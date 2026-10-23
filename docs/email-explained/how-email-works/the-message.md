@@ -1,7 +1,7 @@
 ---
 title: The message itself
 part: How email works
-summary: What an email is made of: the envelope that routes it, the header the reader sees, and the MIME parts that carry text, HTML and attachments.
+summary: "What an email is made of: the envelope that routes it, the header the reader sees, and the MIME parts that carry text, HTML and attachments."
 diagram: ../diagrams/message.tree.json
 ---
 

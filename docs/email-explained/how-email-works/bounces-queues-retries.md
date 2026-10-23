@@ -1,7 +1,7 @@
 ---
 title: Bounces, queues and retries
 part: How email works
-summary: What a mail server does when delivery fails: how long it keeps trying, how it tells the sender, and how bounces themselves become abuse.
+summary: "What a mail server does when delivery fails: how long it keeps trying, how it tells the sender, and how bounces themselves become abuse."
 diagram: ../diagrams/queue.lifecycle.json
 ---
 
