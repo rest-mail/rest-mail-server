@@ -46,7 +46,7 @@ func TestLogoutRejectsNonStringRefreshToken(t *testing.T) {
 func TestProbeServicesRejectsUnknownService(t *testing.T) {
 	h := NewTestHandler(nil, &config.Config{Environment: "test"})
 	rr := httptest.NewRecorder()
-	h.ProbeServices(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/test/probe",
+	testRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/test/probe",
 		strings.NewReader(`{"services":["vertrag-not-in-enum"]}`)))
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("want 422, got %d (%s)", rr.Code, rr.Body.String())
