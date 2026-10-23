@@ -55,8 +55,8 @@ func TestPipelineAndCustomFilterDelete_MissingIsNotFound(t *testing.T) {
 		id      uint
 		message string
 	}{
-		{"pipeline", h.DeletePipeline, "/api/v1/admin/pipelines", pipe.ID, "Pipeline not found"},
-		{"custom filter", h.DeleteCustomFilter, "/api/v1/admin/custom-filters", filter.ID, "Custom filter not found"},
+		{"pipeline", pipelineRoutes(h).ServeHTTP, "/api/v1/admin/pipelines", pipe.ID, "Pipeline not found"},
+		{"custom filter", pipelineRoutes(h).ServeHTTP, "/api/v1/admin/custom-filters", filter.ID, "Custom filter not found"},
 	} {
 		if rr := del(c.handler, c.path, c.id); rr.Code != http.StatusOK || errorCodeOf(rr) != "" {
 			t.Fatalf("%s: deleting one that is there: %d %s", c.name, rr.Code, rr.Body)

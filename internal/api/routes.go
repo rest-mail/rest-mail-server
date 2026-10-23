@@ -776,30 +776,14 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		})
 
 		// Pipelines
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines", pipelineH.ListPipelines)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines", pipelineH.CreatePipeline)
-		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/pipelines/{id}", pipelineH.UpdatePipeline)
-		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/pipelines/{id}", pipelineH.DeletePipeline)
-		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/pipelines/test", pipelineH.TestPipeline)
-		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/pipelines/test-filter", pipelineH.TestFilter)
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines/logs", pipelineH.ListPipelineLogs)
+		pipelineH.Register(admin, handlers.PipelineRouteChecks{At: describedCapability(needs), TestThrottle: endpoint.Middleware{Wrap: pipelineTestThrottle, Describes: describedPipelineTestThrottle}})
 
 		// Pipeline observability (PR5) — analytics funnel + per-message trace.
 		// Gated by the dedicated observability:read capability (seeded into the
 		// admin and readonly roles; satisfied by superadmin "*"). The existing
 		// pipelines/logs read above keeps its pipelines:read gate — its authz is
 		// unchanged, only its data source was repointed to message_traces.
-		r.With(needs(middleware.CapObservabilityRead)).Get("/api/v1/admin/pipelines/analytics", statsH.GetPipelineAnalytics)
-		r.With(needs(middleware.CapObservabilityRead)).Get("/api/v1/admin/messages/{id}/trace", pipelineH.GetMessageTrace)
-
-		// Custom filters (pipeline building blocks → pipelines:* capabilities)
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters", pipelineH.CreateCustomFilter)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters/validate", pipelineH.ValidateCustomFilter)
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/custom-filters/{id}", pipelineH.GetCustomFilter)
-		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/custom-filters/{id}", pipelineH.UpdateCustomFilter)
-		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
-		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
+		statsH.RegisterPipelineAnalytics(admin, describedCapability(needs)(middleware.CapObservabilityRead))
 
 		// Queue management
 		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
