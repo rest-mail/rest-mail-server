@@ -33,7 +33,11 @@ const TYPES = new Set(["architecture", "workflow", "sequence", "dataflow", "life
 
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
 
-/** Front matter: `key: value` lines between two `---` lines, and the rest. */
+/**
+ * Front matter: `key: value` lines between two `---` lines, and the rest. A
+ * value with a colon in it is written in double quotes, as YAML needs for
+ * GitHub to show it.
+ */
 export function splitFrontMatter(text) {
   const match = text.match(/^---\n([\s\S]*?)\n---\n/);
   if (!match) return { meta: {}, body: text };
@@ -41,7 +45,8 @@ export function splitFrontMatter(text) {
   for (const line of match[1].split("\n")) {
     const pair = line.match(/^([a-z]+):\s*(.*)$/);
     if (!pair) throw new Error(`front matter line not understood: ${line}`);
-    meta[pair[1]] = pair[2];
+    const quoted = pair[2].match(/^"((?:[^"\\]|\\.)*)"$/);
+    meta[pair[1]] = quoted ? quoted[1].replace(/\\(.)/g, "$1") : pair[2];
   }
   return { meta, body: text.slice(match[0].length) };
 }
@@ -171,6 +176,21 @@ export function extractFonts(html) {
   return { html: out, fonts };
 }
 
+/**
+ * The guide's files in reading order: the front page, then the chapters in
+ * the order it links them, then any it does not link, by path.
+ */
+export function readingOrder(readme, files) {
+  const linked = [];
+  for (const [, href] of readme.matchAll(/\]\(([^)#\s]+\.md)(?:#[^)]*)?\)/g)) {
+    const file = posix.normalize(href);
+    if (files.includes(file) && !linked.includes(file)) linked.push(file);
+  }
+  const front = files.filter((f) => f === "README.md");
+  const rest = files.filter((f) => f !== "README.md" && !linked.includes(f)).sort();
+  return [...front, ...linked.filter((f) => f !== "README.md"), ...rest];
+}
+
 async function markdownFiles(dir, base = dir) {
   const found = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -212,7 +232,7 @@ async function main() {
     diagrams.set(diagram, { name: diagram, type, source: `${GUIDE}/diagrams/${name}`, html, image: `diagrams/${diagram}.png` });
   }
 
-  const files = await markdownFiles(guide);
+  const files = readingOrder(await readFile(join(guide, "README.md"), "utf8"), await markdownFiles(guide));
   const chapters = [];
   for (const file of files) {
     const text = await readFile(join(guide, file), "utf8");
