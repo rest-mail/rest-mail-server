@@ -1540,3 +1540,88 @@
 - operation: createAppPassword
   difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
   reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
+
+# Folders and quota (#637)
+
+- operation: listFolders
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: createFolder
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: renameFolder
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: deleteFolder
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getQuota
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: createFolder
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request; before binding it was
+    answered 422 name required.
+- operation: createFolder
+  difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty name is refused in the handler with its documented 422 name required; a minLength
+    would word it differently.
+- operation: renameFolder
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request; before binding it was
+    answered 422 name required.
+- operation: renameFolder
+  difference: "request body application/json.properties.name.minLength: openapi.yaml 1, generated absent"
+  reason: >-
+    An empty name is refused in the handler with its documented 422 name required; a minLength
+    would word it differently.
+- operation: createFolder
+  difference: "response 409: generated only"
+  reason: >-
+    A folder that already holds messages, or its marker, is 409 already_exists.
+- operation: createFolder
+  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
+  reason: >-
+    The 422 is the API's validation envelope, with the fields at fault under details.fields;
+    the oracle describes this 422 without them.
+- operation: deleteFolder
+  difference: "response 400: generated only"
+  reason: >-
+    A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400
+    bad_request.
+- operation: getQuota
+  difference: "response 404: generated only"
+  reason: >-
+    The account's mailbox was deleted under a live session (404 not_found).
+- operation: getQuota
+  difference: "response 200 application/json.properties.data.properties.message_count.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    The count is a Go int64, described with its format; the oracle leaves the size
+    unspecified.
+- operation: getQuota
+  difference: "response 200 application/json.properties.data.properties.percent_used.format: openapi.yaml \"float\", generated \"double\""
+  reason: >-
+    The percentage is a Go float64, a double; the oracle names it float.
+- operation: listFolders
+  difference: "response 200 application/json.properties.data.items.properties.total.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    The counts are Go int64s, described with their format; the oracle leaves the size
+    unspecified.
+- operation: listFolders
+  difference: "response 200 application/json.properties.data.items.properties.unread.format: openapi.yaml absent, generated \"int64\""
+  reason: >-
+    The counts are Go int64s, described with their format; the oracle leaves the size
+    unspecified.

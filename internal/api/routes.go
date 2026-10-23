@@ -633,14 +633,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
-		// Folders
-		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
-		r.Post("/api/v1/accounts/{id}/folders", messageH.CreateFolder)
-		r.Patch("/api/v1/accounts/{id}/folders/{folder}", messageH.RenameFolder)
-		r.Delete("/api/v1/accounts/{id}/folders/{folder}", messageH.DeleteFolder)
-
-		// Quota
-		r.Get("/api/v1/accounts/{id}/quota", messageH.GetQuota)
+		// Folders and quota
+		messageH.RegisterFolders(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
 		// Messages
 		r.Get("/api/v1/accounts/{id}/folders/{folder}/messages", messageH.ListMessages)

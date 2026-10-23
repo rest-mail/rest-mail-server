@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -1060,33 +1061,105 @@ func (h *MessageHandler) DeliverMessage(w http.ResponseWriter, r *http.Request) 
 	respond.Data(w, http.StatusCreated, msg)
 }
 
-// ListFolders returns all folders for an account.
-func (h *MessageHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
+// FolderSummary is a folder of an account, with how many messages it holds and how many of
+// them are unread. The standard folders are always listed, empty or not.
+type FolderSummary struct {
+	Folder string `json:"name"`
+	Total  int64  `json:"total"`
+	Unread int64  `json:"unread"`
+}
+
+// FolderName is a folder as it was created or renamed.
+type FolderName struct {
+	Name string `json:"name"`
+}
+
+// Quota is an account's storage: its limit, what it uses, and how many messages it holds.
+// Its fields are in the order the map it replaced was written in, so the bytes are unchanged.
+type Quota struct {
+	MessageCount   int64   `json:"message_count"`
+	PercentUsed    float64 `json:"percent_used"`
+	QuotaBytes     int64   `json:"quota_bytes"`
+	QuotaUsedBytes int64   `json:"quota_used_bytes"`
+}
+
+// folderNameBody names a folder; an empty name is refused in the handler as "required".
+type folderNameBody struct {
+	Name string `json:"name"`
+}
+
+type createFolderRequest struct {
+	ID   uint32         `path:"id" minimum:"1"`
+	Body folderNameBody `body:""`
+}
+
+// folderPath names one of the account's folders.
+type folderPath struct {
+	ID     uint32 `path:"id" minimum:"1"`
+	Folder string `path:"folder"`
+}
+
+type renameFolderRequest struct {
+	ID     uint32         `path:"id" minimum:"1"`
+	Folder string         `path:"folder"`
+	Body   folderNameBody `body:""`
+}
+
+// folderSchemes are what the mail routes take; the handlers check the account is reachable
+// with mail:read to read and mail:write to change.
+var folderSchemes = []string{"CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth"}
+
+var (
+	errMailboxAccess  = endpoint.Refuse(http.StatusForbidden, "forbidden", "Access denied")
+	errNotSignedIn    = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
+	errFolderRequired = endpoint.Invalid(map[string]string{"name": "required"})
+)
+
+// RegisterFolders mounts the account's folders and its quota.
+func (h *MessageHandler) RegisterFolders(rs endpoint.Routes) {
+	reads := handlerChecked(models.CapMailRead, folderSchemes...)
+	writes := handlerChecked(models.CapMailWrite, folderSchemes...)
+	tags := []string{"Folders"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/folders",
+		OperationID: "listFolders", Summary: "List folders for an account", Tags: tags,
+		Errors: []int{http.StatusForbidden}, Security: reads}, h.listFolders)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/{id}/folders",
+		OperationID: "createFolder", Summary: "Create a new folder", Tags: tags, Status: http.StatusCreated,
+		Errors: []int{http.StatusForbidden, http.StatusConflict}, Security: writes}, h.createFolder)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/accounts/{id}/folders/{folder}",
+		OperationID: "renameFolder", Summary: "Rename a folder", Tags: tags,
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.renameFolder)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}/folders/{folder}",
+		OperationID: "deleteFolder", Summary: "Delete a folder and its messages", Tags: tags, Status: http.StatusNoContent,
+		Description: "A standard folder (INBOX, Sent, Drafts, Trash, Spam, Archive) cannot be deleted: 400 bad_request.",
+		Errors:      []int{http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound}, Security: writes}, h.deleteFolder)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}/quota",
+		OperationID: "getQuota", Summary: "Get quota usage for an account", Tags: []string{"Accounts"},
+		Errors: []int{http.StatusForbidden, http.StatusNotFound}, Security: reads}, h.getQuota)
+}
+
+// accountMailbox is the mailbox of the account the path names, when the session may reach
+// it with capability.
+func (h *MessageHandler) accountMailbox(r *http.Request, accountID uint32, capability string) (uint, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return 0, errNotSignedIn
 	}
-
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, capability)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return 0, errMailboxAccess
 	}
+	return mailboxID, nil
+}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
+// listFolders returns all folders for an account.
+func (h *MessageHandler) listFolders(r *http.Request, in accountPath) (endpoint.List[FolderSummary], error) {
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return endpoint.List[FolderSummary]{}, err
 	}
 
-	type folderInfo struct {
-		Folder string `json:"name"`
-		Total  int64  `json:"total"`
-		Unread int64  `json:"unread"`
-	}
-
-	var folders []folderInfo
+	var folders []FolderSummary
 	h.db.Model(&models.Message{}).
 		Select("folder, COUNT(CASE WHEN is_deleted = false THEN 1 END) as total, COUNT(CASE WHEN is_deleted = false AND is_read = false THEN 1 END) as unread").
 		Where("mailbox_id = ?", mailboxID).
@@ -1101,57 +1174,39 @@ func (h *MessageHandler) ListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, sf := range standardFolders {
 		if !folderMap[sf] {
-			folders = append(folders, folderInfo{Folder: sf, Total: 0, Unread: 0})
+			folders = append(folders, FolderSummary{Folder: sf, Total: 0, Unread: 0})
 		}
 	}
 
-	respond.List(w, folders, nil)
+	return endpoint.List[FolderSummary]{Data: folders}, nil
 }
 
-// CreateFolder creates a new mailbox folder.
+// createFolder creates a new mailbox folder.
 // POST /api/v1/accounts/{id}/folders
-func (h *MessageHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) createFolder(r *http.Request, in createFolderRequest) (FolderName, error) {
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return FolderName{}, err
 	}
-
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	var req struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-		respond.ValidationError(w, map[string]string{"name": "required"})
-		return
+	name := in.Body.Name
+	if name == "" {
+		return FolderName{}, errFolderRequired
 	}
 
 	// Check if folder already has messages (i.e. exists)
 	var count int64
 	h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, req.Name).
+		Where("mailbox_id = ? AND folder = ?", mailboxID, name).
 		Count(&count)
 	if count > 0 {
-		respond.Error(w, http.StatusConflict, "already_exists", "Folder already exists")
-		return
+		return FolderName{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Folder already exists")
 	}
 
 	// Create a placeholder so the folder shows up in ListFolders (store as a message-less folder marker)
 	// We use a zero-content message with is_deleted=true as a folder marker
 	marker := models.Message{
 		MailboxID: mailboxID,
-		Folder:    req.Name,
+		Folder:    name,
 		Sender:    "system",
 		Subject:   "",
 		IsDeleted: true,
@@ -1159,79 +1214,46 @@ func (h *MessageHandler) CreateFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	h.db.Create(&marker)
 
-	respond.Data(w, http.StatusCreated, map[string]string{"name": req.Name})
+	return FolderName{Name: name}, nil
 }
 
-// RenameFolder renames a mailbox folder.
+// renameFolder renames a mailbox folder.
 // PATCH /api/v1/accounts/{id}/folders/{folder}
-func (h *MessageHandler) RenameFolder(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) renameFolder(r *http.Request, in renameFolderRequest) (FolderName, error) {
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return FolderName{}, err
 	}
-
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	oldName := chi.URLParam(r, "folder")
-	var req struct {
-		Name string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
-		respond.ValidationError(w, map[string]string{"name": "required"})
-		return
+	name := in.Body.Name
+	if name == "" {
+		return FolderName{}, errFolderRequired
 	}
 
 	result := h.db.Model(&models.Message{}).
-		Where("mailbox_id = ? AND folder = ?", mailboxID, oldName).
-		Update("folder", req.Name)
+		Where("mailbox_id = ? AND folder = ?", mailboxID, in.Folder).
+		Update("folder", name)
 	if result.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "Folder not found or empty")
-		return
+		return FolderName{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found or empty")
 	}
 
-	respond.Data(w, http.StatusOK, map[string]string{"name": req.Name})
+	return FolderName{Name: name}, nil
 }
 
-// DeleteFolder deletes a mailbox folder and all its messages.
+// deleteFolder deletes a mailbox folder and all its messages.
 // DELETE /api/v1/accounts/{id}/folders/{folder}
-func (h *MessageHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) deleteFolder(r *http.Request, in folderPath) (endpoint.Empty, error) {
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailWrite)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return endpoint.Empty{}, err
 	}
 
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailWrite)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
-	}
-
-	folderName := chi.URLParam(r, "folder")
+	folderName := in.Folder
 
 	// Prevent deletion of standard folders
 	standardFolders := []string{"INBOX", "Sent", "Drafts", "Trash", "Spam", "Archive"}
 	for _, sf := range standardFolders {
 		if folderName == sf {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
-			return
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Cannot delete standard folder")
 		}
 	}
 
@@ -1245,8 +1267,7 @@ func (h *MessageHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 	result := h.db.Where("mailbox_id = ? AND folder = ?", mailboxID, folderName).
 		Delete(&models.Message{})
 	if result.RowsAffected == 0 {
-		respond.Error(w, http.StatusNotFound, "not_found", "Folder not found")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Folder not found")
 	}
 
 	// Update quota
@@ -1255,45 +1276,31 @@ func (h *MessageHandler) DeleteFolder(w http.ResponseWriter, r *http.Request) {
 			Update("quota_used_bytes", gorm.Expr("GREATEST(quota_used_bytes - ?, 0)", totalSize))
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
-// GetQuota returns quota usage for a mailbox.
+// getQuota returns quota usage for a mailbox.
 // GET /api/v1/accounts/{id}/quota
-func (h *MessageHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
-	claims := middleware.GetClaims(r)
-	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-
-	accountID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+func (h *MessageHandler) getQuota(r *http.Request, in accountPath) (Quota, error) {
+	mailboxID, err := h.accountMailbox(r, in.ID, models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
-	}
-
-	mailboxID, err := h.resolveAccountMailbox(uint(accountID), claims, models.CapMailRead)
-	if err != nil {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Access denied")
-		return
+		return Quota{}, err
 	}
 
 	var mailbox models.Mailbox
 	if err := h.db.First(&mailbox, mailboxID).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Mailbox not found")
-		return
+		return Quota{}, endpoint.Refuse(http.StatusNotFound, "not_found", "Mailbox not found")
 	}
 
 	var messageCount int64
 	h.db.Model(&models.Message{}).Where("mailbox_id = ?", mailboxID).Count(&messageCount)
 
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"quota_bytes":      mailbox.QuotaBytes,
-		"quota_used_bytes": mailbox.QuotaUsedBytes,
-		"message_count":    messageCount,
-		"percent_used":     float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100,
-	})
+	return Quota{
+		MessageCount:   messageCount,
+		PercentUsed:    float64(mailbox.QuotaUsedBytes) / float64(mailbox.QuotaBytes) * 100,
+		QuotaBytes:     mailbox.QuotaBytes,
+		QuotaUsedBytes: mailbox.QuotaUsedBytes,
+	}, nil
 }
 
 // resolveSenderMailbox finds the mailbox the given from address is, if the
