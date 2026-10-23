@@ -50,7 +50,7 @@ func TestDomainList_Pagination(t *testing.T) {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/domains?"+query, nil)
 		rr := httptest.NewRecorder()
-		h.List(rr, req)
+		domainRoutes(h).ServeHTTP(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("List(%q) status = %d, want 200 (body %s)", query, rr.Code, rr.Body.String())
 		}

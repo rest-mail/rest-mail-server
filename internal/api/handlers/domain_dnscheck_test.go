@@ -66,7 +66,7 @@ func TestDNSCheck_DKIMUsesTheDomainsSelector(t *testing.T) {
 			rctx.URLParams.Add("id", fmt.Sprint(domain.ID))
 			req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 			rr := httptest.NewRecorder()
-			h.DNSCheck(rr, req)
+			domainRoutes(h).ServeHTTP(rr, req)
 			if rr.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
 			}
@@ -202,7 +202,7 @@ func runDNSCheck(t *testing.T, h *DomainHandler, id uint) dnsCheckResponse {
 	rctx.URLParams.Add("id", fmt.Sprint(id))
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
-	h.DNSCheck(rr, req)
+	domainRoutes(h).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())
 	}

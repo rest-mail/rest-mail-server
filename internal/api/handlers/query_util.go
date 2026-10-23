@@ -116,6 +116,20 @@ func parsePagination(r *http.Request, defLimit, maxLimit int) (limit, offset int
 	return limit, offset
 }
 
+// pagination is parsePagination for a typed request's limit and offset: an absent or
+// non-positive limit is the default, one over maxLimit is maxLimit, and an absent or negative
+// offset is 0.
+func pagination(limit, offset *int, defLimit, maxLimit int) (int, int) {
+	l, o := defLimit, 0
+	if limit != nil && *limit > 0 {
+		l = min(*limit, maxLimit)
+	}
+	if offset != nil && *offset > 0 {
+		o = *offset
+	}
+	return l, o
+}
+
 // likeEscaper escapes the three LIKE/ILIKE metacharacters. It is safe to run once:
 // strings.Replacer does not re-scan its own output, so escaping the escape
 // character first does not double-escape the wildcards.
