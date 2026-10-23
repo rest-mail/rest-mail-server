@@ -97,6 +97,14 @@ func describedThrottle(wrap func(http.Handler) http.Handler) endpoint.Middleware
 	}}}
 }
 
+// describedOwnerThrottle is the owner endpoints' per-client-IP limit: login's rate, in a
+// bucket of its own.
+func describedOwnerThrottle(wrap func(http.Handler) http.Handler) endpoint.Middleware {
+	return endpoint.Middleware{Wrap: wrap, Describes: oapifly.Middleware{Responses: []oapifly.EndpointResponse{
+		rateLimited("rate_limited: too many requests to the owner endpoints' throttle"),
+	}}}
+}
+
 // describedAudit records a route's action in the audit log. Recording does not change the
 // response or the authentication requirement.
 func describedAudit(audit func(action string, options ...middleware.AuditOption) func(http.Handler) http.Handler) func(string, ...middleware.AuditOption) endpoint.Middleware {
