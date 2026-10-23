@@ -173,14 +173,18 @@ func TestRunScheduledSends_SendsWhenDue(t *testing.T) {
 		t.Fatalf("status = %q (%s), want sent", reloaded.Status, reloaded.LastError)
 	}
 	if reloaded.SentMessageID == nil || *reloaded.SentMessageID == 0 {
-		t.Error("sent_message_id was not recorded")
+		t.Fatal("sent_message_id was not recorded")
 	}
 	if n := countMessages(t, tx, fx.mailbox.ID); n != 1 {
 		t.Errorf("Sent has %d messages, want 1", n)
 	}
+	// Only this send's queue rows: the database is shared with the other
+	// packages' tests, which commit queue rows of their own while this runs.
 	var queued int64
-	tx.Model(&models.OutboundQueue{}).Count(&queued)
+	tx.Model(&models.OutboundQueue{}).
+		Where("message_id = ?", *reloaded.SentMessageID).
+		Count(&queued)
 	if queued != 1 {
-		t.Errorf("outbound queue has %d rows, want 1", queued)
+		t.Errorf("outbound queue has %d rows for the sent message, want 1", queued)
 	}
 }
