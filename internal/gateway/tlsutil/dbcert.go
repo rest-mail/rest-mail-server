@@ -11,6 +11,7 @@ import (
 
 	"github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
+	"github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/metrics"
 	"gorm.io/gorm"
 )
@@ -50,12 +51,34 @@ type dbCertEntry struct {
 // alerting on, from "a name that is not ours", which is routine.
 func HostedInDatabase(db *gorm.DB) func(name string) (bool, error) {
 	return func(name string) (bool, error) {
+		_, stored, err := storedNames(name)
+		if err != nil {
+			// Not a domain name at all, so not one hosted here.
+			return false, nil
+		}
 		var hosted int64
-		if err := db.Model(&models.Domain{}).Where("name = ?", strings.ToLower(name)).Count(&hosted).Error; err != nil {
+		if err := db.Model(&models.Domain{}).Where("name IN ?", stored).Count(&hosted).Error; err != nil {
 			return false, err
 		}
 		return hosted > 0, nil
 	}
+}
+
+// storedNames maps the name a client asked for to its A-label, the form SNI and
+// certificates carry, and to the names a hosted domain may be stored under. SNI
+// only ever carries A-labels (RFC 6066), but a domain is kept as the name it was
+// entered with, which for an internationalized domain may be its Unicode form,
+// so both are matched (#153).
+func storedNames(name string) (string, []string, error) {
+	ascii, err := mail.DomainASCII(strings.TrimSuffix(name, "."))
+	if err != nil {
+		return "", nil, err
+	}
+	unicode, err := mail.DomainUnicode(ascii)
+	if err != nil || unicode == ascii {
+		return ascii, []string{ascii}, nil
+	}
+	return ascii, []string{ascii, unicode}, nil
 }
 
 // NewDBCertLoader creates a certificate loader that reads from the database.
@@ -87,6 +110,16 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 		return nil, errors.New("no SNI and no fallback certificate")
 	}
 
+	ascii, stored, err := storedNames(name)
+	if err != nil {
+		if certCovers(fallback, name) {
+			return fallback, nil
+		}
+		slog.Debug("not a domain name, refusing the handshake", "server_name", name, "error", err)
+		return nil, fmt.Errorf("%w: %s", ErrNotServedHere, name)
+	}
+	name = ascii
+
 	// Check cache
 	l.mu.RLock()
 	entry, ok := l.cache[name]
@@ -97,12 +130,12 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 
 	// Look up in database by domain name
 	var cert models.Certificate
-	err := l.db.Joins("Domain").
-		Where("\"Domain\".name = ? AND certificates.not_after > ?", name, time.Now()).
+	err = l.db.Joins("Domain").
+		Where("\"Domain\".name IN ? AND certificates.not_after > ?", stored, time.Now()).
 		Order("certificates.not_after DESC").
 		First(&cert).Error
 	if err != nil {
-		return l.answerOrRefuse(name, fmt.Errorf("no current certificate: %w", err))
+		return l.answerOrRefuse(name, stored, fmt.Errorf("no current certificate: %w", err))
 	}
 
 	// Decrypt private key if master key is set
@@ -110,7 +143,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	if l.masterKey != "" {
 		decrypted, err := crypto.DecryptString(cert.KeyPEM, l.masterKey)
 		if err != nil {
-			return l.answerOrRefuse(name, fmt.Errorf("decrypting the private key: %w", err))
+			return l.answerOrRefuse(name, stored, fmt.Errorf("decrypting the private key: %w", err))
 		}
 		keyPEM = decrypted
 	}
@@ -118,7 +151,7 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 	// Parse the certificate
 	tlsCert, err := tls.X509KeyPair([]byte(cert.CertPEM), []byte(keyPEM))
 	if err != nil {
-		return l.answerOrRefuse(name, fmt.Errorf("parsing the stored certificate: %w", err))
+		return l.answerOrRefuse(name, stored, fmt.Errorf("parsing the stored certificate: %w", err))
 	}
 
 	// Cache it
@@ -137,12 +170,12 @@ func (l *DBCertLoader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certific
 // client asked for, and otherwise refuses. An installation with a single keypair
 // whose SANs list its host names is the usual arrangement, and for those names that
 // certificate is the right answer rather than a substitute for one (issue #290).
-func (l *DBCertLoader) answerOrRefuse(name string, cause error) (*tls.Certificate, error) {
+func (l *DBCertLoader) answerOrRefuse(name string, stored []string, cause error) (*tls.Certificate, error) {
 	fallback := l.currentFallback()
 	if certCovers(fallback, name) {
 		return fallback, nil
 	}
-	return nil, l.refuse(name, cause)
+	return nil, l.refuse(name, stored, cause)
 }
 
 // refuse says why name cannot be served and returns the error that ends the
@@ -150,9 +183,9 @@ func (l *DBCertLoader) answerOrRefuse(name string, cause error) (*tls.Certificat
 // it is counted and logged at error level so it is alerted on. Any other name is
 // simply not ours, and refusing it is routine. Neither is ever answered with
 // another name's certificate (issue #290).
-func (l *DBCertLoader) refuse(name string, cause error) error {
+func (l *DBCertLoader) refuse(name string, stored []string, cause error) error {
 	var hosted int64
-	if err := l.db.Model(&models.Domain{}).Where("name = ?", name).Count(&hosted).Error; err != nil {
+	if err := l.db.Model(&models.Domain{}).Where("name IN ?", stored).Count(&hosted).Error; err != nil {
 		slog.Error("cannot tell whether this domain is served here", "domain", name, "error", err)
 		return fmt.Errorf("no usable certificate for %s: %w", name, cause)
 	}
@@ -167,8 +200,13 @@ func (l *DBCertLoader) refuse(name string, cause error) error {
 }
 
 // Invalidate removes a domain's certificate from the cache, forcing a reload on the next request.
+// The cache is keyed by A-label, so a domain may be named in either form.
 func (l *DBCertLoader) Invalidate(domain string) {
+	key := strings.ToLower(domain)
+	if ascii, _, err := storedNames(domain); err == nil {
+		key = ascii
+	}
 	l.mu.Lock()
-	delete(l.cache, domain)
+	delete(l.cache, key)
 	l.mu.Unlock()
 }

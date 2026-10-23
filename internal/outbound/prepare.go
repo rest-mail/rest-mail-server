@@ -21,6 +21,7 @@ import (
 
 	dkim "github.com/rest-mail/go-dkim"
 	"github.com/restmail/restmail/internal/db/models"
+	rmail "github.com/restmail/restmail/internal/mail"
 	"gorm.io/gorm"
 )
 
@@ -181,6 +182,12 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 		slog.Error("outbound dkim sign: parse key failed (fail-closed)", "domain", senderDomain, "error", err)
 		return "", fmt.Errorf("dkim: the key for %s %w", senderDomain, err)
 	}
+	// Use an A-label signing identity (RFC 8616 §5), while hashing the exact
+	// original UTF-8 header and body bytes. Unicode domains stay in storage.
+	asciiDomain, err := rmail.DomainASCII(domain.Name)
+	if err != nil {
+		return "", fmt.Errorf("dkim: sign for %s: %w", senderDomain, err)
+	}
 	// go-dkim's defaults sign the RFC 6376 §5.4.1 set and oversign the fields
 	// a reader sees, so a From, Subject or Reply-To added after signing breaks
 	// the signature (#128). Naming Headers switches the defaults off, so both
@@ -188,7 +195,7 @@ func SignDKIM(db *gorm.DB, masterKey, senderDomain, raw string) (string, error) 
 	// RFC 8058 §4 requires signed and RFC 6376 predates (#144). A field the
 	// message lacks is not named, so plain mail signs exactly as before.
 	val, err := dkim.Sign([]byte(raw), dkim.SignOptions{
-		Domain:     senderDomain,
+		Domain:     asciiDomain,
 		Selector:   domain.DKIMSelector,
 		PrivateKey: priv,
 		Time:       time.Now().Unix(),

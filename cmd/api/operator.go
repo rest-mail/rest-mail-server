@@ -22,6 +22,7 @@ import (
 	"github.com/restmail/restmail/internal/db"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
+	"github.com/restmail/restmail/internal/mail"
 	"github.com/restmail/restmail/internal/outbound"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -308,6 +309,12 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	if *mailHost == "" {
 		return fail(stderr, exitUsage, "bad_flag", "--mail-host is required")
 	}
+	// Records are written into zones and compared with what resolvers return,
+	// both of which only know a name by its A-labels.
+	host, err := mail.DomainASCII(*mailHost)
+	if err != nil {
+		return fail(stderr, exitUsage, "bad_flag", "--mail-host is not a valid domain name")
+	}
 	database, cfg, status := connectOperatorDatabase(stderr)
 	if status != exitOK {
 		return status
@@ -319,34 +326,47 @@ func dnsRecords(args []string, stdout, stderr io.Writer) int {
 	}, &sql.TxOptions{ReadOnly: true}); err != nil {
 		return fail(stderr, exitFailed, "database", err.Error())
 	}
-	type domainRecords struct {
-		Domain  string          `json:"domain"`
-		Records []dns.DNSRecord `json:"records"`
-		// Problem says why a record is missing, when one is: no DKIM key yet,
-		// or one this server cannot read.
-		Problem string `json:"problem,omitempty"`
-	}
 	out := struct {
 		Domains []domainRecords `json:"domains"`
 	}{Domains: []domainRecords{}}
 	for _, d := range domains {
-		entry := domainRecords{Domain: d.Name}
-		var dkimValue string
-		switch {
-		case d.DKIMPrivateKey == "" || d.DKIMSelector == "":
-			entry.Problem = "no DKIM key: mail from this domain goes out unsigned"
-		default:
-			value, err := dkimRecordValue(d.DKIMPrivateKey, cfg.MasterKey)
-			if err != nil {
-				entry.Problem = "DKIM key unreadable: " + err.Error()
-			}
-			dkimValue = value
-		}
-		entry.Records = dns.MailRecords(d.Name, *mailHost, *ip, d.DKIMSelector, dkimValue)
-		out.Domains = append(out.Domains, entry)
+		out.Domains = append(out.Domains, recordsForDomain(d, host, *ip, cfg.MasterKey))
 	}
 	_ = json.NewEncoder(stdout).Encode(out)
 	return exitOK
+}
+
+type domainRecords struct {
+	Domain  string          `json:"domain"`
+	Records []dns.DNSRecord `json:"records"`
+	// Problem says why a record is missing, when one is: no DKIM key yet,
+	// one this server cannot read, or a name that cannot be put in DNS.
+	Problem string `json:"problem,omitempty"`
+}
+
+// recordsForDomain lists one domain's records under its A-label name, so an
+// internationalized domain's records can be pasted into a zone and checked
+// with dig. The heading keeps the name as the domain was added.
+func recordsForDomain(d models.Domain, mailHost, ip, masterKey string) domainRecords {
+	entry := domainRecords{Domain: d.Name, Records: []dns.DNSRecord{}}
+	name, err := mail.DomainASCII(d.Name)
+	if err != nil {
+		entry.Problem = "not a valid domain name: it cannot be published in DNS"
+		return entry
+	}
+	var dkimValue string
+	switch {
+	case d.DKIMPrivateKey == "" || d.DKIMSelector == "":
+		entry.Problem = "no DKIM key: mail from this domain goes out unsigned"
+	default:
+		value, err := dkimRecordValue(d.DKIMPrivateKey, masterKey)
+		if err != nil {
+			entry.Problem = "DKIM key unreadable: " + err.Error()
+		}
+		dkimValue = value
+	}
+	entry.Records = dns.MailRecords(name, mailHost, ip, d.DKIMSelector, dkimValue)
+	return entry
 }
 
 func dkimRecordValue(stored, masterKey string) (string, error) {
