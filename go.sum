@@ -152,8 +152,8 @@ github.com/rest-mail/go-sieve v0.5.0 h1:/5mZL5RuciUH/ijGpr3WtDxQCSATEW1fuyeZ+g5G
 github.com/rest-mail/go-sieve v0.5.0/go.mod h1:nRzH/o6SMddM7dBUrzscyKA5+ZHPIZ5dtmTfW4u4MIo=
 github.com/rest-mail/go-smtp v0.31.0 h1:A7WM7frKp3lkTGcRlA2UEufMQqNIpEdfCnpJudkGBgg=
 github.com/rest-mail/go-smtp v0.31.0/go.mod h1:YQ/qzoktT/KKthaoWuLrX0pZ1xYtWd/vCaFlHcVd3s0=
-github.com/rest-mail/go-spf v0.1.1 h1:gTDFfZsDgbTFmWpYyxZ86LjK0CqEE83uIURelgV36rA=
-github.com/rest-mail/go-spf v0.1.1/go.mod h1:3LM22EH2K55HQ7P5WKAi14L0GbewPDOamqJYdZvJRKI=
+github.com/rest-mail/go-spf v0.1.2 h1:5ga8Q0XL9Kti8xT5GfeaNN9qa94uBDDeW3qAcwDq0SQ=
+github.com/rest-mail/go-spf v0.1.2/go.mod h1:3LM22EH2K55HQ7P5WKAi14L0GbewPDOamqJYdZvJRKI=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
 github.com/rogpeppe/go-internal v1.10.0 h1:TMyTOH3F/DB16zRVcYyreMH6GnZZrwQVAoYjRBZyWFQ=
