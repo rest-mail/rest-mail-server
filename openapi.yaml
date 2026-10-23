@@ -5208,6 +5208,19 @@ paths:
         - CookieAuth: [pipelines:read]
         - BearerAuth: [pipelines:read]
       summary: Get a custom filter by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          description: Resource ID
+          examples:
+            found:
+              value: 1
+            missing:
+              value: 2147483647
       responses:
         "200":
           description: Custom filter details
@@ -5220,7 +5233,17 @@ paths:
                   data:
                     $ref: "#/components/schemas/CustomFilter"
         "404":
-          $ref: "#/components/responses/NotFound"
+          description: Custom filter not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing:
+                  value:
+                    error:
+                      code: not_found
+                      message: Custom filter not found
     patch:
       operationId: updateCustomFilter
       tags: ["Admin: Custom Filters"]
