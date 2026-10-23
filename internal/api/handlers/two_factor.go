@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/crypto"
 	"github.com/restmail/restmail/internal/db/models"
@@ -62,6 +62,32 @@ func twoFactorOwner(c *auth.Claims) (accountID uint, label string, ok bool) {
 	return c.AccountID, c.Address, true
 }
 
+// RegisterOwn registers the session's own two-factor routes, which a session still in setup
+// reaches. checks are login's throttle, for the routes that make or check a code, and the
+// audit log; the status read carries no secret to guess and is left unthrottled.
+func (h *TwoFactorHandler) RegisterOwn(rs endpoint.Routes, checks SessionRouteChecks) {
+	tags := []string{"Auth"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/auth/2fa",
+		OperationID: "getTwoFactorStatus", Summary: "Read your authenticator status", Tags: tags}, h.status)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/2fa/enroll",
+		OperationID: "enrollTwoFactor", Summary: "Start an authenticator enrollment", Tags: tags,
+		Errors:     []int{http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.2fa_enroll")}}, h.enroll)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/2fa/confirm",
+		OperationID: "confirmTwoFactor", Summary: "Switch on a pending authenticator with its first code", Tags: tags,
+		Status: http.StatusNoContent, Errors: []int{http.StatusForbidden, http.StatusConflict},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.2fa_confirm")}}, h.confirm)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/auth/2fa/disable",
+		OperationID: "disableTwoFactor", Summary: "Turn two-factor authentication off", Tags: tags,
+		Status: http.StatusNoContent, Errors: []int{http.StatusForbidden},
+		Middleware: []endpoint.Middleware{checks.Throttle, checks.Audit("auth.2fa_disable")}}, h.disableOwn)
+}
+
+var (
+	errTwoFactorOff = endpoint.Refuse(http.StatusForbidden, "forbidden", "Two-factor authentication is disabled on this server")
+	errInvalidTOTP  = endpoint.Refuse(http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
+)
+
 type twoFactorStatusResponse struct {
 	// Enabled is true when 2FA is active (a confirmed enrollment gates login).
 	Enabled bool `json:"enabled"`
@@ -69,106 +95,93 @@ type twoFactorStatusResponse struct {
 	Pending bool `json:"pending"`
 }
 
-// Status reports whether the caller has 2FA active and/or a pending enrollment.
+// status reports whether the caller has 2FA active and/or a pending enrollment.
 // GET /api/v1/auth/2fa
-func (h *TwoFactorHandler) Status(w http.ResponseWriter, r *http.Request) {
+func (h *TwoFactorHandler) status(r *http.Request, _ struct{}) (twoFactorStatusResponse, error) {
 	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return twoFactorStatusResponse{}, errAuthenticationRequired
 	}
 	tf, err := h.store.Get(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		respond.Data(w, http.StatusOK, twoFactorStatusResponse{})
-		return
+		return twoFactorStatusResponse{}, nil
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA status")
-		return
+		return twoFactorStatusResponse{}, fmt.Errorf("read 2FA status: %w", err)
 	}
-	respond.Data(w, http.StatusOK, twoFactorStatusResponse{Enabled: tf.ConfirmedAt != nil, Pending: tf.ConfirmedAt == nil})
+	return twoFactorStatusResponse{Enabled: tf.ConfirmedAt != nil, Pending: tf.ConfirmedAt == nil}, nil
 }
 
 type enrollResponse struct {
 	// Secret is the base32 TOTP secret, for manual entry into an authenticator.
-	Secret string `json:"secret"`
+	Secret string `json:"secret" minLength:"1"`
 	// OTPAuthURL is the otpauth:// provisioning URI (QR-code payload).
-	OTPAuthURL string `json:"otpauth_url"`
+	OTPAuthURL string `json:"otpauth_url" format:"uri" pattern:"^otpauth://"`
 	// RecoveryCodes are the one-time recovery codes, returned ONCE at enrollment
 	// (only their hashes are stored). The client must surface these to the user.
-	RecoveryCodes []string `json:"recovery_codes"`
+	RecoveryCodes []string `json:"recovery_codes" minItems:"1"`
 }
 
-// Enroll begins 2FA enrollment: it mints a TOTP secret + recovery codes, stores
+// enroll begins 2FA enrollment: it mints a TOTP secret + recovery codes, stores
 // the secret encrypted-at-rest and the recovery codes hashed, and returns the
 // provisioning URI + plaintext recovery codes. The enrollment is PENDING until
-// Confirm verifies a first code, so a mistyped secret can never lock the user
+// confirm verifies a first code, so a mistyped secret can never lock the user
 // out. Re-enrolling replaces any prior pending enrollment.
 // POST /api/v1/auth/2fa/enroll
-func (h *TwoFactorHandler) Enroll(w http.ResponseWriter, r *http.Request) {
+func (h *TwoFactorHandler) enroll(r *http.Request, _ struct{}) (enrollResponse, error) {
 	if !h.enabled {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Two-factor authentication is disabled on this server")
-		return
+		return enrollResponse{}, errTwoFactorOff
 	}
 	// Secrets MUST be stored encrypted at rest; refuse rather than silently
 	// persist a TOTP secret in plaintext when no encryption key is configured.
 	if h.masterKey == "" {
-		respond.Error(w, http.StatusServiceUnavailable, "unavailable", "Two-factor authentication requires server encryption to be configured")
-		return
+		return enrollResponse{}, endpoint.Refuse(http.StatusServiceUnavailable, "unavailable", "Two-factor authentication requires server encryption to be configured")
 	}
 	accountID, label, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return enrollResponse{}, errAuthenticationRequired
 	}
 
 	// A confirmed enrollment must be explicitly disabled before re-enrolling, so
 	// an attacker holding a live session can't silently swap the secret out from
 	// under an active 2FA user. A pending enrollment may be freely replaced.
 	if existing, err := h.store.Get(accountID); err == nil && existing.ConfirmedAt != nil {
-		respond.Error(w, http.StatusConflict, "conflict", "Two-factor authentication is already enabled; disable it first")
-		return
+		return enrollResponse{}, endpoint.Refuse(http.StatusConflict, "conflict", "Two-factor authentication is already enabled; disable it first")
 	} else if err != nil && !errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA status")
-		return
+		return enrollResponse{}, fmt.Errorf("read 2FA status: %w", err)
 	}
 
 	key, err := auth.GenerateTOTPSecret(auth.DefaultTOTPIssuer, label)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate 2FA secret")
-		return
+		return enrollResponse{}, fmt.Errorf("generate 2FA secret: %w", err)
 	}
 	encrypted, err := crypto.EncryptString(key.Secret(), h.masterKey)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to secure 2FA secret")
-		return
+		return enrollResponse{}, fmt.Errorf("secure 2FA secret: %w", err)
 	}
 
 	recoveryCodes, err := auth.GenerateRecoveryCodes()
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to generate recovery codes")
-		return
+		return enrollResponse{}, fmt.Errorf("generate recovery codes: %w", err)
 	}
 	hashes := make([]string, len(recoveryCodes))
 	for i, c := range recoveryCodes {
 		hash, herr := hashRecoveryCode(c)
 		if herr != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to secure recovery codes")
-			return
+			return enrollResponse{}, fmt.Errorf("secure recovery codes: %w", herr)
 		}
 		hashes[i] = hash
 	}
 
 	if _, err := h.store.Enroll(accountID, encrypted, hashes); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to save 2FA enrollment")
-		return
+		return enrollResponse{}, fmt.Errorf("save 2FA enrollment: %w", err)
 	}
 
-	respond.Data(w, http.StatusOK, enrollResponse{
+	return enrollResponse{
 		Secret:        key.Secret(),
 		OTPAuthURL:    key.URL(),
 		RecoveryCodes: recoveryCodes,
-	})
+	}, nil
 }
 
 // confirmRequest carries the first code from the new authenticator, in the
@@ -177,126 +190,99 @@ type confirmRequest struct {
 	TOTPCode string `json:"totp_code"`
 }
 
-// Confirm completes enrollment by verifying a first TOTP code against the
+// confirm completes enrollment by verifying a first TOTP code against the
 // pending secret, flipping the enrollment active. Until this succeeds, 2FA does
 // not gate login. A wrong code is 403 invalid_totp, never 401: the session
 // that sent it is still good (#392).
 // POST /api/v1/auth/2fa/confirm
-func (h *TwoFactorHandler) Confirm(w http.ResponseWriter, r *http.Request) {
+func (h *TwoFactorHandler) confirm(r *http.Request, req confirmRequest) (endpoint.Empty, error) {
 	if !h.enabled {
-		respond.Error(w, http.StatusForbidden, "forbidden", "Two-factor authentication is disabled on this server")
-		return
+		return endpoint.Empty{}, errTwoFactorOff
 	}
 	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-	var req confirmRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return endpoint.Empty{}, errAuthenticationRequired
 	}
 	if req.TOTPCode == "" {
-		respond.ValidationError(w, map[string]string{"totp_code": "required"})
-		return
+		return endpoint.Empty{}, endpoint.Invalid(map[string]string{"totp_code": "required"})
 	}
 
 	tf, err := h.store.Get(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "No pending 2FA enrollment to confirm")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "No pending 2FA enrollment to confirm")
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA enrollment")
-		return
+		return endpoint.Empty{}, fmt.Errorf("read 2FA enrollment: %w", err)
 	}
 	if tf.ConfirmedAt != nil {
-		respond.Error(w, http.StatusConflict, "conflict", "Two-factor authentication is already enabled")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusConflict, "conflict", "Two-factor authentication is already enabled")
 	}
 
 	secret, err := crypto.DecryptString(tf.EncryptedSecret, h.masterKey)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA secret")
-		return
+		return endpoint.Empty{}, fmt.Errorf("read 2FA secret: %w", err)
 	}
 	if !auth.ValidateTOTPCode(req.TOTPCode, secret) {
-		respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
-		return
+		return endpoint.Empty{}, errInvalidTOTP
 	}
 	if err := h.store.Confirm(tf.ID); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to enable 2FA")
-		return
+		return endpoint.Empty{}, fmt.Errorf("enable 2FA: %w", err)
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
-// disableRequest is the second factor, in the fields sign-in takes it in.
+// disableRequest is the second factor, in the fields sign-in takes it in: one
+// of them, which disableOwn checks.
 type disableRequest struct {
-	TOTPCode     string `json:"totp_code"`
-	RecoveryCode string `json:"recovery_code"`
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
 }
 
-// Disable turns 2FA off. It requires proof of possession — a valid current TOTP
+// disableOwn turns 2FA off. It requires proof of possession — a valid current TOTP
 // code OR an unused recovery code — so a hijacked-but-2FA-protected session
 // can't strip the protection without the second factor. A wrong one is 403
 // (invalid_totp, or invalid_recovery_code when only a recovery code was
 // sent), never 401: the session that sent it is still good (#392).
 // POST /api/v1/auth/2fa/disable
-func (h *TwoFactorHandler) Disable(w http.ResponseWriter, r *http.Request) {
+func (h *TwoFactorHandler) disableOwn(r *http.Request, req disableRequest) (endpoint.Empty, error) {
 	accountID, _, ok := twoFactorOwner(middleware.GetClaims(r))
 	if !ok {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-	var req disableRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return endpoint.Empty{}, errAuthenticationRequired
 	}
 	if req.TOTPCode == "" && req.RecoveryCode == "" {
-		respond.ValidationError(w, map[string]string{"totp_code": "required unless recovery_code is sent"})
-		return
+		return endpoint.Empty{}, endpoint.Invalid(map[string]string{"totp_code": "required unless recovery_code is sent"})
 	}
 
 	_, err := h.store.GetActive(accountID)
 	if errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Two-factor authentication is not enabled")
-		return
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusBadRequest, "bad_request", "Two-factor authentication is not enabled")
 	}
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read 2FA enrollment")
-		return
+		return endpoint.Empty{}, fmt.Errorf("read 2FA enrollment: %w", err)
 	}
 
 	if !h.verifySecondFactor(accountID, req.TOTPCode, req.RecoveryCode) {
 		if req.TOTPCode == "" {
-			respond.Error(w, http.StatusForbidden, "invalid_recovery_code", "Invalid or already used recovery code")
-		} else {
-			respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusForbidden, "invalid_recovery_code", "Invalid or already used recovery code")
 		}
-		return
+		return endpoint.Empty{}, errInvalidTOTP
 	}
 	// Where 2FA is required (the bootstrap admin), turning it off would make the
 	// requirement a one-time gate rather than a rule.
 	if h.db != nil {
 		var account models.Mailbox
 		if err := h.db.Select("two_factor_required").First(&account, accountID).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read account")
-			return
+			return endpoint.Empty{}, fmt.Errorf("read account: %w", err)
 		}
 		if account.TwoFactorRequired {
-			respond.Error(w, http.StatusForbidden, "two_factor_required", "Two-factor authentication is required for this account and cannot be disabled")
-			return
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusForbidden, "two_factor_required", "Two-factor authentication is required for this account and cannot be disabled")
 		}
 	}
 	if err := h.disable(accountID); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to disable 2FA")
-		return
+		return endpoint.Empty{}, fmt.Errorf("disable 2FA: %w", err)
 	}
 	h.sessions.Forget(accountID)
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
 // disable revokes the account's authenticator and recovery codes and, in the

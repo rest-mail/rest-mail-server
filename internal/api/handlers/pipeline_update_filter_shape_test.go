@@ -100,7 +100,7 @@ func TestUpdatePipelineFilterShape_ScratchDB(t *testing.T) {
 		rctx.URLParams.Add("id", id)
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 		rr := httptest.NewRecorder()
-		h.UpdatePipeline(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 		return rr
 	}
 	// reset puts the stored pipeline back to its seeded filters, active.
@@ -246,7 +246,7 @@ func TestUpdatePipelineFilterShape_ScratchDB(t *testing.T) {
 			status   int
 			code     string
 		}{
-			"bad id":          {"abc", `{"active":false,"filters":null}`, http.StatusBadRequest, "bad_request"},
+			"bad id":          {"abc", `{"active":false,"filters":null}`, http.StatusUnprocessableEntity, "validation_failed"},
 			"missing":         {"987654", `{"active":false,"filters":null}`, http.StatusNotFound, "not_found"},
 			"not json":        {id, `{"active":false,"filters":`, http.StatusBadRequest, "bad_request"},
 			"broken sieve":    {id, `{"active":false,"filters":` + missingRequireFilters + `}`, http.StatusBadRequest, "invalid_sieve"},

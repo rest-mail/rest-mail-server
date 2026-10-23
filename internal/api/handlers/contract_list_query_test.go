@@ -97,9 +97,9 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 	handlers := map[string]http.HandlerFunc{
 		"listAliases":       aliasRoutes(NewAliasHandler(tx)).ServeHTTP,
 		"listMailboxes":     mailboxRoutes(NewMailboxHandler(tx, nil, nil)).ServeHTTP,
-		"listPipelines":     pipeline.ListPipelines,
-		"listCustomFilters": pipeline.ListCustomFilters,
-		"listPipelineLogs":  pipeline.ListPipelineLogs,
+		"listPipelines":     pipelineRoute(pipeline, "/api/v1/admin/pipelines"),
+		"listCustomFilters": pipelineRoute(pipeline, "/api/v1/admin/custom-filters"),
+		"listPipelineLogs":  pipelineRoute(pipeline, "/api/v1/admin/pipelines/logs"),
 		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
 		"listGrants": func(w http.ResponseWriter, r *http.Request) {
 			r.URL.Path = "/api/v1/admin/grants"

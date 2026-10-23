@@ -76,7 +76,7 @@ func TestVerifyDelivery_Recipients(t *testing.T) {
 	verify := func(query url.Values) map[string]interface{} {
 		t.Helper()
 		rr := httptest.NewRecorder()
-		h.VerifyDelivery(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/test/verify?"+query.Encode(), nil))
+		testRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/test/verify?"+query.Encode(), nil))
 		if rr.Code != http.StatusOK {
 			t.Fatalf("%s: want 200, got %d: %s", query.Encode(), rr.Code, rr.Body)
 		}

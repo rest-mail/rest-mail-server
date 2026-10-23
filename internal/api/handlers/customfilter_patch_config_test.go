@@ -113,7 +113,7 @@ func TestCustomFilterPatchConfig_ScratchDB(t *testing.T) {
 		rctx.URLParams.Add("id", id)
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 		rr := httptest.NewRecorder()
-		h.UpdateCustomFilter(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 		return rr
 	}
 	// row reads the custom filter back, and checks it is still the only one.
@@ -242,7 +242,7 @@ func TestCustomFilterPatchConfig_ScratchDB(t *testing.T) {
 			code     string
 			fields   string
 		}{
-			"bad id":       {"abc", `{"enabled":false,"config":null}`, http.StatusBadRequest, "bad_request", ""},
+			"bad id":       {"abc", `{"enabled":false,"config":null}`, http.StatusUnprocessableEntity, "validation_failed", ""},
 			"missing":      {"987654", `{"enabled":false,"config":null}`, http.StatusNotFound, "not_found", ""},
 			"not json":     {id, `{"enabled":false,"config":`, http.StatusBadRequest, "bad_request", ""},
 			"empty name":   {id, `{"name":"","enabled":false,"config":null}`, http.StatusUnprocessableEntity, "validation_failed", `{"name":"required"}`},

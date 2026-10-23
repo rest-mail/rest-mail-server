@@ -168,7 +168,7 @@ func TestPipelineAnalytics_WindowSum(t *testing.T) {
 	h := NewStatsHandler(tx)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/pipelines/analytics?window=24h", nil)
 	rr := httptest.NewRecorder()
-	h.GetPipelineAnalytics(rr, req)
+	analyticsRoutes(h).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rr.Code, rr.Body.String())

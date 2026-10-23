@@ -73,7 +73,7 @@ func listTraces(t *testing.T, h *PipelineHandler, rawQuery string) []models.Mess
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/pipelines/logs?"+rawQuery, nil)
 	rr := httptest.NewRecorder()
-	h.ListPipelineLogs(rr, req)
+	pipelineRoutes(h).ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("ListPipelineLogs(%q) status = %d, want 200 (body %s)", rawQuery, rr.Code, rr.Body.String())
 	}
@@ -146,7 +146,7 @@ func getMessageTrace(h *PipelineHandler, id string) *httptest.ResponseRecorder {
 	rctx.URLParams.Add("id", id)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rr := httptest.NewRecorder()
-	h.GetMessageTrace(rr, req)
+	pipelineRoutes(h).ServeHTTP(rr, req)
 	return rr
 }
 
@@ -185,8 +185,8 @@ func TestGetMessageTrace_DeliveredAndMissing(t *testing.T) {
 	if rr := getMessageTrace(h, "9999"); rr.Code != http.StatusNotFound {
 		t.Fatalf("unknown id status = %d, want 404 (body %s)", rr.Code, rr.Body.String())
 	}
-	// Non-numeric id → 400.
-	if rr := getMessageTrace(h, "abc"); rr.Code != http.StatusBadRequest {
-		t.Fatalf("bad id status = %d, want 400", rr.Code)
+	// Non-numeric id → 422 from binding.
+	if rr := getMessageTrace(h, "abc"); rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("bad id status = %d, want 422", rr.Code)
 	}
 }

@@ -37,7 +37,7 @@ func validateCustomFilter(h *PipelineHandler) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/custom-filters/validate",
 		strings.NewReader(`{"script":"function filter(e){return e}"}`))
 	rec := httptest.NewRecorder()
-	h.ValidateCustomFilter(rec, req)
+	pipelineRoutes(h).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -57,5 +57,15 @@ func TestValidateCustomFilter_RefusedTokenIs503(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "JS_FILTER_TOKEN") {
 		t.Errorf("body %s does not name JS_FILTER_TOKEN", rec.Body)
+	}
+}
+
+func TestValidateCustomFilter_ForwardsExactJSON(t *testing.T) {
+	const body = " {\"valid\":true, \"dry_run\":{\"result\":{\"custom\":42},\"logs\":null}}\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
+	defer srv.Close()
+	rr := validateCustomFilter(NewPipelineHandler(nil, nil, filters.JSSidecar{URL: srv.URL, Token: testJSSidecarToken}))
+	if rr.Code != http.StatusOK || rr.Body.String() != body {
+		t.Fatalf("answer = %d %q", rr.Code, rr.Body.String())
 	}
 }

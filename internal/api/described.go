@@ -131,6 +131,11 @@ func (rt *Routers) Description(version string) (map[string]interface{}, []string
 	return g.Generate(), g.Warnings
 }
 
+// The preview limit applies per IP before binding or running the engine.
+var describedPipelineTestThrottle = oapifly.Middleware{Responses: []oapifly.EndpointResponse{
+	{Status: http.StatusTooManyRequests, Description: "rate_limited: pipeline preview limit exceeded", Type: errorBody, Headers: map[string]oapifly.ResponseHeader{"Retry-After": {Description: "Seconds until another preview is allowed", Required: true, Type: oapifly.TypeOf[int]()}}},
+}}
+
 // Resource checks resolve the mailbox or source domain before binding. A failed lookup
 // answers 503; a missing or out-of-scope target answers the existing 403.
 func describedResourceCapability(check func(string) func(http.Handler) http.Handler) func(string) endpoint.Middleware {
