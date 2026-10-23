@@ -62,13 +62,13 @@ func TestAPIKeyLifecycle(t *testing.T) {
 	}
 	createBody := fmt.Sprintf(`{"name":"Provisioning test","password":%q,"permissions":[{"capability":"mailboxes:write","scope":%q}]}`, accountsPassword, grants.Domain(fx.domain.Name))
 	noMFA := httptest.NewRecorder()
-	h.CreateAPIKey(noMFA, request(http.MethodPost, path, createBody, false, map[string]string{"id": id}))
+	credentialRoutes(h).ServeHTTP(noMFA, request(http.MethodPost, path, createBody, false, map[string]string{"id": id}))
 	if noMFA.Code != http.StatusForbidden {
 		t.Fatalf("without MFA: %d", noMFA.Code)
 	}
 
 	created := httptest.NewRecorder()
-	h.CreateAPIKey(created, request(http.MethodPost, path, createBody, true, map[string]string{"id": id}))
+	credentialRoutes(h).ServeHTTP(created, request(http.MethodPost, path, createBody, true, map[string]string{"id": id}))
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", created.Code, created.Body)
 	}
@@ -89,7 +89,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 	}
 
 	listed := httptest.NewRecorder()
-	h.ListAPIKeys(listed, request(http.MethodGet, path, "", true, map[string]string{"id": id}))
+	credentialRoutes(h).ServeHTTP(listed, request(http.MethodGet, path, "", true, map[string]string{"id": id}))
 	if listed.Code != http.StatusOK || strings.Contains(listed.Body.String(), response.Data.Token) || strings.Contains(listed.Body.String(), `"token"`) {
 		t.Fatal("list failed or exposed a key secret")
 	}
@@ -112,7 +112,7 @@ func TestAPIKeyLifecycle(t *testing.T) {
 		r := authzRequest(http.MethodPost, "/api/v1/accounts", fx.admin.ID, nil, fmt.Sprintf(`{"address":%q}`, tc.address))
 		*middleware.GetClaims(r) = *claims
 		out := httptest.NewRecorder()
-		accounts.CreateAccount(out, r)
+		accountRoutes(accounts).ServeHTTP(out, r)
 		if out.Code != tc.want {
 			t.Fatalf("provisioning %s: %d, want %d", tc.address, out.Code, tc.want)
 		}
@@ -124,13 +124,13 @@ func TestAPIKeyLifecycle(t *testing.T) {
 
 	deniedBody := fmt.Sprintf(`{"name":"too broad","password":%q,"permissions":[{"capability":"mailboxes:write","scope":"*"}]}`, accountsPassword)
 	denied := httptest.NewRecorder()
-	h.CreateAPIKey(denied, request(http.MethodPost, path, deniedBody, true, map[string]string{"id": id}))
+	credentialRoutes(h).ServeHTTP(denied, request(http.MethodPost, path, deniedBody, true, map[string]string{"id": id}))
 	if denied.Code != http.StatusForbidden {
 		t.Fatalf("scope escalation: %d", denied.Code)
 	}
 
 	revoked := httptest.NewRecorder()
-	h.RevokeAPIKey(revoked, request(http.MethodDelete, path+"/"+uintToStr(credential.ID), "", true, map[string]string{"id": id, "credential_id": uintToStr(credential.ID)}))
+	credentialRoutes(h).ServeHTTP(revoked, request(http.MethodDelete, path+"/"+uintToStr(credential.ID), "", true, map[string]string{"id": id, "credential_id": uintToStr(credential.ID)}))
 	if revoked.Code != http.StatusNoContent {
 		t.Fatalf("revoke: %d %s", revoked.Code, revoked.Body)
 	}

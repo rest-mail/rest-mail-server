@@ -524,11 +524,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Provisioning uses the same live mailboxes:write check for sessions and
 	// explicitly scoped API keys. Other identity and credential changes below
 	// still require a password-authenticated session.
-	r.With(apiKeys.Authenticate(middleware.JWTMiddleware(jwtService)),
+	audited := describedAudit(auditLog)
+	accountH.RegisterCreate(endpoint.Routes{Registry: registry, Router: r.With(
+		apiKeys.Authenticate(middleware.JWTMiddleware(jwtService)),
 		middleware.RejectStaleSessions(sessionCurrent), middleware.SetupDone,
-		middleware.CSRF(), middleware.MaxBodyBytes(cfg.APIMaxBodyBytes),
-		auditLog(handlers.ActionAccountsCreate, middleware.AuditBodyFields("address"), middleware.AuditFailuresOnly())).
-		Post("/api/v1/accounts", accountH.CreateAccount)
+		middleware.CSRF(), middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))}.
+		Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap),
+		audited(handlers.ActionAccountsCreate, middleware.AuditBodyFields("address"), middleware.AuditFailuresOnly()))
 
 	// ═══════════════════════════════════════════════════════════════
 	// Authenticated routes that need a person: a session from signing in
@@ -569,6 +571,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.SetupDone)
+			person := endpoint.Routes{Router: r, Registry: registry}.
+				Describing(describedPersonSession, describedCSRF, describedBodyCap, describedSetupDone)
+			personChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: audited}
 
 			// Accounts (#347). Creating one needs mailboxes:write covering its
 			// domain, and makes the creator its owner; the account, its grant
@@ -580,28 +585,18 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			// guess consumes the same budget as a failed login and cannot be
 			// used to sidestep it. Unlinking removes the caller's own grants on
 			// the account.
-			r.With(authThrottle, auditLog("accounts.link", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts/link", accountH.LinkAccount)
-			r.With(auditLog("accounts.unlink")).Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
+			accountH.RegisterLinks(person, personChecks)
 
 			// Credentials (#344): an account's app passwords, its own or one it
 			// holds mailbox:manage on. The secret is in the answer to creating
 			// one, once, and never in the audit log. Creating one takes the
 			// session's current password, so it is throttled like login, with
 			// the same limiter: a wrong one spends login's budget.
-			r.Get("/api/v1/accounts/{id}/credentials", credentialH.List)
-			r.With(authThrottle, auditLog("credentials.create", middleware.AuditBodyFields("name"),
-				middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
-				Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
-			r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
-
+			//
 			// API keys are distinct from mail-client app passwords. Their
 			// permissions can only be delegated by a two-factor session, never
 			// by another key; handlers audit changes in their transactions.
-			r.Get("/api/v1/accounts/{id}/api-keys", credentialH.ListAPIKeys)
-			r.With(authThrottle, auditLog(handlers.ActionAPIKeyCreate, middleware.AuditFailuresOnly())).
-				Post("/api/v1/accounts/{id}/api-keys", credentialH.CreateAPIKey)
-			r.With(auditLog(handlers.ActionAPIKeyRevoke, middleware.AuditFailuresOnly())).
-				Delete("/api/v1/accounts/{id}/api-keys/{credential_id}", credentialH.RevokeAPIKey)
+			credentialH.Register(person, personChecks)
 
 			// Push devices (#363): the phones this session registers, only when
 			// push is configured; otherwise there are no such routes, and the
@@ -635,8 +630,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(authThrottle, auditLog("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))).
 			Post("/api/v1/auth/protocol-sign-in", credentialH.ProtocolSignIn)
 
-		r.Get("/api/v1/accounts", accountH.ListAccounts)
-		r.Get("/api/v1/accounts/{id}", accountH.GetAccount)
+		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
 		// Folders
 		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
@@ -749,9 +744,6 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			return middleware.RequireCapability(held, capability, handlers.AliasScopeOf(db))
 		}
 
-		// Dashboard stats — every admin role holds domains:read
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/stats", statsH.GetDashboardStats)
-
 		// Roles and capabilities, for granting
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", grantH.ListRoles)
 		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", grantH.ListCapabilities)
@@ -780,6 +772,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// adds to each of them (#669).
 		admin := endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
+
+		// Dashboard stats — every admin role holds domains:read
+		statsH.Register(admin, describedCapability(needs))
 
 		// Domains
 		domainH.Register(admin, handlers.DomainRouteChecks{
@@ -868,18 +863,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		certH.Register(admin, handlers.CertificateRouteChecks{At: describedCapability(needs)})
 
 		// Ban management
-		r.With(needs(middleware.CapBansRead)).Get("/api/v1/admin/bans", banH.ListBans)
-		r.With(needs(middleware.CapBansWrite)).Post("/api/v1/admin/bans", banH.CreateBan)
-		r.With(needs(middleware.CapBansDelete)).Delete("/api/v1/admin/bans/{id}", banH.DeleteBan)
-		r.With(needs(middleware.CapBansDelete)).Delete("/api/v1/admin/bans/ip/{ip}", banH.UnbanIP)
+		banH.Register(admin, describedCapability(needs))
 
 		// Logs
-		r.With(needs(middleware.CapMessagesRead)).Get("/api/v1/admin/logs/delivery", logH.DeliveryLog)
+		logH.Register(admin, describedCapability(needs))
 
 		// Audit log (#343): reading it is itself audited, including a read the
 		// capability check refuses.
-		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit", auditH.List)
-		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit/verify", auditH.Verify)
+		auditH.Register(admin, handlers.AdminLogRouteChecks{
+			At:        describedCapability(needs),
+			AuditRead: describedAuditRead(auditLog("audit.read")),
+		})
 
 		// Test endpoints (non-production only): "*" itself
 		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/send", testH.SendTestEmail)

@@ -1,10 +1,11 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -21,47 +22,48 @@ func NewLogHandler(db *gorm.DB) *LogHandler {
 
 // DeliveryLog returns a filtered view of outbound delivery history.
 // GET /api/v1/admin/logs/delivery?status=...&sender=...&recipient=...&since=...&until=...&limit=50&offset=0
-func (h *LogHandler) DeliveryLog(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 0, "limit", "offset") || !validateDateTimeQuery(w, r, "since", "until") {
-		return
+type deliveryLogRequest struct {
+	Limit     *int       `query:"limit"`
+	Offset    *int       `query:"offset"`
+	Status    *string    `query:"status" enums:"pending,delivering,deferred,delivered,bounced,expired" message:"must be one of pending, delivering, deferred, delivered, bounced, expired"`
+	Domain    string     `query:"domain"`
+	Sender    string     `query:"sender"`
+	Recipient string     `query:"recipient"`
+	Since     *time.Time `query:"since" message:"must be an RFC 3339 time"`
+	Until     *time.Time `query:"until" message:"must be an RFC 3339 time"`
+}
+
+func (h *LogHandler) deliveryLog(_ *http.Request, in deliveryLogRequest) (endpoint.List[DeliveryLogEntry], error) {
+	// Preserve the delivery log's default for limits outside 1..200.
+	limit, offset := 50, 0
+	if in.Limit != nil && *in.Limit > 0 && *in.Limit <= 200 {
+		limit = *in.Limit
 	}
-	if params := r.URL.Query(); params.Has("status") {
-		switch params.Get("status") {
-		case "pending", "delivering", "deferred", "delivered", "bounced", "expired":
-		default:
-			respond.ValidationError(w, map[string]string{"status": "must be one of pending, delivering, deferred, delivered, bounced, expired"})
-			return
-		}
-	}
-	limit := 50
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
-		limit = l
-	}
-	offset := 0
-	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && o >= 0 {
-		offset = o
+	if in.Offset != nil && *in.Offset >= 0 {
+		offset = *in.Offset
 	}
 
 	query := h.db.Model(&models.OutboundQueue{})
 
-	if status := r.URL.Query().Get("status"); status != "" {
+	if in.Status != nil {
+		status := *in.Status
 		query = query.Where("status = ?", status)
 	}
-	if domain := r.URL.Query().Get("domain"); domain != "" {
+	if domain := in.Domain; domain != "" {
 		query = query.Where("domain = ?", domain)
 	}
-	if sender := r.URL.Query().Get("sender"); sender != "" {
+	if sender := in.Sender; sender != "" {
 		query = query.Where("sender ILIKE ? ESCAPE '\\'", "%"+escapeLike(sender)+"%")
 	}
-	if recipient := r.URL.Query().Get("recipient"); recipient != "" {
+	if recipient := in.Recipient; recipient != "" {
 		query = query.Where("recipient ILIKE ? ESCAPE '\\'", "%"+escapeLike(recipient)+"%")
 	}
-	if since := r.URL.Query().Get("since"); since != "" {
-		t, _ := time.Parse(time.RFC3339, since)
+	if in.Since != nil {
+		t := *in.Since
 		query = query.Where("created_at >= ?", t)
 	}
-	if until := r.URL.Query().Get("until"); until != "" {
-		t, _ := time.Parse(time.RFC3339, until)
+	if in.Until != nil {
+		t := *in.Until
 		query = query.Where("created_at <= ?", t)
 	}
 
@@ -70,9 +72,12 @@ func (h *LogHandler) DeliveryLog(w http.ResponseWriter, r *http.Request) {
 
 	var entries []models.OutboundQueue
 	if err := query.Order("created_at DESC").Limit(limit).Offset(offset).Find(&entries).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to query delivery log")
-		return
+		return endpoint.List[DeliveryLogEntry]{}, fmt.Errorf("delivery log: %w", err)
 	}
 
-	respond.List(w, entries, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	out := make([]DeliveryLogEntry, len(entries))
+	for i, row := range entries {
+		out[i] = deliveryLogEntryOf(row)
+	}
+	return endpoint.List[DeliveryLogEntry]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }

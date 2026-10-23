@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,9 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
+	oapifly "github.com/antimatter-studios/go-oapifly"
+
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
-	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/audit"
 	"github.com/restmail/restmail/internal/auth"
 	"github.com/restmail/restmail/internal/db/models"
@@ -39,6 +39,68 @@ func NewAccountHandler(db *gorm.DB, cache *grants.Cache, masterKey string) *Acco
 	return &AccountHandler{db: db, cache: cache, masterKey: masterKey}
 }
 
+// SessionRouteChecks are the middleware routes.go makes for the account and credential
+// routes a signed-in person reaches: login's per-client-IP throttle, for a route that checks
+// a password, and the audit log.
+type SessionRouteChecks struct {
+	Throttle endpoint.Middleware
+	Audit    func(action string, options ...middleware.AuditOption) endpoint.Middleware
+}
+
+// RegisterReads registers the account reads, which the mail routes' group serves: a session,
+// a scoped API key or HTTP Basic.
+func (h *AccountHandler) RegisterReads(rs endpoint.Routes) {
+	tags := []string{"Accounts"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts",
+		OperationID: "listAccounts", Summary: "List the accounts this one reaches", Tags: tags,
+		Errors: []int{http.StatusNotFound}}, h.list)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/accounts/{id}",
+		OperationID: "getAccount", Summary: "Get an account this one may read", Tags: tags,
+		Errors:   []int{http.StatusNotFound},
+		Security: handlerChecked(models.CapMailRead, "CookieAuth", "BearerAuth", "APIKeyAuth", "BasicAuth")}, h.get)
+}
+
+// RegisterCreate registers creating an account, behind audit. Its routes take a session or a
+// scoped API key, and the handler checks mailboxes:write on the address's domain.
+func (h *AccountHandler) RegisterCreate(rs endpoint.Routes, audit endpoint.Middleware) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts",
+		OperationID: "createAccount", Summary: "Create an account", Tags: []string{"Accounts"},
+		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable},
+		Security:   handlerChecked(middleware.CapMailboxesWrite, "CookieAuth", "BearerAuth", "APIKeyAuth"),
+		Middleware: []endpoint.Middleware{audit}}, h.create)
+}
+
+// RegisterLinks registers linking and unlinking an account, which need a signed-in person.
+func (h *AccountHandler) RegisterLinks(rs endpoint.Routes, checks SessionRouteChecks) {
+	tags := []string{"Accounts"}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/accounts/link",
+		OperationID: "linkAccount", Summary: "Link an existing account by proving its password", Tags: tags,
+		Status: http.StatusCreated, Errors: []int{http.StatusForbidden, http.StatusConflict},
+		Middleware: []endpoint.Middleware{checks.Throttle,
+			checks.Audit("accounts.link", middleware.AuditBodyFields("address"))}}, h.link)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/accounts/{id}",
+		OperationID: "unlinkAccount", Summary: "Give up access to an account", Tags: tags,
+		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		Middleware: []endpoint.Middleware{checks.Audit("accounts.unlink")}}, h.unlink)
+}
+
+// handlerChecked states the capability a handler checks at the account it acts on, held on
+// each scheme its route takes: the route's middleware authenticates, the handler authorises.
+func handlerChecked(capability string, schemes ...string) []oapifly.SecurityRequirement {
+	out := make([]oapifly.SecurityRequirement, len(schemes))
+	for i, scheme := range schemes {
+		out[i] = oapifly.SecurityRequirement{scheme: {capability}}
+	}
+	return out
+}
+
+// accountPath names an account by the path's {id}, the mailbox's id.
+type accountPath struct {
+	ID uint32 `path:"id" minimum:"1"`
+}
+
+var errAuthenticationRequired = endpoint.Refuse(http.StatusUnauthorized, "unauthorized", "Authentication required")
+
 // accountResponse is an account as GET /api/v1/accounts lists it. ID is the
 // mailbox's id, the {id} of every /accounts/{id}/… route. IsPrimary marks the
 // session's own account.
@@ -64,16 +126,14 @@ var mailCapabilities = []string{models.CapMailRead, models.CapMailWrite, models.
 // they do not list them. A request made with an app password lists only its
 // own account.
 // GET /api/v1/accounts
-func (h *AccountHandler) ListAccounts(w http.ResponseWriter, r *http.Request) {
+func (h *AccountHandler) list(r *http.Request, _ struct{}) (endpoint.List[accountResponse], error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return endpoint.List[accountResponse]{}, errAuthenticationRequired
 	}
 	var own models.Mailbox
 	if err := h.db.First(&own, claims.AccountID).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Account not found")
-		return
+		return endpoint.List[accountResponse]{}, errAccountNotFound
 	}
 	accounts := []accountResponse{toAccountResponse(&own, own.ID)}
 	if !claims.MailboxOnly() {
@@ -89,8 +149,7 @@ func (h *AccountHandler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 			Order("mailboxes.address").
 			Find(&others).Error
 		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list accounts")
-			return
+			return endpoint.List[accountResponse]{}, fmt.Errorf("list accounts: %w", err)
 		}
 		for i := range others {
 			accounts = append(accounts, toAccountResponse(&others[i], own.ID))
@@ -105,43 +164,43 @@ func (h *AccountHandler) ListAccounts(w http.ResponseWriter, r *http.Request) {
 			if _, err := mayReach(h.db, claims, account.ID, models.CapMailRead); err == nil {
 				visible = append(visible, account)
 			} else if !errors.Is(err, errNoAccess) {
-				respond.Error(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
-				return
+				return endpoint.List[accountResponse]{}, errPermissionsUnverified
 			}
 		}
 		accounts = visible
 	}
-	respond.List(w, accounts, nil)
+	return endpoint.List[accountResponse]{Data: accounts}, nil
 }
+
+var (
+	errAccountNotFound       = endpoint.Refuse(http.StatusNotFound, "not_found", "Account not found")
+	errPermissionsUnverified = endpoint.Refuse(http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
+)
 
 // GetAccount returns one account the session may read.
 // GET /api/v1/accounts/{id}
-func (h *AccountHandler) GetAccount(w http.ResponseWriter, r *http.Request) {
+func (h *AccountHandler) get(r *http.Request, in accountPath) (accountResponse, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return accountResponse{}, errAuthenticationRequired
 	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
+	mb, err := mayReach(h.db, claims, uint(in.ID), models.CapMailRead)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+		return accountResponse{}, errAccountNotFound
 	}
-	mb, err := mayReach(h.db, claims, uint(id), models.CapMailRead)
-	if err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Account not found")
-		return
-	}
-	respond.Data(w, http.StatusOK, toAccountResponse(mb, claims.AccountID))
+	return toAccountResponse(mb, claims.AccountID), nil
 }
 
+// createAccountRequest is what the mobile app and the admin webmail send: an address, and
+// optionally a display name and a password. Each is checked in the handler, as before:
+// a blank or empty password means none.
 type createAccountRequest struct {
 	Address     string `json:"address"`
-	DisplayName string `json:"display_name"`
+	DisplayName string `json:"display_name,omitempty"`
 	// Password, when given, becomes the account's password credential, so it
 	// can be signed in to. Without one the account has no credentials, and is
 	// reached only through its owners.
-	Password string `json:"password"`
+	Password string `json:"password,omitempty"`
 }
 
 // ActionAccountsCreate is the audit action of a created account.
@@ -153,16 +212,10 @@ const ActionAccountsCreate = "accounts.create"
 // without one it has none. The account, its credential, the grant and their
 // audit entries commit together.
 // POST /api/v1/accounts {"address", "display_name"?, "password"?}
-func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
+func (h *AccountHandler) create(r *http.Request, req createAccountRequest) (accountResponse, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-	var req createAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return accountResponse{}, errAuthenticationRequired
 	}
 	address, addressErr := rmail.CanonicalMailboxAddress(req.Address)
 	local, domainName, _ := strings.Cut(address, "@")
@@ -178,43 +231,36 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 		problems["password"] = fmt.Sprintf("must be at least %d characters", minChosenPasswordLength)
 	}
 	if len(problems) > 0 {
-		respond.ValidationError(w, problems)
-		return
+		return accountResponse{}, endpoint.Invalid(problems)
 	}
 
 	held, err := grants.Load(h.db, claims.AccountID, time.Now())
 	if err != nil {
-		respond.Error(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
-		return
+		return accountResponse{}, errPermissionsUnverified
 	}
 	if !held.Allows(middleware.CapMailboxesWrite, grants.Domain(domainName)) ||
 		!middleware.CredentialAllows(claims, middleware.CapMailboxesWrite, grants.Domain(domainName)) {
-		respond.Error(w, http.StatusForbidden, "forbidden", "You cannot create accounts on "+domainName)
-		return
+		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "forbidden", "You cannot create accounts on "+domainName)
 	}
 
 	var domain models.Domain
 	if err := h.db.Where("name = ?", domainName).First(&domain).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			respond.ValidationError(w, map[string]string{"address": "this server does not host " + domainName})
-			return
+			return accountResponse{}, endpoint.Invalid(map[string]string{"address": "this server does not host " + domainName})
 		}
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to read the domain")
-		return
+		return accountResponse{}, fmt.Errorf("read the domain: %w", err)
 	}
 
 	var hash string
 	if req.Password != "" {
 		if hash, err = hashPassword(req.Password); err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to set the password")
-			return
+			return accountResponse{}, fmt.Errorf("set the password: %w", err)
 		}
 	}
 
 	var owner models.Role
 	if err := h.db.Where("name = ?", models.RoleOwner).First(&owner).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "The owner role is missing")
-		return
+		return accountResponse{}, fmt.Errorf("the owner role is missing: %w", err)
 	}
 
 	account := models.Mailbox{
@@ -264,15 +310,13 @@ func (h *AccountHandler) CreateAccount(w http.ResponseWriter, r *http.Request) {
 	})
 	switch {
 	case errors.Is(err, errExists):
-		respond.Error(w, http.StatusConflict, "already_exists", "An account with this address already exists")
-		return
+		return accountResponse{}, endpoint.Refuse(http.StatusConflict, "already_exists", "An account with this address already exists")
 	case err != nil:
 		slog.Error("creating an account failed", "address", address, "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to create the account")
-		return
+		return accountResponse{}, fmt.Errorf("create the account: %w", err)
 	}
 	h.cache.Invalidate()
-	respond.Data(w, http.StatusCreated, toAccountResponse(&account, claims.AccountID))
+	return toAccountResponse(&account, claims.AccountID), nil
 }
 
 // grantOwner gives the session's account the owner role on account, in tx,
@@ -293,12 +337,15 @@ func grantOwner(tx *gorm.DB, r *http.Request, claims *auth.Claims, account *mode
 	return grants.Add(tx, g, middleware.RequestEntry(r, grants.ActionCreate, http.StatusCreated))
 }
 
+// linkAccountRequest is what the mobile app and webmail send. The webmail sends display_name
+// always, empty when the user gave none. The handler checks address and password together, so
+// one missing names both, as the documented examples show.
 type linkAccountRequest struct {
-	Address      string `json:"address"`
-	Password     string `json:"password"`
-	DisplayName  string `json:"display_name"`
-	TOTPCode     string `json:"totp_code"`
-	RecoveryCode string `json:"recovery_code"`
+	Address      string `json:"address,omitempty"`
+	Password     string `json:"password,omitempty"`
+	DisplayName  string `json:"display_name,omitempty"`
+	TOTPCode     string `json:"totp_code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
 }
 
 // LinkAccount grants the session's account the owner role on an existing
@@ -310,23 +357,16 @@ type linkAccountRequest struct {
 // the session that sent them is still good. A client that read 401 would
 // renew that session and send the guess again (#385).
 // POST /api/v1/accounts/link {"address", "password", "display_name"?}
-func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
+func (h *AccountHandler) link(r *http.Request, req linkAccountRequest) (accountResponse, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
-	}
-	var req linkAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
+		return accountResponse{}, errAuthenticationRequired
 	}
 	if strings.TrimSpace(req.Address) == "" || req.Password == "" {
-		respond.ValidationError(w, map[string]string{
+		return accountResponse{}, endpoint.Invalid(map[string]string{
 			"address":  "required",
 			"password": "required",
 		})
-		return
 	}
 
 	// As at sign-in, a lookup miss does NOT short-circuit: MatchPassword runs one
@@ -335,46 +375,37 @@ func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 	var account models.Mailbox
 	lookupErr := repositories.FindMailboxByAddress(h.db, req.Address, &account)
 	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
-		return
+		return accountResponse{}, fmt.Errorf("verify the password: %w", lookupErr)
 	}
 	cred, err := repositories.NewCredentialRepository(h.db).MatchPassword(account.ID, req.Password, time.Now())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify the password")
-		return
+		return accountResponse{}, fmt.Errorf("verify the password: %w", err)
 	}
 	if lookupErr != nil || cred == nil || !account.Active {
-		respond.Error(w, http.StatusForbidden, "invalid_credentials", "Invalid email or password")
-		return
+		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "invalid_credentials", "Invalid email or password")
 	}
 	// The password is proven; what follows may say why it is not enough.
 	if account.PasswordChangeRequired || account.BootstrapExpired(time.Now()) {
-		respond.Error(w, http.StatusForbidden, "setup_required", "That account must first sign in and choose its own password")
-		return
+		return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "setup_required", "That account must first sign in and choose its own password")
 	}
 	tf := repositories.NewTwoFactorRepository(h.db)
 	if _, err := tf.GetActive(account.ID); err == nil {
 		if !verifyTOTPOrRecovery(tf, h.masterKey, account.ID, req.TOTPCode, req.RecoveryCode) {
 			if req.TOTPCode == "" && req.RecoveryCode == "" {
-				respond.Error(w, http.StatusForbidden, "totp_required", "That account has two-factor authentication: send its code too")
-			} else {
-				respond.Error(w, http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
+				return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "totp_required", "That account has two-factor authentication: send its code too")
 			}
-			return
+			return accountResponse{}, endpoint.Refuse(http.StatusForbidden, "invalid_totp", "Invalid two-factor authentication code")
 		}
 	} else if !errors.Is(err, repositories.ErrTwoFactorNotFound) {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to verify two-factor authentication")
-		return
+		return accountResponse{}, fmt.Errorf("verify two-factor authentication: %w", err)
 	}
 	if account.ID == claims.AccountID {
-		respond.Error(w, http.StatusConflict, "already_exists", "This is your own account")
-		return
+		return accountResponse{}, endpoint.Refuse(http.StatusConflict, "already_exists", "This is your own account")
 	}
 
 	var owner models.Role
 	if err := h.db.Where("name = ?", models.RoleOwner).First(&owner).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "The owner role is missing")
-		return
+		return accountResponse{}, fmt.Errorf("the owner role is missing: %w", err)
 	}
 	err = h.db.Transaction(func(tx *gorm.DB) error {
 		if name := strings.TrimSpace(req.DisplayName); name != "" && account.DisplayName == "" {
@@ -386,43 +417,34 @@ func (h *AccountHandler) LinkAccount(w http.ResponseWriter, r *http.Request) {
 	})
 	switch {
 	case errors.Is(err, grants.ErrExists):
-		respond.Error(w, http.StatusConflict, "already_exists", "This account is already linked")
-		return
+		return accountResponse{}, endpoint.Refuse(http.StatusConflict, "already_exists", "This account is already linked")
 	case err != nil:
 		slog.Error("linking an account failed", "account_id", account.ID, "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to link the account")
-		return
+		return accountResponse{}, fmt.Errorf("link the account: %w", err)
 	}
 	h.cache.Invalidate()
-	respond.Data(w, http.StatusCreated, toAccountResponse(&account, claims.AccountID))
+	return toAccountResponse(&account, claims.AccountID), nil
 }
 
 // UnlinkAccount removes the session's own grants on another account: giving
 // up access needs nothing more. Each removal is recorded as a grants.delete
 // entry, in the same transaction. Its own account cannot be unlinked.
 // DELETE /api/v1/accounts/{id}
-func (h *AccountHandler) UnlinkAccount(w http.ResponseWriter, r *http.Request) {
+func (h *AccountHandler) unlink(r *http.Request, in accountPath) (endpoint.Empty, error) {
 	claims := middleware.GetClaims(r)
 	if claims == nil {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
-		return
+		return endpoint.Empty{}, errAuthenticationRequired
 	}
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 32)
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid account ID")
-		return
+	if uint(in.ID) == claims.AccountID {
+		return endpoint.Empty{}, endpoint.Refuse(http.StatusConflict, "own_account", "You cannot unlink your own account")
 	}
-	if uint(id) == claims.AccountID {
-		respond.Error(w, http.StatusConflict, "own_account", "You cannot unlink your own account")
-		return
-	}
+	errLinkNotFound := endpoint.Refuse(http.StatusNotFound, "not_found", "Linked account not found")
 	var account models.Mailbox
-	if err := h.db.First(&account, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "not_found", "Linked account not found")
-		return
+	if err := h.db.First(&account, in.ID).Error; err != nil {
+		return endpoint.Empty{}, errLinkNotFound
 	}
 	errNoGrant := errors.New("no grant")
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
@@ -444,13 +466,11 @@ func (h *AccountHandler) UnlinkAccount(w http.ResponseWriter, r *http.Request) {
 	})
 	switch {
 	case errors.Is(err, errNoGrant):
-		respond.Error(w, http.StatusNotFound, "not_found", "Linked account not found")
-		return
+		return endpoint.Empty{}, errLinkNotFound
 	case err != nil:
 		slog.Error("unlinking an account failed", "account_id", account.ID, "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to unlink the account")
-		return
+		return endpoint.Empty{}, fmt.Errorf("unlink the account: %w", err)
 	}
 	h.cache.Invalidate()
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
