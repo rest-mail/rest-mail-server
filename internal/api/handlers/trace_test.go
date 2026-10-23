@@ -60,7 +60,7 @@ func TestBuildTrace_Delivered(t *testing.T) {
 	mid := uint(42)
 	res := &pipeline.ExecutionResult{
 		FinalAction: pipeline.ActionContinue,
-		Duration:    3 * time.Millisecond,
+		Duration:    pipeline.Elapsed(3 * time.Millisecond),
 		Steps: []pipeline.StepResult{
 			{FilterName: "spf_check", Action: pipeline.ActionContinue},
 			{FilterName: "dmarc_check", Action: pipeline.ActionContinue},
@@ -131,7 +131,7 @@ func TestBuildTrace_Rejected(t *testing.T) {
 	res := &pipeline.ExecutionResult{
 		FinalAction: pipeline.ActionReject,
 		RejectMsg:   "DMARC policy",
-		Duration:    time.Millisecond,
+		Duration:    pipeline.Elapsed(time.Millisecond),
 		Steps: []pipeline.StepResult{
 			{FilterName: "spf_check", Action: pipeline.ActionContinue},
 			{FilterName: "dmarc_check", Action: pipeline.ActionReject, Log: pipeline.FilterLog{Result: "fail"}},

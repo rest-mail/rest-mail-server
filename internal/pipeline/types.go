@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"encoding/json"
+	"strconv"
 	"time"
 )
 
@@ -20,19 +21,19 @@ type EmailJSON struct {
 
 // CalendarEvent represents a parsed VEVENT from an iCalendar (text/calendar) MIME part.
 type CalendarEvent struct {
-	Method      string            `json:"method"`                 // REQUEST, REPLY, CANCEL, etc.
-	UID         string            `json:"uid"`                    // Unique event identifier
-	Summary     string            `json:"summary"`                // Event title
-	Description string            `json:"description,omitempty"`  // Event description
-	Location    string            `json:"location,omitempty"`     // Event location
-	DTStart     time.Time         `json:"dtstart"`                // Start time
-	DTEnd       time.Time         `json:"dtend"`                  // End time
-	AllDay      bool              `json:"all_day"`                // True if this is an all-day event
-	Organizer   CalendarAddress   `json:"organizer"`              // Event organizer
-	Attendees   []CalendarAddress `json:"attendees,omitempty"`    // Event attendees
-	Status      string            `json:"status,omitempty"`       // CONFIRMED, TENTATIVE, CANCELLED
-	Sequence    int               `json:"sequence"`               // Update sequence number
-	DTStamp     time.Time         `json:"dtstamp,omitempty"`      // Timestamp of the calendar object
+	Method      string            `json:"method"`                // REQUEST, REPLY, CANCEL, etc.
+	UID         string            `json:"uid"`                   // Unique event identifier
+	Summary     string            `json:"summary"`               // Event title
+	Description string            `json:"description,omitempty"` // Event description
+	Location    string            `json:"location,omitempty"`    // Event location
+	DTStart     time.Time         `json:"dtstart"`               // Start time
+	DTEnd       time.Time         `json:"dtend"`                 // End time
+	AllDay      bool              `json:"all_day"`               // True if this is an all-day event
+	Organizer   CalendarAddress   `json:"organizer"`             // Event organizer
+	Attendees   []CalendarAddress `json:"attendees,omitempty"`   // Event attendees
+	Status      string            `json:"status,omitempty"`      // CONFIRMED, TENTATIVE, CANCELLED
+	Sequence    int               `json:"sequence"`              // Update sequence number
+	DTStamp     time.Time         `json:"dtstamp,omitempty"`     // Timestamp of the calendar object
 }
 
 // CalendarAddress represents an organizer or attendee with optional metadata.
@@ -63,17 +64,17 @@ type Address struct {
 
 // Headers holds parsed and raw headers.
 type Headers struct {
-	From       []Address              `json:"from"`
-	To         []Address              `json:"to"`
-	Cc         []Address              `json:"cc,omitempty"`
-	Bcc        []Address              `json:"bcc,omitempty"`
-	Subject    string                 `json:"subject"`
-	Date       string                 `json:"date"`
-	MessageID  string                 `json:"message-id"`
-	InReplyTo  string                 `json:"in-reply-to,omitempty"`
-	References []string               `json:"references,omitempty"`
-	Raw        map[string][]string    `json:"raw,omitempty"`
-	Extra      map[string]string      `json:"extra,omitempty"`
+	From       []Address           `json:"from"`
+	To         []Address           `json:"to"`
+	Cc         []Address           `json:"cc,omitempty"`
+	Bcc        []Address           `json:"bcc,omitempty"`
+	Subject    string              `json:"subject"`
+	Date       string              `json:"date"`
+	MessageID  string              `json:"message-id"`
+	InReplyTo  string              `json:"in-reply-to,omitempty"`
+	References []string            `json:"references,omitempty"`
+	Raw        map[string][]string `json:"raw,omitempty"`
+	Extra      map[string]string   `json:"extra,omitempty"`
 }
 
 // Body represents the email body, potentially with multipart parts.
@@ -119,33 +120,52 @@ const (
 
 // FilterResult is the output of executing a filter on an email.
 type FilterResult struct {
-	Type         FilterType        `json:"type"`
-	Action       Action            `json:"action"`
-	Message      *EmailJSON        `json:"message,omitempty"`      // non-nil for transform filters
-	SkipFilters  []string          `json:"skip_filters,omitempty"` // filters to skip downstream
-	RejectMsg    string            `json:"reject_message,omitempty"`
-	Log          FilterLog         `json:"log"`
+	Type        FilterType `json:"type"`
+	Action      Action     `json:"action"`
+	Message     *EmailJSON `json:"message,omitempty"`      // non-nil for transform filters
+	SkipFilters []string   `json:"skip_filters,omitempty"` // filters to skip downstream
+	RejectMsg   string     `json:"reject_message,omitempty"`
+	Log         FilterLog  `json:"log"`
 }
 
 // FilterLog is the structured log output of a filter execution.
 type FilterLog struct {
-	Filter   string `json:"filter"`
-	Result   string `json:"result"`
-	Detail   string `json:"detail,omitempty"`
-	Duration time.Duration `json:"duration_ms,omitempty"`
+	Filter   string  `json:"filter"`
+	Result   string  `json:"result"`
+	Detail   string  `json:"detail,omitempty"`
+	Duration Elapsed `json:"duration_ms,omitempty"`
+}
+
+// Elapsed is how long something took, written in JSON as whole milliseconds, as the
+// duration_ms it is written under says. A time.Duration would be written in nanoseconds.
+type Elapsed time.Duration
+
+// MarshalJSON writes e in whole milliseconds.
+func (e Elapsed) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.FormatInt(time.Duration(e).Milliseconds(), 10)), nil
+}
+
+// UnmarshalJSON reads whole milliseconds.
+func (e *Elapsed) UnmarshalJSON(data []byte) error {
+	var ms int64
+	if err := json.Unmarshal(data, &ms); err != nil {
+		return err
+	}
+	*e = Elapsed(time.Duration(ms) * time.Millisecond)
+	return nil
 }
 
 // ── Pipeline Configuration ──────────────────────────────────────────
 
 // PipelineConfig describes a pipeline as stored in the database.
 type PipelineConfig struct {
-	ID        uint              `json:"id"`
-	DomainID  uint              `json:"domain_id"`
-	Direction string            `json:"direction"` // "inbound" or "outbound"
-	Filters   []FilterConfig    `json:"filters"`
-	Active    bool              `json:"active"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	ID        uint           `json:"id"`
+	DomainID  uint           `json:"domain_id"`
+	Direction string         `json:"direction"` // "inbound" or "outbound"
+	Filters   []FilterConfig `json:"filters"`
+	Active    bool           `json:"active"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 // FilterConfig is the configuration of a single filter step in a pipeline.

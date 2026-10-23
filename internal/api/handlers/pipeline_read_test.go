@@ -31,7 +31,7 @@ func seedTraceReadFixtures(t *testing.T, tx *gorm.DB) *PipelineHandler {
 		Direction:  "inbound",
 		Result: &pipeline.ExecutionResult{
 			FinalAction: pipeline.ActionContinue,
-			Duration:    2 * time.Millisecond,
+			Duration:    pipeline.Elapsed(2 * time.Millisecond),
 			Steps: []pipeline.StepResult{
 				{FilterName: "spf_check", Action: pipeline.ActionContinue},
 				{FilterName: "dmarc_check", Action: pipeline.ActionContinue},
