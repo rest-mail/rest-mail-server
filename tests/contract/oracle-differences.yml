@@ -1541,10 +1541,6 @@
   difference: 'response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {"fields":{"additionalProperties":{"type":"string"},"type":"object"}}'
   reason: Binding always names the invalid fields in details.fields, whereas the oracle uses the general error envelope.
 
-# Mail rules: the vacation reply and Sieve scripts (#640)
-
-- operation: getVacation
-
 # Contacts (#639)
 
 - operation: listContacts
@@ -1552,203 +1548,36 @@
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: setVacation
-
 - operation: createContact
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: disableVacation
-
 - operation: updateContact
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: getSieveScript
-
 - operation: deleteContact
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: putSieveScript
-
 - operation: blockSender
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: deleteSieveScript
-
 - operation: importContacts
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: validateSieveScript
-
 - operation: suggestContacts
   difference: "response 429: generated only"
   reason: >-
     The mail routes throttle refused HTTP Basic credentials at login's rate (429
     rate_limited).
-- operation: putSieveScript
-  difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request; a script that does not
-    parse, or fails its dry run, is 400 invalid_sieve on put.
-- operation: putSieveScript
-  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
-  reason: >-
-    The 422 is the API's validation envelope, with the fields at fault under details.fields;
-    the oracle describes this operation's 422 without them.
-- operation: putSieveScript
-  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    A null script is bound and then refused in the handler as 422 script required, the
-    documented script_null example, as a missing one is.
-- operation: validateSieveScript
-  difference: "response 400: generated only"
-  reason: >-
-    A body that is not JSON, or not an object, is 400 bad_request.
-- operation: validateSieveScript
-  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
-  reason: >-
-    The 422 is the API's validation envelope, with the fields at fault under details.fields;
-    the oracle describes this operation's 422 without them.
-- operation: validateSieveScript
-  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    A null script is bound and then refused in the handler as 422 script required, the
-    documented script_null example, as a missing one is.
-- operation: putSieveScript
-  difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
-  reason: >-
-    A null active is the default, true, as an absent one is.
-- operation: getSieveScript
-  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps.
-- operation: getSieveScript
-  difference: "response 200 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps. The timestamps are absent rather than null when there is none.
-- operation: getSieveScript
-  difference: "response 200 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps. The timestamps are absent rather than null when there is none.
-- operation: getSieveScript
-  difference: "response 200 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
-  reason: >-
-    The sha256 hex of the script validated at install, which the delivery path checks before
-    it trusts the script. It has always been written for a stored script; the oracle omits it.
-- operation: getSieveScript
-  difference: "response 200 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
-  reason: >-
-    When the stored script was validated at install. It has always been written for a stored
-    script; the oracle omits it.
-- operation: putSieveScript
-  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps.
-- operation: putSieveScript
-  difference: "response 200 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps. The timestamps are absent rather than null when there is none.
-- operation: putSieveScript
-  difference: "response 200 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps. The timestamps are absent rather than null when there is none.
-- operation: putSieveScript
-  difference: "response 200 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
-  reason: >-
-    The sha256 hex of the script validated at install, which the delivery path checks before
-    it trusts the script. It has always been written for a stored script; the oracle omits it.
-- operation: putSieveScript
-  difference: "response 200 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
-  reason: >-
-    When the stored script was validated at install. It has always been written for a stored
-    script; the oracle omits it.
-- operation: putSieveScript
-  difference: "response 201 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps.
-- operation: putSieveScript
-  difference: "response 201 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps. The timestamps are absent rather than null when there is none.
-- operation: putSieveScript
-  difference: "response 201 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
-  reason: >-
-    One type answers both shapes the script has: with none stored, only mailbox_id, script
-    (empty) and active (false), as before; a stored script adds its id, hash, validation time
-    and timestamps. The timestamps are absent rather than null when there is none.
-- operation: putSieveScript
-  difference: "response 201 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
-  reason: >-
-    The sha256 hex of the script validated at install, which the delivery path checks before
-    it trusts the script. It has always been written for a stored script; the oracle omits it.
-- operation: putSieveScript
-  difference: "response 201 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
-  reason: >-
-    When the stored script was validated at install. It has always been written for a stored
-    script; the oracle omits it.
-- operation: getSieveScript
-  difference: "response 404: openapi.yaml only"
-  reason: >-
-    Never written: an account with no script answers 200 with the empty script.
-- operation: deleteSieveScript
-  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"deleted\"]"
-  reason: >-
-    A delete always answers status deleted, whether or not there was a script.
-- operation: validateSieveScript
-  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"valid\"], generated [\"message\",\"valid\"]"
-  reason: >-
-    Every answer carries a message: why the script is refused, or that it is valid.
-- operation: setVacation
-  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
-  reason: >-
-    The oracle describes the reply as anyOf {enabled: false} or a non-empty subject and body.
-    The handler states it exactly: enabled is required, and subject and body are required when
-    it is true (422 "required when enabled"), with their documented wording.
-- operation: setVacation
-  difference: "request body application/json.required: openapi.yaml [\"body\",\"enabled\",\"subject\"], generated [\"enabled\"]"
-  reason: >-
-    Only enabled is required; subject and body may be left out when the reply is off.
-- operation: setVacation
-  difference: "request body application/json.properties.enabled.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
-  reason: >-
-    A null enabled is bound and then refused in the handler as 422 enabled required, as a
-    missing one is.
-- operation: setVacation
-  difference: "response 200 application/json.properties.data.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
-  reason: >-
-    The answer is the reply as set, which the request's rules already held; it carries no
-    constraints of its own.
-- operation: getVacation
-  difference: "response 200 application/json.properties.data.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
-  reason: >-
-    An account with no reply set answers the defaults: off, with an empty subject and body,
-    which the oracle's anyOf allows; the type states the fields without the request's rules.
-
 - operation: createContact
   difference: "response 400: generated only"
   reason: >-
@@ -1923,6 +1752,198 @@
   reason: >-
     GET /api/v1/server shares the owner endpoints' per-IP bucket, which answers 429
     rate_limited with Retry-After. The oracle does not document it.
+
+# Mail rules: the vacation reply and Sieve scripts (#640)
+
+- operation: getVacation
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: setVacation
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: disableVacation
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: getSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: putSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: deleteSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: validateSieveScript
+  difference: "response 429: generated only"
+  reason: >-
+    The mail routes throttle refused HTTP Basic credentials at login's rate (429
+    rate_limited).
+- operation: putSieveScript
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request; a script that does not
+    parse, or fails its dry run, is 400 invalid_sieve on put.
+- operation: putSieveScript
+  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
+  reason: >-
+    The 422 is the API's validation envelope, with the fields at fault under details.fields;
+    the oracle describes this operation's 422 without them.
+- operation: putSieveScript
+  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null script is bound and then refused in the handler as 422 script required, the
+    documented script_null example, as a missing one is.
+- operation: validateSieveScript
+  difference: "response 400: generated only"
+  reason: >-
+    A body that is not JSON, or not an object, is 400 bad_request.
+- operation: validateSieveScript
+  difference: "response 422 application/json.properties.error.properties.details.properties: openapi.yaml absent, generated {\"fields\":{\"additionalProperties\":{\"type\":\"string\"},\"type\":\"object\"}}"
+  reason: >-
+    The 422 is the API's validation envelope, with the fields at fault under details.fields;
+    the oracle describes this operation's 422 without them.
+- operation: validateSieveScript
+  difference: "request body application/json.properties.script.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    A null script is bound and then refused in the handler as 422 script required, the
+    documented script_null example, as a missing one is.
+- operation: putSieveScript
+  difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    A null active is the default, true, as an absent one is.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The sha256 hex of the script validated at install, which the delivery path checks before
+    it trusts the script. It has always been written for a stored script; the oracle omits it.
+- operation: getSieveScript
+  difference: "response 200 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    When the stored script was validated at install. It has always been written for a stored
+    script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The sha256 hex of the script validated at install, which the delivery path checks before
+    it trusts the script. It has always been written for a stored script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 200 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    When the stored script was validated at install. It has always been written for a stored
+    script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.required: openapi.yaml [\"active\",\"created_at\",\"id\",\"mailbox_id\",\"script\",\"updated_at\"], generated [\"active\",\"mailbox_id\",\"script\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.created_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.updated_at.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    One type answers both shapes the script has: with none stored, only mailbox_id, script
+    (empty) and active (false), as before; a stored script adds its id, hash, validation time
+    and timestamps. The timestamps are absent rather than null when there is none.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.script_hash: openapi.yaml absent, generated {\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    The sha256 hex of the script validated at install, which the delivery path checks before
+    it trusts the script. It has always been written for a stored script; the oracle omits it.
+- operation: putSieveScript
+  difference: "response 201 application/json.properties.data.properties.validated_at: openapi.yaml absent, generated {\"format\":\"date-time\",\"type\":[\"null\",\"string\"]}"
+  reason: >-
+    When the stored script was validated at install. It has always been written for a stored
+    script; the oracle omits it.
+- operation: getSieveScript
+  difference: "response 404: openapi.yaml only"
+  reason: >-
+    Never written: an account with no script answers 200 with the empty script.
+- operation: deleteSieveScript
+  difference: "response 200 application/json.properties.data.properties.status.enum: openapi.yaml absent, generated [\"deleted\"]"
+  reason: >-
+    A delete always answers status deleted, whether or not there was a script.
+- operation: validateSieveScript
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"valid\"], generated [\"message\",\"valid\"]"
+  reason: >-
+    Every answer carries a message: why the script is refused, or that it is valid.
+- operation: setVacation
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
+  reason: >-
+    The oracle describes the reply as anyOf {enabled: false} or a non-empty subject and body.
+    The handler states it exactly: enabled is required, and subject and body are required when
+    it is true (422 "required when enabled"), with their documented wording.
+- operation: setVacation
+  difference: "request body application/json.required: openapi.yaml [\"body\",\"enabled\",\"subject\"], generated [\"enabled\"]"
+  reason: >-
+    Only enabled is required; subject and body may be left out when the reply is off.
+- operation: setVacation
+  difference: "request body application/json.properties.enabled.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    A null enabled is bound and then refused in the handler as 422 enabled required, as a
+    missing one is.
+- operation: setVacation
+  difference: "response 200 application/json.properties.data.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
+  reason: >-
+    The answer is the reply as set, which the request's rules already held; it carries no
+    constraints of its own.
+- operation: getVacation
+  difference: "response 200 application/json.properties.data.anyOf: openapi.yaml [{\"properties\":{\"enabled\":{\"enum\":[false]}}},{\"properties\":{\"body\":{\"minLength\":1},\"subject\":{\"minLength\":1}}}], generated absent"
+  reason: >-
+    An account with no reply set answers the defaults: off, with an empty subject and body,
+    which the oracle's anyOf allows; the type states the fields without the request's rules.
 
 # The account's own password and two-factor authentication (#634)
 
