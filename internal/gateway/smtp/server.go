@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	gosmtp "github.com/rest-mail/go-smtp"
+	smtpserver "github.com/rest-mail/go-smtp/pkg/smtp/server"
 
 	"github.com/restmail/restmail/internal/gateway/connlimiter"
 	"github.com/restmail/restmail/internal/ratelimit"
@@ -36,7 +36,7 @@ type Server struct {
 	// instead of holding a goroutine past the server's life.
 	ctx     context.Context
 	cancel  context.CancelFunc
-	servers []*gosmtp.Server
+	servers []*smtpserver.Server
 }
 
 // NewServer creates a new SMTP server.
@@ -161,8 +161,8 @@ type SMTPPorts struct {
 // newSMTPServer builds the go-smtp server used for every listener of the
 // given flavor. The test harness uses it too, so the protocol configuration
 // under test is exactly the production one.
-func (s *Server) newSMTPServer(isSubmission bool) *gosmtp.Server {
-	srv := gosmtp.NewServer(gosmtp.BackendFunc(func(c *gosmtp.Conn) (gosmtp.Session, error) {
+func (s *Server) newSMTPServer(isSubmission bool) *smtpserver.Server {
+	srv := smtpserver.New(smtpserver.BackendFunc(func(c *smtpserver.Conn) (smtpserver.Session, error) {
 		slog.Debug("smtp: new session", "remote", c.Conn().RemoteAddr().String(), "submission", isSubmission)
 		return &session{
 			conn:         c,
