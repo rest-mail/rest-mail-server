@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/config"
 	rmdb "github.com/restmail/restmail/internal/db"
@@ -54,9 +55,13 @@ func fixtureDB(t *testing.T) *gorm.DB {
 func retry(t *testing.T, db *gorm.DB, id uint) int {
 	t.Helper()
 	router := chi.NewRouter()
-	router.Post("/queue/{id}/retry", handlers.NewQueueHandler(db).RetryQueueEntry)
+	handlers.NewQueueHandler(db).Register(endpoint.Routes{Router: router, Registry: endpoint.NewRegistry()}, handlers.QueueRouteChecks{
+		At: func(string) endpoint.Middleware {
+			return endpoint.Middleware{Wrap: func(next http.Handler) http.Handler { return next }}
+		},
+	})
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/queue/%d/retry", id), nil))
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/admin/queue/%d/retry", id), nil))
 	return response.Code
 }
 
