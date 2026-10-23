@@ -18,8 +18,8 @@ func TestSetDKIMRotation_ExamplePairs(t *testing.T) {
 	want := map[string][]string{
 		"request": {"body_array", "configured", "field_unknown", "interval_missing", "interval_negative", "interval_null", "interval_too_large", "interval_wrong_type"},
 		"200":     {"configured"},
-		"400":     {"body_array", "field_unknown", "interval_wrong_type"},
-		"422":     {"interval_missing", "interval_negative", "interval_null", "interval_too_large"},
+		"400":     {"body_array"},
+		"422":     {"field_unknown", "interval_missing", "interval_negative", "interval_null", "interval_too_large", "interval_wrong_type"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -81,7 +81,7 @@ func TestSetDKIMRotation_DocumentedExamples(t *testing.T) {
 	call := func(t *testing.T, name string, status int, expected interface{}) {
 		t.Helper()
 		rr := httptest.NewRecorder()
-		h.SetRotation(rr, rotationRequest(http.MethodPut, id, string(mustJSON(requests[name]))))
+		dkimRoutes(h).ServeHTTP(rr, rotationRequest(http.MethodPut, id, string(mustJSON(requests[name]))))
 		if rr.Code != status {
 			t.Fatalf("%s: got %d %s, want %d", name, rr.Code, rr.Body, status)
 		}
