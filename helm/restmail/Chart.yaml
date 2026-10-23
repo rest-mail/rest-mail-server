@@ -13,7 +13,7 @@ type: application
 version: 0.25.0
 # The product release this deploys: the v-less SemVer of the v* tag that built
 # the images (docker.yml).
-appVersion: "0.18.0"
+appVersion: "0.19.0"
 keywords:
   - mail
   - smtp
