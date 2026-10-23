@@ -40,7 +40,7 @@ func TestAliasCreate_EAIIdentity(t *testing.T) {
 		t.Run(source, func(t *testing.T) {
 			body := mustJSON(map[string]string{"source_address": source, "destination_address": destination})
 			rr := httptest.NewRecorder()
-			NewAliasHandler(db).Create(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/aliases", bytes.NewReader(body)))
+			aliasRoutes(NewAliasHandler(db)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/aliases", bytes.NewReader(body)))
 			if rr.Code != http.StatusCreated {
 				t.Fatalf("create: %d %s", rr.Code, rr.Body)
 			}
@@ -90,7 +90,7 @@ func TestAliasCreate_QuotedSource(t *testing.T) {
 		"source_address": `Sales <"Sales @ Team"@städte.test>`, "destination_address": "remote@example.test",
 	})
 	rr := httptest.NewRecorder()
-	NewAliasHandler(db).Create(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/aliases", bytes.NewReader(body)))
+	aliasRoutes(NewAliasHandler(db)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/aliases", bytes.NewReader(body)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create quoted alias: %d %s", rr.Code, rr.Body)
 	}

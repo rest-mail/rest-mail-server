@@ -45,10 +45,10 @@ func aliasCreatePairProblems(t *testing.T, requests map[string]interface{}, resp
 	t.Helper()
 	var problems []string
 	want := map[string][]string{
-		"request": {"body_array", "created", "source_invalid", "source_missing"},
+		"request": {"body_array", "created", "source_invalid", "source_missing", "source_wrong_type"},
 		"201":     {"created"},
 		"400":     {"body_array"},
-		"422":     {"source_invalid", "source_missing"},
+		"422":     {"source_invalid", "source_missing", "source_wrong_type"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {
@@ -146,7 +146,7 @@ func createAliasNoDB(t *testing.T, body string) (rr *httptest.ResponseRecorder, 
 				reached = true
 			}
 		}()
-		NewAliasHandler(nil).Create(rr, req)
+		aliasRoutes(NewAliasHandler(nil)).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }

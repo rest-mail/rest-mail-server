@@ -86,6 +86,149 @@
     A body that is not JSON, or not an object, is the 400 bad_request. openapi.yaml documents
     the 422 only.
 
+# Admin mailboxes and aliases (#648)
+
+- operation: createAlias
+  difference: "request body application/json.properties.destination_address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The shared REST Mail address validator remains in the handler: it accepts internationalized and display-name mail addresses already used by clients, while the binder email format rejects display-name addresses. Its existing field messages and validation order are preserved.
+- operation: createAlias
+  difference: "request body application/json.properties.source_address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The shared REST Mail address validator remains in the handler: it accepts internationalized and display-name mail addresses already used by clients, while the binder email format rejects display-name addresses. Its existing field messages and validation order are preserved.
+- operation: createAlias
+  difference: "response 201 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+- operation: createAlias
+  difference: "response 404: generated only"
+  reason: >-
+    Creating an alias refuses a source domain that is not hosted with 404 domain_not_found, as before. The oracle omits it.
+- operation: createAlias
+  difference: "response 409: generated only"
+  reason: >-
+    Creating an alias that already exists returns 409 already_exists, as before. The oracle omits it.
+- operation: deleteMailbox
+  difference: "response 403 application/json: generated only"
+  reason: >-
+    Deleting an account can refuse removal of its grants with the existing grant errors (403 two_factor_required or grant_exceeds_held; 409 conflict or last_superadmin). The oracle lists the status without its JSON error envelope.
+- operation: deleteMailbox
+  difference: "response 409 application/json: generated only"
+  reason: >-
+    Deleting an account can refuse removal of its grants with the existing grant errors (403 two_factor_required or grant_exceeds_held; 409 conflict or last_superadmin). The oracle lists the status without its JSON error envelope.
+- operation: getAlias
+  difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+- operation: getMailbox
+  difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+- operation: getMailbox
+  difference: "response 200 application/json.properties.data.properties.quota_usage: openapi.yaml absent, generated *"
+  reason: >-
+    Mailbox reads and updates preload quota usage, including its zero-valued unloaded mailbox association. The explicit API types retain that JSON; the oracle omits quota_usage.
+- operation: getMailbox
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"], generated [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"last_login_at\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"]"
+  reason: >-
+    last_login_at is always serialized, including null before a first login. The oracle marks it optional.
+- operation: listAliases
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list binds limit and offset and keeps the existing pagination defaults and cap. The oracle documents only domain_id.
+- operation: listAliases
+  difference: "parameter query offset: generated only"
+  reason: >-
+    The list binds limit and offset and keeps the existing pagination defaults and cap. The oracle documents only domain_id.
+- operation: listAliases
+  difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+- operation: listAliases
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
+  reason: >-
+    The list has always returned total and has_more in the pagination envelope; the oracle leaves it out.
+- operation: listMailboxes
+  difference: "parameter query limit: generated only"
+  reason: >-
+    The list binds limit and offset and keeps the existing pagination defaults and cap. The oracle documents only domain_id.
+- operation: listMailboxes
+  difference: "parameter query offset: generated only"
+  reason: >-
+    The list binds limit and offset and keeps the existing pagination defaults and cap. The oracle documents only domain_id.
+- operation: listMailboxes
+  difference: "response 200 application/json.properties.data.items.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+- operation: listMailboxes
+  difference: "response 200 application/json.properties.data.items.properties.quota_usage: openapi.yaml absent, generated *"
+  reason: >-
+    Mailbox reads and updates preload quota usage, including its zero-valued unloaded mailbox association. The explicit API types retain that JSON; the oracle omits quota_usage.
+- operation: listMailboxes
+  difference: "response 200 application/json.properties.data.items.required: openapi.yaml [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"], generated [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"last_login_at\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"]"
+  reason: >-
+    last_login_at is always serialized, including null before a first login. The oracle marks it optional.
+- operation: listMailboxes
+  difference: "response 200 application/json.properties.pagination: openapi.yaml absent, generated *"
+  reason: >-
+    The list has always returned total and has_more in the pagination envelope; the oracle leaves it out.
+- operation: updateAlias
+  difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    Null leaves an optional patch field unchanged, as the handlers have always done.
+- operation: updateAlias
+  difference: "request body application/json.properties.destination_address.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    The shared REST Mail address validator remains in the handler: it accepts internationalized and display-name mail addresses already used by clients, while the binder email format rejects display-name addresses. Its existing field messages and validation order are preserved.
+- operation: updateAlias
+  difference: "request body application/json.properties.destination_address.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves an optional patch field unchanged, as the handlers have always done.
+- operation: updateAlias
+  difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+- operation: updateAlias
+  difference: "response 400: generated only"
+  reason: >-
+    Binding rejects malformed JSON or a non-object body with 400 bad_request. The oracle does not document this update response.
+- operation: updateMailbox
+  difference: "request body application/json.properties.active.type: openapi.yaml \"boolean\", generated [\"boolean\",\"null\"]"
+  reason: >-
+    Null leaves an optional patch field unchanged, as the handlers have always done.
+- operation: updateMailbox
+  difference: "request body application/json.properties.display_name.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves an optional patch field unchanged, as the handlers have always done.
+- operation: updateMailbox
+  difference: "request body application/json.properties.password.minLength: openapi.yaml 12, generated absent"
+  reason: >-
+    The existing password rule counts bytes (len), while the binder minLength counts Unicode code points. Keep the handler rule to avoid rejecting previously valid non-ASCII passwords; short passwords still receive the pinned 422 password message.
+- operation: updateMailbox
+  difference: "request body application/json.properties.password.type: openapi.yaml \"string\", generated [\"null\",\"string\"]"
+  reason: >-
+    Null leaves an optional patch field unchanged, as the handlers have always done.
+- operation: updateMailbox
+  difference: "request body application/json.properties.quota_bytes.type: openapi.yaml \"integer\", generated [\"integer\",\"null\"]"
+  reason: >-
+    Null leaves an optional patch field unchanged, as the handlers have always done.
+- operation: updateMailbox
+  difference: "response 200 application/json.properties.data.properties.domain: openapi.yaml absent, generated *"
+  reason: >-
+    The handlers have always included the preloaded domain (a zero domain after creation or redaction). The API type preserves that JSON without the private DKIM key; the oracle omits the association.
+- operation: updateMailbox
+  difference: "response 200 application/json.properties.data.properties.quota_usage: openapi.yaml absent, generated *"
+  reason: >-
+    Mailbox reads and updates preload quota usage, including its zero-valued unloaded mailbox association. The explicit API types retain that JSON; the oracle omits quota_usage.
+- operation: updateMailbox
+  difference: "response 200 application/json.properties.data.required: openapi.yaml [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"], generated [\"active\",\"address\",\"created_at\",\"display_name\",\"domain_id\",\"id\",\"last_login_at\",\"local_part\",\"password_change_required\",\"quota_bytes\",\"quota_used_bytes\",\"two_factor_required\",\"updated_at\"]"
+  reason: >-
+    last_login_at is always serialized, including null before a first login. The oracle marks it optional.
+- operation: updateMailbox
+  difference: "response 400: generated only"
+  reason: >-
+    Binding rejects malformed JSON or a non-object body with 400 bad_request. The oracle does not document this update response.
+
 # Admin: roles, capabilities, grants and escalation (#644)
 
 - operation: activateGrant
