@@ -6011,6 +6011,9 @@ paths:
               # Neither ids nor a filter: refused before any entry is selected.
               selection_missing:
                 value: {}
+              invalid_ids:
+                value:
+                  ids: "1"
       responses:
         "200":
           description: Bulk retry result
@@ -6030,8 +6033,8 @@ paths:
         "400":
           description: >-
             Invalid JSON or a body that cannot be decoded into the request shape;
-            no IDs and no filter; or more than 1000 IDs. Refused before any queue
-            lookup. An empty filter object is accepted.
+            or no IDs and no filter. Refused before any queue lookup. An empty
+            filter object is accepted. Invalid fields and more than 1000 IDs answer 422.
           content:
             application/json:
               schema:
@@ -6047,6 +6050,21 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
+        "422":
+          description: Invalid request fields, including more than 1000 IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_ids:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: must be an array
 
   /api/v1/admin/queue/bulk-bounce:
     post:
@@ -6073,6 +6091,9 @@ paths:
               # Neither ids nor a filter: refused before any entry is selected.
               selection_missing:
                 value: {}
+              invalid_ids:
+                value:
+                  ids: "1"
       responses:
         "200":
           description: Bulk bounce result
@@ -6092,8 +6113,8 @@ paths:
         "400":
           description: >-
             Invalid JSON or a body that cannot be decoded into the request shape;
-            no IDs and no filter; or more than 1000 IDs. Refused before any queue
-            lookup. An empty filter object is accepted.
+            or no IDs and no filter. Refused before any queue lookup. An empty
+            filter object is accepted. Invalid fields and more than 1000 IDs answer 422.
           content:
             application/json:
               schema:
@@ -6109,6 +6130,21 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
+        "422":
+          description: Invalid request fields, including more than 1000 IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_ids:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: must be an array
 
   /api/v1/admin/queue/bulk-delete:
     delete:
@@ -6132,6 +6168,9 @@ paths:
               # Neither ids nor a filter: refused before any entry is selected.
               selection_missing:
                 value: {}
+              invalid_ids:
+                value:
+                  ids: "1"
       responses:
         "200":
           description: Bulk delete result
@@ -6160,6 +6199,21 @@ paths:
                     error:
                       code: bad_request
                       message: ids or filter required
+        "422":
+          description: Invalid request fields, including more than 1000 IDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalid_ids:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          ids: must be an array
 
   /api/v1/admin/queue/{id}:
     parameters:
@@ -6193,6 +6247,7 @@ paths:
         - BearerAuth: [queue:manage]
         - APIKeyAuth: [queue:manage]
       summary: Delete a queue entry
+      description: Answers 404 not_found when the ID does not exist.
       responses:
         "204":
           description: Queue entry deleted
@@ -6626,51 +6681,47 @@ paths:
                   value:
                     data: {domain_id: 1, rotation_interval_days: 90}
         "400":
-          description: Invalid JSON, noninteger interval, unknown field, or multiple JSON values (`bad_request`).
+          description: Malformed JSON or a body that is not a JSON object (bad_request).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
                 body_array:
                   value:
-                    error: {code: bad_request, message: Invalid request body}
-                interval_wrong_type:
-                  value:
-                    error: {code: bad_request, message: Invalid request body}
-                field_unknown:
-                  value:
-                    error: {code: bad_request, message: Invalid request body}
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          description: Missing, null, or out-of-range interval (`validation_failed`); details.fields.rotation_interval_days describes the requirement.
+          description: Missing, unknown, null or invalid fields (validation_failed); details.fields names each broken rule.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 interval_missing:
                   value:
                     error:
                       code: validation_failed
-                      message: Invalid DKIM rotation interval
+                      message: Request body failed validation
                       details:
                         fields:
-                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                          rotation_interval_days: required
                 interval_null:
                   value:
                     error:
                       code: validation_failed
-                      message: Invalid DKIM rotation interval
+                      message: Request body failed validation
                       details:
                         fields:
-                          rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                          rotation_interval_days: must not be null
                 interval_negative:
                   value:
                     error:
                       code: validation_failed
-                      message: Invalid DKIM rotation interval
+                      message: Request body failed validation
                       details:
                         fields:
                           rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
@@ -6678,10 +6729,27 @@ paths:
                   value:
                     error:
                       code: validation_failed
-                      message: Invalid DKIM rotation interval
+                      message: Request body failed validation
                       details:
                         fields:
                           rotation_interval_days: Must be an integer between 0 and 3650 days; 0 disables rotation
+                interval_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          rotation_interval_days: must be an integer
+                field_unknown:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          private_key: not allowed
+
 
   /api/v1/admin/dkim/{id}:
     parameters:
@@ -6758,64 +6826,91 @@ paths:
               parameters:
                 id: '$request.path.id'
         "400":
-          description: The body cannot be decoded, or lacks `selector` or `private_key` (`bad_request`)
+          description: Malformed JSON or a body that is not a JSON object (bad_request).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
                 body_array:
                   value:
-                    error: {code: bad_request, message: Invalid request body}
-                selector_missing:
-                  value:
-                    error: {code: bad_request, message: selector and private_key are required}
-                selector_empty:
-                  value:
-                    error: {code: bad_request, message: selector and private_key are required}
-                selector_wrong_type:
-                  value:
-                    error: {code: bad_request, message: Invalid request body}
-                private_key_missing:
-                  value:
-                    error: {code: bad_request, message: selector and private_key are required}
-                private_key_empty:
-                  value:
-                    error: {code: bad_request, message: selector and private_key are required}
-                private_key_wrong_type:
-                  value:
-                    error: {code: bad_request, message: Invalid request body}
+                    error:
+                      code: bad_request
+                      message: Invalid request body
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
-          description: >
-            `validation_failed`: the domain could not sign with this key and
-            selector. `details.fields.selector` when the selector is not a DNS
-            name; `details.fields.private_key` when the key is not a PEM
-            private key, is neither RSA nor Ed25519, is an RSA key under 2048
-            bits, or does not make a signature that verifies. `message` says
-            which check failed.
+          description: Missing, unknown, null or invalid fields (validation_failed); details.fields names each broken rule.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationErrorResponse"
+                $ref: '#/components/schemas/ValidationErrorResponse'
               examples:
                 selector_invalid:
                   value:
                     error:
                       code: validation_failed
-                      message: 'selector "invalid_selector" is not a DNS label: use up to 63 letters, digits and hyphens, not starting or ending with a hyphen, with dots between labels'
+                      message: Request body failed validation
                       details:
                         fields:
-                          selector: '"invalid_selector" is not a DNS label: use up to 63 letters, digits and hyphens, not starting or ending with a hyphen, with dots between labels'
+                          selector: Must be a DNS label (letters, digits, hyphens), at most 63 characters
                 private_key_invalid:
                   value:
                     error:
                       code: validation_failed
-                      message: private_key is not a PEM-encoded private key
+                      message: Request body failed validation
                       details:
                         fields:
                           private_key: is not a PEM-encoded private key
+                selector_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          selector: required
+                selector_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          selector: Must be a DNS label (letters, digits, hyphens), at most 63 characters
+                selector_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          selector: must be a string
+                private_key_missing:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          private_key: required
+                private_key_empty:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          private_key: required
+                private_key_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          private_key: must be a string
+
     delete:
       operationId: deleteDKIMKey
       tags: ["Admin: DKIM"]
@@ -6908,31 +7003,36 @@ paths:
               parameters:
                 id: '$response.body#/data/id'
         "400":
-          description: >
-            `bad_request`, before the domain is looked up: "Invalid request
-            body" when the body is not JSON, is not an object (an array, a
-            string, a number or a boolean), or holds a field of the wrong type;
-            "domain_id, cert_pem, and key_pem are required" when the body
-            (or a `null` one) leaves domain_id missing or 0, or cert_pem or
-            key_pem missing or empty. A cert_pem that is not a PEM certificate
-            is refused with `bad_request` too, after the domain is found.
+          description: Malformed JSON or a body that is not a JSON object (bad_request).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: '#/components/schemas/ErrorResponse'
               examples:
                 invalid_body:
-                  summary: Not JSON, not an object, or a field of the wrong type
+                  summary: Not JSON or not an object
                   value:
                     error:
                       code: bad_request
                       message: Invalid request body
+        "422":
+          description: Missing or invalid certificate fields (validation_failed), with details.fields naming each broken
+            rule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+              examples:
                 fields_missing:
-                  summary: domain_id, cert_pem or key_pem missing or empty
                   value:
                     error:
-                      code: bad_request
-                      message: domain_id, cert_pem, and key_pem are required
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          domain_id: required
+                          cert_pem: required
+                          key_pem: required
 
   /api/v1/admin/certificates/{id}:
     parameters:
