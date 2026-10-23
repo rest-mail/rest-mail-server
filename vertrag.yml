@@ -30,6 +30,8 @@ auth:
   # hooks give them theirs).
   except:
     - '/api/v1/auth/logout > Log out — revoke the session and clear the auth cookies > 204'
+    - '/api/v1/auth/2fa > Read your authenticator status > 401 > application/json'
+    - '/api/v1/auth/2fa/enroll > Start an authenticator enrollment > 401 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 200 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 400 > application/json'
     - '/api/v1/auth/protocol-sign-in > Sign a mail client in (protocol gateways) > 401'
@@ -165,6 +167,9 @@ exclude-matching:
   - '^/api/v1/messages/send > .* > 202( >|$)'
   # Discovery's database-outage response needs a fault-injected database.
   - '^/\.well-known/restmail > .* > 500( >|$)'
+  # New 2FA reads/enrollment remain counted; only fault-injected internal
+  # errors cannot be produced against the healthy contract fixture.
+  - '^/api/v1/auth/2fa(/enroll)? > .* > 500( >|$)'
 
 # What the run is held to (vertrag's surface gate, #376): every operation in
 # the spec, counted only when every documented transaction of it was sent in
@@ -209,7 +214,7 @@ surface:
     - operation: changeOwnPassword
       reason: "Replacing the password makes every session from before it stale, the run's own included, so everything after it would answer 401."
     - operation: confirmTwoFactor
-      reason: "Needs a pending enrollment (POST /api/v1/auth/2fa/enroll, which the spec does not document) and a current code from its new authenticator; the fixture admin has neither."
+      reason: "Needs a current code from a pending enrollment; confirming the fixture admin would change its sign-in requirements for the rest of the run."
     - operation: disableTwoFactor
       reason: "Needs two-factor authentication on, and a code from its authenticator or a recovery code; the fixture admin has none. Turning it off would also end every session, the run's own included, as changeOwnPassword does."
     - operation: createGrant
@@ -254,6 +259,12 @@ surface:
     - operation: restmailDiscover
       status: "500"
       reason: "Discovery's database-outage response needs a fault-injected database."
+    - operation: getTwoFactorStatus
+      status: "500"
+      reason: "Enrollment-read failure needs a fault-injected database; its normal 200 and missing-session 401 remain counted."
+    - operation: enrollTwoFactor
+      status: "500"
+      reason: "Database or cryptography failure needs fault injection; normal enrollment and missing-session refusal remain counted."
 
 reporter: [cli, junit]
 output: ["", .cache/contract/examples.xml]
