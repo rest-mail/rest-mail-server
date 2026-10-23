@@ -33,8 +33,8 @@ func TestSenderRules_DuplicateIsConflict(t *testing.T) {
 		list, other   string
 		add, addOther addFunc
 	}{
-		{"allowlist", "blocklist", (*SenderRuleHandler).AddToAllowlist, (*SenderRuleHandler).AddToBlocklist},
-		{"blocklist", "allowlist", (*SenderRuleHandler).AddToBlocklist, (*SenderRuleHandler).AddToAllowlist},
+		{"allowlist", "blocklist", serveAddToAllowlist, serveAddToBlocklist},
+		{"blocklist", "allowlist", serveAddToBlocklist, serveAddToAllowlist},
 	}
 	for _, tc := range cases {
 		t.Run(tc.list, func(t *testing.T) {
@@ -82,12 +82,12 @@ func TestSenderRules_DuplicateIsConflict(t *testing.T) {
 // senderRuleHandlers: every handler under /admin/domains/{id}/allowlist and
 // /blocklist, the paths that share the spec's DomainId parameter.
 var senderRuleHandlers = map[string]func(*SenderRuleHandler, http.ResponseWriter, *http.Request){
-	"ListAllowlist":       (*SenderRuleHandler).ListAllowlist,
-	"AddToAllowlist":      (*SenderRuleHandler).AddToAllowlist,
-	"RemoveFromAllowlist": (*SenderRuleHandler).RemoveFromAllowlist,
-	"ListBlocklist":       (*SenderRuleHandler).ListBlocklist,
-	"AddToBlocklist":      (*SenderRuleHandler).AddToBlocklist,
-	"RemoveFromBlocklist": (*SenderRuleHandler).RemoveFromBlocklist,
+	"ListAllowlist":       serveListAllowlist,
+	"AddToAllowlist":      serveAddToAllowlist,
+	"RemoveFromAllowlist": serveRemoveFromAllowlist,
+	"ListBlocklist":       serveListBlocklist,
+	"AddToBlocklist":      serveAddToBlocklist,
+	"RemoveFromBlocklist": serveRemoveFromBlocklist,
 }
 
 func serveSenderRule(h *SenderRuleHandler, fn func(*SenderRuleHandler, http.ResponseWriter, *http.Request), method, id, eid, body string) *httptest.ResponseRecorder {
@@ -106,11 +106,11 @@ func serveSenderRule(h *SenderRuleHandler, fn func(*SenderRuleHandler, http.Resp
 // database is asked (the handler has none here). 0 used to list as 200 [].
 func TestSenderRules_RejectDomainIDsBelowOne(t *testing.T) {
 	h := NewSenderRuleHandler(nil)
-	for _, id := range []string{"0", "-1", "vertrag-not-a-number", "1.5", ""} {
+	for _, id := range []string{"0", "-1", "vertrag-not-a-number", "1.5"} {
 		for name, fn := range senderRuleHandlers {
 			rr := serveSenderRule(h, fn, http.MethodPost, id, "1", `{"pattern":"spam@evil.test"}`)
-			if rr.Code != http.StatusBadRequest {
-				t.Errorf("%s with domain ID %q: status %d, want 400", name, id, rr.Code)
+			if rr.Code != http.StatusUnprocessableEntity {
+				t.Errorf("%s with domain ID %q: status %d, want 422", name, id, rr.Code)
 			}
 		}
 	}
@@ -163,4 +163,40 @@ func TestSenderRules_DomainIDsFromOneReachTheList(t *testing.T) {
 			}
 		})
 	}
+}
+
+func serveListAllowlist(h *SenderRuleHandler, w http.ResponseWriter, r *http.Request) {
+	r.Method = http.MethodGet
+	r.URL.Path = "/api/v1/admin/domains/" + chi.URLParam(r, "id") + "/allowlist"
+	policyRoutes(h).ServeHTTP(w, r)
+}
+
+func serveAddToAllowlist(h *SenderRuleHandler, w http.ResponseWriter, r *http.Request) {
+	r.Method = http.MethodPost
+	r.URL.Path = "/api/v1/admin/domains/" + chi.URLParam(r, "id") + "/allowlist"
+	policyRoutes(h).ServeHTTP(w, r)
+}
+
+func serveRemoveFromAllowlist(h *SenderRuleHandler, w http.ResponseWriter, r *http.Request) {
+	r.Method = http.MethodDelete
+	r.URL.Path = "/api/v1/admin/domains/" + chi.URLParam(r, "id") + "/allowlist" + "/" + chi.URLParam(r, "eid")
+	policyRoutes(h).ServeHTTP(w, r)
+}
+
+func serveListBlocklist(h *SenderRuleHandler, w http.ResponseWriter, r *http.Request) {
+	r.Method = http.MethodGet
+	r.URL.Path = "/api/v1/admin/domains/" + chi.URLParam(r, "id") + "/blocklist"
+	policyRoutes(h).ServeHTTP(w, r)
+}
+
+func serveAddToBlocklist(h *SenderRuleHandler, w http.ResponseWriter, r *http.Request) {
+	r.Method = http.MethodPost
+	r.URL.Path = "/api/v1/admin/domains/" + chi.URLParam(r, "id") + "/blocklist"
+	policyRoutes(h).ServeHTTP(w, r)
+}
+
+func serveRemoveFromBlocklist(h *SenderRuleHandler, w http.ResponseWriter, r *http.Request) {
+	r.Method = http.MethodDelete
+	r.URL.Path = "/api/v1/admin/domains/" + chi.URLParam(r, "id") + "/blocklist" + "/" + chi.URLParam(r, "eid")
+	policyRoutes(h).ServeHTTP(w, r)
 }

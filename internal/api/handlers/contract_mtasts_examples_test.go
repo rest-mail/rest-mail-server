@@ -114,7 +114,7 @@ func TestSetMtaStsPolicy_DocumentedRefusals(t *testing.T) {
 						t.Fatalf("%s reached the database before it was refused: %v", name, r)
 					}
 				}()
-				h.SetPolicy(rr, req)
+				policyRoutes(h).ServeHTTP(rr, req)
 			}()
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body)
