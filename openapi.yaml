@@ -1826,12 +1826,6 @@ paths:
       responses:
         "204":
           description: Revoked
-        "400":
-          description: The credential id is not a number (`bad_request`)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
