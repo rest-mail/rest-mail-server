@@ -29,7 +29,7 @@ require (
 	github.com/rest-mail/go-mtasts v0.3.1
 	github.com/rest-mail/go-pop3 v0.3.0
 	github.com/rest-mail/go-sieve v0.6.0
-	github.com/rest-mail/go-smtp v0.31.0
+	github.com/rest-mail/go-smtp v0.32.0
 	github.com/rest-mail/go-spf v0.1.2
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.55.0

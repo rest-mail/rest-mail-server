@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"unicode/utf8"
 
-	gosmtp "github.com/rest-mail/go-smtp"
+	gosmtp "github.com/rest-mail/go-smtp/pkg/smtp"
 )
 
 // go-smtp accepts non-ASCII envelope bytes even without the MAIL parameter.
