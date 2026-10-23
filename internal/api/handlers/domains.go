@@ -1,14 +1,15 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
@@ -72,69 +73,140 @@ func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
 	return &DomainHandler{db: db, dns: dnsProvider, lookupMX: net.LookupMX, lookupTXT: net.LookupTXT}
 }
 
-func (h *DomainHandler) List(w http.ResponseWriter, r *http.Request) {
-	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+// Domain is a domain as the API answers with it.
+type Domain struct {
+	ID                uint      `json:"id"`
+	Name              string    `json:"name"`
+	ServerType        string    `json:"server_type"`
+	Active            bool      `json:"active"`
+	DefaultQuotaBytes int64     `json:"default_quota_bytes"`
+	DKIMSelector      string    `json:"dkim_selector"`
+	SendingPolicy     string    `json:"sending_policy"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+func domainOf(d models.Domain) Domain {
+	return Domain{
+		ID:                d.ID,
+		Name:              d.Name,
+		ServerType:        d.ServerType,
+		Active:            d.Active,
+		DefaultQuotaBytes: d.DefaultQuotaBytes,
+		DKIMSelector:      d.DKIMSelector,
+		SendingPolicy:     d.SendingPolicy,
+		CreatedAt:         d.CreatedAt,
+		UpdatedAt:         d.UpdatedAt,
+	}
+}
+
+// DomainRouteChecks are the capability checks the domain routes are registered behind, made
+// by the router from the caller's grants.
+type DomainRouteChecks struct {
+	// At requires the capability at "*".
+	At func(capability string) endpoint.Middleware
+	// OnList requires it for a list, which then holds only what the grants reach.
+	OnList func(capability string) endpoint.Middleware
+	// OnDomain requires it on the domain the path's {id} names.
+	OnDomain func(capability string) endpoint.Middleware
+}
+
+// Register mounts the domain routes on rs, each with the types it takes and answers (#645).
+func (h *DomainHandler) Register(rs endpoint.Routes, checks DomainRouteChecks) {
+	tags := []string{"Admin: Domains"}
+	missing := []int{http.StatusNotFound}
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains",
+		OperationID: "listDomains", Summary: "List all domains", Tags: tags,
+		Middleware: []endpoint.Middleware{checks.OnList(middleware.CapDomainsRead)}}, h.list)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPost, Path: "/api/v1/admin/domains",
+		OperationID: "createDomain", Summary: "Create a new domain", Tags: tags,
+		Status: http.StatusCreated, Errors: []int{http.StatusConflict},
+		Middleware: []endpoint.Middleware{checks.At(middleware.CapDomainsWrite)}}, h.create)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}",
+		OperationID: "getDomain", Summary: "Get a domain by ID", Tags: tags, Errors: missing,
+		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.get)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodPatch, Path: "/api/v1/admin/domains/{id}",
+		OperationID: "updateDomain", Summary: "Update a domain", Tags: tags,
+		Errors:     []int{http.StatusNotFound, http.StatusConflict},
+		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsWrite)}}, h.update)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodDelete, Path: "/api/v1/admin/domains/{id}",
+		OperationID: "deleteDomain", Summary: "Delete a domain", Tags: tags,
+		Status: http.StatusNoContent, Errors: []int{http.StatusNotFound, http.StatusConflict},
+		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsDelete)}}, h.delete)
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/domains/{id}/dns",
+		OperationID: "domainDNSCheck", Summary: "Live DNS record check (MX, SPF, DMARC, DKIM, MTA-STS) for a domain",
+		Tags: tags, Errors: missing,
+		Middleware: []endpoint.Middleware{checks.OnDomain(middleware.CapDomainsRead)}}, h.dnsCheck)
+}
+
+// domainPath names a domain by the path's {id}.
+type domainPath struct {
+	ID uint32 `path:"id" minimum:"1"`
+}
+
+var errDomainNotFound = endpoint.Refuse(http.StatusNotFound, "domain_not_found", "Domain not found")
+
+func (h *DomainHandler) find(id uint32) (models.Domain, error) {
+	var domain models.Domain
+	if err := h.db.First(&domain, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain, errDomainNotFound
+		}
+		return domain, err
+	}
+	return domain, nil
+}
+
+type listDomainsRequest struct {
+	Limit  *int `query:"limit"`
+	Offset *int `query:"offset"`
+}
+
+func (h *DomainHandler) list(r *http.Request, in listDomainsRequest) (endpoint.List[Domain], error) {
+	limit, offset := pagination(in.Limit, in.Offset, defaultListLimit, maxListLimit)
 
 	query := filterAdminList(h.db.Model(&models.Domain{}), r, middleware.CapDomainsRead, "domains")
 
 	var total int64
 	query.Count(&total)
 
-	var domains []models.Domain
-	if err := query.Order("name ASC").Limit(limit).Offset(offset).Find(&domains).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list domains")
-		return
+	var rows []models.Domain
+	if err := query.Order("name ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return endpoint.List[Domain]{}, fmt.Errorf("list domains: %w", err)
 	}
-	respond.List(w, domains, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	domains := make([]Domain, len(rows))
+	for i, row := range rows {
+		domains[i] = domainOf(row)
+	}
+	return endpoint.List[Domain]{
+		Data:       domains,
+		Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total},
+	}, nil
 }
 
-type createDomainRequest struct {
-	Name              string `json:"name"`
-	ServerType        string `json:"server_type"`
-	DefaultQuotaBytes *int64 `json:"default_quota_bytes"`
-	SendingPolicy     string `json:"sending_policy"`
-}
-
-// validSendingPolicy reports whether p is a sending policy a domain may have:
-// transactional, bulk, or empty for none (#144).
-func validSendingPolicy(p string) bool {
-	return p == "" || p == models.SendingPolicyTransactional || p == models.SendingPolicyBulk
-}
-
-// sendingPolicyInvalid is the validation message for any other value.
+// sendingPolicyInvalid is the validation message for a sending policy a domain may not have:
+// one is transactional, bulk, or empty for none (#144).
 const sendingPolicyInvalid = "must be 'transactional', 'bulk' or empty"
 
-func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req createDomainRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+type createDomainRequest struct {
+	Name string `json:"name" minLength:"1" message:"required"`
+	// ServerType is restmail (the server keeps the mail) or traditional, the default.
+	ServerType        string `json:"server_type,omitempty" enums:",traditional,restmail" message:"must be 'traditional' or 'restmail'"`
+	DefaultQuotaBytes *int64 `json:"default_quota_bytes,omitempty"`
+	SendingPolicy     string `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
+}
 
-	if req.Name == "" {
-		respond.ValidationError(w, map[string]string{"name": "required"})
-		return
-	}
-
+func (h *DomainHandler) create(_ *http.Request, req createDomainRequest) (Domain, error) {
 	// Reject non-hostname input before it is inserted and normalize to the
 	// canonical ASCII form (issue #202).
 	normalized, err := validateDomainName(req.Name)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_domain", "Invalid domain name: "+err.Error())
-		return
+		return Domain{}, endpoint.Invalid(map[string]string{"name": "Invalid domain name: " + err.Error()})
 	}
 	req.Name = normalized
 
 	if req.ServerType == "" {
 		req.ServerType = "traditional"
-	}
-	if req.ServerType != "traditional" && req.ServerType != "restmail" {
-		respond.ValidationError(w, map[string]string{"server_type": "must be 'traditional' or 'restmail'"})
-		return
-	}
-	if !validSendingPolicy(req.SendingPolicy) {
-		respond.ValidationError(w, map[string]string{"sending_policy": sendingPolicyInvalid})
-		return
 	}
 
 	// A domain is set up in stages and is not live until it has a certificate of
@@ -152,75 +224,50 @@ func (h *DomainHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.db.Create(&domain).Error; err != nil {
-		respond.Error(w, http.StatusConflict, "already_exists", "Domain already exists")
-		return
+		return Domain{}, endpoint.Refuse(http.StatusConflict, "already_exists", "Domain already exists")
 	}
 
 	// Create default inbound and outbound pipelines for the new domain.
-	inboundJSON := pipeline.DefaultPipelineJSON("inbound")
-	outboundJSON := pipeline.DefaultPipelineJSON("outbound")
-
-	if err := h.db.Create(&models.Pipeline{
-		DomainID:  domain.ID,
-		Direction: "inbound",
-		Filters:   inboundJSON,
-		Active:    true,
-	}).Error; err != nil {
-		slog.Error("failed to create default inbound pipeline", "domain", domain.Name, "error", err)
+	for _, direction := range []string{"inbound", "outbound"} {
+		if err := h.db.Create(&models.Pipeline{
+			DomainID:  domain.ID,
+			Direction: direction,
+			Filters:   pipeline.DefaultPipelineJSON(direction),
+			Active:    true,
+		}).Error; err != nil {
+			slog.Error("failed to create default "+direction+" pipeline", "domain", domain.Name, "error", err)
+		}
 	}
 
-	if err := h.db.Create(&models.Pipeline{
-		DomainID:  domain.ID,
-		Direction: "outbound",
-		Filters:   outboundJSON,
-		Active:    true,
-	}).Error; err != nil {
-		slog.Error("failed to create default outbound pipeline", "domain", domain.Name, "error", err)
-	}
-
-	respond.Data(w, http.StatusCreated, domain)
+	return domainOf(domain), nil
 }
 
-func (h *DomainHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+func (h *DomainHandler) get(_ *http.Request, in domainPath) (Domain, error) {
+	domain, err := h.find(in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
+		return Domain{}, err
 	}
-
-	var domain models.Domain
-	if err := h.db.First(&domain, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "domain_not_found", "Domain not found")
-		return
-	}
-
-	respond.Data(w, http.StatusOK, domain)
+	return domainOf(domain), nil
 }
 
 type updateDomainRequest struct {
-	Active            *bool   `json:"active"`
-	DefaultQuotaBytes *int64  `json:"default_quota_bytes"`
-	SendingPolicy     *string `json:"sending_policy"`
+	ID   uint32           `path:"id" minimum:"1"`
+	Body updateDomainBody `body:""`
 }
 
-func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+// updateDomainBody changes what it names and leaves the rest. An empty sending policy clears it.
+type updateDomainBody struct {
+	Active            *bool   `json:"active,omitempty"`
+	DefaultQuotaBytes *int64  `json:"default_quota_bytes,omitempty"`
+	SendingPolicy     *string `json:"sending_policy,omitempty" enums:",transactional,bulk" message:"must be 'transactional', 'bulk' or empty"`
+}
+
+func (h *DomainHandler) update(_ *http.Request, in updateDomainRequest) (Domain, error) {
+	domain, err := h.find(in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
+		return Domain{}, err
 	}
-
-	var domain models.Domain
-	if err := h.db.First(&domain, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "domain_not_found", "Domain not found")
-		return
-	}
-
-	var req updateDomainRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
+	req := in.Body
 
 	updates := map[string]interface{}{}
 	if req.Active != nil {
@@ -234,13 +281,11 @@ func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
 			if err := h.db.Model(&models.Certificate{}).
 				Where("domain_id = ? AND not_before <= NOW() AND not_after > NOW()", domain.ID).
 				Count(&current).Error; err != nil {
-				respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the domain's certificate")
-				return
+				return Domain{}, fmt.Errorf("check the domain's certificate: %w", err)
 			}
 			if current == 0 {
-				respond.Error(w, http.StatusConflict, "certificate_required",
+				return Domain{}, endpoint.Refuse(http.StatusConflict, "certificate_required",
 					"This domain has no currently valid certificate, so it cannot go live. Add one first.")
-				return
 			}
 		}
 		updates["active"] = *req.Active
@@ -251,35 +296,22 @@ func (h *DomainHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// An empty string clears the policy; it is a value here, not "unchanged",
 	// so the map (not the struct) carries it to the update.
 	if req.SendingPolicy != nil {
-		if !validSendingPolicy(*req.SendingPolicy) {
-			respond.ValidationError(w, map[string]string{"sending_policy": sendingPolicyInvalid})
-			return
-		}
 		updates["sending_policy"] = *req.SendingPolicy
 	}
 
 	if len(updates) > 0 {
 		if err := h.db.Model(&domain).Updates(updates).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to update domain")
-			return
+			return Domain{}, fmt.Errorf("update domain: %w", err)
 		}
 	}
 
-	h.db.First(&domain, id)
-	respond.Data(w, http.StatusOK, domain)
+	return h.get(nil, domainPath{ID: in.ID})
 }
 
-func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+func (h *DomainHandler) delete(_ *http.Request, in domainPath) (endpoint.Empty, error) {
+	domain, err := h.find(in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
-	}
-
-	var domain models.Domain
-	if err := h.db.First(&domain, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "domain_not_found", "Domain not found")
-		return
+		return endpoint.Empty{}, err
 	}
 
 	// A domain still holding accounts or aliases stays (#388): deleting it
@@ -288,47 +320,47 @@ func (h *DomainHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	for _, held := range []interface{}{&models.Mailbox{}, &models.Alias{}} {
 		var n int64
 		if err := h.db.Model(held).Where("domain_id = ?", domain.ID).Count(&n).Error; err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to check the domain's addresses")
-			return
+			return endpoint.Empty{}, fmt.Errorf("check the domain's addresses: %w", err)
 		}
 		if n > 0 {
-			respond.Error(w, http.StatusConflict, "domain_not_empty",
+			return endpoint.Empty{}, endpoint.Refuse(http.StatusConflict, "domain_not_empty",
 				"The domain still has accounts or aliases: delete them first")
-			return
 		}
 	}
 
 	if err := h.db.Delete(&domain).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to delete domain")
-		return
+		return endpoint.Empty{}, fmt.Errorf("delete domain: %w", err)
 	}
-
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
-// DNSCheck verifies DNS records for a domain (MX, SPF, DKIM, DMARC, MTA-STS).
-// GET /api/v1/admin/domains/:id/dns
-func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+// DomainDNSCheck is what a live check of a domain's DNS records found.
+type DomainDNSCheck struct {
+	Domain  string           `json:"domain"`
+	Records []DNSRecordCheck `json:"records"`
+	// Summary counts the records verified: "4/7 records verified".
+	Summary string `json:"summary"`
+}
+
+// DNSRecordCheck is one record the check looked for.
+type DNSRecordCheck struct {
+	// Type is DOMAIN, MX, SPF, DMARC, DKIM, MTA-STS or TLS-RPT.
+	Type string `json:"type"`
+	Name string `json:"name"`
+	// Status is ok, missing or error.
+	Status  string `json:"status" enums:"ok,missing,error"`
+	Value   string `json:"value,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// dnsCheck verifies DNS records for a domain (MX, SPF, DKIM, DMARC, MTA-STS, TLS-RPT).
+func (h *DomainHandler) dnsCheck(_ *http.Request, in domainPath) (DomainDNSCheck, error) {
+	domain, err := h.find(in.ID)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain ID")
-		return
+		return DomainDNSCheck{}, err
 	}
 
-	var domain models.Domain
-	if err := h.db.First(&domain, id).Error; err != nil {
-		respond.Error(w, http.StatusNotFound, "domain_not_found", "Domain not found")
-		return
-	}
-
-	type recordCheck struct {
-		Type    string `json:"type"`
-		Name    string `json:"name"`
-		Status  string `json:"status"` // "ok", "missing", "error"
-		Value   string `json:"value,omitempty"`
-		Message string `json:"message,omitempty"`
-	}
-
+	type recordCheck = DNSRecordCheck
 	var checks []recordCheck
 
 	// DNS holds the A-label (punycode) form of an internationalized name: look
@@ -336,15 +368,14 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 	// that is not a valid DNS name is reported, not looked up.
 	name, err := rmail.DomainASCII(domain.Name)
 	if err != nil {
-		respond.Data(w, http.StatusOK, map[string]interface{}{
-			"domain": domain.Name,
-			"records": []recordCheck{{
+		return DomainDNSCheck{
+			Domain: domain.Name,
+			Records: []recordCheck{{
 				Type: "DOMAIN", Name: domain.Name, Status: "error",
 				Message: "The domain name is not a valid DNS name, so its records cannot be checked",
 			}},
-			"summary": "0/1 records verified",
-		})
-		return
+			Summary: "0/1 records verified",
+		}, nil
 	}
 
 	// MX records
@@ -500,9 +531,9 @@ func (h *DomainHandler) DNSCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respond.Data(w, http.StatusOK, map[string]interface{}{
-		"domain":  domain.Name,
-		"records": checks,
-		"summary": fmt.Sprintf("%d/%d records verified", okCount, len(checks)),
-	})
+	return DomainDNSCheck{
+		Domain:  domain.Name,
+		Records: checks,
+		Summary: fmt.Sprintf("%d/%d records verified", okCount, len(checks)),
+	}, nil
 }

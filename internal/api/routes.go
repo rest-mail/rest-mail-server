@@ -776,13 +776,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(middleware.SessionOnly).Post("/api/v1/admin/grants/{id}/deactivate", grantH.Deactivate)
 		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/make-eligible", grantH.MakeEligible)
 
+		// The routes registered with their types, and what this group's middleware
+		// adds to each of them (#669).
+		admin := endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
+
 		// Domains
-		r.With(needsOnList(middleware.CapDomainsRead)).Get("/api/v1/admin/domains", domainH.List)
-		r.With(needs(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains", domainH.Create)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}", domainH.Get)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Patch("/api/v1/admin/domains/{id}", domainH.Update)
-		r.With(needsOnDomain(middleware.CapDomainsDelete)).Delete("/api/v1/admin/domains/{id}", domainH.Delete)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/dns", domainH.DNSCheck)
+		domainH.Register(admin, handlers.DomainRouteChecks{
+			At:       describedCapability(needs),
+			OnList:   describedCapability(needsOnList),
+			OnDomain: describedCapability(needsOnDomain),
+		})
 
 		// Accounts (mailboxes). Creating one is POST /api/v1/accounts, the same
 		// for everyone; deleting one removes its grants under the grants rules.

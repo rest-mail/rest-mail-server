@@ -113,7 +113,7 @@ func TestDomainUpdate_DocumentedExamples(t *testing.T) {
 				t.Fatalf("missing request example %q", tc.name)
 			}
 			rr := httptest.NewRecorder()
-			h.Update(rr, authzRequest(http.MethodPatch, "/api/v1/admin/domains/"+uintToStr(domain.ID), 0,
+			domainRoutes(h).ServeHTTP(rr, authzRequest(http.MethodPatch, "/api/v1/admin/domains/"+uintToStr(domain.ID), 0,
 				map[string]string{"id": uintToStr(domain.ID)}, string(mustJSON(request))))
 			if rr.Code != tc.status {
 				t.Fatalf("status = %d, want %d: %s", rr.Code, tc.status, rr.Body)

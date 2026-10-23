@@ -20,7 +20,7 @@ import (
 // exactly the documented body. The handler has no database, so the refusal is
 // proved to come before anything is looked up or stored.
 func TestDomainCreate_DocumentedRefusals(t *testing.T) {
-	documentedRefusals(t, "/api/v1/admin/domains", "createDomain", NewDomainHandler(nil, nil).Create)
+	documentedRefusals(t, "/api/v1/admin/domains", "createDomain", domainRoutes(NewDomainHandler(nil, nil)).ServeHTTP)
 }
 
 func TestAliasCreate_DocumentedRefusals(t *testing.T) {

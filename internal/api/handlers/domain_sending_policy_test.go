@@ -29,7 +29,7 @@ func TestDomainSendingPolicy_SetThroughTheAdminAPI(t *testing.T) {
 
 	name := fmt.Sprintf("policy-%d.test", time.Now().UnixNano())
 	rr := httptest.NewRecorder()
-	h.Create(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/domains",
+	domainRoutes(h).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, "/api/v1/admin/domains",
 		bytes.NewBufferString(`{"name":"`+name+`","sending_policy":"bulk"}`)))
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, want 201 (body %s)", rr.Code, rr.Body.String())
@@ -48,7 +48,7 @@ func TestDomainSendingPolicy_SetThroughTheAdminAPI(t *testing.T) {
 		rctx.URLParams.Add("id", fmt.Sprint(created.ID))
 		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 		rr := httptest.NewRecorder()
-		h.Update(rr, req)
+		domainRoutes(h).ServeHTTP(rr, req)
 		return rr
 	}
 	stored := func() string {
