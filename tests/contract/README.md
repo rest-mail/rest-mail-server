@@ -247,7 +247,8 @@ check the successful update (`contract_customfilter_update_examples_test.go`).
 The child path's 400 and 404 remain excluded.
 
 `createCertificate` sends `invalid_body` (`[]`) and `fields_missing` (`{}`)
-with their paired 400s, both refused before the domain lookup. Its `valid`
+with paired 400 and 422 responses respectively, both refused before the
+domain lookup. Its `valid`
 request pairs only with 201; the hook supplies a fresh certificate and key on
 the created domain, leaving malformed and incomplete requests unchanged
 (`contract_certificate_examples_test.go`, `test_contract_certificate_hook.py`).
@@ -260,8 +261,8 @@ request. The real handler refuses each for a password session before anything
 is looked up or stored (`contract_device_examples_test.go`). The devices
 routes stay excluded in the E2E run: it has no APNs credentials, so they
 answer 404.
-The previously documented 422 was removed: this handler never returns it;
-invalid PEM and missing fields return 400.
+Certificate field validation and invalid PEM return 422 with details.fields;
+malformed JSON and non-object bodies return 400.
 
 `sendMessage` sends `from_missing` (`valid` without its from) with its paired
 400, refused before the sender is looked up, and `unsubscribe_not_allowed`
@@ -363,9 +364,9 @@ certificate when activation requires one. The query and caller's credential
 stay unchanged. Discovery therefore runs independently of `updateDomain`'s
 example, which updates only the sending policy.
 
-`setDKIMKey` pairs `installed` with 200; `body_array` and missing, empty or
-wrong-type selectors and private keys with 400; and `selector_invalid` and
-`private_key_invalid` with 422. The hook replaces only the explicit
+`setDKIMKey` pairs `installed` with 200 and `body_array` with 400. Missing,
+empty or wrong-type selectors and private keys, `selector_invalid`, and
+`private_key_invalid` pair with 422. The hook replaces only the explicit
 `fixture-signing-key` placeholder, preserving malformed bodies, missing
 fields and invalid selectors or keys. The existing createDomain link supplies
 the domain ID. Refusals leave the stored domain unchanged
@@ -394,9 +395,9 @@ the fixture admin's `Receipts` folder and `spam@example.org` contact, and
 `chore test:contract-fixtures` supplies a new held queue entry. The first run's
 complete example report is already enforced; probe requests stay unchanged.
 
-`setDKIMRotation` pairs `configured` with 200, `body_array`,
-`interval_wrong_type` and `field_unknown` with 400, and `interval_missing`,
-`interval_null`, `interval_negative` and `interval_too_large` with 422.
+`setDKIMRotation` pairs `configured` with 200 and `body_array` with 400.
+`interval_wrong_type`, `field_unknown`, `interval_missing`, `interval_null`,
+`interval_negative` and `interval_too_large` pair with 422 after typed binding.
 The domain ID comes from `createDomain`'s link. The handler tests send each
 refusal before and after saving a valid interval and verify the entire domain
 is preserved, including its signing material. Other DKIM operations keep
