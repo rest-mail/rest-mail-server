@@ -8900,7 +8900,7 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
-  # Admin: Testing (non-production only; admin role, no capability)
+  # Admin: Testing (non-production only; requires wildcard capability)
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/test/send:
     post:
@@ -8939,7 +8939,7 @@ paths:
                   subject: Test
                   body: A test message.
               # No sender: refused before any mailbox is looked up. The
-              # refusal names both addresses whenever either is missing.
+              # refusal names only the missing sender.
               from_missing:
                 value:
                   to: admin@restmail.test
@@ -8994,8 +8994,7 @@ paths:
                       message: Request body failed validation
                       details:
                         fields:
-                          from: sender address required
-                          to: recipient address required
+                          from: required
 
   /api/v1/admin/test/verify:
     get:

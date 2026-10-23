@@ -890,13 +890,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(auditLog("audit.read"), needs(middleware.CapAuditRead)).Get("/api/v1/admin/audit/verify", auditH.Verify)
 
 		// Test endpoints (non-production only): "*" itself
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/send", testH.SendTestEmail)
-		r.With(needs(grants.Wildcard)).Get("/api/v1/admin/test/verify", testH.VerifyDelivery)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/probe", testH.ProbeServices)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/reset", testH.ResetTestData)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/seed", testH.SeedTestData)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot", testH.Snapshot)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
+		testH.Register(admin, handlers.TestRouteChecks{At: describedCapability(needs)})
 	})
 
 	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH, Registry: registry}
