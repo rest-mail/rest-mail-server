@@ -76,7 +76,4 @@ var unregisteredRoutes = []string{
 	"POST /metrics",
 	"PUT /metrics",
 	"TRACE /metrics",
-	"GET /restmail/capabilities",
-	"GET /restmail/mailboxes",
-	"POST /restmail/messages",
 }

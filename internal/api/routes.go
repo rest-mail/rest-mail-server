@@ -508,11 +508,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// ═══════════════════════════════════════════════════════════════
 	restmailDiscoveryH := handlers.NewRestmailDiscoveryHandler(db, cfg.GatewayHostname)
 	r.Get("/.well-known/restmail", restmailDiscoveryH.Discover)
-	r.Get("/restmail/capabilities", restmailH.Capabilities)
-	r.Get("/restmail/mailboxes", restmailH.CheckMailbox)
 	// OSI-7: same delivery-body bound as the machine deliver route — the RESTMAIL
 	// hop must accept up to a full max-size message but not buffer without limit.
-	r.With(deliverBodyLimit).Post("/restmail/messages", restmailH.Deliver)
+	restmailH.Register(endpoint.Routes{Router: r, Registry: registry}, endpoint.Middleware{Wrap: deliverBodyLimit})
 
 	// ═══════════════════════════════════════════════════════════════
 	// SSE — outside the JWT middleware group; the handler authenticates from the

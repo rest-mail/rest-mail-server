@@ -1571,3 +1571,45 @@
   reason: >-
     Every recovery code is generated, never empty, but a struct tag cannot constrain the items
     of a list, so the generated description states the list's minItems only.
+
+# RESTMAIL server-to-server protocol (#643)
+
+- operation: restmailCheckMailbox
+  difference: "parameter query address schema.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    Any address is looked up as it is spelled, internationalized ones included; one that is not
+    a mailbox answers exists false and is tarpitted, as any unknown recipient is. An email
+    format would refuse it before the tarpit, telling an enumerating client which guesses are
+    malformed.
+- operation: restmailCheckMailbox
+  difference: "parameter query address schema.minLength: openapi.yaml absent, generated 1"
+  reason: >-
+    A missing or blank address was always refused; binding now answers it 422 with the
+    handler's "address query parameter required".
+- operation: restmailDeliver
+  difference: "request body application/json.anyOf: openapi.yaml [{\"properties\":{\"to\":{\"minItems\":1,\"type\":\"array\"}},\"required\":[\"to\"]},{\"properties\":{\"recipients\":{\"minItems\":1,\"type\":\"array\"}},\"required\":[\"recipients\"]},{\"properties\":{\"raw_message\":{\"minLength\":1,\"type\":\"string\"}},\"required\":[\"raw_message\"]}], generated absent"
+  reason: >-
+    Recipients come from to, else recipients, else the To header of raw_message, which struct
+    tags cannot express. The handler still answers the documented 422 on to when none of them
+    supplies one.
+- operation: restmailDeliver
+  difference: "request body application/json.properties.from.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A bounce has an empty reverse path, so from (and sender) may be empty; the handler reads
+    the sender's domain from whatever it is given.
+- operation: restmailDeliver
+  difference: "request body application/json.properties.sender.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A bounce has an empty reverse path, so from (and sender) may be empty; the handler reads
+    the sender's domain from whatever it is given.
+- operation: restmailDeliver
+  difference: "request body application/json.properties.*.items.format: openapi.yaml \"email\", generated absent"
+  reason: >-
+    A recipient that is not a deliverable address fails on its own, in the answer's failed
+    list, rather than refusing the whole delivery for the others.
+- operation: restmailDeliver
+  difference: "response 201 application/json.properties.data.properties.*.items.format: openapi.yaml \"email\", generated absent"
+  reason: The recipients are answered as the sender spelled them, which need not be addresses.
+- operation: restmailDeliver
+  difference: "response 400: generated only"
+  reason: Binding answers 400 bad_request for a body that is not JSON or not an object, as the handler did.

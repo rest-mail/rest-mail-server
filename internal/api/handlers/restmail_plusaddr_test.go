@@ -43,7 +43,11 @@ func deliverRESTMAIL(t *testing.T, h *RestmailHandler, from, rawMessage string, 
 	req := httptest.NewRequest(http.MethodPost, "/restmail/messages", bytes.NewReader(body))
 	req.RemoteAddr = "203.0.113.9:5000"
 	rr := httptest.NewRecorder()
-	h.Deliver(rr, req)
+	restmailRoutes(h).ServeHTTP(rr, req)
+	// When no recipient takes the message, every recipient failed.
+	if rr.Code == http.StatusUnprocessableEntity && strings.Contains(rr.Body.String(), `"undeliverable"`) {
+		return nil, to
+	}
 
 	var resp struct {
 		Data struct {
