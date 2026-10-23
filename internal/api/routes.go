@@ -804,32 +804,15 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		// Queue management
 		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
 
-		// Sender allowlist/blocklist (domain-scoped → domains:* capabilities)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/allowlist", senderRuleH.AddToAllowlist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/allowlist/{eid}", senderRuleH.RemoveFromAllowlist)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
-
-		// Recipients the domain's mail is no longer sent to after a hard bounce (#141)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/suppressions", suppressionH.List)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/suppressions/{sid}", suppressionH.Delete)
-
-		// MTA-STS policy management (domain-scoped → domains:* capabilities)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
-
-		// Outbound transport: direct MX or an SMTP relay (#143). Setting it takes
-		// domains:write at "*": the relay host is dialled from inside the
-		// installation and may be private, so only the operator chooses it, never
-		// a domain-scoped admin.
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/relay", relayH.Get)
-		r.With(needs(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/relay", relayH.Set)
-
-		// TLS-RPT reports (domain deliverability telemetry → domains:read)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)
+		policyChecks := handlers.DomainPolicyRouteChecks{
+			OnDomain: describedCapability(needsOnDomain),
+			At:       describedCapability(needs),
+		}
+		senderRuleH.Register(admin, policyChecks)
+		suppressionH.Register(admin, policyChecks)
+		mtastsH.Register(admin, policyChecks)
+		relayH.Register(admin, policyChecks)
+		tlsrptH.Register(admin, policyChecks)
 
 		// DKIM and certificates retain their existing capability scopes.
 		dkimH.Register(admin, handlers.DKIMRouteChecks{
