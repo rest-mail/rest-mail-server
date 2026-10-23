@@ -8014,6 +8014,8 @@ paths:
       responses:
         "204":
           description: Removed
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8103,7 +8105,7 @@ paths:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
         "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
+          description: A body that is not JSON or not an object
           content:
             application/json:
               schema:
@@ -8158,12 +8160,8 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
-        "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8216,11 +8214,13 @@ paths:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
         "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
+          description: A body that is not JSON or not an object
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":

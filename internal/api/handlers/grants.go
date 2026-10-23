@@ -1,14 +1,13 @@
 package handlers
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/auth"
@@ -42,7 +41,7 @@ type grantHolder struct {
 }
 
 type grantActor struct {
-	Kind string `json:"kind"`
+	Kind string `json:"kind" enums:"account,system"`
 	ID   *uint  `json:"id"`
 }
 
@@ -52,10 +51,10 @@ type grantResponse struct {
 	Role      string      `json:"role"`
 	RoleID    uint        `json:"role_id"`
 	Scope     string      `json:"scope"`
-	Mode      string      `json:"mode"`
+	Mode      string      `json:"mode" enums:"active,eligible"`
 	GrantedBy grantActor  `json:"granted_by"`
-	GrantedAt string      `json:"granted_at"`
-	ExpiresAt *string     `json:"expires_at"`
+	GrantedAt string      `json:"granted_at" format:"date-time"`
+	ExpiresAt *string     `json:"expires_at" format:"date-time"`
 	// Activation is the one running now, of an eligible grant switched on.
 	Activation *activationResponse `json:"activation"`
 }
@@ -94,67 +93,61 @@ func toGrantResponses(db *gorm.DB, rows []models.Grant, now time.Time) ([]grantR
 	return out, nil
 }
 
-// List returns grants, oldest first, optionally only one holder's, or only
-// those at one scope.
-// GET /api/v1/admin/grants?holder_kind=account&holder_id=3&scope=mailbox:chris@example.com
-func (h *GrantHandler) List(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 200, "limit", "offset") {
-		return
-	}
+type listGrantsRequest struct {
+	HolderKind string  `query:"holder_kind"`
+	HolderID   *uint32 `query:"holder_id" minimum:"0" message:"must be a number"`
+	Scope      string  `query:"scope"`
+	Limit      *int    `query:"limit" maximum:"200" message:"exceeds the maximum page size"`
+	Offset     *int    `query:"offset" message:"must be a whole number"`
+}
+
+// list returns grants, oldest first, optionally only one holder's or scope's.
+func (h *GrantHandler) list(r *http.Request, req listGrantsRequest) (endpoint.List[grantResponse], error) {
 	q := h.db.Model(&models.Grant{})
-	if kind := r.URL.Query().Get("holder_kind"); kind != "" {
-		q = q.Where("holder_kind = ?", kind)
+	if req.HolderKind != "" {
+		q = q.Where("holder_kind = ?", req.HolderKind)
 	}
-	if v := r.URL.Query().Get("holder_id"); v != "" {
-		id, err := strconv.ParseUint(v, 10, 32)
-		if err != nil {
-			respond.ValidationError(w, map[string]string{"holder_id": "must be a number"})
-			return
-		}
-		q = q.Where("holder_id = ?", id)
+	if req.HolderID != nil {
+		q = q.Where("holder_id = ?", *req.HolderID)
 	}
-	if scope := r.URL.Query().Get("scope"); scope != "" {
-		q = q.Where("scope = ?", strings.ToLower(strings.TrimSpace(scope)))
+	if req.Scope != "" {
+		q = q.Where("scope = ?", strings.ToLower(strings.TrimSpace(req.Scope)))
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
-		return
+		return endpoint.List[grantResponse]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
 	}
-	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
+	limit, offset := pagination(req.Limit, req.Offset, defaultListLimit, maxListLimit)
 	var rows []models.Grant
 	if err := q.Preload("Role").Order("id").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
-		return
+		return endpoint.List[grantResponse]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
 	}
 	out, err := toGrantResponses(h.db, rows, time.Now())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
-		return
+		return endpoint.List[grantResponse]{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch grants")
 	}
-	respond.List(w, out, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	return endpoint.List[grantResponse]{Data: out, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
+}
+
+// createGrantHolder keeps the original holder validation (including its field-level
+// message) in create; response holder fields are always present.
+type createGrantHolder struct {
+	Kind string `json:"kind,omitempty"`
+	ID   uint   `json:"id,omitempty"`
 }
 
 type createGrantRequest struct {
-	Holder    *grantHolder `json:"holder"`
-	Role      string       `json:"role"`
-	Scope     string       `json:"scope"`
-	Mode      string       `json:"mode"`
-	ExpiresAt *time.Time   `json:"expires_at"`
+	Holder    *createGrantHolder `json:"holder,omitempty"`
+	Role      string             `json:"role,omitempty"`
+	Scope     string             `json:"scope,omitempty"`
+	Mode      string             `json:"mode,omitempty"`
+	ExpiresAt *time.Time         `json:"expires_at,omitempty"`
 }
 
-// Create grants a role at a scope.
+// create grants a role at a scope.
 // POST /api/v1/admin/grants {"holder":{"kind":"account","id":3},"role":"admin","scope":"domain:a.com","mode":"active"}
-func (h *GrantHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) create(r *http.Request, req createGrantRequest) (grantResponse, error) {
 	claims := middleware.GetClaims(r)
-	if !requireTwoFactor(w, claims) {
-		return
-	}
-	var req createGrantRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
 	problems := map[string]string{}
 	if req.Holder == nil || req.Holder.Kind == "" || req.Holder.ID == 0 {
 		problems["holder"] = `required: {"kind": "account", "id": <account id>}`
@@ -178,8 +171,7 @@ func (h *GrantHandler) Create(w http.ResponseWriter, r *http.Request) {
 		problems["expires_at"] = "must be in the future"
 	}
 	if len(problems) > 0 {
-		respond.ValidationError(w, problems)
-		return
+		return grantResponse{}, endpoint.Invalid(problems)
 	}
 
 	g := &models.Grant{
@@ -209,31 +201,26 @@ func (h *GrantHandler) Create(w http.ResponseWriter, r *http.Request) {
 		g.RoleID = g.Role.ID
 		return grantChange{r: r, claims: claims}.add(tx, g, http.StatusCreated)
 	})
-	if grantChangeFailed(w, err) {
-		return
+	if err != nil {
+		return grantResponse{}, grantChangeError(err)
 	}
 	h.cache.Invalidate()
-	respond.Data(w, http.StatusCreated, toGrantResponse(g))
+	return toGrantResponse(g), nil
 }
 
-// Delete removes a grant.
+// delete removes a grant.
 // DELETE /api/v1/admin/grants/{id}
-func (h *GrantHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) delete(r *http.Request, req grantPath) (endpoint.Empty, error) {
 	claims := middleware.GetClaims(r)
-	id, err := pathID(r, "id")
-	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_id", "Invalid grant ID")
-		return
+	if claims == nil || !claims.HasAMR(auth.AMROTP) {
+		return endpoint.Empty{}, grantChangeError(errTwoFactorRequired)
 	}
-	if !requireTwoFactor(w, claims) {
-		return
-	}
-	err = h.db.Transaction(func(tx *gorm.DB) error {
+	err := h.db.Transaction(func(tx *gorm.DB) error {
 		if err := grants.Lock(tx); err != nil {
 			return err
 		}
 		var g models.Grant
-		if err := tx.Preload("Role").First(&g, id).Error; err != nil {
+		if err := tx.Preload("Role").First(&g, req.ID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return errNoSuchGrant
 			}
@@ -241,11 +228,11 @@ func (h *GrantHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 		return grantChange{r: r, claims: claims}.remove(tx, &g, http.StatusNoContent)
 	})
-	if grantChangeFailed(w, err) {
-		return
+	if err != nil {
+		return endpoint.Empty{}, grantChangeError(err)
 	}
 	h.cache.Invalidate()
-	w.WriteHeader(http.StatusNoContent)
+	return endpoint.Empty{}, nil
 }
 
 var (
@@ -293,29 +280,42 @@ func (c grantChange) remove(tx *gorm.DB, g *models.Grant, status int) error {
 // grantChangeFailed answers for a grant change that did not happen, and says
 // whether it did not.
 func grantChangeFailed(w http.ResponseWriter, err error) bool {
-	switch {
-	case err == nil:
+	refusal := grantChangeError(err)
+	if refusal == nil {
 		return false
-	case errors.Is(err, errNoSuchHolder):
-		respond.ValidationError(w, map[string]string{"holder": "no such account"})
-	case errors.Is(err, errNoSuchRole):
-		respond.ValidationError(w, map[string]string{"role": "no such role"})
-	case errors.Is(err, errTwoFactorRequired):
-		respond.Error(w, http.StatusForbidden, "two_factor_required",
-			"Changing grants needs a session signed in with two-factor authentication: sign in again with your code")
-	case errors.Is(err, errNoSuchGrant):
-		respond.Error(w, http.StatusNotFound, "not_found", "Grant not found")
-	case errors.Is(err, grants.ErrExceedsHeld):
-		respond.Error(w, http.StatusForbidden, "grant_exceeds_held", err.Error())
-	case errors.Is(err, grants.ErrExists):
-		respond.Error(w, http.StatusConflict, "conflict", err.Error())
-	case errors.Is(err, grants.ErrLastSuperadmin):
-		respond.Error(w, http.StatusConflict, "last_superadmin", "Refused: "+err.Error()+"; nobody could grant anything after it")
-	default:
-		slog.Error("grant change failed", "error", err)
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to change grants")
+	}
+	e := refusal.(*endpoint.Error)
+	if e.Fields != nil {
+		respond.ValidationError(w, e.Fields)
+	} else {
+		respond.Error(w, e.Status, e.Code, e.Message)
 	}
 	return true
+}
+
+func grantChangeError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, errNoSuchHolder):
+		return endpoint.Invalid(map[string]string{"holder": "no such account"})
+	case errors.Is(err, errNoSuchRole):
+		return endpoint.Invalid(map[string]string{"role": "no such role"})
+	case errors.Is(err, errTwoFactorRequired):
+		return endpoint.Refuse(http.StatusForbidden, "two_factor_required",
+			"Changing grants needs a session signed in with two-factor authentication: sign in again with your code")
+	case errors.Is(err, errNoSuchGrant):
+		return endpoint.Refuse(http.StatusNotFound, "not_found", "Grant not found")
+	case errors.Is(err, grants.ErrExceedsHeld):
+		return endpoint.Refuse(http.StatusForbidden, "grant_exceeds_held", err.Error())
+	case errors.Is(err, grants.ErrExists):
+		return endpoint.Refuse(http.StatusConflict, "conflict", err.Error())
+	case errors.Is(err, grants.ErrLastSuperadmin):
+		return endpoint.Refuse(http.StatusConflict, "last_superadmin", "Refused: "+err.Error()+"; nobody could grant anything after it")
+	default:
+		slog.Error("grant change failed", "error", err)
+		return endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to change grants")
+	}
 }
 
 type roleResponse struct {
@@ -334,42 +334,39 @@ type capabilityResponse struct {
 	Action      string `json:"action"`
 }
 
-// ListRoles lists the roles that can be granted, each with its capabilities.
+// listRoles lists the roles that can be granted, each with its capabilities.
 // GET /api/v1/admin/roles
-func (h *GrantHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) listRoles(r *http.Request, _ struct{}) ([]roleResponse, error) {
 	var roles []models.Role
 	if err := h.db.Order("id").Find(&roles).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch roles")
-		return
+		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch roles")
 	}
 	out := make([]roleResponse, len(roles))
 	for i, role := range roles {
 		caps, err := grants.RoleCapabilities(h.db, role.ID)
 		if err != nil {
-			respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch roles")
-			return
+			return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch roles")
 		}
 		if caps == nil {
 			caps = []string{}
 		}
 		out[i] = roleResponse{ID: role.ID, Name: role.Name, Description: role.Description, SystemRole: role.SystemRole, Capabilities: caps}
 	}
-	respond.Data(w, http.StatusOK, out)
+	return out, nil
 }
 
-// ListCapabilities lists every capability.
+// listCapabilities lists every capability.
 // GET /api/v1/admin/capabilities
-func (h *GrantHandler) ListCapabilities(w http.ResponseWriter, r *http.Request) {
+func (h *GrantHandler) listCapabilities(r *http.Request, _ struct{}) ([]capabilityResponse, error) {
 	var caps []models.Capability
 	if err := h.db.Order("name").Find(&caps).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to fetch capabilities")
-		return
+		return nil, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to fetch capabilities")
 	}
 	out := make([]capabilityResponse, len(caps))
 	for i, c := range caps {
 		out[i] = capabilityResponse{ID: c.ID, Name: c.Name, Description: c.Description, Resource: c.Resource, Action: c.Action}
 	}
-	respond.Data(w, http.StatusOK, out)
+	return out, nil
 }
 
 // formatTime renders t in RFC 3339, or nil.

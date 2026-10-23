@@ -83,3 +83,17 @@ func (rt *Routers) Description(version string) (map[string]interface{}, []string
 	g.Register(rt.Registry.Endpoints()...)
 	return g.Generate(), g.Warnings
 }
+
+// Grant changes and escalation require a person's session, never a machine key.
+var describedSessionOnly = oapifly.Middleware{
+	Security: []oapifly.SecurityRequirement{{"CookieAuth": nil}, {"BearerAuth": nil}},
+	Responses: []oapifly.EndpointResponse{
+		refusal(http.StatusUnauthorized, "unauthorized: authentication required"),
+		refusal(http.StatusForbidden, "session_required: sign in with your password to manage eligible permissions"),
+	},
+}
+
+var describedAuthThrottle = oapifly.Middleware{Responses: []oapifly.EndpointResponse{
+	{Status: http.StatusTooManyRequests, Description: "rate_limited: login's per-IP limit", Type: errorBody,
+		Headers: map[string]oapifly.ResponseHeader{"Retry-After": {Description: "Seconds until another try is allowed", Required: true}}},
+}}

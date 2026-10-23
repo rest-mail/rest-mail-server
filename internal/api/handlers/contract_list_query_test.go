@@ -101,13 +101,16 @@ func TestListQueryIntegerContractProbes(t *testing.T) {
 		"listCustomFilters": pipeline.ListCustomFilters,
 		"listPipelineLogs":  pipeline.ListPipelineLogs,
 		"listMessages":      NewMessageHandler(tx, nil, nil, "", nil).ListMessages,
-		"listGrants":        NewGrantHandler(tx, nil, "").List,
-		"listQueue":         NewQueueHandler(tx).ListQueue,
-		"listBans":          NewBanHandler(tx).ListBans,
-		"listTlsReports":    NewTLSReportHandler(tx).ListReports,
-		"listAuditEntries":  NewAuditHandler(tx).List,
-		"searchMessages":    NewSearchHandler(tx).Search,
-		"getDeliveryLogs":   NewLogHandler(tx).DeliveryLog,
+		"listGrants": func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = "/api/v1/admin/grants"
+			grantRoutes(NewGrantHandler(tx, nil, "")).ServeHTTP(w, r)
+		},
+		"listQueue":        NewQueueHandler(tx).ListQueue,
+		"listBans":         NewBanHandler(tx).ListBans,
+		"listTlsReports":   NewTLSReportHandler(tx).ListReports,
+		"listAuditEntries": NewAuditHandler(tx).List,
+		"searchMessages":   NewSearchHandler(tx).Search,
+		"getDeliveryLogs":  NewLogHandler(tx).DeliveryLog,
 	}
 	ops := listQueryOperations(t)
 	for op, handler := range handlers {
