@@ -60,10 +60,10 @@ Chapters with a link are written. The rest are planned.
 - The servers compared: Postfix, Exim, Sendmail, OpenSMTPD, Dovecot, Stalwart,
   Maddy, Haraka, and the paid, proprietary services (Microsoft Exchange and
   Microsoft 365, Google Workspace)
-- Containers and bundles: wrapping the stack instead of fixing it. How
+- Containers and bundles: what packaging solves, and what stays the same. How
   docker-mailserver, mailcow, Mailu, Mail-in-a-Box, iRedMail and
   kubernetes-mail-server package Postfix, Dovecot and the rest, what that
-  fixes, and what is still inside
+  makes easier, and what is still inside
 - Efforts to modernise email: JMAP and others, what each solves, where each
   stands today, and how they relate to REST Mail
 - What REST Mail does differently

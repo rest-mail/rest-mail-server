@@ -29,6 +29,24 @@ Every chapter has the same five parts, in this order:
 
 A claim with no source is cut, or turned into a question for an issue.
 
+## Every problem is verified from outside
+
+Saying a problem exists is not enough, and neither is REST Mail's own word that
+it solves one. Each problem the guide describes, and each problem REST Mail
+claims to solve, is backed by someone else's evidence that it is real and how
+big it is:
+
+- **Measurements:** studies, internet-wide scans, adoption statistics.
+- **Reports from those who see the abuse:** blocklist operators such as
+  Spamhaus, abuse desks, industry groups such as M3AAWG.
+- **The requirements of the large providers:** for example Gmail's and Yahoo's
+  sender rules.
+- **Documented incidents.**
+
+Prefer recent sources, and give each one's date: an old figure is labelled as
+old. When no good evidence exists, say so plainly ("we have not found a
+current, reliable count of …") rather than estimating.
+
 ## Files
 
 - One folder per part (`how-it-goes-wrong/`, and so on), one Markdown file per
@@ -67,6 +85,12 @@ example `open-relay.workflow.json`).
 
 ## Tone
 
+- **Respectful, always.** Other projects are compared, never attacked. Postfix,
+  Dovecot, Exim and the projects that package them have served the internet
+  for decades, and many of their authors' fixes are what this guide explains.
+  Say what each does well, describe a limitation as a fact with its source, and
+  let REST Mail's approach make its own case. No sneering, no smears, no
+  loaded words.
 - Plain words, short paragraphs, one idea at a time.
 - Commands and settings are copyable, in code blocks, and tested.
 - Explain a term the first time it appears.

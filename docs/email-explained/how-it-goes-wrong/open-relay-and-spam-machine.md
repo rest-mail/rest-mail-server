@@ -28,6 +28,24 @@ internet holds you responsible for it.
 On the website it is interactive: it animates, and you can follow any path
 through it.*
 
+## How common is it?
+
+**Stolen logins are a long-running, current problem.** In 2012 Spamhaus wrote
+that spam sent "through compromised user accounts on legitimate mail servers
+that use SMTP AUTH authentication" had "grown precipitously" and was "a major
+vector for criminal spam"
+([Spamhaus, 2012](https://www.spamhaus.org/news/article/681/spam-through-compromised-passwords-can-it-be-stopped)).
+In 2024 it wrote that "the problem of spam through hacked accounts has been
+plaguing the internet for years", and it keeps a dedicated list, AuthBL, of
+addresses "known to host bots using brute force or stolen SMTP AUTH credentials
+to send spam, phishing and malware emails"
+([Spamhaus, 2024](https://www.spamhaus.org/resource-hub/email-security/a-misuse-of-spamhaus-blocklists-part-2-how-to-limit-outbound-spam/)).
+
+**Open relays are rarer than they were,** because modern servers refuse to
+relay by default. Each of the mistakes below brings one back. We have not found
+a current, reliable count of open relays on the internet. If you know of one,
+please open an issue.
+
 ## The rule every server has to get right
 
 When a client sends `RCPT TO:<someone@example.org>`, the server asks one
@@ -250,7 +268,11 @@ configure it correctly:
 - **Limits per account, on by default.** Each signed-in account has a
   sending rate limit (`451 4.7.1` when exceeded, #171), at most 100 recipients
   per message, and may only send from addresses it owns (`550` otherwise). The
-  REST API's send path has the same limits (#184).
+  REST API's send path has the same limits (#184). These are two of the
+  defences Spamhaus recommends to every mail service: "default per-account
+  limits on numbers of outgoing emails", and "disallowing sending from domains
+  whose mail you do not host"
+  ([Spamhaus, 2024](https://www.spamhaus.org/resource-hub/email-security/a-misuse-of-spamhaus-blocklists-part-2-how-to-limit-outbound-spam/)).
 
 The trade-off: an application that wants to send through REST Mail signs in
 with an app password, instead of being trusted for its address.
@@ -262,6 +284,8 @@ with an app password, instead of being trusted for its address.
   [SMTPD_ACCESS_README](https://www.postfix.org/SMTPD_ACCESS_README.html),
   [COMPATIBILITY_README](https://www.postfix.org/COMPATIBILITY_README.html),
   [BACKSCATTER_README](https://www.postfix.org/BACKSCATTER_README.html).
+- Spamhaus: [Spam through compromised passwords: can it be stopped? (2012)](https://www.spamhaus.org/news/article/681/spam-through-compromised-passwords-can-it-be-stopped),
+  [How to limit outbound spam (2024)](https://www.spamhaus.org/resource-hub/email-security/a-misuse-of-spamhaus-blocklists-part-2-how-to-limit-outbound-spam/).
 - docker-mailserver: [PERMIT_DOCKER](https://docker-mailserver.github.io/docker-mailserver/latest/config/environment/#permit_docker),
   [IPv6](https://docker-mailserver.github.io/docker-mailserver/latest/config/advanced/ipv6/).
 - Kubernetes: [preserving the client source IP](https://kubernetes.io/docs/tasks/access-application-cluster/create-external-load-balancer/#preserving-the-client-source-ip).
