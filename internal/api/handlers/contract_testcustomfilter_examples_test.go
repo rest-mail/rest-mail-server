@@ -31,7 +31,7 @@ func testCustomFilterNoDB(t *testing.T, body string) (rr *httptest.ResponseRecor
 				reached = true
 			}
 		}()
-		h.TestCustomFilter(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }

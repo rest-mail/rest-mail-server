@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"gorm.io/gorm"
@@ -257,57 +257,36 @@ func (h *TLSReportHandler) ReceiveReport(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-// ListReports returns TLS-RPT reports with optional domain_id filtering and pagination.
-// GET /api/v1/admin/tls-reports?domain_id=X&limit=50&offset=0
-func (h *TLSReportHandler) ListReports(w http.ResponseWriter, r *http.Request) {
-	if !validateIntegerQuery(w, r, 200, "limit", "offset") {
-		return
-	}
-	params := r.URL.Query()
-	if params.Has("policy_type") {
-		switch params.Get("policy_type") {
-		case "sts", "tlsa", "no-policy":
-		default:
-			respond.ValidationError(w, map[string]string{"policy_type": "must be one of sts, tlsa, no-policy"})
-			return
-		}
-	}
-	limit := 50
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 200 {
-		limit = l
-	}
-	offset := 0
-	if o, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && o >= 0 {
-		offset = o
-	}
+type listTLSReportsInput struct {
+	DomainID     *uint32 `query:"domain_id" minimum:"0"`
+	Limit        *int    `query:"limit" maximum:"200" message:"exceeds the maximum page size"`
+	Offset       *int    `query:"offset"`
+	PolicyType   *string `query:"policy_type" enums:"sts,tlsa,no-policy" message:"must be one of sts, tlsa, no-policy"`
+	ReportingOrg string  `query:"reporting_org"`
+}
 
+// listReports returns TLS-RPT reports with optional filters and pagination.
+func (h *TLSReportHandler) listReports(_ *http.Request, in listTLSReportsInput) (endpoint.List[TLSReport], error) {
+	limit, offset := pagination(in.Limit, in.Offset, 50, 200)
 	query := h.db.Model(&models.TLSReport{})
-
-	if domainID := r.URL.Query().Get("domain_id"); domainID != "" {
-		if id, err := strconv.ParseUint(domainID, 10, 32); err == nil {
-			query = query.Where("domain_id = ?", id)
-		} else {
-			respond.Error(w, http.StatusBadRequest, "bad_request", "Invalid domain_id")
-			return
-		}
+	if in.DomainID != nil {
+		query = query.Where("domain_id = ?", *in.DomainID)
 	}
-
-	if policyType := r.URL.Query().Get("policy_type"); policyType != "" {
-		query = query.Where("policy_type = ?", policyType)
+	if in.PolicyType != nil {
+		query = query.Where("policy_type = ?", *in.PolicyType)
 	}
-
-	if reportingOrg := r.URL.Query().Get("reporting_org"); reportingOrg != "" {
-		query = query.Where("reporting_org ILIKE ? ESCAPE '\\'", "%"+escapeLike(reportingOrg)+"%")
+	if in.ReportingOrg != "" {
+		query = query.Where("reporting_org ILIKE ? ESCAPE '\\'", "%"+escapeLike(in.ReportingOrg)+"%")
 	}
-
 	var total int64
 	query.Count(&total)
-
 	var reports []models.TLSReport
 	if err := query.Order("received_at DESC").Limit(limit).Offset(offset).Find(&reports).Error; err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to list TLS reports")
-		return
+		return endpoint.List[TLSReport]{}, err
 	}
-
-	respond.List(w, reports, &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total})
+	data := make([]TLSReport, len(reports))
+	for i, row := range reports {
+		data[i] = tlsReportOf(row)
+	}
+	return endpoint.List[TLSReport]{Data: data, Pagination: &respond.Pagination{Total: total, HasMore: int64(offset+limit) < total}}, nil
 }

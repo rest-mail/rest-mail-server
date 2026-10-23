@@ -13,13 +13,13 @@ import (
 	"github.com/restmail/restmail/internal/grants"
 )
 
-// TestMailboxUpdate_IgnoresNonAllowlistedColumns proves the mailbox update
+// TestMailboxUpdate_RefusesNonAllowlistedColumns proves the mailbox update
 // handler writes only vetted columns. Ownership/identity columns supplied in the
 // request body (domain_id, address, local_part) and the server-owned
-// quota_used_bytes must be ignored, while an allowlisted field (display_name) is
-// applied. This locks in the mass-assignment (CWE-915) protection: a future
+// quota_used_bytes are refused by binding, and nothing is written, including
+// the otherwise allowlisted display_name. This pins the mass-assignment protection: a future
 // change that threaded one of these into the update path would fail here.
-func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
+func TestMailboxUpdate_RefusesNonAllowlistedColumns(t *testing.T) {
 	db := openAuthzTestDB(t)
 	if err := db.AutoMigrate(&models.QuotaUsage{}); err != nil {
 		t.Skipf("mass-assignment test skipped: migrate QuotaUsage failed (%v)", err)
@@ -68,18 +68,18 @@ func TestMailboxUpdate_IgnoresNonAllowlistedColumns(t *testing.T) {
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
 
-	h.Update(rec, req)
+	mailboxRoutes(h).ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("Update status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("Update status = %d, want 422; body=%s", rec.Code, rec.Body.String())
 	}
 
 	var got models.Mailbox
 	if err := tx.First(&got, mb.ID).Error; err != nil {
 		t.Fatalf("reload mailbox: %v", err)
 	}
-	if got.DisplayName != "Updated" {
-		t.Errorf("display_name = %q, want the allowlisted update %q", got.DisplayName, "Updated")
+	if got.DisplayName != "Original" {
+		t.Errorf("display_name = %q, want unchanged %q", got.DisplayName, "Original")
 	}
 	if got.DomainID != owner.ID {
 		t.Errorf("domain_id = %d, want unchanged %d (ownership must not be mass-assignable)", got.DomainID, owner.ID)

@@ -129,7 +129,7 @@ func adminPipelineReq(method, target string, params map[string]string, body stri
 		rctx.URLParams.Add(k, v)
 	}
 	ctx := context.WithValue(context.Background(), chi.RouteCtxKey, rctx)
-	r := httptest.NewRequest(method, target, strings.NewReader(body))
+	r := httptest.NewRequest(method, "/api/v1/admin"+target, strings.NewReader(body))
 	return r.WithContext(ctx)
 }
 
@@ -157,7 +157,7 @@ func TestPipelineCreate_InvalidSieveRejected(t *testing.T) {
 	body := `{"domain_id":` + uintToStr(dom.ID) + `,"direction":"inbound","active":true,"filters":` + missingRequireFilters + `}`
 
 	rr := httptest.NewRecorder()
-	h.CreatePipeline(rr, adminPipelineReq(http.MethodPost, "/pipelines", nil, body))
+	pipelineRoutes(h).ServeHTTP(rr, adminPipelineReq(http.MethodPost, "/pipelines", nil, body))
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for an invalid embedded Sieve, got %d (%s)", rr.Code, rr.Body.String())
@@ -185,7 +185,7 @@ func TestPipelineCreate_ValidSievePersisted(t *testing.T) {
 	body := `{"domain_id":` + uintToStr(dom.ID) + `,"direction":"inbound","active":true,"filters":` + validSieveFilters + `}`
 
 	rr := httptest.NewRecorder()
-	h.CreatePipeline(rr, adminPipelineReq(http.MethodPost, "/pipelines", nil, body))
+	pipelineRoutes(h).ServeHTTP(rr, adminPipelineReq(http.MethodPost, "/pipelines", nil, body))
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201 for a valid embedded Sieve, got %d (%s)", rr.Code, rr.Body.String())
@@ -223,7 +223,7 @@ func TestPipelineUpdate_InvalidSieveRejected(t *testing.T) {
 	body := `{"filters":` + missingRequireFilters + `}`
 
 	rr := httptest.NewRecorder()
-	h.UpdatePipeline(rr, adminPipelineReq(http.MethodPatch, "/pipelines/"+uintToStr(seed.ID), params, body))
+	pipelineRoutes(h).ServeHTTP(rr, adminPipelineReq(http.MethodPatch, "/pipelines/"+uintToStr(seed.ID), params, body))
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for an invalid embedded Sieve on update, got %d (%s)", rr.Code, rr.Body.String())

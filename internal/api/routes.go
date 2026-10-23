@@ -524,11 +524,13 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 	// Provisioning uses the same live mailboxes:write check for sessions and
 	// explicitly scoped API keys. Other identity and credential changes below
 	// still require a password-authenticated session.
-	r.With(apiKeys.Authenticate(middleware.JWTMiddleware(jwtService)),
+	audited := describedAudit(auditLog)
+	accountH.RegisterCreate(endpoint.Routes{Registry: registry, Router: r.With(
+		apiKeys.Authenticate(middleware.JWTMiddleware(jwtService)),
 		middleware.RejectStaleSessions(sessionCurrent), middleware.SetupDone,
-		middleware.CSRF(), middleware.MaxBodyBytes(cfg.APIMaxBodyBytes),
-		auditLog(handlers.ActionAccountsCreate, middleware.AuditBodyFields("address"), middleware.AuditFailuresOnly())).
-		Post("/api/v1/accounts", accountH.CreateAccount)
+		middleware.CSRF(), middleware.MaxBodyBytes(cfg.APIMaxBodyBytes))}.
+		Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap),
+		audited(handlers.ActionAccountsCreate, middleware.AuditBodyFields("address"), middleware.AuditFailuresOnly()))
 
 	// ═══════════════════════════════════════════════════════════════
 	// Authenticated routes that need a person: a session from signing in
@@ -569,6 +571,9 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.SetupDone)
+			person := endpoint.Routes{Router: r, Registry: registry}.
+				Describing(describedPersonSession, describedCSRF, describedBodyCap, describedSetupDone)
+			personChecks := handlers.SessionRouteChecks{Throttle: describedThrottle(authThrottle), Audit: audited}
 
 			// Accounts (#347). Creating one needs mailboxes:write covering its
 			// domain, and makes the creator its owner; the account, its grant
@@ -580,28 +585,18 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			// guess consumes the same budget as a failed login and cannot be
 			// used to sidestep it. Unlinking removes the caller's own grants on
 			// the account.
-			r.With(authThrottle, auditLog("accounts.link", middleware.AuditBodyFields("address"))).Post("/api/v1/accounts/link", accountH.LinkAccount)
-			r.With(auditLog("accounts.unlink")).Delete("/api/v1/accounts/{id}", accountH.UnlinkAccount)
+			accountH.RegisterLinks(person, personChecks)
 
 			// Credentials (#344): an account's app passwords, its own or one it
 			// holds mailbox:manage on. The secret is in the answer to creating
 			// one, once, and never in the audit log. Creating one takes the
 			// session's current password, so it is throttled like login, with
 			// the same limiter: a wrong one spends login's budget.
-			r.Get("/api/v1/accounts/{id}/credentials", credentialH.List)
-			r.With(authThrottle, auditLog("credentials.create", middleware.AuditBodyFields("name"),
-				middleware.AuditResponseField("id", "credential_id"), middleware.AuditResponseField("public_id", "public_id"))).
-				Post("/api/v1/accounts/{id}/credentials", credentialH.Create)
-			r.With(auditLog(middleware.AuditActionCredentialsRevoke)).Delete("/api/v1/accounts/{id}/credentials/{credential_id}", credentialH.Revoke)
-
+			//
 			// API keys are distinct from mail-client app passwords. Their
 			// permissions can only be delegated by a two-factor session, never
 			// by another key; handlers audit changes in their transactions.
-			r.Get("/api/v1/accounts/{id}/api-keys", credentialH.ListAPIKeys)
-			r.With(authThrottle, auditLog(handlers.ActionAPIKeyCreate, middleware.AuditFailuresOnly())).
-				Post("/api/v1/accounts/{id}/api-keys", credentialH.CreateAPIKey)
-			r.With(auditLog(handlers.ActionAPIKeyRevoke, middleware.AuditFailuresOnly())).
-				Delete("/api/v1/accounts/{id}/api-keys/{credential_id}", credentialH.RevokeAPIKey)
+			credentialH.Register(person, personChecks)
 
 			// Push devices (#363): the phones this session registers, only when
 			// push is configured; otherwise there are no such routes, and the
@@ -635,8 +630,8 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(authThrottle, auditLog("auth.protocol_sign_in", middleware.AuditBodyFields("protocol"))).
 			Post("/api/v1/auth/protocol-sign-in", credentialH.ProtocolSignIn)
 
-		r.Get("/api/v1/accounts", accountH.ListAccounts)
-		r.Get("/api/v1/accounts/{id}", accountH.GetAccount)
+		accountH.RegisterReads(endpoint.Routes{Router: r, Registry: registry}.
+			Describing(describedMailSession, describedSetupDone, describedCSRF, describedBodyCap))
 
 		// Folders
 		r.Get("/api/v1/accounts/{id}/folders", messageH.ListFolders)
@@ -749,34 +744,17 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 			return middleware.RequireCapability(held, capability, handlers.AliasScopeOf(db))
 		}
 
-		// Roles and capabilities, for granting
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/roles", grantH.ListRoles)
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/capabilities", grantH.ListCapabilities)
-
-		// Grants (#345): which account holds which role at which scope; what
-		// makes an account an admin. Changing them needs users:write; the
-		// handler adds that the session signed in with 2FA and that the caller
-		// holds everything it grants or removes, and records each change in the
-		// audit log in the change's own transaction.
-		r.With(needs(middleware.CapUsersRead)).Get("/api/v1/admin/grants", grantH.List)
-		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Post("/api/v1/admin/grants", grantH.Create)
-		r.With(middleware.SessionOnly, needs(middleware.CapUsersWrite)).Delete("/api/v1/admin/grants/{id}", grantH.Delete)
-
-		// Escalation (#346): every admin sees its own grants, and switches its
-		// own eligible ones on for a while. Holding the eligible grant is what
-		// allows it, so no capability is checked here; the handler answers 404
-		// for anyone else's grant. Switching on, and making a grant eligible,
-		// check a fresh second factor in the body, so they share login's
-		// throttle: they are a way to guess codes too.
-		r.With(middleware.SessionOnly).Get("/api/v1/admin/grants/mine", grantH.Mine)
-		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/activate", grantH.Activate)
-		r.With(middleware.SessionOnly).Post("/api/v1/admin/grants/{id}/deactivate", grantH.Deactivate)
-		r.With(middleware.SessionOnly, authThrottle).Post("/api/v1/admin/grants/{id}/make-eligible", grantH.MakeEligible)
-
 		// The routes registered with their types, and what this group's middleware
 		// adds to each of them (#669).
 		admin := endpoint.Routes{Router: r, Registry: registry}.
 			Describing(describedAdminSession, describedSetupDone, describedCSRF, describedBodyCap)
+
+		// Roles, capabilities, grants and escalation (#644).
+		grantH.Register(admin, handlers.GrantRouteChecks{
+			At:           describedCapability(needs),
+			SessionOnly:  endpoint.Middleware{Wrap: middleware.SessionOnly, Describes: describedSessionOnly},
+			AuthThrottle: endpoint.Middleware{Wrap: authThrottle, Describes: describedAuthThrottle},
+		})
 
 		// Dashboard stats — every admin role holds domains:read
 		statsH.Register(admin, describedCapability(needs))
@@ -790,76 +768,35 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 
 		// Accounts (mailboxes). Creating one is POST /api/v1/accounts, the same
 		// for everyone; deleting one removes its grants under the grants rules.
-		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes", mailboxH.List)
-		r.With(needsOnMailbox(middleware.CapMailboxesRead)).Get("/api/v1/admin/mailboxes/{id}", mailboxH.Get)
-		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/mailboxes/{id}", mailboxH.Update)
-		r.With(needsOnMailbox(middleware.CapMailboxesDel)).Delete("/api/v1/admin/mailboxes/{id}", mailboxH.Delete)
-		// Signing an account out everywhere is a change to it, like a new
-		// password: mailboxes:write on it.
-		r.With(needsOnMailbox(middleware.CapMailboxesWrite)).Delete("/api/v1/admin/mailboxes/{id}/sessions", mailboxH.EndSessions)
-
-		// Aliases (mailbox routing config → mailboxes:* capabilities)
-		r.With(needsOnList(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases", aliasH.List)
-		r.With(needsOnList(middleware.CapMailboxesWrite)).Post("/api/v1/admin/aliases", aliasH.Create)
-		r.With(needsOnAlias(middleware.CapMailboxesRead)).Get("/api/v1/admin/aliases/{id}", aliasH.Get)
-		r.With(needsOnAlias(middleware.CapMailboxesWrite)).Patch("/api/v1/admin/aliases/{id}", aliasH.Update)
-		r.With(needsOnAlias(middleware.CapMailboxesDel)).Delete("/api/v1/admin/aliases/{id}", aliasH.Delete)
+		mailboxH.Register(admin, handlers.MailboxRouteChecks{
+			OnList: describedCapability(needsOnList), OnMailbox: describedMailboxCapability(needsOnMailbox),
+		})
+		aliasH.Register(admin, handlers.AliasRouteChecks{
+			OnList: describedCapability(needsOnList), OnAlias: describedAliasCapability(needsOnAlias),
+		})
 
 		// Pipelines
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines", pipelineH.ListPipelines)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/pipelines", pipelineH.CreatePipeline)
-		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/pipelines/{id}", pipelineH.UpdatePipeline)
-		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/pipelines/{id}", pipelineH.DeletePipeline)
-		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/pipelines/test", pipelineH.TestPipeline)
-		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/pipelines/test-filter", pipelineH.TestFilter)
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/pipelines/logs", pipelineH.ListPipelineLogs)
+		pipelineH.Register(admin, handlers.PipelineRouteChecks{At: describedCapability(needs), TestThrottle: endpoint.Middleware{Wrap: pipelineTestThrottle, Describes: describedPipelineTestThrottle}})
 
 		// Pipeline observability (PR5) — analytics funnel + per-message trace.
 		// Gated by the dedicated observability:read capability (seeded into the
 		// admin and readonly roles; satisfied by superadmin "*"). The existing
 		// pipelines/logs read above keeps its pipelines:read gate — its authz is
 		// unchanged, only its data source was repointed to message_traces.
-		r.With(needs(middleware.CapObservabilityRead)).Get("/api/v1/admin/pipelines/analytics", statsH.GetPipelineAnalytics)
-		r.With(needs(middleware.CapObservabilityRead)).Get("/api/v1/admin/messages/{id}/trace", pipelineH.GetMessageTrace)
-
-		// Custom filters (pipeline building blocks → pipelines:* capabilities)
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/custom-filters", pipelineH.ListCustomFilters)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters", pipelineH.CreateCustomFilter)
-		r.With(needs(middleware.CapPipelinesWrite)).Post("/api/v1/admin/custom-filters/validate", pipelineH.ValidateCustomFilter)
-		r.With(needs(middleware.CapPipelinesRead)).Get("/api/v1/admin/custom-filters/{id}", pipelineH.GetCustomFilter)
-		r.With(needs(middleware.CapPipelinesWrite)).Patch("/api/v1/admin/custom-filters/{id}", pipelineH.UpdateCustomFilter)
-		r.With(needs(middleware.CapPipelinesDel)).Delete("/api/v1/admin/custom-filters/{id}", pipelineH.DeleteCustomFilter)
-		r.With(needs(middleware.CapPipelinesWrite), pipelineTestThrottle).Post("/api/v1/admin/custom-filters/{id}/test", pipelineH.TestCustomFilter)
+		statsH.RegisterPipelineAnalytics(admin, describedCapability(needs)(middleware.CapObservabilityRead))
 
 		// Queue management
 		queueH.Register(admin, handlers.QueueRouteChecks{At: describedCapability(needs)})
 
-		// Sender allowlist/blocklist (domain-scoped → domains:* capabilities)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/allowlist", senderRuleH.ListAllowlist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/allowlist", senderRuleH.AddToAllowlist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/allowlist/{eid}", senderRuleH.RemoveFromAllowlist)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/blocklist", senderRuleH.ListBlocklist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Post("/api/v1/admin/domains/{id}/blocklist", senderRuleH.AddToBlocklist)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/blocklist/{eid}", senderRuleH.RemoveFromBlocklist)
-
-		// Recipients the domain's mail is no longer sent to after a hard bounce (#141)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/suppressions", suppressionH.List)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/suppressions/{sid}", suppressionH.Delete)
-
-		// MTA-STS policy management (domain-scoped → domains:* capabilities)
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/mta-sts", mtastsH.GetPolicy)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/mta-sts", mtastsH.SetPolicy)
-		r.With(needsOnDomain(middleware.CapDomainsWrite)).Delete("/api/v1/admin/domains/{id}/mta-sts", mtastsH.DeletePolicy)
-
-		// Outbound transport: direct MX or an SMTP relay (#143). Setting it takes
-		// domains:write at "*": the relay host is dialled from inside the
-		// installation and may be private, so only the operator chooses it, never
-		// a domain-scoped admin.
-		r.With(needsOnDomain(middleware.CapDomainsRead)).Get("/api/v1/admin/domains/{id}/relay", relayH.Get)
-		r.With(needs(middleware.CapDomainsWrite)).Put("/api/v1/admin/domains/{id}/relay", relayH.Set)
-
-		// TLS-RPT reports (domain deliverability telemetry → domains:read)
-		r.With(needs(middleware.CapDomainsRead)).Get("/api/v1/admin/tls-reports", tlsrptH.ListReports)
+		policyChecks := handlers.DomainPolicyRouteChecks{
+			OnDomain: describedCapability(needsOnDomain),
+			At:       describedCapability(needs),
+		}
+		senderRuleH.Register(admin, policyChecks)
+		suppressionH.Register(admin, policyChecks)
+		mtastsH.Register(admin, policyChecks)
+		relayH.Register(admin, policyChecks)
+		tlsrptH.Register(admin, policyChecks)
 
 		// DKIM and certificates retain their existing capability scopes.
 		dkimH.Register(admin, handlers.DKIMRouteChecks{
@@ -881,13 +818,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		})
 
 		// Test endpoints (non-production only): "*" itself
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/send", testH.SendTestEmail)
-		r.With(needs(grants.Wildcard)).Get("/api/v1/admin/test/verify", testH.VerifyDelivery)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/probe", testH.ProbeServices)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/reset", testH.ResetTestData)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/seed", testH.SeedTestData)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot", testH.Snapshot)
-		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
+		testH.Register(admin, handlers.TestRouteChecks{At: describedCapability(needs)})
 	})
 
 	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH, Registry: registry}

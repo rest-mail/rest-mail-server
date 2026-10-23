@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/restmail/restmail/internal/api/respond"
+	"github.com/restmail/restmail/internal/api/endpoint"
 )
 
 // Pipeline-observability analytics (PR5). This endpoint turns the durable
@@ -119,13 +119,12 @@ type seriesSum struct {
 
 // GetPipelineAnalytics returns the windowed pipeline funnel from pipeline_rollups.
 // GET /api/v1/admin/pipelines/analytics?window=24h  (or ?since=RFC3339)
-func (h *StatsHandler) GetPipelineAnalytics(w http.ResponseWriter, r *http.Request) {
+func (h *StatsHandler) getPipelineAnalytics(r *http.Request, _ pipelineAnalyticsRequest) (PipelineAnalyticsResponse, error) {
 	win := parseAnalyticsWindow(r, time.Now())
 
 	series, err := h.rollupSeries(win.Since)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to aggregate pipeline analytics")
-		return
+		return PipelineAnalyticsResponse{}, endpoint.Refuse(http.StatusInternalServerError, "internal_error", "Failed to aggregate pipeline analytics")
 	}
 
 	resp := PipelineAnalyticsResponse{
@@ -139,7 +138,7 @@ func (h *StatsHandler) GetPipelineAnalytics(w http.ResponseWriter, r *http.Reque
 		resp.LiveTotals = &f
 	}
 
-	respond.Data(w, http.StatusOK, resp)
+	return resp, nil
 }
 
 // parseAnalyticsWindow resolves the look-back window from ?since (RFC3339) or
@@ -302,4 +301,13 @@ func buildFunnel(series []seriesSum) PipelineFunnel {
 		f.TopRejectReasons = f.TopRejectReasons[:maxTopRejectReasons]
 	}
 	return f
+}
+
+type pipelineAnalyticsRequest struct {
+	Since  string `query:"since"`
+	Window string `query:"window"`
+}
+
+func (h *StatsHandler) RegisterPipelineAnalytics(rs endpoint.Routes, capability endpoint.Middleware) {
+	endpoint.Register(rs, endpoint.Operation{Method: http.MethodGet, Path: "/api/v1/admin/pipelines/analytics", OperationID: "getPipelineAnalytics", Summary: "Windowed pipeline analytics", Tags: []string{"Admin: Pipelines"}, Middleware: []endpoint.Middleware{capability}}, h.getPipelineAnalytics)
 }

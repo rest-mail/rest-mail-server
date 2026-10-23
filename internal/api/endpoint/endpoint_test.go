@@ -24,8 +24,9 @@ type widgetPath struct {
 }
 
 type widgetQuery struct {
-	Limit *int   `query:"limit"`
-	Trace string `header:"X-Trace"`
+	Limit  *int    `query:"limit"`
+	Colour *string `query:"colour" enums:"red,blue"`
+	Trace  string  `header:"X-Trace"`
 }
 
 type createWidget struct {
@@ -136,6 +137,10 @@ func TestRegisteredRoutesAnswer(t *testing.T) {
 		{"GET", "/widgets?limit=1", "", []string{"X-Trace", "t1"}, 200, `{"data":[{"id":1,"name":"t1"}],"pagination":{"has_more":false,"total":1}}`},
 		// The request type's rules are enforced before the handler runs, field by field.
 		{"GET", "/widgets?limit=x", "", nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"limit":"must be an integer"}}}}`},
+		// A blank number is an omitted one.
+		{"GET", "/widgets?limit=", "", nil, 200, `{"data":[{"id":1,"name":""},{"id":2,"name":""}],"pagination":{"has_more":false,"total":2}}`},
+		// A blank string is a value, which its enum refuses.
+		{"GET", "/widgets?colour=", "", nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"colour":"must be one of \"red\" or \"blue\""}}}}`},
 		{"POST", "/widgets", `{"name":"far too long"}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"name":"must be at most 8 characters"}}}}`},
 		{"POST", "/widgets", `{"name":"n","colour":"red"}`, nil, 422, `{"error":{"code":"validation_failed","message":"Request body failed validation","details":{"fields":{"colour":"not allowed"}}}}`},
 		{"POST", "/widgets", `{"name":"new"}`, nil, 201, `{"data":{"id":9,"name":"new"}}`},
@@ -311,5 +316,56 @@ func TestMiddlewareDescribesItself(t *testing.T) {
 	}
 	if got, _ := json.Marshal(parsed.Paths["/open"]["get"].Security); string(got) != `[]` {
 		t.Errorf("an operation's own security wins: %s", got)
+	}
+}
+
+// A create-or-replace keeps the response envelope identical on creation and replacement,
+// each status declared. A refusal and binding failure still use the normal path.
+func TestRegisterUpsertResponse(t *testing.T) {
+	r := chi.NewRouter()
+	reg := NewRegistry()
+	Register(Routes{Router: r, Registry: reg}, Operation{Method: http.MethodPut, Path: "/widgets", OperationID: "saveWidget",
+		Errors: []int{http.StatusNotFound}, Status: http.StatusOK, SuccessStatuses: []int{http.StatusCreated}},
+		func(_ *http.Request, in createWidget) (Status[widget], error) {
+			if in.Name == "missing" {
+				return Status[widget]{}, Refuse(http.StatusNotFound, "not_found", "Widget not found")
+			}
+			code := http.StatusOK
+			if in.Name == "new" {
+				code = http.StatusCreated
+			}
+			return Status[widget]{Code: code, Value: widget{ID: 7, Name: in.Name}}, nil
+		})
+	for _, tc := range []struct {
+		body   string
+		status int
+		want   string
+	}{
+		{`{"name":"new"}`, http.StatusCreated, `{"data":{"id":7,"name":"new"}}`},
+		{`{"name":"old"}`, http.StatusOK, `{"data":{"id":7,"name":"old"}}`},
+		{`{"name":"missing"}`, http.StatusNotFound, `{"error":{"code":"not_found","message":"Widget not found"}}`},
+		{`{"name":"too long name"}`, http.StatusUnprocessableEntity, ""},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			r.ServeHTTP(rr, httptest.NewRequest(http.MethodPut, "/widgets", strings.NewReader(tc.body)))
+			if rr.Code != tc.status || (tc.want != "" && strings.TrimSpace(rr.Body.String()) != tc.want) {
+				t.Fatalf("got %d %s, want %d %s", rr.Code, rr.Body, tc.status, tc.want)
+			}
+		})
+	}
+	for _, status := range []int{http.StatusOK, http.StatusCreated} {
+		found := false
+		for _, response := range reg.Endpoints()[0].Responses {
+			if response.Status == status {
+				found = true
+				if response.Type != oapifly.TypeOf[Data[widget]]() {
+					t.Fatalf("%d response type = %v", status, response.Type)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("%d success is not described", status)
+		}
 	}
 }

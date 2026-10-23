@@ -99,7 +99,7 @@ func TestCustomFilterGet_DocumentedExamples(t *testing.T) {
 		ctx.URLParams.Add("id", fmt.Sprint(id))
 		r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, ctx))
 		rr := httptest.NewRecorder()
-		NewPipelineHandler(tx, nil, filters.JSSidecar{}).GetCustomFilter(rr, r)
+		pipelineRoutes(NewPipelineHandler(tx, nil, filters.JSSidecar{})).ServeHTTP(rr, r)
 		return rr
 	}
 	rr := lookup(missing)

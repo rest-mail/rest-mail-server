@@ -1826,12 +1826,6 @@ paths:
       responses:
         "204":
           description: Revoked
-        "400":
-          description: The credential id is not a number (`bad_request`)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -4677,6 +4671,10 @@ paths:
                   destination_address: admin@restmail.test
               # JSON, but an array where the request is an object: refused
               # when it is read, before any field is looked at.
+              source_wrong_type:
+                value:
+                  source_address: 5
+                  destination_address: admin@restmail.test
               body_array:
                 value: []
       responses:
@@ -4740,6 +4738,14 @@ paths:
                       details:
                         fields:
                           source_address: required
+                source_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          source_address: must be a string
                 source_invalid:
                   value:
                     error:
@@ -4944,6 +4950,12 @@ paths:
               # before any field is read (#388).
               body_array:
                 value: []
+              active_wrong_type:
+                value: {domain_id: 1, direction: inbound, filters: [], active: "yes"}
+
+              null_body:
+                value: null
+
       responses:
         "201":
           description: Pipeline created
@@ -4981,9 +4993,9 @@ paths:
           description: >-
             `bad_request` when the body does not decode as the request: not
             JSON, an array, a string, a number or a boolean rather than an
-            object, or a field of the wrong JSON type. It is refused before any
-            field is validated; a `null` body decodes as an empty one and gets
-            the 422. Filters that pass validation are also refused with a 400:
+            object (including `null`). Field types and unknown fields are
+            checked by binding and answer 422 `validation_failed` with field
+            details. Filters that pass validation are also refused with a 400:
             `invalid_sieve` for a Sieve script that does not install,
             `unsupported_filter` for a filter configured in a way it does not
             support.
@@ -4997,6 +5009,12 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
+                null_body:
+                  value:
+                    error:
+                      code: bad_request
+                      message: Invalid request body
+
         "422":
           description: Request body failed validation
           content:
@@ -5020,6 +5038,15 @@ paths:
                       details:
                         fields:
                           filters: must be an array of filter objects
+
+                active_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          active: must be a boolean
 
   /api/v1/admin/pipelines/{id}:
     parameters:
@@ -5159,6 +5186,9 @@ paths:
               email_missing:
                 value:
                   pipeline_id: 1
+              pipeline_id_wrong_type:
+                value: {pipeline_id: "1", email: {}}
+
       responses:
         "200":
           description: Pipeline execution result
@@ -5219,6 +5249,15 @@ paths:
                         fields:
                           email: required
 
+                pipeline_id_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          pipeline_id: must be a non-negative integer
+
   /api/v1/admin/pipelines/test-filter:
     post:
       operationId: testFilter
@@ -5274,6 +5313,9 @@ paths:
               # JSON but not a request object: refused before any filter is made.
               invalid_body:
                 value: []
+              filter_name_wrong_type:
+                value: {filter_name: 1, config: {}, email: {}}
+
       responses:
         "200":
           description: Filter execution result
@@ -5313,14 +5355,23 @@ paths:
                         fields:
                           filter_name: required
                           email: required
+                filter_name_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          filter_name: must be a string
+
         "400":
           description: >-
             `bad_request` when the body does not decode as the request: empty,
             not JSON, an array, a string, a number or a boolean rather than an
-            object, or a `filter_name` or `email` of the wrong JSON type. It is
-            refused before the required fields are checked and before any
-            filter is made; `{}` and a `null` body decode as empty ones and get
-            a 422 instead. A body that decodes is also refused with a 400,
+            object (including `null`). A field of the wrong JSON type or an
+            unknown field answers 422 `validation_failed` with field details.
+            An empty object also gets 422 for the missing fields before any
+            filter is made. A body that decodes is also refused with a 400,
             `filter_error`, when the named filter cannot be made from its
             config or fails on the email.
           content:
@@ -5480,6 +5531,9 @@ paths:
                         return { action: "continue" };
                       }
                   enabled: false
+              enabled_wrong_type:
+                value: {domain_id: 1, name: test, filter_type: action, direction: inbound, config: {}, enabled: "false"}
+
       responses:
         "201":
           description: Custom filter created
@@ -5537,6 +5591,15 @@ paths:
                       details:
                         fields:
                           filter_type: must be action or transform
+
+                enabled_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          enabled: must be a boolean
 
   /api/v1/admin/custom-filters/validate:
     post:
@@ -8114,6 +8177,8 @@ paths:
       responses:
         "204":
           description: Removed
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8203,7 +8268,7 @@ paths:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
         "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
+          description: A body that is not JSON or not an object
           content:
             application/json:
               schema:
@@ -8258,12 +8323,8 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
-        "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8316,11 +8377,13 @@ paths:
                   data:
                     $ref: "#/components/schemas/GrantEscalation"
         "400":
-          description: Not a grant id (invalid_id), or a body that is not JSON
+          description: A body that is not JSON or not an object
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -8765,11 +8828,6 @@ paths:
                     error:
                       code: bad_request
                       message: Invalid request body
-                port_wrong_type:
-                  value:
-                    error:
-                      code: bad_request
-                      message: Invalid request body
         "422":
           description: Request body failed validation
           content:
@@ -8777,6 +8835,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationErrorResponse"
               examples:
+                port_wrong_type:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body failed validation
+                      details:
+                        fields:
+                          port: must be an integer
                 transport_missing:
                   value:
                     error:
@@ -8865,14 +8931,12 @@ paths:
             type: integer
             default: 0
       responses:
-        "400":
-          description: Invalid domain_id
+        "422":
+          description: Request query failed validation, including a malformed domain_id
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
+                $ref: "#/components/schemas/ValidationErrorResponse"
         "200":
           description: TLS-RPT reports
           content:
@@ -8955,7 +9019,7 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   # ═══════════════════════════════════════════════════════════════
-  # Admin: Testing (non-production only; admin role, no capability)
+  # Admin: Testing (non-production only; requires wildcard capability)
   # ═══════════════════════════════════════════════════════════════
   /api/v1/admin/test/send:
     post:
@@ -8994,7 +9058,7 @@ paths:
                   subject: Test
                   body: A test message.
               # No sender: refused before any mailbox is looked up. The
-              # refusal names both addresses whenever either is missing.
+              # refusal names only the missing sender.
               from_missing:
                 value:
                   to: admin@restmail.test
@@ -9049,8 +9113,7 @@ paths:
                       message: Request body failed validation
                       details:
                         fields:
-                          from: sender address required
-                          to: recipient address required
+                          from: required
 
   /api/v1/admin/test/verify:
     get:

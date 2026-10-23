@@ -1,0 +1,265 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DMARC: does SPF or DKIM pass for the domain in From:?",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/dmarc.html",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "The message"
+        },
+        "external": {
+          "label": "DNS"
+        },
+        "security": {
+          "label": "Checks"
+        },
+        "frontend": {
+          "label": "What the receiver does"
+        },
+        "messagebus": {
+          "label": "Reports"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "check",
+      "label": "Authenticate and align"
+    },
+    {
+      "id": "fail",
+      "label": "Neither aligned: the domain's policy",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "inputs",
+      "label": "Results so far",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "align",
+      "label": "Alignment",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "security"
+    },
+    {
+      "id": "outcome",
+      "label": "Outcome",
+      "fromCol": 4,
+      "toCol": 5
+    }
+  ],
+  "mainPath": [
+    "from",
+    "record",
+    "spf",
+    "dkim",
+    "pass",
+    "report"
+  ],
+  "nodes": [
+    {
+      "id": "from",
+      "lane": "check",
+      "col": 0,
+      "type": "backend",
+      "label": "From: example.com",
+      "sublabel": "the address the reader sees"
+    },
+    {
+      "id": "record",
+      "lane": "check",
+      "col": 1,
+      "type": "external",
+      "label": "_dmarc.example.com",
+      "sublabel": "p=, rua=, adkim, aspf"
+    },
+    {
+      "id": "spf",
+      "lane": "check",
+      "col": 2,
+      "type": "security",
+      "label": "SPF pass, aligned?",
+      "sublabel": "MAIL FROM domain = From:",
+      "icon": "decision"
+    },
+    {
+      "id": "dkim",
+      "lane": "check",
+      "col": 3,
+      "type": "security",
+      "label": "DKIM pass, aligned?",
+      "sublabel": "d= domain = From:",
+      "icon": "decision"
+    },
+    {
+      "id": "pass",
+      "lane": "check",
+      "col": 4,
+      "type": "frontend",
+      "label": "DMARC pass",
+      "sublabel": "deliver normally",
+      "icon": "success"
+    },
+    {
+      "id": "report",
+      "lane": "check",
+      "col": 5,
+      "type": "messagebus",
+      "label": "Daily report",
+      "sublabel": "to the rua address"
+    },
+    {
+      "id": "which",
+      "lane": "fail",
+      "col": 3,
+      "type": "security",
+      "label": "What does p= ask?",
+      "icon": "decision"
+    },
+    {
+      "id": "none",
+      "lane": "fail",
+      "col": 2,
+      "type": "frontend",
+      "label": "p=none",
+      "sublabel": "change nothing, report"
+    },
+    {
+      "id": "quarantine",
+      "lane": "fail",
+      "col": 4,
+      "type": "frontend",
+      "label": "p=quarantine",
+      "sublabel": "spam folder, or held"
+    },
+    {
+      "id": "reject",
+      "lane": "fail",
+      "col": 5,
+      "type": "frontend",
+      "label": "p=reject",
+      "sublabel": "550, unless other evidence",
+      "icon": "failure"
+    }
+  ],
+  "edges": [
+    {
+      "id": "lookup",
+      "from": "from",
+      "to": "record",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "try-spf",
+      "from": "record",
+      "to": "spf",
+      "role": "main",
+      "variant": "default"
+    },
+    {
+      "id": "try-dkim",
+      "from": "spf",
+      "to": "dkim",
+      "label": "no",
+      "role": "main",
+      "variant": "dashed"
+    },
+    {
+      "id": "aligned",
+      "from": "dkim",
+      "to": "pass",
+      "label": "yes",
+      "role": "main",
+      "variant": "emphasis"
+    },
+    {
+      "id": "count",
+      "from": "pass",
+      "to": "report",
+      "role": "main",
+      "variant": "dashed"
+    },
+    {
+      "id": "spf-yes",
+      "from": "spf",
+      "to": "pass",
+      "label": "yes",
+      "role": "branch",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "top"
+    },
+    {
+      "id": "neither",
+      "from": "dkim",
+      "to": "which",
+      "label": "no",
+      "role": "branch",
+      "variant": "security"
+    },
+    {
+      "id": "ask-none",
+      "from": "which",
+      "to": "none",
+      "label": "none",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "ask-quarantine",
+      "from": "which",
+      "to": "quarantine",
+      "label": "quarantine",
+      "role": "branch",
+      "variant": "default"
+    },
+    {
+      "id": "ask-reject",
+      "from": "which",
+      "to": "reject",
+      "label": "reject",
+      "role": "branch",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Alignment",
+      "items": [
+        "One aligned pass is enough: SPF or DKIM",
+        "Relaxed (default): same organisation; strict: same name"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Mailing lists and p=reject (RFC 9989 §7.4)",
+      "items": [
+        "Lists change messages and send from their own servers: DMARC fails",
+        "Domains whose users post to lists SHOULD NOT publish p=reject",
+        "Receivers SHOULD NOT reject on the policy alone (§5.4)"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Start safely",
+      "items": [
+        "p=none with rua for a month, read the reports",
+        "then p=quarantine, then decide about p=reject"
+      ]
+    }
+  ]
+}

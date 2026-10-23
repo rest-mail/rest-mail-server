@@ -1,0 +1,54 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Checking SPF: is this server allowed to send for example.com?",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/spf.html",
+    "legend": {
+      "entries": {
+        "backend": { "label": "The receiving server" },
+        "external": { "label": "DNS lookups" },
+        "security": { "label": "Evaluation" },
+        "frontend": { "label": "Results" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "eval", "label": "Evaluate, left to right" },
+    { "id": "result", "label": "The result" }
+  ],
+  "phases": [
+    { "id": "lookup", "label": "Find the record", "fromCol": 0, "toCol": 1 },
+    { "id": "match", "label": "First match decides", "fromCol": 2, "toCol": 4, "variant": "security" },
+    { "id": "use", "label": "Use it", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["conn", "txt", "terms", "include", "matched", "dmarc"],
+  "nodes": [
+    { "id": "conn", "lane": "eval", "col": 0, "type": "backend", "label": "Connection", "sublabel": "203.0.113.7, MAIL FROM example.com" },
+    { "id": "txt", "lane": "eval", "col": 1, "type": "external", "label": "TXT example.com", "sublabel": "v=spf1 mx ip4:… include:… -all" },
+    { "id": "terms", "lane": "eval", "col": 2, "type": "security", "label": "mx, ip4, a", "sublabel": "does the address match?" },
+    { "id": "include", "lane": "eval", "col": 3, "type": "external", "label": "include:", "sublabel": "check another record" },
+    { "id": "matched", "lane": "eval", "col": 4, "type": "security", "label": "Qualifier", "sublabel": "+ pass, - fail, ~ softfail", "icon": "decision" },
+    { "id": "dmarc", "lane": "eval", "col": 5, "type": "backend", "label": "Recorded for DMARC", "sublabel": "Authentication-Results" },
+    { "id": "none", "lane": "result", "col": 1, "type": "frontend", "label": "none", "sublabel": "no SPF record" },
+    { "id": "permerror", "lane": "result", "col": 3, "type": "frontend", "label": "permerror", "sublabel": "over 10 lookups, or 2 records", "icon": "failure" },
+    { "id": "all", "lane": "result", "col": 4, "type": "frontend", "label": "-all at the end", "sublabel": "nothing matched: fail" }
+  ],
+  "edges": [
+    { "id": "ask", "from": "conn", "to": "txt", "label": "look up", "role": "main", "variant": "default" },
+    { "id": "read", "from": "txt", "to": "terms", "role": "main", "variant": "default" },
+    { "id": "next", "from": "terms", "to": "include", "label": "no match", "role": "main", "variant": "dashed" },
+    { "id": "inc-match", "from": "include", "to": "matched", "label": "matched", "role": "main", "variant": "emphasis" },
+    { "id": "record", "from": "matched", "to": "dmarc", "role": "main", "variant": "default" },
+    { "id": "no-record", "from": "txt", "to": "none", "label": "nothing", "role": "branch", "variant": "dashed" },
+    { "id": "too-many", "from": "include", "to": "permerror", "label": "limit", "role": "branch", "variant": "security" },
+    { "id": "fall-through", "from": "matched", "to": "all", "label": "none matched", "role": "branch", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "What SPF checks", "items": ["MAIL FROM and HELO: the envelope, not the From: line", "DMARC ties the result to the From: domain"] },
+    { "dot": "rose", "title": "The 10-lookup limit (RFC 7208 §4.6.4)", "items": ["include, a, mx, ptr, exists and redirect each count", "Includes inside includes count too", "Over 10: permerror, and everything fails"] },
+    { "dot": "amber", "title": "Forwarding", "items": ["A forwarder keeps the sender's address but sends from its own server", "SPF fails at the next hop; SRS or ARC fix it"] }
+  ]
+}

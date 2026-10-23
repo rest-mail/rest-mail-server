@@ -18,7 +18,7 @@ func TestListTLSReports_RejectInvalidPolicyType(t *testing.T) {
 			query := url.Values{"policy_type": {policyType}}
 			rr := httptest.NewRecorder()
 			// A nil DB proves invalid filters are refused before database access.
-			NewTLSReportHandler(nil).ListReports(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/tls-reports?"+query.Encode(), nil))
+			policyRoutes(NewTLSReportHandler(nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/tls-reports?"+query.Encode(), nil))
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want 422: %s", rr.Code, rr.Body)
 			}
@@ -107,7 +107,7 @@ func TestListTLSReports_ContractPolicyFilters(t *testing.T) {
 					query.Set("offset", "1")
 				}
 				rr := httptest.NewRecorder()
-				NewTLSReportHandler(tx).ListReports(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/tls-reports?"+query.Encode(), nil))
+				policyRoutes(NewTLSReportHandler(tx)).ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/admin/tls-reports?"+query.Encode(), nil))
 				if rr.Code != http.StatusOK {
 					t.Fatalf("status = %d, want 200: %s", rr.Code, rr.Body)
 				}

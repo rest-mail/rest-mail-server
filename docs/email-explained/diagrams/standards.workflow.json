@@ -1,0 +1,61 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Forty years of email standards, each added without breaking the rest",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/email-explained/diagrams/standards.html",
+    "legend": {
+      "entries": {
+        "backend": { "label": "Delivery and format" },
+        "security": { "label": "Security" },
+        "frontend": { "label": "Reading mail" }
+      }
+    }
+  },
+  "lanes": [
+    { "id": "delivery", "label": "Delivery and format" },
+    { "id": "security", "label": "Security" },
+    { "id": "reading", "label": "Reading mail" }
+  ],
+  "phases": [
+    { "id": "p0", "label": "1982–1996", "fromCol": 0, "toCol": 0 },
+    { "id": "p1", "label": "1999–2003", "fromCol": 1, "toCol": 1 },
+    { "id": "p2", "label": "2006–2008", "fromCol": 2, "toCol": 2 },
+    { "id": "p3", "label": "2012–2015", "fromCol": 3, "toCol": 3 },
+    { "id": "p4", "label": "2017–2019", "fromCol": 4, "toCol": 4 },
+    { "id": "p5", "label": "2021–2026", "fromCol": 5, "toCol": 5 }
+  ],
+  "mainPath": ["starttls", "spf", "dmarc", "mtasts", "dmarcbis"],
+  "nodes": [
+    { "id": "smtp", "lane": "delivery", "col": 0, "type": "backend", "label": "SMTP, then MIME", "sublabel": "1982 RFC 821; 1996 RFC 2045" },
+    { "id": "smtp2008", "lane": "delivery", "col": 2, "type": "backend", "label": "SMTP revised", "sublabel": "2008 RFC 5321" },
+    { "id": "eai", "lane": "delivery", "col": 3, "type": "backend", "label": "SMTPUTF8", "sublabel": "2012 RFC 6531" },
+    { "id": "oneclick", "lane": "delivery", "col": 4, "type": "backend", "label": "One-click unsubscribe", "sublabel": "2017 RFC 8058" },
+    { "id": "starttls", "lane": "security", "col": 1, "type": "security", "label": "STARTTLS, SMTP AUTH", "sublabel": "1999 RFC 2487, 2554" },
+    { "id": "spf", "lane": "security", "col": 2, "type": "security", "label": "SPF, DKIM", "sublabel": "2006 RFC 4408; 2007 RFC 4871" },
+    { "id": "dmarc", "lane": "security", "col": 3, "type": "security", "label": "DMARC, DANE", "sublabel": "2015 RFC 7489, RFC 7672" },
+    { "id": "mtasts", "lane": "security", "col": 4, "type": "security", "label": "MTA-STS, ARC", "sublabel": "2018 RFC 8461; 2019 RFC 8617" },
+    { "id": "dmarcbis", "lane": "security", "col": 5, "type": "security", "label": "DMARC, a standard", "sublabel": "2026 RFC 9989" },
+    { "id": "pop3", "lane": "reading", "col": 0, "type": "frontend", "label": "POP3", "sublabel": "1996 RFC 1939" },
+    { "id": "imap", "lane": "reading", "col": 1, "type": "frontend", "label": "IMAP4rev1", "sublabel": "2003 RFC 3501" },
+    { "id": "jmap", "lane": "reading", "col": 4, "type": "frontend", "label": "JMAP", "sublabel": "2019 RFC 8620, 8621" },
+    { "id": "imap2", "lane": "reading", "col": 5, "type": "frontend", "label": "IMAP4rev2", "sublabel": "2021 RFC 9051" }
+  ],
+  "edges": [
+    { "id": "s1", "from": "starttls", "to": "spf", "role": "main", "variant": "security" },
+    { "id": "s2", "from": "spf", "to": "dmarc", "role": "main", "variant": "security" },
+    { "id": "s3", "from": "dmarc", "to": "mtasts", "role": "main", "variant": "security" },
+    { "id": "s4", "from": "mtasts", "to": "dmarcbis", "role": "main", "variant": "security" },
+    { "id": "d1", "from": "smtp", "to": "smtp2008", "role": "branch", "variant": "default" },
+    { "id": "d2", "from": "smtp2008", "to": "eai", "role": "branch", "variant": "default" },
+    { "id": "d3", "from": "eai", "to": "oneclick", "role": "branch", "variant": "default" },
+    { "id": "r1", "from": "pop3", "to": "imap", "role": "branch", "variant": "default" },
+    { "id": "r2", "from": "imap", "to": "jmap", "role": "branch", "variant": "default" },
+    { "id": "r3", "from": "jmap", "to": "imap2", "role": "branch", "variant": "default" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Every layer is optional", "items": ["Each had to work with servers that had never heard of it", "So each is checked separately, and fails in its own way"] }
+  ]
+}

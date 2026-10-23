@@ -23,7 +23,7 @@ func sendProbe(t *testing.T, h *TestHandler, request interface{}) (rr *httptest.
 				reached = true
 			}
 		}()
-		h.ProbeServices(rr, req)
+		testRoutes(h).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }
@@ -119,8 +119,8 @@ func TestProbeServices_DocumentedProbe(t *testing.T) {
 }
 
 // In production the test endpoints stay shut: both documented requests are
-// answered 403 before they are read, and nothing is probed.
-func TestProbeServices_ProductionRefusesExamples(t *testing.T) {
+// answered 404 without registration, and nothing is probed.
+func TestProbeServices_ProductionOmitsExamples(t *testing.T) {
 	requests, _ := postExamples(t, "/api/v1/admin/test/probe", "probeServices")
 	h := NewTestHandler(nil, &config.Config{Environment: "production"})
 
@@ -130,8 +130,8 @@ func TestProbeServices_ProductionRefusesExamples(t *testing.T) {
 			if reached {
 				t.Fatal("reached a probe in production")
 			}
-			if rr.Code != http.StatusForbidden {
-				t.Fatalf("status %d in production, want 403; body %s", rr.Code, rr.Body)
+			if rr.Code != http.StatusNotFound {
+				t.Fatalf("status %d in production, want 404; body %s", rr.Code, rr.Body)
 			}
 		})
 	}

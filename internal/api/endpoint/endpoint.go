@@ -49,6 +49,10 @@ type Operation struct {
 	// over the size cap when it has a body, and 500 always.
 	Errors []int
 
+	// Responses overrides individual response bodies when the answer belongs to an upstream
+	// service (for example, a sidecar error beside the API's own binding errors).
+	Responses []oapifly.EndpointResponse
+
 	// SuccessStatuses are additional success statuses carrying the same response type.
 	SuccessStatuses []int
 
@@ -258,6 +262,20 @@ func (reg *Registry) record(applied []oapifly.Middleware, op Operation, reqType,
 		responses = append(responses, oapifly.EndpointResponse{Status: status, Type: body})
 	}
 
+	for _, override := range op.Responses {
+		replaced := false
+		for i := range responses {
+			if responses[i].Status == override.Status {
+				responses[i] = override
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			responses = append(responses, override)
+		}
+	}
+
 	var request reflect.Type
 	if shape.binds {
 		request = reqType
@@ -288,6 +306,9 @@ func described(applied []oapifly.Middleware, own []Middleware) []oapifly.Middlew
 // successResponse describes the success answer in the envelope write puts it in: a List as
 // itself, anything else as Data[Resp], the {"data": ...} body respond.Data writes.
 func successResponse(status int, respType, envelope reflect.Type) oapifly.EndpointResponse {
+	if raw, ok := reflect.Zero(respType).Interface().(forwardedResponse); ok {
+		return oapifly.EndpointResponse{Status: status, Type: raw.responseType()}
+	}
 	if status == http.StatusNoContent || respType == reflect.TypeOf(Empty{}) {
 		return oapifly.EndpointResponse{Status: status}
 	}
@@ -305,6 +326,10 @@ func documentedPath(path string) string {
 }
 
 func write(w http.ResponseWriter, status int, out interface{}) {
+	if raw, ok := out.(forwardedResponse); ok {
+		raw.writeResponse(w)
+		return
+	}
 	if reply, ok := out.(statusResponse); ok {
 		status, out = reply.responseStatus()
 	}
@@ -386,6 +411,7 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		body = read
 	}
 
+	textual := stringParams(reflect.TypeOf(dst))
 	err := oapifly.Bind(dst, func(in, name string) (string, bool) {
 		switch in {
 		case "path":
@@ -396,7 +422,11 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 			if !ok || len(values) == 0 {
 				return "", false
 			}
-			return values[0], true
+			// A blank number, flag or time is an omitted one, as the handlers read
+			// it with url.Values.Get: ?domain_id= lists every domain's entries. A
+			// blank string is a value, which its enum may refuse: ?status= is not
+			// a status.
+			return values[0], values[0] != "" || textual[name]
 		}
 		v := r.Header.Get(name)
 		return v, v != ""
@@ -413,6 +443,38 @@ func bind(r *http.Request, dst interface{}, s shape) error {
 		return Refuse(http.StatusBadRequest, "bad_request", "Invalid request body")
 	}
 	return err
+}
+
+// stringParams names the query parameters of t whose type is a string.
+func stringParams(t reflect.Type) map[string]bool {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	out := map[string]bool{}
+	if t.Kind() != reflect.Struct {
+		return out
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if f.Anonymous {
+			for name := range stringParams(f.Type) {
+				out[name] = true
+			}
+			continue
+		}
+		name := strings.Split(f.Tag.Get("query"), ",")[0]
+		if name == "" || name == "-" {
+			continue
+		}
+		kind := f.Type
+		for kind.Kind() == reflect.Pointer {
+			kind = kind.Elem()
+		}
+		if kind.Kind() == reflect.String {
+			out[name] = true
+		}
+	}
+	return out
 }
 
 // missingMessages gives a missing field the wording its missing tag documents.
