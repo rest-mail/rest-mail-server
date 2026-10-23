@@ -236,6 +236,9 @@ func TestRegistrationsAreTheDocument(t *testing.T) {
 	if !reg.Has("GET", "/widgets/{id:[0-9]+}") || reg.Has("PUT", "/widgets/{id}") {
 		t.Fatalf("Has reports what was registered")
 	}
+	if routes := strings.Join(reg.Routes(), ","); !strings.Contains(routes, "GET /widgets/{id:[0-9]+},") || !strings.HasPrefix(routes, "DELETE /widgets/{id},") {
+		t.Fatalf("Routes lists the patterns as mounted, sorted: %s", routes)
+	}
 }
 
 // A route registered twice is a programming error, caught at start-up.

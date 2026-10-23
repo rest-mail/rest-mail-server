@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	acmeclient "github.com/restmail/restmail/internal/acme"
+	"github.com/restmail/restmail/internal/api/endpoint"
 	"github.com/restmail/restmail/internal/api/handlers"
 	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
@@ -54,6 +55,12 @@ type Routers struct {
 	// scheduled-send loop it owns. Not started here: route tests, which have
 	// no mail to send, must not start a background sender.
 	Messages *handlers.MessageHandler
+
+	// Registry holds every route registered with endpoint.Register: the types
+	// each one takes and answers, from which the API description is generated.
+	// A route mounted without it is on the shrinking list the route-registry
+	// test keeps (#669).
+	Registry *endpoint.Registry
 
 	// push is push notifications, when configured; its dispatcher owns a
 	// goroutine that Routers.Close stops.
@@ -106,6 +113,7 @@ func NewRouter(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dns
 // clients subscribed on the public listener.
 func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dnsProvider dns.Provider, acmeClient ...*acmeclient.Client) *Routers {
 	r := chi.NewRouter()
+	registry := endpoint.NewRegistry()
 
 	// Global middleware
 	//
@@ -894,7 +902,7 @@ func NewRouters(db *gorm.DB, jwtService *auth.JWTService, cfg *config.Config, dn
 		r.With(needs(grants.Wildcard)).Post("/api/v1/admin/test/snapshot/restore", testH.RestoreSnapshot)
 	})
 
-	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH}
+	routers := &Routers{Public: r, Recorder: traceRecorder, push: pushSvc, Messages: messageH, Registry: registry}
 
 	// Dedicated internal mTLS handler. Only built when enabled; served on a
 	// separate listener whose TLS layer requires a verified gateway client
