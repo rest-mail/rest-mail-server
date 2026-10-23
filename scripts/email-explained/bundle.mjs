@@ -15,6 +15,7 @@
 // - links between chapters become site paths, and links to code become
 //   GitHub links pinned to the commit the bundle was built from.
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -154,6 +155,22 @@ export function compileChapter({ file, text, commit, files, diagrams }) {
   };
 }
 
+/**
+ * Archify carries its typefaces inside the page, as data: URLs. A site that
+ * allows typefaces only from itself refuses those, so each one becomes a file
+ * of its own beside the diagram, named for its contents.
+ */
+export function extractFonts(html) {
+  const fonts = new Map();
+  const out = html.replace(/url\(data:font\/(woff2?);base64,([A-Za-z0-9+/=]+)\)/g, (_, ext, data) => {
+    const bytes = Buffer.from(data, "base64");
+    const file = `fonts/${createHash("sha256").update(bytes).digest("hex").slice(0, 16)}.${ext}`;
+    fonts.set(file, bytes);
+    return `url(${file})`;
+  });
+  return { html: out, fonts };
+}
+
 async function markdownFiles(dir, base = dir) {
   const found = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -187,6 +204,10 @@ async function main() {
       env: { ...process.env, ARCHIFY_UPDATE_CHECK_DISABLED: "1" },
       stdio: ["ignore", "ignore", "inherit"],
     });
+    const { html: page, fonts } = extractFonts(await readFile(join(out, html), "utf8"));
+    await writeFile(join(out, html), page);
+    await mkdir(join(out, "diagrams", "fonts"), { recursive: true });
+    for (const [file, bytes] of fonts) await writeFile(join(out, "diagrams", file), bytes);
     await copyFile(join(guide, "diagrams", `${diagram}.png`), join(out, "diagrams", `${diagram}.png`));
     diagrams.set(diagram, { name: diagram, type, source: `${GUIDE}/diagrams/${name}`, html, image: `diagrams/${diagram}.png` });
   }

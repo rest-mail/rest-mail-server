@@ -118,10 +118,27 @@ can never quote a paragraph that has gone.
    | `srcdoc` | Works, with a fixed height | Archify's own advice. An opaque sandboxed frame cannot be measured, so it scrolls inside a fixed box. |
    | `shadow` | Broken | Archify's stylesheet is written for a whole document (`:root`, `html[...]`), so inside a shadow root none of its colours resolve and every box is black. Its script looks its elements up in `document`, finds none, and throws. The page's typefaces still inherit in. |
    | `inline` | Renders, but the site leaks in | Its CSS scoped to the diagram, so its variables cannot reach the site. The other way still leaks: the site's own rules (`.doc-body li`) match Archify's elements and make its cards unreadable. The site's policy also refuses its typefaces, and its script writes 12 attributes and a style onto the site's `<html>`. |
+   | `inline-ns` | Works, with one diagram | Everything Archify names is prefixed or redirected (below). It looks and behaves like the frame, the site's `<html>`, anchors and typefaces are untouched, and nothing is refused. |
+   | `inline-ns-x2` | Two diagrams mostly independent | Each has its own state, theme and address. They still share element ids: the second's arrowheads are drawn with the first's markers (the wrong colour when their themes differ), and its accessible name points at the first's title. |
 
-   Scoping Archify's variables is not enough on its own. A page's selectors
-   and inherited styles reach anything inline. Only a separate document, a
-   frame, keeps both sides apart without changing Archify.
+   **Namespacing, collision by collision** (`inline-ns`, the website's
+   `src/guide/namespaced.ts`):
+
+   | Collision | Namespaced by |
+   |---|---|
+   | The site's rules and inherited styles reach Archify's elements | The diagram's element is reset to the browser's defaults (`all: initial`, its descendants `all: revert`), and every Archify rule is prefixed with the element's id, which outranks the site's classes |
+   | Archify's rules for `html`, `:root`, `body` and bare `[data-theme]` | Rewritten to the element itself |
+   | Its script writes its state onto `<html>` | It is given a document whose `documentElement`, `body` and lookups are the element |
+   | Both define a typeface called JetBrains Mono | Archify's is renamed |
+   | The site's policy refuses Archify's `data:` typefaces | The bundle writes them out as files beside the diagram |
+   | Archify keeps its state after `#`, and clears it, overwriting the site's anchors | Its script sees an address of its own, kept in `?<diagram>=` (`?open-relay=focus%3Drelay`); a link to that address opens the diagram focused. Archify's `data-reading-link-template` makes its "copy link" give the same |
+   | Absolutely placed parts (its toolbar) anchor to the site's figure | The element is their positioning context |
+   | Element ids repeat when a diagram appears twice | **Not solved.** Prefixing the ids would change values Archify's script reads back; it needs an id prefix in Archify itself |
+   | Its saved theme (`localStorage` `archify-theme`) | Left shared on purpose: a reader's choice applies to every diagram |
+
+   So namespacing does avoid the collisions, all but repeated ids, at the
+   cost of a rewriting layer between Archify and the page that has to follow
+   Archify's releases. A frame needs none of it.
 
 2. **Matching the site's three designs.** Archify has its own looks (classic,
    editorial and others). Does a diagram follow the visitor's chosen design,

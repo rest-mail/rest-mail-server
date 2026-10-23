@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { anchorer, compileChapter, slugOf, splitFrontMatter } from "./bundle.mjs";
+import { anchorer, compileChapter, extractFonts, slugOf, splitFrontMatter } from "./bundle.mjs";
 
 const commit = "0123456789abcdef0123456789abcdef01234567";
 const files = new Set(["README.md", "how-it-goes-wrong/open-relay.md"]);
@@ -57,4 +57,13 @@ Code is [here](../../../internal/gateway/smtp/session.go#L10), the rules [there]
 test("an image that is not a diagram, or a diagram that does not exist, fails the build", () => {
   assert.throws(() => compile("# T\n\n![x](photo.png)"), /only diagram images/);
   assert.throws(() => compile("---\ntitle: T\ndiagram: ../diagrams/missing.workflow.json\n---\n"), /missing diagram/);
+});
+
+test("typefaces carried as data: URLs become files named for their contents", () => {
+  const data = Buffer.from("not really a font").toString("base64");
+  const { html, fonts } = extractFonts(`@font-face { src: url(data:font/woff2;base64,${data}) format('woff2'); }`);
+  const [file] = fonts.keys();
+  assert.match(file, /^fonts\/[0-9a-f]{16}\.woff2$/);
+  assert.equal(html, `@font-face { src: url(${file}) format('woff2'); }`);
+  assert.equal(fonts.get(file).toString(), "not really a font");
 });
