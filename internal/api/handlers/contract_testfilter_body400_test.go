@@ -174,6 +174,7 @@ func testFilterBody400Problems(spec testFilterSpec) []string {
 	wantSecurity := []map[string][]string{
 		{"CookieAuth": {"pipelines:write"}},
 		{"BearerAuth": {"pipelines:write"}},
+		{"APIKeyAuth": {"pipelines:write"}},
 	}
 	if !reflect.DeepEqual(spec.Security, wantSecurity) {
 		problems = append(problems, fmt.Sprintf("security is %v, want %v", spec.Security, wantSecurity))
@@ -301,6 +302,12 @@ func TestTestFilterBody400_DocumentedMutations(t *testing.T) {
 		s.Responses[status] = r
 	}
 	mutations := map[string]func(*testFilterSpec){
+		"API key auth missing": func(s *testFilterSpec) {
+			s.Security = s.Security[:2]
+		},
+		"API key capability changed": func(s *testFilterSpec) {
+			s.Security[2] = map[string][]string{"APIKeyAuth": {"pipelines:read"}}
+		},
 		"invalid_body missing": func(s *testFilterSpec) {
 			delete(s.Responses["400"].Examples, "invalid_body")
 		},

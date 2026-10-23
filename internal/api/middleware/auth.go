@@ -112,7 +112,10 @@ type ScopeOf func(r *http.Request) (scope string, found bool, err error)
 // without looking the target up, so the handler answers for one that does not
 // exist exactly as before; anyone else is refused for it.
 //
-// Only a session is eligible: a request made with a credential over HTTP
+// A session is eligible, and so is a request made with an API key, which
+// passes only where its account's live grants and its own permissions both
+// allow capability at the same scope (CredentialAllows): a key never holds
+// more than its account does now. A request made with a credential over HTTP
 // Basic (an app password, a gateway's password) is refused, whatever its
 // account holds.
 func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(http.Handler) http.Handler {
@@ -123,7 +126,7 @@ func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(
 				writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication required")
 				return
 			}
-			if claims.CredentialID != 0 {
+			if claims.CredentialID != 0 && !claims.IsAPIKey() {
 				writeError(w, http.StatusForbidden, "forbidden", "Sign in to do this")
 				return
 			}
@@ -133,18 +136,18 @@ func RequireCapability(held HeldGrants, capability string, target ScopeOf) func(
 				writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
 				return
 			}
-			if h.Allows(capability, grants.All) {
-				next.ServeHTTP(w, r)
+			if h.Allows(capability, grants.All) && CredentialAllows(claims, capability, grants.All) {
+				next.ServeHTTP(w, withAuthorizedGrants(r, h))
 				return
 			}
-			if target != nil && h.AllowsSomewhere(capability) {
+			if target != nil && h.AllowsSomewhere(capability) && credentialAllowsSomewhere(claims, capability) {
 				scope, found, err := target(r)
 				if err != nil {
 					writeError(w, http.StatusServiceUnavailable, "unavailable", "Could not verify permissions")
 					return
 				}
-				if found && h.Allows(capability, scope) {
-					next.ServeHTTP(w, r)
+				if found && h.Allows(capability, scope) && CredentialAllows(claims, capability, scope) {
+					next.ServeHTTP(w, withAuthorizedGrants(r, h))
 					return
 				}
 			}

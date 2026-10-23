@@ -58,13 +58,14 @@ type dbAccountState struct {
 // show; they authorise nothing), whether it is still in setup (see
 // accountSetupSteps), and its current credential epoch.
 type accountState struct {
-	Active          bool
-	Address         string
-	DisplayName     string
-	Capabilities    []string
-	SetupPending    bool
-	SetupRequired   []string
-	CredentialEpoch int
+	Active             bool
+	Address            string
+	DisplayName        string
+	Capabilities       []string
+	ScopedCapabilities []grants.Entry
+	SetupPending       bool
+	SetupRequired      []string
+	CredentialEpoch    int
 }
 
 func (s dbAccountState) AccountState(id uint) (accountState, error) {
@@ -89,13 +90,14 @@ func (s dbAccountState) AccountState(id uint) (accountState, error) {
 		return accountState{}, err
 	}
 	return accountState{
-		Active:          true,
-		Address:         account.Address,
-		DisplayName:     account.DisplayName,
-		Capabilities:    held.Capabilities(),
-		SetupPending:    len(steps) > 0,
-		SetupRequired:   steps,
-		CredentialEpoch: account.CredentialEpoch,
+		Active:             true,
+		Address:            account.Address,
+		DisplayName:        account.DisplayName,
+		Capabilities:       held.Capabilities(),
+		ScopedCapabilities: held.ScopedCapabilities(),
+		SetupPending:       len(steps) > 0,
+		SetupRequired:      steps,
+		CredentialEpoch:    account.CredentialEpoch,
 	}, nil
 }
 
@@ -259,9 +261,10 @@ type refreshRequest struct {
 // request that arrives with the refresh cookie is a browser's and never gets
 // them, whatever its body says.
 type loginResponse struct {
-	ExpiresIn    int      `json:"expires_in"`
-	User         userInfo `json:"user"`
-	Capabilities []string `json:"capabilities,omitempty"`
+	ExpiresIn          int            `json:"expires_in"`
+	User               userInfo       `json:"user"`
+	Capabilities       []string       `json:"capabilities,omitempty"`
+	ScopedCapabilities []grants.Entry `json:"scoped_capabilities,omitempty"`
 	// SetupRequired lists what the account must still do — "password" (POST
 	// /api/v1/auth/password), "two_factor" (POST /api/v1/auth/2fa/enroll, then
 	// /confirm) — before the session can reach anything else, which answers
@@ -635,6 +638,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		resp.Capabilities = state.Capabilities
+		resp.ScopedCapabilities = state.ScopedCapabilities
 	}
 	if err := deliverSession(w, tokens, native, &resp); err != nil {
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to establish session")
@@ -759,6 +763,7 @@ func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbo
 		return
 	}
 	capNames := held.Capabilities()
+	scoped := held.ScopedCapabilities()
 
 	setupSteps, err := accountSetupSteps(h.twoFactorStore, account)
 	if err != nil {
@@ -767,6 +772,7 @@ func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbo
 	}
 	if len(setupSteps) > 0 {
 		capNames = nil
+		scoped = nil
 	}
 	tokens, err := h.jwtService.GenerateSession(account.ID, account.Address, account.CredentialEpoch, amr, len(setupSteps) > 0)
 	if err != nil {
@@ -782,9 +788,10 @@ func (h *AuthHandler) startSession(w http.ResponseWriter, account *models.Mailbo
 	}
 
 	resp := loginResponse{
-		ExpiresIn:     tokens.ExpiresIn,
-		Capabilities:  capNames,
-		SetupRequired: setupSteps,
+		ExpiresIn:          tokens.ExpiresIn,
+		Capabilities:       capNames,
+		ScopedCapabilities: scoped,
+		SetupRequired:      setupSteps,
 		User: userInfo{
 			ID:          account.ID,
 			Email:       account.Address,

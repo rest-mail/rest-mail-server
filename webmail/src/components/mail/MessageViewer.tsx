@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import type { Attachment, MessageSummary } from '@/types';
 import { CalendarInvite } from './CalendarInvite';
 import { HtmlMessageBody } from './HtmlMessageBody';
+import { TrustBadge, TrustReceipt } from './signals';
 import { cn } from '@/lib/utils';
 
 function formatFileSize(bytes: number): string {
@@ -354,6 +355,7 @@ export function MessageViewer() {
                 <span className="min-w-0 break-all">
                   {msg.sender_name ? `${msg.sender_name} <${displayAddress(msg.sender)}>` : displayAddress(msg.sender)}
                 </span>
+                <TrustBadge headers={msg.headers} compact />
               </p>
               <p>
                 <span className="font-medium text-foreground">date:</span>{' '}
@@ -401,6 +403,8 @@ export function MessageViewer() {
               )}
             </div>
           )}
+
+          <TrustReceipt headers={msg.headers} receivedAt={msg.received_at} className="mt-3" />
 
           {/* Divider */}
           <div className="h-px bg-border my-4" />

@@ -18,7 +18,46 @@ In the `E2E (full topology)` job (`.github/workflows/e2e-suite.yml`), after the
 | `authorization` | Every selected operation as each configured principal, checked against the spec's security roles. | Report only, after the gates |
 | `fuzz` | Values drawn from each schema, shrunk to the smallest failing input, with a replayable seed. | Nightly (`contract-fuzz.yml`), never blocks |
 
-Two gates judge the run:
+### Own-account authenticator contract
+
+The normal examples run includes `getTwoFactorStatus` and `enrollTwoFactor`,
+with their 200 responses and missing-session 401s counted. Enrollment has no
+request body, leaves a pending secret and does not change the fixture admin's
+sign-in requirements until it is confirmed. The shared authentication pacing
+hook covers enrollment; it leaves the transaction's principal untouched.
+Confirm and disable stay outside this shared fixture's sequence because they
+would change its sign-in requirements or revoke its session.
+
+Both new operations document internal 500 errors. Those two fault responses
+alone have an operation-scoped exclusion mirrored under `surface.exclude`:
+the healthy topology cannot provoke a database/cryptography outage. Existing
+coverage-baseline entries and existing refusal selection are unchanged.
+
+`TestOpenAPI_AdminAndTwoFactorRouteInventory` walks the real Chi registration
+table and compares every admin route (including the guarded test routes) and
+every own-2FA route to OpenAPI in both directions. It also holds own-2FA to
+Cookie/Bearer sessions with no Basic/API-key alternative. The fast Python
+contract checks independently scan the literal registrations, check references,
+response fields, auth selection and exclusions. Handler tests compare the
+response schemas to the actual Go JSON fields and exercise off/pending/active
+status without exposing another account's state or any setup secret.
+
+These checks detect missing routes and contract drift. Full mobile parity also
+needs request/response field, permission, UI and live integration evidence for
+each operation; route counts alone do not establish that evidence.
+
+The three API-key operations run in a separate required step,
+`chore test:contract-api-keys`, before the examples gate. It creates a fresh
+disposable `restmail.test` account with a domain-scoped admin grant, enrolls
+2FA through the public API, confirms a real TOTP and signs in with a recovery
+code. The suite checks create/list/revoke, metadata without secrets, password
+reauthentication, validation, refusals without MFA, scope restrictions and
+immediate revocation. These three operations alone are excluded from the
+primary vertrag run because its fixture admin has no MFA. The dedicated step
+has no `continue-on-error`, changes no primary principal, and adds no coverage
+baseline entries.
+
+Two gates judge the primary run:
 
 - **examples, in vertrag:** `vertrag.yml`'s surface gate (`surface: {count:
   passed, require: 100}`) counts an operation only when every documented
