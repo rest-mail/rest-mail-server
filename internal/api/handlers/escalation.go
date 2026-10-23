@@ -51,8 +51,9 @@ func toActivationResponse(a *models.GrantActivation, now time.Time) *activationR
 // escalationResponse is a grant after a step of escalation, and what the
 // caller now holds at "*", for the client to show (as login lists it).
 type escalationResponse struct {
-	Grant        grantResponse `json:"grant"`
-	Capabilities []string      `json:"capabilities"`
+	Grant              grantResponse  `json:"grant"`
+	Capabilities       []string       `json:"capabilities"`
+	ScopedCapabilities []grants.Entry `json:"scoped_capabilities"`
 }
 
 // Mine lists the caller's own grants, each with its mode and any activation
@@ -226,7 +227,7 @@ func (h *GrantHandler) respondEscalation(w http.ResponseWriter, status int, acco
 		respond.Error(w, http.StatusInternalServerError, "internal_error", "Failed to load user capabilities")
 		return
 	}
-	resp := escalationResponse{Grant: toGrantResponse(g), Capabilities: held.Capabilities()}
+	resp := escalationResponse{Grant: toGrantResponse(g), Capabilities: held.Capabilities(), ScopedCapabilities: held.ScopedCapabilities()}
 	if resp.Capabilities == nil {
 		resp.Capabilities = []string{}
 	}

@@ -114,6 +114,16 @@ def run(base_url, email, password, domain_id):
     require_fixture_account(email)
     client = Client(base_url)
     session, plain_token = mfa_session(client, email, password)
+    scoped = session.get("scoped_capabilities", [])
+    if {"capability": "domains:read", "scope": f"domain:{FIXTURE_DOMAIN}"} not in scoped:
+        raise AssertionError("MFA sign-in omitted the fixture account's scoped domain access")
+    renewed = client.expect(200, "POST", "/api/v1/auth/refresh",
+                            {"refresh_token": session["refresh_token"]})["data"]
+    if renewed.get("scoped_capabilities") != scoped:
+        raise AssertionError("refresh lost the fixture account's scoped capabilities")
+    if renewed["refresh_token"] == session["refresh_token"]:
+        raise AssertionError("refresh did not rotate its token")
+    session = renewed
     token = session["access_token"]
     account = session["user"]["id"]
     keys = f"/api/v1/accounts/{account}/api-keys"
@@ -148,7 +158,12 @@ def run(base_url, email, password, domain_id):
 
     # The raw key works inside its scope and cannot manage credentials.
     client.expect(200, "GET", domain_path, token=secret)
-    client.expect(403, "GET", "/api/v1/admin/domains", token=secret)
+    visible = client.expect(200, "GET", "/api/v1/admin/domains", token=secret)
+    rows = visible["data"]
+    if len(rows) != 1 or rows[0]["id"] != int(domain_id):
+        raise AssertionError(f"scoped key domain list leaked or lost its domain: {visible!r}")
+    if visible.get("pagination", {}).get("total") != 1:
+        raise AssertionError(f"scoped key total reveals unrelated domains: {visible!r}")
     client.expect(403, "PATCH", domain_path, {"active": False}, secret)
     # These routes accept JWT sessions only, so a raw key is not a session.
     client.expect(401, "GET", keys, token=secret)

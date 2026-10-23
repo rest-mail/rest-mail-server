@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/restmail/restmail/internal/api/middleware"
 	"github.com/restmail/restmail/internal/api/respond"
 	"github.com/restmail/restmail/internal/db/models"
 	"github.com/restmail/restmail/internal/dns"
@@ -74,7 +75,7 @@ func NewDomainHandler(db *gorm.DB, dnsProvider dns.Provider) *DomainHandler {
 func (h *DomainHandler) List(w http.ResponseWriter, r *http.Request) {
 	limit, offset := parsePagination(r, defaultListLimit, maxListLimit)
 
-	query := h.db.Model(&models.Domain{})
+	query := filterAdminList(h.db.Model(&models.Domain{}), r, middleware.CapDomainsRead, "domains")
 
 	var total int64
 	query.Count(&total)
