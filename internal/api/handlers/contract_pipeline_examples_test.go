@@ -17,7 +17,7 @@ import (
 // anything is stored: the handler has no database.
 func TestPipelineCreate_DocumentedRefusals(t *testing.T) {
 	documentedRefusals(t, "/api/v1/admin/pipelines", "createPipeline",
-		NewPipelineHandler(nil, nil, filters.JSSidecar{}).CreatePipeline)
+		pipelineRoutes(NewPipelineHandler(nil, nil, filters.JSSidecar{})).ServeHTTP)
 }
 
 // pipelineCreateRefused names each request example createPipeline refuses
@@ -41,10 +41,10 @@ func TestPipelineCreate_ExamplePairs(t *testing.T) {
 func pipelineCreatePairProblems(requests map[string]interface{}, responses map[string]map[string]interface{}) []string {
 	var problems []string
 	want := map[string][]string{
-		"request": {"body_array", "created", "direction_missing", "filters_missing"},
+		"request": {"active_wrong_type", "body_array", "created", "direction_missing", "filters_missing", "null_body"},
 		"201":     {"created"},
-		"400":     {"body_array"},
-		"422":     {"direction_missing", "filters_missing"},
+		"400":     {"body_array", "null_body"},
+		"422":     {"active_wrong_type", "direction_missing", "filters_missing"},
 	}
 	got := map[string][]string{"request": names(requests)}
 	for status, examples := range responses {

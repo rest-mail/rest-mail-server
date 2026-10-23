@@ -93,7 +93,7 @@ func TestValidateCustomFilter_BodyArrayRefused(t *testing.T) {
 						t.Fatalf("%s reached the database before it was refused: %v", c.body, r)
 					}
 				}()
-				NewPipelineHandler(nil, nil, filters.JSSidecar{}).ValidateCustomFilter(rr,
+				pipelineRoutes(NewPipelineHandler(nil, nil, filters.JSSidecar{})).ServeHTTP(rr,
 					httptest.NewRequest(http.MethodPost, validateJSPath, bytes.NewReader([]byte(c.body))))
 			}()
 			if rr.Code != c.status {

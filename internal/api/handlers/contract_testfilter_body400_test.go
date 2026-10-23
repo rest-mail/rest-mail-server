@@ -50,12 +50,12 @@ func testFilterNoEngine(t *testing.T, body string) (rr *httptest.ResponseRecorde
 			}
 			stack := string(debug.Stack())
 			if !strings.Contains(stack, "pipeline.(*Engine).TestFilter(") ||
-				!strings.Contains(stack, "handlers.(*PipelineHandler).TestFilter(") {
+				!strings.Contains(stack, "handlers.(*PipelineHandler).testFilter(") {
 				t.Fatalf("%s: panicked outside the engine's TestFilter: %v\n%s", body, r, stack)
 			}
 			reached = true
 		}()
-		h.TestFilter(rr, req)
+		pipelineRoutes(h).ServeHTTP(rr, req)
 	}()
 	return rr, reached
 }
@@ -245,7 +245,20 @@ func TestTestFilterBody400_UndecodableBodiesRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rr, reached := testFilterNoEngine(t, body)
-			for _, problem := range testFilterAnswerProblems(rr, reached, http.StatusBadRequest, want) {
+			status, expected := http.StatusBadRequest, want
+			fieldTypes := map[string]map[string]string{
+				"filter_name number":         {"filter_name": "must be a string"},
+				"filter_name object":         {"filter_name": "must be a string"},
+				"filter_name bool, no email": {"filter_name": "must be a string"},
+				"email string":               {"email": "must be an object"},
+				"email array":                {"email": "must be an object"},
+				"rcpt_to string":             {"email.envelope.rcpt_to": "must be an array"},
+			}
+			if fields := fieldTypes[name]; fields != nil {
+				status = http.StatusUnprocessableEntity
+				expected = parseShapeJSON(t, pipelineValidation(fields))
+			}
+			for _, problem := range testFilterAnswerProblems(rr, reached, status, expected) {
 				t.Errorf("%s: %s", body, problem)
 			}
 		})
@@ -272,7 +285,15 @@ func TestTestFilterBody400_DecodableBodiesGet422(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			rr, reached := testFilterNoEngine(t, body)
-			for _, problem := range testFilterAnswerProblems(rr, reached, http.StatusUnprocessableEntity, want) {
+			status, expected := http.StatusUnprocessableEntity, want
+			if name == "null" {
+				status = http.StatusBadRequest
+				expected = parseShapeJSON(t, testFilterBodyRefusal)
+			}
+			if name == "unknown field only" {
+				expected = parseShapeJSON(t, pipelineValidation(map[string]string{"filter": "not allowed"}))
+			}
+			for _, problem := range testFilterAnswerProblems(rr, reached, status, expected) {
 				t.Errorf("%s: %s", body, problem)
 			}
 		})
