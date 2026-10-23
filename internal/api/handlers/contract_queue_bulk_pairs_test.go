@@ -22,12 +22,11 @@ import (
 // by_ids, named on the 200.
 var bulkQueuePairs = []struct {
 	operationID, path string
-	handle            func(*QueueHandler, http.ResponseWriter, *http.Request)
 	// The status a seeded entry is in, so the documented request affects it.
 	seedStatus, wantStatus string
 }{
-	{"bulkRetryQueue", "/api/v1/admin/queue/bulk-retry", (*QueueHandler).BulkRetry, "deferred", "pending"},
-	{"bulkBounceQueue", "/api/v1/admin/queue/bulk-bounce", (*QueueHandler).BulkBounce, "deferred", "bounced"},
+	{"bulkRetryQueue", "/api/v1/admin/queue/bulk-retry", "deferred", "pending"},
+	{"bulkBounceQueue", "/api/v1/admin/queue/bulk-bounce", "deferred", "bounced"},
 }
 
 // readBulkPostSpec is the POST on path as the spec the API serves documents it.
@@ -75,8 +74,8 @@ func bulkPostPairProblems(t *testing.T, operationID string, s bulkDeleteSpec) []
 
 	requests := s.requests(t)
 	responses := s.responses(t)
-	if got := names(requests); !reflect.DeepEqual(got, []string{"by_ids", "invalid_body", "selection_missing"}) {
-		add("the request examples are %v, want by_ids, invalid_body and selection_missing", got)
+	if got := names(requests); !reflect.DeepEqual(got, []string{"by_ids", "invalid_body", "invalid_ids", "selection_missing"}) {
+		add("the request examples are %v, want by_ids, invalid_body, invalid_ids and selection_missing", got)
 	}
 	if got, want := requests["by_ids"], map[string]interface{}{"ids": []interface{}{float64(987654)}}; !reflect.DeepEqual(got, want) {
 		add("by_ids is %s, want the original request %s", mustJSON(got), mustJSON(want))
@@ -93,8 +92,8 @@ func bulkPostPairProblems(t *testing.T, operationID string, s bulkDeleteSpec) []
 		statuses = append(statuses, status)
 	}
 	sort.Strings(statuses)
-	if !reflect.DeepEqual(statuses, []string{"200", "400"}) {
-		add("the responses are %v, want 200 and 400", statuses)
+	if !reflect.DeepEqual(statuses, []string{"200", "400", "422"}) {
+		add("the responses are %v, want 200, 400 and 422", statuses)
 	}
 	ok := s.Responses["200"].Content["application/json"]
 	if ok.Schema.Type != "object" || !reflect.DeepEqual(ok.Schema.Required, []string{"data"}) ||
@@ -151,7 +150,7 @@ func TestBulkQueue_RefusalPairsRefused(t *testing.T) {
 							t.Fatalf("%s reached the database before it was refused: %v", body, r)
 						}
 					}()
-					op.handle(NewQueueHandler(nil), rr, httptest.NewRequest(http.MethodPost, op.path, bytes.NewReader(body)))
+					queueRoutes(NewQueueHandler(nil)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, op.path, bytes.NewReader(body)))
 				}()
 				if rr.Code != http.StatusBadRequest {
 					t.Fatalf("%s: status %d, want 400; body %s", body, rr.Code, rr.Body)
@@ -207,7 +206,7 @@ func TestBulkQueue_ByIDsExampleAnswered(t *testing.T) {
 				t.Fatal(err)
 			}
 			rr := httptest.NewRecorder()
-			op.handle(NewQueueHandler(tx), rr, httptest.NewRequest(http.MethodPost, op.path, bytes.NewReader(body)))
+			queueRoutes(NewQueueHandler(tx)).ServeHTTP(rr, httptest.NewRequest(http.MethodPost, op.path, bytes.NewReader(body)))
 			if rr.Code != http.StatusOK {
 				t.Fatalf("%s: status %d, want 200; body %s", body, rr.Code, rr.Body)
 			}

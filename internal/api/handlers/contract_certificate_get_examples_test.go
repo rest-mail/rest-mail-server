@@ -101,7 +101,7 @@ func TestCertificateGet_DocumentedExamples(t *testing.T) {
 		ctx.URLParams.Add("id", fmt.Sprint(id))
 		r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, ctx))
 		rr := httptest.NewRecorder()
-		NewCertificateHandler(tx, "").GetCertificate(rr, r)
+		certificateRoutes(NewCertificateHandler(tx, "")).ServeHTTP(rr, r)
 		return rr
 	}
 	rr := lookup(missing)
